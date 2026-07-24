@@ -64,7 +64,7 @@ void *gray_arena_alloc(GrayArena *arena, size_t size) {
     if (arena->destroyed)
         gray_panic_code("P0001", "cannot allocate from a destroyed arena; mem.destroy() was already called on this arena");
     size = ALIGN_UP(size, 8);
-    if (arena->current->used + size > arena->current->size) {
+    if (size > arena->current->size - arena->current->used) {
         size_t block_size = arena->default_block_size;
         if (size > block_size) block_size = size;
         GrayArenaBlock *block = gray_arena_block_create(block_size);
