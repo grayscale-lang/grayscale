@@ -38,7 +38,8 @@
     GRAY_ERROR("E1020", "syntax", "unexpected '|' character; use '||' for logical OR") \
     GRAY_ERROR("E1021", "syntax", "unclosed string; add a closing double quote") \
     GRAY_ERROR("E1022", "syntax", "unexpected character") \
-    GRAY_ERROR("E1023", "syntax", "string literals cannot span multiple lines; use a raw string with backticks for multi-line text")
+    GRAY_ERROR("E1023", "syntax", "string literals cannot span multiple lines; use a raw string with backticks for multi-line text") \
+    GRAY_ERROR("E1024", "syntax", "identifier exceeds the maximum length of 255 characters")
 
 /* --- E2xxx: Understanding Your Code (Parser) --- */
 #define GRAY_PARSER_ERRORS \

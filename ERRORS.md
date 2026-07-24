@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 368 codes** (250 errors, 17 warnings, 101 panics)
+**Total: 369 codes** (251 errors, 17 warnings, 101 panics)
 
 ---
 
@@ -29,6 +29,7 @@
 | `E1021` | syntax | unclosed string; add a closing double quote |
 | `E1022` | syntax | unexpected character |
 | `E1023` | syntax | string literals cannot span multiple lines; use a raw string with backticks for multi-line text |
+| `E1024` | syntax | identifier exceeds the maximum length of 255 characters |
 | `E2001` | syntax | unexpected symbol |
 | `E2002` | syntax | missing symbol; expected a bracket, parenthesis, or keyword |
 | `E2010` | syntax | cannot use module '%s' before importing it; add 'import @%s' before the using statement |
@@ -419,4 +420,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-24 06:36:32 UTC*
+*Generated on 2026-07-24 21:13:13 UTC*
