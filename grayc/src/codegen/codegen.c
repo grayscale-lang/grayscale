@@ -9592,7 +9592,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                         emit(codegen, " = ");
                         emit_expression(codegen, ev->value);
                     } else if (is_flags) {
-                        emit_formatted(codegen, " = %d", 1 << j);
+                        emit_formatted(codegen, " = %lldLL", 1LL << j);
                     }
                     /* Non-flags without explicit value: omit `= N` and
                      * let C's enum auto-increment continue from the
