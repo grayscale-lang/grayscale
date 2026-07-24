@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 369 codes** (251 errors, 17 warnings, 101 panics)
+**Total: 370 codes** (251 errors, 17 warnings, 102 panics)
 
 ---
 
@@ -396,6 +396,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0099` | arithmetic | cast from u256 failed; value exceeds the representable range of int64 |
 | `P0100` | arithmetic | cast from u256 failed; value exceeds the representable range of uint64 |
 | `P0101` | server | server.cors: origin contains CR or LF — HTTP header injection is not allowed |
+| `P0102` | arithmetic | invalid digit in integer literal |
 
 ---
 
@@ -420,4 +421,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-24 21:13:13 UTC*
+*Generated on 2026-07-24 22:01:58 UTC*

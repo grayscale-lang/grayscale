@@ -594,6 +594,9 @@ static inline gray_u128 gray_u128_from_decimal(const char *s) {
     gray_u128 ten = {10, 0};
     while (*s) {
         if (*s == '_') { s++; continue; }
+        if (*s < '0' || *s > '9') {
+            gray_panic_code("P0102", "invalid digit '%c' in integer literal", *s);
+        }
         result = gray_u128_mul(result, ten);
         gray_u128 digit = {(uint64_t)(*s - '0'), 0};
         result = gray_u128_add(result, digit);
@@ -618,6 +621,9 @@ static inline gray_u256 gray_u256_from_decimal(const char *s) {
     ten.w[0] = 10;
     while (*s) {
         if (*s == '_') { s++; continue; }
+        if (*s < '0' || *s > '9') {
+            gray_panic_code("P0102", "invalid digit '%c' in integer literal", *s);
+        }
         result = gray_u256_mul(result, ten);
         gray_u256 digit = GRAY_U256_ZERO;
         digit.w[0] = (uint64_t)(*s - '0');
