@@ -1,0 +1,52 @@
+/*
+ * Error Test: E2001 - deep block nesting
+ * Expected: "block is nested too deeply; maximum depth is 256"
+ *
+ * Generate 257 nested if blocks to exceed MAX_PARSE_DEPTH.
+ * Only the first few and last few are shown; the full file
+ * is machine-generated but kept minimal.
+ */
+
+do main() {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+if true { if true { if true { if true { if true { if true { if true { if true {
+    println("too deep")
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+}

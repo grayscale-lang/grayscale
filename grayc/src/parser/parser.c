@@ -1535,6 +1535,15 @@ static AstNode *parse_return_statement(Parser *parser) {
 }
 
 static AstNode *parse_block_statement(Parser *parser) {
+    parser->depth++;
+    if (parser->depth > MAX_PARSE_DEPTH) {
+        diagnostic_error_message(parser->diag, "E2001",
+            strdup("block is nested too deeply; maximum depth is 256"),
+            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        parser->depth--;
+        return NULL;
+    }
+
     AstNode *node = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
     node->data.block.count = 0;
     node->data.block.cap = 8;
@@ -1561,6 +1570,7 @@ static AstNode *parse_block_statement(Parser *parser) {
         next_token(parser);
     }
 
+    parser->depth--;
     return node;
 }
 
