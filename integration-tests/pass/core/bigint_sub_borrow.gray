@@ -1,0 +1,57 @@
+/*
+ * bigint_sub_borrow.gray - Regression test for #2192
+ * 256-bit subtraction with borrow propagation across max-value limbs.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Build 2^128 via repeated squaring
+    mut p32 i256 = i256(4294967296)
+    mut p64 i256 = p32 * p32
+    mut p128 i256 = p64 * p64
+    mut p128_minus1 i256 = p128 - i256(1)
+
+    // This triggers the borrow bug: limb 1 of p128_minus1 is UINT64_MAX
+    mut result i256 = p128 - p128_minus1
+    if result == i256(1) {
+        println("  [PASS] i256 sub borrow propagation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i256 sub borrow propagation: got ${result}")
+        failed += 1
+    }
+
+    // Same test for u256
+    mut up32 u256 = u256(4294967296)
+    mut up64 u256 = up32 * up32
+    mut up128 u256 = up64 * up64
+    mut up128_minus1 u256 = up128 - u256(1)
+    mut uresult u256 = up128 - up128_minus1
+    if uresult == u256(1) {
+        println("  [PASS] u256 sub borrow propagation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u256 sub borrow propagation: got ${uresult}")
+        failed += 1
+    }
+
+    // Division involving large values (exercises divmod subtraction)
+    mut div_result i256 = p128 / p64
+    if div_result == p64 {
+        println("  [PASS] i256 large division")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i256 large division: got ${div_result}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
