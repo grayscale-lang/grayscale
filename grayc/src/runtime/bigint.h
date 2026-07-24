@@ -377,7 +377,7 @@ static inline gray_i256 gray_i256_sub(gray_i256 a, gray_i256 b) {
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t diff = a.w[i] - b.w[i] - borrow;
-        borrow = (a.w[i] < b.w[i] + borrow) ? 1 : 0;
+        borrow = (a.w[i] < b.w[i]) || (a.w[i] - b.w[i] < borrow) ? 1 : 0;
         r.w[i] = diff;
     }
     return r;
@@ -457,7 +457,7 @@ static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray
             uint64_t borrow = 0;
             for (int k = 0; k < 4; k++) {
                 uint64_t diff = remainder.w[k] - b.w[k] - borrow;
-                borrow = (remainder.w[k] < b.w[k] + borrow) ? 1 : 0;
+                borrow = (remainder.w[k] < b.w[k]) || (remainder.w[k] - b.w[k] < borrow) ? 1 : 0;
                 remainder.w[k] = diff;
             }
             quotient.w[word] |= (uint64_t)1 << bit;
@@ -529,7 +529,7 @@ static inline gray_u256 gray_u256_sub(gray_u256 a, gray_u256 b) {
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t diff = a.w[i] - b.w[i] - borrow;
-        borrow = (a.w[i] < b.w[i] + borrow) ? 1 : 0;
+        borrow = (a.w[i] < b.w[i]) || (a.w[i] - b.w[i] < borrow) ? 1 : 0;
         r.w[i] = diff;
     }
     return r;
