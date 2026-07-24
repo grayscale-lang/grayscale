@@ -176,7 +176,8 @@ static void rehash(GrayArena *arena, GrayMap *m) {
         if (old_states[slot] == 1) {
             gray_map_set(arena, m,
                 (char *)old_keys + (size_t)slot * (size_t)m->key_size,
-                (char *)old_values + (size_t)slot * (size_t)m->value_size);
+                (char *)old_values + (size_t)slot * (size_t)m->value_size,
+                __FILE__, __LINE__);
         }
     }
 }
@@ -187,9 +188,9 @@ void *gray_map_get(GrayMap *m, const void *key) {
     return val_ptr(m, idx);
 }
 
-void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value) {
+void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value, const char *file, int line) {
     if (m->iterating > 0)
-        gray_panic_code("P0035", "cannot modify map during for_each iteration");
+        gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     /* Check load factor */
     if (m->count * GRAY_MAP_LOAD_DEN >= m->capacity * GRAY_MAP_LOAD_NUM) {
         rehash(arena, m);
@@ -235,9 +236,9 @@ bool gray_map_has(GrayMap *m, const void *key) {
     return find_slot(m, key) >= 0;
 }
 
-bool gray_map_remove(GrayMap *m, const void *key) {
+bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
     if (m->iterating > 0)
-        gray_panic_code("P0035", "cannot modify map during for_each iteration");
+        gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     int32_t idx = find_slot(m, key);
     if (idx < 0) return false;
     m->states[idx] = 2; /* tombstone */
@@ -266,8 +267,8 @@ void *gray_map_get_str(GrayMap *m, GrayString key) {
     return gray_map_get(m, &key);
 }
 
-void gray_map_set_str(GrayArena *arena, GrayMap *m, GrayString key, const void *value) {
-    gray_map_set(arena, m, &key, value);
+void gray_map_set_str(GrayArena *arena, GrayMap *m, GrayString key, const void *value, const char *file, int line) {
+    gray_map_set(arena, m, &key, value, file, line);
 }
 
 void *gray_map_key_at(GrayMap *m, int32_t internal_idx) {

@@ -90,7 +90,7 @@ void gray_arena_reset(GrayArena *arena) {
 void gray_arena_destroy(GrayArena *arena, const char *file, int line) {
     if (!arena) return;
     if (arena->destroyed)
-        gray_panic_code("P0002", "mem.destroy() called on an arena that was already destroyed; each arena can only be destroyed once");
+        gray_panic_code_at(file, line, "P0002", "mem.destroy() called on an arena that was already destroyed; each arena can only be destroyed once");
     GrayArenaBlock *block = arena->first;
     while (block) {
         GrayArenaBlock *next = block->next;

@@ -174,20 +174,20 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString s, int64_t start, int
 GrayArray gray_strings_split(GrayArena *arena, GrayString s, GrayString sep) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
     if (sep.len == 0) {
-        gray_array_push(arena, &arr, &s);
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
         return arr;
     }
     int32_t start = 0;
     for (int32_t i = 0; i <= s.len - sep.len; i++) {
         if (memcmp(s.data + i, sep.data, (size_t)sep.len) == 0) {
             GrayString part = gray_string_new(arena, s.data + start, i - start);
-            gray_array_push(arena, &arr, &part);
+            GRAY_ARRAY_PUSH(arena, &arr, &part);
             i += sep.len - 1;
             start = i + 1;
         }
     }
     GrayString last = gray_string_new(arena, s.data + start, s.len - start);
-    gray_array_push(arena, &arr, &last);
+    GRAY_ARRAY_PUSH(arena, &arr, &last);
     return arr;
 }
 
@@ -218,7 +218,7 @@ GrayArray gray_strings_to_chars(GrayArena *arena, GrayString s) {
     GrayArray arr = gray_array_new(arena, sizeof(int32_t), s.len);
     for (int32_t i = 0; i < s.len; i++) {
         int32_t c = (int32_t)(unsigned char)s.data[i];
-        gray_array_push(arena, &arr, &c);
+        GRAY_ARRAY_PUSH(arena, &arr, &c);
     }
     return arr;
 }

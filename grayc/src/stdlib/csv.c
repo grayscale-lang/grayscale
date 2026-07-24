@@ -41,11 +41,11 @@ GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
             }
 
             GrayString field = gray_string_new(arena, field_start, field_length);
-            gray_array_push(arena, &row, &field);
+            GRAY_ARRAY_PUSH(arena, &row, &field);
 
             if (s < end && *s == ',') s++;
         }
-        gray_array_push(arena, &rows, &row);
+        GRAY_ARRAY_PUSH(arena, &rows, &row);
 
         /* Skip line ending */
         if (s < end && *s == '\r') s++;

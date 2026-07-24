@@ -51,20 +51,24 @@ GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size
 void *gray_map_get(GrayMap *m, const void *key);
 
 /* Set a key-value pair (inserts or updates) */
-void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value);
+void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value, const char *file, int line);
 
 /* Check if a key exists */
 bool gray_map_has(GrayMap *m, const void *key);
 
 /* Remove a key */
-bool gray_map_remove(GrayMap *m, const void *key);
+bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line);
+
+/* Convenience macros for stdlib callers (uses C file/line) */
+#define GRAY_MAP_SET(arena, m, key, value) gray_map_set((arena), (m), (key), (value), __FILE__, __LINE__)
+#define GRAY_MAP_REMOVE(m, key) gray_map_remove((m), (key), __FILE__, __LINE__)
 
 /* Clear all entries */
 void gray_map_clear(GrayMap *m);
 
 /* String-keyed convenience functions */
 void *gray_map_get_str(GrayMap *m, GrayString key);
-void gray_map_set_str(GrayArena *arena, GrayMap *m, GrayString key, const void *value);
+void gray_map_set_str(GrayArena *arena, GrayMap *m, GrayString key, const void *value, const char *file, int line);
 
 /* Get key at internal index (for iteration) */
 void *gray_map_key_at(GrayMap *m, int32_t internal_idx);

@@ -129,7 +129,7 @@ static GrayHttpResponse parse_response(GrayArena *arena, const char *data, int d
 
             GrayString key = gray_string_new(arena, line, key_length);
             GrayString val = gray_string_new(arena, vstart, value_length);
-            gray_map_set(arena, &resp.headers, &key, &val);
+            GRAY_MAP_SET(arena, &resp.headers, &key, &val);
         }
         line = end_of_line + 1;
     }

@@ -37,7 +37,7 @@ GrayArray gray_os_args(GrayArena *arena) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), _os_argc > 0 ? _os_argc : 1);
     for (int i = 0; i < _os_argc; i++) {
         GrayString s = gray_string_new(arena, _os_argv[i], (int32_t)strlen(_os_argv[i]));
-        gray_array_push(arena, &arr, &s);
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
     }
     return arr;
 }
