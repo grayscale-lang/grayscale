@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2001 - deep type nesting
+ * Expected: "type nesting is too deep; maximum depth is 64"
+ */
+
+do main() {
+    mut x [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[int]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] = []
+}

@@ -215,6 +215,12 @@ static const char *parse_complex_type(Parser *parser) {
             int depth = 1;
             while (current_token_is(parser, TOK_LBRACKET)) {
                 depth++;
+                if (depth > 64) {
+                    diagnostic_error_message(parser->diag, "E2001",
+                        strdup("type nesting is too deep; maximum depth is 64"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                    return NULL;
+                }
                 next_token(parser);
             }
             const char *inner = read_type_name(parser);
