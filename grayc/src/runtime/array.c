@@ -55,10 +55,13 @@ void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const 
     if (arr->iterating > 0)
         gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (arr->len >= arr->cap) {
-        int32_t new_cap = arr->cap < GRAY_ARRAY_MIN_CAP ? GRAY_ARRAY_MIN_CAP : arr->cap * 2;
-        if (new_cap < arr->cap) {
-            fprintf(stderr, "Grayscale runtime: array capacity overflow\n");
-            exit(1);
+        int32_t new_cap;
+        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
+            new_cap = GRAY_ARRAY_MIN_CAP;
+        } else if (arr->cap > INT32_MAX / 2) {
+            gray_panic_code_at(file, line, "P0035", "array capacity overflow");
+        } else {
+            new_cap = arr->cap * 2;
         }
         void *new_data = gray_arena_alloc(arena, (size_t)new_cap * (size_t)arr->elem_size);
         if (arr->data && arr->len > 0) {
