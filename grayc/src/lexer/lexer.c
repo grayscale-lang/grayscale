@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <limits.h>
 #include <ctype.h>
 #include <stdio.h>
 
@@ -24,9 +25,9 @@ static void read_char(Lexer *lexer) {
     }
     lexer->position = lexer->read_position;
     lexer->read_position++;
-    lexer->column++;
+    if (lexer->column < INT_MAX) lexer->column++;
     if (lexer->ch == '\n') {
-        lexer->line++;
+        if (lexer->line < INT_MAX) lexer->line++;
         lexer->column = 0;
     }
 }
