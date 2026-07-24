@@ -224,10 +224,7 @@ static inline gray_i128 gray_i128_mul(gray_i128 a, gray_i128 b) {
 /* Division helper: unsigned 128-bit divide */
 static inline void gray_u128_divmod(gray_u128 a, gray_u128 b, gray_u128 *q, gray_u128 *rem) {
     if (b.hi == 0 && b.lo == 0) {
-        /* Division by zero — return zero */
-        *q = GRAY_U128_ZERO;
-        *rem = GRAY_U128_ZERO;
-        return;
+        gray_panic_code("P0078", "division by zero");
     }
     if (a.hi == 0 && b.hi == 0) {
         /* Both fit in 64 bits */
@@ -267,7 +264,6 @@ static inline void gray_u128_divmod(gray_u128 a, gray_u128 b, gray_u128 *q, gray
 }
 
 static inline gray_i128 gray_i128_div(gray_i128 a, gray_i128 b) {
-    if (b.lo == 0 && b.hi == 0) return GRAY_I128_ZERO;
     bool neg = false;
     gray_u128 ua, ub;
     if (a.hi < 0) { gray_i128 t = gray_i128_neg(a); ua.lo = t.lo; ua.hi = (uint64_t)t.hi; neg = !neg; }
@@ -282,7 +278,6 @@ static inline gray_i128 gray_i128_div(gray_i128 a, gray_i128 b) {
 }
 
 static inline gray_i128 gray_i128_mod(gray_i128 a, gray_i128 b) {
-    if (b.lo == 0 && b.hi == 0) return GRAY_I128_ZERO;
     bool neg_a = (a.hi < 0);
     gray_u128 ua, ub;
     if (neg_a) { gray_i128 t = gray_i128_neg(a); ua.lo = t.lo; ua.hi = (uint64_t)t.hi; }
@@ -431,7 +426,7 @@ static inline gray_i256 gray_i256_mul(gray_i256 a, gray_i256 b) {
 /* 256-bit unsigned divmod (binary long division) */
 static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray_u256 *rem) {
     int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) { *q = GRAY_U256_ZERO; *rem = GRAY_U256_ZERO; return; }
+    if (b_zero) { gray_panic_code("P0078", "division by zero"); }
     if (a.w[1] == 0 && a.w[2] == 0 && a.w[3] == 0 &&
         b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0) {
         *q = GRAY_U256_ZERO; q->w[0] = a.w[0] / b.w[0];
@@ -475,8 +470,6 @@ static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray
 static inline bool gray_i256_is_neg(gray_i256 a) { return (int64_t)a.w[3] < 0; }
 
 static inline gray_i256 gray_i256_div(gray_i256 a, gray_i256 b) {
-    int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) return GRAY_I256_ZERO;
     bool neg = false;
     gray_u256 ua, ub;
     if (gray_i256_is_neg(a)) { gray_i256 t = gray_i256_neg(a); memcpy(&ua, &t, sizeof(ua)); neg = !neg; }
@@ -490,8 +483,6 @@ static inline gray_i256 gray_i256_div(gray_i256 a, gray_i256 b) {
 }
 
 static inline gray_i256 gray_i256_mod(gray_i256 a, gray_i256 b) {
-    int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) return GRAY_I256_ZERO;
     bool neg_a = gray_i256_is_neg(a);
     gray_u256 ua, ub;
     if (neg_a) { gray_i256 t = gray_i256_neg(a); memcpy(&ua, &t, sizeof(ua)); }

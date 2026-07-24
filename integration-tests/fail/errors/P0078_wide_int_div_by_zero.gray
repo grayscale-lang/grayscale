@@ -1,0 +1,7 @@
+/* Error Test: P0078 - wide integer division by zero panics at runtime */
+do main() {
+    mut a i128 = i128(42)
+    mut b i128 = i128(0)
+    mut c i128 = a / b
+    println("${c}")
+}
