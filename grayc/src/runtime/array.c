@@ -36,29 +36,32 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
 
 void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int line) {
     if (index < 0 || index >= arr->len) {
-        gray_panic_code("P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
+        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
     }
     return (char *)arr->data + (size_t)index * (size_t)arr->elem_size;
 }
 
 void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line) {
     if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+        gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (index < 0 || index >= arr->len) {
-        gray_panic_code("P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
+        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
     }
     memcpy((char *)arr->data + (size_t)index * (size_t)arr->elem_size,
            value, (size_t)arr->elem_size);
 }
 
-void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value) {
+void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line) {
     if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+        gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (arr->len >= arr->cap) {
-        int32_t new_cap = arr->cap < GRAY_ARRAY_MIN_CAP ? GRAY_ARRAY_MIN_CAP : arr->cap * 2;
-        if (new_cap < arr->cap) {
-            fprintf(stderr, "Grayscale runtime: array capacity overflow\n");
-            exit(1);
+        int32_t new_cap;
+        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
+            new_cap = GRAY_ARRAY_MIN_CAP;
+        } else if (arr->cap > INT32_MAX / 2) {
+            gray_panic_code_at(file, line, "P0035", "array capacity overflow");
+        } else {
+            new_cap = arr->cap * 2;
         }
         void *new_data = gray_arena_alloc(arena, (size_t)new_cap * (size_t)arr->elem_size);
         if (arr->data && arr->len > 0) {

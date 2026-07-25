@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/grayscale-lang/grayscale/internal/grayc"
+	"github.com/grayscale-lang/grayscale/internal/driver"
 	"github.com/spf13/cobra"
 )
 
@@ -301,7 +301,7 @@ func executeFile(filename string, compilerArgs []string) {
 	timestamp := time.Now().Format("15:04:05")
 	fmt.Printf("[%s] Running %s...\n", timestamp, shortPath(filename))
 
-	_, err := grayc.Run(filename, compilerArgs)
+	_, err := driver.Run(filename, compilerArgs)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}

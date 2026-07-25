@@ -64,9 +64,9 @@ GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *db, GrayString sql) {
             } else {
                 val = gray_string_lit("");
             }
-            gray_map_set(arena, &row, &key, &val);
+            GRAY_MAP_SET(arena, &row, &key, &val);
         }
-        gray_array_push(arena, &rows, &row);
+        GRAY_ARRAY_PUSH(arena, &rows, &row);
     }
 
     sqlite3_finalize(stmt);

@@ -37,14 +37,21 @@ void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int li
 void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line);
 
 /* Append an element (may reallocate on the arena) */
-void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value);
+void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line);
+
+/* Convenience macro for stdlib callers (uses C file/line) */
+#define GRAY_ARRAY_PUSH(arena, arr, val) gray_array_push((arena), (arr), (val), __FILE__, __LINE__)
 
 /* Deep copy an array */
 GrayArray gray_array_copy(GrayArena *arena, GrayArray *src);
 
-/* Typed access macros */
+/* Typed access macros — stdlib callers (use C file/line) */
 #define GRAY_ARRAY_GET(arr, type, i) (*(type *)gray_array_get_ptr(&(arr), (i), __FILE__, __LINE__))
 #define GRAY_ARRAY_SET(arr, type, i, val) do { type _v = (val); gray_array_set(&(arr), (i), &_v, __FILE__, __LINE__); } while(0)
+
+/* Typed access macros — codegen callers (pass Grayscale source location) */
+#define GRAY_ARRAY_GET_AT(arr, type, i, f, l) (*(type *)gray_array_get_ptr(&(arr), (i), (f), (l)))
+#define GRAY_ARRAY_SET_AT(arr, type, i, val, f, l) do { type _v = (val); gray_array_set(&(arr), (i), &_v, (f), (l)); } while(0)
 
 /* Create from typed literal — helper macros */
 #define GRAY_ARRAY_FROM_I64(arena, ...) \

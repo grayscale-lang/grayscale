@@ -1,8 +1,12 @@
 <p align="center">
     <img src="images/Grayscale_logo.png" alt="Grayscale Logo" width="200">
+
+<p align="center">
+  <h1 align="center">The Grayscale Programming Language</h1>
+  <!-- <h2 align="center">Programming On Your Terms</h2> -->
+  <p align="center"><em>A compiled language where simplicity meets flexibility.</em>
 </p>
-    <h2 align="center">The Grayscale Programming Language</h2>
-</p>
+
 
 
 <p align="center">
@@ -31,7 +35,7 @@
 
 - **Readable syntax** — `for_each`, `as_long_as`(alias is `while`), `if`/`or`/`otherwise`(alias is `else`), `when`/`is`, `in`/`not_in`(alias is `!in`), `or_return`, `ensure`, `bit_and`/`bit_or`/`bit_xor`, etc.
 - **Versatility through simplicity** — Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
-- **A compiler that **for** the programmer** — Clear error messages, a built-in formatter, live reloading, and built-in language and stdlib docs via `gray man`. When questions arise, Grayscale provides the answers.
+- **A compiler that works **for** the programmer** — Clear error messages, a built-in formatter, live reloading, and built-in language and stdlib docs via `gray man`. When questions arise, Grayscale provides the answers.
 - **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, overflow-checked math, nil protection, **NO** pointer arithmetic. The guardrails are on unless you explicitly take them off with the `@mem` stdlib module
 
 ---

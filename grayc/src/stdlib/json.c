@@ -324,7 +324,7 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
         skip_ws(&s, end);
         if (s < end && *s == ':') s++;
         GrayString val = parse_json_value_as_string(arena, &s, end);
-        gray_map_set(arena, &m, &key, &val);
+        GRAY_MAP_SET(arena, &m, &key, &val);
 
         skip_ws(&s, end);
         if (s < end && *s == ',') s++;
@@ -571,7 +571,7 @@ GrayArray gray_json_split_array(GrayArena *arena, GrayString text) {
         int32_t elem_len = (int32_t)(s - elem_start);
         if (elem_len > 0) {
             GrayString elem = gray_string_new(arena, elem_start, elem_len);
-            gray_array_push(arena, &arr, &elem);
+            GRAY_ARRAY_PUSH(arena, &arr, &elem);
         }
 
         skip_ws(&s, end);

@@ -100,6 +100,7 @@ typedef struct {
     const char ****enum_payload_types; /* [enum_idx][variant_idx] → type name array */
     int **enum_payload_counts;         /* [enum_idx][variant_idx] → count */
     bool *enum_is_tagged;              /* parallel to enum_names */
+    bool *enum_is_flags;               /* parallel to enum_names */
     int enum_count;
     int enum_cap;
 

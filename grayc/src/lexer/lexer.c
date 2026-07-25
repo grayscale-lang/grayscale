@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <limits.h>
 #include <ctype.h>
 #include <stdio.h>
 
@@ -24,9 +25,9 @@ static void read_char(Lexer *lexer) {
     }
     lexer->position = lexer->read_position;
     lexer->read_position++;
-    lexer->column++;
+    if (lexer->column < INT_MAX) lexer->column++;
     if (lexer->ch == '\n') {
-        lexer->line++;
+        if (lexer->line < INT_MAX) lexer->line++;
         lexer->column = 0;
     }
 }
@@ -86,7 +87,12 @@ static const char *read_identifier(Lexer *lexer) {
     while (isalpha((unsigned char)lexer->ch) || lexer->ch == '_' || isdigit((unsigned char)lexer->ch)) {
         read_char(lexer);
     }
-    return arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+    int len = lexer->position - start;
+    if (len > MAX_IDENTIFIER_LENGTH) {
+        lexer->error_code = "E1024";
+        lexer->error_msg = "identifier exceeds the maximum length of 255 characters";
+    }
+    return arena_copy_string_with_length(lexer->arena, lexer->input + start, len);
 }
 
 static const char *read_number(Lexer *lexer, TokenType *type) {
@@ -547,7 +553,12 @@ Token lexer_next_token(Lexer *lexer) {
     default:
         if (isalpha((unsigned char)lexer->ch) || lexer->ch == '_') {
             tok.literal = read_identifier(lexer);
-            tok.type = token_lookup_identifier(tok.literal);
+            if (lexer->error_code) {
+                tok.type = TOK_ILLEGAL;
+                tok.literal = lexer->error_msg;
+            } else {
+                tok.type = token_lookup_identifier(tok.literal);
+            }
             goto done;
         } else if (isdigit((unsigned char)lexer->ch)) {
             TokenType num_type;

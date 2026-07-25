@@ -30,7 +30,7 @@ const asciiBanner = "" +
 	" | |_| | | | (_| | |_| \\__ \\ (_| (_| | |  __/\n" +
 	"  \\____|_|  \\__,_|\\__, |___/\\___\\__,_|_|\\___|\n" +
 	"                  |___/\n" +
-	" The Grayscale Programming Language\n"
+	" Programming On Your Terms\n"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {

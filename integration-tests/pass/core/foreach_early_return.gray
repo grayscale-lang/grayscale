@@ -1,0 +1,45 @@
+/*
+ * foreach_early_return.gray
+ * Early return from inside a for_each on a mutable-reference
+ * collection must decrement the .iterating guard so the caller
+ * can still mutate the collection afterward.
+ */
+
+import @arrays
+
+do first_item(&arr [int]) -> int {
+    for_each x in arr {
+        return x
+    }
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut arr [int] = {10, 20, 30}
+    mut r = first_item(arr)
+
+    // Test 1: early return produces correct value
+    if r == 10 {
+        println("  [PASS] early return from for_each returns first element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] first_item=${r}, expected 10")
+        failed += 1
+    }
+
+    // Test 2: collection is not locked after early return
+    arrays.append(arr, 40)
+    if len(arr) == 4 {
+        println("  [PASS] append after early-return for_each succeeds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len=${len(arr)}, expected 4")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

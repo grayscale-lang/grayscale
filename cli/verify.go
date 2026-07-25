@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/grayscale-lang/grayscale/internal/grayc"
+	"github.com/grayscale-lang/grayscale/internal/driver"
 	"github.com/spf13/cobra"
 )
 
@@ -38,7 +38,7 @@ func runVerify() int {
 	tmp.Close()
 
 	fmt.Println("Running Grayscale language verification test...")
-	code, err := grayc.Run(tmp.Name(), nil)
+	code, err := driver.Run(tmp.Name(), nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1

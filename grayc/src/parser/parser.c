@@ -21,7 +21,6 @@
 #define FLOAT_LIT_BUF    128
 #define TMP_NAME_BUF     32
 #define FIELD_NAME_BUF           8
-#define STRUCT_NAME_INITIAL_CAP  16
 
 /* Operator precedence levels */
 typedef enum {
@@ -47,70 +46,6 @@ static AstNode *parse_expression(Parser *parser, Precedence prec);
 static AstNode *parse_block_statement(Parser *parser);
 static AstNode *parse_struct_literal(Parser *parser, const char *name);
 static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl);
-
-/* --- Struct name pre-scan --- */
-
-/* Lightweight lexer scan to collect struct (and enum) names before the
- * main parse.  This lets the parser disambiguate `Name{` (struct literal)
- * from an identifier followed by a block without relying on uppercase
- * heuristics.  The scan looks for `const <IDENT> struct` and
- * `const <IDENT> enum` token triples. */
-static void prescan_struct_names(Parser *parser) {
-    /* Save lexer state */
-    int saved_pos  = parser->lexer->position;
-    int saved_rpos = parser->lexer->read_position;
-    char saved_ch  = parser->lexer->ch;
-    int saved_line = parser->lexer->line;
-    int saved_col  = parser->lexer->column;
-
-    /* Reset lexer to start of input */
-    parser->lexer->position = 0;
-    parser->lexer->read_position = 0;
-    parser->lexer->line = 1;
-    parser->lexer->column = 0;
-    parser->lexer->ch = parser->lexer->input[0];
-    if (parser->lexer->input[0])
-        parser->lexer->read_position = 1;
-
-    Token prev2 = {TOK_EOF, "", 0, 0, NULL, false};
-    Token prev1 = {TOK_EOF, "", 0, 0, NULL, false};
-    for (;;) {
-        Token tok = lexer_next_token(parser->lexer);
-        if (tok.type == TOK_EOF) break;
-        /* Match: const <IDENT> struct  OR  const <IDENT> enum */
-        if (prev2.type == TOK_CONST && prev1.type == TOK_IDENT &&
-            (tok.type == TOK_STRUCT || tok.type == TOK_ENUM)) {
-            /* Add prev1.literal to struct_names */
-            if (parser->struct_name_count >= parser->struct_name_cap) {
-                int new_cap = parser->struct_name_cap * 2;
-                const char **new_names = arena_alloc(parser->arena,
-                    sizeof(const char *) * new_cap);
-                memcpy(new_names, parser->struct_names,
-                    sizeof(const char *) * parser->struct_name_count);
-                parser->struct_names = new_names;
-                parser->struct_name_cap = new_cap;
-            }
-            parser->struct_names[parser->struct_name_count++] =
-                arena_copy_string(parser->arena, prev1.literal);
-        }
-        prev2 = prev1;
-        prev1 = tok;
-    }
-
-    /* Restore lexer state */
-    parser->lexer->position = saved_pos;
-    parser->lexer->read_position = saved_rpos;
-    parser->lexer->ch = saved_ch;
-    parser->lexer->line = saved_line;
-    parser->lexer->column = saved_col;
-}
-
-static bool parser_is_struct_name(Parser *parser, const char *name) {
-    for (int i = 0; i < parser->struct_name_count; i++) {
-        if (strcmp(parser->struct_names[i], name) == 0) return true;
-    }
-    return false;
-}
 
 /* --- Helpers --- */
 
@@ -280,6 +215,12 @@ static const char *parse_complex_type(Parser *parser) {
             int depth = 1;
             while (current_token_is(parser, TOK_LBRACKET)) {
                 depth++;
+                if (depth > 64) {
+                    diagnostic_error_message(parser->diag, "E2001",
+                        arena_copy_string(parser->arena,"type nesting is too deep; maximum depth is 64"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                    return NULL;
+                }
                 next_token(parser);
             }
             const char *inner = read_type_name(parser);
@@ -673,11 +614,6 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
                 }
                 Parser *expr_parser = parser_create(parser->arena, expr_lexer, parser->file, parser->diag);
                 expr_parser->in_interp = true;
-                /* Inherit struct names from parent so interpolated expressions
-                 * can recognize struct literals. */
-                expr_parser->struct_names = parser->struct_names;
-                expr_parser->struct_name_count = parser->struct_name_count;
-                expr_parser->struct_name_cap = parser->struct_name_cap;
                 AstNode *expr = parse_expression(expr_parser, PREC_LOWEST);
                 if (expr) parts[count++] = expr;
             }
@@ -805,8 +741,7 @@ static AstNode *parse_prefix(Parser *parser) {
 
                 if (parser->cur_token.type == TOK_IDENT &&
                     peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal &&
-                    (parser_is_struct_name(parser, parser->cur_token.literal) ||
-                     (parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z'))) {
+                    parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z') {
                     /* mod.Name{; module-qualified struct literal */
                     char *prefixed = arena_alloc(parser->arena, MSG_BUF_SIZE);
                     snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod, parser->cur_token.literal);
@@ -825,12 +760,10 @@ static AstNode *parse_prefix(Parser *parser) {
             }
         }
         /* Check for struct literal: Name{ ... }
-         * Use the prescan list first (exact match), fall back to uppercase
-         * heuristic for imported struct names not in the current file. */
+         * Struct/enum names start with uppercase by convention. */
         if (peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal) {
             const char *name = parser->cur_token.literal;
-            if (parser_is_struct_name(parser, name) ||
-                (name[0] >= 'A' && name[0] <= 'Z')) {
+            if (name[0] >= 'A' && name[0] <= 'Z') {
                 next_token(parser); /* move to { */
                 return parse_struct_literal(parser, name);
             }
@@ -1241,7 +1174,7 @@ static AstNode *parse_expression(Parser *parser, Precedence prec) {
     parser->depth++;
     if (parser->depth > MAX_PARSE_DEPTH) {
         diagnostic_error_message(parser->diag, "E2001",
-            strdup("expression is nested too deeply; maximum depth is 256"),
+            arena_copy_string(parser->arena,"expression is nested too deeply; maximum depth is 256"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         parser->depth--;
         return NULL;
@@ -1608,6 +1541,15 @@ static AstNode *parse_return_statement(Parser *parser) {
 }
 
 static AstNode *parse_block_statement(Parser *parser) {
+    parser->depth++;
+    if (parser->depth > MAX_PARSE_DEPTH) {
+        diagnostic_error_message(parser->diag, "E2001",
+            arena_copy_string(parser->arena,"block is nested too deeply; maximum depth is 256"),
+            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        parser->depth--;
+        return NULL;
+    }
+
     AstNode *node = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
     node->data.block.count = 0;
     node->data.block.cap = 8;
@@ -1634,6 +1576,7 @@ static AstNode *parse_block_statement(Parser *parser) {
         next_token(parser);
     }
 
+    parser->depth--;
     return node;
 }
 
@@ -1878,8 +1821,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
                         strcmp(lit, "byte") == 0 ||
                         (strcmp(lit, "map") == 0 && peek_token_is(parser, TOK_LBRACKET)) ||
                         (strcmp(lit, "func") == 0 && peek_token_is(parser, TOK_LPAREN)) ||
-                        parser_is_struct_name(parser, lit) ||
-                        (lit[0] >= 'A' && lit[0] <= 'Z')); /* struct/enum types (fallback for imports) */
+                        (lit[0] >= 'A' && lit[0] <= 'Z')); /* struct/enum types */
                 }
 
                 /* map[K:V] and func(...) are complex types, not named returns */
@@ -2035,7 +1977,7 @@ static AstNode *parse_import_statement(Parser *parser) {
         if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_AT)) {
             if (strcmp(parser->cur_token.literal, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    strdup("'c' is reserved for C interop; choose a different alias"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; choose a different alias"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
             item->alias = parser->cur_token.literal;
@@ -2077,7 +2019,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             /* Reject 'c' as a module name; reserved for C interop */
             if (item->alias && strcmp(item->alias, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    strdup("'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
         } else if (current_token_is(parser, TOK_IDENT)) {
@@ -2158,7 +2100,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     /* Reject inline struct declarations; fields must be on separate lines */
     if (parser->cur_token.line == brace_line && !current_token_is(parser, TOK_RBRACE)) {
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("struct fields must be on separate lines; inline struct declarations are not allowed"),
+            arena_copy_string(parser->arena,"struct fields must be on separate lines; inline struct declarations are not allowed"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
     }
 
@@ -2267,7 +2209,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* E2002: multiple fields on the same line */
         if (prev_field_line >= 0 && parser->cur_token.line == prev_field_line) {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("struct fields must be on separate lines"),
+                arena_copy_string(parser->arena,"struct fields must be on separate lines"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         prev_field_line = parser->cur_token.line;
@@ -2369,7 +2311,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Reject semicolons */
         if (current_token_is(parser, TOK_SEMICOLON)) {
             diagnostic_error_message(parser->diag, "E2069",
-                strdup("semicolons are not used; put each struct field on its own line"),
+                arena_copy_string(parser->arena,"semicolons are not used; put each struct field on its own line"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
         }
@@ -2393,7 +2335,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     /* Reject inline enum declarations; variants must be on separate lines */
     if (parser->cur_token.line == enum_brace_line && !current_token_is(parser, TOK_RBRACE)) {
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("enum variants must be on separate lines; inline enum declarations are not allowed"),
+            arena_copy_string(parser->arena,"enum variants must be on separate lines; inline enum declarations are not allowed"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
     }
 
@@ -2490,7 +2432,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* E2002: multiple variants on the same line */
         if (prev_variant_line >= 0 && parser->cur_token.line == prev_variant_line) {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("enum variants must be on separate lines"),
+                arena_copy_string(parser->arena,"enum variants must be on separate lines"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         prev_variant_line = parser->cur_token.line;
@@ -2544,7 +2486,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Reject semicolons */
         if (current_token_is(parser, TOK_SEMICOLON)) {
             diagnostic_error_message(parser->diag, "E2069",
-                strdup("semicolons are not used; put each enum variant on its own line"),
+                arena_copy_string(parser->arena,"semicolons are not used; put each enum variant on its own line"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
         }
@@ -3100,14 +3042,14 @@ static AstNode *parse_statement(Parser *parser) {
             stmt->data.struct_decl.is_json = true;
         } else {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("#json attribute can only be applied to struct declarations"),
+                arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;
     }
     case TOK_SUPPRESS:
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
+            arena_copy_string(parser->arena,"#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         /* Consume the attribute and its args to avoid cascading errors */
         if (peek_token_is(parser, TOK_LPAREN)) {
@@ -3138,7 +3080,7 @@ static AstNode *parse_statement(Parser *parser) {
             return parse_discard_statement(parser);
         }
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
+            arena_copy_string(parser->arena,"unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         synchronize_parser(parser);
         return NULL;
@@ -3187,13 +3129,6 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->diag = diag;
     parser->depth = 0;
     parser->no_struct_literal = false;
-    parser->struct_name_count = 0;
-    parser->struct_name_cap = STRUCT_NAME_INITIAL_CAP;
-    parser->struct_names = arena_alloc(arena, sizeof(const char *) * STRUCT_NAME_INITIAL_CAP);
-
-    /* Pre-scan for struct/enum names before the main parse so we can
-     * disambiguate struct literals without capitalization heuristics. */
-    prescan_struct_names(parser);
 
     /* Read two tokens to fill cur and peek */
     next_token(parser);

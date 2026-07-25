@@ -91,7 +91,7 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
     while (regexec(&re, cursor, 1, &match, 0) == 0) {
         int32_t match_length = (int32_t)(match.rm_eo - match.rm_so);
         GrayString s = gray_string_new(arena, cursor + match.rm_so, match_length);
-        gray_array_push(arena, &arr, &s);
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
 
         cursor += match.rm_eo;
         if (match.rm_eo == 0) {
@@ -155,7 +155,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) {
         /* On bad pattern, return array with original string */
-        gray_array_push(arena, &arr, &text);
+        GRAY_ARRAY_PUSH(arena, &arr, &text);
         return arr;
     }
 
@@ -169,7 +169,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
         /* Piece before the match */
         int32_t piece_length = (int32_t)match.rm_so;
         GrayString piece = gray_string_new(arena, cursor, piece_length);
-        gray_array_push(arena, &arr, &piece);
+        GRAY_ARRAY_PUSH(arena, &arr, &piece);
 
         cursor += match.rm_eo;
         if (match.rm_eo == 0) {
@@ -181,7 +181,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
     /* Remaining text after last match */
     int32_t remaining = (int32_t)strlen(cursor);
     GrayString last = gray_string_new(arena, cursor, remaining);
-    gray_array_push(arena, &arr, &last);
+    GRAY_ARRAY_PUSH(arena, &arr, &last);
 
     regfree(&re);
     return arr;

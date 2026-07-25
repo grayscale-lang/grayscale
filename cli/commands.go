@@ -15,7 +15,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/grayscale-lang/grayscale/internal/grayc"
+	"github.com/grayscale-lang/grayscale/internal/driver"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +44,7 @@ var checkCmd = &cobra.Command{
 		} else if quiet != "" {
 			extraArgs = append(extraArgs, "--quiet", quiet)
 		}
-		code, err := grayc.Check(args[0], extraArgs)
+		code, err := driver.Check(args[0], extraArgs)
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
 		}
@@ -70,7 +70,7 @@ var buildCmd = &cobra.Command{
 		showTime, _ := cmd.Flags().GetBool("time")
 		noColor, _ := cmd.Flags().GetBool("no-color")
 
-		opts := grayc.BuildOpts{
+		opts := driver.BuildOpts{
 			Output:  output,
 			Verbose: verbose,
 			EmitC:   emitC,
@@ -82,7 +82,7 @@ var buildCmd = &cobra.Command{
 		} else if quiet != "" {
 			opts.QuietCodes = quiet
 		}
-		code, err := grayc.Build(args[0], opts)
+		code, err := driver.Build(args[0], opts)
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
 		}
@@ -577,8 +577,8 @@ var manCmd = &cobra.Command{
 
 var rootCmd = &cobra.Command{
 	Use:   "gray [file.gray]",
-	Short: "Grayscale Programming Language",
-	Long:  "A statically-typed programming language that compiles to native binaries.",
+	Short: "Programming On Your Terms",
+	Long:  "Grayscale — A compiled language where simplicity meets flexibility.",
 	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
@@ -610,7 +610,7 @@ var rootCmd = &cobra.Command{
 		}
 		compilerArgs = append(compilerArgs, extraArgs...)
 
-		code, err := grayc.Run(args[0], compilerArgs)
+		code, err := driver.Run(args[0], compilerArgs)
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
 		}

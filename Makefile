@@ -12,7 +12,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
-EMBED_DIR=internal/grayc/runtime
+EMBED_DIR=internal/driver/runtime
 
 help:
 	@echo "Grayscale Language Build System"
@@ -40,7 +40,7 @@ help:
 test: build
 	@echo ""
 	@echo "=== Go Unit Tests ==="
-	$(GO) test -v -count=1 ./cli/... ./internal/grayc/...
+	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
 	@echo ""
 	@$(MAKE) -C grayc test-unit
 	@$(MAKE) -C grayc test-e2e
@@ -60,7 +60,7 @@ test-integration: build
 test-go: stubs
 	@echo ""
 	@echo "=== Go Unit Tests ==="
-	$(GO) test -v -count=1 ./cli/... ./internal/grayc/...
+	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
 
 test-ubsan:
 	@$(MAKE) -C grayc test-ubsan
@@ -72,7 +72,7 @@ leaks:
 	@$(MAKE) -C grayc leaks
 
 # Create zero-length embed stubs. go:embed directives in
-# internal/grayc/embedded.go require these files to exist at `go build`
+# internal/driver/embedded.go require these files to exist at `go build`
 # time; the extractor detects empty stubs and falls back to the
 # path search so dev builds still work. Both the runtime binaries
 # themselves are gitignored — `make build` overwrites the stubs with
@@ -85,7 +85,7 @@ stubs:
 	@test -f $(EMBED_DIR)/src/stdlib/.stub || : > $(EMBED_DIR)/src/stdlib/.stub
 
 # Single-binary build: compile the C compiler first, stage the
-# artifacts into internal/grayc/runtime/ so go:embed picks them up, then
+# artifacts into internal/driver/runtime/ so go:embed picks them up, then
 # build the Go CLI. The final `gray` binary contains `grayc` + `libgrayrt.a`
 # as embedded assets and extracts them on first use to ~/.gray/runtime/.
 build: stubs
@@ -121,7 +121,7 @@ install: build
 	@echo '| |_| | | | (_| | |_| \__ \ (_| (_| | |  __/'
 	@echo ' \____|_|  \__,_|\__, |___/\___\__,_|_|\___|'
 	@echo '                 |___/'
-	@echo 'The Grayscale Programming Language'
+	@echo 'Programming On Your Terms'
 	@echo ""
 	@echo "Grayscale installed successfully!"
 

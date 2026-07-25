@@ -270,7 +270,7 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         for (size_t i = 0; i < n; i++)
-            gray_array_push(arena, &arr, &buf[i]);
+            GRAY_ARRAY_PUSH(arena, &arr, &buf[i]);
     }
     fclose(f);
     return arr;
@@ -295,7 +295,7 @@ GrayArray gray_io_read_lines(GrayArena *arena, GrayString path) {
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };
-        gray_array_push(arena, &arr, &line);
+        GRAY_ARRAY_PUSH(arena, &arr, &line);
         p = nl + 1;
     }
     return arr;
@@ -442,7 +442,7 @@ GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
     while ((ent = readdir(d)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         GrayString name = gray_string_format(arena, "%s", ent->d_name);
-        gray_array_push(arena, &arr, &name);
+        GRAY_ARRAY_PUSH(arena, &arr, &name);
     }
     closedir(d);
     return arr;
@@ -516,7 +516,7 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *rel, 
         } else {
             child_rel = gray_string_format(arena, "%s/%s", rel, ent->d_name);
         }
-        gray_array_push(arena, out, &child_rel);
+        GRAY_ARRAY_PUSH(arena, out, &child_rel);
         char child_full[GRAY_IO_PATH_BUF];
         snprintf(child_full, sizeof(child_full), "%s/%s", full, ent->d_name);
         struct stat st;
@@ -539,7 +539,7 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern) {
     if (glob(pattern.data, GLOB_NOSORT, NULL, &gl) == 0) {
         for (size_t i = 0; i < gl.gl_pathc; i++) {
             GrayString s = gray_string_format(arena, "%s", gl.gl_pathv[i]);
-            gray_array_push(arena, &arr, &s);
+            GRAY_ARRAY_PUSH(arena, &arr, &s);
         }
         globfree(&gl);
     }
@@ -815,7 +815,7 @@ GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         for (size_t i = 0; i < n; i++)
-            gray_array_push(arena, &r.v0, &buf[i]);
+            GRAY_ARRAY_PUSH(arena, &r.v0, &buf[i]);
     }
     fclose(f);
     r.v1 = NULL;
@@ -850,7 +850,7 @@ GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path) {
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };
-        gray_array_push(arena, &r.v0, &line);
+        GRAY_ARRAY_PUSH(arena, &r.v0, &line);
         p = nl + 1;
     }
     r.v1 = NULL;
@@ -870,7 +870,7 @@ GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern) {
     r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), (int32_t)gl.gl_pathc);
     for (size_t i = 0; i < gl.gl_pathc; i++) {
         GrayString s = gray_string_format(arena, "%s", gl.gl_pathv[i]);
-        gray_array_push(arena, &r.v0, &s);
+        GRAY_ARRAY_PUSH(arena, &r.v0, &s);
     }
     globfree(&gl);
     r.v1 = NULL;

@@ -1,0 +1,49 @@
+/*
+ * flags_enum_bitwise.gray
+ * #flags enums must support bitwise operators (bit_or, bit_and, bit_xor).
+ */
+
+#flags
+const Perms enum {
+    READ
+    WRITE
+    EXECUTE
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: bit_or combines flags
+    mut p = Perms.READ bit_or Perms.WRITE
+    if p == 3 {
+        println("  [PASS] READ bit_or WRITE == 3")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] READ bit_or WRITE=${p}, expected 3")
+        failed += 1
+    }
+
+    // Test 2: bit_and masks flags
+    mut q = p bit_and Perms.READ
+    if q == 1 {
+        println("  [PASS] (READ|WRITE) bit_and READ == 1")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bit_and=${q}, expected 1")
+        failed += 1
+    }
+
+    // Test 3: bit_xor toggles flags
+    mut r = Perms.WRITE bit_xor Perms.EXECUTE
+    if r == 6 {
+        println("  [PASS] WRITE bit_xor EXECUTE == 6")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bit_xor=${r}, expected 6")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

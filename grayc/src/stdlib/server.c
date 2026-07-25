@@ -149,7 +149,7 @@ static bool match_route(const char *pattern, const char *path,
 
             GrayString key = gray_string_new(arena, name_start, name_len);
             GrayString val = gray_string_new(arena, val_start, val_len);
-            gray_map_set(arena, params, &key, &val);
+            GRAY_MAP_SET(arena, params, &key, &val);
         } else {
             if (*pattern_ptr != *path_ptr) return false;
             pattern_ptr++;
@@ -196,7 +196,7 @@ static bool parse_request(GrayArena *arena, const char *data, int data_len,
 
             GrayString key = gray_string_new(arena, cursor, (int32_t)(eq - cursor));
             GrayString val = gray_string_new(arena, eq + 1, (int32_t)(amp - eq - 1));
-            gray_map_set(arena, &req->query, &key, &val);
+            GRAY_MAP_SET(arena, &req->query, &key, &val);
 
             cursor = amp + 1;
         }
@@ -222,7 +222,7 @@ static bool parse_request(GrayArena *arena, const char *data, int data_len,
 
             GrayString key = gray_string_new(arena, header_start, key_length);
             GrayString val = gray_string_new(arena, vstart, value_length);
-            gray_map_set(arena, &req->headers, &key, &val);
+            GRAY_MAP_SET(arena, &req->headers, &key, &val);
         }
         header_start = end_of_line + 2;
     }

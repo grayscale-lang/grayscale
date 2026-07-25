@@ -16,7 +16,7 @@
 /* === Modification === */
 
 void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value) {
-    gray_array_push(arena, arr, value);
+    GRAY_ARRAY_PUSH(arena, arr, value);
 }
 
 void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, const void *value) {
@@ -107,7 +107,7 @@ void gray_arrays_clear(GrayArray *arr) {
 void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int32_t count) {
     gray_arrays_clear(arr);
     for (int32_t i = 0; i < count; i++) {
-        gray_array_push(arena, arr, value);
+        GRAY_ARRAY_PUSH(arena, arr, value);
     }
 }
 
@@ -258,7 +258,7 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr) {
     GrayArray result = gray_array_new(arena, arr->elem_size, arr->len);
     char *src = (char *)arr->data;
     for (int32_t i = arr->len - 1; i >= 0; i--) {
-        gray_array_push(arena, &result, src + i * arr->elem_size);
+        GRAY_ARRAY_PUSH(arena, &result, src + i * arr->elem_size);
     }
     return result;
 }
@@ -275,7 +275,7 @@ GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *a, GrayArray *b) {
     GrayArray result = gray_array_copy(arena, a);
     char *src = (char *)b->data;
     for (int32_t i = 0; i < b->len; i++) {
-        gray_array_push(arena, &result, src + i * b->elem_size);
+        GRAY_ARRAY_PUSH(arena, &result, src + i * b->elem_size);
     }
     return result;
 }
@@ -290,7 +290,7 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
         for (int32_t j = 0; j < result.len; j++) {
             if (memcmp(data + i * element_size, rdata + j * element_size, element_size) == 0) { found = true; break; }
         }
-        if (!found) gray_array_push(arena, &result, data + i * element_size);
+        if (!found) GRAY_ARRAY_PUSH(arena, &result, data + i * element_size);
     }
     return result;
 }
@@ -302,7 +302,7 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
         GrayArray *inner = (GrayArray *)((char *)arr->data + i * arr->elem_size);
         char *idata = (char *)inner->data;
         for (int32_t j = 0; j < inner->len; j++) {
-            gray_array_push(arena, &result, idata + j * inner->elem_size);
+            GRAY_ARRAY_PUSH(arena, &result, idata + j * inner->elem_size);
         }
     }
     return result;
@@ -316,7 +316,7 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size
     for (int32_t i = 0; i < arr->len; i += size) {
         int32_t chunk_len = (i + size <= arr->len) ? size : (arr->len - i);
         GrayArray chunk = gray_array_from(arena, data + i * element_size, arr->elem_size, chunk_len);
-        gray_array_push(arena, &result, &chunk);
+        GRAY_ARRAY_PUSH(arena, &result, &chunk);
     }
     return result;
 }
@@ -326,9 +326,9 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *a, GrayArray *b) {
     GrayArray result = gray_array_new(arena, sizeof(GrayArray), len);
     for (int32_t i = 0; i < len; i++) {
         GrayArray pair_arr = gray_array_new(arena, a->elem_size, 2);
-        gray_array_push(arena, &pair_arr, (char *)a->data + i * a->elem_size);
-        gray_array_push(arena, &pair_arr, (char *)b->data + i * b->elem_size);
-        gray_array_push(arena, &result, &pair_arr);
+        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)a->data + i * a->elem_size);
+        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)b->data + i * b->elem_size);
+        GRAY_ARRAY_PUSH(arena, &result, &pair_arr);
     }
     return result;
 }

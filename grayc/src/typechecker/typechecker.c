@@ -368,6 +368,11 @@ static bool typechecker_enum_is_tagged(TypeChecker *checker, const char *name) {
     return i >= 0 && checker->enum_is_tagged[i];
 }
 
+static bool typechecker_enum_is_flags(TypeChecker *checker, const char *name) {
+    int i = find_enum_index(checker, name);
+    return i >= 0 && checker->enum_is_flags[i];
+}
+
 /* A type name fit to print in a diagnostic — for struct/enum types this
  * is the user-facing name, never the module-prefixed lookup key. Composite
  * types (pointers, arrays, maps) recurse into their inner types so that
@@ -810,325 +815,409 @@ typedef struct {
     FallibleType success_type;
     int arg_type_count;
     struct { int index; ExpectedArgKind kind; } arg_types[STDLIB_MAX_ARG_CHECKS];
+    const char *return_type;  /* type name string, or NULL for context-dependent */
 } StdlibFuncMeta;
 
 static const StdlibFuncMeta stdlib_func_meta[] = {
     /* arrays */
-    {"arrays", "all",    2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"arrays", "any",    2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"arrays", "filter", 2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"arrays", "map",    2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"arrays", "reduce", 3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"arrays", "remove", 2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
+    {"arrays", "all",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
+    {"arrays", "any",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
+    {"arrays", "append",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "clear",        1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, NULL},
+    {"arrays", "contains",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
+    {"arrays", "count",        2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "deduplicate",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "fill",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "filter",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "flatten",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "get_first",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "get_last",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "get_max",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "get_min",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "get_sum",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "index_of",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "insert_at",    3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "is_empty",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
+    {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "bool"},
+    {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[int]]"},
+    {"arrays", "prepend",      2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "reduce",       3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "remove",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "remove_at",    2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "slice",        3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "split_every",  2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "[[int]]"},
     /* atomic */
-    {"atomic", "add",              2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "and",              2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "cas",              3, 3, false, FT_NONE, 0, {}},
-    {"atomic", "exchange",         2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "fence",            0, 0, false, FT_NONE, 0, {}},
-    {"atomic", "load",             1, 1, false, FT_NONE, 0, {}},
-    {"atomic", "or",               2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "spin_lock",        1, 1, false, FT_NONE, 0, {}},
-    {"atomic", "spin_trylock",     1, 1, false, FT_NONE, 0, {}},
-    {"atomic", "spin_unlock",      1, 1, false, FT_NONE, 0, {}},
-    {"atomic", "spinlock",         0, 0, false, FT_NONE, 0, {}},
-    {"atomic", "spinlock_destroy", 1, 1, false, FT_NONE, 0, {}},
-    {"atomic", "store",            2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "sub",              2, 2, false, FT_NONE, 0, {}},
-    {"atomic", "xor",              2, 2, false, FT_NONE, 0, {}},
+    {"atomic", "add",              2, 2, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "and",              2, 2, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "cas",              3, 3, false, FT_NONE, 0, {{0}},"bool"},
+    {"atomic", "exchange",         2, 2, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "fence",            0, 0, false, FT_NONE, 0, {{0}},"void"},
+    {"atomic", "load",             1, 1, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "or",               2, 2, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "spin_lock",        1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"atomic", "spin_trylock",     1, 1, false, FT_NONE, 0, {{0}},"bool"},
+    {"atomic", "spin_unlock",      1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"atomic", "spinlock",         0, 0, false, FT_NONE, 0, {{0}},"SpinLock"},
+    {"atomic", "spinlock_destroy", 1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"atomic", "store",            2, 2, false, FT_NONE, 0, {{0}},"void"},
+    {"atomic", "sub",              2, 2, false, FT_NONE, 0, {{0}},"int"},
+    {"atomic", "xor",              2, 2, false, FT_NONE, 0, {{0}},"int"},
+    /* binary */
+    {"binary", "decode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"binary", "decode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"binary", "decode_f64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"binary", "decode_f64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"binary", "decode_i128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "encode_f32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[byte]"},
+    {"binary", "encode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[byte]"},
+    {"binary", "encode_f64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[byte]"},
+    {"binary", "encode_f64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "[byte]"},
+    {"binary", "encode_i128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_i8",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
+    {"binary", "encode_u8",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
     /* bytes */
-    {"bytes", "from_base64", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"bytes", "from_hex",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"bytes", "from_string", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"bytes", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"bytes", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"bytes", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
+    {"bytes", "from_base64", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"bytes", "from_hex",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"bytes", "from_string", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"bytes", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"bytes", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"bytes", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
     /* channels */
-    {"channels", "close",       1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}},
-    {"channels", "open",        1, 1, false, FT_NONE, 0, {}},
-    {"channels", "receive",     1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}},
-    {"channels", "send",        2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}},
-    {"channels", "try_receive", 1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}},
-    {"channels", "try_send",    2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}},
+    {"channels", "close",       1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "void"},
+    {"channels", "open",        1, 1, false, FT_NONE, 0, {{0}},"Channel"},
+    {"channels", "receive",     1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "int"},
+    {"channels", "send",        2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "void"},
+    {"channels", "try_receive", 1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "int"},
+    {"channels", "try_send",    2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "bool"},
     /* crypto */
-    {"crypto", "md5",        1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"crypto", "random_hex", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"crypto", "sha256",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
+    {"crypto", "md5",        1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"crypto", "random_hex", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"crypto", "sha256",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* csv */
-    {"csv", "encode",     1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}},
-    {"csv", "headers",    1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}},
-    {"csv", "parse",      1, 1, false, FT_NONE,                1, {{0, ARG_STRING}}},
-    {"csv", "read_file",  1, 1, true,  FT_NESTED_ARRAY_STRING, 1, {{0, ARG_STRING}}},
-    {"csv", "write_file", 2, 2, true,  FT_BOOL,                2, {{0, ARG_STRING}, {1, ARG_ARRAY}}},
+    {"csv", "encode",     1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "string"},
+    {"csv", "headers",    1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "[string]"},
+    {"csv", "parse",      1, 1, false, FT_NONE,                1, {{0, ARG_STRING}}, "[[string]]"},
+    {"csv", "read_file",  1, 1, true,  FT_NESTED_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[[string]]"},
+    {"csv", "write_file", 2, 2, true,  FT_BOOL,                2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     /* encoding */
-    {"encoding", "base64_decode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"encoding", "base64_encode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"encoding", "hex_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"encoding", "hex_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"encoding", "url_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"encoding", "url_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
+    {"encoding", "base64_decode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "base64_encode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "hex_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "hex_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "url_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "url_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* fmt */
-    {"fmt", "center",        3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}},
-    {"fmt", "eprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}},
-    {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"fmt", "format",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "int_to_binary", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"fmt", "int_to_hex",    1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"fmt", "pad_left",      3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}},
-    {"fmt", "pad_right",     3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}},
-    {"fmt", "printf",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "printfln",      1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "sprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"fmt", "sprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}},
+    {"fmt", "center",        3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
+    {"fmt", "eprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}, "string"},
+    {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}, "string"},
+    {"fmt", "format",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"fmt", "int_to_binary", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"fmt", "int_to_hex",    1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"fmt", "pad_left",      3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
+    {"fmt", "pad_right",     3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
+    {"fmt", "printf",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "printfln",      1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "sprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"fmt", "sprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* http */
-    {"http", "delete", 2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}},
-    {"http", "get",    2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}},
-    {"http", "head",   2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}},
-    {"http", "patch",  3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}},
-    {"http", "post",   3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}},
-    {"http", "put",    3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}},
+    {"http", "delete", 2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}, "HttpResponse"},
+    {"http", "get",    2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}, "HttpResponse"},
+    {"http", "head",   2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}, "HttpResponse"},
+    {"http", "patch",  3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}, "HttpResponse"},
+    {"http", "post",   3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}, "HttpResponse"},
+    {"http", "put",    3, 3, true, FT_STRUCT_HTTP_RESPONSE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_MAP}}, "HttpResponse"},
     /* io */
-    {"io", "append_bytes",   2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}},
-    {"io", "append_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"io", "basename",       1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "copy_file",      2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"io", "delete_file",    1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}},
-    {"io", "dirname",        1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "extension",      1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "file_exists",    1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "file_size",      1, 1, true,  FT_INT,          1, {{0, ARG_STRING}}},
-    {"io", "glob",           1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}},
-    {"io", "is_absolute",    1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "is_directory",   1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "is_file",        1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "list_dir",       1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}},
-    {"io", "make_dir",       1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}},
-    {"io", "make_dir_all",   1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}},
-    {"io", "move_file",      2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"io", "normalize",      1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"io", "path_join",      1, 1, false, FT_NONE,         1, {{0, ARG_ARRAY}}},
-    {"io", "read_bytes",     1, 1, true,  FT_ARRAY_BYTE,   1, {{0, ARG_STRING}}},
-    {"io", "read_file",      1, 1, true,  FT_STRING,       1, {{0, ARG_STRING}}},
-    {"io", "read_lines",     1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}},
-    {"io", "remove_dir",     1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}},
-    {"io", "remove_dir_all", 1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}},
-    {"io", "rename_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"io", "temp_dir",       0, 0, true,  FT_STRING,       0, {}},
-    {"io", "temp_file",      0, 0, true,  FT_STRING,       0, {}},
-    {"io", "walk",           1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}},
-    {"io", "write_bytes",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}},
-    {"io", "write_file",     2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
+    {"io", "append_bytes",   2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
+    {"io", "append_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"io", "basename",       1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
+    {"io", "copy_file",      2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"io", "delete_file",    1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "dirname",        1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
+    {"io", "extension",      1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
+    {"io", "file_exists",    1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "file_size",      1, 1, true,  FT_INT,          1, {{0, ARG_STRING}}, "int"},
+    {"io", "glob",           1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
+    {"io", "is_absolute",    1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "is_directory",   1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "is_file",        1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "list_dir",       1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
+    {"io", "make_dir",       1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "make_dir_all",   1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "move_file",      2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"io", "normalize",      1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
+    {"io", "path_join",      1, 1, false, FT_NONE,         1, {{0, ARG_ARRAY}}, "string"},
+    {"io", "read_bytes",     1, 1, true,  FT_ARRAY_BYTE,   1, {{0, ARG_STRING}}, "[byte]"},
+    {"io", "read_file",      1, 1, true,  FT_STRING,       1, {{0, ARG_STRING}}, "string"},
+    {"io", "read_lines",     1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
+    {"io", "remove_dir",     1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "remove_dir_all", 1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
+    {"io", "rename_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"io", "temp_dir",       0, 0, true,  FT_STRING,       0, {{0}},"string"},
+    {"io", "temp_file",      0, 0, true,  FT_STRING,       0, {{0}},"string"},
+    {"io", "walk",           1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
+    {"io", "write_bytes",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
+    {"io", "write_file",     2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     /* json */
-    {"json", "decode",       1, 1, true,  FT_STRUCT_MAP, 1, {{0, ARG_STRING}}},
-    {"json", "encode",       1, 1, false, FT_NONE,       0, {}},
-    {"json", "is_valid",     1, 1, false, FT_NONE,       1, {{0, ARG_STRING}}},
-    {"json", "parse",        1, 1, false, FT_NONE,       1, {{0, ARG_STRING}}},
-    {"json", "pretty_print", 2, 2, false, FT_NONE,       2, {{0, ARG_MAP}, {1, ARG_INT}}},
-    {"json", "stringify",    1, 1, false, FT_NONE,       0, {}},
+    {"json", "decode",       1, 1, true,  FT_STRUCT_MAP, 1, {{0, ARG_STRING}}, "map[string:string]"},
+    {"json", "encode",       1, 1, false, FT_NONE,       0, {{0}},"string"},
+    {"json", "is_valid",     1, 1, false, FT_NONE,       1, {{0, ARG_STRING}}, "bool"},
+    {"json", "parse",        1, 1, false, FT_NONE,       1, {{0, ARG_STRING}}, NULL},
+    {"json", "pretty_print", 2, 2, false, FT_NONE,       2, {{0, ARG_MAP}, {1, ARG_INT}}, "string"},
+    {"json", "stringify",    1, 1, false, FT_NONE,       0, {{0}},"string"},
     /* maps */
-    {"maps", "clear",          1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "contains_value", 2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "get_keys",       1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "get_or_default", 3, 3, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "get_values",     1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "has_key",        2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "is_empty",       1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}},
-    {"maps", "is_equal",       2, 2, false, FT_NONE, 2, {{0, ARG_MAP}, {1, ARG_MAP}}},
-    {"maps", "merge",          2, 2, false, FT_NONE, 2, {{0, ARG_MAP}, {1, ARG_MAP}}},
-    {"maps", "remove_key",     2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}},
+    {"maps", "clear",          1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}, "void"},
+    {"maps", "contains_value", 2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}, "bool"},
+    {"maps", "get_keys",       1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}, NULL},
+    {"maps", "get_or_default", 3, 3, false, FT_NONE, 1, {{0, ARG_MAP}}, NULL},
+    {"maps", "get_values",     1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}, NULL},
+    {"maps", "has_key",        2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}, "bool"},
+    {"maps", "is_empty",       1, 1, false, FT_NONE, 1, {{0, ARG_MAP}}, "bool"},
+    {"maps", "is_equal",       2, 2, false, FT_NONE, 2, {{0, ARG_MAP}, {1, ARG_MAP}}, "bool"},
+    {"maps", "merge",          2, 2, false, FT_NONE, 2, {{0, ARG_MAP}, {1, ARG_MAP}}, NULL},
+    {"maps", "remove_key",     2, 2, false, FT_NONE, 1, {{0, ARG_MAP}}, "void"},
     /* math */
-    {"math", "abs",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "acos",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "asin",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "atan",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "atan2",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "cbrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "ceil",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}},
-    {"math", "cos",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "cosh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "deg_to_rad",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "distance",    4, 4, false, FT_NONE, 4, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}, {3, ARG_NUMBER}}},
-    {"math", "exp",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "exp2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "factorial",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"math", "floor",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "gcd",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}},
-    {"math", "hypot",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "is_even",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"math", "is_finite",   1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "is_infinite", 1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "is_nan",      1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "is_odd",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"math", "is_prime",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"math", "lcm",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}},
-    {"math", "lerp",        3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}},
-    {"math", "log",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "log10",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "log2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "log_base",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "round",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "sign",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "sin",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "sinh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "sqrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "tan",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "tanh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
-    {"math", "trunc",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}},
+    {"math", "abs",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "acos",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "asin",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "atan",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "atan2",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "cbrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "ceil",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, NULL},
+    {"math", "cos",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "cosh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "deg_to_rad",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "distance",    4, 4, false, FT_NONE, 4, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}, {3, ARG_NUMBER}}, "float"},
+    {"math", "exp",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "exp2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "factorial",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"math", "floor",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "gcd",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"math", "hypot",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "is_even",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
+    {"math", "is_finite",   1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
+    {"math", "is_infinite", 1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
+    {"math", "is_nan",      1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
+    {"math", "is_odd",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
+    {"math", "is_prime",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
+    {"math", "lcm",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"math", "lerp",        3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "float"},
+    {"math", "log",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "log10",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "log2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "log_base",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
+    {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
+    {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "round",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "sign",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "int"},
+    {"math", "sin",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "sinh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "sqrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "tan",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "tanh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "trunc",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     /* mem */
-    {"mem", "alloc",    2, 2, false, FT_NONE, 0, {}},
-    {"mem", "arena",    1, 1, false, FT_NONE, 0, {}},
-    {"mem", "destroy",  1, 1, false, FT_NONE, 0, {}},
-    {"mem", "fill",     3, 3, false, FT_NONE, 0, {}},
-    {"mem", "init",     2, 2, false, FT_NONE, 0, {}},
-    {"mem", "raw_copy", 3, 3, false, FT_NONE, 0, {}},
-    {"mem", "reset",    1, 1, false, FT_NONE, 0, {}},
-    {"mem", "usage",    1, 1, false, FT_NONE, 0, {}},
-    {"mem", "zero",     2, 2, false, FT_NONE, 0, {}},
+    {"mem", "alloc",    2, 2, false, FT_NONE, 0, {{0}},NULL},
+    {"mem", "arena",    1, 1, false, FT_NONE, 0, {{0}},"Arena"},
+    {"mem", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"mem", "fill",     3, 3, false, FT_NONE, 0, {{0}},"void"},
+    {"mem", "free",     1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"mem", "init",     2, 2, false, FT_NONE, 0, {{0}},NULL},
+    {"mem", "make",     2, 2, false, FT_NONE, 0, {{0}},NULL},
+    {"mem", "raw_copy", 3, 3, false, FT_NONE, 0, {{0}},"void"},
+    {"mem", "reset",    1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"mem", "usage",    1, 1, false, FT_NONE, 0, {{0}},"int"},
+    {"mem", "zero",     2, 2, false, FT_NONE, 0, {{0}},"void"},
     /* net */
-    {"net", "accept",      1, 1, true,  FT_STRUCT_SOCKET,   0, {}},
-    {"net", "close",       1, 1, false, FT_NONE,            0, {}},
-    {"net", "connect",     2, 2, true,  FT_STRUCT_SOCKET,   2, {{0, ARG_STRING}, {1, ARG_INT}}},
-    {"net", "listen",      1, 2, true,  FT_STRUCT_LISTENER, 1, {{1, ARG_INT}}},
-    {"net", "receive",     2, 2, true,  FT_STRING,          1, {{1, ARG_INT}}},
-    {"net", "resolve",     1, 1, true,  FT_STRING,          1, {{0, ARG_STRING}}},
-    {"net", "send",        2, 2, true,  FT_INT,             1, {{1, ARG_STRING}}},
-    {"net", "set_timeout", 2, 2, false, FT_NONE,            1, {{1, ARG_INT}}},
+    {"net", "accept",      1, 1, true,  FT_STRUCT_SOCKET,   0, {{0}},"Socket"},
+    {"net", "close",       1, 1, false, FT_NONE,            0, {{0}},"void"},
+    {"net", "connect",     2, 2, true,  FT_STRUCT_SOCKET,   2, {{0, ARG_STRING}, {1, ARG_INT}}, "Socket"},
+    {"net", "listen",      1, 2, true,  FT_STRUCT_LISTENER, 1, {{1, ARG_INT}}, "Listener"},
+    {"net", "receive",     2, 2, true,  FT_STRING,          1, {{1, ARG_INT}}, "string"},
+    {"net", "resolve",     1, 1, true,  FT_STRING,          1, {{0, ARG_STRING}}, "string"},
+    {"net", "send",        2, 2, true,  FT_INT,             1, {{1, ARG_STRING}}, "int"},
+    {"net", "set_timeout", 2, 2, false, FT_NONE,            1, {{1, ARG_INT}}, "void"},
     /* os */
-    {"os", "arch",        0, 0, false, FT_NONE, 0, {}},
-    {"os", "args",        0, 0, false, FT_NONE, 0, {}},
-    {"os", "current_dir", 0, 0, false, FT_NONE, 0, {}},
-    {"os", "current_os",  0, 0, false, FT_NONE, 0, {}},
-    {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}},
-    {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"os", "hostname",    0, 0, false, FT_NONE, 0, {}},
-    {"os", "pid",         0, 0, false, FT_NONE, 0, {}},
-    {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
+    {"os", "arch",        0, 0, false, FT_NONE, 0, {{0}},"string"},
+    {"os", "args",        0, 0, false, FT_NONE, 0, {{0}},"[string]"},
+    {"os", "current_dir", 0, 0, false, FT_NONE, 0, {{0}},"string"},
+    {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
+    {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"os", "hostname",    0, 0, false, FT_NONE, 0, {{0}},"string"},
+    {"os", "pid",         0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "void"},
+    {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     /* random */
-    {"random", "choice",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"random", "rand_bool",  0, 0, false, FT_NONE, 0, {}},
-    {"random", "rand_byte",  0, 0, false, FT_NONE, 0, {}},
-    {"random", "rand_char",  0, 2, false, FT_NONE, 2, {{0, ARG_CHAR}, {1, ARG_CHAR}}},
-    {"random", "rand_float", 0, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}},
-    {"random", "rand_int",   1, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}},
-    {"random", "sample",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}},
-    {"random", "seed",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
+    {"random", "choice",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"random", "rand_bool",  0, 0, false, FT_NONE, 0, {{0}},"bool"},
+    {"random", "rand_byte",  0, 0, false, FT_NONE, 0, {{0}},"byte"},
+    {"random", "rand_char",  0, 2, false, FT_NONE, 2, {{0, ARG_CHAR}, {1, ARG_CHAR}}, "char"},
+    {"random", "rand_float", 0, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"random", "rand_int",   1, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"random", "sample",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
+    {"random", "seed",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "void"},
+    {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     /* regex */
-    {"regex", "find",     2, 2, true,  FT_STRING,       2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"regex", "find_all", 2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"regex", "is_match", 2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"regex", "is_valid", 1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}},
-    {"regex", "replace",  3, 3, true,  FT_STRING,       3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}},
-    {"regex", "split",    2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
+    {"regex", "find",     2, 2, true,  FT_STRING,       2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
+    {"regex", "find_all", 2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
+    {"regex", "is_match", 2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"regex", "is_valid", 1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
+    {"regex", "replace",  3, 3, true,  FT_STRING,       3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}, "string"},
+    {"regex", "split",    2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
     /* server */
-    {"server", "add_route",  4, 4, false, FT_NONE, 0, {}},
-    {"server", "add_router", 0, 0, false, FT_NONE, 0, {}},
-    {"server", "cors",       2, 2, false, FT_NONE, 0, {}},
-    {"server", "html",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}},
-    {"server", "json",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}},
-    {"server", "listen",     2, 3, false, FT_NONE, 2, {{1, ARG_INT}, {2, ARG_STRING}}},
-    {"server", "redirect",   2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}},
-    {"server", "text",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}},
-    {"server", "use",        2, 2, false, FT_NONE, 0, {}},
+    {"server", "add_route",  4, 4, false, FT_NONE, 0, {{0}},"void"},
+    {"server", "add_router", 0, 0, false, FT_NONE, 0, {{0}},"Router"},
+    {"server", "cors",       2, 2, false, FT_NONE, 0, {{0}},"void"},
+    {"server", "html",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "HttpResponse"},
+    {"server", "json",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "HttpResponse"},
+    {"server", "listen",     2, 3, false, FT_NONE, 2, {{1, ARG_INT}, {2, ARG_STRING}}, "void"},
+    {"server", "redirect",   2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "HttpResponse"},
+    {"server", "text",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "HttpResponse"},
+    {"server", "use",        2, 2, false, FT_NONE, 0, {{0}},"void"},
     /* sqlite */
-    {"sqlite", "close", 1, 1,  false, FT_NONE,           0, {}},
-    {"sqlite", "exec",  2, 99, true,  FT_BOOL,           0, {}},
-    {"sqlite", "open",  1, 1,  true,  FT_STRUCT_DATABASE, 1, {{0, ARG_STRING}}},
-    {"sqlite", "query", 2, 99, true,  FT_ARRAY_MAP,      0, {}},
+    {"sqlite", "close", 1, 1,  false, FT_NONE,            0, {{0}},"void"},
+    {"sqlite", "exec",  2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
+    {"sqlite", "open",  1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
+    {"sqlite", "query", 2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
     /* strconv */
-    {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}},
-    {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}},
-    {"strconv", "from_int",   1, 1, false, FT_NONE,  1, {{0, ARG_INT}}},
-    {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_INT}}},
-    {"strconv", "is_integer", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}},
-    {"strconv", "is_numeric", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}},
-    {"strconv", "to_bool",    1, 1, true,  FT_BOOL,  1, {{0, ARG_STRING}}},
-    {"strconv", "to_float",   1, 1, true,  FT_FLOAT, 1, {{0, ARG_STRING}}},
-    {"strconv", "to_int",     1, 2, true,  FT_INT,   2, {{0, ARG_STRING}, {1, ARG_INT}}},
-    {"strconv", "to_uint",    1, 2, true,  FT_UINT,  2, {{0, ARG_STRING}, {1, ARG_INT}}},
+    {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}, "string"},
+    {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}, "string"},
+    {"strconv", "from_int",   1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
+    {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
+    {"strconv", "is_integer", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
+    {"strconv", "is_numeric", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
+    {"strconv", "to_bool",    1, 1, true,  FT_BOOL,  1, {{0, ARG_STRING}}, "bool"},
+    {"strconv", "to_float",   1, 1, true,  FT_FLOAT, 1, {{0, ARG_STRING}}, "float"},
+    {"strconv", "to_int",     1, 2, true,  FT_INT,   2, {{0, ARG_STRING}, {1, ARG_INT}}, "int"},
+    {"strconv", "to_uint",    1, 2, true,  FT_UINT,  2, {{0, ARG_STRING}, {1, ARG_INT}}, "uint"},
     /* strings */
-    {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}},
-    {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "count",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "ends_with",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "from_chars",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}},
-    {"strings", "index_of",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "is_alnum",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "is_alpha",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "is_digit",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "is_empty",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "is_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "is_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "is_whitespace", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}},
-    {"strings", "join",          2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_STRING}}},
-    {"strings", "last_index_of", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "remove_prefix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "remove_suffix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "repeat",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}},
-    {"strings", "replace",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}},
-    {"strings", "reverse",       1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "slice",         3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_INT}}},
-    {"strings", "split",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "starts_with",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}},
-    {"strings", "to_chars",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "to_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "to_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "trim",          1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "trim_left",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"strings", "trim_right",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
+    {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
+    {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "count",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"strings", "ends_with",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "from_chars",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"strings", "index_of",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"strings", "is_alnum",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "is_alpha",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "is_digit",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "is_empty",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
+    {"strings", "is_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "is_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "is_whitespace", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"strings", "join",          2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_STRING}}, "string"},
+    {"strings", "last_index_of", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"strings", "remove_prefix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
+    {"strings", "remove_suffix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
+    {"strings", "repeat",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
+    {"strings", "replace",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}, "string"},
+    {"strings", "reverse",       1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "slice",         3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_INT}}, "string"},
+    {"strings", "split",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
+    {"strings", "starts_with",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "to_chars",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[char]"},
+    {"strings", "to_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "to_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "trim",          1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "trim_left",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "trim_right",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* sync */
-    {"sync", "destroy",  1, 1, false, FT_NONE, 0, {}},
-    {"sync", "lock",     1, 1, false, FT_NONE, 0, {}},
-    {"sync", "mutex",    0, 0, false, FT_NONE, 0, {}},
-    {"sync", "try_lock", 1, 1, false, FT_NONE, 0, {}},
-    {"sync", "unlock",   1, 1, false, FT_NONE, 0, {}},
+    {"sync", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"sync", "lock",     1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"sync", "mutex",    0, 0, false, FT_NONE, 0, {{0}},"Mutex"},
+    {"sync", "try_lock", 1, 1, false, FT_NONE, 0, {{0}},"bool"},
+    {"sync", "unlock",   1, 1, false, FT_NONE, 0, {{0}},"void"},
     /* threads */
-    {"threads", "current",      0, 0, false, FT_NONE, 0, {}},
-    {"threads", "detach",       1, 1, false, FT_NONE, 0, {}},
-    {"threads", "get_id",       0, 0, false, FT_NONE, 0, {}},
-    {"threads", "is_alive",     1, 1, false, FT_NONE, 0, {}},
-    {"threads", "join",         1, 1, false, FT_NONE, 0, {}},
-    {"threads", "sleep",        1, 1, false, FT_NONE, 0, {}},
-    {"threads", "spawn",        1, 2, false, FT_NONE, 0, {}},
-    {"threads", "thread_count", 0, 0, false, FT_NONE, 0, {}},
-    {"threads", "yield",        0, 0, false, FT_NONE, 0, {}},
+    {"threads", "current",      0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"threads", "detach",       1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"threads", "get_id",       0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"threads", "is_alive",     1, 1, false, FT_NONE, 0, {{0}},"bool"},
+    {"threads", "join",         1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"threads", "sleep",        1, 1, false, FT_NONE, 0, {{0}},"void"},
+    {"threads", "spawn",        1, 2, false, FT_NONE, 0, {{0}},"Thread"},
+    {"threads", "spawn_arg",    2, 2, false, FT_NONE, 0, {{0}},"Thread"},
+    {"threads", "thread_count", 0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"threads", "yield",        0, 0, false, FT_NONE, 0, {{0}},"void"},
     /* time */
-    {"time", "date",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "day",        1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "diff",       2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}},
-    {"time", "elapsed_ms", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "format",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}},
-    {"time", "hour",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "minute",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "month",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "now",        0, 0, false, FT_NONE, 0, {}},
-    {"time", "now_ms",     0, 0, false, FT_NONE, 0, {}},
-    {"time", "now_ns",     0, 0, false, FT_NONE, 0, {}},
-    {"time", "second",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "tick",       0, 0, false, FT_NONE, 0, {}},
-    {"time", "to_clock",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "to_iso",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "weekday",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
-    {"time", "year",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}},
+    {"time", "date",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"time", "day",        1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "diff",       2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"time", "elapsed_ms", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "format",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
+    {"time", "hour",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "minute",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "month",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "now",        0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"time", "now_ms",     0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"time", "now_ns",     0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"time", "second",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "tick",       0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"time", "to_clock",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"time", "to_iso",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"time", "weekday",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "year",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     /* uuid */
-    {"uuid", "generate",             0, 0, false, FT_NONE, 0, {}},
-    {"uuid", "generate_compact",     1, 1, false, FT_NONE, 0, {}},
-    {"uuid", "generate_hyphenated",  0, 0, false, FT_NONE, 0, {}},
-    {"uuid", "generate_random",      0, 0, false, FT_NONE, 0, {}},
-    {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {}},
-    {"uuid", "is_valid",             1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"uuid", "parse",                1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}},
-    {"uuid", "to_string",            1, 1, false, FT_NONE, 0, {}},
+    {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
+    {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
+    {"uuid", "generate_hyphenated",   0, 0, false, FT_NONE, 0, {{0}},"UUID"},
+    {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
+    {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
+    {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
+    {"uuid", "parse",                 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "UUID"},
+    {"uuid", "to_string",             1, 1, false, FT_NONE, 0, {{0}},"string"},
 };
 
 static int stdlib_meta_compare(const void *a, const void *b) {
@@ -1147,6 +1236,12 @@ static const StdlibFuncMeta *find_stdlib_meta(const char *mod, const char *fn) {
     const StdlibFuncMeta **hit = bsearch(&key_ptr, stdlib_meta_sorted, STDLIB_META_N,
         sizeof(const StdlibFuncMeta *), stdlib_meta_compare);
     return hit ? *hit : NULL;
+}
+
+static GrayType *resolve_return_type(const char *rt) {
+    if (!rt) return NULL;
+    if (strcmp(rt, "void") == 0) return &TYPE_VOID;
+    return type_from_name(rt);
 }
 
 /* Returns true if (mod, fn) is a fallible stdlib function.
@@ -1481,230 +1576,6 @@ static void typechecker_resolve_named_arguments(TypeChecker *checker, AstNode *n
 }
 
 
-/* stdlib functions reachable via `import and use` / `using`. */
-typedef struct { const char *func; const char *mod; TypeKind return_kind; } UsingFunc;
-static const UsingFunc _using_funcs[] = {
-    /* strings */
-    {"to_upper","strings",TK_STRING},{"to_lower","strings",TK_STRING},
-    {"trim","strings",TK_STRING},{"trim_left","strings",TK_STRING},
-    {"trim_right","strings",TK_STRING},
-    {"remove_prefix","strings",TK_STRING},{"remove_suffix","strings",TK_STRING},
-    {"replace","strings",TK_STRING},
-    {"repeat","strings",TK_STRING},{"reverse","strings",TK_STRING},
-    {"slice","strings",TK_STRING},{"join","strings",TK_STRING},
-    {"contains","strings",TK_BOOL},{"starts_with","strings",TK_BOOL},
-    {"ends_with","strings",TK_BOOL},{"is_empty","strings",TK_BOOL},
-    {"is_alpha","strings",TK_BOOL},{"is_digit","strings",TK_BOOL},
-    {"is_alnum","strings",TK_BOOL},{"is_whitespace","strings",TK_BOOL},
-    {"is_upper","strings",TK_BOOL},{"is_lower","strings",TK_BOOL},
-    {"char_at","strings",TK_CHAR},
-    {"to_chars","strings",TK_ARRAY},{"from_chars","strings",TK_STRING},
-    {"index_of","strings",TK_INT},{"last_index_of","strings",TK_INT},{"count","strings",TK_INT},
-    {"split","strings",TK_ARRAY},
-    /* math (arg-dependent abs/neg/min/max/clamp handled by special case) */
-    {"sign","math",TK_INT},{"factorial","math",TK_INT},{"gcd","math",TK_INT},
-    {"lcm","math",TK_INT},
-    {"floor","math",TK_FLOAT},{"ceil","math",TK_FLOAT},{"round","math",TK_FLOAT},
-    {"trunc","math",TK_FLOAT},
-    {"pow","math",TK_FLOAT},{"sqrt","math",TK_FLOAT},{"cbrt","math",TK_FLOAT},
-    {"hypot","math",TK_FLOAT},{"exp","math",TK_FLOAT},{"exp2","math",TK_FLOAT},
-    {"log","math",TK_FLOAT},{"log2","math",TK_FLOAT},{"log10","math",TK_FLOAT},
-    {"log_base","math",TK_FLOAT},{"sin","math",TK_FLOAT},{"cos","math",TK_FLOAT},
-    {"tan","math",TK_FLOAT},{"asin","math",TK_FLOAT},{"acos","math",TK_FLOAT},
-    {"atan","math",TK_FLOAT},{"atan2","math",TK_FLOAT},
-    {"sinh","math",TK_FLOAT},{"cosh","math",TK_FLOAT},{"tanh","math",TK_FLOAT},
-    {"deg_to_rad","math",TK_FLOAT},{"rad_to_deg","math",TK_FLOAT},
-    {"lerp","math",TK_FLOAT},{"distance","math",TK_FLOAT},
-    {"is_prime","math",TK_BOOL},{"is_even","math",TK_BOOL},
-    {"is_odd","math",TK_BOOL},{"is_infinite","math",TK_BOOL},
-    {"is_nan","math",TK_BOOL},{"is_finite","math",TK_BOOL},
-    /* arrays (arg-dependent get_first/get_last/etc handled by inline dispatch) */
-    {"append","arrays",TK_VOID},{"insert_at","arrays",TK_VOID},
-    {"prepend","arrays",TK_VOID},{"fill","arrays",TK_VOID},
-    {"remove_at","arrays",TK_VOID},{"remove","arrays",TK_VOID},
-    {"remove_first","arrays",TK_VOID},{"remove_last","arrays",TK_VOID},
-    {"sort_asc","arrays",TK_VOID},
-    {"sort_desc","arrays",TK_VOID},{"clear","arrays",TK_VOID},
-    {"concat","arrays",TK_ARRAY},{"deduplicate","arrays",TK_ARRAY},
-    {"flatten","arrays",TK_ARRAY},{"reverse","arrays",TK_ARRAY},
-    {"slice","arrays",TK_ARRAY},{"split_every","arrays",TK_ARRAY},
-    {"pair","arrays",TK_ARRAY},
-    {"map","arrays",TK_ARRAY},{"filter","arrays",TK_ARRAY},
-    {"reduce","arrays",TK_UNKNOWN},
-    {"get_first","arrays",TK_UNKNOWN},{"get_last","arrays",TK_UNKNOWN},
-    {"get_sum","arrays",TK_INT},{"get_min","arrays",TK_INT},
-    {"get_max","arrays",TK_INT},{"count","arrays",TK_INT},
-    {"index_of","arrays",TK_INT},
-    {"is_empty","arrays",TK_BOOL},{"contains","arrays",TK_BOOL},
-    {"is_equal","arrays",TK_BOOL},
-    {"any","arrays",TK_BOOL},{"all","arrays",TK_BOOL},
-    /* maps (arg-dependent get_keys/get_values handled by special case) */
-    {"has_key","maps",TK_BOOL},{"is_empty","maps",TK_BOOL},
-    {"contains_value","maps",TK_BOOL},{"remove_key","maps",TK_VOID},
-    {"clear","maps",TK_VOID},{"is_equal","maps",TK_BOOL},
-    {"merge","maps",TK_MAP},{"get_or_default","maps",TK_UNKNOWN},
-    /* random (arg-dependent choice/shuffle/sample handled by special case) */
-    {"rand_float","random",TK_FLOAT},{"rand_int","random",TK_INT},
-    {"rand_bool","random",TK_BOOL},{"rand_byte","random",TK_INT},
-    {"rand_char","random",TK_INT},
-    {"seed","random",TK_VOID},
-    /* encoding */
-    {"base64_encode","encoding",TK_STRING},{"base64_decode","encoding",TK_STRING},
-    {"hex_encode","encoding",TK_STRING},{"hex_decode","encoding",TK_STRING},
-    {"url_encode","encoding",TK_STRING},{"url_decode","encoding",TK_STRING},
-    /* crypto */
-    {"sha256","crypto",TK_STRING},{"md5","crypto",TK_STRING},
-    {"random_hex","crypto",TK_STRING},
-    /* regex */
-    {"is_match","regex",TK_BOOL},{"is_valid","regex",TK_BOOL},
-    {"find","regex",TK_STRING},{"replace","regex",TK_STRING},
-    {"find_all","regex",TK_ARRAY},{"split","regex",TK_ARRAY},
-    /* json */
-    {"is_valid","json",TK_BOOL},{"decode","json",TK_MAP},
-    {"encode","json",TK_STRING},{"stringify","json",TK_STRING},
-    {"parse","json",TK_UNKNOWN},{"pretty_print","json",TK_STRING},
-    /* io */
-    {"read_file","io",TK_STRING},{"read_bytes","io",TK_ARRAY},
-    {"read_lines","io",TK_ARRAY},{"write_file","io",TK_BOOL},
-    {"append_file","io",TK_BOOL},{"delete_file","io",TK_BOOL},
-    {"rename_file","io",TK_BOOL},{"file_exists","io",TK_BOOL},
-    {"is_file","io",TK_BOOL},{"is_directory","io",TK_BOOL},
-    {"file_size","io",TK_INT},{"glob","io",TK_ARRAY},
-    {"list_dir","io",TK_ARRAY},{"walk","io",TK_ARRAY},
-    {"make_dir","io",TK_BOOL},{"make_dir_all","io",TK_BOOL},
-    {"remove_dir","io",TK_BOOL},{"remove_dir_all","io",TK_BOOL},
-    {"copy_file","io",TK_BOOL},{"move_file","io",TK_BOOL},
-    {"is_absolute","io",TK_BOOL},
-    {"write_bytes","io",TK_BOOL},{"append_bytes","io",TK_BOOL},
-    {"temp_file","io",TK_STRING},{"temp_dir","io",TK_STRING},
-    {"path_join","io",TK_STRING},{"dirname","io",TK_STRING},
-    {"basename","io",TK_STRING},{"extension","io",TK_STRING},
-    {"normalize","io",TK_STRING},
-    /* os */
-    {"args","os",TK_ARRAY},{"get_env","os",TK_STRING},
-    {"set_env","os",TK_VOID},{"unset_env","os",TK_VOID},{"current_dir","os",TK_STRING},
-    {"hostname","os",TK_STRING},{"arch","os",TK_STRING},
-    {"current_os","os",TK_INT},{"pid","os",TK_INT},
-    {"exec","os",TK_BOOL},
-    /* time */
-    {"now","time",TK_INT},{"now_ms","time",TK_INT},{"now_ns","time",TK_INT},
-    {"tick","time",TK_INT},{"elapsed_ms","time",TK_INT},{"diff","time",TK_INT},
-    {"year","time",TK_INT},{"month","time",TK_INT},{"day","time",TK_INT},
-    {"hour","time",TK_INT},{"minute","time",TK_INT},{"second","time",TK_INT},
-    {"weekday","time",TK_INT},
-    {"format","time",TK_STRING},{"to_iso","time",TK_STRING},
-    {"date","time",TK_STRING},{"to_clock","time",TK_STRING},
-    /* strconv */
-    {"to_int","strconv",TK_INT},{"to_uint","strconv",TK_UINT},
-    {"to_float","strconv",TK_FLOAT},{"to_bool","strconv",TK_BOOL},
-    {"from_int","strconv",TK_STRING},{"from_uint","strconv",TK_STRING},
-    {"from_float","strconv",TK_STRING},{"from_bool","strconv",TK_STRING},
-    {"is_numeric","strconv",TK_BOOL},{"is_integer","strconv",TK_BOOL},
-    /* uuid */
-    {"generate_hyphenated","uuid",TK_UNKNOWN},{"generate","uuid",TK_UNKNOWN},
-    {"generate_compact","uuid",TK_STRING},
-    {"generate_random","uuid",TK_UNKNOWN},
-    {"generate_time_ordered","uuid",TK_UNKNOWN},
-    {"parse","uuid",TK_UNKNOWN},
-    {"is_valid","uuid",TK_BOOL},{"to_string","uuid",TK_STRING},
-    /* bytes */
-    {"from_string","bytes",TK_ARRAY},{"from_hex","bytes",TK_ARRAY},
-    {"from_base64","bytes",TK_ARRAY},
-    {"to_string","bytes",TK_STRING},{"to_hex","bytes",TK_STRING},
-    {"to_base64","bytes",TK_STRING},
-    /* binary */
-    {"encode_i8","binary",TK_ARRAY},{"encode_u8","binary",TK_ARRAY},
-    {"encode_i16_le","binary",TK_ARRAY},{"encode_i16_be","binary",TK_ARRAY},
-    {"encode_u16_le","binary",TK_ARRAY},{"encode_u16_be","binary",TK_ARRAY},
-    {"encode_i32_le","binary",TK_ARRAY},{"encode_i32_be","binary",TK_ARRAY},
-    {"encode_u32_le","binary",TK_ARRAY},{"encode_u32_be","binary",TK_ARRAY},
-    {"encode_i64_le","binary",TK_ARRAY},{"encode_i64_be","binary",TK_ARRAY},
-    {"encode_u64_le","binary",TK_ARRAY},{"encode_u64_be","binary",TK_ARRAY},
-    {"encode_i128_le","binary",TK_ARRAY},{"encode_i128_be","binary",TK_ARRAY},
-    {"encode_u128_le","binary",TK_ARRAY},{"encode_u128_be","binary",TK_ARRAY},
-    {"encode_i256_le","binary",TK_ARRAY},{"encode_i256_be","binary",TK_ARRAY},
-    {"encode_u256_le","binary",TK_ARRAY},{"encode_u256_be","binary",TK_ARRAY},
-    {"encode_f32_le","binary",TK_ARRAY},{"encode_f32_be","binary",TK_ARRAY},
-    {"encode_f64_le","binary",TK_ARRAY},{"encode_f64_be","binary",TK_ARRAY},
-    {"decode_i8","binary",TK_INT},{"decode_u8","binary",TK_INT},
-    {"decode_i16_le","binary",TK_INT},{"decode_i16_be","binary",TK_INT},
-    {"decode_u16_le","binary",TK_INT},{"decode_u16_be","binary",TK_INT},
-    {"decode_i32_le","binary",TK_INT},{"decode_i32_be","binary",TK_INT},
-    {"decode_u32_le","binary",TK_INT},{"decode_u32_be","binary",TK_INT},
-    {"decode_i64_le","binary",TK_INT},{"decode_i64_be","binary",TK_INT},
-    {"decode_u64_le","binary",TK_INT},{"decode_u64_be","binary",TK_INT},
-    {"decode_i128_le","binary",TK_INT},{"decode_i128_be","binary",TK_INT},
-    {"decode_u128_le","binary",TK_INT},{"decode_u128_be","binary",TK_INT},
-    {"decode_i256_le","binary",TK_INT},{"decode_i256_be","binary",TK_INT},
-    {"decode_u256_le","binary",TK_INT},{"decode_u256_be","binary",TK_INT},
-    {"decode_f32_le","binary",TK_FLOAT},{"decode_f32_be","binary",TK_FLOAT},
-    {"decode_f64_le","binary",TK_FLOAT},{"decode_f64_be","binary",TK_FLOAT},
-    /* csv */
-    {"parse","csv",TK_ARRAY},{"read_file","csv",TK_ARRAY},
-    {"headers","csv",TK_ARRAY},
-    {"write","csv",TK_BOOL},{"write_file","csv",TK_BOOL},
-    {"encode","csv",TK_STRING},
-    /* sqlite */
-    {"open","sqlite",TK_UNKNOWN},{"close","sqlite",TK_VOID},
-    {"exec","sqlite",TK_BOOL},{"query","sqlite",TK_ARRAY},
-    /* threads */
-    {"spawn","threads",TK_UNKNOWN},{"spawn_arg","threads",TK_UNKNOWN},
-    {"join","threads",TK_VOID},
-    {"get_id","threads",TK_INT},
-    {"detach","threads",TK_VOID},{"is_alive","threads",TK_BOOL},
-    {"current","threads",TK_INT},{"yield","threads",TK_VOID},
-    {"sleep","threads",TK_VOID},
-    {"thread_count","threads",TK_INT},
-    /* sync */
-    {"mutex","sync",TK_UNKNOWN},{"lock","sync",TK_VOID},
-    {"unlock","sync",TK_VOID},{"try_lock","sync",TK_BOOL},
-    {"destroy","sync",TK_VOID},
-    /* atomic */
-    {"load","atomic",TK_INT},{"store","atomic",TK_VOID},
-    {"add","atomic",TK_INT},{"sub","atomic",TK_INT},
-    {"exchange","atomic",TK_INT},{"cas","atomic",TK_BOOL},
-    {"and","atomic",TK_INT},{"or","atomic",TK_INT},{"xor","atomic",TK_INT},
-    {"spinlock","atomic",TK_UNKNOWN},{"spinlock_destroy","atomic",TK_VOID},
-    {"spin_lock","atomic",TK_VOID},
-    {"spin_trylock","atomic",TK_BOOL},{"spin_unlock","atomic",TK_VOID},
-    {"fence","atomic",TK_VOID},
-    /* channels */
-    {"open","channels",TK_UNKNOWN},{"send","channels",TK_VOID},
-    {"receive","channels",TK_INT},{"close","channels",TK_VOID},
-    {"try_send","channels",TK_BOOL},{"try_receive","channels",TK_INT},
-    /* server */
-    {"add_router","server",TK_UNKNOWN},{"add_route","server",TK_VOID},
-    {"listen","server",TK_VOID},{"cors","server",TK_VOID},
-    {"use","server",TK_VOID},{"text","server",TK_UNKNOWN},
-    {"json","server",TK_UNKNOWN},{"html","server",TK_UNKNOWN},
-    {"redirect","server",TK_UNKNOWN},
-    /* http */
-    {"get","http",TK_UNKNOWN},{"post","http",TK_UNKNOWN},
-    {"put","http",TK_UNKNOWN},{"delete","http",TK_UNKNOWN},
-    {"head","http",TK_UNKNOWN},{"patch","http",TK_UNKNOWN},
-    /* net */
-    {"listen","net",TK_UNKNOWN},{"connect","net",TK_UNKNOWN},
-    {"accept","net",TK_UNKNOWN},{"send","net",TK_INT},
-    {"receive","net",TK_STRING},{"resolve","net",TK_STRING},
-    {"close","net",TK_VOID},{"set_timeout","net",TK_VOID},
-    /* fmt */
-    {"sprintf","fmt",TK_STRING},{"format","fmt",TK_STRING},
-    {"pad_left","fmt",TK_STRING},{"pad_right","fmt",TK_STRING},
-    {"center","fmt",TK_STRING},{"int_to_hex","fmt",TK_STRING},
-    {"int_to_binary","fmt",TK_STRING},{"int_to_octal","fmt",TK_STRING},
-    {"float_fixed","fmt",TK_STRING},{"float_sci","fmt",TK_STRING},
-    {"printf","fmt",TK_VOID},
-    {"printfln","fmt",TK_VOID},{"eprintf","fmt",TK_VOID},{"eprintfln","fmt",TK_VOID},
-    {"sprintfln","fmt",TK_STRING},
-    /* mem */
-    {"arena","mem",TK_UNKNOWN},{"usage","mem",TK_INT},
-    {"free","mem",TK_VOID},{"reset","mem",TK_VOID},
-    {"destroy","mem",TK_VOID},
-    {"init","mem",TK_UNKNOWN},{"alloc","mem",TK_UNKNOWN},
-    {"make","mem",TK_UNKNOWN},
-    {NULL,NULL,TK_UNKNOWN}
-};
-
 /* : stdlib constants reachable via `import and use` / `using`. */
 typedef struct { const char *name; const char *mod; TypeKind return_kind; } UsingConst;
 static const UsingConst _using_consts[] = {
@@ -1758,7 +1629,8 @@ static GrayType *typechecker_lookup_using_constant(TypeChecker *checker, const c
 static void register_enum(TypeChecker *checker, const char *name,
     const char *display_name, bool is_string,
     const char **values, int value_count,
-    const char ***payload_types, int *payload_counts, bool is_tagged) {
+    const char ***payload_types, int *payload_counts, bool is_tagged,
+    bool is_flags) {
     if (checker->enum_count >= checker->enum_cap) {
         checker->enum_cap = checker->enum_cap ? checker->enum_cap * 2 : 8;
         checker->enum_names = xrealloc(checker->enum_names, sizeof(const char *) * checker->enum_cap);
@@ -1769,6 +1641,7 @@ static void register_enum(TypeChecker *checker, const char *name,
         checker->enum_payload_types = xrealloc(checker->enum_payload_types, sizeof(const char ***) * checker->enum_cap);
         checker->enum_payload_counts = xrealloc(checker->enum_payload_counts, sizeof(int *) * checker->enum_cap);
         checker->enum_is_tagged = xrealloc(checker->enum_is_tagged, sizeof(bool) * checker->enum_cap);
+        checker->enum_is_flags = xrealloc(checker->enum_is_flags, sizeof(bool) * checker->enum_cap);
     }
     checker->enum_names_sorted_built = false;
     checker->enum_names[checker->enum_count] = name;
@@ -1779,6 +1652,7 @@ static void register_enum(TypeChecker *checker, const char *name,
     checker->enum_payload_types[checker->enum_count] = payload_types;
     checker->enum_payload_counts[checker->enum_count] = payload_counts;
     checker->enum_is_tagged[checker->enum_count] = is_tagged;
+    checker->enum_is_flags[checker->enum_count] = is_flags;
     checker->enum_count++;
 }
 
@@ -2263,13 +2137,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     typechecker_check_stdlib_arg_count(checker, mod, mfn, node);
     typechecker_check_stdlib_arg_types(checker, mod, mfn, node);
     typechecker_check_strconv_base(checker, mod, mfn, node);
+    /* Table-driven return type resolution: O(log n) bsearch */
+    const StdlibFuncMeta *meta = find_stdlib_meta(mod, mfn);
+    if (meta && meta->return_type) {
+        result = resolve_return_type(meta->return_type);
+    }
+    /* Context-dependent return types (meta->return_type == NULL) */
     if (strcmp(mod, "mem") == 0) {
-        if (strcmp(mfn, "arena") == 0) {
-            result = type_struct("Arena"); /* arena pointer; opaque */
-        } else if (strcmp(mfn, "usage") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "init") == 0 && node->data.call.arg_count == 2) {
-            /* mem.init(arena, Type) returns ^Type */
+        if (strcmp(mfn, "init") == 0 && node->data.call.arg_count == 2) {
             AstNode *type_arg = node->data.call.args[1];
             if (type_arg->kind == NODE_LABEL) {
                 result = type_pointer(type_arg->data.label.value);
@@ -2277,16 +2152,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 result = &TYPE_UNKNOWN;
             }
         } else if (strcmp(mfn, "alloc") == 0 && node->data.call.arg_count == 2) {
-            /* alloc returns the same type as its second argument */
             result = resolve_expression(checker, node->data.call.args[1]);
-        } else if (strcmp(mfn, "make") == 0) {
-            result = &TYPE_UNKNOWN;
-        } else if (strcmp(mfn, "free") == 0 || strcmp(mfn, "reset") == 0 ||
-                   strcmp(mfn, "destroy") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
+        } else if (strcmp(mfn, "make") == 0 && node->data.call.arg_count == 2) {
+            AstNode *type_arg = node->data.call.args[1];
+            if (type_arg->kind == NODE_LABEL) {
+                result = type_pointer(type_arg->data.label.value);
+            } else {
+                result = &TYPE_UNKNOWN;
+            }
         }
     } else if (strcmp(mod, "maps") == 0) {
         if (strcmp(mfn, "get_keys") == 0) {
@@ -2299,10 +2172,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
                 result = type_array(map_t && map_t->value_type ? map_t->value_type : "string");
             } else result = type_array("string");
-        } else if (strcmp(mfn, "has_key") == 0 || strcmp(mfn, "is_empty") == 0 ||
-                   strcmp(mfn, "contains_value") == 0 ||
-                   strcmp(mfn, "is_equal") == 0) {
-            result = &TYPE_BOOL;
         } else if (strcmp(mfn, "merge") == 0) {
             if (node->data.call.arg_count > 0) {
                 result = resolve_expression(checker, node->data.call.args[0]);
@@ -2311,24 +2180,15 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (node->data.call.arg_count >= 3) {
                 result = resolve_expression(checker, node->data.call.args[2]);
             } else result = &TYPE_UNKNOWN;
-        } else if (strcmp(mfn, "remove_key") == 0 || strcmp(mfn, "clear") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
         /* E12001: maps functions require map argument */
         if (node->data.call.arg_count > 0) {
             AstNode *arg0 = node->data.call.args[0];
-            GrayType *arg0_t = typetable_get(checker->type_table, arg0);
+            GrayType *arg0_t = resolve_expression(checker, arg0);
             if (arg0_t && arg0_t->kind == TK_ARRAY) {
                 diagnostic_error_code_formatted(checker->diag, "E12001", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn);
             }
         }
-        /* maps.is_equal(a, b): both args must be maps with the same
-         * key/value types, and key/value types must be primitive or
-         * string. Composite element types would require recursive
-         * deep-equality which is out of scope here. */
         if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
             AstNode *a0 = node->data.call.args[0];
             AstNode *a1 = node->data.call.args[1];
@@ -2391,228 +2251,20 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-    } else if (strcmp(mod, "io") == 0) {
-        /* Fallible I/O: the type checker returns the primary value type.
-         * The codegen emits _result() versions that return (T, Error) tuples.
-         * The .v0 access gets __auto_type in C, but the Grayscale type system
-         * sees it as the value type for interpolation purposes. */
-        if (strcmp(mfn, "read_file") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "write_file") == 0 ||
-            strcmp(mfn, "delete_file") == 0 ||
-            strcmp(mfn, "write_bytes") == 0 ||
-            strcmp(mfn, "append_bytes") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "file_exists") == 0 ||
-                   strcmp(mfn, "is_file") == 0 || strcmp(mfn, "is_directory") == 0 ||
-                   strcmp(mfn, "append_file") == 0 || strcmp(mfn, "rename_file") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "file_size") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "read_bytes") == 0) {
-            result = type_array("byte");
-        } else if (strcmp(mfn, "read_lines") == 0) {
-            result = type_array("string");
-        } else if (strcmp(mfn, "list_dir") == 0 || strcmp(mfn, "walk") == 0 ||
-                   strcmp(mfn, "glob") == 0) {
-            result = type_array("string");
-        } else if (strcmp(mfn, "make_dir") == 0 || strcmp(mfn, "make_dir_all") == 0 ||
-                   strcmp(mfn, "remove_dir") == 0 || strcmp(mfn, "remove_dir_all") == 0 ||
-                   strcmp(mfn, "copy_file") == 0 || strcmp(mfn, "move_file") == 0 ||
-                   strcmp(mfn, "is_absolute") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "path_join") == 0 || strcmp(mfn, "dirname") == 0 ||
-                   strcmp(mfn, "basename") == 0 || strcmp(mfn, "extension") == 0 ||
-                   strcmp(mfn, "normalize") == 0 ||
-                   strcmp(mfn, "temp_file") == 0 || strcmp(mfn, "temp_dir") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "strconv") == 0) {
-        if (strcmp(mfn, "to_int") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "to_uint") == 0) {
-            result = &TYPE_UINT;
-        } else if (strcmp(mfn, "to_float") == 0) {
-            result = &TYPE_FLOAT;
-        } else if (strcmp(mfn, "to_bool") == 0 ||
-                   strcmp(mfn, "is_numeric") == 0 ||
-                   strcmp(mfn, "is_integer") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "from_int") == 0 ||
-                   strcmp(mfn, "from_uint") == 0 ||
-                   strcmp(mfn, "from_float") == 0 ||
-                   strcmp(mfn, "from_bool") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "strings") == 0) {
-        if (strcmp(mfn, "contains") == 0 || strcmp(mfn, "starts_with") == 0 ||
-            strcmp(mfn, "ends_with") == 0 || strcmp(mfn, "is_empty") == 0 ||
-            strcmp(mfn, "is_alpha") == 0 || strcmp(mfn, "is_digit") == 0 ||
-            strcmp(mfn, "is_alnum") == 0 || strcmp(mfn, "is_whitespace") == 0 ||
-            strcmp(mfn, "is_upper") == 0 || strcmp(mfn, "is_lower") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "char_at") == 0) {
-            result = &TYPE_CHAR;
-        } else if (strcmp(mfn, "to_chars") == 0) {
-            result = type_array("char");
-        } else if (strcmp(mfn, "from_chars") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "index_of") == 0 ||
-                   strcmp(mfn, "last_index_of") == 0 ||
-                   strcmp(mfn, "count") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "split") == 0) {
-            result = type_array("string");
-        } else if (strcmp(mfn, "to_upper") == 0 || strcmp(mfn, "to_lower") == 0 ||
-                   strcmp(mfn, "trim") == 0 || strcmp(mfn, "trim_left") == 0 ||
-                   strcmp(mfn, "trim_right") == 0 ||
-                   strcmp(mfn, "remove_prefix") == 0 || strcmp(mfn, "remove_suffix") == 0 ||
-                   strcmp(mfn, "replace") == 0 ||
-                   strcmp(mfn, "repeat") == 0 || strcmp(mfn, "reverse") == 0 ||
-                   strcmp(mfn, "slice") == 0 || strcmp(mfn, "join") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-        /* E7004: strings.repeat() second arg must be integer */
-        if (strcmp(mfn, "repeat") == 0 && node->data.call.arg_count >= 2) {
-            GrayType *count_t = typetable_get(checker->type_table, node->data.call.args[1]);
-            if (count_t && count_t->kind == TK_FLOAT) {
-                diagnostic_error_message(checker->diag, "E7004",
-                    "strings.repeat() count must be an integer, not a float",
-                    NODE_FILE(checker, node->data.call.args[1]), node->data.call.args[1]->token.line,
-                    node->data.call.args[1]->token.column, 0);
+    } else if (strcmp(mod, "math") == 0) {
+        /* abs/neg/min/max/clamp: return type matches argument type */
+        if (strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0 ||
+            strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
+            strcmp(mfn, "clamp") == 0) {
+            if (node->data.call.arg_count > 0) {
+                GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
+                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
+            } else {
+                result = &TYPE_INT;
             }
-        }
-        /* E7004: strings.slice() bounds must be integers */
-        if (strcmp(mfn, "slice") == 0 && node->data.call.arg_count >= 3) {
-            for (int slice_index = 1; slice_index <= 2 && slice_index < node->data.call.arg_count; slice_index++) {
-                GrayType *bt = typetable_get(checker->type_table, node->data.call.args[slice_index]);
-                if (bt && bt->kind == TK_FLOAT) {
-                    diagnostic_error_message(checker->diag, "E7004",
-                        "strings.slice() bounds must be integers, not floats",
-                        NODE_FILE(checker, node->data.call.args[slice_index]), node->data.call.args[slice_index]->token.line,
-                        node->data.call.args[slice_index]->token.column, 0);
-                }
-            }
-        }
-    } else if (strcmp(mod, "time") == 0) {
-        if (strcmp(mfn, "format") == 0 || strcmp(mfn, "to_iso") == 0 ||
-            strcmp(mfn, "date") == 0 || strcmp(mfn, "to_clock") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "now") == 0 || strcmp(mfn, "now_ms") == 0 ||
-                   strcmp(mfn, "now_ns") == 0 || strcmp(mfn, "tick") == 0 ||
-                   strcmp(mfn, "elapsed_ms") == 0 || strcmp(mfn, "diff") == 0 ||
-                   strcmp(mfn, "year") == 0 || strcmp(mfn, "month") == 0 ||
-                   strcmp(mfn, "day") == 0 || strcmp(mfn, "hour") == 0 ||
-                   strcmp(mfn, "minute") == 0 || strcmp(mfn, "second") == 0 ||
-                   strcmp(mfn, "weekday") == 0) {
-            result = &TYPE_INT;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "uuid") == 0) {
-        if (strcmp(mfn, "is_valid") == 0) result = &TYPE_BOOL;
-        else if (strcmp(mfn, "generate_compact") == 0 ||
-                 strcmp(mfn, "to_string") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "generate") == 0 ||
-                 strcmp(mfn, "generate_hyphenated") == 0 ||
-                 strcmp(mfn, "generate_random") == 0 ||
-                 strcmp(mfn, "generate_time_ordered") == 0 ||
-                 strcmp(mfn, "parse") == 0) {
-            result = type_struct("UUID");
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "encoding") == 0) {
-        result = &TYPE_STRING;
-    } else if (strcmp(mod, "crypto") == 0) {
-        result = &TYPE_STRING;
-    } else if (strcmp(mod, "bytes") == 0) {
-        if (strcmp(mfn, "from_string") == 0 || strcmp(mfn, "from_hex") == 0 ||
-            strcmp(mfn, "from_base64") == 0) {
-            result = type_array("byte");
-        } else if (strcmp(mfn, "to_string") == 0 || strcmp(mfn, "to_hex") == 0 ||
-                   strcmp(mfn, "to_base64") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "binary") == 0) {
-        if (strncmp(mfn, "encode", 6) == 0) result = type_array("byte");
-        else if (strncmp(mfn, "decode_f", 8) == 0) result = &TYPE_FLOAT;
-        else result = &TYPE_INT;
-    } else if (strcmp(mod, "csv") == 0) {
-        if (strcmp(mfn, "parse") == 0 ||
-            strcmp(mfn, "read_file") == 0) {
-            result = type_array("[string]"); /* [[string]] */
-        } else if (strcmp(mfn, "headers") == 0) {
-            result = type_array("string"); /* [string] */
-        } else if (strcmp(mfn, "write_file") == 0) {
-            result = &TYPE_BOOL;
-            /* E5026: second arg must be an array, not a string */
-            if (node->data.call.arg_count >= 2) {
-                GrayType *arg2_type = resolve_expression(checker, node->data.call.args[1]);
-                if (arg2_type && arg2_type->kind == TK_STRING) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "csv.%s() expects an array as the second argument, got string",
-                        mfn);
-                    diagnostic_error_message(checker->diag, "E5026", msg,
-                        NODE_FILE(checker, node), node->data.call.args[1]->token.line,
-                        node->data.call.args[1]->token.column, 0);
-                }
-            }
-        } else if (strcmp(mfn, "encode") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "json") == 0) {
-        if (strcmp(mfn, "decode") == 0) result = type_from_name("map[string:string]");
-        else if (strcmp(mfn, "is_valid") == 0) result = &TYPE_BOOL;
-        else if (strcmp(mfn, "parse") == 0) {
-            /* : json.parse() return type depends on
-             * assignment context. Start as UNKNOWN; the
-             * var_decl handler pushes the declared struct
-             * type onto the call node via 's mechanism. */
-            result = &TYPE_UNKNOWN;
-        } else if (strcmp(mfn, "encode") == 0 || strcmp(mfn, "stringify") == 0 ||
-                   strcmp(mfn, "pretty_print") == 0) {
-            result = &TYPE_STRING;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "sqlite") == 0) {
-        if (strcmp(mfn, "open") == 0) result = &TYPE_UNKNOWN; /* opaque handle */
-        else if (strcmp(mfn, "exec") == 0) result = &TYPE_BOOL;
-        else if (strcmp(mfn, "query") == 0) result = type_array("map");
-        else if (strcmp(mfn, "close") == 0) result = &TYPE_VOID;
-        else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "random") == 0) {
-        if (strcmp(mfn, "rand_float") == 0) result = &TYPE_FLOAT;
-        else if (strcmp(mfn, "rand_int") == 0) result = &TYPE_INT;
-        else if (strcmp(mfn, "rand_bool") == 0) result = &TYPE_BOOL;
-        else if (strcmp(mfn, "rand_byte") == 0) result = &TYPE_BYTE;
-        else if (strcmp(mfn, "rand_char") == 0) result = &TYPE_CHAR;
-        else if (strcmp(mfn, "shuffle") == 0 || strcmp(mfn, "sample") == 0) {
-            /* Preserve input array's element type */
+        if (strcmp(mfn, "shuffle") == 0 || strcmp(mfn, "sample") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type)
@@ -2623,7 +2275,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 result = type_array("int");
             }
         } else if (strcmp(mfn, "choice") == 0) {
-            /* Return element type of the array argument */
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type)
@@ -2633,37 +2284,22 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             } else {
                 result = &TYPE_INT;
             }
-        } else if (strcmp(mfn, "seed") == 0) result = &TYPE_VOID;
-        else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "arrays") == 0) {
-        if (strcmp(mfn, "is_empty") == 0 || strcmp(mfn, "contains") == 0 ||
-            strcmp(mfn, "is_equal") == 0 ||
-            strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "index_of") == 0 || strcmp(mfn, "get_sum") == 0 ||
-                   strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
-                   strcmp(mfn, "count") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
-                   strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
-                   strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0) {
-            /* Preserve input array element type */
+        /* Context-dependent array return types */
+        if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
+            strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
+            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("int");
             } else {
                 result = type_array("int");
             }
-        } else if (strcmp(mfn, "split_every") == 0 || strcmp(mfn, "pair") == 0) {
-            result = type_array("[int]"); /* nested array */
         } else if (strcmp(mfn, "flatten") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 if (arr_t && arr_t->element_type) {
-                    /* arr_t is [[T]]; element_type is "[T]". Unwrap one level. */
                     GrayType *inner = type_from_name(arr_t->element_type);
                     if (inner && inner->kind == TK_ARRAY && inner->element_type)
                         result = type_array(inner->element_type);
@@ -2684,16 +2320,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             } else {
                 result = &TYPE_INT;
             }
-        } else if (strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
-                   strcmp(mfn, "insert_at") == 0 ||
-                   strcmp(mfn, "remove") == 0 || strcmp(mfn, "remove_at") == 0 ||
-                   strcmp(mfn, "fill") == 0 ||
-                   strcmp(mfn, "sort_asc") == 0 || strcmp(mfn, "sort_desc") == 0 ||
-                   strcmp(mfn, "clear") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
         /* E5007: mutating array functions on const array */
         if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "insert_at") == 0 ||
@@ -2769,9 +2395,11 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         }
         /* E9002: arrays.sum/min/max require numeric array */
         if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
-             strcmp(mfn, "max") == 0) && node->data.call.arg_count > 0) {
+             strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
+             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0) &&
+            node->data.call.arg_count > 0) {
             AstNode *arg0 = node->data.call.args[0];
-            GrayType *arr_t = typetable_get(checker->type_table, arg0);
+            GrayType *arr_t = resolve_expression(checker, arg0);
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 GrayType *elem_t = type_from_name(arr_t->element_type);
                 if (elem_t->kind == TK_STRING || elem_t->kind == TK_BOOL) {
@@ -2811,8 +2439,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, a1), a1->token.line, a1->token.column, 0);
             }
-            /* Composite element types (nested arrays, maps, structs) cannot be
-             * compared with the primitive memcmp path; reject for now. */
             if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
                 GrayType *et = type_from_name(t0->element_type);
                 if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
@@ -2841,7 +2467,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         if ((strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
              strcmp(mfn, "reduce") == 0 ||
              strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0) && node->data.call.arg_count >= 2) {
-            /* Determine which arg is the callback */
             int cb_idx = (strcmp(mfn, "reduce") == 0) ? 2 : 1;
             if (cb_idx < node->data.call.arg_count) {
                 AstNode *cb_arg = node->data.call.args[cb_idx];
@@ -2853,7 +2478,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
                         mfn);
                 } else {
-                    /* Validate callback signature */
                     const char *ref_name = NULL;
                     if (cb_arg->kind == NODE_FUNC_REF &&
                         cb_arg->data.func_ref.function->kind == NODE_LABEL) {
@@ -2862,7 +2486,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     if (ref_name) {
                         FuncSig *cb_fs = find_func(checker, ref_name);
                         if (cb_fs) {
-                            /* Resolve array element type for param type checking */
                             AstNode *arr_arg = node->data.call.args[0];
                             GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
                             if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
@@ -2959,168 +2582,43 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0);
             }
         }
-    } else if (strcmp(mod, "os") == 0) {
-        if (strcmp(mfn, "args") == 0) {
-            result = type_array("string");
-        } else if (strcmp(mfn, "get_env") == 0 ||
-                   strcmp(mfn, "current_dir") == 0 || strcmp(mfn, "hostname") == 0 ||
-                   strcmp(mfn, "arch") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "current_os") == 0 || strcmp(mfn, "pid") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "set_env") == 0 || strcmp(mfn, "unset_env") == 0) {
-            result = &TYPE_VOID;
-        } else if (strcmp(mfn, "exec") == 0) {
-            result = &TYPE_BOOL;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "math") == 0) {
-        /* Math functions return types */
-        if (strcmp(mfn, "is_prime") == 0 || strcmp(mfn, "is_even") == 0 ||
-            strcmp(mfn, "is_odd") == 0 ||
-            strcmp(mfn, "is_nan") == 0 || strcmp(mfn, "is_finite") == 0 ||
-            strcmp(mfn, "is_infinite") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0 ||
-                   strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
-                   strcmp(mfn, "clamp") == 0) {
-            /* Return type matches argument type; float in, float out */
-            if (node->data.call.arg_count > 0) {
-                GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
-            } else {
-                result = &TYPE_INT;
+    } else if (strcmp(mod, "strings") == 0) {
+        /* E7004: strings.repeat() second arg must be integer */
+        if (strcmp(mfn, "repeat") == 0 && node->data.call.arg_count >= 2) {
+            GrayType *count_t = typetable_get(checker->type_table, node->data.call.args[1]);
+            if (count_t && count_t->kind == TK_FLOAT) {
+                diagnostic_error_message(checker->diag, "E7004",
+                    "strings.repeat() count must be an integer, not a float",
+                    NODE_FILE(checker, node->data.call.args[1]), node->data.call.args[1]->token.line,
+                    node->data.call.args[1]->token.column, 0);
             }
-        } else if (strcmp(mfn, "sign") == 0 || strcmp(mfn, "factorial") == 0 ||
-                   strcmp(mfn, "gcd") == 0 || strcmp(mfn, "lcm") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "sqrt") == 0 || strcmp(mfn, "pow") == 0 ||
-                   strcmp(mfn, "exp") == 0 || strcmp(mfn, "exp2") == 0 ||
-                   strcmp(mfn, "log") == 0 ||
-                   strcmp(mfn, "log2") == 0 || strcmp(mfn, "log10") == 0 ||
-                   strcmp(mfn, "log_base") == 0 ||
-                   strcmp(mfn, "sin") == 0 || strcmp(mfn, "cos") == 0 ||
-                   strcmp(mfn, "tan") == 0 || strcmp(mfn, "asin") == 0 ||
-                   strcmp(mfn, "acos") == 0 || strcmp(mfn, "atan") == 0 ||
-                   strcmp(mfn, "atan2") == 0 || strcmp(mfn, "sinh") == 0 ||
-                   strcmp(mfn, "cosh") == 0 || strcmp(mfn, "tanh") == 0 ||
-                   strcmp(mfn, "floor") == 0 || strcmp(mfn, "ceil") == 0 ||
-                   strcmp(mfn, "round") == 0 || strcmp(mfn, "trunc") == 0 ||
-                   strcmp(mfn, "cbrt") == 0 || strcmp(mfn, "hypot") == 0 ||
-                   strcmp(mfn, "deg_to_rad") == 0 || strcmp(mfn, "rad_to_deg") == 0 ||
-                   strcmp(mfn, "lerp") == 0 || strcmp(mfn, "distance") == 0) {
-            result = &TYPE_FLOAT;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
-    } else if (strcmp(mod, "threads") == 0) {
-        if (strcmp(mfn, "spawn") == 0 || strcmp(mfn, "spawn_arg") == 0) {
-            /* Validate first arg is a function reference */
-            if (node->data.call.arg_count >= 1) {
-                AstNode *arg0 = node->data.call.args[0];
-                if (arg0->kind != NODE_FUNC_REF &&
-                    !(arg0->kind == NODE_CALL_EXPR &&
-                      arg0->data.call.function->kind == NODE_LABEL &&
-                      strcmp(arg0->data.call.function->data.label.value, "ref") == 0)) {
-                    diagnostic_error_message(checker->diag, "E7006",
-                        "threads.spawn() requires a function reference; use ()func_name or ref(func_name)",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        /* E7004: strings.slice() bounds must be integers */
+        if (strcmp(mfn, "slice") == 0 && node->data.call.arg_count >= 3) {
+            for (int slice_index = 1; slice_index <= 2 && slice_index < node->data.call.arg_count; slice_index++) {
+                GrayType *bt = typetable_get(checker->type_table, node->data.call.args[slice_index]);
+                if (bt && bt->kind == TK_FLOAT) {
+                    diagnostic_error_message(checker->diag, "E7004",
+                        "strings.slice() bounds must be integers, not floats",
+                        NODE_FILE(checker, node->data.call.args[slice_index]), node->data.call.args[slice_index]->token.line,
+                        node->data.call.args[slice_index]->token.column, 0);
                 }
             }
-            result = type_struct("Thread"); /* GrayThread; opaque */
-        } else if (strcmp(mfn, "get_id") == 0 ||
-                   strcmp(mfn, "current") == 0 ||
-                   strcmp(mfn, "thread_count") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "is_alive") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "join") == 0 || strcmp(mfn, "detach") == 0 ||
-                   strcmp(mfn, "yield") == 0 ||
-                   strcmp(mfn, "sleep") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
-    } else if (strcmp(mod, "sync") == 0) {
-        if (strcmp(mfn, "mutex") == 0) {
-            result = type_struct("Mutex"); /* GrayMutex; opaque */
-        } else if (strcmp(mfn, "try_lock") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "lock") == 0 || strcmp(mfn, "unlock") == 0 ||
-                   strcmp(mfn, "destroy") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
+    } else if (strcmp(mod, "threads") == 0) {
+        if ((strcmp(mfn, "spawn") == 0 || strcmp(mfn, "spawn_arg") == 0) &&
+            node->data.call.arg_count >= 1) {
+            AstNode *arg0 = node->data.call.args[0];
+            if (arg0->kind != NODE_FUNC_REF &&
+                !(arg0->kind == NODE_CALL_EXPR &&
+                  arg0->data.call.function->kind == NODE_LABEL &&
+                  strcmp(arg0->data.call.function->data.label.value, "ref") == 0)) {
+                diagnostic_error_message(checker->diag, "E7006",
+                    "threads.spawn() requires a function reference; use ()func_name or ref(func_name)",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
         }
-    } else if (strcmp(mod, "atomic") == 0) {
-        if (strcmp(mfn, "load") == 0 || strcmp(mfn, "add") == 0 ||
-            strcmp(mfn, "sub") == 0 || strcmp(mfn, "exchange") == 0 ||
-            strcmp(mfn, "and") == 0 || strcmp(mfn, "or") == 0 ||
-            strcmp(mfn, "xor") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "cas") == 0 || strcmp(mfn, "spin_trylock") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "spinlock") == 0) {
-            result = type_struct("SpinLock"); /* GraySpinLock; opaque */
-        } else if (strcmp(mfn, "store") == 0 || strcmp(mfn, "fence") == 0 ||
-                   strcmp(mfn, "spin_lock") == 0 ||
-                   strcmp(mfn, "spin_unlock") == 0 ||
-                   strcmp(mfn, "spinlock_destroy") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "channels") == 0) {
-        if (strcmp(mfn, "open") == 0) {
-            result = type_struct("Channel"); /* GrayChannel; opaque */
-        } else if (strcmp(mfn, "receive") == 0 || strcmp(mfn, "try_receive") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "send") == 0 || strcmp(mfn, "close") == 0) {
-            result = &TYPE_VOID;
-        } else if (strcmp(mfn, "try_send") == 0) {
-            result = &TYPE_BOOL;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "server") == 0) {
-        if (strcmp(mfn, "add_router") == 0) {
-            result = type_struct("Router"); /* GrayRouter; opaque */
-        } else if (strcmp(mfn, "text") == 0 || strcmp(mfn, "json") == 0 ||
-                   strcmp(mfn, "html") == 0 || strcmp(mfn, "redirect") == 0) {
-            result = type_struct("HttpResponse"); /* GrayResponse */
-        } else if (strcmp(mfn, "add_route") == 0 || strcmp(mfn, "listen") == 0 ||
-                   strcmp(mfn, "cors") == 0 || strcmp(mfn, "use") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "http") == 0) {
-        /* All http methods return GrayHttpResponse struct
-         * with .status (int), .body (string), .headers (map) */
-        result = type_struct("HttpResponse"); /* opaque struct; member access via __auto_type */
     } else if (strcmp(mod, "net") == 0) {
-        if (strcmp(mfn, "listen") == 0) {
-            result = type_struct("Listener"); /* GraySocket; opaque */
-        } else if (strcmp(mfn, "connect") == 0 || strcmp(mfn, "accept") == 0) {
-            result = type_struct("Socket"); /* GraySocket; opaque */
-        } else if (strcmp(mfn, "send") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "receive") == 0 || strcmp(mfn, "resolve") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "close") == 0 || strcmp(mfn, "set_timeout") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
         /* E5026: functions that take a socket/listener as first arg */
         if (strcmp(mfn, "send") == 0 || strcmp(mfn, "receive") == 0 ||
             strcmp(mfn, "close") == 0 || strcmp(mfn, "set_timeout") == 0 ||
@@ -3141,74 +2639,21 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-    } else if (strcmp(mod, "regex") == 0) {
-        if (strcmp(mfn, "is_match") == 0 || strcmp(mfn, "is_valid") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "find") == 0 || strcmp(mfn, "replace") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "find_all") == 0 || strcmp(mfn, "split") == 0) {
-            result = type_array("string");
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "mem") == 0) {
-        if (strcmp(mfn, "make") == 0 && node->data.call.arg_count == 2) {
-            AstNode *type_arg = node->data.call.args[1];
-            if (type_arg->kind == NODE_LABEL) {
-                result = type_pointer(type_arg->data.label.value);
-            } else {
-                result = &TYPE_UNKNOWN;
+    } else if (strcmp(mod, "csv") == 0) {
+        /* E5026: csv.write_file second arg must be an array */
+        if (strcmp(mfn, "write_file") == 0 && node->data.call.arg_count >= 2) {
+            GrayType *arg2_type = resolve_expression(checker, node->data.call.args[1]);
+            if (arg2_type && arg2_type->kind == TK_STRING) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "csv.%s() expects an array as the second argument, got string",
+                    mfn);
+                diagnostic_error_message(checker->diag, "E5026", msg,
+                    NODE_FILE(checker, node), node->data.call.args[1]->token.line,
+                    node->data.call.args[1]->token.column, 0);
             }
-        } else if (strcmp(mfn, "alloc") == 0 && node->data.call.arg_count == 2) {
-            GrayType *val_t = resolve_expression(checker, node->data.call.args[1]);
-            result = type_pointer(type_name(val_t));
-        } else if (strcmp(mfn, "arena") == 0) {
-            result = type_struct("Arena");
-        } else if (strcmp(mfn, "usage") == 0) {
-            result = &TYPE_INT;
-        } else if (strcmp(mfn, "free") == 0 || strcmp(mfn, "reset") == 0 ||
-                   strcmp(mfn, "destroy") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
-    } else if (strcmp(mod, "sqlite") == 0) {
-        if (strcmp(mfn, "open") == 0) {
-            result = type_struct("Database");
-        } else if (strcmp(mfn, "exec") == 0) {
-            result = &TYPE_BOOL;
-        } else if (strcmp(mfn, "query") == 0) {
-            result = type_array("map");
-        } else if (strcmp(mfn, "close") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "fmt") == 0) {
-        if (strcmp(mfn, "sprintf") == 0 ||
-            strcmp(mfn, "sprintfln") == 0 ||
-            strcmp(mfn, "format") == 0 ||
-            strcmp(mfn, "pad_left") == 0 ||
-            strcmp(mfn, "pad_right") == 0 ||
-            strcmp(mfn, "center") == 0 ||
-            strcmp(mfn, "int_to_hex") == 0 ||
-            strcmp(mfn, "int_to_binary") == 0 ||
-            strcmp(mfn, "int_to_octal") == 0 ||
-            strcmp(mfn, "float_fixed") == 0 ||
-            strcmp(mfn, "float_sci") == 0) {
-            result = &TYPE_STRING;
-        } else if (strcmp(mfn, "printf") == 0 ||
-                   strcmp(mfn, "printfln") == 0 ||
-                   strcmp(mfn, "eprintf") == 0 ||
-                   strcmp(mfn, "eprintfln") == 0) {
-            result = &TYPE_VOID;
-        } else {
-            emit_unknown_stdlib_function(checker, mod, mfn, node);
-            result = &TYPE_UNKNOWN;
-        }
         /* Validate printf/sprintf/format: literal format string + directive types */
         {
             bool is_fmt_fn = strcmp(mfn, "printf") == 0 ||
@@ -3366,6 +2811,11 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     node->data.call.args[argument_index]->token.column, 0, mfn, tn);
             }
         }
+    }
+
+    if (!meta) {
+        emit_unknown_stdlib_function(checker, mod, mfn, node);
+        return &TYPE_UNKNOWN;
     }
 
     return result;
@@ -3662,7 +3112,22 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     self_arg->kind = NODE_LABEL;
                     self_arg->token = node->token;
                     self_arg->data.label.value = strdup(mod_raw);
-                    new_args[0] = self_arg;
+                    /* Auto-deref: receiver is a pointer but param expects
+                     * the struct value — wrap self in a deref (p^).
+                     * For &self (mutable), codegen cancels the deref
+                     * with the address-of, emitting just the pointer. */
+                    const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
+                    if (sym->type->kind == TK_POINTER && p0_tn &&
+                        strcmp(p0_tn, struct_name) == 0) {
+                        AstNode *deref = xcalloc(1, sizeof(AstNode));
+                        deref->kind = NODE_POSTFIX_EXPR;
+                        deref->token = node->token;
+                        deref->data.postfix.left = self_arg;
+                        deref->data.postfix.op = TOK_CARET;
+                        new_args[0] = deref;
+                    } else {
+                        new_args[0] = self_arg;
+                    }
                     for (int argument_index = 0; argument_index < orig_count; argument_index++) {
                         new_args[argument_index + 1] = node->data.call.args[argument_index];
                     }
@@ -5068,21 +4533,11 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 const char *umod = checker->using_modules[using_index];
                 /* Resolve alias to actual module name */
                 const char *real_mod = typechecker_resolve_alias(checker, umod);
-                /* 1) Try hardcoded stdlib table */
-                for (int field_index = 0; _using_funcs[field_index].func; field_index++) {
-                    if (strcmp(function_name, _using_funcs[field_index].func) == 0 &&
-                        strcmp(real_mod, _using_funcs[field_index].mod) == 0) {
-                        found_in_using = true;
-                        switch (_using_funcs[field_index].return_kind) {
-                        case TK_STRING: result = &TYPE_STRING; break;
-                        case TK_FLOAT:  result = &TYPE_FLOAT; break;
-                        case TK_BOOL:   result = &TYPE_BOOL; break;
-                        case TK_INT:    result = &TYPE_INT; break;
-                        case TK_VOID:   result = &TYPE_VOID; break;
-                        default:        result = &TYPE_UNKNOWN; break;
-                        }
-                        break;
-                    }
+                /* 1) Try stdlib metadata table (O(log n) bsearch) */
+                const StdlibFuncMeta *umeta = find_stdlib_meta(real_mod, function_name);
+                if (umeta) {
+                    found_in_using = true;
+                    result = umeta->return_type ? resolve_return_type(umeta->return_type) : &TYPE_UNKNOWN;
                 }
                 /* 2) Try user-defined module: look up <module>_<func> */
                 if (!found_in_using) {
@@ -6026,8 +5481,10 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
          op == TOK_BIT_XOR || op == TOK_BIT_SHIFT_LEFT ||
          op == TOK_BIT_SHIFT_RIGHT) &&
         !infix_errored && left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN) {
-        bool left_ok  = is_int_kind(left->kind)  || left->kind  == TK_CHAR;
-        bool right_ok = is_int_kind(right->kind) || right->kind == TK_CHAR;
+        bool left_ok  = is_int_kind(left->kind)  || left->kind  == TK_CHAR
+            || (left->kind == TK_ENUM && left->name && typechecker_enum_is_flags(checker, left->name));
+        bool right_ok = is_int_kind(right->kind) || right->kind == TK_CHAR
+            || (right->kind == TK_ENUM && right->name && typechecker_enum_is_flags(checker, right->name));
         if (!left_ok || !right_ok) {
             diagnostic_error_code_formatted(checker->diag, "E8001",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -6048,6 +5505,10 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         result = &TYPE_FLOAT;
     } else if (left->kind == TK_STRING && op == TOK_PLUS) {
         result = &TYPE_STRING;
+    } else if (left->kind == TK_ENUM || right->kind == TK_ENUM) {
+        /* #flags enum bitwise ops produce int (combined values
+         * don't correspond to a single variant). */
+        result = &TYPE_INT;
     } else {
         result = left;
     }
@@ -6571,20 +6032,14 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
         for (int using_index = 0; using_index < checker->using_module_count && !found_in_using; using_index++) {
             if (!using_module_accessible(checker, using_index)) continue;
             const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
-            if (is_stdlib_module_name(real_mod)) {
-                for (int field_index = 0; _using_funcs[field_index].func; field_index++) {
-                    if (strcmp(ref_name, _using_funcs[field_index].func) == 0 &&
-                        strcmp(real_mod, _using_funcs[field_index].mod) == 0) {
-                        found_in_using = true;
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "cannot take a function reference to '%s'; stdlib functions are not first-class values",
-                            ref_name);
-                        diagnostic_error_message(checker->diag, "E4019", msg,
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-                        break;
-                    }
-                }
+            if (is_stdlib_module_name(real_mod) && find_stdlib_meta(real_mod, ref_name)) {
+                found_in_using = true;
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "cannot take a function reference to '%s'; stdlib functions are not first-class values",
+                    ref_name);
+                diagnostic_error_message(checker->diag, "E4019", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
         if (!found_in_using) {
@@ -11113,7 +10568,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged);
+        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags);
     }
 
     /* Pass 2b: Register structs and functions (enums already registered above) */
@@ -11413,6 +10868,7 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->enum_payload_types);
     free(checker->enum_payload_counts);
     free(checker->enum_is_tagged);
+    free(checker->enum_is_flags);
     free(checker->enum_names_sorted);
     free(checker->enum_names_sorted_indices);
 
@@ -11612,7 +11068,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     register_enum(checker, unprefixed, unprefixed, checker->enum_is_string[enum_index],
                         checker->enum_values[enum_index], checker->enum_value_counts[enum_index],
                         checker->enum_payload_types[enum_index], checker->enum_payload_counts[enum_index],
-                        checker->enum_is_tagged[enum_index]);
+                        checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index]);
                 }
             }
         }

@@ -233,9 +233,7 @@ grayscale/
 │   ├── watch.go           # File watcher
 │   ├── doc.go             # Documentation generator
 │   └── update.go          # Self-update
-├── internal/grayc/        # Go wrapper for invoking grayc binary
-├── pkg/                   # Go packages (tooling only)
-│   └── lineeditor/        # Line editor utilities
+├── internal/driver/        # Go wrapper for invoking grayc binary
 ├── grayc/                 # Grayscale compiler (C)
 │   ├── src/lexer/         # Tokenization
 │   ├── src/parser/        # Parsing (tokens → AST)

@@ -71,59 +71,59 @@ static inline gray_u256 gray_u256_from_u64(uint64_t v) {
 
 /* --- Size Casting (range-checked) --- */
 
-static inline int64_t gray_i128_to_i64(gray_i128 a) {
+static inline int64_t gray_i128_to_i64(gray_i128 a, const char *file, int line) {
     if (a.hi != ((int64_t)a.lo >> 63)) {
-        gray_panic_code("P0093", "cast from i128 failed; value is outside the representable range of int64");
+        gray_panic_code_at(file, line, "P0093", "cast from i128 failed; value is outside the representable range of int64");
     }
     return (int64_t)a.lo;
 }
 
-static inline uint64_t gray_i128_to_u64(gray_i128 a) {
+static inline uint64_t gray_i128_to_u64(gray_i128 a, const char *file, int line) {
     if (a.hi != 0) {
-        gray_panic_code("P0094", "cast from i128 failed; value is negative or outside the representable range of uint64");
+        gray_panic_code_at(file, line, "P0094", "cast from i128 failed; value is negative or outside the representable range of uint64");
     }
     return a.lo;
 }
 
-static inline int64_t gray_u128_to_i64(gray_u128 a) {
+static inline int64_t gray_u128_to_i64(gray_u128 a, const char *file, int line) {
     if (a.hi != 0 || a.lo > (uint64_t)INT64_MAX) {
-        gray_panic_code("P0095", "cast from u128 failed; value exceeds the representable range of int64");
+        gray_panic_code_at(file, line, "P0095", "cast from u128 failed; value exceeds the representable range of int64");
     }
     return (int64_t)a.lo;
 }
 
-static inline uint64_t gray_u128_to_u64(gray_u128 a) {
+static inline uint64_t gray_u128_to_u64(gray_u128 a, const char *file, int line) {
     if (a.hi != 0) {
-        gray_panic_code("P0096", "cast from u128 failed; value exceeds the representable range of uint64");
+        gray_panic_code_at(file, line, "P0096", "cast from u128 failed; value exceeds the representable range of uint64");
     }
     return a.lo;
 }
 
-static inline int64_t gray_i256_to_i64(gray_i256 a) {
+static inline int64_t gray_i256_to_i64(gray_i256 a, const char *file, int line) {
     uint64_t sign_ext = (uint64_t)((int64_t)a.w[0] >> 63);
     if (a.w[1] != sign_ext || a.w[2] != sign_ext || a.w[3] != sign_ext) {
-        gray_panic_code("P0097", "cast from i256 failed; value is outside the representable range of int64");
+        gray_panic_code_at(file, line, "P0097", "cast from i256 failed; value is outside the representable range of int64");
     }
     return (int64_t)a.w[0];
 }
 
-static inline uint64_t gray_i256_to_u64(gray_i256 a) {
+static inline uint64_t gray_i256_to_u64(gray_i256 a, const char *file, int line) {
     if (a.w[1] != 0 || a.w[2] != 0 || a.w[3] != 0) {
-        gray_panic_code("P0098", "cast from i256 failed; value is negative or outside the representable range of uint64");
+        gray_panic_code_at(file, line, "P0098", "cast from i256 failed; value is negative or outside the representable range of uint64");
     }
     return a.w[0];
 }
 
-static inline int64_t gray_u256_to_i64(gray_u256 a) {
+static inline int64_t gray_u256_to_i64(gray_u256 a, const char *file, int line) {
     if (a.w[1] != 0 || a.w[2] != 0 || a.w[3] != 0 || a.w[0] > (uint64_t)INT64_MAX) {
-        gray_panic_code("P0099", "cast from u256 failed; value exceeds the representable range of int64");
+        gray_panic_code_at(file, line, "P0099", "cast from u256 failed; value exceeds the representable range of int64");
     }
     return (int64_t)a.w[0];
 }
 
-static inline uint64_t gray_u256_to_u64(gray_u256 a) {
+static inline uint64_t gray_u256_to_u64(gray_u256 a, const char *file, int line) {
     if (a.w[1] != 0 || a.w[2] != 0 || a.w[3] != 0) {
-        gray_panic_code("P0100", "cast from u256 failed; value exceeds the representable range of uint64");
+        gray_panic_code_at(file, line, "P0100", "cast from u256 failed; value exceeds the representable range of uint64");
     }
     return a.w[0];
 }
@@ -222,12 +222,9 @@ static inline gray_i128 gray_i128_mul(gray_i128 a, gray_i128 b) {
 }
 
 /* Division helper: unsigned 128-bit divide */
-static inline void gray_u128_divmod(gray_u128 a, gray_u128 b, gray_u128 *q, gray_u128 *rem) {
+static inline void gray_u128_divmod(gray_u128 a, gray_u128 b, gray_u128 *q, gray_u128 *rem, const char *file, int line) {
     if (b.hi == 0 && b.lo == 0) {
-        /* Division by zero — return zero */
-        *q = GRAY_U128_ZERO;
-        *rem = GRAY_U128_ZERO;
-        return;
+        gray_panic_code_at(file, line, "P0078", "division by zero");
     }
     if (a.hi == 0 && b.hi == 0) {
         /* Both fit in 64 bits */
@@ -266,8 +263,7 @@ static inline void gray_u128_divmod(gray_u128 a, gray_u128 b, gray_u128 *q, gray
     *rem = remainder;
 }
 
-static inline gray_i128 gray_i128_div(gray_i128 a, gray_i128 b) {
-    if (b.lo == 0 && b.hi == 0) return GRAY_I128_ZERO;
+static inline gray_i128 gray_i128_div(gray_i128 a, gray_i128 b, const char *file, int line) {
     bool neg = false;
     gray_u128 ua, ub;
     if (a.hi < 0) { gray_i128 t = gray_i128_neg(a); ua.lo = t.lo; ua.hi = (uint64_t)t.hi; neg = !neg; }
@@ -275,14 +271,13 @@ static inline gray_i128 gray_i128_div(gray_i128 a, gray_i128 b) {
     if (b.hi < 0) { gray_i128 t = gray_i128_neg(b); ub.lo = t.lo; ub.hi = (uint64_t)t.hi; neg = !neg; }
     else { ub.lo = b.lo; ub.hi = (uint64_t)b.hi; }
     gray_u128 q, rem;
-    gray_u128_divmod(ua, ub, &q, &rem);
+    gray_u128_divmod(ua, ub, &q, &rem, file, line);
     gray_i128 result;
     result.lo = q.lo; result.hi = (int64_t)q.hi;
     return neg ? gray_i128_neg(result) : result;
 }
 
-static inline gray_i128 gray_i128_mod(gray_i128 a, gray_i128 b) {
-    if (b.lo == 0 && b.hi == 0) return GRAY_I128_ZERO;
+static inline gray_i128 gray_i128_mod(gray_i128 a, gray_i128 b, const char *file, int line) {
     bool neg_a = (a.hi < 0);
     gray_u128 ua, ub;
     if (neg_a) { gray_i128 t = gray_i128_neg(a); ua.lo = t.lo; ua.hi = (uint64_t)t.hi; }
@@ -290,7 +285,7 @@ static inline gray_i128 gray_i128_mod(gray_i128 a, gray_i128 b) {
     if (b.hi < 0) { gray_i128 t = gray_i128_neg(b); ub.lo = t.lo; ub.hi = (uint64_t)t.hi; }
     else { ub.lo = b.lo; ub.hi = (uint64_t)b.hi; }
     gray_u128 q, rem;
-    gray_u128_divmod(ua, ub, &q, &rem);
+    gray_u128_divmod(ua, ub, &q, &rem, file, line);
     gray_i128 result;
     result.lo = rem.lo; result.hi = (int64_t)rem.hi;
     return neg_a ? gray_i128_neg(result) : result;
@@ -341,15 +336,15 @@ static inline gray_u128 gray_u128_mul(gray_u128 a, gray_u128 b) {
     return r;
 }
 
-static inline gray_u128 gray_u128_div(gray_u128 a, gray_u128 b) {
+static inline gray_u128 gray_u128_div(gray_u128 a, gray_u128 b, const char *file, int line) {
     gray_u128 q, rem;
-    gray_u128_divmod(a, b, &q, &rem);
+    gray_u128_divmod(a, b, &q, &rem, file, line);
     return q;
 }
 
-static inline gray_u128 gray_u128_mod(gray_u128 a, gray_u128 b) {
+static inline gray_u128 gray_u128_mod(gray_u128 a, gray_u128 b, const char *file, int line) {
     gray_u128 q, rem;
-    gray_u128_divmod(a, b, &q, &rem);
+    gray_u128_divmod(a, b, &q, &rem, file, line);
     return rem;
 }
 
@@ -382,7 +377,7 @@ static inline gray_i256 gray_i256_sub(gray_i256 a, gray_i256 b) {
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t diff = a.w[i] - b.w[i] - borrow;
-        borrow = (a.w[i] < b.w[i] + borrow) ? 1 : 0;
+        borrow = (a.w[i] < b.w[i]) || (a.w[i] - b.w[i] < borrow) ? 1 : 0;
         r.w[i] = diff;
     }
     return r;
@@ -429,9 +424,9 @@ static inline gray_i256 gray_i256_mul(gray_i256 a, gray_i256 b) {
 }
 
 /* 256-bit unsigned divmod (binary long division) */
-static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray_u256 *rem) {
+static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray_u256 *rem, const char *file, int line) {
     int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) { *q = GRAY_U256_ZERO; *rem = GRAY_U256_ZERO; return; }
+    if (b_zero) { gray_panic_code_at(file, line, "P0078", "division by zero"); }
     if (a.w[1] == 0 && a.w[2] == 0 && a.w[3] == 0 &&
         b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0) {
         *q = GRAY_U256_ZERO; q->w[0] = a.w[0] / b.w[0];
@@ -462,7 +457,7 @@ static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray
             uint64_t borrow = 0;
             for (int k = 0; k < 4; k++) {
                 uint64_t diff = remainder.w[k] - b.w[k] - borrow;
-                borrow = (remainder.w[k] < b.w[k] + borrow) ? 1 : 0;
+                borrow = (remainder.w[k] < b.w[k]) || (remainder.w[k] - b.w[k] < borrow) ? 1 : 0;
                 remainder.w[k] = diff;
             }
             quotient.w[word] |= (uint64_t)1 << bit;
@@ -474,9 +469,7 @@ static inline void gray_u256_divmod(gray_u256 a, gray_u256 b, gray_u256 *q, gray
 
 static inline bool gray_i256_is_neg(gray_i256 a) { return (int64_t)a.w[3] < 0; }
 
-static inline gray_i256 gray_i256_div(gray_i256 a, gray_i256 b) {
-    int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) return GRAY_I256_ZERO;
+static inline gray_i256 gray_i256_div(gray_i256 a, gray_i256 b, const char *file, int line) {
     bool neg = false;
     gray_u256 ua, ub;
     if (gray_i256_is_neg(a)) { gray_i256 t = gray_i256_neg(a); memcpy(&ua, &t, sizeof(ua)); neg = !neg; }
@@ -484,14 +477,12 @@ static inline gray_i256 gray_i256_div(gray_i256 a, gray_i256 b) {
     if (gray_i256_is_neg(b)) { gray_i256 t = gray_i256_neg(b); memcpy(&ub, &t, sizeof(ub)); neg = !neg; }
     else { memcpy(&ub, &b, sizeof(ub)); }
     gray_u256 q, rem;
-    gray_u256_divmod(ua, ub, &q, &rem);
+    gray_u256_divmod(ua, ub, &q, &rem, file, line);
     gray_i256 result; memcpy(&result, &q, sizeof(result));
     return neg ? gray_i256_neg(result) : result;
 }
 
-static inline gray_i256 gray_i256_mod(gray_i256 a, gray_i256 b) {
-    int b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
-    if (b_zero) return GRAY_I256_ZERO;
+static inline gray_i256 gray_i256_mod(gray_i256 a, gray_i256 b, const char *file, int line) {
     bool neg_a = gray_i256_is_neg(a);
     gray_u256 ua, ub;
     if (neg_a) { gray_i256 t = gray_i256_neg(a); memcpy(&ua, &t, sizeof(ua)); }
@@ -499,7 +490,7 @@ static inline gray_i256 gray_i256_mod(gray_i256 a, gray_i256 b) {
     if (gray_i256_is_neg(b)) { gray_i256 t = gray_i256_neg(b); memcpy(&ub, &t, sizeof(ub)); }
     else { memcpy(&ub, &b, sizeof(ub)); }
     gray_u256 q, rem;
-    gray_u256_divmod(ua, ub, &q, &rem);
+    gray_u256_divmod(ua, ub, &q, &rem, file, line);
     gray_i256 result; memcpy(&result, &rem, sizeof(result));
     return neg_a ? gray_i256_neg(result) : result;
 }
@@ -538,7 +529,7 @@ static inline gray_u256 gray_u256_sub(gray_u256 a, gray_u256 b) {
     uint64_t borrow = 0;
     for (int i = 0; i < 4; i++) {
         uint64_t diff = a.w[i] - b.w[i] - borrow;
-        borrow = (a.w[i] < b.w[i] + borrow) ? 1 : 0;
+        borrow = (a.w[i] < b.w[i]) || (a.w[i] - b.w[i] < borrow) ? 1 : 0;
         r.w[i] = diff;
     }
     return r;
@@ -568,15 +559,15 @@ static inline gray_u256 gray_u256_mul(gray_u256 a, gray_u256 b) {
     return r;
 }
 
-static inline gray_u256 gray_u256_div(gray_u256 a, gray_u256 b) {
+static inline gray_u256 gray_u256_div(gray_u256 a, gray_u256 b, const char *file, int line) {
     gray_u256 q, rem;
-    gray_u256_divmod(a, b, &q, &rem);
+    gray_u256_divmod(a, b, &q, &rem, file, line);
     return q;
 }
 
-static inline gray_u256 gray_u256_mod(gray_u256 a, gray_u256 b) {
+static inline gray_u256 gray_u256_mod(gray_u256 a, gray_u256 b, const char *file, int line) {
     gray_u256 q, rem;
-    gray_u256_divmod(a, b, &q, &rem);
+    gray_u256_divmod(a, b, &q, &rem, file, line);
     return rem;
 }
 
@@ -603,6 +594,9 @@ static inline gray_u128 gray_u128_from_decimal(const char *s) {
     gray_u128 ten = {10, 0};
     while (*s) {
         if (*s == '_') { s++; continue; }
+        if (*s < '0' || *s > '9') {
+            gray_panic_code("P0102", "invalid digit '%c' in integer literal", *s);
+        }
         result = gray_u128_mul(result, ten);
         gray_u128 digit = {(uint64_t)(*s - '0'), 0};
         result = gray_u128_add(result, digit);
@@ -627,6 +621,9 @@ static inline gray_u256 gray_u256_from_decimal(const char *s) {
     ten.w[0] = 10;
     while (*s) {
         if (*s == '_') { s++; continue; }
+        if (*s < '0' || *s > '9') {
+            gray_panic_code("P0102", "invalid digit '%c' in integer literal", *s);
+        }
         result = gray_u256_mul(result, ten);
         gray_u256 digit = GRAY_U256_ZERO;
         digit.w[0] = (uint64_t)(*s - '0');
@@ -650,7 +647,7 @@ static inline gray_i256 gray_i256_from_decimal(const char *s) {
 static inline gray_i128 gray_i128_add_checked(gray_i128 a, gray_i128 b, const char *file, int line) {
     gray_i128 r = gray_i128_add(a, b);
     if ((a.hi >= 0 && b.hi >= 0 && r.hi < 0) || (a.hi < 0 && b.hi < 0 && r.hi >= 0)) {
-        gray_panic_code("P0021", "i128 addition result is too large; value exceeds the range of i128");
+        gray_panic_code_at(file, line, "P0021", "i128 addition result is too large; value exceeds the range of i128");
     }
     return r;
 }
@@ -658,7 +655,7 @@ static inline gray_i128 gray_i128_add_checked(gray_i128 a, gray_i128 b, const ch
 static inline gray_i128 gray_i128_sub_checked(gray_i128 a, gray_i128 b, const char *file, int line) {
     gray_i128 r = gray_i128_sub(a, b);
     if ((a.hi >= 0 && b.hi < 0 && r.hi < 0) || (a.hi < 0 && b.hi >= 0 && r.hi >= 0)) {
-        gray_panic_code("P0022", "i128 subtraction result is too large; value exceeds the range of i128");
+        gray_panic_code_at(file, line, "P0022", "i128 subtraction result is too large; value exceeds the range of i128");
     }
     return r;
 }
@@ -668,9 +665,9 @@ static inline gray_i128 gray_i128_mul_checked(gray_i128 a, gray_i128 b, const ch
     bool a_zero = (a.hi == 0 && a.lo == 0);
     bool b_zero = (b.hi == 0 && b.lo == 0);
     if (!a_zero && !b_zero) {
-        gray_i128 check = gray_i128_div(r, b);
+        gray_i128 check = gray_i128_div(r, b, file, line);
         if (!gray_i128_eq(check, a)) {
-            gray_panic_code("P0023", "i128 multiplication result is too large; value exceeds the range of i128");
+            gray_panic_code_at(file, line, "P0023", "i128 multiplication result is too large; value exceeds the range of i128");
         }
     }
     return r;
@@ -679,14 +676,14 @@ static inline gray_i128 gray_i128_mul_checked(gray_i128 a, gray_i128 b, const ch
 static inline gray_u128 gray_u128_add_checked(gray_u128 a, gray_u128 b, const char *file, int line) {
     gray_u128 r = gray_u128_add(a, b);
     if (gray_u128_lt(r, a)) {
-        gray_panic_code("P0024", "u128 addition result is too large; value exceeds the range of u128");
+        gray_panic_code_at(file, line, "P0024", "u128 addition result is too large; value exceeds the range of u128");
     }
     return r;
 }
 
 static inline gray_u128 gray_u128_sub_checked(gray_u128 a, gray_u128 b, const char *file, int line) {
     if (gray_u128_lt(a, b)) {
-        gray_panic_code("P0025", "u128 subtraction result is negative, but u128 cannot hold negative values");
+        gray_panic_code_at(file, line, "P0025", "u128 subtraction result is negative, but u128 cannot hold negative values");
     }
     return gray_u128_sub(a, b);
 }
@@ -696,9 +693,9 @@ static inline gray_u128 gray_u128_mul_checked(gray_u128 a, gray_u128 b, const ch
     bool a_zero = (a.hi == 0 && a.lo == 0);
     bool b_zero = (b.hi == 0 && b.lo == 0);
     if (!a_zero && !b_zero) {
-        gray_u128 check = gray_u128_div(r, b);
+        gray_u128 check = gray_u128_div(r, b, file, line);
         if (!gray_u128_eq(check, a)) {
-            gray_panic_code("P0026", "u128 multiplication result is too large; value exceeds the range of u128");
+            gray_panic_code_at(file, line, "P0026", "u128 multiplication result is too large; value exceeds the range of u128");
         }
     }
     return r;
@@ -710,7 +707,7 @@ static inline gray_i256 gray_i256_add_checked(gray_i256 a, gray_i256 b, const ch
     bool b_neg = gray_i256_is_neg(b);
     bool r_neg = gray_i256_is_neg(r);
     if ((!a_neg && !b_neg && r_neg) || (a_neg && b_neg && !r_neg)) {
-        gray_panic_code("P0027", "i256 addition result is too large; value exceeds the range of i256");
+        gray_panic_code_at(file, line, "P0027", "i256 addition result is too large; value exceeds the range of i256");
     }
     return r;
 }
@@ -721,7 +718,7 @@ static inline gray_i256 gray_i256_sub_checked(gray_i256 a, gray_i256 b, const ch
     bool b_neg = gray_i256_is_neg(b);
     bool r_neg = gray_i256_is_neg(r);
     if ((!a_neg && b_neg && r_neg) || (a_neg && !b_neg && !r_neg)) {
-        gray_panic_code("P0028", "i256 subtraction result is too large; value exceeds the range of i256");
+        gray_panic_code_at(file, line, "P0028", "i256 subtraction result is too large; value exceeds the range of i256");
     }
     return r;
 }
@@ -731,9 +728,9 @@ static inline gray_i256 gray_i256_mul_checked(gray_i256 a, gray_i256 b, const ch
     bool a_zero = (a.w[0] == 0 && a.w[1] == 0 && a.w[2] == 0 && a.w[3] == 0);
     bool b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
     if (!a_zero && !b_zero) {
-        gray_i256 check = gray_i256_div(r, b);
+        gray_i256 check = gray_i256_div(r, b, file, line);
         if (!gray_i256_eq(check, a)) {
-            gray_panic_code("P0029", "i256 multiplication result is too large; value exceeds the range of i256");
+            gray_panic_code_at(file, line, "P0029", "i256 multiplication result is too large; value exceeds the range of i256");
         }
     }
     return r;
@@ -742,14 +739,14 @@ static inline gray_i256 gray_i256_mul_checked(gray_i256 a, gray_i256 b, const ch
 static inline gray_u256 gray_u256_add_checked(gray_u256 a, gray_u256 b, const char *file, int line) {
     gray_u256 r = gray_u256_add(a, b);
     if (gray_u256_lt(r, a)) {
-        gray_panic_code("P0030", "u256 addition result is too large; value exceeds the range of u256");
+        gray_panic_code_at(file, line, "P0030", "u256 addition result is too large; value exceeds the range of u256");
     }
     return r;
 }
 
 static inline gray_u256 gray_u256_sub_checked(gray_u256 a, gray_u256 b, const char *file, int line) {
     if (gray_u256_lt(a, b)) {
-        gray_panic_code("P0031", "u256 subtraction result is negative, but u256 cannot hold negative values");
+        gray_panic_code_at(file, line, "P0031", "u256 subtraction result is negative, but u256 cannot hold negative values");
     }
     return gray_u256_sub(a, b);
 }
@@ -759,9 +756,9 @@ static inline gray_u256 gray_u256_mul_checked(gray_u256 a, gray_u256 b, const ch
     bool a_zero = (a.w[0] == 0 && a.w[1] == 0 && a.w[2] == 0 && a.w[3] == 0);
     bool b_zero = (b.w[0] == 0 && b.w[1] == 0 && b.w[2] == 0 && b.w[3] == 0);
     if (!a_zero && !b_zero) {
-        gray_u256 check = gray_u256_div(r, b);
+        gray_u256 check = gray_u256_div(r, b, file, line);
         if (!gray_u256_eq(check, a)) {
-            gray_panic_code("P0032", "u256 multiplication result is too large; value exceeds the range of u256");
+            gray_panic_code_at(file, line, "P0032", "u256 multiplication result is too large; value exceeds the range of u256");
         }
     }
     return r;
@@ -787,7 +784,7 @@ static inline GrayString gray_u128_to_string(GrayArena *arena, gray_u128 val) {
     gray_u128 v = val;
     while (v.hi != 0 || v.lo != 0) {
         gray_u128 q, rem;
-        gray_u128_divmod(v, ten, &q, &rem);
+        gray_u128_divmod(v, ten, &q, &rem, __FILE__, __LINE__);
         buf[--pos] = '0' + (char)rem.lo;
         v = q;
     }
@@ -832,7 +829,7 @@ static inline GrayString gray_u256_to_string(GrayArena *arena, gray_u256 val) {
     gray_u256 v = val;
     while (v.w[0] != 0 || v.w[1] != 0 || v.w[2] != 0 || v.w[3] != 0) {
         gray_u256 q, rem;
-        gray_u256_divmod(v, ten, &q, &rem);
+        gray_u256_divmod(v, ten, &q, &rem, __FILE__, __LINE__);
         buf[--pos] = '0' + (char)rem.w[0];
         v = q;
     }

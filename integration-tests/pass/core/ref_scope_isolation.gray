@@ -1,0 +1,32 @@
+/*
+ * ref_scope_isolation.gray
+ * ref_vars codegen state must not leak across function boundaries.
+ * A ref() variable in one function must not cause a same-named
+ * plain variable in another function to be incorrectly dereferenced.
+ */
+
+do foo() {
+    mut x int = 1
+    mut r = ref(x)
+}
+
+do bar() {
+    mut r int = 2
+    mut passed int = 0
+    mut failed int = 0
+
+    if r == 2 {
+        println("  [PASS] plain variable 'r' in bar() not affected by ref in foo()")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] r=${r}, expected 2")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}
+
+do main() {
+    bar()
+}

@@ -1,0 +1,72 @@
+/*
+ * ptr_struct_fn_dispatch.gray
+ * Auto-deref for struct function dispatch on pointer types.
+ * Calling p.func() on a ^Struct must auto-dereference for both
+ * value self and &self parameter styles.
+ */
+
+const Point struct {
+    x int
+    y int
+
+    do sum(self Point) -> int {
+        return self.x + self.y
+    }
+
+    do scale(&self Point, factor int) {
+        self.x = self.x * factor
+        self.y = self.y * factor
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: value self through pointer
+    mut p = new(Point)
+    p.x = 3
+    p.y = 4
+    mut r = p.sum()
+    if r == 7 {
+        println("  [PASS] p.sum() auto-derefs pointer for value self")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] p.sum()=${r}, expected 7")
+        failed += 1
+    }
+
+    // Test 2: &self through pointer
+    p.scale(2)
+    if p.x == 6 {
+        println("  [PASS] p.scale() auto-derefs pointer for &self")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] p.x=${p.x}, expected 6")
+        failed += 1
+    }
+
+    // Test 3: non-pointer struct still works (regression)
+    mut v = Point{ x: 1, y: 2 }
+    mut r2 = v.sum()
+    if r2 == 3 {
+        println("  [PASS] v.sum() still works on non-pointer struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] v.sum()=${r2}, expected 3")
+        failed += 1
+    }
+
+    // Test 4: &self on non-pointer struct still works (regression)
+    v.scale(5)
+    if v.x == 5 {
+        println("  [PASS] v.scale() still works on non-pointer struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] v.x=${v.x}, expected 5")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

@@ -139,6 +139,13 @@ typedef struct {
     int scope_arena_count;
     int scope_arena_cap;
 
+    /* Stack of active for_each iteration guards. Each entry holds the C
+     * expression whose .iterating counter was incremented. On early return,
+     * every live guard must be decremented before leaving the function. */
+    char **iter_guards;
+    int iter_guard_count;
+    int iter_guard_cap;
+
     /* Heap-allocated "StructName_funcName" strings patched into AST nodes.
      * Tracked here so codegen_destroy() can free them. */
     char **ns_func_names;

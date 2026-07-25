@@ -32,7 +32,7 @@ This document defines the Grayscale programming language. It serves as the autho
 
 ### 1.2 Overview
 
-Grayscale is a statically-typed programming language that compiles to native binaries via the Grayscale compiler. Inspired by C, Odin, Rust, and Go. The language emphasizes:
+Grayscale is a compiled language where simplicity meets flexibility. Inspired by C, Odin, Rust, and Go. The language emphasizes:
 
 - **Simplicity**: A minimal set of orthogonal features
 - **Clarity**: Explicit syntax that reads naturally

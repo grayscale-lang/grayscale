@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/grayscale-lang/grayscale/internal/grayc"
+	"github.com/grayscale-lang/grayscale/internal/driver"
 )
 
 const (
@@ -169,7 +169,7 @@ func runFmt(args []string, checkMode bool) int {
 			tmp.Write(orig)
 			tmp.Close()
 
-			grayc.Fmt(tmpName)
+			driver.Fmt(tmpName)
 
 			formatted, err := os.ReadFile(tmpName)
 			os.Remove(tmpName)
@@ -188,7 +188,7 @@ func runFmt(args []string, checkMode bool) int {
 		}
 
 		// Normal mode: format in place
-		code, err := grayc.Fmt(path)
+		code, err := driver.Fmt(path)
 		if err != nil || code != 0 {
 			fmt.Fprintf(os.Stderr, "gray fmt: failed to format '%s'\n", path)
 			exit = 1

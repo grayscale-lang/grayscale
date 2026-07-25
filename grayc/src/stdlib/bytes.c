@@ -17,7 +17,7 @@ GrayArray gray_bytes_from_string(GrayArena *arena, GrayString s) {
     GrayArray arr = gray_array_new(arena, sizeof(uint8_t), s.len);
     for (int32_t i = 0; i < s.len; i++) {
         uint8_t b = (uint8_t)s.data[i];
-        gray_array_push(arena, &arr, &b);
+        GRAY_ARRAY_PUSH(arena, &arr, &b);
     }
     return arr;
 }
@@ -33,7 +33,7 @@ GrayArray gray_bytes_from_hex(GrayArena *arena, GrayString hex) {
         unsigned int byte;
         sscanf(hex.data + i * 2, "%02x", &byte);
         uint8_t b = (uint8_t)byte;
-        gray_array_push(arena, &arr, &b);
+        GRAY_ARRAY_PUSH(arena, &arr, &b);
     }
     return arr;
 }

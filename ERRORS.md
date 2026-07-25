@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 368 codes** (250 errors, 17 warnings, 101 panics)
+**Total: 370 codes** (251 errors, 17 warnings, 102 panics)
 
 ---
 
@@ -29,6 +29,7 @@
 | `E1021` | syntax | unclosed string; add a closing double quote |
 | `E1022` | syntax | unexpected character |
 | `E1023` | syntax | string literals cannot span multiple lines; use a raw string with backticks for multi-line text |
+| `E1024` | syntax | identifier exceeds the maximum length of 255 characters |
 | `E2001` | syntax | unexpected symbol |
 | `E2002` | syntax | missing symbol; expected a bracket, parenthesis, or keyword |
 | `E2010` | syntax | cannot use module '%s' before importing it; add 'import @%s' before the using statement |
@@ -259,7 +260,7 @@
 | `E12001` | stdlib | maps.%s() requires a map argument, got an array |
 | `E12006` | stdlib | duplicate key in map literal |
 | `E12007` | stdlib | maps.contains_value() does not support maps with %s values; only primitive and string value types are supported |
-| `E8001` | bitwise | '%s' can only be used with integers; got '%s' and '%s' |
+| `E8001` | bitwise | '%s' can only be used with integers or #flags enums; got '%s' and '%s' |
 | `E8002` | bitwise | 'bit_not' can only be used with integers; got '%s' |
 
 ---
@@ -395,6 +396,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0099` | arithmetic | cast from u256 failed; value exceeds the representable range of int64 |
 | `P0100` | arithmetic | cast from u256 failed; value exceeds the representable range of uint64 |
 | `P0101` | server | server.cors: origin contains CR or LF — HTTP header injection is not allowed |
+| `P0102` | arithmetic | invalid digit in integer literal |
 
 ---
 
@@ -419,4 +421,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-23 08:18:17 UTC*
+*Generated on 2026-07-25 01:14:42 UTC*
