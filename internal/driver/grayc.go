@@ -28,6 +28,7 @@ import (
 func Find() (string, error) {
 	// 1. Explicit override
 	if p := os.Getenv("GRAY_COMPILER_PATH"); p != "" && statFile(p) {
+		fmt.Fprintf(os.Stderr, "note: using compiler from GRAY_COMPILER_PATH=%s\n", p)
 		return p, nil
 	}
 
