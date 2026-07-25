@@ -36,8 +36,8 @@
 - **Readable syntax** — `for_each`, `as_long_as`(alias is `while`), `if`/`or`/`otherwise`(alias is `else`), `when`/`is`, `in`/`not_in`(alias is `!in`), `or_return`, `ensure`, `bit_and`/`bit_or`/`bit_xor`, etc.
 - **Versatility through simplicity** — Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **A compiler that works **for** the programmer** — Clear error messages, a built-in formatter, live reloading, and built-in language and stdlib docs via `gray man`. When questions arise, Grayscale provides the answers.
-- **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, overflow-checked math, nil protection, **NO** pointer arithmetic. The guardrails are on unless you explicitly take them off with the `@mem` stdlib module
 
+- **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly take them off with the `@mem` or `@threads` stdlib modules
 ---
 
 ## The Standard Library
