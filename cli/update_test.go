@@ -31,6 +31,9 @@ func TestParseSemver(t *testing.T) {
 		// Missing components default to 0
 		{"v2.1", 2, 1, 0, ""},
 		{"v2", 2, 0, 0, ""},
+		// Release-please component prefix (grayscale-v*)
+		{"grayscale-v0.1.1", 0, 1, 1, ""},
+		{"grayscale-v0.2.0-rc.1", 0, 2, 0, "rc.1"},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
@@ -81,6 +84,10 @@ func TestCompareSemver(t *testing.T) {
 		// Git-describe trailer must not affect ordering
 		{"v3.0.0-beta.2-4-g0cbcb58-dirty", "v3.0.0-beta.2", 0},
 		{"v3.0.0-beta.2-4-g0cbcb58", "v3.0.0-beta.1", 1},
+
+		// Release-please component prefix (grayscale-v*)
+		{"grayscale-v0.1.1", "grayscale-v0.1.0", 1},
+		{"grayscale-v0.1.0", "v0.1.0", 0}, // prefix-stripped tags compare equal
 	}
 	for _, c := range cases {
 		t.Run(c.a+"_vs_"+c.b, func(t *testing.T) {
@@ -128,8 +135,8 @@ func TestPickLatestPrerelease(t *testing.T) {
 
 	t.Run("no prereleases", func(t *testing.T) {
 		rels := []GitHubRelease{
-			{TagName: "v3.0.0", Prerelease: false},
-			{TagName: "v2.9.0", Prerelease: false},
+			{TagName: "grayscale-v0.1.0", Prerelease: false},
+			{TagName: "grayscale-v0.0.9", Prerelease: false},
 		}
 		if got := pickLatestPrerelease(rels); got != nil {
 			t.Errorf("want nil, got %+v", got)
@@ -138,26 +145,26 @@ func TestPickLatestPrerelease(t *testing.T) {
 
 	t.Run("picks highest semver prerelease", func(t *testing.T) {
 		rels := []GitHubRelease{
-			{TagName: "v3.0.0", Prerelease: false},
-			{TagName: "v3.0.0-beta.1", Prerelease: true},
-			{TagName: "v3.1.0-beta.2", Prerelease: true},
-			{TagName: "v3.0.0-beta.10", Prerelease: true},
-			{TagName: "v3.0.0-beta.2", Prerelease: true},
+			{TagName: "grayscale-v0.2.0", Prerelease: false},
+			{TagName: "grayscale-v0.2.0-beta.1", Prerelease: true},
+			{TagName: "grayscale-v0.3.0-beta.2", Prerelease: true},
+			{TagName: "grayscale-v0.2.0-beta.10", Prerelease: true},
+			{TagName: "grayscale-v0.2.0-beta.2", Prerelease: true},
 		}
 		got := pickLatestPrerelease(rels)
-		if got == nil || got.TagName != "v3.1.0-beta.2" {
-			t.Errorf("want v3.1.0-beta.2, got %+v", got)
+		if got == nil || got.TagName != "grayscale-v0.3.0-beta.2" {
+			t.Errorf("want grayscale-v0.3.0-beta.2, got %+v", got)
 		}
 	})
 
 	t.Run("ignores stable entries when picking prerelease", func(t *testing.T) {
 		rels := []GitHubRelease{
-			{TagName: "v4.0.0", Prerelease: false},
-			{TagName: "v3.0.0-beta.2", Prerelease: true},
+			{TagName: "grayscale-v1.0.0", Prerelease: false},
+			{TagName: "grayscale-v0.2.0-beta.2", Prerelease: true},
 		}
 		got := pickLatestPrerelease(rels)
-		if got == nil || got.TagName != "v3.0.0-beta.2" {
-			t.Errorf("want v3.0.0-beta.2, got %+v", got)
+		if got == nil || got.TagName != "grayscale-v0.2.0-beta.2" {
+			t.Errorf("want grayscale-v0.2.0-beta.2, got %+v", got)
 		}
 	})
 }
@@ -222,6 +229,9 @@ func TestNormalizeTag(t *testing.T) {
 		// Only one leading v is stripped — defensive
 		{"vv3.0.0", "v3.0.0"},
 		{"", ""},
+		// Release-please component prefix
+		{"grayscale-v0.1.1", "0.1.1"},
+		{"grayscale-v0.2.0-rc.1", "0.2.0-rc.1"},
 	}
 	for _, c := range cases {
 		t.Run(c.in, func(t *testing.T) {
