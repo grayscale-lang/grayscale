@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.1.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.0...grayscale-v0.1.1) (2026-07-25)
+
+
+### Bug Fixes
+
+* **codegen:** decrement .iterating guard on early return from for_each ([#2163](https://github.com/grayscale-lang/grayscale/issues/2163)) ([ff2581d](https://github.com/grayscale-lang/grayscale/commit/ff2581deb20841ac019003d1225a03e2364f3606))
+* **codegen:** scope ref_vars and bigint_vars per function to prevent cross-function leaks ([#2142](https://github.com/grayscale-lang/grayscale/issues/2142)) ([6e59b16](https://github.com/grayscale-lang/grayscale/commit/6e59b16582917d0b3aa69ef26e7c7128577ee7bd))
+* **codegen:** use 64-bit shift for flags enum bit values ([#2186](https://github.com/grayscale-lang/grayscale/issues/2186)) ([04facce](https://github.com/grayscale-lang/grayscale/commit/04faccebc2868641a2d2c429ade4ec93de22d798))
+* **lexer:** cap identifier length at 255 characters ([#2182](https://github.com/grayscale-lang/grayscale/issues/2182)) ([eef5f87](https://github.com/grayscale-lang/grayscale/commit/eef5f87bc1525836af4b238d04cad51cf0ca0bf7))
+* **lexer:** saturate line and column counters at INT_MAX ([#2183](https://github.com/grayscale-lang/grayscale/issues/2183)) ([1209418](https://github.com/grayscale-lang/grayscale/commit/1209418dedcfc93ac0f879ed7cafe73d867ba4fa))
+* **parser:** add recursion depth limit for block statement nesting ([#2168](https://github.com/grayscale-lang/grayscale/issues/2168)) ([738a388](https://github.com/grayscale-lang/grayscale/commit/738a3885ab9ea68f71afd860d5f731c9d44fde50))
+* **parser:** cap array type nesting depth at 64 levels ([#2169](https://github.com/grayscale-lang/grayscale/issues/2169)) ([3101a8f](https://github.com/grayscale-lang/grayscale/commit/3101a8f82dea7d5cfb0e02ca42c7b81b46cbd772))
+* **parser:** replace strdup with arena allocation in error paths ([#2184](https://github.com/grayscale-lang/grayscale/issues/2184)) ([a92d62f](https://github.com/grayscale-lang/grayscale/commit/a92d62ff9fde4ed28166d3accc324988c4260c1d))
+* **runtime:** correct 256-bit subtraction borrow propagation ([#2192](https://github.com/grayscale-lang/grayscale/issues/2192)) ([5a77320](https://github.com/grayscale-lang/grayscale/commit/5a77320ec3bd0a306c063b45cc79c076286f4a31))
+* **runtime:** include source location in runtime panics ([#2188](https://github.com/grayscale-lang/grayscale/issues/2188)) ([714accf](https://github.com/grayscale-lang/grayscale/commit/714accfe0a21931a2c814aabd2e8e212025f6ffa))
+* **runtime:** panic on wide integer division by zero ([#2178](https://github.com/grayscale-lang/grayscale/issues/2178)) ([7056543](https://github.com/grayscale-lang/grayscale/commit/7056543dc7f7f8d9f4648eb04038dfe6a3a97e4d))
+* **runtime:** prevent int32 overflow in array capacity doubling ([#2166](https://github.com/grayscale-lang/grayscale/issues/2166)) ([c16947b](https://github.com/grayscale-lang/grayscale/commit/c16947b3d6ce01e49e15be1fb0e31ac441af31bd))
+* **runtime:** prevent size_t overflow in arena allocation check ([#2171](https://github.com/grayscale-lang/grayscale/issues/2171)) ([5001941](https://github.com/grayscale-lang/grayscale/commit/50019413f4818cb000c485d90f1eecfd7c2c9295))
+* **runtime:** validate digits in bigint decimal parser ([#2179](https://github.com/grayscale-lang/grayscale/issues/2179)) ([9ded657](https://github.com/grayscale-lang/grayscale/commit/9ded657ebfd2a1593e7d561982dd83b20670cee7))
+* **typechecker:** allow bitwise operators on #flags enums ([#2133](https://github.com/grayscale-lang/grayscale/issues/2133)) ([a57e764](https://github.com/grayscale-lang/grayscale/commit/a57e764954ec33329e2e042f8181f8950e326ac9))
+* **typechecker:** auto-deref pointer receivers for struct function dispatch ([#2131](https://github.com/grayscale-lang/grayscale/issues/2131)) ([889be08](https://github.com/grayscale-lang/grayscale/commit/889be0838463c699a006b9e3a82434ad79e70e02))
+
+
+### Performance Improvements
+
+* **codegen:** single categorization pass over program statements ([#2148](https://github.com/grayscale-lang/grayscale/issues/2148)) ([4a0ffc6](https://github.com/grayscale-lang/grayscale/commit/4a0ffc6d66f82815aa6f4634945e93be70be6cd3))
+* **parser:** remove prescan that double-lexed entire source file ([#2143](https://github.com/grayscale-lang/grayscale/issues/2143)) ([cc102eb](https://github.com/grayscale-lang/grayscale/commit/cc102eb7a36ce80e675b404f0ef37ae059bb4a3f))
+* **typechecker:** table-driven stdlib return type resolution ([#2145](https://github.com/grayscale-lang/grayscale/issues/2145)) ([6b5c27c](https://github.com/grayscale-lang/grayscale/commit/6b5c27cf2459bc5f850cd5ab420d21f29eea0f1f))
+
+
+### Documentation
+
+* regenerate ERRORS.md from error_codes.h ([57b2e2b](https://github.com/grayscale-lang/grayscale/commit/57b2e2be4f67a6846948bd390d5312083d813ecb))
+* regenerate ERRORS.md from error_codes.h ([1139ae5](https://github.com/grayscale-lang/grayscale/commit/1139ae56a4911b97a91b3c4ccf7a4b42ff53f3d9))
+* update CONTRIBUTING.md project structure to reflect current layout ([04b6580](https://github.com/grayscale-lang/grayscale/commit/04b6580ed9c76e07218cdbe7713edc9bf9ba2bd1))
+* update tagline ([5c2f4f6](https://github.com/grayscale-lang/grayscale/commit/5c2f4f6ed3282ee5547bbd72908a250e17a68ac5))
+
 ## [0.1.0](https://github.com/grayscale-lang/grayscale/compare/v0.0.4...v0.1.0) (2026-07-23)
 
 
