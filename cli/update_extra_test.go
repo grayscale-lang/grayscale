@@ -40,19 +40,19 @@ func TestIsVersionInRange(t *testing.T) {
 
 func TestGetReleasesInRange(t *testing.T) {
 	releases := []GitHubRelease{
-		{TagName: "v3.0.0"},
-		{TagName: "v3.0.1"},
-		{TagName: "v3.0.2"},
-		{TagName: "v3.1.0"},
-		{TagName: "v2.9.9"},
+		{TagName: "grayscale-v0.1.0"},
+		{TagName: "grayscale-v0.1.1"},
+		{TagName: "grayscale-v0.1.2"},
+		{TagName: "grayscale-v0.2.0"},
+		{TagName: "grayscale-v0.0.4"},
 	}
 
-	got := getReleasesInRange(releases, "v3.0.0", "v3.0.2")
+	got := getReleasesInRange(releases, "grayscale-v0.1.0", "grayscale-v0.1.2")
 	if len(got) != 2 {
-		t.Fatalf("expected 2 releases in (v3.0.0, v3.0.2], got %d: %v", len(got), got)
+		t.Fatalf("expected 2 releases in (grayscale-v0.1.0, grayscale-v0.1.2], got %d: %v", len(got), got)
 	}
 	tags := []string{got[0].TagName, got[1].TagName}
-	for _, want := range []string{"v3.0.1", "v3.0.2"} {
+	for _, want := range []string{"grayscale-v0.1.1", "grayscale-v0.1.2"} {
 		found := false
 		for _, tag := range tags {
 			if tag == want {
@@ -66,8 +66,8 @@ func TestGetReleasesInRange(t *testing.T) {
 }
 
 func TestGetReleasesInRange_Empty(t *testing.T) {
-	releases := []GitHubRelease{{TagName: "v3.0.0"}}
-	got := getReleasesInRange(releases, "v3.0.0", "v3.0.0")
+	releases := []GitHubRelease{{TagName: "grayscale-v0.1.0"}}
+	got := getReleasesInRange(releases, "grayscale-v0.1.0", "grayscale-v0.1.0")
 	if len(got) != 0 {
 		t.Errorf("expected empty, got %v", got)
 	}
@@ -82,8 +82,8 @@ func TestPickLatestStable(t *testing.T) {
 
 	t.Run("only prereleases", func(t *testing.T) {
 		rels := []GitHubRelease{
-			{TagName: "v3.0.0-beta.1", Prerelease: true},
-			{TagName: "v3.0.0-rc.1", Prerelease: true},
+			{TagName: "grayscale-v0.2.0-beta.1", Prerelease: true},
+			{TagName: "grayscale-v0.2.0-rc.1", Prerelease: true},
 		}
 		if got := pickLatestStable(rels); got != nil {
 			t.Errorf("want nil for prerelease-only list, got %+v", got)
@@ -92,14 +92,14 @@ func TestPickLatestStable(t *testing.T) {
 
 	t.Run("picks highest stable", func(t *testing.T) {
 		rels := []GitHubRelease{
-			{TagName: "v3.0.0", Prerelease: false},
-			{TagName: "v3.1.0", Prerelease: false},
-			{TagName: "v3.2.0-beta.1", Prerelease: true},
-			{TagName: "v2.9.9", Prerelease: false},
+			{TagName: "grayscale-v0.1.0", Prerelease: false},
+			{TagName: "grayscale-v0.1.1", Prerelease: false},
+			{TagName: "grayscale-v0.2.0-beta.1", Prerelease: true},
+			{TagName: "grayscale-v0.0.4", Prerelease: false},
 		}
 		got := pickLatestStable(rels)
-		if got == nil || got.TagName != "v3.1.0" {
-			t.Errorf("want v3.1.0, got %+v", got)
+		if got == nil || got.TagName != "grayscale-v0.1.1" {
+			t.Errorf("want grayscale-v0.1.1, got %+v", got)
 		}
 	})
 }

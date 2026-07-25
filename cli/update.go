@@ -53,6 +53,7 @@ const (
 	checkTimeout         = 2 * time.Second
 	maxChangelogVersions = 10        // Maximum number of versions to show in changelog
 	maxDownloadBytes     = 256 << 20 // 256 MiB upper bound on release archive size
+	releaseTagPrefix     = "grayscale-"
 )
 
 // getUpdateStatePath returns the path to the update state file
@@ -184,6 +185,7 @@ func GetVersionInfo() VersionInfo {
 // the pre-release label is stripped back to the real identifier so a local
 // dev build still orders correctly against upstream tags.
 func parseSemver(v string) (major, minor, patch int, pre string) {
+	v = strings.TrimPrefix(v, releaseTagPrefix)
 	v = strings.TrimPrefix(v, "v")
 	// Drop +build metadata
 	if i := strings.Index(v, "+"); i != -1 {
@@ -367,7 +369,16 @@ func fetchAllReleases(ctx context.Context) ([]GitHubRelease, error) {
 		return nil, err
 	}
 
-	return releases, nil
+	// Filter to only Grayscale-era releases (grayscale-v* tags) so that
+	// legacy EZ releases (v1.x–v3.x) are excluded from version discovery.
+	filtered := releases[:0]
+	for _, r := range releases {
+		if strings.HasPrefix(r.TagName, releaseTagPrefix) {
+			filtered = append(filtered, r)
+		}
+	}
+
+	return filtered, nil
 }
 
 // pickLatestPrerelease scans a release list (as returned by /releases) and
@@ -820,6 +831,7 @@ func runUpdate(confirm bool, url string, pre bool) error {
 // normalizeTag strips a single leading 'v' so user input and GitHub tag
 // names (which may or may not be prefixed) compare cleanly.
 func normalizeTag(v string) string {
+	v = strings.TrimPrefix(v, releaseTagPrefix)
 	return strings.TrimPrefix(v, "v")
 }
 
