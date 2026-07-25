@@ -1186,24 +1186,30 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         break;
 
     case NODE_INTERPOLATED_STRING: {
-        emit(codegen, "gray_string_format(gray_default_arena, \"");
-        /* First pass: emit format string */
-        for (int i = 0; i < node->data.interpolated_string.part_count; i++) {
+        /* Emit as chained gray_string_concat() calls instead of gray_string_format()
+         * to preserve null bytes in string values (gray_string_format uses vsnprintf
+         * which truncates at \0). gray_string_concat is null-safe (uses memcpy). */
+        int part_count = node->data.interpolated_string.part_count;
+        if (part_count == 0) {
+            emit(codegen, "gray_string_lit(\"\")");
+            break;
+        }
+        /* Emit N-1 opening gray_string_concat calls for left-associative chaining:
+         * concat(arena, concat(arena, part0, part1), part2) */
+        for (int i = 1; i < part_count; i++) {
+            emit(codegen, "gray_string_concat(gray_default_arena, ");
+        }
+        /* Emit each part as a GrayString expression */
+        for (int i = 0; i < part_count; i++) {
+            if (i > 0) emit(codegen, ", ");
             AstNode *part = node->data.interpolated_string.parts[i];
             if (part->kind == NODE_STRING_VALUE) {
-                const char *s = part->data.string_value.value;
-                while (*s) {
-                    if (*s == '%') append_string_to_buffer(&codegen->output, "%%");
-                    else if (s[0] == '\\' && s[1] == '$') { append_char_to_buffer(&codegen->output, '$'); s++; }
-                    else append_char_to_buffer(&codegen->output, *s);
-                    s++;
-                }
+                /* Literal text — reuses NODE_STRING_VALUE codegen (null-safe) */
+                emit_expression(codegen, part);
             } else {
-                /* Use type table to determine format specifier */
+                /* Expression — resolve type and emit as GrayString */
                 GrayType *part_type = codegen->type_table ? typetable_get(codegen->type_table, part) : NULL;
                 TypeKind tk = part_type ? part_type->kind : TK_UNKNOWN;
-
-                /* Fall back to AST-based inference if no type info */
                 if (tk == TK_UNKNOWN) {
                     if (codegen->wildcard_binding) {
                         GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
@@ -1214,160 +1220,104 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     if (part->kind == NODE_FLOAT_VALUE) tk = TK_FLOAT;
                     else if (part->kind == NODE_BOOL_VALUE) tk = TK_BOOL;
                     else if (part->kind == NODE_STRING_VALUE) tk = TK_STRING;
-                    else tk = TK_INT; /* default integer kind */
+                    else tk = TK_INT;
                 }
 
-                /* Check for bigint types; format as %s (use to_string) */
-                const char *bi_interp = resolve_bigint_type(codegen, part);
-                if (bi_interp) {
-                    emit(codegen, "%s");
+                const char *bi = resolve_bigint_type(codegen, part);
+                if (bi) {
+                    emit_formatted(codegen, "%s_to_string(gray_default_arena, ", bigint_prefix(bi));
+                    emit_expression(codegen, part);
+                    emit(codegen, ")");
                 } else switch (tk) {
-                case TK_STRING: emit(codegen, "%s"); break;
-                case TK_FLOAT:  emit(codegen, "%s"); break; /* uses gray_builtin_format_float */
-                case TK_BOOL:   emit(codegen, "%s"); break;
-                case TK_CHAR:   emit(codegen, "%s"); break;
-                case TK_ARRAY:  emit(codegen, "%s"); break;
-                case TK_MAP:    emit(codegen, "%s"); break;
-                case TK_ERROR:  emit(codegen, "%s"); break;
+                case TK_STRING:
+                    emit_expression(codegen, part);
+                    break;
+                case TK_BOOL:
+                    emit(codegen, "(");
+                    emit_expression(codegen, part);
+                    emit(codegen, ") ? gray_string_lit(\"true\") : gray_string_lit(\"false\")");
+                    break;
+                case TK_FLOAT:
+                    emit(codegen, "gray_builtin_format_float(gray_default_arena, ");
+                    emit_expression(codegen, part);
+                    emit(codegen, ")");
+                    break;
+                case TK_CHAR:
+                    emit(codegen, "gray_builtin_char_to_utf8(gray_default_arena, ");
+                    emit_expression(codegen, part);
+                    emit(codegen, ")");
+                    break;
+                case TK_ARRAY: {
+                    int ek = 0;
+                    if (part_type && part_type->element_type) {
+                        GrayType *et = type_from_name(part_type->element_type);
+                        if (et->kind == TK_FLOAT) ek = 1;
+                        else if (et->kind == TK_STRING) ek = 2;
+                        else if (et->kind == TK_BOOL) ek = 3;
+                        else if (et->kind == TK_UINT) ek = 4;
+                        else if (et->kind == TK_BYTE) ek = 5;
+                        else if (et->kind == TK_CHAR) ek = 6;
+                    }
+                    emit_formatted(codegen, "({ GrayArray _interp_arr = ");
+                    emit_expression(codegen, part);
+                    emit_formatted(codegen, "; gray_builtin_array_to_string(gray_default_arena, &_interp_arr, %d); })", ek);
+                    break;
+                }
+                case TK_MAP: {
+                    int vk = 0;
+                    if (part_type && part_type->value_type) {
+                        GrayType *vt = type_from_name(part_type->value_type);
+                        if (vt->kind == TK_FLOAT) vk = 1;
+                        else if (vt->kind == TK_STRING) vk = 2;
+                        else if (vt->kind == TK_BOOL) vk = 3;
+                        else if (vt->kind == TK_UINT) vk = 4;
+                        else if (vt->kind == TK_BYTE) vk = 5;
+                        else if (vt->kind == TK_CHAR) vk = 6;
+                    }
+                    emit_formatted(codegen, "({ GrayMap _interp_map = ");
+                    emit_expression(codegen, part);
+                    emit_formatted(codegen, "; gray_builtin_map_to_string(gray_default_arena, &_interp_map, %d); })", vk);
+                    break;
+                }
+                case TK_ERROR:
+                    emit_expression(codegen, part);
+                    emit(codegen, " ? ");
+                    emit_expression(codegen, part);
+                    emit(codegen, "->message : gray_string_lit(\"nil\")");
+                    break;
+                case TK_UINT:
+                    emit(codegen, "gray_string_format(gray_default_arena, \"%llu\", (unsigned long long)(");
+                    emit_expression(codegen, part);
+                    emit(codegen, "))");
+                    break;
                 case TK_STRUCT:
-                    if (part_type && part_type->name && strcmp(part_type->name, "UUID") == 0)
-                        emit(codegen, "%s");
-                    else
-                        emit(codegen, "%lld");
+                    if (part_type && part_type->name && strcmp(part_type->name, "UUID") == 0) {
+                        emit_expression(codegen, part);
+                        emit(codegen, ".value");
+                    } else {
+                        emit(codegen, "gray_string_format(gray_default_arena, \"%lld\", (long long)(");
+                        emit_expression(codegen, part);
+                        emit(codegen, "))");
+                    }
                     break;
                 case TK_ENUM:
-                    if (part_type && part_type->name && codegen_enum_is_string(codegen, part_type->name))
-                        emit(codegen, "%s");
-                    else
-                        emit(codegen, "%lld");
+                    if (part_type && part_type->name && codegen_enum_is_string(codegen, part_type->name)) {
+                        emit_expression(codegen, part);
+                    } else {
+                        emit(codegen, "gray_string_format(gray_default_arena, \"%lld\", (long long)(");
+                        emit_expression(codegen, part);
+                        emit(codegen, "))");
+                    }
                     break;
-                case TK_UINT:   emit(codegen, "%llu"); break;
-                default:        emit(codegen, "%lld"); break;
+                default:
+                    emit(codegen, "gray_string_format(gray_default_arena, \"%lld\", (long long)(");
+                    emit_expression(codegen, part);
+                    emit(codegen, "))");
+                    break;
                 }
             }
+            if (i > 0) emit(codegen, ")");
         }
-        emit(codegen, "\"");
-        /* Second pass: emit arguments */
-        for (int i = 0; i < node->data.interpolated_string.part_count; i++) {
-            AstNode *part = node->data.interpolated_string.parts[i];
-            if (part->kind == NODE_STRING_VALUE) continue;
-            emit(codegen, ", ");
-
-            GrayType *part_type = codegen->type_table ? typetable_get(codegen->type_table, part) : NULL;
-            TypeKind tk = part_type ? part_type->kind : TK_UNKNOWN;
-            if (tk == TK_UNKNOWN) {
-                if (codegen->wildcard_binding) {
-                    GrayType *wildcard_type = type_from_name(codegen->wildcard_binding);
-                    if (wildcard_type) { tk = wildcard_type->kind; part_type = wildcard_type; }
-                }
-            }
-            if (tk == TK_UNKNOWN) {
-                if (part->kind == NODE_FLOAT_VALUE) tk = TK_FLOAT;
-                else if (part->kind == NODE_BOOL_VALUE) tk = TK_BOOL;
-                else if (part->kind == NODE_STRING_VALUE) tk = TK_STRING;
-                else tk = TK_INT; /* default integer kind */
-            }
-
-            /* Check for bigint types; use to_string */
-            const char *bi_arg = resolve_bigint_type(codegen, part);
-            if (bi_arg) {
-                emit_formatted(codegen, "%s_to_string(gray_default_arena, ", bigint_prefix(bi_arg));
-                emit_expression(codegen, part);
-                emit(codegen, ").data");
-            } else switch (tk) {
-            case TK_STRING:
-                emit_expression(codegen, part);
-                emit(codegen, ".data");
-                break;
-            case TK_BOOL:
-                emit(codegen, "(");
-                emit_expression(codegen, part);
-                emit(codegen, ") ? \"true\" : \"false\"");
-                break;
-            case TK_FLOAT:
-                emit(codegen, "gray_builtin_format_float(gray_default_arena, ");
-                emit_expression(codegen, part);
-                emit(codegen, ").data");
-                break;
-            case TK_CHAR:
-                emit(codegen, "gray_builtin_char_to_utf8(gray_default_arena, ");
-                emit_expression(codegen, part);
-                emit(codegen, ").data");
-                break;
-            case TK_ARRAY: {
-                /* Determine element kind: 0=int, 1=float, 2=string, 3=bool, 4=uint, 5=byte, 6=char */
-                int ek = 0;
-                if (part_type && part_type->element_type) {
-                    GrayType *et = type_from_name(part_type->element_type);
-                    if (et->kind == TK_FLOAT) ek = 1;
-                    else if (et->kind == TK_STRING) ek = 2;
-                    else if (et->kind == TK_BOOL) ek = 3;
-                    else if (et->kind == TK_UINT) ek = 4;
-                    else if (et->kind == TK_BYTE) ek = 5;
-                    else if (et->kind == TK_CHAR) ek = 6;
-                }
-                emit_formatted(codegen, "({ GrayArray _interp_arr = ");
-                emit_expression(codegen, part);
-                emit_formatted(codegen, "; gray_builtin_array_to_string(gray_default_arena, &_interp_arr, %d); }).data", ek);
-                break;
-            }
-            case TK_MAP: {
-                /* Determine value kind: 0=int, 1=float, 2=string, 3=bool, 4=uint, 5=byte, 6=char */
-                int vk = 0;
-                if (part_type && part_type->value_type) {
-                    GrayType *vt = type_from_name(part_type->value_type);
-                    if (vt->kind == TK_FLOAT) vk = 1;
-                    else if (vt->kind == TK_STRING) vk = 2;
-                    else if (vt->kind == TK_BOOL) vk = 3;
-                    else if (vt->kind == TK_UINT) vk = 4;
-                    else if (vt->kind == TK_BYTE) vk = 5;
-                    else if (vt->kind == TK_CHAR) vk = 6;
-                }
-                emit_formatted(codegen, "({ GrayMap _interp_map = ");
-                emit_expression(codegen, part);
-                emit_formatted(codegen, "; gray_builtin_map_to_string(gray_default_arena, &_interp_map, %d); }).data", vk);
-                break;
-            }
-            case TK_ERROR:
-                /* Print error message */
-                emit_expression(codegen, part);
-                emit(codegen, " ? ");
-                emit_expression(codegen, part);
-                emit(codegen, "->message.data : \"nil\"");
-                break;
-            case TK_UINT:
-                emit(codegen, "(unsigned long long)(");
-                emit_expression(codegen, part);
-                emit(codegen, ")");
-                break;
-            case TK_STRUCT:
-                if (part_type && part_type->name && strcmp(part_type->name, "UUID") == 0) {
-                    emit_expression(codegen, part);
-                    emit(codegen, ".value.data");
-                } else {
-                    emit(codegen, "(long long)(");
-                    emit_expression(codegen, part);
-                    emit(codegen, ")");
-                }
-                break;
-            case TK_ENUM:
-                if (part_type && part_type->name && codegen_enum_is_string(codegen, part_type->name)) {
-                    emit_expression(codegen, part);
-                    emit(codegen, ".data");
-                } else {
-                    emit(codegen, "(long long)(");
-                    emit_expression(codegen, part);
-                    emit(codegen, ")");
-                }
-                break;
-            default:
-                emit(codegen, "(long long)(");
-                emit_expression(codegen, part);
-                emit(codegen, ")");
-                break;
-            }
-        }
-        emit(codegen, ")");
         break;
     }
 
