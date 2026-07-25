@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.2...grayscale-v0.1.3) (2026-07-25)
+
+
+### Documentation
+
+* Add EZ to Grayscale migration instructions ([361e43f](https://github.com/grayscale-lang/grayscale/commit/361e43f77c66b2d7395023fcf576094444725239))
+* Update README ([83f27e9](https://github.com/grayscale-lang/grayscale/commit/83f27e93358dbd8eb442ceeda4f039dbb6e0a812))
+
 ## [0.1.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.1...grayscale-v0.1.2) (2026-07-25)
 
 
