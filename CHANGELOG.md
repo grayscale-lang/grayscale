@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.1...grayscale-v0.1.2) (2026-07-25)
+
+
+### Bug Fixes
+
+* **cli:** filter releases to grayscale-v* tags, excluding legacy EZ releases ([e3805ce](https://github.com/grayscale-lang/grayscale/commit/e3805ce85040e92ed66499abca72fa2151f5779c))
+* **cli:** filter releases to grayscale-v* tags, excluding legacy EZ releases ([#2201](https://github.com/grayscale-lang/grayscale/issues/2201)) ([05636ae](https://github.com/grayscale-lang/grayscale/commit/05636aea32add6fb7983d8abf90964b05927b46e))
+
 ## [0.1.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.0...grayscale-v0.1.1) (2026-07-25)
 
 
