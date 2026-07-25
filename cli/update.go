@@ -1013,7 +1013,7 @@ func downloadAndInstall(downloadURL string) error {
 		return fmt.Errorf("permission denied. Please run as Administrator")
 	}
 	fmt.Println("Root permissions required. Running with sudo...")
-	cmd := exec.Command("sudo", os.Args[0], "update", "--confirm", downloadURL)
+	cmd := exec.Command("sudo", execPath, "update", "--confirm", downloadURL)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
