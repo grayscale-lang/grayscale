@@ -217,7 +217,7 @@ static const char *parse_complex_type(Parser *parser) {
                 depth++;
                 if (depth > 64) {
                     diagnostic_error_message(parser->diag, "E2001",
-                        strdup("type nesting is too deep; maximum depth is 64"),
+                        arena_copy_string(parser->arena,"type nesting is too deep; maximum depth is 64"),
                         parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                     return NULL;
                 }
@@ -1174,7 +1174,7 @@ static AstNode *parse_expression(Parser *parser, Precedence prec) {
     parser->depth++;
     if (parser->depth > MAX_PARSE_DEPTH) {
         diagnostic_error_message(parser->diag, "E2001",
-            strdup("expression is nested too deeply; maximum depth is 256"),
+            arena_copy_string(parser->arena,"expression is nested too deeply; maximum depth is 256"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         parser->depth--;
         return NULL;
@@ -1544,7 +1544,7 @@ static AstNode *parse_block_statement(Parser *parser) {
     parser->depth++;
     if (parser->depth > MAX_PARSE_DEPTH) {
         diagnostic_error_message(parser->diag, "E2001",
-            strdup("block is nested too deeply; maximum depth is 256"),
+            arena_copy_string(parser->arena,"block is nested too deeply; maximum depth is 256"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         parser->depth--;
         return NULL;
@@ -1977,7 +1977,7 @@ static AstNode *parse_import_statement(Parser *parser) {
         if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_AT)) {
             if (strcmp(parser->cur_token.literal, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    strdup("'c' is reserved for C interop; choose a different alias"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; choose a different alias"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
             item->alias = parser->cur_token.literal;
@@ -2019,7 +2019,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             /* Reject 'c' as a module name; reserved for C interop */
             if (item->alias && strcmp(item->alias, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    strdup("'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
         } else if (current_token_is(parser, TOK_IDENT)) {
@@ -2100,7 +2100,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     /* Reject inline struct declarations; fields must be on separate lines */
     if (parser->cur_token.line == brace_line && !current_token_is(parser, TOK_RBRACE)) {
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("struct fields must be on separate lines; inline struct declarations are not allowed"),
+            arena_copy_string(parser->arena,"struct fields must be on separate lines; inline struct declarations are not allowed"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
     }
 
@@ -2209,7 +2209,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* E2002: multiple fields on the same line */
         if (prev_field_line >= 0 && parser->cur_token.line == prev_field_line) {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("struct fields must be on separate lines"),
+                arena_copy_string(parser->arena,"struct fields must be on separate lines"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         prev_field_line = parser->cur_token.line;
@@ -2311,7 +2311,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Reject semicolons */
         if (current_token_is(parser, TOK_SEMICOLON)) {
             diagnostic_error_message(parser->diag, "E2069",
-                strdup("semicolons are not used; put each struct field on its own line"),
+                arena_copy_string(parser->arena,"semicolons are not used; put each struct field on its own line"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
         }
@@ -2335,7 +2335,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     /* Reject inline enum declarations; variants must be on separate lines */
     if (parser->cur_token.line == enum_brace_line && !current_token_is(parser, TOK_RBRACE)) {
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("enum variants must be on separate lines; inline enum declarations are not allowed"),
+            arena_copy_string(parser->arena,"enum variants must be on separate lines; inline enum declarations are not allowed"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
     }
 
@@ -2432,7 +2432,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* E2002: multiple variants on the same line */
         if (prev_variant_line >= 0 && parser->cur_token.line == prev_variant_line) {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("enum variants must be on separate lines"),
+                arena_copy_string(parser->arena,"enum variants must be on separate lines"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         prev_variant_line = parser->cur_token.line;
@@ -2486,7 +2486,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Reject semicolons */
         if (current_token_is(parser, TOK_SEMICOLON)) {
             diagnostic_error_message(parser->diag, "E2069",
-                strdup("semicolons are not used; put each enum variant on its own line"),
+                arena_copy_string(parser->arena,"semicolons are not used; put each enum variant on its own line"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
         }
@@ -3042,14 +3042,14 @@ static AstNode *parse_statement(Parser *parser) {
             stmt->data.struct_decl.is_json = true;
         } else {
             diagnostic_error_message(parser->diag, "E2002",
-                strdup("#json attribute can only be applied to struct declarations"),
+                arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;
     }
     case TOK_SUPPRESS:
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
+            arena_copy_string(parser->arena,"#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         /* Consume the attribute and its args to avoid cascading errors */
         if (peek_token_is(parser, TOK_LPAREN)) {
@@ -3080,7 +3080,7 @@ static AstNode *parse_statement(Parser *parser) {
             return parse_discard_statement(parser);
         }
         diagnostic_error_message(parser->diag, "E2002",
-            strdup("unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
+            arena_copy_string(parser->arena,"unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         synchronize_parser(parser);
         return NULL;
