@@ -567,6 +567,15 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
                 if (brace_depth > 0) s++;
             }
 
+            /* Guard against unbounded interpolation expressions */
+            size_t expr_len = (size_t)(s - expr_start);
+            if (expr_len > 65536) {
+                diagnostic_error_message(parser->diag, "E2001",
+                    arena_copy_string(parser->arena, "string interpolation expression is too large (max 64KB)"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                return NULL;
+            }
+
             /* Parse the expression text */
             if (count >= cap) {
                 cap *= 2;
