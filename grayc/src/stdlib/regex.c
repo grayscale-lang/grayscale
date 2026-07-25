@@ -15,7 +15,6 @@
 
 #define GRAY_REGEX_PAT_BUF        4096
 #define GRAY_REGEX_TXT_BUF        8192
-#define GRAY_REGEX_RESULT_BUF     16384
 
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success, non-zero on error. Caller must regfree on success. */
@@ -115,25 +114,44 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
 
     char repl_buf[GRAY_REGEX_PAT_BUF];
     to_cstr(replacement, repl_buf, sizeof(repl_buf));
+    int repl_len = (int)strlen(repl_buf);
 
-    /* Build result by replacing all matches */
-    char result[GRAY_REGEX_RESULT_BUF];
-    int pos = 0;
+    /* First pass: compute exact output size */
+    size_t out_size = 0;
+    int match_count = 0;
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0 && pos < (int)sizeof(result) - GRAY_REGEX_PAT_BUF) {
-        /* Copy text before match */
+    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+        out_size += (size_t)match.rm_so;
+        out_size += (size_t)repl_len;
+        cursor += match.rm_eo;
+        match_count++;
+        if (match.rm_eo == 0) {
+            if (*cursor) { out_size++; cursor++; }
+            else break;
+        }
+    }
+    out_size += strlen(cursor);
+
+    if (match_count == 0) {
+        regfree(&re);
+        return text;
+    }
+
+    /* Second pass: build result into arena-allocated buffer */
+    char *result = (char *)gray_arena_alloc(arena, out_size + 1);
+    int pos = 0;
+    cursor = txt_buf;
+
+    while (regexec(&re, cursor, 1, &match, 0) == 0) {
         int pre_len = (int)match.rm_so;
         memcpy(result + pos, cursor, (size_t)pre_len);
         pos += pre_len;
 
-        /* Copy replacement */
-        int repl_len = (int)strlen(repl_buf);
         memcpy(result + pos, repl_buf, (size_t)repl_len);
         pos += repl_len;
 
-        /* Advance past match */
         cursor += match.rm_eo;
         if (match.rm_eo == 0) {
             if (*cursor) result[pos++] = *cursor++;
@@ -141,13 +159,13 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
         }
     }
 
-    /* Copy remaining text */
     int remaining = (int)strlen(cursor);
     memcpy(result + pos, cursor, (size_t)remaining);
     pos += remaining;
+    result[pos] = '\0';
 
     regfree(&re);
-    return gray_string_new(arena, result, (int32_t)pos);
+    return (GrayString){ result, (int32_t)pos };
 }
 
 GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text) {
