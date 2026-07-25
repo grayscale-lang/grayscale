@@ -1002,7 +1002,7 @@ static void test_e2e_divide_by_zero(void) {
         "}";
 
     FILE *file = fopen(gray_file, "w");
-    if (!file) { _test_fail++; printf("  FAIL %s: cannot write\n", __func__); return; }
+    ASSERT(file != NULL);
     fputs(src, file);
     fclose(file);
 
@@ -1010,9 +1010,7 @@ static void test_e2e_divide_by_zero(void) {
     snprintf(command, sizeof(command), "./grayc %s -o %s >/dev/null 2>&1", gray_file, binary_file);
     if (system(command) != 0) {
         unlink(gray_file);
-        _test_fail++;
-        printf("  FAIL %s: compile failed\n", __func__);
-        return;
+        ASSERT(0 && "compile failed");
     }
 
     char run_cmd[256];
@@ -1027,13 +1025,7 @@ static void test_e2e_divide_by_zero(void) {
     unlink(gray_file);
     unlink(binary_file);
 
-    if (strstr(output, "division by zero")) {
-        _test_pass++;
-        printf("  PASS %s\n", __func__);
-    } else {
-        _test_fail++;
-        printf("  FAIL %s: expected 'division by zero' in output\n", __func__);
-    }
+    ASSERT(strstr(output, "division by zero") != NULL);
 }
 
 /* ===== Sized Integer Types ===== */
