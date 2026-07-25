@@ -1,0 +1,10 @@
+/* Error Test: E3122 - cannot write field through pointer to const struct */
+const Point struct {
+    x int
+    y int
+}
+do main() {
+    const pt Point = Point{x: 1, y: 2}
+    mut p ^Point = addr(pt)
+    p^.x = 99
+}

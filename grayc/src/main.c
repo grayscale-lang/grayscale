@@ -1698,6 +1698,7 @@ int main(int argc, char **argv) {
         snprintf(cmd, sizeof(cmd),
             "cc -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
             "-Wno-tautological-compare -Wno-infinite-recursion "
+            "-Wno-incompatible-pointer-types-discards-qualifiers "
             "-isystem '%s'/runtime -isystem '%s'/stdlib "
             "-o '%s' '%s' '%s' "
             "-lm -lpthread -Wl,-w 2>&1",
@@ -1737,6 +1738,7 @@ int main(int argc, char **argv) {
         snprintf(cmd, sizeof(cmd),
             "cc -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
             "-Wno-tautological-compare -Wno-infinite-recursion "
+            "-Wno-incompatible-pointer-types-discards-qualifiers "
             "-isystem '%s'/runtime -isystem '%s'/stdlib "
             "-o '%s' '%s' %s"
             "-lm -lpthread -Wl,-w 2>&1",
