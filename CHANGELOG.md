@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.2...grayscale-v0.1.3) (2026-07-26)
+
+
+### Bug Fixes
+
+* **codegen:** emit overflow checks for compound assignment through pointer dereference ([#2164](https://github.com/grayscale-lang/grayscale/issues/2164)) ([f3d4624](https://github.com/grayscale-lang/grayscale/commit/f3d4624551f53b1815be13b91584c19deaec12a1))
+* **codegen:** use gray_string_concat for interpolation to preserve null bytes ([#2195](https://github.com/grayscale-lang/grayscale/issues/2195)) ([f0951b8](https://github.com/grayscale-lang/grayscale/commit/f0951b8a5ecc84e2d5add5b65727b9859b24ae02))
+* **parser:** enforce 64KB limit on string interpolation expressions ([#2177](https://github.com/grayscale-lang/grayscale/issues/2177)) ([43e05c3](https://github.com/grayscale-lang/grayscale/commit/43e05c35ca475563bac79f624d967373127f4a04))
+* **tests:** correct e2e test count double-counting in test_e2e_divide_by_zero ([46acb35](https://github.com/grayscale-lang/grayscale/commit/46acb35afd6ad1909ace5e10e73da326c3e05603))
+* **typechecker:** allow addr() on const variables, catch mutation at write sites ([#2191](https://github.com/grayscale-lang/grayscale/issues/2191)) ([626809a](https://github.com/grayscale-lang/grayscale/commit/626809aa99d4ad7d67ed34251c4eaa300a90d1a9))
+* **typechecker:** catch const mutation through nested access and postfix ([#2162](https://github.com/grayscale-lang/grayscale/issues/2162)) ([dbb9df5](https://github.com/grayscale-lang/grayscale/commit/dbb9df5a0a497ab507da09a82c5081546634c544))
+
 ## [0.1.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.1...grayscale-v0.1.2) (2026-07-25)
 
 
