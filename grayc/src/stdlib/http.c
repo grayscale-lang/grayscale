@@ -209,9 +209,22 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
             GrayString *k = (GrayString *)gray_map_key_at(custom_headers, slot);
             GrayString *v = (GrayString *)gray_map_value_at(custom_headers, slot);
             if (!k || !v) continue;
-            int n = snprintf(header + header_length, sizeof(header) - (size_t)header_length,
+            int remaining = (int)(sizeof(header)) - header_length;
+            if (remaining <= 0) {
+                gray_net_close(sock);
+                const char *detail = "request headers too large";
+                err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+                return err_resp;
+            }
+            int n = snprintf(header + header_length, (size_t)remaining,
                 "%.*s: %.*s\r\n", (int)k->len, k->data, (int)v->len, v->data);
-            if (n > 0) header_length += n;
+            if (n < 0 || n >= remaining) {
+                gray_net_close(sock);
+                const char *detail = "request headers too large";
+                err_resp.body = gray_string_new(arena, detail, (int32_t)strlen(detail));
+                return err_resp;
+            }
+            header_length += n;
         }
     }
 

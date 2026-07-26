@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3005 - postfix increment on const struct field
+ * Expected: "cannot modify constant; declare with 'mut' to make it mutable"
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    const p = Point{x: 1, y: 2}
+    p.x++  // ERROR: cannot increment field of const 'p'
+}

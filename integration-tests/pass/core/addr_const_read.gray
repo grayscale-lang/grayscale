@@ -1,0 +1,58 @@
+/*
+ * addr_const_read.gray - Taking addr() of a const and reading through
+ * the pointer is safe and allowed.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    println("=== addr(const) read-only ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: addr() of const int, read through pointer
+    const val int = 42
+    mut p ^int = addr(val)
+    if p^ == 42 {
+        println("  [PASS] read const int through pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read const int through pointer")
+        failed += 1
+    }
+
+    // Test 2: addr() of const string, read through pointer
+    const s string = "hello"
+    mut ps ^string = addr(s)
+    if ps^ == "hello" {
+        println("  [PASS] read const string through pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read const string through pointer")
+        failed += 1
+    }
+
+    // Test 3: addr() of const struct, read field through pointer
+    const pt Point = Point { x: 10, y: 20 }
+    mut pp ^Point = addr(pt)
+    if pp^.x == 10 && pp^.y == 20 {
+        println("  [PASS] read const struct fields through pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read const struct fields through pointer")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

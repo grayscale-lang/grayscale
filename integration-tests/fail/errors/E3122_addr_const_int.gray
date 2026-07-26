@@ -1,5 +1,0 @@
-/* Error Test: E3122 - addr() on const int */
-do main() {
-    const x int = 5
-    mut p ^int = addr(x)
-}

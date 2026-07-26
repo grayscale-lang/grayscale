@@ -1,0 +1,6 @@
+/* Error Test: E3122 - cannot write through pointer to const */
+do main() {
+    const x int = 5
+    mut p ^int = addr(x)
+    p^ = 99
+}

@@ -253,6 +253,7 @@ for dir in "$TEST_DIR"/fail/multi-file/*/; do
 done
 
 # Summary
+TOTAL=$((PASS_COUNT + FAIL_COUNT))
 echo ""
 echo "========================================"
 echo "  Test Summary"
@@ -260,6 +261,7 @@ echo "========================================"
 echo ""
 printf "  ${GREEN}Passed:${NC}  $PASS_COUNT\n"
 printf "  ${RED}Failed:${NC}  $FAIL_COUNT\n"
+printf "  Total:   $TOTAL\n"
 echo ""
 
 if [ $FAIL_COUNT -eq 0 ]; then

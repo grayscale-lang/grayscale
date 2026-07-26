@@ -1,0 +1,87 @@
+/*
+ * interpolation_null_bytes.gray - String interpolation preserves null bytes
+ *
+ * Verifies that interpolating strings containing \0 does not truncate
+ * at the null byte. The old gray_string_format approach used vsnprintf
+ * which stops at \0; the concat-based approach uses memcpy with .len.
+ */
+
+do main() {
+    println("=== Interpolation Null Bytes Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: single string with embedded null byte
+    mut a string = "ab\x00cd"
+    mut s1 string = "${a}"
+    if len(s1) == 5 {
+        println("  [PASS] single interpolation preserves null byte")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] single interp: expected len 5, got ${len(s1)}")
+        failed += 1
+    }
+
+    // Test 2: two null-bearing strings via interpolation
+    mut b string = "ef\x00gh"
+    mut s2 string = "${a}${b}"
+    if len(s2) == 10 {
+        println("  [PASS] two null-bearing strings concatenated")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] two null strings: expected len 10, got ${len(s2)}")
+        failed += 1
+    }
+
+    // Test 3: null-bearing string with literal text
+    mut s3 string = "start-${a}-end"
+    if len(s3) == 15 {
+        println("  [PASS] null string with surrounding literal text")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] with literals: expected len 15, got ${len(s3)}")
+        failed += 1
+    }
+
+    // Test 4: null-bearing string mixed with integer
+    mut n int = 42
+    mut s4 string = "${a}=${n}"
+    if len(s4) == 8 {
+        println("  [PASS] null string mixed with integer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mixed int: expected len 8, got ${len(s4)}")
+        failed += 1
+    }
+
+    // Test 5: multiple null bytes in one string
+    mut c string = "\x00\x00\x00"
+    mut s5 string = "${c}"
+    if len(s5) == 3 {
+        println("  [PASS] multiple null bytes preserved")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] multi null: expected len 3, got ${len(s5)}")
+        failed += 1
+    }
+
+    // Test 6: null-bearing string with bool interpolation
+    mut flag bool = true
+    mut s6 string = "${a}-${flag}"
+    if len(s6) == 10 {
+        println("  [PASS] null string with bool interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] with bool: expected len 10, got ${len(s6)}")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -15,6 +15,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -96,7 +97,7 @@ func writeUpdateState(state *UpdateState) error {
 
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -105,7 +106,7 @@ func writeUpdateState(state *UpdateState) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // shouldCheckForUpdate returns true if we should check for updates (once per day)
@@ -984,22 +985,11 @@ func getAssetName() string {
 	return name
 }
 
-// checkWritePermission checks if we can write to the executable's directory
-func checkWritePermission(path string) bool {
-	dir := filepath.Dir(path)
-	testFile := filepath.Join(dir, ".gray-update-test")
-	f, err := os.Create(testFile)
-	if err != nil {
-		return false
-	}
-	f.Close()
-	os.Remove(testFile)
-	return true
-}
-
-// downloadAndInstall downloads the archive and extracts/installs the binary
-func downloadAndInstall(url string) error {
-	// Get current executable path
+// downloadAndInstall downloads the archive and extracts/installs the binary.
+// Instead of probing write permission with a test file (TOCTOU-prone), this
+// attempts the install directly and escalates to sudo only if the actual
+// file operation fails with a permission error.
+func downloadAndInstall(downloadURL string) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -1009,28 +999,31 @@ func downloadAndInstall(url string) error {
 		return fmt.Errorf("failed to resolve symlinks: %w", err)
 	}
 
-	// Check if we have write permission
-	if !checkWritePermission(execPath) {
-		// Need elevated permissions - re-exec with sudo
-		if runtime.GOOS == "windows" {
-			return fmt.Errorf("permission denied. Please run as Administrator")
-		}
-		fmt.Println("Root permissions required. Running with sudo...")
-		// Re-run the update command with sudo
-		cmd := exec.Command("sudo", os.Args[0], "update", "--confirm", url)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		err := cmd.Run()
-		if err != nil {
-			return fmt.Errorf("failed to run with sudo: %w", err)
-		}
-
-		os.Exit(0)
+	err = doInstall(downloadURL, execPath)
+	if err == nil {
+		return nil
 	}
 
-	return doInstall(url, execPath)
+	if !errors.Is(err, os.ErrPermission) {
+		return err
+	}
+
+	// Need elevated permissions
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("permission denied. Please run as Administrator")
+	}
+	fmt.Println("Root permissions required. Running with sudo...")
+	cmd := exec.Command("sudo", execPath, "update", "--confirm", downloadURL)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to run with sudo: %w", err)
+	}
+
+	os.Exit(0)
+	return nil // unreachable
 }
 
 const (

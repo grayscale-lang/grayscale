@@ -18,6 +18,7 @@ typedef struct {
     const char *declared_type; /* original declared type name (e.g., "uint", "i8") */
     bool mutable;
     bool is_ref;         /* true if created via ref() — transparent reference */
+    bool const_source;   /* true if pointer was taken from a const variable via addr() */
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

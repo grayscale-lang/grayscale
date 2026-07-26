@@ -1,5 +1,0 @@
-/* Error Test: E3122 - addr() on const string */
-do main() {
-    const s string = "hello"
-    mut p ^string = addr(s)
-}

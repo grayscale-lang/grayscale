@@ -3424,16 +3424,6 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "addr() requires a variable, field, or index expression; cannot take address of a literal or expression",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* E3122: addr() of a const variable would allow mutation
-         * through the resulting pointer, bypassing immutability. */
-        const char *root = assignment_target_root_name(arg);
-        if (root) {
-            Symbol *sym = scope_lookup(checker->current_scope, root);
-            if (sym && !sym->mutable) {
-                diagnostic_error_code_formatted(checker->diag, "E3122", NODE_FILE(checker, node),
-                    node->token.line, node->token.column, 0, root);
-            }
-        }
         GrayType *arg_t = resolve_expression(checker, arg);
         result = type_pointer(type_name(arg_t));
     } else if (strcmp(function_name, "ref") == 0 && node->data.call.arg_count == 1) {
@@ -6395,11 +6385,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     "++ and -- require a variable; you cannot increment a literal or expression",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* ++ and -- only valid on mutable numeric types */
-            if (node->data.postfix.left->kind == NODE_LABEL) {
-                Symbol *sym = scope_lookup(checker->current_scope, node->data.postfix.left->data.label.value);
-                if (sym && !sym->mutable) {
-                    diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, node->data.postfix.left->data.label.value);
+            /* ++ and -- only valid on mutable numeric types.
+             * Walk nested member/index chains so that e.g. p.x++ is caught. */
+            {
+                const char *root = assignment_target_root_name(node->data.postfix.left);
+                if (root) {
+                    Symbol *sym = scope_lookup(checker->current_scope, root);
+                    if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
+                        diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, root);
                 }
             }
             if (left_t->kind != TK_UNKNOWN && !type_is_integer(left_t)) {
@@ -8208,6 +8201,21 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                         }
                     }
                 }
+                /* Mark const_source when addr() takes a const variable,
+                 * so writes through the resulting pointer are caught. */
+                if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "addr") == 0 &&
+                    node->data.var_decl.value->data.call.arg_count == 1) {
+                    AstNode *src = node->data.var_decl.value->data.call.args[0];
+                    const char *root = assignment_target_root_name(src);
+                    if (root) {
+                        Symbol *src_sym = scope_lookup(checker->current_scope, root);
+                        if (src_sym && !src_sym->mutable) {
+                            Symbol *sym = scope_lookup_local(checker->current_scope,
+                                node->data.var_decl.name);
+                            if (sym) sym->const_source = true;
+                        }
+                    }
+                }
                 /* Store multi-return types for temp variables from calls.
                  * For generic functions, substitute the wildcard binding
                  * so destructured slots get concrete types instead of
@@ -8493,24 +8501,50 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
 
-        /* Check for assignment to const variable (direct, index, or field) */
+        /* Check for assignment to const variable (direct, index, or field).
+         * Uses assignment_target_root_name() to walk arbitrarily nested
+         * member/index chains so that e.g. o.inner.value = 999 is caught. */
         const char *const_name = NULL;
-        if (target->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
-            if (sym && !sym->mutable) const_name = target->data.label.value;
-        } else if (target->kind == NODE_INDEX_EXPR && target->data.index_expr.left->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.index_expr.left->data.label.value);
-            if (sym && !sym->mutable) const_name = target->data.index_expr.left->data.label.value;
-        } else if (target->kind == NODE_MEMBER_EXPR && target->data.member.object->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.member.object->data.label.value);
-            /* p.field on a pointer parameter auto-derefs to p^.field — the
-             * pointer itself is not being modified, so don't flag it as const. */
-            if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
-                const_name = target->data.member.object->data.label.value;
+        {
+            const char *root = assignment_target_root_name(target);
+            if (root) {
+                Symbol *sym = scope_lookup(checker->current_scope, root);
+                /* p.field on a pointer parameter auto-derefs to p^.field — the
+                 * pointer itself is not being modified, so don't flag it. */
+                if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
+                    const_name = root;
+            }
         }
         if (const_name) {
             diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, const_name);
         }
+
+        /* E3122: cannot write through a pointer that was taken from a const
+         * variable via addr().  Covers p^ = v, p^.field = v, and compound
+         * assignments (p^ += v). */
+        if (target->kind == NODE_POSTFIX_EXPR &&
+            target->data.postfix.op == TOK_CARET &&
+            target->data.postfix.left->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope,
+                target->data.postfix.left->data.label.value);
+            if (sym && sym->const_source) {
+                diagnostic_error_code_formatted(checker->diag, "E3122",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    target->data.postfix.left->data.label.value);
+            }
+        } else if (target->kind == NODE_MEMBER_EXPR &&
+                   target->data.member.object->kind == NODE_POSTFIX_EXPR &&
+                   target->data.member.object->data.postfix.op == TOK_CARET &&
+                   target->data.member.object->data.postfix.left->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope,
+                target->data.member.object->data.postfix.left->data.label.value);
+            if (sym && sym->const_source) {
+                diagnostic_error_code_formatted(checker->diag, "E3122",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    target->data.member.object->data.postfix.left->data.label.value);
+            }
+        }
+
         /* E3004: string index assignment is not supported; strings are immutable
          * sequences — individual characters cannot be modified by index.
          * This fires regardless of the assigned value's type. */

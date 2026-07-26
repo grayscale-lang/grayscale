@@ -1,9 +1,0 @@
-/* Error Test: E3122 - addr() on field of const struct */
-const Point struct {
-    x int
-    y int
-}
-do main() {
-    const p Point = Point{x: 1, y: 2}
-    mut px ^int = addr(p.x)
-}
