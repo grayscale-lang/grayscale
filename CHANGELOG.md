@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.4](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.3...grayscale-v0.1.4) (2026-07-26)
+
+
+### Bug Fixes
+
+* **cli:** reject legacy EZ releases in update checks ([e8fa984](https://github.com/grayscale-lang/grayscale/commit/e8fa984037bb0bc1a498d2b10c072bef724dfc00))
+* **cli:** reject legacy EZ releases in update version checks ([2aca3cf](https://github.com/grayscale-lang/grayscale/commit/2aca3cfb404bbc9499728ae4f050a66bd0de5c06))
+
 ## [0.1.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.2...grayscale-v0.1.3) (2026-07-26)
 
 
