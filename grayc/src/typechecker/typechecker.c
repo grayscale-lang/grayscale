@@ -6385,11 +6385,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     "++ and -- require a variable; you cannot increment a literal or expression",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* ++ and -- only valid on mutable numeric types */
-            if (node->data.postfix.left->kind == NODE_LABEL) {
-                Symbol *sym = scope_lookup(checker->current_scope, node->data.postfix.left->data.label.value);
-                if (sym && !sym->mutable) {
-                    diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, node->data.postfix.left->data.label.value);
+            /* ++ and -- only valid on mutable numeric types.
+             * Walk nested member/index chains so that e.g. p.x++ is caught. */
+            {
+                const char *root = assignment_target_root_name(node->data.postfix.left);
+                if (root) {
+                    Symbol *sym = scope_lookup(checker->current_scope, root);
+                    if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
+                        diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, root);
                 }
             }
             if (left_t->kind != TK_UNKNOWN && !type_is_integer(left_t)) {
@@ -8498,20 +8501,19 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
 
-        /* Check for assignment to const variable (direct, index, or field) */
+        /* Check for assignment to const variable (direct, index, or field).
+         * Uses assignment_target_root_name() to walk arbitrarily nested
+         * member/index chains so that e.g. o.inner.value = 999 is caught. */
         const char *const_name = NULL;
-        if (target->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
-            if (sym && !sym->mutable) const_name = target->data.label.value;
-        } else if (target->kind == NODE_INDEX_EXPR && target->data.index_expr.left->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.index_expr.left->data.label.value);
-            if (sym && !sym->mutable) const_name = target->data.index_expr.left->data.label.value;
-        } else if (target->kind == NODE_MEMBER_EXPR && target->data.member.object->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, target->data.member.object->data.label.value);
-            /* p.field on a pointer parameter auto-derefs to p^.field — the
-             * pointer itself is not being modified, so don't flag it as const. */
-            if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
-                const_name = target->data.member.object->data.label.value;
+        {
+            const char *root = assignment_target_root_name(target);
+            if (root) {
+                Symbol *sym = scope_lookup(checker->current_scope, root);
+                /* p.field on a pointer parameter auto-derefs to p^.field — the
+                 * pointer itself is not being modified, so don't flag it. */
+                if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
+                    const_name = root;
+            }
         }
         if (const_name) {
             diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, const_name);

@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3005 - nested member assignment on const variable
+ * Expected: "cannot modify constant; declare with 'mut' to make it mutable"
+ */
+
+const Inner struct {
+    value int
+}
+
+const Outer struct {
+    inner Inner
+}
+
+do main() {
+    const o = Outer{inner: Inner{value: 42}}
+    o.inner.value = 999  // ERROR: cannot modify const 'o' through nested access
+}
