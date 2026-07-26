@@ -76,6 +76,9 @@ func getVersionString() string {
 	if releases, err := fetchAllReleases(ctx); err == nil {
 		for i := range releases {
 			r := &releases[i]
+			if !strings.HasPrefix(r.TagName, releaseTagPrefix) {
+				continue // skip legacy (pre-Grayscale) releases
+			}
 			if r.Prerelease {
 				if latestPre == "" || compareSemver(r.TagName, latestPre) > 0 {
 					latestPre = r.TagName

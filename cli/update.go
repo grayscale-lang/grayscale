@@ -342,6 +342,11 @@ func fetchLatestRelease(ctx context.Context) (*GitHubRelease, error) {
 		return nil, err
 	}
 
+	// Reject legacy (pre-Grayscale) releases that lack the expected tag prefix
+	if !strings.HasPrefix(release.TagName, releaseTagPrefix) {
+		return nil, fmt.Errorf("latest release %q is not a Grayscale release", release.TagName)
+	}
+
 	return &release, nil
 }
 
@@ -588,7 +593,7 @@ func CheckForUpdateAsync() {
 	state, _ := readUpdateState()
 
 	// If we have cached state and it's fresh (checked today), use it
-	if state != nil && state.LatestVersion != "" && !shouldCheckForUpdate() {
+	if state != nil && state.LatestVersion != "" && strings.HasPrefix(state.LatestVersion, releaseTagPrefix) && !shouldCheckForUpdate() {
 		if isNewerVersion(Version, state.LatestVersion) {
 			fmt.Printf("Note: Grayscale %s available (you have %s). Run `gray update` to upgrade.\n\n",
 				state.LatestVersion, Version)
@@ -603,7 +608,7 @@ func CheckForUpdateAsync() {
 	release, err := fetchLatestRelease(ctx)
 	if err != nil {
 		// Network error - fall back to cached state if available
-		if state != nil && state.LatestVersion != "" {
+		if state != nil && state.LatestVersion != "" && strings.HasPrefix(state.LatestVersion, releaseTagPrefix) {
 			if isNewerVersion(Version, state.LatestVersion) {
 				fmt.Printf("Note: Grayscale %s available (you have %s). Run `gray update` to upgrade.\n\n",
 					state.LatestVersion, Version)
@@ -636,7 +641,7 @@ func pickLatestStable(releases []GitHubRelease) *GitHubRelease {
 	var best *GitHubRelease
 	for i := range releases {
 		r := &releases[i]
-		if r.Prerelease {
+		if r.Prerelease || !strings.HasPrefix(r.TagName, releaseTagPrefix) {
 			continue
 		}
 		if best == nil || compareSemver(r.TagName, best.TagName) > 0 {
