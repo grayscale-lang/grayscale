@@ -8547,9 +8547,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, const_name);
         }
 
-        /* E3122: cannot write through a pointer that was taken from a const
-         * variable via addr().  Covers p^ = v, p^.field = v, and compound
-         * assignments (p^ += v). */
+        /* E3122: cannot modify value through a pointer whose pointee is a
+         * const-declared variable (taken via addr()).  Covers p^ = v,
+         * p^.field = v, and compound assignments (p^ += v). */
         if (target->kind == NODE_POSTFIX_EXPR &&
             target->data.postfix.op == TOK_CARET &&
             target->data.postfix.left->kind == NODE_LABEL) {

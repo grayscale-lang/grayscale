@@ -1,4 +1,4 @@
-/* Error Test: E3122 - cannot write field through pointer to const struct */
+/* Error Test: E3122 - cannot modify field through pointer to const-declared struct */
 const Point struct {
     x int
     y int
