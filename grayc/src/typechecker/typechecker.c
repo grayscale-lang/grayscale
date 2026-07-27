@@ -8365,6 +8365,19 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
+            /* Propagate const_source through pointer assignment so that
+             * mut q = p inherits the flag when p originated from addr()
+             * on a const variable. */
+            if (node->data.var_decl.value &&
+                node->data.var_decl.value->kind == NODE_LABEL) {
+                Symbol *src_sym = scope_lookup(checker->current_scope,
+                    node->data.var_decl.value->data.label.value);
+                if (src_sym && src_sym->const_source) {
+                    Symbol *dst_sym = scope_lookup_local(checker->current_scope,
+                        node->data.var_decl.name);
+                    if (dst_sym) dst_sym->const_source = true;
+                }
+            }
             /* Track referenced function for func-typed vars so calls through
              * them can be arity/type-checked at compile time. */
             if (node->data.var_decl.value &&
@@ -8570,6 +8583,18 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3122",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     target->data.member.object->data.postfix.left->data.label.value);
+            }
+        }
+
+        /* Propagate const_source through pointer reassignment (q = p). */
+        if (target->kind == NODE_LABEL && node->data.assign.value &&
+            node->data.assign.value->kind == NODE_LABEL) {
+            Symbol *src_sym = scope_lookup(checker->current_scope,
+                node->data.assign.value->data.label.value);
+            if (src_sym && src_sym->const_source) {
+                Symbol *dst_sym = scope_lookup(checker->current_scope,
+                    target->data.label.value);
+                if (dst_sym) dst_sym->const_source = true;
             }
         }
 

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3122 - const-pointer-copy
+ * Expected: "cannot modify value through pointer"
+ */
+
+do main() {
+    const x int = 42
+    mut p ^int = addr(x)
+    mut q ^int = p
+    q^ = 99
+}
