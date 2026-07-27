@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 370 codes** (251 errors, 17 warnings, 102 panics)
+**Total: 371 codes** (252 errors, 17 warnings, 102 panics)
 
 ---
 
@@ -198,6 +198,7 @@
 | `E3128` | types | type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
+| `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -421,4 +422,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-26 03:23:28 UTC*
+*Generated on 2026-07-27 18:16:28 UTC*

@@ -213,7 +213,8 @@
     GRAY_ERROR("E3127", "types", "type parameter expects a struct type name, but '%s' is not a struct; only struct types can be passed as type arguments") \
     GRAY_ERROR("E3128", "types", "type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct'") \
     GRAY_ERROR("E3129", "safety", "empty loop body; this will loop forever at runtime") \
-    GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type")
+    GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type") \
+    GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

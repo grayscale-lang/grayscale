@@ -7322,6 +7322,34 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             }
         }
 
+        /* E3131: file-scope and struct-scope const of primitive types must
+         * have an explicit type annotation.  Struct instances and func
+         * references are exempt because the type is visible in the
+         * expression.  Arrays/maps are already caught by E3050/E3051. */
+        if (!node->data.var_decl.mutable && !node->data.var_decl.type_name &&
+            node->data.var_decl.value &&
+            (checker->func_depth == 0 || checker->current_struct_name != NULL) &&
+            strncmp(node->data.var_decl.name, "_gray_tmp", 9) != 0 &&
+            strncmp(node->data.var_decl.name, "_gray_or", 8) != 0 &&
+            node->data.var_decl.value->kind != NODE_STRUCT_VALUE &&
+            node->data.var_decl.value->kind != NODE_FUNC_REF &&
+            node->data.var_decl.value->kind != NODE_ARRAY_VALUE &&
+            node->data.var_decl.value->kind != NODE_MAP_VALUE) {
+            const char *suggested = "<type>";
+            switch (node->data.var_decl.value->kind) {
+            case NODE_INT_VALUE:    suggested = "int";    break;
+            case NODE_FLOAT_VALUE:  suggested = "float";  break;
+            case NODE_STRING_VALUE: /* fall through */
+            case NODE_INTERPOLATED_STRING: suggested = "string"; break;
+            case NODE_CHAR_VALUE:   suggested = "char";   break;
+            case NODE_BOOL_VALUE:   suggested = "bool";   break;
+            default: break;
+            }
+            diagnostic_error_code_formatted(checker->diag, "E3131",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                VAR_DISPLAY_NAME(node), suggested);
+        }
+
         /* E3054: mutable array with fixed size */
         /* E3055: const array without fixed size */
         if (node->data.var_decl.type_name && node->data.var_decl.type_name[0] == '[') {
