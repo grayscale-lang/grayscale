@@ -401,6 +401,27 @@ Printing a pointer value (`println(p)`, `print(p)`, etc.) outputs the address in
 
 Dereferencing a `nil` pointer causes a runtime panic.
 
+**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
+
+```gray
+const x int = 42
+mut p = addr(x)
+println(p^)     // 42 — reading is allowed
+p^ = 99         // ERROR — writing through a const-sourced pointer
+mut q = p
+q^ = 99         // ERROR — const origin propagates through assignment
+```
+
+**Pointer aliasing:** Calling `addr()` more than once on the same variable produces pointers that all refer to the same memory. Changing the value through one pointer changes it for all of them. In multithreaded code, protect shared variables with `sync.lock()` to avoid data races.
+
+```gray
+mut x int = 10
+mut p1 = addr(x)
+mut p2 = addr(x)
+p1^ = 99
+println(p2^)    // 99 — p1 and p2 point to the same variable
+```
+
 > 💡 **Tip:** You can dereference directly on a call result without storing the pointer first. `new(Foo)^` allocates a `Foo` and immediately gives you the value, handy when a function returns `^Type` and you want the value right at the call site: `return new(Foo)^` or `mut val = make_thing()^`.
 
 > 💡 **Tip:** The dot operator (`.`) automatically dereferences pointers to structs. If `p` is a `^MyStruct`, writing `p.field` is equivalent to `p^.field`. This auto-dereference applies to field access and struct function calls but does **not** apply in other contexts. For example, `println(p)` prints the address, and `return p` returns the pointer itself. Use explicit `p^` when you need the pointee value rather than field access.
@@ -3712,6 +3733,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------|
 | Returning address of local variable | `addr()` of a local cannot appear in a return statement |
 | Cross-scope pointer assignment | Warning when a pointer in an outer scope is assigned from `addr()` of a value in an inner scope |
+| Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
 
 **Prevented by ASBAM:**
@@ -3741,6 +3763,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------------|
 | Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
+| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
 For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
