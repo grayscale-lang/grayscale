@@ -621,11 +621,124 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// crossTargets maps user-facing target names to zig cc target triples.
+var crossTargets = map[string]string{
+	"linux-amd64":   "x86_64-linux-gnu",
+	"linux-arm64":   "aarch64-linux-gnu",
+	"windows-amd64": "x86_64-windows-gnu",
+	"mac-arm64":     "aarch64-macos",
+	"mac-amd64":     "x86_64-macos",
+}
+
+// findZig locates the zig binary on PATH.
+func findZig() (string, error) {
+	p, err := exec.LookPath("zig")
+	if err != nil {
+		return "", fmt.Errorf("zig not found in PATH\n  Zig is required for cross-compilation.\n  Install: https://ziglang.org/download/")
+	}
+	return p, nil
+}
+
+var crossCmd = &cobra.Command{
+	Use:   "cross",
+	Short: "Cross-compile Grayscale programs via Zig",
+	Long:  "Cross-compile Grayscale programs to other platforms using zig cc as the C backend.",
+}
+
+var crossTargetsCmd = &cobra.Command{
+	Use:   "targets",
+	Short: "List supported cross-compilation targets",
+	Run: func(cmd *cobra.Command, args []string) {
+		targets := make([]string, 0, len(crossTargets))
+		for t := range crossTargets {
+			targets = append(targets, t)
+		}
+		sort.Strings(targets)
+
+		fmt.Println("Supported cross-compilation targets:")
+		fmt.Println()
+		fmt.Printf("  %-20s %s\n", "TARGET", "ZIG TRIPLE")
+		fmt.Printf("  %-20s %s\n", "──────", "──────────")
+		for _, t := range targets {
+			fmt.Printf("  %-20s %s\n", t, crossTargets[t])
+		}
+		fmt.Println()
+		fmt.Println("Usage: gray cross build <file.gray> --target <target>")
+	},
+}
+
+var crossBuildCmd = &cobra.Command{
+	Use:   "build [file.gray]",
+	Short: "Cross-compile a Grayscale source file for another platform",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if !strings.HasSuffix(args[0], ".gray") {
+			fmt.Fprintf(os.Stderr, "error: '%s' is not a valid Grayscale source file — expected a .gray file\n", args[0])
+			return &ExitError{1}
+		}
+
+		target, _ := cmd.Flags().GetString("target")
+		if target == "" {
+			fmt.Fprintln(os.Stderr, "error: --target is required")
+			fmt.Fprintln(os.Stderr, "  Run 'gray cross targets' to see available targets")
+			return &ExitError{1}
+		}
+
+		zigTriple, ok := crossTargets[target]
+		if !ok {
+			valid := make([]string, 0, len(crossTargets))
+			for t := range crossTargets {
+				valid = append(valid, t)
+			}
+			sort.Strings(valid)
+			fmt.Fprintf(os.Stderr, "error: unknown target '%s'\n", target)
+			fmt.Fprintf(os.Stderr, "  Valid targets: %s\n", strings.Join(valid, ", "))
+			fmt.Fprintln(os.Stderr, "  Run 'gray cross targets' for details")
+			return &ExitError{1}
+		}
+
+		zigPath, err := findZig()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return &ExitError{1}
+		}
+
+		output, _ := cmd.Flags().GetString("output")
+		emitC, _ := cmd.Flags().GetBool("emit-c")
+		showTime, _ := cmd.Flags().GetBool("time")
+		quiet, _ := cmd.Flags().GetString("quiet")
+		noColor, _ := cmd.Flags().GetBool("no-color")
+
+		opts := driver.BuildOpts{
+			Output:  output,
+			EmitC:   emitC,
+			Time:    showTime,
+			NoColor: noColor,
+			CC:      fmt.Sprintf("%s cc -target %s", zigPath, zigTriple),
+		}
+		if quiet == "all" {
+			opts.Quiet = true
+		} else if quiet != "" {
+			opts.QuietCodes = quiet
+		}
+
+		code, err := driver.Build(args[0], opts)
+		if err != nil {
+			return fmt.Errorf("error: %v", err)
+		}
+		if code != 0 {
+			return &ExitError{code}
+		}
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.SilenceUsage = true
 	rootCmd.SilenceErrors = true
-	rootCmd.AddCommand(updateCmd, installCmd, checkCmd, buildCmd, reportCmd, versionCmd, docCmd, fmtCmd, newCmd, watchCmd, manCmd, verifyCmd)
+	crossCmd.AddCommand(crossBuildCmd, crossTargetsCmd)
+	rootCmd.AddCommand(updateCmd, installCmd, checkCmd, buildCmd, reportCmd, versionCmd, docCmd, fmtCmd, newCmd, watchCmd, manCmd, verifyCmd, crossCmd)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		CheckForUpdateAsync()
 	}
@@ -682,4 +795,11 @@ See the full language standard: https://github.com/grayscale-lang/grayscale/blob
 	newCmd.Flags().BoolP("comments", "c", false, "Include helpful syntax comments")
 	newCmd.Flags().BoolP("force", "f", false, "Overwrite existing directory")
 	newCmd.Flags().StringP("server-type", "s", "normal", "Server template type: minimal, normal")
+
+	crossBuildCmd.Flags().String("target", "", "Target platform (run 'gray cross targets' to list)")
+	crossBuildCmd.Flags().StringP("output", "o", "", "Output binary name")
+	crossBuildCmd.Flags().Bool("emit-c", false, "Emit generated C source to a file (no binary)")
+	crossBuildCmd.Flags().Bool("time", false, "Show compilation timing")
+	crossBuildCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
+	crossBuildCmd.Flags().Bool("no-color", false, "Disable colored output")
 }

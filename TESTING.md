@@ -84,8 +84,8 @@ make test-asan
 
 The Go CLI (`gray`) has unit tests for the packages it uses:
 
-- `cli` — updater semver parsing/comparison and exact-version install validation.
-- `internal/driver` — compiler binary lookup and `GRAY_COMPILER_PATH` override behavior.
+- `cli` — updater semver parsing/comparison, exact-version install validation, cross-compilation target map validation, zig lookup error handling, cross build flag wiring, and command registration.
+- `internal/driver` — compiler binary lookup, `GRAY_COMPILER_PATH` override behavior, and `BuildOpts` argument construction (including `--cc` flag for cross-compilation).
 
 ```bash
 make test-go

@@ -79,6 +79,7 @@ type BuildOpts struct {
 	Time       bool
 	Quiet      bool   // Suppress all warnings
 	QuietCodes string // Suppress specific warning codes (comma-separated)
+	CC         string // Override C compiler command (e.g. "zig cc -target x86_64-linux-gnu")
 }
 
 // Run compiles and executes a Grayscale source file via grayc run.
@@ -96,13 +97,8 @@ func Run(file string, extraArgs []string) (int, error) {
 	return execute(graycPath, args)
 }
 
-// Build compiles a Grayscale source file to a native binary via grayc build.
-func Build(file string, opts BuildOpts) (int, error) {
-	graycPath, err := Find()
-	if err != nil {
-		return 1, err
-	}
-
+// buildArgs constructs the grayc argument list for a build invocation.
+func buildArgs(file string, opts BuildOpts) []string {
 	args := []string{"build", file}
 	if opts.Output != "" {
 		args = append(args, "-o", opts.Output)
@@ -130,8 +126,20 @@ func Build(file string, opts BuildOpts) (int, error) {
 	} else if opts.QuietCodes != "" {
 		args = append(args, "--quiet", opts.QuietCodes)
 	}
+	if opts.CC != "" {
+		args = append(args, "--cc", opts.CC)
+	}
+	return args
+}
 
-	return execute(graycPath, args)
+// Build compiles a Grayscale source file to a native binary via grayc build.
+func Build(file string, opts BuildOpts) (int, error) {
+	graycPath, err := Find()
+	if err != nil {
+		return 1, err
+	}
+
+	return execute(graycPath, buildArgs(file, opts))
 }
 
 // Check type-checks a Grayscale source file without compiling.

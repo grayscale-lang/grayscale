@@ -3873,6 +3873,8 @@ The `gray` command-line tool provides the following commands:
 | `gray update` | Check for updates and upgrade |
 | `gray install <version>` | Install a specific version by exact semver |
 | `gray version` | Show version information |
+| `gray cross build <file.gray>` | Cross-compile for another platform via Zig |
+| `gray cross targets` | List supported cross-compilation targets |
 
 ### Global Flags
 
@@ -4115,6 +4117,51 @@ Show the installed version, build commit, build timestamp, and whether newer ver
 
 ```
 gray version
+```
+
+### 13.13 `gray cross build`
+
+Cross-compile a Grayscale source file for another platform using Zig as the C cross-compiler backend.
+
+```
+gray cross build <file.gray> --target <target> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target <target>` | Target platform (required) |
+| `-o, --output <name>` | Output binary name |
+| `--emit-c` | Emit generated C source to a file (no binary) |
+| `--time` | Show compilation timing |
+| `-q, --quiet <codes>` | Suppress warnings (`all` or comma-separated codes) |
+| `--no-color` | Disable colored output |
+
+**Supported targets:**
+
+| Target | Zig Triple |
+|--------|------------|
+| `linux-amd64` | `x86_64-linux-gnu` |
+| `linux-arm64` | `aarch64-linux-gnu` |
+| `windows-amd64` | `x86_64-windows-gnu` |
+| `mac-arm64` | `aarch64-macos` |
+| `mac-amd64` | `x86_64-macos` |
+
+Zig must be installed and available on PATH. It is only required for cross-compilation — native builds (`gray build`) use the system C compiler.
+
+Examples:
+
+```
+gray cross build main.gray --target linux-amd64
+gray cross build main.gray --target windows-amd64 -o myapp.exe
+gray cross build main.gray --target linux-arm64 --emit-c
+```
+
+### 13.14 `gray cross targets`
+
+List all supported cross-compilation targets and their corresponding Zig triples.
+
+```
+gray cross targets
 ```
 
 ---
