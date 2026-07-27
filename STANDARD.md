@@ -1736,14 +1736,14 @@ const Person struct {
 
 | Attribute | Applies To | Description |
 |-----------|------------|-------------|
-| `#doc("...")` | functions, structs, enums | Documentation metadata, used by `gray doc` |
+| `#doc("...")` | functions, structs, enums, file-scope variables | Documentation metadata, used by `gray doc` |
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 
 #### 7.5.1 `#doc` Attribute
 
-The `#doc` attribute adds documentation metadata to functions, structs, and enums. Used by the `gray doc` command to generate documentation.
+The `#doc` attribute adds documentation metadata to functions, structs, enums, and file-scope variables. Used by the `gray doc` command to generate documentation.
 
 ```gray
 #doc("Adds two integers and returns the sum")
@@ -1756,6 +1756,9 @@ const Point struct {
     x int
     y int
 }
+
+#doc("Maximum number of retries before giving up")
+const MAX_RETRIES int = 5
 ```
 
 #### 7.5.2 `#json` Attribute
