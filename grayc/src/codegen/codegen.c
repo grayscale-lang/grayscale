@@ -6549,10 +6549,15 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             int ac = node->data.call.arg_count;
             int cc = pc < ac ? pc : ac;
             for (int pi = 0; pi < cc && !binding; pi++) {
-                /* Type parameter: binding is the arg label directly */
+                /* Type parameter: binding is the arg label directly.
+                 * When forwarding (T→"?"), resolve via the outer binding. */
                 if (target_func->data.func_decl.params[pi].is_type_param) {
                     if (node->data.call.args[pi]->kind == NODE_LABEL) {
-                        binding = node->data.call.args[pi]->data.label.value;
+                        const char *lbl = node->data.call.args[pi]->data.label.value;
+                        if (strcmp(lbl, "?") == 0 && codegen->wildcard_binding)
+                            binding = codegen->wildcard_binding;
+                        else
+                            binding = lbl;
                     }
                     continue;
                 }

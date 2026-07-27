@@ -688,7 +688,7 @@ static bool record_instantiation(FuncSig *fs, const char *concrete,
      * arguments are still `?` (TK_UNKNOWN). The real bindings are
      * recorded during the slice-4 re-check pass once the outer
      * function's parameters are rebound to concrete types. */
-    if (strcmp(concrete, "unknown") == 0) return false;
+    if (strcmp(concrete, "unknown") == 0 || strcmp(concrete, "?") == 0) return false;
     for (int i = 0; i < fs->instantiation_count; i++) {
         if (strcmp(fs->instantiations[i], concrete) == 0) return false;
     }
@@ -4022,6 +4022,23 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         continue;
                     }
                     const char *arg_label = node->data.call.args[argument_index]->data.label.value;
+                    /* Type parameter forwarding: rewrite T → "?" so
+                     * codegen can substitute, same as new(T). */
+                    if (checker->type_param_name &&
+                        strcmp(arg_label, checker->type_param_name) == 0) {
+                        node->data.call.args[argument_index]->data.label.value = "?";
+                        arg_label = "?";
+                    }
+                    if (strcmp(arg_label, "?") == 0) {
+                        if (checker->type_param_binding) {
+                            arg_label = checker->type_param_binding;
+                        } else {
+                            /* First pass — no binding yet, accept and
+                             * propagate the wildcard. */
+                            if (!generic_binding) generic_binding = (char *)"?";
+                            continue;
+                        }
+                    }
                     /* Must not be a variable in scope */
                     if (scope_lookup(checker->current_scope, arg_label)) {
                         diagnostic_error_code(checker->diag, "E3128",
@@ -11203,16 +11220,27 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
      * re-run check_block on the body. If any new errors fire, emit
      * a companion diagnostic at the originating call site so the
      * user sees "I asked for this specialisation, and here's what
-     * broke inside it". */
+     * broke inside it".
+     *
+     * The outer loop repeats until no new instantiations are
+     * discovered, which handles type parameter forwarding: when
+     * wrap(Point) re-checks and its body calls make(T), that
+     * registers make(Point) as a new instantiation to process. */
+    bool new_instantiations = true;
+    int *inst_cursors = xcalloc((size_t)checker->func_count, sizeof(int));
+    while (new_instantiations) {
+    new_instantiations = false;
     for (int field_index = 0; field_index < checker->func_count; field_index++) {
         FuncSig *fs = &checker->funcs[field_index];
         if (!fs->is_generic || !fs->decl ||
             fs->decl->kind != NODE_FUNC_DECL ||
             fs->instantiation_count == 0) continue;
+        if (inst_cursors[field_index] >= fs->instantiation_count) continue;
 
         AstNode *decl = fs->decl;
         checker->current_check_file = decl->token.file;
-        for (int ii = 0; ii < fs->instantiation_count; ii++) {
+        for (int ii = inst_cursors[field_index]; ii < fs->instantiation_count; ii++) {
+            new_instantiations = true;
             const char *concrete = fs->instantiations[ii];
             AstNode *call_site = fs->instantiation_calls[ii];
 
@@ -11297,7 +11325,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                 diagnostic_error_code_formatted(checker->diag, "E3058", NODE_FILE(checker, call_site), call_site->token.line, call_site->token.column, 0, func_display_name(fs), concrete);
             }
         }
+        inst_cursors[field_index] = fs->instantiation_count;
     }
+    } /* end while (new_instantiations) */
+    free(inst_cursors);
 
     /* Verify main() exists */
     if (!find_func(checker, "main")) {
