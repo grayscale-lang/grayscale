@@ -139,9 +139,10 @@ func runNew(cmd *cobra.Command, args []string) error {
 }
 
 // isValidProjectName returns true only when name is a plain single-element
-// directory name. Names containing path separators, parent references (..),
-// absolute paths, or home-directory shortcuts (~) are rejected so that
-// createProject cannot write or delete files outside the current directory.
+// directory name safe for use across OS and shell environments. Only ASCII
+// letters, digits, hyphens, and underscores are allowed, and the name must
+// start with a letter. Names containing path separators, parent references,
+// absolute paths, or home-directory shortcuts are also rejected.
 func isValidProjectName(name string) bool {
 	if name == "" {
 		return false
@@ -151,6 +152,16 @@ func isValidProjectName(name string) bool {
 	}
 	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
 		return false
+	}
+	// Must start with a letter
+	if !((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')) {
+		return false
+	}
+	// Only allow [a-zA-Z0-9_-]
+	for _, ch := range name {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_') {
+			return false
+		}
 	}
 	cleaned := filepath.Clean(name)
 	return cleaned == name && cleaned != "." && cleaned != ".."
