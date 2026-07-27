@@ -1,0 +1,13 @@
+/*
+ * Panic Test: P0035 - map-clear-during-iteration
+ * Expected: "cannot modify map during for_each iteration"
+ */
+
+import @maps
+
+do main() {
+    mut m map[string:int] = {"a": 1, "b": 2}
+    for_each k, v in m {
+        maps.clear(m)
+    }
+}

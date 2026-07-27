@@ -64,7 +64,7 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line);
 #define GRAY_MAP_REMOVE(m, key) gray_map_remove((m), (key), __FILE__, __LINE__)
 
 /* Clear all entries */
-void gray_map_clear(GrayMap *m);
+void gray_map_clear(GrayMap *m, const char *file, int line);
 
 /* String-keyed convenience functions */
 void *gray_map_get_str(GrayMap *m, GrayString key);

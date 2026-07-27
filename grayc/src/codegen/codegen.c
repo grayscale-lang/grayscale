@@ -4136,7 +4136,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "clear") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_map_clear(");
         emit_address_of(codegen, node->data.call.args[0], "_ma");
-        emit(codegen, ")");
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
         return true;
     }
     if (strcmp(func, "is_empty") == 0 && node->data.call.arg_count == 1) {

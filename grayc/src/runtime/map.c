@@ -257,7 +257,9 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
     return true;
 }
 
-void gray_map_clear(GrayMap *m) {
+void gray_map_clear(GrayMap *m, const char *file, int line) {
+    if (m->iterating > 0)
+        gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     if (m->states) memset(m->states, 0, sizeof(uint8_t) * (size_t)m->capacity);
     m->count = 0;
     m->order_len = 0;
