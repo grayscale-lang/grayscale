@@ -1,0 +1,87 @@
+/*
+ * Test: new() on primitive types
+ * Verifies that new() can heap-allocate any primitive type
+ * and that the zero-value is correct for each.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: new(int) → 0
+    mut pi = new(int)
+    if pi^ == 0 {
+        println("  [PASS] new(int) zero value is 0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(int): expected 0, got ${pi^}")
+        failed += 1
+    }
+
+    // Test 2: new(float) → 0.0
+    mut pf = new(float)
+    if pf^ == 0.0 {
+        println("  [PASS] new(float) zero value is 0.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(float): expected 0.0")
+        failed += 1
+    }
+
+    // Test 3: new(string) → ""
+    mut ps = new(string)
+    if ps^ == "" {
+        println("  [PASS] new(string) zero value is empty")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(string): expected empty string")
+        failed += 1
+    }
+
+    // Test 4: new(bool) → false
+    mut pb = new(bool)
+    if pb^ == false {
+        println("  [PASS] new(bool) zero value is false")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(bool): expected false")
+        failed += 1
+    }
+
+    // Test 5: new(byte) → 0
+    mut pby = new(byte)
+    if cast(pby^, int) == 0 {
+        println("  [PASS] new(byte) zero value is 0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(byte): expected 0")
+        failed += 1
+    }
+
+    // Test 6: new(uint) → 0
+    mut pu = new(uint)
+    if pu^ == cast(0, uint) {
+        println("  [PASS] new(uint) zero value is 0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(uint): expected 0")
+        failed += 1
+    }
+
+    // Test 7: mutation through pointer
+    pi^ = 42
+    if pi^ == 42 {
+        println("  [PASS] new(int) mutation works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(int) mutation: expected 42, got ${pi^}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

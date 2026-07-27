@@ -818,9 +818,9 @@ static void test_error_E3033_duplicate_enum_value(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3041_new_non_struct(void) {
+static void test_error_E3041_new_unknown_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut p = new(int) }");
+        "do main() { mut p = new(Bogus) }");
     ASSERT(has_error_code(diagnostics, "E3041"));
     diagnostic_destroy(diagnostics);
 }
@@ -2214,7 +2214,7 @@ int main(void) {
     /* E3xxx: Additional type errors */
     RUN_TEST(test_error_E3017_fmt_struct);
     RUN_TEST(test_error_E3033_duplicate_enum_value);
-    RUN_TEST(test_error_E3041_new_non_struct);
+    RUN_TEST(test_error_E3041_new_unknown_type);
     RUN_TEST(test_error_E3041_interpolate_void);
     RUN_TEST(test_error_E3043_invalid_cast);
     RUN_TEST(test_error_E3045_or_return_no_error);

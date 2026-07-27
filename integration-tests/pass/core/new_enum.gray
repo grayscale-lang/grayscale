@@ -1,0 +1,69 @@
+/*
+ * Test: new() on enum types
+ * Verifies that new() can heap-allocate regular and string enums
+ * with correct default values (first variant).
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Status enum {
+    ACTIVE   = "active"
+    INACTIVE = "inactive"
+    PENDING  = "pending"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: new(Color) → first variant (RED = 0)
+    mut pc = new(Color)
+    if pc^ == Color.RED {
+        println("  [PASS] new(Color) is RED (first variant)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Color): expected RED")
+        failed += 1
+    }
+
+    // Test 2: mutation of enum pointer
+    pc^ = Color.BLUE
+    if pc^ == Color.BLUE {
+        println("  [PASS] new(Color) mutation works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Color) mutation: expected BLUE")
+        failed += 1
+    }
+
+    // Test 3: new(Status) → first variant (ACTIVE)
+    mut ps = new(Status)
+    if ps^ == Status.ACTIVE {
+        println("  [PASS] new(Status) is ACTIVE (first variant)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Status): expected ACTIVE")
+        failed += 1
+    }
+
+    // Test 4: mutation of string enum pointer
+    ps^ = Status.PENDING
+    if ps^ == Status.PENDING {
+        println("  [PASS] new(Status) mutation works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Status) mutation: expected PENDING")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

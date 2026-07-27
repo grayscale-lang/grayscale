@@ -3687,7 +3687,7 @@ duplicate.age = 31  // original.age is still 30
 
 ### 11.4 Zero Values
 
-The `new()` function allocates a zero-initialized struct in the current scope and returns a pointer to it:
+The `new()` function allocates a zero-initialized value of any type on the heap arena and returns a pointer to it:
 
 | Type | Zero Value |
 |------|------------|
@@ -3697,7 +3697,9 @@ The `new()` function allocates a zero-initialized struct in the current scope an
 | `bool` | `false` |
 | `char` | `'\0'` |
 | `byte` | `0` |
+| `[T]` | Empty array (valid for append) |
 | `map[K:V]` | `{}` |
+| enum | First variant |
 | struct | All fields zero-initialized |
 
 ### 11.5 Scoped Blocks

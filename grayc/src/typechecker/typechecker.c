@@ -6687,10 +6687,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             }
         } else {
             typechecker_mark_type_module_used(checker, new_type);
-            if (!is_struct_name(checker, new_type)) {
+            GrayType *nt = type_from_name(new_type);
+            bool known = is_struct_name(checker, new_type) ||
+                         is_enum_name(checker, new_type) ||
+                         (nt->kind != TK_UNKNOWN && nt->kind != TK_STRUCT);
+            if (!known) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "new() requires a struct type, but '%s' is not a struct",
+                    "new() requires a known type, but '%s' is not defined",
                     new_type);
                 diagnostic_error_message(checker->diag, "E3041", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);

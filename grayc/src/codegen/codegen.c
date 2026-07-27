@@ -2846,6 +2846,34 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 }
             }
             emit(codegen, "_np; })");
+        } else if (sname[0] == '[') {
+            /* Array type — allocate + initialize metadata */
+            GrayType *arr_type = type_from_name(sname);
+            const char *c_elem = "int64_t";
+            if (arr_type && arr_type->element_type)
+                c_elem = gray_map_element_c_type(codegen, arr_type->element_type);
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = gray_array_new(gray_heap_arena, sizeof(%s), 4); _np; })", c_elem);
+        } else if (strncmp(sname, "map[", 4) == 0) {
+            /* Map type — allocate + initialize metadata */
+            GrayType *map_type = type_from_name(sname);
+            const char *c_kt = "GrayString";
+            const char *c_vt = "int64_t";
+            if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
+            if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = gray_map_new_kind(gray_heap_arena, sizeof(%s), sizeof(%s), 8, %s); _np; })",
+                c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+        } else if (codegen_enum_is_string(codegen, sname)) {
+            /* String enum — assign first variant so the value is valid */
+            int eidx = codegen_enum_index(codegen, sname);
+            AstNode *decl = codegen->enum_decls[eidx];
+            const char *first_variant = decl->data.enum_decl.values[0].name;
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = GrayEnum_%s_%s; _np; })", sname, first_variant);
         } else {
             emit_formatted(codegen, "((%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)))", c_type, c_type);
         }

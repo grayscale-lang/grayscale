@@ -960,7 +960,7 @@ static AstNode *parse_prefix(Parser *parser) {
         AstNode *node = ast_alloc(parser->arena, NODE_NEW_EXPR, parser->cur_token);
         if (!expect_peek_token(parser, TOK_LPAREN)) return NULL;
         next_token(parser);
-        node->data.new_expr.type_name = read_type_name(parser);
+        node->data.new_expr.type_name = parse_complex_type(parser);
         if (type_string_has_wildcard(node->data.new_expr.type_name)) {
             diagnostic_error_message(parser->diag, "E2070",
                 arena_copy_string(parser->arena,
