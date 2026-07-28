@@ -11300,6 +11300,21 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                 }
             }
 
+            /* Save/restore current_struct_name so private-access
+             * checks inside struct function bodies see the correct
+             * owning struct during re-check (fixes spurious E4017). */
+            const char *prev_struct = checker->current_struct_name;
+            char sname_buf[MSG_BUF_SIZE];
+            checker->current_struct_name = NULL;
+            const char *underscore = strchr(fs->name, '_');
+            if (underscore) {
+                size_t prefix_len = (size_t)(underscore - fs->name);
+                memcpy(sname_buf, fs->name, prefix_len);
+                sname_buf[prefix_len] = '\0';
+                if (is_struct_name(checker, sname_buf))
+                    checker->current_struct_name = sname_buf;
+            }
+
             int errs_before = diagnostic_error_count(checker->diag);
             checker->suppress_typetable_writes = true;
             if (decl->data.func_decl.body) {
@@ -11308,6 +11323,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             checker->suppress_typetable_writes = false;
             int errs_after = diagnostic_error_count(checker->diag);
 
+            checker->current_struct_name = prev_struct;
             checker->current_return_types = prev_ret;
             checker->current_return_type_names = prev_ret_names;
             checker->current_return_count = prev_ret_count;
