@@ -444,6 +444,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "Database") == 0) return "GraySqlite";
     if (strcmp(type_name, "Router") == 0)   return "GrayRouter";
     if (strcmp(type_name, "UUID") == 0)     return "GrayUUID";
+    if (strcmp(type_name, "Arena") == 0)    return "GrayArena *";
     if (strcmp(type_name, "func") == 0)  return "void *"; /* bare func; cast at call site */
     if (strncmp(type_name, "func(", 5) == 0) return "void *"; /* typed func; same C storage, signature lives in casts */
 

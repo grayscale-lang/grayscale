@@ -1755,8 +1755,35 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
          * allow forward references, so only enforce this in later passes.
          * Exempt built-in types that are mapped directly in codegen without
          * struct registration (e.g. Error → GrayError*). */
-        if (!checker->registering && strcmp(name, "Error") != 0) {
-            return &TYPE_UNKNOWN;
+        if (!checker->registering) {
+            /* Error is always available (no import needed). */
+            if (strcmp(name, "Error") == 0) { /* allow */ }
+            /* Stdlib opaque types are valid only when their module is imported. */
+            else {
+                static const struct { const char *type; const char *mod; } opaque_map[] = {
+                    {"Arena",        "mem"},
+                    {"Thread",       "threads"},
+                    {"Mutex",        "sync"},
+                    {"SpinLock",     "atomic"},
+                    {"Channel",      "channels"},
+                    {"Socket",       "net"},
+                    {"Listener",     "net"},
+                    {"Database",     "sqlite"},
+                    {"Router",       "server"},
+                    {"HttpRequest",  "server"},
+                    {"HttpResponse", "http"},
+                    {"UUID",         "uuid"},
+                    {NULL, NULL}
+                };
+                bool found = false;
+                for (int i = 0; opaque_map[i].type; i++) {
+                    if (strcmp(name, opaque_map[i].type) == 0) {
+                        found = typechecker_is_imported_module(checker, opaque_map[i].mod);
+                        break;
+                    }
+                }
+                if (!found) return &TYPE_UNKNOWN;
+            }
         }
     }
     return t;

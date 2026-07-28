@@ -1,0 +1,29 @@
+import @mem
+import @uuid
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Bare form: mut a Arena
+    mut a Arena = mem.arena(1024)
+    mem.destroy(a)
+    passed = passed + 1
+
+    // Qualified form: mut b mem.Arena
+    mut b mem.Arena = mem.arena(1024)
+    mem.destroy(b)
+    passed = passed + 1
+
+    // UUID bare form
+    mut id UUID = uuid.generate()
+    println(id)
+    passed = passed + 1
+
+    // UUID qualified form
+    mut id2 uuid.UUID = uuid.generate()
+    println(id2)
+    passed = passed + 1
+
+    println("passed: ${passed}, failed: ${failed}")
+}
