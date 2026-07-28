@@ -531,13 +531,17 @@ var manCmd = &cobra.Command{
 			printStdlibEntry(displayName, entry)
 			return nil
 		}
-		// Plain name: scan all module.func keys for a match
+		// Plain name: scan all module.func keys for a match.
+		// Skip names that collide with language keywords — those
+		// require qualified lookup (e.g. "gray man atomic.or").
 		var matchEntries []StdlibManEntry
 		var matchKeys []string
-		for k, e := range stdlibManDocs {
-			if strings.HasSuffix(k, "."+name) {
-				matchEntries = append(matchEntries, e)
-				matchKeys = append(matchKeys, k)
+		if _, isLangKey := langManDocs[name]; !isLangKey {
+			for k, e := range stdlibManDocs {
+				if strings.HasSuffix(k, "."+name) {
+					matchEntries = append(matchEntries, e)
+					matchKeys = append(matchKeys, k)
+				}
 			}
 		}
 		if len(matchEntries) == 1 {
