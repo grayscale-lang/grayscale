@@ -1,0 +1,90 @@
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a i128 = i128(10)
+    mut b i128 = i128(20)
+    mut c i128 = i128(10)
+
+    // println with bigint comparison expressions
+    // These should compile and print bool values, not crash with C errors
+
+    // i128 eq
+    if a == c {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a == c should be true")
+    }
+
+    // i128 ne
+    if a != b {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a != b should be true")
+    }
+
+    // i128 lt
+    if a < b {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a < b should be true")
+    }
+
+    // i128 gt
+    if b > a {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: b > a should be true")
+    }
+
+    // i128 le
+    if a <= c {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: a <= c should be true")
+    }
+
+    // i128 ge
+    if c >= a {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: c >= a should be true")
+    }
+
+    // Direct println of bigint comparison (the exact bug from #2217)
+    println(a == b)
+    println(a == c)
+    println(a != b)
+    println(a < b)
+    println(b > a)
+    println(a <= c)
+    println(c >= a)
+
+    // u128 comparison in println
+    mut x u128 = u128(100)
+    mut y u128 = u128(200)
+    println(x == y)
+    println(x < y)
+
+    // i256 comparison in println
+    mut d i256 = i256(30)
+    mut e i256 = i256(40)
+    println(d == e)
+    println(d < e)
+
+    // u256 comparison in println
+    mut f u256 = u256(50)
+    mut g u256 = u256(60)
+    println(f == g)
+    println(f < g)
+
+    passed = passed + 1
+
+    println("passed: ${passed}, failed: ${failed}")
+}

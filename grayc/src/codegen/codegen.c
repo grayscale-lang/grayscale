@@ -921,8 +921,14 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     /* -bigint_var — the result is still the same bigint type */
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS)
         return resolve_bigint_type(codegen, node->data.prefix.right);
-    /* If this is an infix expression, check left operand */
+    /* If this is an infix expression, check left operand.
+     * Comparison operators return bool, not bigint, so skip those. */
     if (node->kind == NODE_INFIX_EXPR) {
+        TokenType op = node->data.infix.op;
+        if (op == TOK_EQ || op == TOK_NOT_EQ ||
+            op == TOK_LT || op == TOK_GT ||
+            op == TOK_LT_EQ || op == TOK_GT_EQ)
+            return NULL;
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
         return resolve_bigint_type(codegen, node->data.infix.right);
