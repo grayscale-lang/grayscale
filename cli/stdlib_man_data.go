@@ -45,6 +45,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"arrays.map":              {Module: "arrays", Group: "Higher-Order", Kind: "func", Sig: "map(arr [T], ()transform) -> [T]", Fields: "", Desc: "Returns a new array with transform applied to each element. transform must be a function that takes T and returns T. Does not modify the original.", Example: ""},
 	"arrays.filter":           {Module: "arrays", Group: "Higher-Order", Kind: "func", Sig: "filter(arr [T], ()predicate) -> [T]", Fields: "", Desc: "Returns a new array containing only elements for which predicate returns true. predicate must be a function that takes T and returns bool. Does not modify the original.", Example: ""},
 	"arrays.reduce":           {Module: "arrays", Group: "Higher-Order", Kind: "func", Sig: "reduce(arr [T], initial T, ()accumulator) -> T", Fields: "", Desc: "Reduces arr to a single value by applying accumulator(acc, element) for each element, starting with initial. accumulator must take two T parameters and return T. Does not modify the original.", Example: ""},
+	"arrays.any":              {Module: "arrays", Group: "Higher-Order", Kind: "func", Sig: "any(arr [T], ()predicate) -> bool", Fields: "", Desc: "Returns true if predicate returns true for at least one element. predicate must be a function that takes T and returns bool.", Example: ""},
+	"arrays.all":              {Module: "arrays", Group: "Higher-Order", Kind: "func", Sig: "all(arr [T], ()predicate) -> bool", Fields: "", Desc: "Returns true if predicate returns true for every element. predicate must be a function that takes T and returns bool.", Example: ""},
 	"atomic.load":             {Module: "atomic", Group: "64-bit Atomics", Kind: "func", Sig: "load(ptr ^int) -> int", Fields: "", Desc: "Atomically load a value.", Example: ""},
 	"atomic.store":            {Module: "atomic", Group: "64-bit Atomics", Kind: "func", Sig: "store(ptr ^int, val int)", Fields: "", Desc: "Atomically store a value.", Example: ""},
 	"atomic.add":              {Module: "atomic", Group: "64-bit Atomics", Kind: "func", Sig: "add(ptr ^int, val int) -> int", Fields: "", Desc: "Atomic add. Returns the previous value.", Example: ""},
@@ -336,7 +338,7 @@ var stdlibManDocs = map[string]StdlibManEntry{
 
 // stdlibModules maps module names to their ordered function lists.
 var stdlibModules = map[string][]string{
-	"arrays":   {"append", "insert_at", "prepend", "remove_at", "remove", "clear", "fill", "get_first", "get_last", "remove_first", "remove_last", "is_empty", "contains", "index_of", "count", "is_equal", "reverse", "slice", "concat", "deduplicate", "flatten", "split_every", "pair", "get_sum", "get_min", "get_max", "sort_asc", "sort_desc", "map", "filter", "reduce"},
+	"arrays":   {"append", "insert_at", "prepend", "remove_at", "remove", "clear", "fill", "get_first", "get_last", "remove_first", "remove_last", "is_empty", "contains", "index_of", "count", "is_equal", "reverse", "slice", "concat", "deduplicate", "flatten", "split_every", "pair", "get_sum", "get_min", "get_max", "sort_asc", "sort_desc", "map", "filter", "reduce", "any", "all"},
 	"atomic":   {"load", "store", "add", "sub", "exchange", "cas", "and", "or", "xor", "spinlock", "spin_lock", "spin_trylock", "spin_unlock", "spinlock_destroy", "fence"},
 	"bytes":    {"from_string", "from_hex", "from_base64", "to_string", "to_hex", "to_base64"},
 	"channels": {"open", "send", "receive", "close", "try_send", "try_receive"},
@@ -375,7 +377,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Query         ", Names: []string{"is_empty", "contains", "index_of", "count", "is_equal"}},
 		{Label: "Transformation", Names: []string{"reverse", "slice", "concat", "deduplicate", "flatten", "split_every", "pair"}},
 		{Label: "Computation   ", Names: []string{"get_sum", "get_min", "get_max"}},
-		{Label: "Higher-Order  ", Names: []string{"map", "filter", "reduce"}},
+		{Label: "Higher-Order  ", Names: []string{"map", "filter", "reduce", "any", "all"}},
 	},
 	"atomic": {
 		{Label: "64-bit Atomics", Names: []string{"load", "store", "add", "sub", "exchange", "cas", "and", "or", "xor"}},
