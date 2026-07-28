@@ -1,0 +1,30 @@
+import @io
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Normal paths with various patterns should work fine
+    mut _, _ = io.write_file("/tmp/gray_path_test.txt", "test content")
+    mut content, _ = io.read_file("/tmp/gray_path_test.txt")
+    if content == "test content" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: read_file normal path")
+    }
+
+    // Absolute path works
+    if io.file_exists("/tmp/gray_path_test.txt") {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: file_exists absolute path")
+    }
+
+    // Cleanup
+    mut _, _ = io.delete_file("/tmp/gray_path_test.txt")
+    passed = passed + 1
+
+    println("passed: ${passed}, failed: ${failed}")
+}
