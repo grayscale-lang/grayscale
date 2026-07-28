@@ -1074,9 +1074,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"mem", "arena",    1, 1, false, FT_NONE, 0, {{0}},"Arena"},
     {"mem", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "fill",     3, 3, false, FT_NONE, 0, {{0}},"void"},
-    {"mem", "free",     1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "init",     2, 2, false, FT_NONE, 0, {{0}},NULL},
-    {"mem", "make",     2, 2, false, FT_NONE, 0, {{0}},NULL},
     {"mem", "raw_copy", 3, 3, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "reset",    1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "usage",    1, 1, false, FT_NONE, 0, {{0}},"int"},
@@ -6243,7 +6241,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         }
 
         /* Type names used as values are caught downstream; they won't match
-         * any variable in scope, and functions like new(), mem.make(), and casts
+         * any variable in scope, and functions like new(), mem.init(), and casts
          * legitimately take type names as arguments. */
 
         Symbol *sym = scope_lookup(checker->current_scope, name);

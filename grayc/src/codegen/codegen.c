@@ -6082,8 +6082,8 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
                 {"int_to_hex","fmt"},{"int_to_binary","fmt"},{"int_to_octal","fmt"},
                 {"float_fixed","fmt"},{"float_sci","fmt"},
                 /* @mem */
-                {"arena","mem"},{"usage","mem"},{"make","mem"},{"alloc","mem"},
-                {"init","mem"},{"free","mem"},{"reset","mem"},{"destroy","mem"},
+                {"arena","mem"},{"usage","mem"},{"alloc","mem"},
+                {"init","mem"},{"reset","mem"},{"destroy","mem"},
                 {NULL,NULL}
             };
             for (int ui = 0; ui < codegen->using_module_count; ui++) {
