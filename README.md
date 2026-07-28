@@ -60,7 +60,7 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ### Build from source
 
-Requires Go 1.23+ and a C compiler (gcc or clang).
+Requires Go 1.23+ and a C compiler — GCC 7+ or Clang 5+ (GNU C extensions required).
 
 ```bash
 git clone https://github.com/grayscale-lang/grayscale.git
