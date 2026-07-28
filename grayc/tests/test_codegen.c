@@ -1580,6 +1580,369 @@ static void test_e2e_atomic(void) {
     ASSERT_STR_EQ(output, "42\n42\n50");
 }
 
+/* ===== Bigint Types ===== */
+
+static void test_e2e_i128_arithmetic(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i128 = i128(100)\n"
+        "  mut b i128 = i128(42)\n"
+        "  println(a + b)\n"
+        "  println(a - b)\n"
+        "  println(a * b)\n"
+        "  println(a / b)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "142\n58\n4200\n2");
+}
+
+static void test_e2e_u128_arithmetic(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a u128 = u128(200)\n"
+        "  mut b u128 = u128(50)\n"
+        "  println(a + b)\n"
+        "  println(a - b)\n"
+        "  println(a * b)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "250\n150\n10000");
+}
+
+static void test_e2e_i256_arithmetic(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i256 = i256(1000)\n"
+        "  mut b i256 = i256(234)\n"
+        "  println(a + b)\n"
+        "  println(a - b)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "1234\n766");
+}
+
+static void test_e2e_u256_arithmetic(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a u256 = u256(5000)\n"
+        "  mut b u256 = u256(3000)\n"
+        "  println(a + b)\n"
+        "  println(a - b)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "8000\n2000");
+}
+
+static void test_e2e_bigint_comparison(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i128 = i128(10)\n"
+        "  mut b i128 = i128(20)\n"
+        "  mut eq bool = a == b\n"
+        "  mut lt bool = a < b\n"
+        "  mut gt bool = a > b\n"
+        "  println(eq)\n"
+        "  println(lt)\n"
+        "  println(gt)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "false\ntrue\nfalse");
+}
+
+static void test_e2e_bigint_cast(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i128 = i128(42)\n"
+        "  mut b int = int(a)\n"
+        "  println(b)\n"
+        "  mut c uint = 100\n"
+        "  mut d u128 = u128(c)\n"
+        "  println(d)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\n100");
+}
+
+static void test_e2e_bigint_interpolation(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i128 = i128(42)\n"
+        "  mut b u128 = u128(99)\n"
+        "  println(\"i128=${a} u128=${b}\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "i128=42 u128=99");
+}
+
+static void test_e2e_bigint_mixed_width(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a i256 = i256(1000)\n"
+        "  mut b i128 = i128(234)\n"
+        "  mut c i256 = a + b\n"
+        "  println(c)\n"
+        "  mut d u256 = u256(5000)\n"
+        "  mut e u128 = u128(3000)\n"
+        "  mut f u256 = d + e\n"
+        "  println(f)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "1234\n8000");
+}
+
+/* ===== Struct Functions (Extended) ===== */
+
+static void test_e2e_struct_multiple_functions(void) {
+    char *output = compile_and_run(
+        ""
+        "const Vec struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "  do make(x int, y int) -> Vec { return Vec{x: x, y: y} }\n"
+        "  do sum(v Vec) -> int { return v.x + v.y }\n"
+        "  do scale(v Vec, factor int) -> Vec {\n"
+        "    return Vec{x: v.x * factor, y: v.y * factor}\n"
+        "  }\n"
+        "}\n"
+        "do main() {\n"
+        "  mut v = Vec.make(3, 4)\n"
+        "  println(Vec.sum(v))\n"
+        "  mut s = Vec.scale(v, 2)\n"
+        "  println(s.x)\n"
+        "  println(s.y)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7\n6\n8");
+}
+
+static void test_e2e_struct_self_dispatch(void) {
+    char *output = compile_and_run(
+        ""
+        "const Counter struct {\n"
+        "  value int\n"
+        "  do make(v int) -> Counter { return Counter{value: v} }\n"
+        "  do get(c Counter) -> int { return c.value }\n"
+        "  do inc(c Counter) -> Counter {\n"
+        "    return Counter{value: c.value + 1}\n"
+        "  }\n"
+        "}\n"
+        "do main() {\n"
+        "  mut c = Counter.make(0)\n"
+        "  c = c.inc()\n"
+        "  c = c.inc()\n"
+        "  c = c.inc()\n"
+        "  println(c.get())\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "3");
+}
+
+static void test_e2e_struct_static_dispatch(void) {
+    char *output = compile_and_run(
+        ""
+        "const Adder struct {\n"
+        "  val int\n"
+        "  do make(v int) -> Adder { return Adder{val: v} }\n"
+        "  do add(a Adder, n int) -> Adder {\n"
+        "    return Adder{val: a.val + n}\n"
+        "  }\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = Adder.make(10)\n"
+        "  mut b = Adder.add(a, 5)\n"
+        "  println(b.val)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "15");
+}
+
+/* ===== Multi-Return (Extended) ===== */
+
+static void test_e2e_multi_return_three(void) {
+    char *output = compile_and_run(
+        ""
+        "do triple(a int) -> (int, int, int) { return a, a * 2, a * 3 }\n"
+        "do main() {\n"
+        "  mut x, y, z = triple(5)\n"
+        "  println(x)\n"
+        "  println(y)\n"
+        "  println(z)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "5\n10\n15");
+}
+
+static void test_e2e_multi_return_mixed(void) {
+    char *output = compile_and_run(
+        ""
+        "do info() -> (string, int) { return \"hello\", 42 }\n"
+        "do main() {\n"
+        "  mut s, n = info()\n"
+        "  println(s)\n"
+        "  println(n)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "hello\n42");
+}
+
+static void test_e2e_multi_return_wildcard(void) {
+    char *output = compile_and_run(
+        ""
+        "do divide(a int, b int) -> (int, int) { return a / b, a % b }\n"
+        "do main() {\n"
+        "  mut _, r int = divide(17, 5)\n"
+        "  println(r)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "2");
+}
+
+/* ===== Error Handling (Extended) ===== */
+
+static void test_e2e_or_return_error_path(void) {
+    char *output = compile_and_run(
+        ""
+        "do risky() -> (string, Error) {\n"
+        "  return \"\", error(\"oops\")\n"
+        "}\n"
+        "do caller() -> (string, Error) {\n"
+        "  mut val = risky() or_return\n"
+        "  return val, nil\n"
+        "}\n"
+        "do main() {\n"
+        "  mut v, e = caller()\n"
+        "  if e != nil {\n"
+        "    println(\"propagated\")\n"
+        "  } otherwise {\n"
+        "    println(v)\n"
+        "  }\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "propagated");
+}
+
+static void test_e2e_or_return_fallback(void) {
+    char *output = compile_and_run(
+        ""
+        "do risky() -> (string, Error) {\n"
+        "  return \"\", error(\"bad\")\n"
+        "}\n"
+        "do safe() -> (string, Error) {\n"
+        "  mut val = risky() or_return \"fallback\"\n"
+        "  return val, nil\n"
+        "}\n"
+        "do main() {\n"
+        "  mut v, e = safe()\n"
+        "  println(v)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "fallback");
+}
+
+static void test_e2e_ensure_multiple(void) {
+    char *output = compile_and_run(
+        ""
+        "do step1() { println(\"step1\") }\n"
+        "do step2() { println(\"step2\") }\n"
+        "do step3() { println(\"step3\") }\n"
+        "do work() {\n"
+        "  ensure step1()\n"
+        "  ensure step2()\n"
+        "  ensure step3()\n"
+        "  println(\"working\")\n"
+        "}\n"
+        "do main() { work() }");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "working\nstep3\nstep2\nstep1");
+}
+
+static void test_e2e_ensure_early_return(void) {
+    char *output = compile_and_run(
+        ""
+        "do cleanup() { println(\"cleaned\") }\n"
+        "do work(flag bool) {\n"
+        "  ensure cleanup()\n"
+        "  if flag {\n"
+        "    println(\"early\")\n"
+        "    return\n"
+        "  }\n"
+        "  println(\"normal\")\n"
+        "}\n"
+        "do main() { work(true) }");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "early\ncleaned");
+}
+
+/* ===== Pointer Operations (Extended) ===== */
+
+static void test_e2e_ptr_to_ptr(void) {
+    char *output = compile_and_run(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(4096)\n"
+        "  ensure mem.destroy(a)\n"
+        "  mut p ^int = mem.init(a, int)\n"
+        "  p^ = 42\n"
+        "  mut pp = addr(p)\n"
+        "  println(pp^^)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42");
+}
+
+static void test_e2e_ptr_compare(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut x int = 10\n"
+        "  mut y int = 20\n"
+        "  mut p1 ^int = addr(x)\n"
+        "  mut p2 ^int = addr(x)\n"
+        "  mut p3 ^int = addr(y)\n"
+        "  println(p1 == p2)\n"
+        "  println(p1 == p3)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "true\nfalse");
+}
+
+/* ===== Container Operations (Extended) ===== */
+
+static void test_e2e_map_int_keys(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut m map[int:string] = {1: \"one\", 2: \"two\", 3: \"three\"}\n"
+        "  println(m[2])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "two");
+}
+
+static void test_e2e_array_of_structs(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "do main() {\n"
+        "  mut points [Point] = {Point{x: 1, y: 2}, Point{x: 3, y: 4}}\n"
+        "  println(points[0].x)\n"
+        "  println(points[1].y)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "1\n4");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access("./grayc", X_OK) != 0) {
@@ -1763,6 +2126,40 @@ int main(void) {
 
     /* Atomic */
     RUN_TEST(test_e2e_atomic);
+
+    /* Bigint types */
+    RUN_TEST(test_e2e_i128_arithmetic);
+    RUN_TEST(test_e2e_u128_arithmetic);
+    RUN_TEST(test_e2e_i256_arithmetic);
+    RUN_TEST(test_e2e_u256_arithmetic);
+    RUN_TEST(test_e2e_bigint_comparison);
+    RUN_TEST(test_e2e_bigint_cast);
+    RUN_TEST(test_e2e_bigint_interpolation);
+    RUN_TEST(test_e2e_bigint_mixed_width);
+
+    /* Struct functions (extended) */
+    RUN_TEST(test_e2e_struct_multiple_functions);
+    RUN_TEST(test_e2e_struct_self_dispatch);
+    RUN_TEST(test_e2e_struct_static_dispatch);
+
+    /* Multi-return (extended) */
+    RUN_TEST(test_e2e_multi_return_three);
+    RUN_TEST(test_e2e_multi_return_mixed);
+    RUN_TEST(test_e2e_multi_return_wildcard);
+
+    /* Error handling (extended) */
+    RUN_TEST(test_e2e_or_return_error_path);
+    RUN_TEST(test_e2e_or_return_fallback);
+    RUN_TEST(test_e2e_ensure_multiple);
+    RUN_TEST(test_e2e_ensure_early_return);
+
+    /* Pointer operations (extended) */
+    RUN_TEST(test_e2e_ptr_to_ptr);
+    RUN_TEST(test_e2e_ptr_compare);
+
+    /* Container operations (extended) */
+    RUN_TEST(test_e2e_map_int_keys);
+    RUN_TEST(test_e2e_array_of_structs);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
