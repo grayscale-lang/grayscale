@@ -562,6 +562,17 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
             const char *expr_start = s;
             int brace_depth = 1;
             while (*s && brace_depth > 0) {
+                /* Skip nested string literals so braces inside
+                 * them are not counted against brace_depth. */
+                if (*s == '"') {
+                    s++; /* skip opening " */
+                    while (*s && *s != '"') {
+                        if (*s == '\\' && *(s + 1)) s++;
+                        s++;
+                    }
+                    if (*s == '"') s++; /* skip closing " */
+                    continue;
+                }
                 if (*s == '{') brace_depth++;
                 else if (*s == '}') brace_depth--;
                 if (brace_depth > 0) s++;
