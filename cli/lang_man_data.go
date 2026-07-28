@@ -165,8 +165,8 @@ var langManDocs = map[string]LangManEntry{
 	"new": {
 		Kind:    "keyword",
 		Syntax:  "new(<Type>) -> ^<Type>",
-		Desc:    "Allocates a zero-initialized struct on the heap and returns a pointer to it.",
-		Example: "mut p = new(Point)\np.x = 10",
+		Desc:    "Allocates a zero-initialized value of any type on the heap and returns a pointer to it. Works with primitives, structs, arrays, maps, and all other types.",
+		Example: "mut p = new(Point)\np.x = 10\nmut n = new(int)\nn^ = 42",
 	},
 	"private": {
 		Kind:    "keyword",
