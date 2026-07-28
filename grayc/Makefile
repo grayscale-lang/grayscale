@@ -135,7 +135,7 @@ src/vendor/sqlite3.o: src/vendor/sqlite3.c
 -include $(OBJ:.o=.d) $(RT_OBJ:.o=.d)
 
 clean:
-	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_codegen tests/test_runtime tests/test_panics tests/*_san tests/*.d
+	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_codegen tests/test_runtime tests/test_panics tests/test_stdlib tests/*_san tests/*.d
 
 install: build
 	install -d /usr/local/bin
@@ -185,7 +185,16 @@ tests/test_runtime: tests/test_runtime.c $(RT_TEST_DEPS)
 tests/test_panics: tests/test_panics.c $(PANIC_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
-test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_runtime tests/test_panics
+# Objects needed by the stdlib test binary (runtime + tested stdlib modules)
+STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
+                   src/stdlib/strings.o src/stdlib/arrays.o src/stdlib/maps.o \
+                   src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
+                   src/stdlib/strconv.o $(ATOMIC_OBJ)
+
+tests/test_stdlib: tests/test_stdlib.c $(STDLIB_TEST_DEPS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
+test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_runtime tests/test_panics tests/test_stdlib
 	@echo ""
 	@echo "=== Lexer Tests ==="
 	@./tests/test_lexer
@@ -199,6 +208,8 @@ test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecke
 	@./tests/test_runtime
 	@echo "=== Panic Tests ==="
 	@./tests/test_panics
+	@echo "=== Stdlib Tests ==="
+	@./tests/test_stdlib
 
 test-e2e: build tests/test_codegen
 	@echo ""

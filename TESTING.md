@@ -24,6 +24,7 @@ Unit tests validate individual compiler components:
 - **Util Tests** (`grayc/tests/test_util.c`): Arena allocator (create, alloc, alignment, multi-block, oversized, strdup/strndup), growable buffer (create, append, growth, formatting, indentation), and scope (lookup, define/update, hash rebuild, many symbols, immutability).
 - **Runtime Tests** (`grayc/tests/test_runtime.c`): GrayArena (create, alloc, alignment, multi-block, oversized, reset, usage, scope save/restore, nested scopes), GrayString (lit, new, eq, concat, format, c_string_dup, empty), GrayArray (new, push, growth, set, from, typed macros, copy, multiple element sizes), and GrayMap (new, int/string keys, has, remove, overwrite, clear, insertion order, rehash, copy, float normalization).
 - **Panic Tests** (`grayc/tests/test_panics.c`): Fork-based tests that verify runtime panic codes (P-codes) are correctly emitted. Covers sized arithmetic overflow, encoding (base64/hex), array/string bounds, math domain errors, strconv, random, strings, builtins, IO, bigint casts, and bigint parsing.
+- **Stdlib Tests** (`grayc/tests/test_stdlib.c`): Unit tests for 7 stdlib modules — strings (case, trim, search, transform, split/join, chars, classification), arrays (modify, access, query, transform, computation, sort), maps (keys/values, membership, equality, merge), math (arithmetic, rounding, powers, logs, trig, properties, factorial/gcd/lcm/prime), fmt (padding, center, hex/binary/octal, float formatting), encoding (base64, hex, URL encode/decode with roundtrip), and strconv (parsing, result variants, formatting, query).
 
 ### End-to-End Tests
 
@@ -33,7 +34,7 @@ E2E tests (`grayc/tests/test_codegen.c`) compile Grayscale programs, run them, a
 
 ```bash
 # From repo root
-make test-unit        # unit tests (lexer + parser + typechecker + util + runtime + panics)
+make test-unit        # unit tests (lexer + parser + typechecker + util + runtime + panics + stdlib)
 make test-e2e         # e2e codegen tests
 
 # Individual test suites (from grayc/)
@@ -43,6 +44,7 @@ make test-e2e         # e2e codegen tests
 ./grayc/tests/test_util
 ./grayc/tests/test_runtime
 ./grayc/tests/test_panics
+./grayc/tests/test_stdlib
 ./grayc/tests/test_codegen
 ```
 
