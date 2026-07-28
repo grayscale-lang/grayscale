@@ -110,10 +110,5 @@ Symbol *scope_lookup_local(Scope *scope, const char *name) {
             h = (h + 1) & mask;
         }
     }
-    /* Fallback for scopes with no symbols defined yet */
-    for (int i = 0; i < scope->count; i++) {
-        if (strcmp(scope->symbols[i].name, name) == 0)
-            return &scope->symbols[i];
-    }
     return NULL;
 }
