@@ -6824,7 +6824,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 static void check_reserved_name(TypeChecker *checker, const char *name, const char *file, int line, int col) {
     if (!name) return;
     /* Skip compiler-generated temps (_gray_tmp, _gray_or, _gray_idx, etc.) */
-    if (strncmp(name, "_gray_", 6) == 0) return;
+    if (strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0) return;
     if (strncmp(name, "gray_", 5) == 0 || strncmp(name, "Gray", 4) == 0) {
         diagnostic_error_code_formatted(checker->diag, "E4006", file, line, col, 0, name);
     }
@@ -7183,7 +7183,7 @@ static void check_block(TypeChecker *checker, AstNode *node) {
     if (node->data.block.count >= 2) {
         AstNode *first = node->data.block.stmts[0];
         if (first && first->kind == NODE_VAR_DECL &&
-            strncmp(first->data.var_decl.name, "_gray_tmp", 9) == 0 &&
+            strncmp(first->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) == 0 &&
             first->data.var_decl.value &&
             first->data.var_decl.value->kind == NODE_CALL_EXPR) {
             Symbol *sym = scope_lookup_local(checker->current_scope, first->data.var_decl.name);
@@ -7368,7 +7368,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* E3045: or_return on non-error-returning function */
-        if (strncmp(node->data.var_decl.name, "_gray_or", 8) == 0 &&
+        if (strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0 &&
             node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
             AstNode *call_fn = node->data.var_decl.value->data.call.function;
             const char *call_name = NULL;
@@ -7419,8 +7419,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 
         /* E3050/E3051: array/map literals require explicit type annotations */
         if (!node->data.var_decl.type_name && node->data.var_decl.value &&
-            strncmp(node->data.var_decl.name, "_gray_tmp", 9) != 0 &&
-            strncmp(node->data.var_decl.name, "_gray_or", 8) != 0) {
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
             if (node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 diagnostic_error_code_help(checker->diag, "E3050",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -7439,8 +7439,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         if (!node->data.var_decl.mutable && !node->data.var_decl.type_name &&
             node->data.var_decl.value &&
             (checker->func_depth == 0 || checker->current_struct_name != NULL) &&
-            strncmp(node->data.var_decl.name, "_gray_tmp", 9) != 0 &&
-            strncmp(node->data.var_decl.name, "_gray_or", 8) != 0 &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0 &&
             node->data.var_decl.value->kind != NODE_STRUCT_VALUE &&
             node->data.var_decl.value->kind != NODE_FUNC_REF &&
             node->data.var_decl.value->kind != NODE_ARRAY_VALUE &&
@@ -7592,8 +7592,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             /* Check for multi-return to single variable
              * (skip if this is part of a multi-var expansion; the value will be a .v0 access) */
             if (node->data.var_decl.value->kind == NODE_CALL_EXPR &&
-                strncmp(node->data.var_decl.name, "_gray_tmp", 9) != 0 &&
-                strncmp(node->data.var_decl.name, "_gray_or", 8) != 0) {
+                strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+                strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
                 AstNode *call_fn = node->data.var_decl.value->data.call.function;
                 const char *call_name = NULL;
                 const char *call_mod = NULL;
@@ -9063,7 +9063,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             if (node->data.return_stmt.count == 1 &&
                 node->data.return_stmt.values[0]->kind == NODE_MEMBER_EXPR) {
                 AstNode *obj = node->data.return_stmt.values[0]->data.member.object;
-                if (obj->kind == NODE_LABEL && strncmp(obj->data.label.value, "_gray_or", 8) == 0) {
+                if (obj->kind == NODE_LABEL && strncmp(obj->data.label.value, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0) {
                     is_or_return_synthetic = true;
                 }
             }

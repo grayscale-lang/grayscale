@@ -16,6 +16,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Compiler-generated synthetic variable prefixes.
+ * The parser creates these; the typechecker and codegen check for them. */
+#define GRAY_SYNTH_PREFIX  "_gray_"
+#define GRAY_SYNTH_TMP     "_gray_tmp"
+#define GRAY_SYNTH_OR      "_gray_or"
+
 typedef enum {
     /* Expressions */
     NODE_LABEL,

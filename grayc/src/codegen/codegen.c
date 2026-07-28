@@ -1035,7 +1035,8 @@ static bool function_uses_caller_arena(AstNode *function_node) {
 
 static bool is_result_temporary(const char *name) {
     if (!name) return false;
-    return strncmp(name, "_gray_tmp", 9) == 0 || strncmp(name, "_gray_or", 8) == 0;
+    return strncmp(name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) == 0 ||
+           strncmp(name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0;
 }
 
 static int function_name_compare(const void *left, const void *right) {

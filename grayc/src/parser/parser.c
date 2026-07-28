@@ -1241,7 +1241,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
 
     static int or_return_counter = 0;
     char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-    snprintf(tmp_name, TMP_NAME_BUF, "_gray_or%d", or_return_counter++);
+    snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_OR "%d", or_return_counter++);
 
     AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
     block->data.block.cap = 4;
@@ -1464,7 +1464,7 @@ static AstNode *parse_var_declaration(Parser *parser) {
             /* Generate unique temp name */
             static int multi_var_counter = 0;
             char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-            snprintf(tmp_name, TMP_NAME_BUF, "_gray_tmp%d", multi_var_counter++);
+            snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_TMP "%d", multi_var_counter++);
 
             /* Create a block with: __auto_type _tmp = expr; type x = _tmp.v0; ... */
             AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
