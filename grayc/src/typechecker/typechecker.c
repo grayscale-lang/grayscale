@@ -6288,7 +6288,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             FuncSig *fs = find_func(checker, name);
             if (fs) fs->used = true;
             diagnostic_error_code_formatted(checker->diag, "E3031", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name, name, name);
-        } else if ((result = typechecker_lookup_using_constant(checker, name)) != NULL) {
+        } else if (typechecker_lookup_using_constant(checker, name)) {
+            result = typechecker_lookup_using_constant(checker, name);
         } else if (typechecker_is_builtin(name)) {
             GrayType *bt = type_from_name(name);
             if (bt != &TYPE_UNKNOWN) {
