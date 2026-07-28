@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 371 codes** (252 errors, 17 warnings, 102 panics)
+**Total: 377 codes** (258 errors, 17 warnings, 102 panics)
 
 ---
 
@@ -199,6 +199,10 @@
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
 | `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
+| `E3132` | types | alias target type '%s' is not defined |
+| `E3133` | types | alias '%s' creates a circular reference |
+| `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
+| `E3135` | types | alias '%s' cannot target the wildcard type '?' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -215,6 +219,8 @@
 | `E4017` | names | function '%s.%s' is private and cannot be called from outside the struct |
 | `E4018` | names | struct '%s' has no function named '%s' |
 | `E4019` | names | cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values |
+| `E4020` | names | type alias '%s' is already declared |
+| `E4021` | names | type alias '%s' is private and cannot be accessed from outside its file |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -422,4 +428,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-27 18:24:52 UTC*
+*Generated on 2026-07-28 03:35:09 UTC*

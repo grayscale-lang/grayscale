@@ -19,6 +19,7 @@ typedef struct {
 /* Sorted by keyword for binary search */
 static const KeywordEntry keywords[] = {
     {"_",               TOK_BLANK},
+    {"alias",           TOK_ALIAS},
     {"as_long_as",      TOK_AS_LONG_AS},
     {"bit_and",         TOK_BIT_AND},
     {"bit_not",         TOK_BIT_NOT},
@@ -163,6 +164,7 @@ const char *token_type_name(TokenType type) {
     case TOK_WHEN:           return "when";
     case TOK_IS:             return "is";
     case TOK_DEFAULT:        return "default";
+    case TOK_ALIAS:          return "alias";
     case TOK_CAST:           return "cast";
     case TOK_BIT_AND:        return "bit_and";
     case TOK_BIT_OR:         return "bit_or";

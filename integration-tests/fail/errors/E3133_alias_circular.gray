@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3133 - circular alias reference
+ * Expected: alias creates a circular reference
+ */
+
+alias A = B
+alias B = A
+
+do main() {}

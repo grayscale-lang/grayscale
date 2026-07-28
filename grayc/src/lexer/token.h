@@ -135,6 +135,9 @@ typedef enum {
     TOK_IS,
     TOK_DEFAULT,
 
+    /* Type aliasing */
+    TOK_ALIAS,
+
     /* Type conversion */
     TOK_CAST,
 

@@ -1,0 +1,96 @@
+/*
+ * type_alias.gray - Test type alias declarations
+ */
+
+/* Basic primitive alias */
+alias Meters = float
+alias Count = int
+alias Flag = bool
+alias Name = string
+
+/* Alias of collection types */
+alias Numbers = [int]
+alias Names = [string]
+alias Lookup = map[string:int]
+
+/* Struct with alias */
+const Point struct {
+    x int,
+    y int
+}
+alias Vec2 = Point
+
+/* Enum with alias */
+const Color enum {
+    RED,
+    GREEN,
+    BLUE
+}
+alias Hue = Color
+
+/* Chained alias */
+alias Distance = Meters
+alias Length = Distance
+
+/* Private alias (accessible within same file) */
+private alias Secret = int
+
+do main() {
+    /* Primitive aliases */
+    mut d Meters = 10.5
+    assert(type_of(d) == "float", "Meters should resolve to float")
+
+    mut c Count = 42
+    assert(type_of(c) == "int", "Count should resolve to int")
+
+    mut f Flag = true
+    assert(type_of(f) == "bool", "Flag should resolve to bool")
+
+    mut n Name = "hello"
+    assert(type_of(n) == "string", "Name should resolve to string")
+
+    /* Collection aliases */
+    mut nums Numbers = {1, 2, 3}
+    assert(len(nums) == 3, "Numbers array should have 3 elements")
+
+    mut names Names = {"alice", "bob"}
+    assert(len(names) == 2, "Names array should have 2 elements")
+
+    mut lk Lookup = {"a": 1, "b": 2}
+    assert(len(lk) == 2, "Lookup map should have 2 entries")
+
+    /* Struct alias */
+    mut p Vec2 = Point{x: 5, y: 10}
+    assert(p.x == 5, "Vec2 alias should work for struct access")
+    assert(p.y == 10, "Vec2 alias should work for struct access")
+
+    /* Struct alias with new() */
+    mut q ^Vec2 = new(Vec2)
+    q^.x = 3
+    q^.y = 4
+    assert(q^.x == 3, "Vec2 alias should work with new()")
+
+    /* Enum alias */
+    mut color Hue = Hue.RED
+    assert(color == Color.RED, "Hue alias should resolve to Color enum")
+
+    mut green Hue = Hue.GREEN
+    assert(green == Color.GREEN, "Hue.GREEN should equal Color.GREEN")
+
+    /* Chained alias */
+    mut dist Distance = 100.0
+    assert(type_of(dist) == "float", "Distance should chain-resolve to float")
+
+    mut len_ Length = 200.0
+    assert(type_of(len_) == "float", "Length should chain-resolve to float")
+
+    /* Private alias (same file access) */
+    mut s Secret = 999
+    assert(type_of(s) == "int", "Secret should resolve to int")
+
+    /* type_of returns underlying type */
+    mut m Meters = 42.5
+    assert(type_of(m) == "float", "type_of should return underlying type, not alias")
+
+    println("ALL TESTS PASSED")
+}

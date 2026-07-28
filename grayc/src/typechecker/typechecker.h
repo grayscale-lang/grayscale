@@ -187,6 +187,14 @@ typedef struct {
     /* Arena for diagnostic message strings — replaces per-message strdup */
     Arena *arena;
 
+    /* Type alias registry (alias Name = Type) */
+    const char **type_alias_names;
+    const char **type_alias_targets;
+    const char **type_alias_files;
+    bool *type_alias_is_private;
+    int type_alias_count;
+    int type_alias_cap;
+
     /* Evaluated values of file-scope const integer declarations.
      * Used to constant-fold expressions in subsequent const initializers
      * and to detect overflow before codegen runs. */

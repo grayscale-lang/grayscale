@@ -214,7 +214,11 @@
     GRAY_ERROR("E3128", "types", "type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct'") \
     GRAY_ERROR("E3129", "safety", "empty loop body; this will loop forever at runtime") \
     GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type") \
-    GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead")
+    GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead") \
+    GRAY_ERROR("E3132", "types", "alias target type '%s' is not defined") \
+    GRAY_ERROR("E3133", "types", "alias '%s' creates a circular reference") \
+    GRAY_ERROR("E3134", "types", "alias '%s' cannot target a module-qualified type; only local types can be aliased") \
+    GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -233,7 +237,9 @@
     GRAY_ERROR("E4016", "names", "undefined type '%s'; check the spelling or import the module that defines it") \
     GRAY_ERROR("E4017", "names", "function '%s.%s' is private and cannot be called from outside the struct") \
     GRAY_ERROR("E4018", "names", "struct '%s' has no function named '%s'") \
-    GRAY_ERROR("E4019", "names", "cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values")
+    GRAY_ERROR("E4019", "names", "cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values") \
+    GRAY_ERROR("E4020", "names", "type alias '%s' is already declared") \
+    GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

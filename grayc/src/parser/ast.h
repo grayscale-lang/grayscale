@@ -63,6 +63,7 @@ typedef enum {
     NODE_USING_STMT,
     NODE_STRUCT_DECL,
     NODE_ENUM_DECL,
+    NODE_ALIAS_DECL,
     NODE_MODULE_DECL,
     NODE_PROGRAM,
 } NodeKind;
@@ -344,6 +345,13 @@ struct AstNode {
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
         } enum_decl;
+
+        /* NODE_ALIAS_DECL */
+        struct {
+            const char *name;
+            const char *target_type;
+            bool is_private;
+        } alias_decl;
 
         /* NODE_MODULE_DECL */
         struct { const char *name; } module_decl;

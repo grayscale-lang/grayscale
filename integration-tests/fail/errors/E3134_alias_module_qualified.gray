@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3134 - alias cannot target module-qualified type
+ * Expected: alias cannot target a module-qualified type
+ */
+
+alias DB = sqlite.Database
+
+do main() {}

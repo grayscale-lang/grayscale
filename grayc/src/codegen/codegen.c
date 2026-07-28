@@ -357,8 +357,42 @@ static char *codegen_bind_wildcard(const char *ptn, const char *atn) {
     return NULL;
 }
 
+/* Resolve type alias name to underlying type (codegen side).
+ * Handles pointer (^Alias) and array ([Alias]) wrappers. */
+static const char *resolve_type_alias_codegen(CodeGen *codegen, const char *name) {
+    if (!name) return name;
+
+    /* Handle pointer types: ^Alias → ^Resolved */
+    if (name[0] == '^') {
+        const char *inner = resolve_type_alias_codegen(codegen, name + 1);
+        if (inner != name + 1) {
+            size_t len = strlen(inner) + 2;
+            char *buf = xmalloc(len);
+            snprintf(buf, len, "^%s", inner);
+            return buf;
+        }
+        return name;
+    }
+
+    for (int depth = 0; depth < 32; depth++) {
+        bool found = false;
+        for (int i = 0; i < codegen->type_alias_count; i++) {
+            if (strcmp(codegen->type_alias_names[i], name) == 0) {
+                name = codegen->type_alias_targets[i];
+                found = true;
+                break;
+            }
+        }
+        if (!found) break;
+    }
+    return name;
+}
+
 static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_name) {
     if (!type_name) return "int64_t";
+
+    /* Resolve type aliases before any type mapping */
+    if (codegen) type_name = resolve_type_alias_codegen(codegen, type_name);
 
     /* if Wildcard type'?' appears in the type
      * string while a generic instantiation is active, rewrite via
@@ -9265,6 +9299,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
     case NODE_ENUM_DECL:
         /* Enum declarations are emitted in the preamble */
         break;
+    case NODE_ALIAS_DECL:
+        /* Type aliases are erased at codegen — emit nothing */
+        break;
     case NODE_MODULE_DECL:
         /* Module declarations are informational only */
         break;
@@ -9363,6 +9400,10 @@ CodeGen codegen_create(const char *file) {
     codegen.c_header_count = 0;
     codegen.c_header_cap = 0;
     codegen.has_c_imports = false;
+    codegen.type_alias_names = NULL;
+    codegen.type_alias_targets = NULL;
+    codegen.type_alias_count = 0;
+    codegen.type_alias_cap = 0;
     codegen.wildcard_binding = NULL;
     codegen.pending_call_typed_sig = NULL;
     codegen.scope_arenas = NULL;
@@ -9480,6 +9521,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 }
                 codegen->using_modules[codegen->using_module_count++] = stmt->data.using_stmt.modules[j];
             }
+        }
+        if (stmt->kind == NODE_ALIAS_DECL) {
+            /* Collect type aliases for resolution during codegen */
+            if (codegen->type_alias_count >= codegen->type_alias_cap) {
+                codegen->type_alias_cap = codegen->type_alias_cap ? codegen->type_alias_cap * 2 : 8;
+                codegen->type_alias_names = xrealloc(codegen->type_alias_names,
+                    sizeof(const char *) * (size_t)codegen->type_alias_cap);
+                codegen->type_alias_targets = xrealloc(codegen->type_alias_targets,
+                    sizeof(const char *) * (size_t)codegen->type_alias_cap);
+            }
+            codegen->type_alias_names[codegen->type_alias_count] = stmt->data.alias_decl.name;
+            codegen->type_alias_targets[codegen->type_alias_count] = stmt->data.alias_decl.target_type;
+            codegen->type_alias_count++;
+            continue; /* aliases are erased — not emitted */
         }
         if (stmt->kind == NODE_STRUCT_DECL) {
             if (codegen->struct_decl_count >= codegen->struct_decl_cap) {
@@ -10096,6 +10151,8 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->using_modules);
     free(codegen->alias_names);
     free(codegen->alias_modules);
+    free(codegen->type_alias_names);
+    free(codegen->type_alias_targets);
     free(codegen->imported_modules);
     free(codegen->c_headers);
     free(codegen->scope_arenas);

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3132 - alias target type not defined
+ * Expected: alias target type is not defined
+ */
+
+alias Foo = DoesNotExist
+
+do main() {}

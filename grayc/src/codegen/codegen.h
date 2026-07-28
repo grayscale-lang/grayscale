@@ -110,6 +110,12 @@ typedef struct {
     int c_header_cap;
     bool has_c_imports;
 
+    /* Type alias registry (alias Name = Type) — collected from AST */
+    const char **type_alias_names;
+    const char **type_alias_targets;
+    int type_alias_count;
+    int type_alias_cap;
+
     /* Active wildcard binding (). Set while emitting a specialised
      * instantiation of a generic function so type-string lookups can
      * substitute "?" with a concrete type name, and so the mangled

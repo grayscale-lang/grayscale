@@ -103,7 +103,7 @@ return       when        while
 
 **Declarations:**
 ```
-const        do          enum        import      mut
+alias        const       do          enum        import      mut
 new          private     struct      use*        using
 ```
 
@@ -824,6 +824,59 @@ mut bytes [u8] = cast(ints, [u8])
 Range constraints are enforced at runtime (e.g., `u8` values must be 0-255).
 
 > 💡 **Tip:** `cast` truncates floats to integers, it does not round. `cast(3.9, int)` gives `3`, not `4`.
+
+### 3.5 Type Aliases
+
+The `alias` keyword creates an interchangeable name for an existing type:
+
+```gray
+alias Meters = float
+alias Vec2 = Point
+alias Names = [string]
+alias Lookup = map[string:int]
+```
+
+**Rules:**
+
+- **File-scope only** — aliases cannot be declared inside functions.
+- **Public by default** — prefix with `private` to restrict to the declaring file.
+- **Erased at compile time** — aliases produce no runtime overhead. `type_of()` returns the underlying type name.
+- **Transitive** — aliases can chain: `alias A = int` then `alias B = A` resolves `B` to `int`.
+- **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
+- **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
+
+Aliases are fully interchangeable with the underlying type:
+
+```gray
+alias Meters = float
+
+do main() {
+    mut d Meters = 10.5
+    println(type_of(d))   // "float"
+    println(d + 1.0)      // 11.5
+}
+```
+
+Struct and enum aliases work with constructors and member access:
+
+```gray
+const Point struct { x int, y int }
+alias Vec2 = Point
+
+const Color enum { RED, GREEN, BLUE }
+alias Hue = Color
+
+do main() {
+    mut p Vec2 = Point{x: 1, y: 2}
+    mut c Hue = Hue.RED
+}
+```
+
+Private aliases restrict access to the declaring file:
+
+```gray
+private alias InternalID = int
+```
 
 ---
 

@@ -98,7 +98,7 @@ static bool is_keyword_token(TokenType type) {
     case TOK_IMPORT: case TOK_USING: case TOK_STRUCT: case TOK_ENUM:
     case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
     case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
-    case TOK_MODULE: case TOK_PRIVATE:
+    case TOK_MODULE: case TOK_PRIVATE: case TOK_ALIAS:
         return true;
     default:
         return false;
@@ -121,7 +121,7 @@ static void synchronize_parser(Parser *parser) {
         case TOK_RETURN: case TOK_IF: case TOK_FOR:
         case TOK_FOR_EACH: case TOK_AS_LONG_AS: case TOK_LOOP:
         case TOK_WHEN: case TOK_IMPORT: case TOK_USING:
-        case TOK_BREAK: case TOK_CONTINUE:
+        case TOK_BREAK: case TOK_CONTINUE: case TOK_ALIAS:
         case TOK_RBRACE:
         case TOK_IDENT:
             return;
@@ -2935,6 +2935,35 @@ static AstNode *parse_when_statement(Parser *parser) {
     return node;
 }
 
+static AstNode *parse_alias_declaration(Parser *parser) {
+    AstNode *node = ast_alloc(parser->arena, NODE_ALIAS_DECL, parser->cur_token);
+
+    if (!expect_peek_token(parser, TOK_IDENT)) return NULL;
+    node->data.alias_decl.name = parser->cur_token.literal;
+    node->data.alias_decl.is_private = false;
+
+    if (!expect_peek_token(parser, TOK_ASSIGN)) return NULL;
+    next_token(parser); /* advance to the type */
+
+    /* E3134: detect module-qualified type (Ident.Ident) before parse_complex_type
+     * rewrites it with underscore prefixing. */
+    if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
+        char msg[MSG_BUF_SIZE];
+        snprintf(msg, sizeof(msg),
+            "alias '%s' cannot target a module-qualified type; only local types can be aliased",
+            node->data.alias_decl.name);
+        diagnostic_error_message(parser->diag, "E3134", arena_copy_string(parser->arena, msg),
+            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        synchronize_parser(parser);
+        return NULL;
+    }
+
+    const char *target = parse_complex_type(parser);
+    if (!target) return NULL;
+    node->data.alias_decl.target_type = target;
+    return node;
+}
+
 static bool is_assignment_operator(TokenType type) {
     return type == TOK_ASSIGN || type == TOK_PLUS_ASSIGN || type == TOK_MINUS_ASSIGN ||
            type == TOK_ASTERISK_ASSIGN || type == TOK_SLASH_ASSIGN || type == TOK_PERCENT_ASSIGN;
@@ -2951,6 +2980,8 @@ static AstNode *parse_statement(Parser *parser) {
                 stmt->data.func_decl.is_private = true;
             } else if (stmt->kind == NODE_VAR_DECL) {
                 stmt->data.var_decl.is_private = true;
+            } else if (stmt->kind == NODE_ALIAS_DECL) {
+                stmt->data.alias_decl.is_private = true;
             }
         }
         return stmt;
@@ -3024,6 +3055,8 @@ static AstNode *parse_statement(Parser *parser) {
         return ast_alloc(parser->arena, NODE_CONTINUE_STMT, parser->cur_token);
     case TOK_WHEN:
         return parse_when_statement(parser);
+    case TOK_ALIAS:
+        return parse_alias_declaration(parser);
     case TOK_STRICT:
         /* #strict; applies to the next when statement */
         next_token(parser);
