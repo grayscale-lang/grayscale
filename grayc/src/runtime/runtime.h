@@ -40,6 +40,7 @@ typedef struct {
 
 GrayArena *gray_arena_create(size_t initial_size);
 void *gray_arena_alloc(GrayArena *arena, size_t size);
+void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size);
 void gray_arena_reset(GrayArena *arena);
 void gray_arena_destroy(GrayArena *arena, const char *file, int line);
 size_t gray_arena_usage(GrayArena *arena);

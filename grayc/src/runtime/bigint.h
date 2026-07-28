@@ -772,7 +772,7 @@ static inline GrayString gray_u128_to_string(GrayArena *arena, gray_u128 val) {
         char buf[U128_MAX_DIGITS];
         snprintf(buf, sizeof(buf), "%" PRIu64, val.lo);
         size_t len = strlen(buf);
-        char *s = (char *)gray_arena_alloc(arena, len + 1);
+        char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
         memcpy(s, buf, len + 1);
         return (GrayString){ s, (int32_t)len };
     }
@@ -790,7 +790,7 @@ static inline GrayString gray_u128_to_string(GrayArena *arena, gray_u128 val) {
     }
     if (pos == I256_MAX_DIGITS - 1) buf[--pos] = '0';
     size_t len = (I256_MAX_DIGITS - 1) - pos;
-    char *s = (char *)gray_arena_alloc(arena, len + 1);
+    char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
     memcpy(s, buf + pos, len + 1);
     return (GrayString){ s, (int32_t)len };
 }
@@ -801,7 +801,7 @@ static inline GrayString gray_i128_to_string(GrayArena *arena, gray_i128 val) {
         gray_u128 uval;
         uval.lo = neg.lo; uval.hi = (uint64_t)neg.hi;
         GrayString digits = gray_u128_to_string(arena, uval);
-        char *s = (char *)gray_arena_alloc(arena, digits.len + 2);
+        char *s = (char *)gray_arena_alloc_uninitialized(arena, digits.len + 2);
         s[0] = '-';
         memcpy(s + 1, digits.data, digits.len + 1);
         return (GrayString){ s, digits.len + 1 };
@@ -817,7 +817,7 @@ static inline GrayString gray_u256_to_string(GrayArena *arena, gray_u256 val) {
         char buf[U128_MAX_DIGITS];
         snprintf(buf, sizeof(buf), "%" PRIu64, val.w[0]);
         size_t len = strlen(buf);
-        char *s = (char *)gray_arena_alloc(arena, len + 1);
+        char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
         memcpy(s, buf, len + 1);
         return (GrayString){ s, (int32_t)len };
     }
@@ -835,7 +835,7 @@ static inline GrayString gray_u256_to_string(GrayArena *arena, gray_u256 val) {
     }
     if (pos == U256_MAX_DIGITS - 1) buf[--pos] = '0';
     size_t len = (U256_MAX_DIGITS - 1) - pos;
-    char *s = (char *)gray_arena_alloc(arena, len + 1);
+    char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
     memcpy(s, buf + pos, len + 1);
     return (GrayString){ s, (int32_t)len };
 }
@@ -845,7 +845,7 @@ static inline GrayString gray_i256_to_string(GrayArena *arena, gray_i256 val) {
         gray_i256 neg = gray_i256_neg(val);
         gray_u256 uval; memcpy(&uval, &neg, sizeof(uval));
         GrayString digits = gray_u256_to_string(arena, uval);
-        char *s = (char *)gray_arena_alloc(arena, digits.len + 2);
+        char *s = (char *)gray_arena_alloc_uninitialized(arena, digits.len + 2);
         s[0] = '-';
         memcpy(s + 1, digits.data, digits.len + 1);
         return (GrayString){ s, digits.len + 1 };
