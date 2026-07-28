@@ -22,6 +22,7 @@ Unit tests validate individual compiler components:
 - **Parser Tests** (`grayc/tests/test_parser.c`): Declarations, imports, control flow, structs, enums, function references, attributes, map/array types, visibility, grouped params, compound assignments, and parser error codes.
 - **Typechecker Tests** (`grayc/tests/test_typechecker.c`): Scope management, type resolution, expression inference, built-in return types, error detection, enum/map type resolution, bigint types, and error code coverage.
 - **Util Tests** (`grayc/tests/test_util.c`): Arena allocator (create, alloc, alignment, multi-block, oversized, strdup/strndup), growable buffer (create, append, growth, formatting, indentation), and scope (lookup, define/update, hash rebuild, many symbols, immutability).
+- **Runtime Tests** (`grayc/tests/test_runtime.c`): GrayArena (create, alloc, alignment, multi-block, oversized, reset, usage, scope save/restore, nested scopes), GrayString (lit, new, eq, concat, format, c_string_dup, empty), GrayArray (new, push, growth, set, from, typed macros, copy, multiple element sizes), and GrayMap (new, int/string keys, has, remove, overwrite, clear, insertion order, rehash, copy, float normalization).
 
 ### End-to-End Tests
 
@@ -31,7 +32,7 @@ E2E tests (`grayc/tests/test_codegen.c`) compile Grayscale programs, run them, a
 
 ```bash
 # From repo root
-make test-unit        # unit tests (lexer + parser + typechecker + util)
+make test-unit        # unit tests (lexer + parser + typechecker + util + runtime)
 make test-e2e         # e2e codegen tests
 
 # Individual test suites (from grayc/)
@@ -39,6 +40,7 @@ make test-e2e         # e2e codegen tests
 ./grayc/tests/test_parser
 ./grayc/tests/test_typechecker
 ./grayc/tests/test_util
+./grayc/tests/test_runtime
 ./grayc/tests/test_codegen
 ```
 
