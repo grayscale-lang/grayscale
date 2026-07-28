@@ -1,0 +1,48 @@
+/*
+ * Test: for_each with chained member access in collection expression
+ * Verifies that for_each supports multi-level member access (a.b.c)
+ * in the collection position, not just single-level (a.b).
+ */
+
+const Outer struct {
+    inner Inner
+}
+
+const Inner struct {
+    items [int]
+}
+
+const Deep struct {
+    outer Outer
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut obj Outer = Outer{inner: Inner{items: {10, 20, 30}}}
+
+    /* Two-level chained access */
+    mut sum int = 0
+    for_each item in obj.inner.items {
+        sum = sum + item
+    }
+    if sum == 60 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    /* Three-level chained access */
+    mut d Deep = Deep{outer: Outer{inner: Inner{items: {1, 2, 3}}}}
+    mut total int = 0
+    for_each item in d.outer.inner.items {
+        total = total + item
+    }
+    if total == 6 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    /* Index + value with chained access */
+    mut idx_sum int = 0
+    for_each i, item in obj.inner.items {
+        idx_sum = idx_sum + i
+    }
+    if idx_sum == 3 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}/${passed + failed}")
+}

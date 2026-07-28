@@ -2640,16 +2640,19 @@ static AstNode *parse_for_each_statement(Parser *parser) {
         node->data.for_each.collection = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
         node->data.for_each.collection->data.label.value = parser->cur_token.literal;
     } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
-        /* Module-qualified name: mod.Name; parse as member expr manually,
-         * don't use parse_expression which would trigger struct literal parsing */
-        AstNode *obj = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
-        obj->data.label.value = parser->cur_token.literal;
-        next_token(parser); /* consume . */
-        next_token(parser); /* move to member */
-        AstNode *member = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
-        member->data.member.object = obj;
-        member->data.member.member = parser->cur_token.literal;
-        node->data.for_each.collection = member;
+        /* Chained member access: a.b.c; parse manually to avoid
+         * parse_expression triggering struct literal parsing on { */
+        AstNode *result = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
+        result->data.label.value = parser->cur_token.literal;
+        while (peek_token_is(parser, TOK_DOT)) {
+            next_token(parser); /* consume . */
+            next_token(parser); /* move to member */
+            AstNode *member = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
+            member->data.member.object = result;
+            member->data.member.member = parser->cur_token.literal;
+            result = member;
+        }
+        node->data.for_each.collection = result;
     } else {
         node->data.for_each.collection = parse_expression(parser, PREC_LOWEST);
     }
