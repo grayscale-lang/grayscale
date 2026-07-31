@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.4...grayscale-v0.2.0) (2026-07-31)
+
+
+### Features
+
+* **builtin:** extend new() to support all types ([#2193](https://github.com/grayscale-lang/grayscale/issues/2193)) ([6e62ec7](https://github.com/grayscale-lang/grayscale/commit/6e62ec771ea78a201471d79c5f6cc8669031d3f0))
+* **cli:** add cross-compilation support via zig cc ([#2093](https://github.com/grayscale-lang/grayscale/issues/2093)) ([ff6a08e](https://github.com/grayscale-lang/grayscale/commit/ff6a08eab365eaec70a6319d5ab9731485718252))
+* **lang:** add type aliasing with `alias` keyword ([#2136](https://github.com/grayscale-lang/grayscale/issues/2136)) ([6d244d8](https://github.com/grayscale-lang/grayscale/commit/6d244d8fde5710d60732e2e3b0ac12c28bcbba06))
+
+
+### Bug Fixes
+
+* **cli:** extract #doc attributes from file-scope variables ([#2196](https://github.com/grayscale-lang/grayscale/issues/2196)) ([786c724](https://github.com/grayscale-lang/grayscale/commit/786c7241aa5dd096dc1ef22f6d0f8f9e49892d40))
+* **cli:** restrict project names to ASCII alphanumeric, hyphens, and underscores ([#2175](https://github.com/grayscale-lang/grayscale/issues/2175)) ([09c2392](https://github.com/grayscale-lang/grayscale/commit/09c239264df452c278678a8ebdce11f365f19bd7))
+* **codegen:** recognize bigint comparisons as bool in println ([#2217](https://github.com/grayscale-lang/grayscale/issues/2217)) ([1307f12](https://github.com/grayscale-lang/grayscale/commit/1307f125933642ba31db46557d13f168629e7d5b))
+* **lexer,parser:** skip nested strings when tracking interpolation brace depth ([#2161](https://github.com/grayscale-lang/grayscale/issues/2161)) ([6043334](https://github.com/grayscale-lang/grayscale/commit/60433342d30b40cbb4d24d2a14c8d4aeb316b5ab))
+* **parser:** support chained member access in for_each collection ([#2190](https://github.com/grayscale-lang/grayscale/issues/2190)) ([2246564](https://github.com/grayscale-lang/grayscale/commit/224656404038a15e2fcbd2af5906fcf4cb8ff574))
+* **runtime:** add iteration guard to maps.clear ([#2187](https://github.com/grayscale-lang/grayscale/issues/2187)) ([c1eaf00](https://github.com/grayscale-lang/grayscale/commit/c1eaf009dc49cbd23dff9b01650dee9e45553525))
+* **stdlib:** eliminate TOCTOU race in thread detach cleanup ([#2181](https://github.com/grayscale-lang/grayscale/issues/2181)) ([99d3080](https://github.com/grayscale-lang/grayscale/commit/99d308028eaf77fb30c1477f63fee99fb8275eab))
+* **stdlib:** seed PRNG with arc4random/urandom instead of time(NULL) ([#2180](https://github.com/grayscale-lang/grayscale/issues/2180)) ([fb64fff](https://github.com/grayscale-lang/grayscale/commit/fb64fffd60d6113f71a4dc3a32ceda401c9cba2b))
+* **typechecker,codegen:** allow explicit type annotations for stdlib opaque types ([#2216](https://github.com/grayscale-lang/grayscale/issues/2216)) ([f946806](https://github.com/grayscale-lang/grayscale/commit/f9468068cd25e375ed62ca297e66449455afa6be))
+* **typechecker:** propagate const_source through pointer assignment ([#2211](https://github.com/grayscale-lang/grayscale/issues/2211)) ([d232152](https://github.com/grayscale-lang/grayscale/commit/d23215257ce89e2b1bd6244eaddb8909a0c91447))
+* **typechecker:** remove dead E3067, fix E4021 cross-module match, rename E4006 test ([#2226](https://github.com/grayscale-lang/grayscale/issues/2226)) ([1844f8a](https://github.com/grayscale-lang/grayscale/commit/1844f8a50863487063230295957bdec42e3f68fe))
+* **typechecker:** require explicit type on file-scope const primitives ([#2120](https://github.com/grayscale-lang/grayscale/issues/2120)) ([9d6504b](https://github.com/grayscale-lang/grayscale/commit/9d6504bd6642eeb71988d43d522a311271fed517))
+* **typechecker:** restore struct context during generic re-check to prevent spurious E4017 ([#2197](https://github.com/grayscale-lang/grayscale/issues/2197)) ([fb6e62f](https://github.com/grayscale-lang/grayscale/commit/fb6e62fa1d2804e7be6742fed7b122c07c6e067a))
+* **typechecker:** revert [#2149](https://github.com/grayscale-lang/grayscale/issues/2149) optimization that caused NULL result segfault ([0fa296b](https://github.com/grayscale-lang/grayscale/commit/0fa296b80bc52dd5334b2b19f55441888642f8b5))
+* **typechecker:** support type parameter forwarding between generic functions ([#2059](https://github.com/grayscale-lang/grayscale/issues/2059)) ([376fc83](https://github.com/grayscale-lang/grayscale/commit/376fc8340ce98362c834f00f784b9de29debd60d))
+
+
+### Performance Improvements
+
+* **runtime:** add gray_arena_alloc_uninitialized to eliminate redundant zeroing ([#2151](https://github.com/grayscale-lang/grayscale/issues/2151)) ([567ef36](https://github.com/grayscale-lang/grayscale/commit/567ef36d082865aed8c84c511123571b58ce91e1))
+* **typechecker:** cache typechecker_lookup_using_constant result ([#2149](https://github.com/grayscale-lang/grayscale/issues/2149)) ([ad26cf3](https://github.com/grayscale-lang/grayscale/commit/ad26cf3fbc73036d696596c5d477fd913403e812))
+
 ## [0.1.4](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.3...grayscale-v0.1.4) (2026-07-26)
 
 
