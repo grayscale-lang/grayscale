@@ -136,6 +136,7 @@ src/vendor/sqlite3.o: src/vendor/sqlite3.c
 
 clean:
 	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_codegen tests/test_runtime tests/test_panics tests/test_stdlib tests/*_san tests/*.d
+	rm -rf tests/*.dSYM
 
 install: build
 	install -d /usr/local/bin
@@ -210,11 +211,15 @@ test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecke
 	@./tests/test_panics
 	@echo "=== Stdlib Tests ==="
 	@./tests/test_stdlib
+	@rm -f tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_runtime tests/test_panics tests/test_stdlib
+	@rm -rf tests/*.dSYM
 
 test-e2e: build tests/test_codegen
 	@echo ""
 	@echo "=== End-to-End Codegen Tests ==="
 	@./tests/test_codegen
+	@rm -f tests/test_codegen
+	@rm -rf tests/*.dSYM
 
 test-integration: build
 	@../scripts/run_tests.sh
@@ -248,6 +253,7 @@ test-ubsan:
 	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
 	@./tests/test_runtime_san
 	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san tests/test_runtime_san
+	@rm -rf tests/*.dSYM
 	@echo ""
 	@echo "All UBSan tests passed — no undefined behavior detected."
 
@@ -267,6 +273,7 @@ test-asan:
 	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
 	@./tests/test_runtime_san
 	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san tests/test_runtime_san
+	@rm -rf tests/*.dSYM
 	@echo ""
 	@echo "All ASan+UBSan tests passed — no memory errors or undefined behavior."
 
