@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3128 - type parameter got expression instead of type
+ * Expected: "type parameter expects a struct type name, but got a non-type expression"
+ */
+
+do make(T <?>) -> ^? {
+    return new(T)
+}
+
+do main() {
+    mut x int = 5
+    mut p = make(x)
+}

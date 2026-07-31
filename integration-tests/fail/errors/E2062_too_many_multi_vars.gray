@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2062 - too many variables in multi-variable declaration
+ * Expected: "too many variables in multi-variable declaration; maximum is 16"
+ */
+
+do foo() -> int {
+    return 1
+}
+
+do main() {
+    mut a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q = foo()
+}

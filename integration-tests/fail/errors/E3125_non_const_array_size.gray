@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3125 - array size must be compile-time constant
+ * Expected: "'n' is not a compile-time integer constant"
+ */
+
+do main() {
+    mut n int = 5
+    const arr [int, n] = {1, 2, 3, 4, 5}
+}

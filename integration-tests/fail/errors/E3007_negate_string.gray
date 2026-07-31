@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3007 - cannot negate non-numeric type
+ * Expected: "cannot negate type 'string'"
+ */
+
+do main() {
+    mut s string = "hello"
+    mut x = -s
+}

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5035 - name reserved by stdlib module
+ * Expected: "'math' is a standard library module and cannot be used"
+ */
+
+do main() {
+    mut math int = 42
+}

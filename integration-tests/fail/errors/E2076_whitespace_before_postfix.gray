@@ -1,0 +1,9 @@
+/*
+ * Error Test: E2076 - whitespace before postfix operator
+ * Expected: "postfix operators cannot have whitespace before them"
+ */
+
+do main() {
+    mut x int = 0
+    x ++
+}

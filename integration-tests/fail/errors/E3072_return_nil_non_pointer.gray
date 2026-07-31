@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3072 - return nil from non-pointer function
+ * Expected: "cannot return 'nil' from a function that returns 'int'"
+ */
+
+do foo() -> int {
+    return nil
+}
+
+do main() {
+    foo()
+}

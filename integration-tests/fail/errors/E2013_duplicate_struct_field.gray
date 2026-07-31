@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2013 - duplicate field name in struct
+ * Expected: "duplicate field name 'x' in struct 'Point'"
+ */
+
+const Point struct {
+    x int
+    x int
+}
+
+do main() {}

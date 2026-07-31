@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3038 - void used as variable type
+ * Expected: "'void' cannot be used as a variable type"
+ */
+
+do nothing() {
+    println("side effect")
+}
+
+do main() {
+    mut x = nothing()
+}

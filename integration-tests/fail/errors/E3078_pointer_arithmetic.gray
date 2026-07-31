@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3078 - pointer arithmetic not supported
+ * Expected: "pointer arithmetic is not supported"
+ */
+
+do main() {
+    mut x int = 42
+    mut p ^int = addr(x)
+    mut p2 = p + 1
+}

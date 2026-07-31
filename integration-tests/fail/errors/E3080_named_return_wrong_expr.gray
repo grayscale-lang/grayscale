@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3080 - named return must return the named variable
+ * Expected: "function must return named variable 'result'"
+ */
+
+do add(a int, b int) -> (result int) {
+    mut result int = a + b
+    return 99
+}
+
+do main() {
+    add(1, 2)
+}

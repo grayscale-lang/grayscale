@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3088 - fmt format directive type mismatch
+ * Expected: "format directive '%d' expects integer but got string"
+ */
+
+import @fmt
+
+do main() {
+    fmt.printfln("%d", "hello")
+}

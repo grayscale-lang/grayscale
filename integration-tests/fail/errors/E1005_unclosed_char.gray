@@ -1,0 +1,7 @@
+/*
+ * Error Test: E1005 - unclosed character literal
+ * Expected: "unclosed character; add a closing single quote"
+ */
+
+do main() {
+    mut c char = 'a

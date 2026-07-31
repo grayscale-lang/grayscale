@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3095 - 'in' on non-collection type
+ * Expected: "'in' only works with arrays, maps, and strings; got 'int'"
+ */
+
+do main() {
+    mut x int = 42
+    if 5 in x {
+        println("found")
+    }
+}

@@ -1,0 +1,7 @@
+/*
+ * lib.gray - simple module to import
+ */
+
+do helper() -> int {
+    return 42
+}

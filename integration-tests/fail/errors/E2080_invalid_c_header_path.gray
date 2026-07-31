@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2080 - invalid character in C header path
+ * Expected: "invalid character in C header path"
+ */
+
+import c "path@invalid.h"
+
+do main() {}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3113 - wrong number of payload values
+ * Expected: "variant 'Circle' of enum 'Shape' expects 1 payload value(s), got 2"
+ */
+
+const Shape enum {
+    Circle(float)
+    Rect(float, float)
+}
+
+do main() {
+    mut s Shape = Shape.Circle(1.0, 2.0)
+}

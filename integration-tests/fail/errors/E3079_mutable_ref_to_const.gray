@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3079 - mutable reference to const variable
+ * Expected: "cannot take a mutable reference to const variable"
+ */
+
+do main() {
+    const x int = 42
+    mut r = ref(x)
+}

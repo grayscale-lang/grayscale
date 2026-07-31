@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3081 - function name used as statement without call
+ * Expected: "function 'println' used as a statement without being called"
+ */
+
+do main() {
+    println
+}

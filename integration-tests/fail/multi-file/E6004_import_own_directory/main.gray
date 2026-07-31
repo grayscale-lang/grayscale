@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6004 - import own module directory
+ * Expected: "cannot import own module directory"
+ */
+
+import "./submod"
+
+do main() {
+    println("${submod.helper()}")
+}

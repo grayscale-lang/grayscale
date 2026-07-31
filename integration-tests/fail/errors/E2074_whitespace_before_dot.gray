@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2074 - whitespace before dot in member access
+ * Expected: "member access cannot have whitespace before the dot"
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p = Point{x: 1, y: 2}
+    mut val = p .x
+}

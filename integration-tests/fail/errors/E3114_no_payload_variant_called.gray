@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3114 - calling variant that has no payload
+ * Expected: "variant 'Point' of enum 'Shape' has no payload; remove the arguments"
+ */
+
+const Shape enum {
+    Circle(float)
+    Point
+}
+
+do main() {
+    mut s Shape = Shape.Point(5)
+}

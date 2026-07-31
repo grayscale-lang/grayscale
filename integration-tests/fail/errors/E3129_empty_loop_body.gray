@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3129 - empty loop body
+ * Expected: "empty loop body; this will loop forever at runtime"
+ */
+
+do main() {
+    loop {
+    }
+}

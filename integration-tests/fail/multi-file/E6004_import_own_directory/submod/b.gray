@@ -1,0 +1,7 @@
+/*
+ * b.gray - second file so directory qualifies as a module
+ */
+
+do other() -> int {
+    return 99
+}

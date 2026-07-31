@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2081 - caret after type name instead of before
+ * Expected: "'^' is a dereference operator, not a type modifier"
+ */
+
+do foo() -> int^ {
+    mut x int = 42
+    return addr(x)
+}
+
+do main() {
+    foo()
+}

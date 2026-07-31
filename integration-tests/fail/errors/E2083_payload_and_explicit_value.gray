@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2083 - enum variant with both payload and explicit value
+ * Expected: "enum variant 'RED' cannot have both a payload and an explicit value"
+ */
+
+const Color enum {
+    RED(int) = 5
+    GREEN
+}
+
+do main() {}
