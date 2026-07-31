@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 378 codes** (258 errors, 17 warnings, 103 panics)
+**Total: 377 codes** (257 errors, 17 warnings, 103 panics)
 
 ---
 
@@ -134,7 +134,6 @@
 | `E3063` | types | cannot return addr(%s); '%s' is a local variable whose memory is freed when this function returns |
 | `E3064` | types | %s(%s) called again; '%s' was already destroyed |
 | `E3066` | types | function reference signature mismatch; expected and actual function types differ |
-| `E3067` | types | argument %d of '%s' is passed to a '&' parameter; pass a mutable variable, not a literal or expression |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
 | `E3070` | types | 'ensure' may only appear at the top level of a function body; lift it out of the enclosing block |
@@ -429,4 +428,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-28 21:10:19 UTC*
+*Generated on 2026-07-31 19:10:13 UTC*

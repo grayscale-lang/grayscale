@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4015 - Accessing private function from another module
+ * Expected: "is private and cannot be accessed from outside its file"
+ */
+
+import "./lib.gray"
+
+
+do main() {
+    // This should fail - secret() is private
+    println(lib.secret())
+}

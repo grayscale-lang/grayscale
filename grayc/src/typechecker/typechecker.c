@@ -1715,8 +1715,17 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
     /* Resolve type aliases before any type lookup.
      * Also check private access for the original name. */
     if (name) {
+        /* For cross-module refs the parser mangles lib.ID → lib_ID,
+         * but aliases are registered under the bare name (ID).
+         * Strip the module prefix before comparing. */
+        const char *base_name = name;
+        const char *us = strchr(name, '_');
+        if (us && us[1] >= 'A' && us[1] <= 'Z') {
+            base_name = us + 1;
+        }
         for (int i = 0; i < checker->type_alias_count; i++) {
-            if (strcmp(checker->type_alias_names[i], name) == 0) {
+            if (strcmp(checker->type_alias_names[i], name) == 0 ||
+                (base_name != name && strcmp(checker->type_alias_names[i], base_name) == 0)) {
                 if (checker->type_alias_is_private[i]) {
                     const char *alias_file = checker->type_alias_files[i];
                     const char *caller_file = checker->current_check_file;
@@ -1725,7 +1734,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
                     if (!same_file) {
                         diagnostic_error_code_formatted(checker->diag, "E4021",
                             checker->current_check_file ? checker->current_check_file : checker->file,
-                            0, 0, 0, name);
+                            0, 0, 0, checker->type_alias_names[i]);
                     }
                 }
                 break;

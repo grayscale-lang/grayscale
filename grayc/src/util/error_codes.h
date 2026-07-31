@@ -150,7 +150,6 @@
     GRAY_ERROR("E3063", "types", "cannot return addr(%s); '%s' is a local variable whose memory is freed when this function returns") \
     GRAY_ERROR("E3064", "types", "%s(%s) called again; '%s' was already destroyed") \
     GRAY_ERROR("E3066", "types", "function reference signature mismatch; expected and actual function types differ") \
-    GRAY_ERROR("E3067", "types", "argument %d of '%s' is passed to a '&' parameter; pass a mutable variable, not a literal or expression") \
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
     GRAY_ERROR("E3069", "types", "'&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable") \
     GRAY_ERROR("E3070", "types", "'ensure' may only appear at the top level of a function body; lift it out of the enclosing block") \

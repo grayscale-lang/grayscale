@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4021 - Accessing private type alias from another module
+ * Expected: "is private and cannot be accessed from outside its file"
+ */
+
+import "./lib.gray"
+
+do main() {
+    mut x lib.ID = 42
+}
