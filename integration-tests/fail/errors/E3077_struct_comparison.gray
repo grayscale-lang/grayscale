@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3077 - structs cannot be compared
+ * Expected: "structs cannot be compared with comparison operators"
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p1 = Point{x: 1, y: 2}
+    mut p2 = Point{x: 1, y: 2}
+    if p1 == p2 {
+        println("equal")
+    }
+}

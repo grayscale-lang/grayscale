@@ -165,14 +165,20 @@ var langManDocs = map[string]LangManEntry{
 	"new": {
 		Kind:    "keyword",
 		Syntax:  "new(<Type>) -> ^<Type>",
-		Desc:    "Allocates a zero-initialized struct on the heap and returns a pointer to it.",
-		Example: "mut p = new(Point)\np.x = 10",
+		Desc:    "Allocates a zero-initialized value of any type on the heap and returns a pointer to it. Works with primitives, structs, arrays, maps, and all other types.",
+		Example: "mut p = new(Point)\np.x = 10\nmut n = new(int)\nn^ = 42",
 	},
 	"private": {
 		Kind:    "keyword",
 		Syntax:  "private do <name>(...) | private const <name>",
 		Desc:    "Restricts a function or constant to the declaring module; not accessible from other modules.",
 		Example: "private do validate(n int) -> bool {\n    return n > 0\n}",
+	},
+	"alias": {
+		Kind:    "keyword",
+		Syntax:  "alias <Name> = <Type>",
+		Desc:    "Creates an interchangeable name for an existing type. Aliases are erased at compile time; type_of() returns the underlying type. Can alias primitives, structs, enums, and collections. File-scope only. Use 'private alias' to restrict to the declaring file.",
+		Example: "alias Meters = float\nalias Vec2 = Point\nalias Names = [string]\n\ndo main() {\n    mut d Meters = 10.5\n    println(type_of(d))  // float\n}",
 	},
 
 	// ── Keywords: Operators ─────────────────────────────────────────────
@@ -425,7 +431,7 @@ var langCategories = map[string][]langGroup{
 	"keywords": {
 		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "for", "for_each", "while", "as_long_as", "loop", "when", "is", "break", "continue", "default", "return"}},
 		{Label: "Error handling", Names: []string{"ensure", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "struct", "enum", "import", "using", "new", "private"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "struct", "enum", "alias", "import", "using", "new", "private"}},
 		{Label: "Operators     ", Names: []string{"in", "not_in"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},

@@ -636,6 +636,7 @@ int main(int argc, char **argv) {
     bool quiet_all = false;
     const char *quiet_codes_arg = NULL;
     const char *opt_level = "-O2";
+    const char *cc_override = NULL;
 
     /* Parse arguments */
     for (int i = 1; i < argc; i++) {
@@ -702,6 +703,10 @@ int main(int argc, char **argv) {
         }
         if (strcmp(argv[i], "--fmt") == 0) {
             fmt_mode = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
+            cc_override = argv[++i];
             continue;
         }
         if (argv[i][0] == '-') {
@@ -1608,21 +1613,25 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    /* Check that a C compiler is available */
-    if (system("cc --version >/dev/null 2>&1") != 0 &&
-        system("gcc --version >/dev/null 2>&1") != 0 &&
-        system("clang --version >/dev/null 2>&1") != 0) {
-        fprintf(stderr, "gray: no C compiler found.\n");
-        fprintf(stderr, "  Install gcc or clang to compile Grayscale programs.\n");
-        fprintf(stderr, "  On macOS: xcode-select --install\n");
-        fprintf(stderr, "  On Ubuntu: sudo apt install gcc\n");
-        codegen_destroy(&codegen);
-        typechecker_free(checker);
-        arena_destroy(arena);
-        free(source);
-        free(default_output);
-        return 1;
+    /* Check that a C compiler is available (skip when --cc overrides) */
+    if (!cc_override) {
+        if (system("cc --version >/dev/null 2>&1") != 0 &&
+            system("gcc --version >/dev/null 2>&1") != 0 &&
+            system("clang --version >/dev/null 2>&1") != 0) {
+            fprintf(stderr, "gray: no C compiler found.\n");
+            fprintf(stderr, "  Install gcc or clang to compile Grayscale programs.\n");
+            fprintf(stderr, "  On macOS: xcode-select --install\n");
+            fprintf(stderr, "  On Ubuntu: sudo apt install gcc\n");
+            codegen_destroy(&codegen);
+            typechecker_free(checker);
+            arena_destroy(arena);
+            free(source);
+            free(default_output);
+            return 1;
+        }
     }
+
+    const char *cc_cmd = cc_override ? cc_override : "cc";
 
     /* Find runtime directory */
     const char *runtime_dir = find_runtime_dir(argv[0]);
@@ -1696,13 +1705,13 @@ int main(int argc, char **argv) {
 
     if (has_archive) {
         snprintf(cmd, sizeof(cmd),
-            "cc -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
+            "%s -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
             "-Wno-tautological-compare -Wno-infinite-recursion "
             "-Wno-incompatible-pointer-types-discards-qualifiers "
             "-isystem '%s'/runtime -isystem '%s'/stdlib "
             "-o '%s' '%s' '%s' "
             "-lm -lpthread -Wl,-w 2>&1",
-            extra_flags,
+            cc_cmd, extra_flags,
             runtime_dir, runtime_dir,
             output_file, c_file, lib_path);
     } else {
@@ -1736,13 +1745,13 @@ int main(int argc, char **argv) {
         }
 
         snprintf(cmd, sizeof(cmd),
-            "cc -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
+            "%s -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
             "-Wno-tautological-compare -Wno-infinite-recursion "
             "-Wno-incompatible-pointer-types-discards-qualifiers "
             "-isystem '%s'/runtime -isystem '%s'/stdlib "
             "-o '%s' '%s' %s"
             "-lm -lpthread -Wl,-w 2>&1",
-            extra_flags,
+            cc_cmd, extra_flags,
             runtime_dir, runtime_dir,
             output_file, c_file, srcs);
     }

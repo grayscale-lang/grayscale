@@ -1,5 +1,6 @@
 // grayc_test.go — Tests for the grayc compiler-lookup and invocation logic,
-// covering statFile edge cases and GRAY_COMPILER_PATH override behavior.
+// covering statFile edge cases, GRAY_COMPILER_PATH override behavior, and
+// BuildOpts argument construction.
 //
 // Author:  Marshall A Burns (@SchoolyB)
 // Copyright (c) 2025-Present Marshall A Burns
@@ -90,6 +91,74 @@ func TestFindCompilerPathOverride(t *testing.T) {
 		got, _ := Find()
 		if got == nonexistent {
 			t.Errorf("Find() returned nonexistent GRAY_COMPILER_PATH %q; expected fall-through", nonexistent)
+		}
+	})
+}
+
+func TestBuildArgs_CCFlag(t *testing.T) {
+	t.Run("CC appends --cc flag", func(t *testing.T) {
+		args := buildArgs("main.gray", BuildOpts{
+			CC: "/usr/local/bin/zig cc -target x86_64-linux-gnu",
+		})
+		// Must contain --cc followed by the CC value
+		found := false
+		for i, a := range args {
+			if a == "--cc" && i+1 < len(args) {
+				if args[i+1] != "/usr/local/bin/zig cc -target x86_64-linux-gnu" {
+					t.Errorf("--cc value = %q, want zig cc command", args[i+1])
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("args %v missing --cc flag", args)
+		}
+	})
+
+	t.Run("empty CC omits --cc flag", func(t *testing.T) {
+		args := buildArgs("main.gray", BuildOpts{})
+		for _, a := range args {
+			if a == "--cc" {
+				t.Error("--cc should not appear when CC is empty")
+			}
+		}
+	})
+
+	t.Run("CC combined with other flags", func(t *testing.T) {
+		args := buildArgs("main.gray", BuildOpts{
+			Output:  "out",
+			EmitC:   true,
+			Time:    true,
+			NoColor: true,
+			CC:      "zig cc -target aarch64-linux-gnu",
+		})
+		expected := map[string]bool{
+			"-o": false, "-c": false, "--time": false,
+			"--no-color": false, "--cc": false,
+		}
+		for _, a := range args {
+			if _, ok := expected[a]; ok {
+				expected[a] = true
+			}
+		}
+		for flag, found := range expected {
+			if !found {
+				t.Errorf("args %v missing flag %q", args, flag)
+			}
+		}
+	})
+
+	t.Run("build and file are first two args", func(t *testing.T) {
+		args := buildArgs("test.gray", BuildOpts{CC: "zig cc -target x86_64-macos"})
+		if len(args) < 2 {
+			t.Fatalf("expected at least 2 args, got %d", len(args))
+		}
+		if args[0] != "build" {
+			t.Errorf("args[0] = %q, want 'build'", args[0])
+		}
+		if args[1] != "test.gray" {
+			t.Errorf("args[1] = %q, want 'test.gray'", args[1])
 		}
 	})
 }

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3111 - payload on string enum variant
+ * Expected: "payload types are not allowed on string enum variants"
+ */
+
+const Color enum {
+    RED = "red"
+    GREEN = "green"
+    BLUE(int)
+}
+
+do main() {}

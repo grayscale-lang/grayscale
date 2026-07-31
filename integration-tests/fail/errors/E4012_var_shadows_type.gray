@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4012 - variable shadows a type definition
+ * Expected: "variable 'Point' shadows a type definition with the same name"
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut Point int = 5
+}

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E5012 - throwaway _ with non-call expression
+ * Expected: "the throwaway '_' is only meaningful when discarding the result of a function call"
+ */
+
+do main() {
+    mut _ = 42
+}

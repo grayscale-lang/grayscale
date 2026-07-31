@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3115 - calling variant on non-tagged enum
+ * Expected: "enum 'Color' is not a tagged enum; variant 'RED' cannot be called"
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut c Color = Color.RED(5)
+}

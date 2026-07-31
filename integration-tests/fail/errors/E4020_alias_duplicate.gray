@@ -1,0 +1,9 @@
+/*
+ * Error Test: E4020 - duplicate type alias
+ * Expected: type alias is already declared
+ */
+
+alias Meters = float
+alias Meters = int
+
+do main() {}

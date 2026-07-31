@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5027 - embed() path escapes source directory
+ * Expected: "embed() path must not escape the source file's directory tree"
+ */
+
+do main() {
+    const data string = embed("../../../Makefile")
+    println(data)
+}

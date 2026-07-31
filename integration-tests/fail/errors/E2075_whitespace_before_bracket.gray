@@ -1,0 +1,9 @@
+/*
+ * Error Test: E2075 - whitespace before opening bracket
+ * Expected: "index expressions cannot have whitespace before the opening bracket"
+ */
+
+do main() {
+    mut arr [int] = {10, 20, 30}
+    mut val = arr [0]
+}

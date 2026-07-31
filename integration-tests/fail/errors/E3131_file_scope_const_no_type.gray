@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3131 - file-scope-const-no-type
+ * Expected: "file-scope 'const' requires an explicit type annotation"
+ */
+
+const CONFIG_FILE = ".config"
+const MAX_RETRIES = 5
+const PI = 3.14
+const DEBUG = true
+const SEPARATOR = ','
+
+do main() {
+    println("unreachable")
+}

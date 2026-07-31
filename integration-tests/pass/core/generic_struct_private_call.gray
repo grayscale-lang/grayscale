@@ -1,0 +1,30 @@
+/*
+ * Test: generic struct function calling a private function of the same struct
+ * Verifies that the Pass 3 generic re-check correctly sets the struct context
+ * so private access is permitted.
+ */
+
+const Box struct {
+    value int
+
+    private do secret(self Box) -> int {
+        return self.value * 2
+    }
+
+    do reveal(self Box, extra ?) -> ? {
+        mut s int = self.secret()
+        return extra
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut b Box = Box{value: 21}
+    mut r int = b.reveal(100)
+
+    if r == 100 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}/${passed + failed}")
+}

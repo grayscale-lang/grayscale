@@ -103,7 +103,7 @@ return       when        while
 
 **Declarations:**
 ```
-const        do          enum        import      mut
+alias        const       do          enum        import      mut
 new          private     struct      use*        using
 ```
 
@@ -400,6 +400,27 @@ println(x)   // 100
 Printing a pointer value (`println(p)`, `print(p)`, etc.) outputs the address in hex (`0x...`) when non-nil and `nil` when null. Use `p^` to access the pointee.
 
 Dereferencing a `nil` pointer causes a runtime panic.
+
+**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
+
+```gray
+const x int = 42
+mut p = addr(x)
+println(p^)     // 42 — reading is allowed
+p^ = 99         // ERROR — writing through a const-sourced pointer
+mut q = p
+q^ = 99         // ERROR — const origin propagates through assignment
+```
+
+**Pointer aliasing:** Calling `addr()` more than once on the same variable produces pointers that all refer to the same memory. Changing the value through one pointer changes it for all of them. In multithreaded code, protect shared variables with `sync.lock()` to avoid data races.
+
+```gray
+mut x int = 10
+mut p1 = addr(x)
+mut p2 = addr(x)
+p1^ = 99
+println(p2^)    // 99 — p1 and p2 point to the same variable
+```
 
 > 💡 **Tip:** You can dereference directly on a call result without storing the pointer first. `new(Foo)^` allocates a `Foo` and immediately gives you the value, handy when a function returns `^Type` and you want the value right at the call site: `return new(Foo)^` or `mut val = make_thing()^`.
 
@@ -803,6 +824,59 @@ mut bytes [u8] = cast(ints, [u8])
 Range constraints are enforced at runtime (e.g., `u8` values must be 0-255).
 
 > 💡 **Tip:** `cast` truncates floats to integers, it does not round. `cast(3.9, int)` gives `3`, not `4`.
+
+### 3.5 Type Aliases
+
+The `alias` keyword creates an interchangeable name for an existing type:
+
+```gray
+alias Meters = float
+alias Vec2 = Point
+alias Names = [string]
+alias Lookup = map[string:int]
+```
+
+**Rules:**
+
+- **File-scope only** — aliases cannot be declared inside functions.
+- **Public by default** — prefix with `private` to restrict to the declaring file.
+- **Erased at compile time** — aliases produce no runtime overhead. `type_of()` returns the underlying type name.
+- **Transitive** — aliases can chain: `alias A = int` then `alias B = A` resolves `B` to `int`.
+- **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
+- **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
+
+Aliases are fully interchangeable with the underlying type:
+
+```gray
+alias Meters = float
+
+do main() {
+    mut d Meters = 10.5
+    println(type_of(d))   // "float"
+    println(d + 1.0)      // 11.5
+}
+```
+
+Struct and enum aliases work with constructors and member access:
+
+```gray
+const Point struct { x int, y int }
+alias Vec2 = Point
+
+const Color enum { RED, GREEN, BLUE }
+alias Hue = Color
+
+do main() {
+    mut p Vec2 = Point{x: 1, y: 2}
+    mut c Hue = Hue.RED
+}
+```
+
+Private aliases restrict access to the declaring file:
+
+```gray
+private alias InternalID = int
+```
 
 ---
 
@@ -1715,14 +1789,14 @@ const Person struct {
 
 | Attribute | Applies To | Description |
 |-----------|------------|-------------|
-| `#doc("...")` | functions, structs, enums | Documentation metadata, used by `gray doc` |
+| `#doc("...")` | functions, structs, enums, file-scope variables | Documentation metadata, used by `gray doc` |
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 
 #### 7.5.1 `#doc` Attribute
 
-The `#doc` attribute adds documentation metadata to functions, structs, and enums. Used by the `gray doc` command to generate documentation.
+The `#doc` attribute adds documentation metadata to functions, structs, enums, and file-scope variables. Used by the `gray doc` command to generate documentation.
 
 ```gray
 #doc("Adds two integers and returns the sum")
@@ -1735,6 +1809,9 @@ const Point struct {
     x int
     y int
 }
+
+#doc("Maximum number of retries before giving up")
+const MAX_RETRIES int = 5
 ```
 
 #### 7.5.2 `#json` Attribute
@@ -3663,7 +3740,7 @@ duplicate.age = 31  // original.age is still 30
 
 ### 11.4 Zero Values
 
-The `new()` function allocates a zero-initialized struct in the current scope and returns a pointer to it:
+The `new()` function allocates a zero-initialized value of any type on the heap arena and returns a pointer to it:
 
 | Type | Zero Value |
 |------|------------|
@@ -3673,7 +3750,9 @@ The `new()` function allocates a zero-initialized struct in the current scope an
 | `bool` | `false` |
 | `char` | `'\0'` |
 | `byte` | `0` |
+| `[T]` | Empty array (valid for append) |
 | `map[K:V]` | `{}` |
+| enum | First variant |
 | struct | All fields zero-initialized |
 
 ### 11.5 Scoped Blocks
@@ -3712,6 +3791,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------|
 | Returning address of local variable | `addr()` of a local cannot appear in a return statement |
 | Cross-scope pointer assignment | Warning when a pointer in an outer scope is assigned from `addr()` of a value in an inner scope |
+| Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
 
 **Prevented by ASBAM:**
@@ -3741,6 +3821,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------------|
 | Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
+| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
 For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
@@ -3847,6 +3928,8 @@ The `gray` command-line tool provides the following commands:
 | `gray update` | Check for updates and upgrade |
 | `gray install <version>` | Install a specific version by exact semver |
 | `gray version` | Show version information |
+| `gray cross build <file.gray>` | Cross-compile for another platform via Zig |
+| `gray cross targets` | List supported cross-compilation targets |
 
 ### Global Flags
 
@@ -4089,6 +4172,51 @@ Show the installed version, build commit, build timestamp, and whether newer ver
 
 ```
 gray version
+```
+
+### 13.13 `gray cross build`
+
+Cross-compile a Grayscale source file for another platform using Zig as the C cross-compiler backend.
+
+```
+gray cross build <file.gray> --target <target> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--target <target>` | Target platform (required) |
+| `-o, --output <name>` | Output binary name |
+| `--emit-c` | Emit generated C source to a file (no binary) |
+| `--time` | Show compilation timing |
+| `-q, --quiet <codes>` | Suppress warnings (`all` or comma-separated codes) |
+| `--no-color` | Disable colored output |
+
+**Supported targets:**
+
+| Target | Zig Triple |
+|--------|------------|
+| `linux-amd64` | `x86_64-linux-gnu` |
+| `linux-arm64` | `aarch64-linux-gnu` |
+| `windows-amd64` | `x86_64-windows-gnu` |
+| `mac-arm64` | `aarch64-macos` |
+| `mac-amd64` | `x86_64-macos` |
+
+Zig must be installed and available on PATH. It is only required for cross-compilation — native builds (`gray build`) use the system C compiler.
+
+Examples:
+
+```
+gray cross build main.gray --target linux-amd64
+gray cross build main.gray --target windows-amd64 -o myapp.exe
+gray cross build main.gray --target linux-arm64 --emit-c
+```
+
+### 13.14 `gray cross targets`
+
+List all supported cross-compilation targets and their corresponding Zig triples.
+
+```
+gray cross targets
 ```
 
 ---

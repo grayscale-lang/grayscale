@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3075 - chained struct function calls
+ * Expected: "chained struct function calls are not supported"
+ */
+
+const Point struct {
+    x int
+    y int
+
+    do create(x int, y int) -> Point {
+        return Point{x: x, y: y}
+    }
+
+    do translate(p Point, dx int, dy int) -> Point {
+        return Point{x: p.x + dx, y: p.y + dy}
+    }
+}
+
+do main() {
+    mut p = Point.create(1, 2).translate(5, 3)
+}

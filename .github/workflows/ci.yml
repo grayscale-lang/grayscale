@@ -39,6 +39,9 @@ jobs:
       - name: Build
         run: make build
 
+      - name: Run gray verify
+        run: ./gray verify
+
       - name: Run Go unit tests
         run: make test-go
 

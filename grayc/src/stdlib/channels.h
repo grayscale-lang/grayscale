@@ -19,35 +19,81 @@ typedef struct {
     void *_internal; /* GrayChannelInternal* */
 } GrayChannel;
 
+/*@man open
+ *@module channels
+ *@group Lifecycle
+ *@sig open(capacity int) -> Channel
+ *@desc Create a buffered channel with the given capacity.
+ *@example
+ *   import @channels
+ *   mut ch Channel = channels.open(10)
+ *@end
+ */
 /* Create a buffered channel with given capacity. */
 GrayChannel gray_channels_open(int64_t capacity);
 
+/*@man send
+ *@module channels
+ *@group Send/Receive
+ *@sig send(ch Channel, value int)
+ *@desc Send a value into a channel. Blocks if the channel is full.
+ *@example
+ *   import @channels
+ *   channels.send(ch, 42)
+ *@end
+ */
 /* Send a value into the channel. Blocks if full. */
 void gray_channels_send(GrayChannel ch, int64_t value);
 
+/*@man receive
+ *@module channels
+ *@group Send/Receive
+ *@sig receive(ch Channel) -> int
+ *@desc Receive a value from a channel. Blocks if the channel is empty.
+ *@example
+ *   import @channels
+ *   mut val int = channels.receive(ch)
+ *@end
+ */
 /* Receive a value from the channel. Blocks if empty. */
 int64_t gray_channels_receive(GrayChannel ch);
 
+/*@man close
+ *@module channels
+ *@group Lifecycle
+ *@sig close(ch Channel)
+ *@desc Close a channel.
+ *@example
+ *   import @channels
+ *   channels.close(ch)
+ *@end
+ */
 /* Close a channel. */
 void gray_channels_close(GrayChannel ch);
 
-/*@man
+/*@man try_send
  *@module channels
- *@function try_send
- *@brief Attempt to send a value into a channel without blocking.
- *@param ch Channel - The channel to send to.
- *@param value int - The value to send.
- *@returns bool - true if the value was sent, false if the channel is full.
+ *@group Send/Receive
+ *@sig try_send(ch Channel, value int) -> bool
+ *@desc Non-blocking send. Returns true if the value was sent, false if the channel is full.
+ *@example
+ *   import @channels
+ *   if channels.try_send(ch, 42) {
+ *       println("sent")
+ *   }
  *@end
  */
 bool gray_channels_try_send(GrayChannel ch, int64_t value);
 
-/*@man
+/*@man try_receive
  *@module channels
- *@function try_receive
- *@brief Attempt to receive a value from a channel without blocking.
- *@param ch Channel - The channel to receive from.
- *@returns (int, bool) - The value and true if one was available, or (0, false) if empty.
+ *@group Send/Receive
+ *@sig try_receive(ch Channel) -> (int, bool)
+ *@desc Non-blocking receive. Returns the value and true if available, or (0, false) if empty. Always use destructuring.
+ *@example
+ *   import @channels
+ *   mut val int, mut ok bool = channels.try_receive(ch)
+ *   if ok { println("got ${val}") }
  *@end
  */
 typedef struct { int64_t v0; bool v1; } GrayChannelTryRecv;

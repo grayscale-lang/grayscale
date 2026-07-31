@@ -1,0 +1,12 @@
+/*
+ * Error Test: E2079 - nil used as a type
+ * Expected: "'nil' is a value, not a type"
+ */
+
+do foo() -> nil {
+    return nil
+}
+
+do main() {
+    foo()
+}

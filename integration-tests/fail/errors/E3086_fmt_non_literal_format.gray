@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3086 - fmt format string must be a literal
+ * Expected: "fmt format string must be a string literal"
+ */
+
+import @fmt
+
+do main() {
+    mut pattern string = "value: %d"
+    fmt.printfln(pattern, 42)
+}

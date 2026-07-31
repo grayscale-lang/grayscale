@@ -1,4 +1,4 @@
-/* Error Test: E3122 - cannot write through pointer to const */
+/* Error Test: E3122 - cannot modify value through pointer to const-declared variable */
 do main() {
     const x int = 5
     mut p ^int = addr(x)

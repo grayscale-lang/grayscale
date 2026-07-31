@@ -1,0 +1,10 @@
+/*
+ * Error Test: E2087 - type parameters mixed with value parameters
+ * Expected: "type parameters (<?>) cannot be mixed with value parameters"
+ */
+
+do transform(T <?>, x int) -> ^? {
+    return new(T)
+}
+
+do main() {}

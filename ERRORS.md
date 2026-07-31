@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 370 codes** (251 errors, 17 warnings, 102 panics)
+**Total: 377 codes** (257 errors, 17 warnings, 103 panics)
 
 ---
 
@@ -134,7 +134,6 @@
 | `E3063` | types | cannot return addr(%s); '%s' is a local variable whose memory is freed when this function returns |
 | `E3064` | types | %s(%s) called again; '%s' was already destroyed |
 | `E3066` | types | function reference signature mismatch; expected and actual function types differ |
-| `E3067` | types | argument %d of '%s' is passed to a '&' parameter; pass a mutable variable, not a literal or expression |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
 | `E3070` | types | 'ensure' may only appear at the top level of a function body; lift it out of the enclosing block |
@@ -189,7 +188,7 @@
 | `E3119` | types | fixed-size arrays are not allowed in function parameters; use '[%s]' instead of '%s' for parameter '%s' |
 | `E3120` | types | pointer ordering comparisons are not supported; only == and != are allowed on pointers |
 | `E3121` | types | cannot use '%s' as a condition in a when statement; allowed types are int, uint, string, char, byte, bool, float, and enum |
-| `E3122` | safety | cannot write through pointer to const '%s'; the address was taken from an immutable variable |
+| `E3122` | safety | cannot modify value through pointer '%s'; the pointee is a const-declared variable |
 | `E3123` | iteration | for_each with both positions discarded accesses nothing; use 'for _ in range(0, len(collection))' to iterate by count |
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
 | `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const int/uint value |
@@ -198,6 +197,11 @@
 | `E3128` | types | type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
+| `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
+| `E3132` | types | alias target type '%s' is not defined |
+| `E3133` | types | alias '%s' creates a circular reference |
+| `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
+| `E3135` | types | alias '%s' cannot target the wildcard type '?' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -214,6 +218,8 @@
 | `E4017` | names | function '%s.%s' is private and cannot be called from outside the struct |
 | `E4018` | names | struct '%s' has no function named '%s' |
 | `E4019` | names | cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values |
+| `E4020` | names | type alias '%s' is already declared |
+| `E4021` | names | type alias '%s' is private and cannot be accessed from outside its file |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -397,6 +403,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0100` | arithmetic | cast from u256 failed; value exceeds the representable range of uint64 |
 | `P0101` | server | server.cors: origin contains CR or LF — HTTP header injection is not allowed |
 | `P0102` | arithmetic | invalid digit in integer literal |
+| `P0103` | io | file path contains an embedded null byte |
 
 ---
 
@@ -421,4 +428,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-07-26 03:23:28 UTC*
+*Generated on 2026-07-31 21:59:29 UTC*

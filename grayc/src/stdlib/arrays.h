@@ -466,4 +466,30 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@end
  */
 
+/*@man any
+ *@module arrays
+ *@group Higher-Order
+ *@sig any(arr [T], ()predicate) -> bool
+ *@desc Returns true if predicate returns true for at least one element. predicate must be a function that takes T and returns bool.
+ *@example
+ *   import @arrays
+ *   do is_negative(x int) -> bool { return x < 0 }
+ *   mut nums [int] = [1, -2, 3]
+ *   println(arrays.any(nums, ()is_negative))
+ *@end
+ */
+
+/*@man all
+ *@module arrays
+ *@group Higher-Order
+ *@sig all(arr [T], ()predicate) -> bool
+ *@desc Returns true if predicate returns true for every element. predicate must be a function that takes T and returns bool.
+ *@example
+ *   import @arrays
+ *   do is_positive(x int) -> bool { return x > 0 }
+ *   mut nums [int] = [1, 2, 3]
+ *   println(arrays.all(nums, ()is_positive))
+ *@end
+ */
+
 #endif

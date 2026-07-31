@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4014 - variable shadows imported module
+ * Expected: "variable 'lib' shadows an imported module with the same name"
+ */
+
+import "./lib.gray"
+
+do main() {
+    mut lib int = 5
+}

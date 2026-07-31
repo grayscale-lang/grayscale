@@ -1,0 +1,8 @@
+/*
+ * Error Test: E2053 - alias inside function
+ * Expected: alias must be at file scope
+ */
+
+do main() {
+    alias Meters = float
+}

@@ -27,7 +27,7 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
     arr.len = count;
     arr.cap = count > 0 ? count : GRAY_ARRAY_MIN_CAP;
     arr.iterating = 0;
-    arr.data = gray_arena_alloc(arena, (size_t)arr.cap * (size_t)arr.elem_size);
+    arr.data = gray_arena_alloc_uninitialized(arena, (size_t)arr.cap * (size_t)arr.elem_size);
     if (count > 0 && data) {
         memcpy(arr.data, data, (size_t)count * (size_t)elem_size);
     }
@@ -63,7 +63,7 @@ void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const 
         } else {
             new_cap = arr->cap * 2;
         }
-        void *new_data = gray_arena_alloc(arena, (size_t)new_cap * (size_t)arr->elem_size);
+        void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
         if (arr->data && arr->len > 0) {
             memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
         }

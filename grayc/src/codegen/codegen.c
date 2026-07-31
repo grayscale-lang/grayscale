@@ -357,8 +357,42 @@ static char *codegen_bind_wildcard(const char *ptn, const char *atn) {
     return NULL;
 }
 
+/* Resolve type alias name to underlying type (codegen side).
+ * Handles pointer (^Alias) and array ([Alias]) wrappers. */
+static const char *resolve_type_alias_codegen(CodeGen *codegen, const char *name) {
+    if (!name) return name;
+
+    /* Handle pointer types: ^Alias → ^Resolved */
+    if (name[0] == '^') {
+        const char *inner = resolve_type_alias_codegen(codegen, name + 1);
+        if (inner != name + 1) {
+            size_t len = strlen(inner) + 2;
+            char *buf = xmalloc(len);
+            snprintf(buf, len, "^%s", inner);
+            return buf;
+        }
+        return name;
+    }
+
+    for (int depth = 0; depth < 32; depth++) {
+        bool found = false;
+        for (int i = 0; i < codegen->type_alias_count; i++) {
+            if (strcmp(codegen->type_alias_names[i], name) == 0) {
+                name = codegen->type_alias_targets[i];
+                found = true;
+                break;
+            }
+        }
+        if (!found) break;
+    }
+    return name;
+}
+
 static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_name) {
     if (!type_name) return "int64_t";
+
+    /* Resolve type aliases before any type mapping */
+    if (codegen) type_name = resolve_type_alias_codegen(codegen, type_name);
 
     /* if Wildcard type'?' appears in the type
      * string while a generic instantiation is active, rewrite via
@@ -410,6 +444,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "Database") == 0) return "GraySqlite";
     if (strcmp(type_name, "Router") == 0)   return "GrayRouter";
     if (strcmp(type_name, "UUID") == 0)     return "GrayUUID";
+    if (strcmp(type_name, "Arena") == 0)    return "GrayArena *";
     if (strcmp(type_name, "func") == 0)  return "void *"; /* bare func; cast at call site */
     if (strncmp(type_name, "func(", 5) == 0) return "void *"; /* typed func; same C storage, signature lives in casts */
 
@@ -887,8 +922,14 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     /* -bigint_var — the result is still the same bigint type */
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS)
         return resolve_bigint_type(codegen, node->data.prefix.right);
-    /* If this is an infix expression, check left operand */
+    /* If this is an infix expression, check left operand.
+     * Comparison operators return bool, not bigint, so skip those. */
     if (node->kind == NODE_INFIX_EXPR) {
+        TokenType op = node->data.infix.op;
+        if (op == TOK_EQ || op == TOK_NOT_EQ ||
+            op == TOK_LT || op == TOK_GT ||
+            op == TOK_LT_EQ || op == TOK_GT_EQ)
+            return NULL;
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
         return resolve_bigint_type(codegen, node->data.infix.right);
@@ -1001,7 +1042,8 @@ static bool function_uses_caller_arena(AstNode *function_node) {
 
 static bool is_result_temporary(const char *name) {
     if (!name) return false;
-    return strncmp(name, "_gray_tmp", 9) == 0 || strncmp(name, "_gray_or", 8) == 0;
+    return strncmp(name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) == 0 ||
+           strncmp(name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0;
 }
 
 static int function_name_compare(const void *left, const void *right) {
@@ -2846,6 +2888,34 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 }
             }
             emit(codegen, "_np; })");
+        } else if (sname[0] == '[') {
+            /* Array type — allocate + initialize metadata */
+            GrayType *arr_type = type_from_name(sname);
+            const char *c_elem = "int64_t";
+            if (arr_type && arr_type->element_type)
+                c_elem = gray_map_element_c_type(codegen, arr_type->element_type);
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = gray_array_new(gray_heap_arena, sizeof(%s), 4); _np; })", c_elem);
+        } else if (strncmp(sname, "map[", 4) == 0) {
+            /* Map type — allocate + initialize metadata */
+            GrayType *map_type = type_from_name(sname);
+            const char *c_kt = "GrayString";
+            const char *c_vt = "int64_t";
+            if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
+            if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = gray_map_new_kind(gray_heap_arena, sizeof(%s), sizeof(%s), 8, %s); _np; })",
+                c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+        } else if (codegen_enum_is_string(codegen, sname)) {
+            /* String enum — assign first variant so the value is valid */
+            int eidx = codegen_enum_index(codegen, sname);
+            AstNode *decl = codegen->enum_decls[eidx];
+            const char *first_variant = decl->data.enum_decl.values[0].name;
+            emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
+                c_type, c_type, c_type);
+            emit_formatted(codegen, "*_np = GrayEnum_%s_%s; _np; })", sname, first_variant);
         } else {
             emit_formatted(codegen, "((%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)))", c_type, c_type);
         }
@@ -4136,7 +4206,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "clear") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_map_clear(");
         emit_address_of(codegen, node->data.call.args[0], "_ma");
-        emit(codegen, ")");
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
         return true;
     }
     if (strcmp(func, "is_empty") == 0 && node->data.call.arg_count == 1) {
@@ -6054,8 +6124,8 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
                 {"int_to_hex","fmt"},{"int_to_binary","fmt"},{"int_to_octal","fmt"},
                 {"float_fixed","fmt"},{"float_sci","fmt"},
                 /* @mem */
-                {"arena","mem"},{"usage","mem"},{"make","mem"},{"alloc","mem"},
-                {"init","mem"},{"free","mem"},{"reset","mem"},{"destroy","mem"},
+                {"arena","mem"},{"usage","mem"},{"alloc","mem"},
+                {"init","mem"},{"reset","mem"},{"destroy","mem"},
                 {NULL,NULL}
             };
             for (int ui = 0; ui < codegen->using_module_count; ui++) {
@@ -6521,10 +6591,15 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             int ac = node->data.call.arg_count;
             int cc = pc < ac ? pc : ac;
             for (int pi = 0; pi < cc && !binding; pi++) {
-                /* Type parameter: binding is the arg label directly */
+                /* Type parameter: binding is the arg label directly.
+                 * When forwarding (T→"?"), resolve via the outer binding. */
                 if (target_func->data.func_decl.params[pi].is_type_param) {
                     if (node->data.call.args[pi]->kind == NODE_LABEL) {
-                        binding = node->data.call.args[pi]->data.label.value;
+                        const char *lbl = node->data.call.args[pi]->data.label.value;
+                        if (strcmp(lbl, "?") == 0 && codegen->wildcard_binding)
+                            binding = codegen->wildcard_binding;
+                        else
+                            binding = lbl;
                     }
                     continue;
                 }
@@ -9232,6 +9307,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
     case NODE_ENUM_DECL:
         /* Enum declarations are emitted in the preamble */
         break;
+    case NODE_ALIAS_DECL:
+        /* Type aliases are erased at codegen — emit nothing */
+        break;
     case NODE_MODULE_DECL:
         /* Module declarations are informational only */
         break;
@@ -9330,6 +9408,10 @@ CodeGen codegen_create(const char *file) {
     codegen.c_header_count = 0;
     codegen.c_header_cap = 0;
     codegen.has_c_imports = false;
+    codegen.type_alias_names = NULL;
+    codegen.type_alias_targets = NULL;
+    codegen.type_alias_count = 0;
+    codegen.type_alias_cap = 0;
     codegen.wildcard_binding = NULL;
     codegen.pending_call_typed_sig = NULL;
     codegen.scope_arenas = NULL;
@@ -9447,6 +9529,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 }
                 codegen->using_modules[codegen->using_module_count++] = stmt->data.using_stmt.modules[j];
             }
+        }
+        if (stmt->kind == NODE_ALIAS_DECL) {
+            /* Collect type aliases for resolution during codegen */
+            if (codegen->type_alias_count >= codegen->type_alias_cap) {
+                codegen->type_alias_cap = codegen->type_alias_cap ? codegen->type_alias_cap * 2 : 8;
+                codegen->type_alias_names = xrealloc(codegen->type_alias_names,
+                    sizeof(const char *) * (size_t)codegen->type_alias_cap);
+                codegen->type_alias_targets = xrealloc(codegen->type_alias_targets,
+                    sizeof(const char *) * (size_t)codegen->type_alias_cap);
+            }
+            codegen->type_alias_names[codegen->type_alias_count] = stmt->data.alias_decl.name;
+            codegen->type_alias_targets[codegen->type_alias_count] = stmt->data.alias_decl.target_type;
+            codegen->type_alias_count++;
+            continue; /* aliases are erased — not emitted */
         }
         if (stmt->kind == NODE_STRUCT_DECL) {
             if (codegen->struct_decl_count >= codegen->struct_decl_cap) {
@@ -10063,6 +10159,8 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->using_modules);
     free(codegen->alias_names);
     free(codegen->alias_modules);
+    free(codegen->type_alias_names);
+    free(codegen->type_alias_targets);
     free(codegen->imported_modules);
     free(codegen->c_headers);
     free(codegen->scope_arenas);

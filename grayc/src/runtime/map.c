@@ -125,11 +125,10 @@ GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size
     m.order_len = 0;
     m.iterating = 0;
     m.key_kind = key_kind;
-    m.keys = gray_arena_alloc(arena, (size_t)initial_cap * (size_t)key_size);
-    m.values = gray_arena_alloc(arena, (size_t)initial_cap * (size_t)value_size);
+    m.keys = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * (size_t)key_size);
+    m.values = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * (size_t)value_size);
     m.states = gray_arena_alloc(arena, (size_t)initial_cap);
-    m.order = gray_arena_alloc(arena, (size_t)initial_cap * sizeof(int32_t));
-    memset(m.states, 0, (size_t)initial_cap);
+    m.order = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * sizeof(int32_t));
     return m;
 }
 
@@ -162,11 +161,10 @@ static void rehash(GrayArena *arena, GrayMap *m) {
     int32_t old_order_len = m->order_len;
 
     m->capacity = old_cap * 2;
-    m->keys = gray_arena_alloc(arena, (size_t)m->capacity * (size_t)m->key_size);
-    m->values = gray_arena_alloc(arena, (size_t)m->capacity * (size_t)m->value_size);
+    m->keys = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * (size_t)m->key_size);
+    m->values = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * (size_t)m->value_size);
     m->states = gray_arena_alloc(arena, (size_t)m->capacity);
-    m->order = gray_arena_alloc(arena, (size_t)m->capacity * sizeof(int32_t));
-    memset(m->states, 0, (size_t)m->capacity);
+    m->order = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * sizeof(int32_t));
     m->count = 0;
     m->order_len = 0;
 
@@ -257,7 +255,9 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
     return true;
 }
 
-void gray_map_clear(GrayMap *m) {
+void gray_map_clear(GrayMap *m, const char *file, int line) {
+    if (m->iterating > 0)
+        gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     if (m->states) memset(m->states, 0, sizeof(uint8_t) * (size_t)m->capacity);
     m->count = 0;
     m->order_len = 0;
@@ -293,10 +293,10 @@ GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
     size_t vals_bytes = (size_t)src->capacity * (size_t)src->value_size;
     size_t order_bytes = (size_t)src->capacity * sizeof(int32_t);
 
-    m.keys = gray_arena_alloc(arena, keys_bytes);
-    m.values = gray_arena_alloc(arena, vals_bytes);
-    m.states = gray_arena_alloc(arena, (size_t)src->capacity);
-    m.order = gray_arena_alloc(arena, order_bytes);
+    m.keys = gray_arena_alloc_uninitialized(arena, keys_bytes);
+    m.values = gray_arena_alloc_uninitialized(arena, vals_bytes);
+    m.states = gray_arena_alloc_uninitialized(arena, (size_t)src->capacity);
+    m.order = gray_arena_alloc_uninitialized(arena, order_bytes);
 
     if (keys_bytes)  memcpy(m.keys,   src->keys,   keys_bytes);
     if (vals_bytes)  memcpy(m.values, src->values, vals_bytes);

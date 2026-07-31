@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3112 - payload on #flags enum variant
+ * Expected: "payload types are not allowed on #flags enum variants"
+ */
+
+#flags
+const Perms enum {
+    READ(int)
+    WRITE
+    EXEC
+}
+
+do main() {}

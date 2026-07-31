@@ -135,7 +135,8 @@ src/vendor/sqlite3.o: src/vendor/sqlite3.c
 -include $(OBJ:.o=.d) $(RT_OBJ:.o=.d)
 
 clean:
-	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_codegen tests/*_san tests/*.d
+	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_codegen tests/test_runtime tests/test_panics tests/test_stdlib tests/*_san tests/*.d
+	rm -rf tests/*.dSYM
 
 install: build
 	install -d /usr/local/bin
@@ -155,6 +156,15 @@ TEST_DEPS = src/util/arena.o src/util/buf.o src/util/error.o src/util/error_code
             src/parser/ast.o src/parser/parser.o \
             src/typechecker/types.o src/typechecker/scope.o src/typechecker/typechecker.o
 
+# Runtime objects needed by the runtime test binary
+RT_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o $(ATOMIC_OBJ)
+
+# Objects needed by the panic test binary (runtime + stdlib modules that emit panics)
+PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
+                  src/stdlib/encoding.o src/stdlib/arrays.o src/stdlib/builtins.o \
+                  src/stdlib/strconv.o src/stdlib/random.o src/stdlib/strings.o \
+                  src/stdlib/io.o $(ATOMIC_OBJ)
+
 tests/test_lexer: tests/test_lexer.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
@@ -170,7 +180,22 @@ tests/test_util: tests/test_util.c src/util/arena.o src/util/buf.o src/typecheck
 tests/test_codegen: tests/test_codegen.c
 	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L $(INCLUDES) -o $@ $< $(LDFLAGS)
 
-test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util
+tests/test_runtime: tests/test_runtime.c $(RT_TEST_DEPS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
+tests/test_panics: tests/test_panics.c $(PANIC_TEST_DEPS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
+# Objects needed by the stdlib test binary (runtime + tested stdlib modules)
+STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
+                   src/stdlib/strings.o src/stdlib/arrays.o src/stdlib/maps.o \
+                   src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
+                   src/stdlib/strconv.o $(ATOMIC_OBJ)
+
+tests/test_stdlib: tests/test_stdlib.c $(STDLIB_TEST_DEPS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
+test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_runtime tests/test_panics tests/test_stdlib
 	@echo ""
 	@echo "=== Lexer Tests ==="
 	@./tests/test_lexer
@@ -180,11 +205,21 @@ test-unit: $(TEST_DEPS) tests/test_lexer tests/test_parser tests/test_typechecke
 	@./tests/test_typechecker
 	@echo "=== Util Tests ==="
 	@./tests/test_util
+	@echo "=== Runtime Tests ==="
+	@./tests/test_runtime
+	@echo "=== Panic Tests ==="
+	@./tests/test_panics
+	@echo "=== Stdlib Tests ==="
+	@./tests/test_stdlib
+	@rm -f tests/test_lexer tests/test_parser tests/test_typechecker tests/test_util tests/test_runtime tests/test_panics tests/test_stdlib
+	@rm -rf tests/*.dSYM
 
 test-e2e: build tests/test_codegen
 	@echo ""
 	@echo "=== End-to-End Codegen Tests ==="
 	@./tests/test_codegen
+	@rm -f tests/test_codegen
+	@rm -rf tests/*.dSYM
 
 test-integration: build
 	@../scripts/run_tests.sh
@@ -214,7 +249,11 @@ test-ubsan:
 	@echo "=== UBSan Util Tests ==="
 	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_util_san tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
 	@./tests/test_util_san
-	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san
+	@echo "=== UBSan Runtime Tests ==="
+	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
+	@./tests/test_runtime_san
+	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san tests/test_runtime_san
+	@rm -rf tests/*.dSYM
 	@echo ""
 	@echo "All UBSan tests passed — no undefined behavior detected."
 
@@ -230,7 +269,11 @@ test-asan:
 	@echo "=== ASan+UBSan Util Tests ==="
 	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_util_san tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
 	@./tests/test_util_san
-	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san
+	@echo "=== ASan+UBSan Runtime Tests ==="
+	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
+	@./tests/test_runtime_san
+	@rm -f tests/test_lexer_san tests/test_parser_san tests/test_typechecker_san tests/test_util_san tests/test_runtime_san
+	@rm -rf tests/*.dSYM
 	@echo ""
 	@echo "All ASan+UBSan tests passed — no memory errors or undefined behavior."
 

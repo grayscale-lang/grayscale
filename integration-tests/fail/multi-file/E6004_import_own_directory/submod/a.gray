@@ -1,0 +1,9 @@
+/*
+ * a.gray - tries to import its own directory
+ */
+
+import "./"
+
+do helper() -> int {
+    return 42
+}

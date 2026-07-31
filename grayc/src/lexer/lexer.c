@@ -225,6 +225,19 @@ static const char *read_string(Lexer *lexer) {
             read_char(lexer); /* skip { */
             continue;
         }
+        /* Inside interpolation: skip nested string literals so that
+         * braces within them are not counted against brace_depth. */
+        if (lexer->ch == '"' && brace_depth > 0) {
+            read_char(lexer); /* skip opening " */
+            while (lexer->ch != 0 && lexer->ch != '"') {
+                if (lexer->ch == '\\' && peek_char(lexer) != 0) {
+                    read_char(lexer); /* skip backslash */
+                }
+                read_char(lexer);
+            }
+            if (lexer->ch == '"') read_char(lexer); /* skip closing " */
+            continue;
+        }
         if (lexer->ch == '{' && brace_depth > 0) {
             brace_depth++;
             read_char(lexer);

@@ -818,9 +818,9 @@ static void test_error_E3033_duplicate_enum_value(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3041_new_non_struct(void) {
+static void test_error_E3041_new_unknown_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut p = new(int) }");
+        "do main() { mut p = new(Bogus) }");
     ASSERT(has_error_code(diagnostics, "E3041"));
     diagnostic_destroy(diagnostics);
 }
@@ -1777,7 +1777,7 @@ static void test_error_E3066_func_ref_sig_mismatch(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3067_non_assignable_ref_param(void) {
+static void test_error_E3027_non_assignable_ref_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do modify(&x int) { x = 10 }\n"
         "do main() { modify(42) }");
@@ -2214,7 +2214,7 @@ int main(void) {
     /* E3xxx: Additional type errors */
     RUN_TEST(test_error_E3017_fmt_struct);
     RUN_TEST(test_error_E3033_duplicate_enum_value);
-    RUN_TEST(test_error_E3041_new_non_struct);
+    RUN_TEST(test_error_E3041_new_unknown_type);
     RUN_TEST(test_error_E3041_interpolate_void);
     RUN_TEST(test_error_E3043_invalid_cast);
     RUN_TEST(test_error_E3045_or_return_no_error);
@@ -2335,7 +2335,7 @@ int main(void) {
     RUN_TEST(test_error_E3062_const_handle);
     RUN_TEST(test_error_E3064_arena_already_destroyed);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
-    RUN_TEST(test_error_E3067_non_assignable_ref_param);
+    RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
     RUN_TEST(test_error_E3103_json_struct_func_field);
     RUN_TEST(test_error_E3104_json_struct_method);

@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3087 - %n forbidden in fmt format strings
+ * Expected: "%n is not permitted in fmt format strings"
+ */
+
+import @fmt
+
+do main() {
+    fmt.printfln("%n", 42)
+}

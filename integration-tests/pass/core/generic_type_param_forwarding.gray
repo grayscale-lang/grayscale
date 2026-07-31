@@ -1,0 +1,31 @@
+/*
+ * Test: generic type parameter forwarding between functions
+ * Verifies that T can be forwarded through nested generic calls.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do make(T <?>) -> ^? {
+    return new(T)
+}
+
+do wrap(T <?>) -> ^? {
+    return make(T)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p = wrap(Point)
+    p^.x = 42
+    p^.y = 7
+
+    if p^.x == 42 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if p^.y == 7  { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}/${passed + failed}")
+}

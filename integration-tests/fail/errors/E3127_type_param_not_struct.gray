@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3127 - type parameter expects struct, got non-struct
+ * Expected: "type parameter expects a struct type name, but 'int' is not a struct"
+ */
+
+do make(T <?>) -> ^? {
+    return new(T)
+}
+
+do main() {
+    mut p = make(int)
+}

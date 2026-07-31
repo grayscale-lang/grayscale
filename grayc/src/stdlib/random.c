@@ -11,11 +11,29 @@
 #include "random.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <time.h>
+#include <unistd.h>
+
+/* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
+#if defined(__APPLE__) || defined(__FreeBSD__)
+void arc4random_buf(void *buf, size_t nbytes);
+#endif
 
 static bool _seeded = false;
 static void ensure_seed(void) {
-    if (!_seeded) { srand((unsigned)time(NULL)); _seeded = true; }
+    if (!_seeded) {
+        unsigned seed;
+#if defined(__APPLE__) || defined(__FreeBSD__)
+        arc4random_buf(&seed, sizeof(seed));
+#else
+        FILE *f = fopen("/dev/urandom", "rb");
+        if (f) { fread(&seed, sizeof(seed), 1, f); fclose(f); }
+        else { seed = (unsigned)time(NULL) ^ (unsigned)getpid(); }
+#endif
+        srand(seed);
+        _seeded = true;
+    }
 }
 
 void gray_random_seed(int64_t value) {

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3135 - alias cannot target wildcard type
+ * Expected: alias cannot target the wildcard type '?'
+ */
+
+alias Any = ?
+
+do main() {}

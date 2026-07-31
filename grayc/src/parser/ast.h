@@ -16,6 +16,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+/* Compiler-generated synthetic variable prefixes.
+ * The parser creates these; the typechecker and codegen check for them. */
+#define GRAY_SYNTH_PREFIX  "_gray_"
+#define GRAY_SYNTH_TMP     "_gray_tmp"
+#define GRAY_SYNTH_OR      "_gray_or"
+
 typedef enum {
     /* Expressions */
     NODE_LABEL,
@@ -38,7 +44,6 @@ typedef enum {
     NODE_NEW_EXPR,
     NODE_RANGE_EXPR,
     NODE_CAST_EXPR,
-    NODE_BLANK_IDENT,
     NODE_FUNC_REF,
     NODE_IMPLICIT_ENUM,
     NODE_WHEN_PATTERN,
@@ -63,6 +68,7 @@ typedef enum {
     NODE_USING_STMT,
     NODE_STRUCT_DECL,
     NODE_ENUM_DECL,
+    NODE_ALIAS_DECL,
     NODE_MODULE_DECL,
     NODE_PROGRAM,
 } NodeKind;
@@ -344,6 +350,13 @@ struct AstNode {
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
         } enum_decl;
+
+        /* NODE_ALIAS_DECL */
+        struct {
+            const char *name;
+            const char *target_type;
+            bool is_private;
+        } alias_decl;
 
         /* NODE_MODULE_DECL */
         struct { const char *name; } module_decl;

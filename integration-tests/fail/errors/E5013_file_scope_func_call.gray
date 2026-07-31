@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5013 - function call in file-scope initializer
+ * Expected: "function calls are not allowed in file-scope initializers"
+ */
+
+do compute() -> int {
+    return 42
+}
+
+mut result int = compute()
+
+do main() {
+    println("${result}")
+}

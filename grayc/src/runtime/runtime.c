@@ -60,7 +60,7 @@ GrayArena *gray_arena_create(size_t initial_size) {
     return arena;
 }
 
-void *gray_arena_alloc(GrayArena *arena, size_t size) {
+void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
     if (arena->destroyed)
         gray_panic_code("P0001", "cannot allocate from a destroyed arena; mem.destroy() was already called on this arena");
     size = ALIGN_UP(size, 8);
@@ -73,7 +73,12 @@ void *gray_arena_alloc(GrayArena *arena, size_t size) {
     }
     void *ptr = arena->current->data + arena->current->used;
     arena->current->used += size;
-    memset(ptr, 0, size);
+    return ptr;
+}
+
+void *gray_arena_alloc(GrayArena *arena, size_t size) {
+    void *ptr = gray_arena_alloc_uninitialized(arena, size);
+    memset(ptr, 0, ALIGN_UP(size, 8));
     return ptr;
 }
 
@@ -127,7 +132,7 @@ GrayError *gray_error_new(GrayArena *arena, GrayString message) {
 /* --- String --- */
 
 GrayString gray_string_new(GrayArena *arena, const char *s, int32_t len) {
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, s, (size_t)len);
     data[len] = '\0';
     GrayString str;
@@ -140,7 +145,7 @@ GrayString gray_c_string_dup(GrayArena *arena, const char *s) {
     if (s == NULL) return gray_string_lit("");
     size_t n = strlen(s);
     if (n > (size_t)INT32_MAX) n = (size_t)INT32_MAX;
-    char *data = (char *)gray_arena_alloc(arena, n + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, n + 1);
     memcpy(data, s, n);
     data[n] = '\0';
     GrayString str;
@@ -159,7 +164,7 @@ GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
         return gray_string_lit("");
     }
 
-    char *data = (char *)gray_arena_alloc(arena, (size_t)needed + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)needed + 1);
     va_start(args, fmt);
     vsnprintf(data, (size_t)needed + 1, fmt, args);
     va_end(args);
@@ -176,7 +181,7 @@ GrayString gray_string_concat(GrayArena *arena, GrayString a, GrayString b) {
         exit(1);
     }
     int32_t new_len = a.len + b.len;
-    char *data = (char *)gray_arena_alloc(arena, (size_t)new_len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
     memcpy(data, a.data, (size_t)a.len);
     memcpy(data + a.len, b.data, (size_t)b.len);
     data[new_len] = '\0';

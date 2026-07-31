@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3116 - wrong number of bindings in when/is
+ * Expected: "wrong number of bindings for variant 'Circle'; expected 1, got 2"
+ */
+
+const Shape enum {
+    Circle(float)
+    Point
+}
+
+do main() {
+    mut s Shape = Shape.Circle(3.14)
+    when s {
+        is Circle(x, y) {
+            println("circle")
+        }
+        default {
+            println("other")
+        }
+    }
+}

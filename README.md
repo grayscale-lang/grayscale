@@ -60,7 +60,7 @@ Download the latest release for your platform from the [Releases page](https://g
 
 ### Build from source
 
-Requires Go 1.23+ and a C compiler (gcc or clang).
+Requires Go 1.23+ and a C compiler — GCC 7+ or Clang 5+ (GNU C extensions required).
 
 ```bash
 git clone https://github.com/grayscale-lang/grayscale.git
@@ -95,6 +95,10 @@ make install
 | `gray man <module>` | Show info about a stdlib module | `gray man strings` |
 | `gray man <function>` | Show info about a stdlib function | `gray man to_upper` |
 | `gray man <struct>` | Show info about a stdlib struct type | `gray man HttpRequest` |
+| `gray cross build <file> --target <target>` | Cross-compile for another platform via Zig | `gray cross build main.gray --target linux-amd64` |
+| `gray cross targets` | List supported cross-compilation targets | `gray cross targets` |
+
+> **Note:** Zig is only required for cross-compilation (`gray cross`). Native builds use the system C compiler.
 
 ---
 

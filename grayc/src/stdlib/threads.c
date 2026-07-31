@@ -45,8 +45,11 @@ static void *thread_entry(void *raw) {
     gray_default_arena = NULL;
     atomic_fetch_sub(&gray_threads_live_count, 1);
     atomic_store(&state->alive, 0);
-    /* If detached, the state struct's lifetime ends here too. */
-    if (atomic_load(&state->detached)) free(state);
+    /* Rendezvous with detach(): both sides increment detached, and
+     * whichever sees the old value as 1 is the last to arrive and
+     * owns the free.  If join() is used instead, the increment is
+     * harmless — join() frees after pthread_join returns. */
+    if (atomic_fetch_add(&state->detached, 1) == 1) free(state);
     free(ta);
     return NULL;
 }
@@ -93,18 +96,10 @@ void gray_threads_join(GrayThread t) {
 void gray_threads_detach(GrayThread t) {
     if (!t._internal) return;
     GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
-    atomic_store(&state->detached, 1);
-    /* If the thread already exited before detach() was called, the entry
-     * function already saw detached=0 and won't free the struct — free
-     * it here. Otherwise the entry function frees it once it finishes. */
-    if (!atomic_load(&state->alive)) {
-        /* Race-safe: pthread_detach is idempotent for a finished thread,
-         * and we only free in the branch where alive was already 0. */
-        pthread_detach(state->pt);
-        free(state);
-    } else {
-        pthread_detach(state->pt);
-    }
+    pthread_detach(state->pt);
+    /* Rendezvous with thread exit: both sides increment detached, and
+     * whichever sees the old value as 1 is last to arrive and frees. */
+    if (atomic_fetch_add(&state->detached, 1) == 1) free(state);
 }
 
 bool gray_threads_is_alive(GrayThread t) {

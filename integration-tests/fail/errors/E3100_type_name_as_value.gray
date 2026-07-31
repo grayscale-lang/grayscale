@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3100 - type name used as a value
+ * Expected: "type name 'Point' cannot be used as a value"
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do identity(x int) -> int {
+    return x
+}
+
+do main() {
+    mut x = identity(Point)
+}

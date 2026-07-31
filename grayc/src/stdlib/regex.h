@@ -15,21 +15,83 @@
 #include "../runtime/array.h"
 #include "io.h" /* GrayResult_string, GrayResult_array */
 
+/*@man is_valid
+ *@module regex
+ *@group Matching
+ *@sig is_valid(pattern string) -> bool
+ *@desc Check whether a regex pattern is syntactically valid.
+ *@example
+ *   import @regex
+ *   if regex.is_valid("[a-z]+") { println("valid") }
+ *@end
+ */
 /* regex.is_valid(pattern) -> bool */
 bool gray_regex_is_valid(GrayString pattern);
 
+/*@man is_match
+ *@module regex
+ *@group Matching
+ *@sig is_match(pattern string, text string) -> bool
+ *@desc Test whether the pattern matches anywhere in text.
+ *@example
+ *   import @regex
+ *   if regex.is_match("[0-9]+", "abc123") { println("found digits") }
+ *@end
+ */
 /* regex.match(pattern, text) -> bool */
 bool gray_regex_match(GrayString pattern, GrayString text);
 
+/*@man find
+ *@module regex
+ *@group Search
+ *@sig find(pattern string, text string) -> string
+ *@desc Return the first match of pattern in text, or an empty string if none.
+ *@example
+ *   import @regex
+ *   mut m string = regex.find("[0-9]+", "abc123def")
+ *   println(m)
+ *@end
+ */
 /* regex.find(pattern, text) -> string (first match, or empty) */
 GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text);
 
+/*@man find_all
+ *@module regex
+ *@group Search
+ *@sig find_all(pattern string, text string) -> [string]
+ *@desc Return all non-overlapping matches of pattern in text.
+ *@example
+ *   import @regex
+ *   mut matches [string] = regex.find_all("[0-9]+", "a1b2c3")
+ *@end
+ */
 /* regex.find_all(pattern, text) -> [string] */
 GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text);
 
+/*@man replace
+ *@module regex
+ *@group Transform
+ *@sig replace(pattern string, text string, replacement string) -> string
+ *@desc Replace all matches of pattern in text with replacement.
+ *@example
+ *   import @regex
+ *   mut result string = regex.replace("[0-9]+", "a1b2", "X")
+ *   println(result)
+ *@end
+ */
 /* regex.replace(pattern, text, replacement) -> string */
 GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement);
 
+/*@man split
+ *@module regex
+ *@group Transform
+ *@sig split(pattern string, text string) -> [string]
+ *@desc Split text on all matches of pattern.
+ *@example
+ *   import @regex
+ *   mut parts [string] = regex.split("[,;]+", "a,b;;c")
+ *@end
+ */
 /* regex.split(pattern, text) -> [string] */
 GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text);
 

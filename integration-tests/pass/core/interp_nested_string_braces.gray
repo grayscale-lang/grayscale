@@ -1,0 +1,37 @@
+do identity(s string) -> string {
+    return s
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Nested string with } inside interpolation
+    mut r1 string = "result: ${identity("}")}"
+    if r1 == "result: }" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: } in nested string")
+    }
+
+    // Nested string with { inside interpolation
+    mut r2 string = "result: ${identity("{")}"
+    if r2 == "result: {" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: { in nested string")
+    }
+
+    // Nested string with both braces
+    mut r3 string = "result: ${identity("{}")}"
+    if r3 == "result: {}" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: {} in nested string")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

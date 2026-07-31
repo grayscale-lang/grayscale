@@ -1,0 +1,16 @@
+/*
+ * Error Test: E4004 - function already declared
+ * Expected: "function 'greet' already declared"
+ */
+
+do greet() {
+    println("hello")
+}
+
+do greet() {
+    println("hi")
+}
+
+do main() {
+    greet()
+}
