@@ -1,0 +1,67 @@
+/*
+ * Pass Test: Implicit enum selectors in struct field defaults
+ * Verifies omitted defaults, explicit-selector parity, overrides, and
+ * non-enum defaults.
+ */
+
+const Status enum {
+    UNKNOWN
+    PENDING
+    DONE
+}
+
+const ImplicitTask struct {
+    status Status = .PENDING
+    retries int = 3
+}
+
+const ExplicitTask struct {
+    status Status = Status.PENDING
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut implicit = ImplicitTask{}
+    if implicit.status == Status.PENDING {
+        println("  [PASS] omitted field uses implicit enum default")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] omitted field did not use implicit enum default")
+        failed += 1
+    }
+
+    mut explicit = ExplicitTask{}
+    if explicit.status == implicit.status {
+        println("  [PASS] implicit and explicit enum defaults match")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] implicit and explicit enum defaults differ")
+        failed += 1
+    }
+
+    if implicit.retries == 3 {
+        println("  [PASS] non-enum default is preserved")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] non-enum default was not preserved")
+        failed += 1
+    }
+
+    mut overridden = ImplicitTask{status: .DONE, retries: 9}
+    if overridden.status == Status.DONE && overridden.retries == 9 {
+        println("  [PASS] explicit fields override defaults")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit fields did not override defaults")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1684,7 +1684,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 if (!specified) {
                     if (node->data.struct_value.count > 0 || field_index > 0) emit(codegen, ", ");
                     emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+                    const char *saved = codegen->current_var_type;
+                    codegen->current_var_type = sf->type_name;
                     emit_expression(codegen, sf->default_value);
+                    codegen->current_var_type = saved;
                 }
             }
         }
@@ -2854,6 +2857,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
 
     case NODE_IMPLICIT_ENUM: {
         const char *ename = node->data.implicit_enum.resolved_enum;
+        if (!ename && codegen->current_var_type &&
+            codegen_is_enum(codegen, codegen->current_var_type)) {
+            ename = codegen->current_var_type;
+        }
         const char *variant = node->data.implicit_enum.variant;
         if (ename) {
             if (codegen_enum_is_tagged(codegen, ename)) {
