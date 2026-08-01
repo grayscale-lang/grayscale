@@ -8912,6 +8912,36 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* Array-to-array: element types differ on reassignment (e.g., [int] = [string]).
+         * Both sides are TK_ARRAY so the outer kind-equality guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_ARRAY && value_t->kind == TK_ARRAY &&
+            target_t->element_type && value_t->element_type &&
+            strcmp(target_t->element_type, value_t->element_type) != 0) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign %s to %s variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Map-to-map: key or value types differ on reassignment (e.g., [string:int] = [string:string]).
+         * Both sides are TK_MAP so the outer kind-equality guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
+            target_t->key_type && value_t->key_type &&
+            target_t->value_type && value_t->value_type &&
+            (strcmp(target_t->key_type, value_t->key_type) != 0 ||
+             strcmp(target_t->value_type, value_t->value_type) != 0)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign %s to %s variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* Bigint narrowing on reassignment: i128 → i64, u256 → int, etc. */
         if (target->kind == NODE_LABEL &&
             target_t && value_t &&
