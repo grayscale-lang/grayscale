@@ -1,0 +1,5 @@
+do main() {
+    mut a [string:int] = {"x": 1}
+    mut b [int:int] = {1: 100}
+    a = b
+}
