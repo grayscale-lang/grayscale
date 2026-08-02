@@ -8909,6 +8909,19 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* Enum-to-enum name mismatch on direct variable assignment */
+        if (target->kind == NODE_LABEL &&
+            target_t->kind == TK_ENUM && value_t->kind == TK_ENUM &&
+            target_t->name && value_t->name &&
+            !typechecker_same_enum_type(checker, target_t->name, value_t->name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign enum '%s' to enum '%s' variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t),
+                target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* E3098: struct-to-struct name mismatch through pointer dereference: v3^ = v2^
          * The NODE_LABEL check above is bypassed when the target is a postfix
          * dereference. resolve_expression already strips the pointer layer, so
