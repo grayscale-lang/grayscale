@@ -81,13 +81,16 @@ Multi-line comments do not nest. A `/*` inside a multi-line comment has no speci
 Identifiers name program entities such as variables, functions, types, and modules.
 
 Identifiers must:
-- Begin with an ASCII letter
+- Begin with an ASCII letter or underscore
 - Contain only ASCII letters, digits, and underscores
 - Not be a reserved keyword
+- Not use the reserved prefixes `gray_`, `_gray_`, or `Gray` (reserved for the compiler)
 
-Valid identifiers: `x`, `count`, `myVariable`, `point_2d`, `MAX_SIZE`
+The standalone `_` is the blank identifier (see §4.5) and is not a valid variable or function name.
 
-Invalid identifiers: `2fast`, `my-var`, `café`, `_private`
+Valid identifiers: `x`, `count`, `myVariable`, `point_2d`, `MAX_SIZE`, `_helper`, `_x`
+
+Invalid identifiers: `2fast`, `my-var`, `café`
 
 ### 2.5 Keywords
 
