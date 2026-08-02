@@ -1,0 +1,11 @@
+const Node struct {
+    id uint,
+    do make(&self Node) -> Node {
+        return self
+    }
+}
+
+do main() {
+    mut n = Node.make(Node)
+    println(n)
+}

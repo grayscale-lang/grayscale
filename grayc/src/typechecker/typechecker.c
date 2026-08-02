@@ -3019,6 +3019,34 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     checker->expected_type = param_t;
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 checker->expected_type = saved_expected_m;
+                /* E3100: struct/enum type name passed as a value argument */
+                if (arg_t->kind == TK_UNKNOWN &&
+                    node->data.call.args[argument_index]->kind == NODE_LABEL) {
+                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
+                    if (!scope_lookup(checker->current_scope, arg_label)) {
+                        if (is_struct_name(checker, arg_label)) {
+                            char *msg = NULL;
+                            msg = typechecker_format(checker,
+                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                                arg_label, arg_label, arg_label);
+                            diagnostic_error_message(checker->diag, "E3100", msg,
+                                NODE_FILE(checker, node->data.call.args[argument_index]),
+                                node->data.call.args[argument_index]->token.line,
+                                node->data.call.args[argument_index]->token.column, 0);
+                            continue;
+                        } else if (is_enum_name(checker, arg_label)) {
+                            char *msg = NULL;
+                            msg = typechecker_format(checker,
+                                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                                arg_label, arg_label);
+                            diagnostic_error_message(checker->diag, "E3100", msg,
+                                NODE_FILE(checker, node->data.call.args[argument_index]),
+                                node->data.call.args[argument_index]->token.line,
+                                node->data.call.args[argument_index]->token.column, 0);
+                            continue;
+                        }
+                    }
+                }
                 if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                     arg_t->kind != param_t->kind &&
                     !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
@@ -4181,7 +4209,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         if (is_struct_name(checker, arg_label)) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; to create an instance use 'new(%s)' or '%s{...}'",
+                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
                                 arg_label, arg_label, arg_label);
                             diagnostic_error_message(checker->diag, "E3100", msg,
                                 NODE_FILE(checker, node->data.call.args[argument_index]),
@@ -4279,7 +4307,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     if (is_struct_name(checker, arg_label)) {
                         char *msg = NULL;
                         msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; to create an instance use 'new(%s)' or '%s{...}'",
+                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
                             arg_label, arg_label, arg_label);
                         diagnostic_error_message(checker->diag, "E3100", msg,
                             NODE_FILE(checker, node->data.call.args[argument_index]),
