@@ -2663,6 +2663,11 @@ static AstNode *parse_for_each_statement(Parser *parser) {
             member->data.member.member = parser->cur_token.literal;
             result = member;
         }
+        /* If the chain is followed by (, it is a function call (e.g., maps.get_keys(m)) */
+        if (peek_token_is(parser, TOK_LPAREN)) {
+            next_token(parser); /* move to ( */
+            result = parse_call_expression(parser, result);
+        }
         node->data.for_each.collection = result;
     } else {
         node->data.for_each.collection = parse_expression(parser, PREC_LOWEST);
