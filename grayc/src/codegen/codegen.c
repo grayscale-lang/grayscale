@@ -934,6 +934,13 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
         if (left_type) return left_type;
         return resolve_bigint_type(codegen, node->data.infix.right);
     }
+    /* Struct field access a.val — check the resolved field type from the type table */
+    if (node->kind == NODE_MEMBER_EXPR) {
+        GrayType *field_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node) : NULL;
+        if (field_t && field_t->name && is_bigint_type(field_t->name))
+            return field_t->name;
+    }
     /* Pointer dereference p^ — check whether the pointee type is bigint */
     if (node->kind == NODE_POSTFIX_EXPR && node->data.postfix.op == TOK_CARET) {
         GrayType *ptr_t = codegen->type_table
