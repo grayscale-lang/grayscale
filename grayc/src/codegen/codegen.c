@@ -2058,9 +2058,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 /* Float division: check for zero (Grayscale panics, no IEEE 754 inf) */
                 emit(codegen, "({ double _dv = (double)");
                 emit_expression(codegen, node->data.infix.right);
-                emit_formatted(codegen, "; if (_dv == 0.0) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } (double)", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (_dv == 0.0) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } (double)(", codegen->file, node->token.line);
                 emit_expression(codegen, node->data.infix.left);
-                emit_formatted(codegen, " %s _dv; })", operator_to_c_string(op));
+                emit_formatted(codegen, ") %s _dv; })", operator_to_c_string(op));
                 break;
             } else {
                 /* For signed integer division, also guard the TYPE_MIN / -1
@@ -2084,8 +2084,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "; if ((int64_t)_dn == %s && _dv == -1) { gray_panic_code_at(\"%s\", %d, \"P0079\", \"%s result is too large; value exceeds the range of this type\"); } _dn %s _dv; })",
                         signed_min, codegen->file, node->token.line, opname, operator_to_c_string(op));
                 } else {
+                    emit(codegen, "(");
                     emit_expression(codegen, node->data.infix.left);
-                    emit_formatted(codegen, " %s _dv; })", operator_to_c_string(op));
+                    emit_formatted(codegen, ") %s _dv; })", operator_to_c_string(op));
                 }
                 break;
             }

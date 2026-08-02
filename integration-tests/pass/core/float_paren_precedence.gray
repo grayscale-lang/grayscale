@@ -1,0 +1,38 @@
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a = 6.0
+    mut b = 4.0
+
+    // Parenthesized addition then division
+    if (a + b) / 2.0 == 5.0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Without parens: division binds tighter
+    if a + b / 2.0 == 8.0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Parenthesized subtraction then division
+    if (a - b) / 2.0 == 1.0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Nested parenthesized expression
+    if (a + b) / (a - b) == 5.0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}
