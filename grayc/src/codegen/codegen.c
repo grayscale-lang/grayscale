@@ -279,6 +279,20 @@ static const char *sanitize_name(const char *name) {
     return bufs[i];
 }
 
+/* Returns true if the function declaration contains any wildcard ('?')
+ * type parameters or return types, indicating a generic function. */
+static bool func_is_generic(AstNode *func) {
+    for (int i = 0; i < func->data.func_decl.param_count; i++) {
+        if (func->data.func_decl.params[i].type_name &&
+            strchr(func->data.func_decl.params[i].type_name, '?')) return true;
+    }
+    for (int i = 0; i < func->data.func_decl.return_type_count; i++) {
+        if (func->data.func_decl.return_types[i] &&
+            strchr(func->data.func_decl.return_types[i], '?')) return true;
+    }
+    return false;
+}
+
 /* Map Grayscale type name to C type */
 /* Return a type string with any '?' replaced by the active wildcard
  * binding. Returns the original pointer if no binding is active or the
@@ -6474,16 +6488,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             }
             if (ns_func) {
                 /* Generic struct function: mangle with concrete binding */
-                bool ns_generic = false;
-                for (int pi = 0; pi < ns_func->data.func_decl.param_count && !ns_generic; pi++) {
-                    if (ns_func->data.func_decl.params[pi].type_name &&
-                        strchr(ns_func->data.func_decl.params[pi].type_name, '?')) ns_generic = true;
-                }
-                for (int pi = 0; pi < ns_func->data.func_decl.return_type_count && !ns_generic; pi++) {
-                    if (ns_func->data.func_decl.return_types[pi] &&
-                        strchr(ns_func->data.func_decl.return_types[pi], '?')) ns_generic = true;
-                }
-                if (ns_generic) {
+                if (func_is_generic(ns_func)) {
                     const char *binding = NULL;
                     char *dyn_binding = NULL;
                     int cc = ns_func->data.func_decl.param_count < node->data.call.arg_count
@@ -6601,15 +6606,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
         /* Known function; use gray_fn_ prefix. For generic functions,
          * rewrite to the mangled instantiation name derived from the
          * first wildcard parameter's argument type ). */
-        bool tf_generic = false;
-        for (int pi = 0; pi < target_func->data.func_decl.param_count && !tf_generic; pi++) {
-            if (target_func->data.func_decl.params[pi].type_name &&
-                strchr(target_func->data.func_decl.params[pi].type_name, '?')) tf_generic = true;
-        }
-        for (int pi = 0; pi < target_func->data.func_decl.return_type_count && !tf_generic; pi++) {
-            if (target_func->data.func_decl.return_types[pi] &&
-                strchr(target_func->data.func_decl.return_types[pi], '?')) tf_generic = true;
-        }
+        bool tf_generic = func_is_generic(target_func);
         if (tf_generic) {
             /* Derive the concrete binding by scanning params for the
              * first '?' slot and reading the matching arg's type. */
@@ -9284,15 +9281,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
          * no instantiations and we skip emission entirely; the
          * un-specialised form has '?' in its signature and can't be
          * compiled as C. */
-        bool has_wc = false;
-        for (int i = 0; i < node->data.func_decl.param_count && !has_wc; i++) {
-            if (node->data.func_decl.params[i].type_name &&
-                strchr(node->data.func_decl.params[i].type_name, '?')) has_wc = true;
-        }
-        for (int i = 0; i < node->data.func_decl.return_type_count && !has_wc; i++) {
-            if (node->data.func_decl.return_types[i] &&
-                strchr(node->data.func_decl.return_types[i], '?')) has_wc = true;
-        }
+        bool has_wc = func_is_generic(node);
         if (has_wc) {
             const char *orig_name = node->data.func_decl.name;
             for (int inst_index = 0; inst_index < node->data.func_decl.instantiation_count; inst_index++) {
@@ -10046,15 +10035,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         /* Detect wildcard generics ); emit one forward per
          * instantiation under a mangled name, skipping the un-specialised
          * signature which would contain '?' in C. */
-        bool has_wc = false;
-        for (int j = 0; j < stmt->data.func_decl.param_count && !has_wc; j++) {
-            if (stmt->data.func_decl.params[j].type_name &&
-                strchr(stmt->data.func_decl.params[j].type_name, '?')) has_wc = true;
-        }
-        for (int j = 0; j < stmt->data.func_decl.return_type_count && !has_wc; j++) {
-            if (stmt->data.func_decl.return_types[j] &&
-                strchr(stmt->data.func_decl.return_types[j], '?')) has_wc = true;
-        }
+        bool has_wc = func_is_generic(stmt);
 
         int emit_rounds = has_wc ? stmt->data.func_decl.instantiation_count : 1;
         const char *orig_name = stmt->data.func_decl.name;
