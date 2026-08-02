@@ -2622,6 +2622,15 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     diagnostic_error_code_formatted(checker->diag, "E9004",
                                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
                                         mfn, msg);
+                                } else if (elem_tn && cb_fs->return_count >= 1 &&
+                                           cb_fs->return_types[0] &&
+                                           strcmp(type_name(cb_fs->return_types[0]), elem_tn) != 0) {
+                                    char *msg = typechecker_format(checker,
+                                        "map callback must return the same type as the array element type (%s), got '%s'",
+                                        elem_tn, type_name(cb_fs->return_types[0]));
+                                    diagnostic_error_code_formatted(checker->diag, "E9004",
+                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                        mfn, msg);
                                 }
                             } else if (strcmp(mfn, "filter") == 0 ||
                                        strcmp(mfn, "any") == 0 ||
