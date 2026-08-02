@@ -1,0 +1,38 @@
+alias Name = string
+alias Score = float
+alias ID = int
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Alias as map key type
+    mut scores map[Name:Score] = {:}
+    scores["Alice"] = 95.5
+    if scores["Alice"] == 95.5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Alias as map value type with interpolation
+    mut ids map[Name:ID] = {:}
+    ids["Bob"] = 42
+    if ids["Bob"] == 42 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Both key and value aliased
+    mut data map[ID:Name] = {:}
+    data[1] = "test"
+    if data[1] == "test" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

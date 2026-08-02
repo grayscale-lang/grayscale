@@ -6605,7 +6605,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (left->kind == TK_ARRAY && left->element_type) {
             result = typechecker_type_from_name(checker, left->element_type);
         } else if (left->kind == TK_MAP && left->value_type) {
-            result = type_from_name(left->value_type);
+            result = typechecker_type_from_name(checker, left->value_type);
             /* Check map key type matches. Enum keys are int-backed, so accept
              * int expressions (and enum members, which resolve as int) when
              * the declared key is a user enum name. */
@@ -7588,7 +7588,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
          * tripping "no field 'y'"). Enums are allowed; they're int-backed
          * and hash fine. */
         if (declared->kind == TK_MAP && declared->key_type) {
-            const char *kt = declared->key_type;
+            const char *kt = resolve_type_alias(checker, declared->key_type);
             GrayType *key_resolved = type_from_name(kt);
             const char *bad = NULL;
             if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, kt))
