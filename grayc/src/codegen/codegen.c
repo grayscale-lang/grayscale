@@ -3118,16 +3118,22 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->message : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
         return;
     }
-    if (arg_type && arg_type->kind == TK_FLOAT)
-        emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
-    else if (arg_type && arg_type->kind == TK_BOOL)
-        emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
-    else if (arg_type && arg_type->kind == TK_UINT)
-        emit(codegen, "gray_builtin_to_string_uint(gray_default_arena, ");
-    else
-        emit(codegen, "gray_builtin_to_string_int(gray_default_arena, ");
-    emit_expression(codegen, arg);
-    emit(codegen, ")");
+    if (arg_type && arg_type->kind == TK_CHAR) {
+        emit(codegen, "gray_builtin_char_to_utf8(gray_default_arena, ");
+        emit_expression(codegen, arg);
+        emit(codegen, ")");
+    } else {
+        if (arg_type && arg_type->kind == TK_FLOAT)
+            emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
+        else if (arg_type && arg_type->kind == TK_BOOL)
+            emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
+        else if (arg_type && arg_type->kind == TK_UINT)
+            emit(codegen, "gray_builtin_to_string_uint(gray_default_arena, ");
+        else
+            emit(codegen, "gray_builtin_to_string_int(gray_default_arena, ");
+        emit_expression(codegen, arg);
+        emit(codegen, ")");
+    }
 }
 
 /* Emit a fmt format string literal with %d/%i/%u upgraded to %lld/%llu for
