@@ -8942,13 +8942,14 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* Bigint narrowing on reassignment: i128 → i64, u256 → int, etc. */
+        /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
+         * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
         if (target->kind == NODE_LABEL &&
             target_t && value_t &&
             target_t->name && value_t->name) {
             int dr = int_type_name_rank(target_t->name);
             int vr = int_type_name_rank(value_t->name);
-            if (dr > 0 && vr >= 5 && dr < vr) {
+            if (dr > 0 && vr > 0 && dr < vr) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
@@ -8956,6 +8957,49 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+        }
+        /* E3019: signed-to-unsigned on reassignment (e.g., uint_var = signed_var).
+         * Only fires when narrowing did not already catch it (same rank). */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->name && value_t->name &&
+            is_unsigned_type(target_t->name) &&
+            is_signed_int_type(value_t->name) &&
+            int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
+            diagnostic_error_code_formatted(checker->diag, "E3019",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                value_t->name, target_t->name);
+        }
+        /* Unsigned-to-signed on reassignment (e.g., int_var = uint_var).
+         * Only fires when narrowing did not already catch it (same rank). */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->name && value_t->name &&
+            is_signed_int_type(target_t->name) &&
+            is_unsigned_type(value_t->name) &&
+            int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(%s, %s) to convert explicitly",
+                value_t->name, target_t->name, target->data.label.value,
+                target->data.label.value, target_t->name);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Float narrowing on reassignment: f64 → f32, float → f32.
+         * Both are TK_FLOAT so the kind guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_FLOAT && value_t->kind == TK_FLOAT &&
+            target_t->name && value_t->name &&
+            strcmp(target_t->name, value_t->name) != 0 &&
+            strcmp(target_t->name, "f32") == 0) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
+                value_t->name, target_t->name, target->data.label.value, target_t->name);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* Check type mismatch on struct field assignment.
          * sym->type may be TK_STRUCT (by-value) or TK_POINTER (from new()),
