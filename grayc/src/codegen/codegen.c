@@ -1794,12 +1794,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             if (ot && ot->kind == TK_INT) {
                 const char *sized_name = ot->name;
                 const char *smin = NULL, *smax = NULL;
-                if (sized_name) {
-                    if (strcmp(sized_name, "i8") == 0) { smin = "-128"; smax = "127"; }
-                    else if (strcmp(sized_name, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                    else if (strcmp(sized_name, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                }
-                if (smax) {
+                bool _su = false;
+                if (sized_name) sized_int_bounds(sized_name, &smin, &smax, &_su);
+                if (smax && !_su) {
                     emit(codegen, "gray_sized_neg_check(");
                     emit_expression(codegen, node->data.prefix.right);
                     emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, sized_name, codegen->file, node->token.line);
@@ -2143,14 +2140,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     sized_name = (int_type_rank(right_name) > int_type_rank(left_name)) ? right_name : (left_name ? left_name : right_name);
                 const char *sized_min = NULL, *sized_max = NULL;
                 bool sized_unsigned = false;
-                if (sized_name) {
-                    if (strcmp(sized_name, "i8") == 0) { sized_min = "-128"; sized_max = "127"; }
-                    else if (strcmp(sized_name, "i16") == 0) { sized_min = "-32768"; sized_max = "32767"; }
-                    else if (strcmp(sized_name, "i32") == 0) { sized_min = "-2147483648LL"; sized_max = "2147483647LL"; }
-                    else if (strcmp(sized_name, "u8") == 0 || strcmp(sized_name, "byte") == 0) { sized_unsigned = true; sized_max = "255"; }
-                    else if (strcmp(sized_name, "u16") == 0) { sized_unsigned = true; sized_max = "65535"; }
-                    else if (strcmp(sized_name, "u32") == 0) { sized_unsigned = true; sized_max = "4294967295ULL"; }
-                }
+                if (sized_name) sized_int_bounds(sized_name, &sized_min, &sized_max, &sized_unsigned);
 
                 if (sized_max) {
                     /* Sized type; use bounds-checked arithmetic */
@@ -2229,14 +2219,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             const char *smin = NULL, *smax = NULL;
             bool su = false;
             bool is_uint = postfix_type && postfix_type->kind == TK_UINT;
-            if (sized_name) {
-                if (strcmp(sized_name, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(sized_name, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(sized_name, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(sized_name, "u8") == 0 || strcmp(sized_name, "byte") == 0) { su = true; smax = "255"; }
-                else if (strcmp(sized_name, "u16") == 0) { su = true; smax = "65535"; }
-                else if (strcmp(sized_name, "u32") == 0) { su = true; smax = "4294967295ULL"; }
-            }
+            if (sized_name) sized_int_bounds(sized_name, &smin, &smax, &su);
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2265,14 +2248,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             const char *smin = NULL, *smax = NULL;
             bool su = false;
             bool is_uint = pt && pt->kind == TK_UINT;
-            if (sn) {
-                if (strcmp(sn, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(sn, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(sn, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(sn, "u8") == 0 || strcmp(sn, "byte") == 0) { su = true; smax = "255"; }
-                else if (strcmp(sn, "u16") == 0) { su = true; smax = "65535"; }
-                else if (strcmp(sn, "u32") == 0) { su = true; smax = "4294967295ULL"; }
-            }
+            if (sn) sized_int_bounds(sn, &smin, &smax, &su);
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2729,12 +2705,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 /* Sized integer targets — parse then range-check */
                 const char *smin = NULL, *smax = NULL;
                 bool is_unsigned = false;
-                if (strcmp(target, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(target, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(target, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
-                else if (strcmp(target, "u16") == 0) { is_unsigned = true; smax = "65535"; }
-                else if (strcmp(target, "u32") == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+                sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
                 if (smax && is_unsigned) {
                     emit_formatted(codegen, "(%s)gray_ucast_check(gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target));
@@ -2778,12 +2749,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     /* Determine if an additional narrow range check is needed */
                     const char *nmin = NULL, *nmax = NULL;
                     bool narrow_unsigned = false;
-                    if (strcmp(target, "i8") == 0)  { nmin = "-128";          nmax = "127"; }
-                    else if (strcmp(target, "i16") == 0) { nmin = "-32768";   nmax = "32767"; }
-                    else if (strcmp(target, "i32") == 0) { nmin = "-2147483648LL"; nmax = "2147483647LL"; }
-                    else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { narrow_unsigned = true; nmax = "255"; }
-                    else if (strcmp(target, "u16") == 0) { narrow_unsigned = true; nmax = "65535"; }
-                    else if (strcmp(target, "u32") == 0) { narrow_unsigned = true; nmax = "4294967295ULL"; }
+                    sized_int_bounds(target, &nmin, &nmax, &narrow_unsigned);
 
                     if (nmax && narrow_unsigned) {
                         emit_formatted(codegen, "(%s)gray_ucast_check((int64_t)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
@@ -2825,12 +2791,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             /* Numeric casts: range-checked for narrowing, raw for widening */
             const char *smin = NULL, *smax = NULL;
             bool is_unsigned = false;
-            if (strcmp(target, "i8") == 0) { smin = "-128"; smax = "127"; }
-            else if (strcmp(target, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-            else if (strcmp(target, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-            else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
-            else if (strcmp(target, "u16") == 0) { is_unsigned = true; smax = "65535"; }
-            else if (strcmp(target, "u32") == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+            sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
             if (smax && is_unsigned) {
                 emit_formatted(codegen, "(%s)gray_ucast_check(", gray_type_to_c_codegen(codegen, target));
