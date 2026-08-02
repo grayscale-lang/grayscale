@@ -21,6 +21,7 @@ void arc4random_buf(void *buf, size_t nbytes);
 #endif
 
 static bool _seeded = false;
+static bool _user_seeded = false;
 static void ensure_seed(void) {
     if (!_seeded) {
         unsigned seed;
@@ -39,6 +40,7 @@ static void ensure_seed(void) {
 void gray_random_seed(int64_t value) {
     srand((unsigned)value);
     _seeded = true;
+    _user_seeded = true;
 }
 
 double gray_random_float_unit(void) {
@@ -50,8 +52,15 @@ double gray_random_float_range(double min, double max) {
     return min + gray_random_float_unit() * (max - min);
 }
 
-/* Generate a uniform random uint64_t across the full 64-bit range. */
+/* Generate a uniform random uint64_t across the full 64-bit range.
+ * When the user has explicitly seeded via random.seed(), use srand/rand
+ * so the sequence is deterministic.  Otherwise use OS entropy. */
 static uint64_t rand64(void) {
+    if (_user_seeded) {
+        return ((uint64_t)(unsigned)rand() << 33) ^
+               ((uint64_t)(unsigned)rand() << 2)  ^
+               ((uint64_t)(unsigned)rand());
+    }
     uint64_t v;
 #if defined(__APPLE__) || defined(__FreeBSD__)
     arc4random_buf(&v, sizeof(v));
@@ -59,7 +68,6 @@ static uint64_t rand64(void) {
     FILE *f = fopen("/dev/urandom", "rb");
     if (f) { fread(&v, sizeof(v), 1, f); fclose(f); }
     else {
-        /* Fallback: combine multiple rand() calls (31 bits each) */
         v = ((uint64_t)(unsigned)rand() << 33) ^
             ((uint64_t)(unsigned)rand() << 2)  ^
             ((uint64_t)(unsigned)rand());
