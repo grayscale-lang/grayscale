@@ -2681,6 +2681,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     diagnostic_error_code_formatted(checker->diag, "E9004",
                                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
                                         mfn, msg);
+                                } else if (cb_fs->return_count >= 1 && cb_fs->return_types[0] &&
+                                           node->data.call.arg_count > 1) {
+                                    AstNode *init_arg = node->data.call.args[1];
+                                    GrayType *init_t = typetable_get(checker->type_table, init_arg);
+                                    if (!init_t) init_t = resolve_expression(checker, init_arg);
+                                    if (init_t) {
+                                        const char *init_tn = type_name(init_t);
+                                        const char *ret_tn = type_name(cb_fs->return_types[0]);
+                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0) {
+                                            char *msg = typechecker_format(checker,
+                                                "reduce callback must return the same type as the accumulator (%s)",
+                                                init_tn);
+                                            diagnostic_error_code_formatted(checker->diag, "E9004",
+                                                NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                                mfn, msg);
+                                        }
+                                    }
                                 }
                             }
                         }

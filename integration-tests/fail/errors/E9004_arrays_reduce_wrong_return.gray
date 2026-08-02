@@ -1,0 +1,13 @@
+/*
+ * Error Test: E9004 - arrays.reduce() callback must return same type as accumulator
+ * Expected: E9004 error
+ */
+
+import @arrays
+
+do bad_reducer(acc int, x int) -> string { return "nope" }
+
+do main() {
+    mut nums [int] = {1, 2, 3}
+    mut result = arrays.reduce(nums, 0, ()bad_reducer)
+}
