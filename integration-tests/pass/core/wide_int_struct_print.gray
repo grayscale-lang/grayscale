@@ -1,0 +1,24 @@
+const Val struct {
+    num i128
+}
+
+const Big struct {
+    num i256
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut v = Val{num: 42}
+    mut b = Big{num: 999}
+
+    // These would previously cause C compilation errors.
+    // If we reach this point, the codegen is correct.
+    println(v)
+    println(b)
+    passed += 2
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

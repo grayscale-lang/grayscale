@@ -3235,12 +3235,26 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
 
     switch (type->kind) {
     case TK_INT: case TK_BYTE: case TK_ENUM:
-        emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        if (type->name && is_bigint_type(type->name)) {
+            const char *pfx = bigint_prefix(type->name);
+            emit_indent(codegen);
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+                   pfx, c_expr, stream);
+        } else {
+            emit_indent(codegen);
+            emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        }
         break;
     case TK_UINT:
-        emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
+        if (type->name && is_bigint_type(type->name)) {
+            const char *pfx = bigint_prefix(type->name);
+            emit_indent(codegen);
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+                   pfx, c_expr, stream);
+        } else {
+            emit_indent(codegen);
+            emit_formatted(codegen, "fprintf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
+        }
         break;
     case TK_FLOAT:
         emit_indent(codegen);
