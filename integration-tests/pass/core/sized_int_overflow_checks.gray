@@ -59,7 +59,8 @@ do main() {
 
     // Test 5: i16 compound assignment within bounds
     mut m i16 = 30000
-    m += 2000
+    mut m_add i16 = 2000
+    m += m_add
     if m == 32000 {
         println("  [PASS] i16 compound += within bounds")
         passed += 1
