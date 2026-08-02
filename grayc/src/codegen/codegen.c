@@ -279,6 +279,17 @@ static const char *sanitize_name(const char *name) {
     return bufs[i];
 }
 
+/* Build a mangled name for a generic instantiation: `base__concrete`
+ * with non-alphanumeric characters replaced by underscores so
+ * array/map bindings stay legal C identifiers. */
+static void mangle_generic_name(char *buf, size_t buf_size, const char *base, const char *concrete) {
+    size_t pos = (size_t)snprintf(buf, buf_size, "%s__", base);
+    for (const char *ch = concrete; *ch && pos < buf_size - 1; ch++) {
+        buf[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
+    }
+    buf[pos] = '\0';
+}
+
 /* Returns true if the function declaration contains any wildcard ('?')
  * type parameters or return types, indicating a generic function. */
 static bool func_is_generic(AstNode *func) {
@@ -1694,11 +1705,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         if (node->data.struct_value.wildcard_binding) {
             const char *binding = node->data.struct_value.wildcard_binding;
             char mangled[MSG_BUF_SIZE];
-            size_t mpos = snprintf(mangled, sizeof(mangled), "%s__", sname);
-            for (const char *ch = binding; *ch && mpos < sizeof(mangled) - 1; ch++) {
-                mangled[mpos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-            }
-            mangled[mpos] = '\0';
+            mangle_generic_name(mangled, sizeof(mangled), sname, binding);
             emit_formatted(codegen, "(GrayStruct_%s){", mangled);
         } else {
             emit_formatted(codegen, "(GrayStruct_%s){", sname);
@@ -9286,15 +9293,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             const char *orig_name = node->data.func_decl.name;
             for (int inst_index = 0; inst_index < node->data.func_decl.instantiation_count; inst_index++) {
                 const char *concrete = node->data.func_decl.instantiations[inst_index];
-                /* Build the mangled name: `<name>__<concrete>` with
-                 * non-alnum chars replaced by underscores so array/map
-                 * bindings stay legal C identifiers. */
                 char mangled[MSG_BUF_SIZE];
-                size_t pos = snprintf(mangled, sizeof(mangled), "%s__", orig_name);
-                for (const char *ch = concrete; *ch && pos < sizeof(mangled) - 1; ch++) {
-                    mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-                }
-                mangled[pos] = '\0';
+                mangle_generic_name(mangled, sizeof(mangled), orig_name, concrete);
 
                 node->data.func_decl.name = mangled;
                 const char *saved = codegen->wildcard_binding;
@@ -9829,11 +9829,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         for (int inst_index = 0; inst_index < stmt->data.struct_decl.instantiation_count; inst_index++) {
             const char *concrete = stmt->data.struct_decl.instantiations[inst_index];
             char mangled[MSG_BUF_SIZE];
-            size_t pos = snprintf(mangled, sizeof(mangled), "%s__", stmt->data.struct_decl.name);
-            for (const char *ch = concrete; *ch && pos < sizeof(mangled) - 1; ch++) {
-                mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-            }
-            mangled[pos] = '\0';
+            mangle_generic_name(mangled, sizeof(mangled), stmt->data.struct_decl.name, concrete);
             /* Forward declaration */
             emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", mangled, mangled);
             emit_formatted(codegen, "struct GrayStruct_%s {\n", mangled);
@@ -10049,11 +10045,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 mangled = xmalloc(MSG_BUF_SIZE);
                 const char *concrete = stmt->data.func_decl.instantiations[round];
                 codegen->wildcard_binding = concrete;
-                size_t pos = snprintf(mangled, MSG_BUF_SIZE, "%s__", orig_name);
-                for (const char *ch = concrete; *ch && pos < MSG_BUF_SIZE - 1; ch++) {
-                    mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-                }
-                mangled[pos] = '\0';
+                mangle_generic_name(mangled, MSG_BUF_SIZE, orig_name, concrete);
             }
             const char *emit_name = has_wc ? mangled : orig_name;
             /* Temporarily set the func name to the mangled version so
