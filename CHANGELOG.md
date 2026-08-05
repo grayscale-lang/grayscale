@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.0...grayscale-v0.2.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **codegen:** emit wide integer intrinsics for struct field access ([#2224](https://github.com/grayscale-lang/grayscale/issues/2224)) ([61d0962](https://github.com/grayscale-lang/grayscale/commit/61d0962fb73844582d250ae53ab3b94d4f1cf8b6))
+* **codegen:** string() on char now returns the character, not the codepoint ([#2238](https://github.com/grayscale-lang/grayscale/issues/2238)) ([fb2b6fd](https://github.com/grayscale-lang/grayscale/commit/fb2b6fd2e55d528f8c26565a5a1cadbe6048b313))
+* **codegen:** use bigint to_string for wide integer fields in struct printing ([#2230](https://github.com/grayscale-lang/grayscale/issues/2230)) ([ff53192](https://github.com/grayscale-lang/grayscale/commit/ff53192cc03f5331b23202bfdb29e7d2d32db87a))
+* **codegen:** wrap left operand in parens for float/unsigned division zero-check ([#2243](https://github.com/grayscale-lang/grayscale/issues/2243)) ([481c8f0](https://github.com/grayscale-lang/grayscale/commit/481c8f0adf7c17ae49e7b805f4e85a3c8b484b52))
+* **parser:** handle module-qualified function calls in for_each iterable ([#2245](https://github.com/grayscale-lang/grayscale/issues/2245)) ([a960715](https://github.com/grayscale-lang/grayscale/commit/a960715f19191f90ca2b3c0b4189b6517b839faf))
+* **stdlib:** respect explicit seed in rand64 for deterministic output ([#2231](https://github.com/grayscale-lang/grayscale/issues/2231)) ([6c3af87](https://github.com/grayscale-lang/grayscale/commit/6c3af87fc8cfe227deaa09e5ad1da47e55f2b1a4))
+* **stdlib:** use 64-bit RNG in rand_int for full-range support ([#2231](https://github.com/grayscale-lang/grayscale/issues/2231)) ([eef9972](https://github.com/grayscale-lang/grayscale/commit/eef99720b04cdf275a3925c64a9f0ddc091fffbc))
+* **tests:** update tests for narrowing checks on reassignment ([7d3c9cc](https://github.com/grayscale-lang/grayscale/commit/7d3c9ccf20b376f3dbd2a499a8d1e1b9db451dae))
+* **typechecker:** add E3100 check for type names in struct-namespaced calls ([#2229](https://github.com/grayscale-lang/grayscale/issues/2229)) ([eee3976](https://github.com/grayscale-lang/grayscale/commit/eee3976942255df58a3c8ba4c893d14a0da69d46))
+* **typechecker:** reject array reassignment with mismatched element types ([#2235](https://github.com/grayscale-lang/grayscale/issues/2235)) ([b2a471d](https://github.com/grayscale-lang/grayscale/commit/b2a471d7e57ae9e8a2d33560fd25abf4a021a81a))
+* **typechecker:** reject cross-enum type reassignment ([#2234](https://github.com/grayscale-lang/grayscale/issues/2234)) ([176309c](https://github.com/grayscale-lang/grayscale/commit/176309ccafb13fe0e4514c1159ea90aa8f89100d))
+* **typechecker:** reject map reassignment with mismatched key or value types ([#2236](https://github.com/grayscale-lang/grayscale/issues/2236)) ([fa29783](https://github.com/grayscale-lang/grayscale/commit/fa29783df29a4bae360be338d6222f0feee1510e))
+* **typechecker:** reject numeric reassignment with narrowing or signedness mismatch ([#2232](https://github.com/grayscale-lang/grayscale/issues/2232)) ([8de1c91](https://github.com/grayscale-lang/grayscale/commit/8de1c91288988156d63be4c70927bfc174d8a4f2))
+* **typechecker:** resolve type aliases in map key validation and map value lookup ([#2237](https://github.com/grayscale-lang/grayscale/issues/2237)) ([c1ebcab](https://github.com/grayscale-lang/grayscale/commit/c1ebcab7109728cf5c19887a22f8d1f11eb7ac99))
+* **typechecker:** validate arrays.map callback return type matches element type ([#2240](https://github.com/grayscale-lang/grayscale/issues/2240)) ([1f8ef21](https://github.com/grayscale-lang/grayscale/commit/1f8ef21ad753558003b341b89d3f8969be0157d6))
+* **typechecker:** validate arrays.map callback return type matches element type ([#2240](https://github.com/grayscale-lang/grayscale/issues/2240)) ([5e5c711](https://github.com/grayscale-lang/grayscale/commit/5e5c711102f7af1e34a2ba6b0b8d6c04ecfdfe67))
+* **typechecker:** validate arrays.reduce callback return type matches accumulator ([#2241](https://github.com/grayscale-lang/grayscale/issues/2241)) ([ef4ca05](https://github.com/grayscale-lang/grayscale/commit/ef4ca05e95bd791e82153a5fe4649252d2f9e640))
+* **typechecker:** validate arrays.reduce callback return type matches accumulator ([#2241](https://github.com/grayscale-lang/grayscale/issues/2241)) ([27b7f28](https://github.com/grayscale-lang/grayscale/commit/27b7f2859923f85488196c7cdc414a1ae72a1245))
+
 ## [0.2.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.1.4...grayscale-v0.2.0) (2026-07-31)
 
 
