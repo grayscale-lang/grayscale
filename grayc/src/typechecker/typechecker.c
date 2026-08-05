@@ -2622,6 +2622,15 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     diagnostic_error_code_formatted(checker->diag, "E9004",
                                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
                                         mfn, msg);
+                                } else if (elem_tn && cb_fs->return_count >= 1 &&
+                                           cb_fs->return_types[0] &&
+                                           strcmp(type_name(cb_fs->return_types[0]), elem_tn) != 0) {
+                                    char *msg = typechecker_format(checker,
+                                        "map callback must return the same type as the array element type (%s), got '%s'",
+                                        elem_tn, type_name(cb_fs->return_types[0]));
+                                    diagnostic_error_code_formatted(checker->diag, "E9004",
+                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                        mfn, msg);
                                 }
                             } else if (strcmp(mfn, "filter") == 0 ||
                                        strcmp(mfn, "any") == 0 ||
@@ -2672,6 +2681,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     diagnostic_error_code_formatted(checker->diag, "E9004",
                                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
                                         mfn, msg);
+                                } else if (cb_fs->return_count >= 1 && cb_fs->return_types[0] &&
+                                           node->data.call.arg_count > 1) {
+                                    AstNode *init_arg = node->data.call.args[1];
+                                    GrayType *init_t = typetable_get(checker->type_table, init_arg);
+                                    if (!init_t) init_t = resolve_expression(checker, init_arg);
+                                    if (init_t) {
+                                        const char *init_tn = type_name(init_t);
+                                        const char *ret_tn = type_name(cb_fs->return_types[0]);
+                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0) {
+                                            char *msg = typechecker_format(checker,
+                                                "reduce callback must return the same type as the accumulator (%s)",
+                                                init_tn);
+                                            diagnostic_error_code_formatted(checker->diag, "E9004",
+                                                NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                                mfn, msg);
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3019,6 +3045,34 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     checker->expected_type = param_t;
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 checker->expected_type = saved_expected_m;
+                /* E3100: struct/enum type name passed as a value argument */
+                if (arg_t->kind == TK_UNKNOWN &&
+                    node->data.call.args[argument_index]->kind == NODE_LABEL) {
+                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
+                    if (!scope_lookup(checker->current_scope, arg_label)) {
+                        if (is_struct_name(checker, arg_label)) {
+                            char *msg = NULL;
+                            msg = typechecker_format(checker,
+                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                                arg_label, arg_label, arg_label);
+                            diagnostic_error_message(checker->diag, "E3100", msg,
+                                NODE_FILE(checker, node->data.call.args[argument_index]),
+                                node->data.call.args[argument_index]->token.line,
+                                node->data.call.args[argument_index]->token.column, 0);
+                            continue;
+                        } else if (is_enum_name(checker, arg_label)) {
+                            char *msg = NULL;
+                            msg = typechecker_format(checker,
+                                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                                arg_label, arg_label);
+                            diagnostic_error_message(checker->diag, "E3100", msg,
+                                NODE_FILE(checker, node->data.call.args[argument_index]),
+                                node->data.call.args[argument_index]->token.line,
+                                node->data.call.args[argument_index]->token.column, 0);
+                            continue;
+                        }
+                    }
+                }
                 if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                     arg_t->kind != param_t->kind &&
                     !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
@@ -4181,7 +4235,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         if (is_struct_name(checker, arg_label)) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; to create an instance use 'new(%s)' or '%s{...}'",
+                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
                                 arg_label, arg_label, arg_label);
                             diagnostic_error_message(checker->diag, "E3100", msg,
                                 NODE_FILE(checker, node->data.call.args[argument_index]),
@@ -4279,7 +4333,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     if (is_struct_name(checker, arg_label)) {
                         char *msg = NULL;
                         msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; to create an instance use 'new(%s)' or '%s{...}'",
+                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
                             arg_label, arg_label, arg_label);
                         diagnostic_error_message(checker->diag, "E3100", msg,
                             NODE_FILE(checker, node->data.call.args[argument_index]),
@@ -6577,7 +6631,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (left->kind == TK_ARRAY && left->element_type) {
             result = typechecker_type_from_name(checker, left->element_type);
         } else if (left->kind == TK_MAP && left->value_type) {
-            result = type_from_name(left->value_type);
+            result = typechecker_type_from_name(checker, left->value_type);
             /* Check map key type matches. Enum keys are int-backed, so accept
              * int expressions (and enum members, which resolve as int) when
              * the declared key is a user enum name. */
@@ -7560,7 +7614,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
          * tripping "no field 'y'"). Enums are allowed; they're int-backed
          * and hash fine. */
         if (declared->kind == TK_MAP && declared->key_type) {
-            const char *kt = declared->key_type;
+            const char *kt = resolve_type_alias(checker, declared->key_type);
             GrayType *key_resolved = type_from_name(kt);
             const char *bad = NULL;
             if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, kt))
@@ -8881,6 +8935,19 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* Enum-to-enum name mismatch on direct variable assignment */
+        if (target->kind == NODE_LABEL &&
+            target_t->kind == TK_ENUM && value_t->kind == TK_ENUM &&
+            target_t->name && value_t->name &&
+            !typechecker_same_enum_type(checker, target_t->name, value_t->name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign enum '%s' to enum '%s' variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t),
+                target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* E3098: struct-to-struct name mismatch through pointer dereference: v3^ = v2^
          * The NODE_LABEL check above is bypassed when the target is a postfix
          * dereference. resolve_expression already strips the pointer layer, so
@@ -8912,13 +8979,44 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* Bigint narrowing on reassignment: i128 → i64, u256 → int, etc. */
+        /* Array-to-array: element types differ on reassignment (e.g., [int] = [string]).
+         * Both sides are TK_ARRAY so the outer kind-equality guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_ARRAY && value_t->kind == TK_ARRAY &&
+            target_t->element_type && value_t->element_type &&
+            strcmp(target_t->element_type, value_t->element_type) != 0) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign %s to %s variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Map-to-map: key or value types differ on reassignment (e.g., [string:int] = [string:string]).
+         * Both sides are TK_MAP so the outer kind-equality guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_MAP && value_t->kind == TK_MAP &&
+            target_t->key_type && value_t->key_type &&
+            target_t->value_type && value_t->value_type &&
+            (strcmp(target_t->key_type, value_t->key_type) != 0 ||
+             strcmp(target_t->value_type, value_t->value_type) != 0)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign %s to %s variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
+         * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
         if (target->kind == NODE_LABEL &&
             target_t && value_t &&
             target_t->name && value_t->name) {
             int dr = int_type_name_rank(target_t->name);
             int vr = int_type_name_rank(value_t->name);
-            if (dr > 0 && vr >= 5 && dr < vr) {
+            if (dr > 0 && vr > 0 && dr < vr) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
@@ -8926,6 +9024,49 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+        }
+        /* E3019: signed-to-unsigned on reassignment (e.g., uint_var = signed_var).
+         * Only fires when narrowing did not already catch it (same rank). */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->name && value_t->name &&
+            is_unsigned_type(target_t->name) &&
+            is_signed_int_type(value_t->name) &&
+            int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
+            diagnostic_error_code_formatted(checker->diag, "E3019",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                value_t->name, target_t->name);
+        }
+        /* Unsigned-to-signed on reassignment (e.g., int_var = uint_var).
+         * Only fires when narrowing did not already catch it (same rank). */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->name && value_t->name &&
+            is_signed_int_type(target_t->name) &&
+            is_unsigned_type(value_t->name) &&
+            int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(%s, %s) to convert explicitly",
+                value_t->name, target_t->name, target->data.label.value,
+                target->data.label.value, target_t->name);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Float narrowing on reassignment: f64 → f32, float → f32.
+         * Both are TK_FLOAT so the kind guard passes. */
+        if (target->kind == NODE_LABEL &&
+            target_t && value_t &&
+            target_t->kind == TK_FLOAT && value_t->kind == TK_FLOAT &&
+            target_t->name && value_t->name &&
+            strcmp(target_t->name, value_t->name) != 0 &&
+            strcmp(target_t->name, "f32") == 0) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
+                value_t->name, target_t->name, target->data.label.value, target_t->name);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* Check type mismatch on struct field assignment.
          * sym->type may be TK_STRUCT (by-value) or TK_POINTER (from new()),

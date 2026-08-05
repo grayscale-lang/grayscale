@@ -1,0 +1,15 @@
+/*
+ * Error Test: E9004 - arrays.map() callback return type mismatch
+ * Expected: E9004 error (map callback must return the same type as the array element type)
+ */
+
+import @arrays
+
+do to_str(n int) -> string {
+    return "n${n}"
+}
+
+do main() {
+    mut nums [int] = {1, 2, 3}
+    mut strs = arrays.map(nums, ()to_str)
+}

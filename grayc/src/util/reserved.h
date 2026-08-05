@@ -138,6 +138,14 @@ static inline bool is_stdlib_module_name(const char *name) {
                    sizeof(const char *), gray_strptr_cmp) != NULL;
 }
 
+/* --- Unified reserved name check (types + builtins + modules) --- */
+
+static inline bool is_reserved_name(const char *name) {
+    return is_reserved_type_name(name) ||
+           is_reserved_builtin_func_name(name) ||
+           is_stdlib_module_name(name);
+}
+
 /* --- Reserved stdlib struct names (map to internal C types) --- */
 
 static const char *const gray_reserved_stdlib_struct_names[] = {

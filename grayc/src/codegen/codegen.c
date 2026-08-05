@@ -279,6 +279,31 @@ static const char *sanitize_name(const char *name) {
     return bufs[i];
 }
 
+/* Build a mangled name for a generic instantiation: `base__concrete`
+ * with non-alphanumeric characters replaced by underscores so
+ * array/map bindings stay legal C identifiers. */
+static void mangle_generic_name(char *buf, size_t buf_size, const char *base, const char *concrete) {
+    size_t pos = (size_t)snprintf(buf, buf_size, "%s__", base);
+    for (const char *ch = concrete; *ch && pos < buf_size - 1; ch++) {
+        buf[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
+    }
+    buf[pos] = '\0';
+}
+
+/* Returns true if the function declaration contains any wildcard ('?')
+ * type parameters or return types, indicating a generic function. */
+static bool func_is_generic(AstNode *func) {
+    for (int i = 0; i < func->data.func_decl.param_count; i++) {
+        if (func->data.func_decl.params[i].type_name &&
+            strchr(func->data.func_decl.params[i].type_name, '?')) return true;
+    }
+    for (int i = 0; i < func->data.func_decl.return_type_count; i++) {
+        if (func->data.func_decl.return_types[i] &&
+            strchr(func->data.func_decl.return_types[i], '?')) return true;
+    }
+    return false;
+}
+
 /* Map Grayscale type name to C type */
 /* Return a type string with any '?' replaced by the active wildcard
  * binding. Returns the original pointer if no binding is active or the
@@ -933,6 +958,13 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
         return resolve_bigint_type(codegen, node->data.infix.right);
+    }
+    /* Struct field access a.val — check the resolved field type from the type table */
+    if (node->kind == NODE_MEMBER_EXPR) {
+        GrayType *field_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node) : NULL;
+        if (field_t && field_t->name && is_bigint_type(field_t->name))
+            return field_t->name;
     }
     /* Pointer dereference p^ — check whether the pointee type is bigint */
     if (node->kind == NODE_POSTFIX_EXPR && node->data.postfix.op == TOK_CARET) {
@@ -1673,11 +1705,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         if (node->data.struct_value.wildcard_binding) {
             const char *binding = node->data.struct_value.wildcard_binding;
             char mangled[MSG_BUF_SIZE];
-            size_t mpos = snprintf(mangled, sizeof(mangled), "%s__", sname);
-            for (const char *ch = binding; *ch && mpos < sizeof(mangled) - 1; ch++) {
-                mangled[mpos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-            }
-            mangled[mpos] = '\0';
+            mangle_generic_name(mangled, sizeof(mangled), sname, binding);
             emit_formatted(codegen, "(GrayStruct_%s){", mangled);
         } else {
             emit_formatted(codegen, "(GrayStruct_%s){", sname);
@@ -1766,12 +1794,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             if (ot && ot->kind == TK_INT) {
                 const char *sized_name = ot->name;
                 const char *smin = NULL, *smax = NULL;
-                if (sized_name) {
-                    if (strcmp(sized_name, "i8") == 0) { smin = "-128"; smax = "127"; }
-                    else if (strcmp(sized_name, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                    else if (strcmp(sized_name, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                }
-                if (smax) {
+                bool _su = false;
+                if (sized_name) sized_int_bounds(sized_name, &smin, &smax, &_su);
+                if (smax && !_su) {
                     emit(codegen, "gray_sized_neg_check(");
                     emit_expression(codegen, node->data.prefix.right);
                     emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, sized_name, codegen->file, node->token.line);
@@ -2051,9 +2076,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 /* Float division: check for zero (Grayscale panics, no IEEE 754 inf) */
                 emit(codegen, "({ double _dv = (double)");
                 emit_expression(codegen, node->data.infix.right);
-                emit_formatted(codegen, "; if (_dv == 0.0) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } (double)", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (_dv == 0.0) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } (double)(", codegen->file, node->token.line);
                 emit_expression(codegen, node->data.infix.left);
-                emit_formatted(codegen, " %s _dv; })", operator_to_c_string(op));
+                emit_formatted(codegen, ") %s _dv; })", operator_to_c_string(op));
                 break;
             } else {
                 /* For signed integer division, also guard the TYPE_MIN / -1
@@ -2077,8 +2102,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "; if ((int64_t)_dn == %s && _dv == -1) { gray_panic_code_at(\"%s\", %d, \"P0079\", \"%s result is too large; value exceeds the range of this type\"); } _dn %s _dv; })",
                         signed_min, codegen->file, node->token.line, opname, operator_to_c_string(op));
                 } else {
+                    emit(codegen, "(");
                     emit_expression(codegen, node->data.infix.left);
-                    emit_formatted(codegen, " %s _dv; })", operator_to_c_string(op));
+                    emit_formatted(codegen, ") %s _dv; })", operator_to_c_string(op));
                 }
                 break;
             }
@@ -2114,14 +2140,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     sized_name = (int_type_rank(right_name) > int_type_rank(left_name)) ? right_name : (left_name ? left_name : right_name);
                 const char *sized_min = NULL, *sized_max = NULL;
                 bool sized_unsigned = false;
-                if (sized_name) {
-                    if (strcmp(sized_name, "i8") == 0) { sized_min = "-128"; sized_max = "127"; }
-                    else if (strcmp(sized_name, "i16") == 0) { sized_min = "-32768"; sized_max = "32767"; }
-                    else if (strcmp(sized_name, "i32") == 0) { sized_min = "-2147483648LL"; sized_max = "2147483647LL"; }
-                    else if (strcmp(sized_name, "u8") == 0 || strcmp(sized_name, "byte") == 0) { sized_unsigned = true; sized_max = "255"; }
-                    else if (strcmp(sized_name, "u16") == 0) { sized_unsigned = true; sized_max = "65535"; }
-                    else if (strcmp(sized_name, "u32") == 0) { sized_unsigned = true; sized_max = "4294967295ULL"; }
-                }
+                if (sized_name) sized_int_bounds(sized_name, &sized_min, &sized_max, &sized_unsigned);
 
                 if (sized_max) {
                     /* Sized type; use bounds-checked arithmetic */
@@ -2200,14 +2219,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             const char *smin = NULL, *smax = NULL;
             bool su = false;
             bool is_uint = postfix_type && postfix_type->kind == TK_UINT;
-            if (sized_name) {
-                if (strcmp(sized_name, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(sized_name, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(sized_name, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(sized_name, "u8") == 0 || strcmp(sized_name, "byte") == 0) { su = true; smax = "255"; }
-                else if (strcmp(sized_name, "u16") == 0) { su = true; smax = "65535"; }
-                else if (strcmp(sized_name, "u32") == 0) { su = true; smax = "4294967295ULL"; }
-            }
+            if (sized_name) sized_int_bounds(sized_name, &smin, &smax, &su);
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2236,14 +2248,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             const char *smin = NULL, *smax = NULL;
             bool su = false;
             bool is_uint = pt && pt->kind == TK_UINT;
-            if (sn) {
-                if (strcmp(sn, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(sn, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(sn, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(sn, "u8") == 0 || strcmp(sn, "byte") == 0) { su = true; smax = "255"; }
-                else if (strcmp(sn, "u16") == 0) { su = true; smax = "65535"; }
-                else if (strcmp(sn, "u32") == 0) { su = true; smax = "4294967295ULL"; }
-            }
+            if (sn) sized_int_bounds(sn, &smin, &smax, &su);
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2700,12 +2705,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 /* Sized integer targets — parse then range-check */
                 const char *smin = NULL, *smax = NULL;
                 bool is_unsigned = false;
-                if (strcmp(target, "i8") == 0) { smin = "-128"; smax = "127"; }
-                else if (strcmp(target, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-                else if (strcmp(target, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-                else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
-                else if (strcmp(target, "u16") == 0) { is_unsigned = true; smax = "65535"; }
-                else if (strcmp(target, "u32") == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+                sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
                 if (smax && is_unsigned) {
                     emit_formatted(codegen, "(%s)gray_ucast_check(gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target));
@@ -2749,12 +2749,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     /* Determine if an additional narrow range check is needed */
                     const char *nmin = NULL, *nmax = NULL;
                     bool narrow_unsigned = false;
-                    if (strcmp(target, "i8") == 0)  { nmin = "-128";          nmax = "127"; }
-                    else if (strcmp(target, "i16") == 0) { nmin = "-32768";   nmax = "32767"; }
-                    else if (strcmp(target, "i32") == 0) { nmin = "-2147483648LL"; nmax = "2147483647LL"; }
-                    else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { narrow_unsigned = true; nmax = "255"; }
-                    else if (strcmp(target, "u16") == 0) { narrow_unsigned = true; nmax = "65535"; }
-                    else if (strcmp(target, "u32") == 0) { narrow_unsigned = true; nmax = "4294967295ULL"; }
+                    sized_int_bounds(target, &nmin, &nmax, &narrow_unsigned);
 
                     if (nmax && narrow_unsigned) {
                         emit_formatted(codegen, "(%s)gray_ucast_check((int64_t)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
@@ -2796,12 +2791,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             /* Numeric casts: range-checked for narrowing, raw for widening */
             const char *smin = NULL, *smax = NULL;
             bool is_unsigned = false;
-            if (strcmp(target, "i8") == 0) { smin = "-128"; smax = "127"; }
-            else if (strcmp(target, "i16") == 0) { smin = "-32768"; smax = "32767"; }
-            else if (strcmp(target, "i32") == 0) { smin = "-2147483648LL"; smax = "2147483647LL"; }
-            else if (strcmp(target, "u8") == 0 || strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
-            else if (strcmp(target, "u16") == 0) { is_unsigned = true; smax = "65535"; }
-            else if (strcmp(target, "u32") == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+            sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
             if (smax && is_unsigned) {
                 emit_formatted(codegen, "(%s)gray_ucast_check(", gray_type_to_c_codegen(codegen, target));
@@ -3111,16 +3101,22 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->message : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
         return;
     }
-    if (arg_type && arg_type->kind == TK_FLOAT)
-        emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
-    else if (arg_type && arg_type->kind == TK_BOOL)
-        emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
-    else if (arg_type && arg_type->kind == TK_UINT)
-        emit(codegen, "gray_builtin_to_string_uint(gray_default_arena, ");
-    else
-        emit(codegen, "gray_builtin_to_string_int(gray_default_arena, ");
-    emit_expression(codegen, arg);
-    emit(codegen, ")");
+    if (arg_type && arg_type->kind == TK_CHAR) {
+        emit(codegen, "gray_builtin_char_to_utf8(gray_default_arena, ");
+        emit_expression(codegen, arg);
+        emit(codegen, ")");
+    } else {
+        if (arg_type && arg_type->kind == TK_FLOAT)
+            emit(codegen, "gray_builtin_to_string_float(gray_default_arena, ");
+        else if (arg_type && arg_type->kind == TK_BOOL)
+            emit(codegen, "gray_builtin_to_string_bool(gray_default_arena, ");
+        else if (arg_type && arg_type->kind == TK_UINT)
+            emit(codegen, "gray_builtin_to_string_uint(gray_default_arena, ");
+        else
+            emit(codegen, "gray_builtin_to_string_int(gray_default_arena, ");
+        emit_expression(codegen, arg);
+        emit(codegen, ")");
+    }
 }
 
 /* Emit a fmt format string literal with %d/%i/%u upgraded to %lld/%llu for
@@ -3228,12 +3224,26 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
 
     switch (type->kind) {
     case TK_INT: case TK_BYTE: case TK_ENUM:
-        emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        if (type->name && is_bigint_type(type->name)) {
+            const char *pfx = bigint_prefix(type->name);
+            emit_indent(codegen);
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+                   pfx, c_expr, stream);
+        } else {
+            emit_indent(codegen);
+            emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        }
         break;
     case TK_UINT:
-        emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
+        if (type->name && is_bigint_type(type->name)) {
+            const char *pfx = bigint_prefix(type->name);
+            emit_indent(codegen);
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+                   pfx, c_expr, stream);
+        } else {
+            emit_indent(codegen);
+            emit_formatted(codegen, "fprintf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
+        }
         break;
     case TK_FLOAT:
         emit_indent(codegen);
@@ -6446,16 +6456,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             }
             if (ns_func) {
                 /* Generic struct function: mangle with concrete binding */
-                bool ns_generic = false;
-                for (int pi = 0; pi < ns_func->data.func_decl.param_count && !ns_generic; pi++) {
-                    if (ns_func->data.func_decl.params[pi].type_name &&
-                        strchr(ns_func->data.func_decl.params[pi].type_name, '?')) ns_generic = true;
-                }
-                for (int pi = 0; pi < ns_func->data.func_decl.return_type_count && !ns_generic; pi++) {
-                    if (ns_func->data.func_decl.return_types[pi] &&
-                        strchr(ns_func->data.func_decl.return_types[pi], '?')) ns_generic = true;
-                }
-                if (ns_generic) {
+                if (func_is_generic(ns_func)) {
                     const char *binding = NULL;
                     char *dyn_binding = NULL;
                     int cc = ns_func->data.func_decl.param_count < node->data.call.arg_count
@@ -6573,15 +6574,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
         /* Known function; use gray_fn_ prefix. For generic functions,
          * rewrite to the mangled instantiation name derived from the
          * first wildcard parameter's argument type ). */
-        bool tf_generic = false;
-        for (int pi = 0; pi < target_func->data.func_decl.param_count && !tf_generic; pi++) {
-            if (target_func->data.func_decl.params[pi].type_name &&
-                strchr(target_func->data.func_decl.params[pi].type_name, '?')) tf_generic = true;
-        }
-        for (int pi = 0; pi < target_func->data.func_decl.return_type_count && !tf_generic; pi++) {
-            if (target_func->data.func_decl.return_types[pi] &&
-                strchr(target_func->data.func_decl.return_types[pi], '?')) tf_generic = true;
-        }
+        bool tf_generic = func_is_generic(target_func);
         if (tf_generic) {
             /* Derive the concrete binding by scanning params for the
              * first '?' slot and reading the matching arg's type. */
@@ -9256,28 +9249,13 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
          * no instantiations and we skip emission entirely; the
          * un-specialised form has '?' in its signature and can't be
          * compiled as C. */
-        bool has_wc = false;
-        for (int i = 0; i < node->data.func_decl.param_count && !has_wc; i++) {
-            if (node->data.func_decl.params[i].type_name &&
-                strchr(node->data.func_decl.params[i].type_name, '?')) has_wc = true;
-        }
-        for (int i = 0; i < node->data.func_decl.return_type_count && !has_wc; i++) {
-            if (node->data.func_decl.return_types[i] &&
-                strchr(node->data.func_decl.return_types[i], '?')) has_wc = true;
-        }
+        bool has_wc = func_is_generic(node);
         if (has_wc) {
             const char *orig_name = node->data.func_decl.name;
             for (int inst_index = 0; inst_index < node->data.func_decl.instantiation_count; inst_index++) {
                 const char *concrete = node->data.func_decl.instantiations[inst_index];
-                /* Build the mangled name: `<name>__<concrete>` with
-                 * non-alnum chars replaced by underscores so array/map
-                 * bindings stay legal C identifiers. */
                 char mangled[MSG_BUF_SIZE];
-                size_t pos = snprintf(mangled, sizeof(mangled), "%s__", orig_name);
-                for (const char *ch = concrete; *ch && pos < sizeof(mangled) - 1; ch++) {
-                    mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-                }
-                mangled[pos] = '\0';
+                mangle_generic_name(mangled, sizeof(mangled), orig_name, concrete);
 
                 node->data.func_decl.name = mangled;
                 const char *saved = codegen->wildcard_binding;
@@ -9812,11 +9790,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         for (int inst_index = 0; inst_index < stmt->data.struct_decl.instantiation_count; inst_index++) {
             const char *concrete = stmt->data.struct_decl.instantiations[inst_index];
             char mangled[MSG_BUF_SIZE];
-            size_t pos = snprintf(mangled, sizeof(mangled), "%s__", stmt->data.struct_decl.name);
-            for (const char *ch = concrete; *ch && pos < sizeof(mangled) - 1; ch++) {
-                mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-            }
-            mangled[pos] = '\0';
+            mangle_generic_name(mangled, sizeof(mangled), stmt->data.struct_decl.name, concrete);
             /* Forward declaration */
             emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", mangled, mangled);
             emit_formatted(codegen, "struct GrayStruct_%s {\n", mangled);
@@ -10018,15 +9992,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         /* Detect wildcard generics ); emit one forward per
          * instantiation under a mangled name, skipping the un-specialised
          * signature which would contain '?' in C. */
-        bool has_wc = false;
-        for (int j = 0; j < stmt->data.func_decl.param_count && !has_wc; j++) {
-            if (stmt->data.func_decl.params[j].type_name &&
-                strchr(stmt->data.func_decl.params[j].type_name, '?')) has_wc = true;
-        }
-        for (int j = 0; j < stmt->data.func_decl.return_type_count && !has_wc; j++) {
-            if (stmt->data.func_decl.return_types[j] &&
-                strchr(stmt->data.func_decl.return_types[j], '?')) has_wc = true;
-        }
+        bool has_wc = func_is_generic(stmt);
 
         int emit_rounds = has_wc ? stmt->data.func_decl.instantiation_count : 1;
         const char *orig_name = stmt->data.func_decl.name;
@@ -10040,11 +10006,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 mangled = xmalloc(MSG_BUF_SIZE);
                 const char *concrete = stmt->data.func_decl.instantiations[round];
                 codegen->wildcard_binding = concrete;
-                size_t pos = snprintf(mangled, MSG_BUF_SIZE, "%s__", orig_name);
-                for (const char *ch = concrete; *ch && pos < MSG_BUF_SIZE - 1; ch++) {
-                    mangled[pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-                }
-                mangled[pos] = '\0';
+                mangle_generic_name(mangled, MSG_BUF_SIZE, orig_name, concrete);
             }
             const char *emit_name = has_wc ? mangled : orig_name;
             /* Temporarily set the func name to the mangled version so

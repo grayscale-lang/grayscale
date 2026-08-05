@@ -89,15 +89,15 @@ do main() {
         failed += 1
     }
 
-    // Test 8: Assign int value to byte variable
+    // Test 8: Assign int value to byte variable via explicit cast
     mut j byte = 0
     mut k int = 100
-    j = k
+    j = cast(k, byte)
     if j == 100 {
-        println("  [PASS] assign int value to byte var")
+        println("  [PASS] assign int value to byte var via cast")
         passed += 1
     } otherwise {
-        println("  [FAIL] assign int value to byte var")
+        println("  [FAIL] assign int value to byte var via cast")
         failed += 1
     }
 

@@ -1,0 +1,52 @@
+import @random
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // rand_int(0, 4294967295) should not always return 0
+    mut all_zero bool = true
+    for i in range(0, 10) {
+        if random.rand_int(0, 4294967295) != 0 {
+            all_zero = false
+        }
+    }
+    if !all_zero {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // rand_int(0, 10000000000) should produce values above INT32_MAX
+    mut any_above bool = false
+    for i in range(0, 50) {
+        if random.rand_int(0, 10000000000) > 2147483647 {
+            any_above = true
+        }
+    }
+    if any_above {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Small range still works
+    mut in_range bool = true
+    for i in range(0, 20) {
+        mut v int = random.rand_int(1, 10)
+        if v < 1 {
+            in_range = false
+        }
+        if v >= 10 {
+            in_range = false
+        }
+    }
+    if in_range {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

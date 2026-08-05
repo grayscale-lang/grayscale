@@ -1,0 +1,5 @@
+do main() {
+    mut a f32 = cast(1.0, f32)
+    mut b f64 = cast(2.0, f64)
+    a = b
+}

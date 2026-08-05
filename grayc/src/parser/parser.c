@@ -1654,36 +1654,13 @@ static AstNode *parse_func_declaration(Parser *parser) {
                     param->name);
                 diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            } else if (parser->cur_token.type == TOK_IDENT) {
-                /* Check for builtin function/type names */
-                static const char *reserved[] = {
-                    /* types */
-                    "int", "uint", "float", "string", "bool", "char", "byte", "void",
-                    "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64",
-                    "f32", "f64", "i128", "u128", "i256", "u256",
-                    /* builtin functions */
-                    "println", "print", "eprintln", "eprint", "input",
-                    "len", "type_of", "size_of", "copy", "ref", "addr", "error",
-                    "exit", "panic", "assert", "cast", "sleep_s", "sleep_ms", "sleep_ns",
-                    "c_string", "to_char", "char_count", "here", "embed",
-                    /* stdlib modules */
-                    "arrays", "binary", "bytes", "channels", "crypto", "csv", "encoding",
-                    "fmt", "http", "io", "json", "maps", "math", "mem", "net", "os",
-                    "random", "regex", "server", "sqlite", "strconv", "strings", "sync",
-                    "threads", "time", "uuid",
-                    NULL
-                };
-                for (int ri = 0; reserved[ri]; ri++) {
-                    if (strcmp(param->name, reserved[ri]) == 0) {
-                        char buf[MSG_BUF_SIZE];
-                        snprintf(buf, sizeof(buf),
-                            "'%s' is a built-in name and cannot be used as a parameter name",
-                            param->name);
-                        diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
-                            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-                        break;
-                    }
-                }
+            } else if (parser->cur_token.type == TOK_IDENT && is_reserved_name(param->name)) {
+                char buf[MSG_BUF_SIZE];
+                snprintf(buf, sizeof(buf),
+                    "'%s' is a built-in name and cannot be used as a parameter name",
+                    param->name);
+                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
 
             /* Type name follows (unless next param or closing paren) */
@@ -2257,30 +2234,10 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 synchronize_parser(parser);
                 break;
             }
-            if (current_token_is(parser, TOK_IDENT) && is_reserved_type_name(parser->cur_token.literal)) {
+            if (current_token_is(parser, TOK_IDENT) && is_reserved_name(parser->cur_token.literal)) {
                 char msg[MSG_BUF_SIZE];
                 snprintf(msg, sizeof(msg),
-                    "'%s' is a reserved type name and cannot be used as a struct field name",
-                    parser->cur_token.literal);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-                synchronize_parser(parser);
-                break;
-            }
-            if (current_token_is(parser, TOK_IDENT) && is_reserved_builtin_func_name(parser->cur_token.literal)) {
-                char msg[MSG_BUF_SIZE];
-                snprintf(msg, sizeof(msg),
-                    "'%s' is a builtin function and cannot be used as a struct field name",
-                    parser->cur_token.literal);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-                synchronize_parser(parser);
-                break;
-            }
-            if (current_token_is(parser, TOK_IDENT) && is_stdlib_module_name(parser->cur_token.literal)) {
-                char msg[MSG_BUF_SIZE];
-                snprintf(msg, sizeof(msg),
-                    "'%s' is a standard library module and cannot be used as a struct field name",
+                    "'%s' is a built-in name and cannot be used as a struct field name",
                     parser->cur_token.literal);
                 diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
@@ -2418,30 +2375,10 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             synchronize_parser(parser);
             continue;
         }
-        if (current_token_is(parser, TOK_IDENT) && is_reserved_type_name(parser->cur_token.literal)) {
+        if (current_token_is(parser, TOK_IDENT) && is_reserved_name(parser->cur_token.literal)) {
             char msg[MSG_BUF_SIZE];
             snprintf(msg, sizeof(msg),
-                "'%s' is a reserved type name and cannot be used as an enum variant name",
-                parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            synchronize_parser(parser);
-            continue;
-        }
-        if (current_token_is(parser, TOK_IDENT) && is_reserved_builtin_func_name(parser->cur_token.literal)) {
-            char msg[MSG_BUF_SIZE];
-            snprintf(msg, sizeof(msg),
-                "'%s' is a builtin function and cannot be used as an enum variant name",
-                parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            synchronize_parser(parser);
-            continue;
-        }
-        if (current_token_is(parser, TOK_IDENT) && is_stdlib_module_name(parser->cur_token.literal)) {
-            char msg[MSG_BUF_SIZE];
-            snprintf(msg, sizeof(msg),
-                "'%s' is a standard library module and cannot be used as an enum variant name",
+                "'%s' is a built-in name and cannot be used as an enum variant name",
                 parser->cur_token.literal);
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
@@ -2663,6 +2600,11 @@ static AstNode *parse_for_each_statement(Parser *parser) {
             member->data.member.member = parser->cur_token.literal;
             result = member;
         }
+        /* If the chain is followed by (, it is a function call (e.g., maps.get_keys(m)) */
+        if (peek_token_is(parser, TOK_LPAREN)) {
+            next_token(parser); /* move to ( */
+            result = parse_call_expression(parser, result);
+        }
         node->data.for_each.collection = result;
     } else {
         node->data.for_each.collection = parse_expression(parser, PREC_LOWEST);
@@ -2881,11 +2823,11 @@ static AstNode *parse_when_statement(Parser *parser) {
                             memcpy(nb, pat->data.when_pattern.bindings, sizeof(const char *) * bc);
                             pat->data.when_pattern.bindings = nb;
                         }
-                        /* Reject type keywords as binding names */
-                        if (is_reserved_type_name(parser->cur_token.literal)) {
+                        /* Reject reserved names as binding names */
+                        if (is_reserved_name(parser->cur_token.literal)) {
                             char msg[MSG_BUF_SIZE];
                             snprintf(msg, sizeof(msg),
-                                "'%s' is a reserved type name and cannot be used as a binding name",
+                                "'%s' is a built-in name and cannot be used as a binding name",
                                 parser->cur_token.literal);
                             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);

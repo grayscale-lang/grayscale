@@ -1,0 +1,5 @@
+do main() {
+    mut a uint = cast(10, uint)
+    mut b int = 42
+    a = b
+}

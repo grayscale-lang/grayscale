@@ -1,0 +1,14 @@
+const Color enum {
+    RED
+    GREEN
+}
+
+const Size enum {
+    SMALL
+    LARGE
+}
+
+do main() {
+    mut c Color = Color.RED
+    c = Size.LARGE
+}

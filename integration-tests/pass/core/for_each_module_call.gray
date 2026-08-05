@@ -1,0 +1,33 @@
+import @maps
+import @strings
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // for_each over module-qualified function call
+    mut m [string:int] = {"a": 1, "b": 2}
+    mut key_count int = 0
+    for_each key in maps.get_keys(m) {
+        key_count += 1
+    }
+    if key_count == 2 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // for_each over another module call
+    mut part_count int = 0
+    for_each part in strings.split("x,y,z", ",") {
+        part_count += 1
+    }
+    if part_count == 3 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

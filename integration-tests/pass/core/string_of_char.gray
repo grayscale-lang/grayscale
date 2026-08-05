@@ -1,0 +1,42 @@
+import @strings
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // string() should produce the character, not the codepoint
+    mut ch char = 'A'
+    if string(ch) == "A" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Digit char
+    mut digit char = '7'
+    if string(digit) == "7" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Consistent with interpolation
+    if string(ch) == "${ch}" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // Building strings from chars
+    mut chars [char] = strings.to_chars("42")
+    mut result string = string(chars[0])
+    result = "${result}${chars[1]}"
+    if result == "42" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

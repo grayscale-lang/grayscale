@@ -1,0 +1,53 @@
+const A struct {
+    val i128
+}
+
+const B struct {
+    val i256
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a = A{val: 100}
+    mut b = B{val: 200}
+
+    // i128 struct field comparison
+    if a.val == 100 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // i256 struct field comparison
+    if b.val == 200 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // i128 struct field != comparison
+    if a.val != 999 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // i128 struct field > comparison
+    if a.val > 50 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    // i256 struct field < comparison
+    if b.val < 300 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}
