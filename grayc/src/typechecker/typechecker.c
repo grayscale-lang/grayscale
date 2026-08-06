@@ -11133,6 +11133,14 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
                         break;
                     }
                 }
+                /* Resolve implicit enum selectors in field default values */
+                if (stmt->data.struct_decl.fields[j].default_value) {
+                    GrayType *saved_expected = checker->expected_type;
+                    if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
+                        checker->expected_type = ftypes[j];
+                    resolve_expression(checker, stmt->data.struct_decl.fields[j].default_value);
+                    checker->expected_type = saved_expected;
+                }
             }
             /* E2037/E2038: reserved name check for structs */
             const char *sn = STRUCT_DISPLAY_NAME(stmt);

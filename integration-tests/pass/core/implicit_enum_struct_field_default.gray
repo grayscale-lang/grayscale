@@ -1,0 +1,79 @@
+/*
+ * Pass Test: Implicit enum selector in struct field default values
+ * Tests that .VARIANT syntax works in struct field defaults.
+ */
+
+const Status enum {
+    PENDING
+    ACTIVE
+    DONE
+}
+
+const Task struct {
+    status Status = .PENDING
+}
+
+const Job struct {
+    state Status = .ACTIVE
+    name string = "untitled"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: implicit enum default used via empty literal
+    mut t = Task{}
+    if t.status == Status.PENDING {
+        println("  [PASS] Task{}.status == PENDING")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Task{}.status: expected PENDING")
+        failed += 1
+    }
+
+    // Test 2: implicit enum default used via new()
+    mut t2 = new(Task)
+    if t2^.status == Status.PENDING {
+        println("  [PASS] new(Task).status == PENDING")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Task).status: expected PENDING")
+        failed += 1
+    }
+
+    // Test 3: override implicit enum default
+    mut t3 = Task{status: .DONE}
+    if t3.status == Status.DONE {
+        println("  [PASS] Task{status: .DONE}.status == DONE")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Task{status: .DONE}: expected DONE")
+        failed += 1
+    }
+
+    // Test 4: second field with implicit enum default
+    mut j = Job{}
+    if j.state == Status.ACTIVE {
+        println("  [PASS] Job{}.state == ACTIVE")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Job{}.state: expected ACTIVE")
+        failed += 1
+    }
+
+    if j.name == "untitled" {
+        println("  [PASS] Job{}.name == \"untitled\"")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Job{}.name: expected \"untitled\"")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
