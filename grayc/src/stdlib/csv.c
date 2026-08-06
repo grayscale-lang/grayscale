@@ -33,6 +33,19 @@ GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
                 }
                 field_length = (int32_t)(s - field_start);
                 if (s < end) s++; /* skip closing quote */
+
+                /* RFC 4180 §2.7: unescape doubled quotes ("") to single (") */
+                if (memchr(field_start, '"', (size_t)field_length)) {
+                    char *buf = gray_arena_alloc(arena, (size_t)field_length);
+                    int32_t out = 0;
+                    for (int32_t k = 0; k < field_length; k++) {
+                        buf[out++] = field_start[k];
+                        if (field_start[k] == '"' && k + 1 < field_length && field_start[k + 1] == '"')
+                            k++; /* skip second quote of pair */
+                    }
+                    field_start = buf;
+                    field_length = out;
+                }
             } else {
                 /* Unquoted field */
                 field_start = s;
