@@ -44,7 +44,7 @@
  *@module sqlite
  *@group Queries
  *@sig exec(db Database, sql string) -> (bool, Error)
- *@desc Executes a SQL statement that does not return rows (CREATE, INSERT, UPDATE, DELETE, etc.). Returns true on success. Always use destructuring — single-variable assignment is a compile error. SQL strings are passed as-is; parameterized queries with placeholders are not supported.
+ *@desc Executes a SQL statement that does not return rows (CREATE, INSERT, UPDATE, DELETE, etc.). Returns true on success. Always use destructuring — single-variable assignment is a compile error. SQL strings are passed as-is; use exec_params for parameterized queries.
  *@example
  *   import @sqlite
  *   mut db, _ = sqlite.open("myapp.db")
@@ -54,15 +54,44 @@
  *@end
  */
 
+/*@man exec_params
+ *@module sqlite
+ *@group Queries
+ *@sig exec_params(db Database, sql string, params [string]) -> (bool, Error)
+ *@desc Executes a parameterized SQL statement that does not return rows. Use ? placeholders in the SQL string and pass values in the params array. Prevents SQL injection by binding parameters safely. Always use destructuring — single-variable assignment is a compile error.
+ *@example
+ *   import @sqlite
+ *   mut db, _ = sqlite.open("myapp.db")
+ *   mut ok, err = sqlite.exec_params(db, "INSERT INTO users (name, age) VALUES (?, ?)", {"Alice", "30"})
+ *   if err != nil { println("exec failed: ${err}") }
+ *@end
+ */
+
 /*@man query
  *@module sqlite
  *@group Queries
  *@sig query(db Database, sql string) -> ([map[string:string]], Error)
- *@desc Executes a SQL SELECT statement and returns the result rows. Each row is a map of column name to string value. Always use destructuring — single-variable assignment is a compile error. SQL strings are passed as-is; parameterized queries with placeholders are not supported.
+ *@desc Executes a SQL SELECT statement and returns the result rows. Each row is a map of column name to string value. Always use destructuring — single-variable assignment is a compile error. SQL strings are passed as-is; use query_params for parameterized queries.
  *@example
  *   import @sqlite
  *   mut db, _ = sqlite.open("myapp.db")
  *   mut rows, err = sqlite.query(db, "SELECT * FROM users")
+ *   if err != nil { println("query failed: ${err}") }
+ *   for_each row in rows {
+ *       println(row)
+ *   }
+ *@end
+ */
+
+/*@man query_params
+ *@module sqlite
+ *@group Queries
+ *@sig query_params(db Database, sql string, params [string]) -> ([map[string:string]], Error)
+ *@desc Executes a parameterized SQL SELECT statement and returns the result rows. Use ? placeholders in the SQL string and pass values in the params array. Prevents SQL injection by binding parameters safely. Always use destructuring — single-variable assignment is a compile error.
+ *@example
+ *   import @sqlite
+ *   mut db, _ = sqlite.open("myapp.db")
+ *   mut rows, err = sqlite.query_params(db, "SELECT * FROM users WHERE name = ?", {"Alice"})
  *   if err != nil { println("query failed: ${err}") }
  *   for_each row in rows {
  *       println(row)
@@ -83,14 +112,22 @@ void gray_sqlite_close(GraySqlite *db);
 /* sqlite.exec(db, sql) — execute statement, return success */
 bool gray_sqlite_exec(GraySqlite *db, GrayString sql);
 
+/* sqlite.exec_params(db, sql, params) — execute parameterized statement */
+bool gray_sqlite_exec_params(GraySqlite *db, GrayString sql, GrayArray params);
+
 /* sqlite.query(db, sql) — execute query, return array of maps */
 GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *db, GrayString sql);
+
+/* sqlite.query_params(db, sql, params) — execute parameterized query */
+GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
 
 /* _result variants */
 typedef struct { GraySqlite *v0; GrayError *v1; } GrayResult_sqlite;
 
 GrayResult_sqlite gray_sqlite_open_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *db, GrayString sql);
+GrayResult_bool gray_sqlite_exec_params_result(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
 GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *db, GrayString sql);
+GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params);
 
 #endif

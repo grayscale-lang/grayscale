@@ -4863,7 +4863,8 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool is_fallible = (strcmp(func, "open") == 0 || strcmp(func, "exec") == 0 ||
-        strcmp(func, "query") == 0);
+        strcmp(func, "query") == 0 || strcmp(func, "exec_params") == 0 ||
+        strcmp(func, "query_params") == 0);
     bool is_multi_var = is_result_temporary(codegen->current_var_name);
     if (strcmp(func, "open") == 0) {
         emit_formatted(codegen, "gray_sqlite_open%s(gray_default_arena, ", (is_fallible && is_multi_var) ? "_result" : "");
@@ -4889,11 +4890,35 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "exec_params") == 0) {
+        if (is_multi_var) {
+            emit(codegen, "gray_sqlite_exec_params_result(gray_default_arena, ");
+        } else {
+            emit(codegen, "gray_sqlite_exec_params(");
+        }
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[2]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(func, "query") == 0) {
         emit_formatted(codegen, "gray_sqlite_query%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "query_params") == 0) {
+        emit_formatted(codegen, "gray_sqlite_query_params%s(gray_default_arena, ", is_multi_var ? "_result" : "");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, ")");
         return true;
     }
@@ -6101,7 +6126,7 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
                 {"parse","csv"},{"read_file","csv"},{"headers","csv"},
                 {"write_file","csv"},{"format","csv"},{"encode","csv"},
                 /* @sqlite */
-                {"open","sqlite"},{"close","sqlite"},{"exec","sqlite"},{"query","sqlite"},
+                {"open","sqlite"},{"close","sqlite"},{"exec","sqlite"},{"exec_params","sqlite"},{"query","sqlite"},{"query_params","sqlite"},
                 /* @threads */
                 {"spawn","threads"},{"join","threads"},{"get_id","threads"},
                 {"detach","threads"},{"is_alive","threads"},{"current","threads"},

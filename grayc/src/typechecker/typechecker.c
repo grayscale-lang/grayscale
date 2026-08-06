@@ -1182,10 +1182,12 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"server", "text",       2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "HttpResponse"},
     {"server", "use",        2, 2, false, FT_NONE, 0, {{0}},"void"},
     /* sqlite */
-    {"sqlite", "close", 1, 1,  false, FT_NONE,            0, {{0}},"void"},
-    {"sqlite", "exec",  2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
-    {"sqlite", "open",  1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
-    {"sqlite", "query", 2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
+    {"sqlite", "close",        1, 1,  false, FT_NONE,            0, {{0}},"void"},
+    {"sqlite", "exec",         2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
+    {"sqlite", "exec_params",  3, 3,  true,  FT_BOOL,            1, {{2, ARG_ARRAY}}, "bool"},
+    {"sqlite", "open",         1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
+    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
+    {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map]"},
     /* strconv */
     {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}, "string"},
     {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}, "string"},
