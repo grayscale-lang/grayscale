@@ -5054,6 +5054,9 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             if (val_t->kind == TK_STRUCT) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
             }
+            if (val_t->kind == TK_ENUM) {
+                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
+            }
             if (val_t->kind == TK_POINTER && val_t->name) {
                 /* val_t->name is the pointee (e.g. "int"); prepend ^ for gray_type_to_c_codegen */
                 static char _ptr_tn[TYPE_NAME_MAX];
@@ -5067,6 +5070,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             if (et->kind == TK_ARRAY) c_elem = "GrayArray";
             else if (et->kind == TK_MAP) c_elem = "GrayMap";
             else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+            else if (et->kind == TK_ENUM) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
             else if (et->kind == TK_FUNCTION) c_elem = "void *";
             else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         }
@@ -5108,6 +5112,9 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             default: break;
             }
             if (val_t->kind == TK_STRUCT) {
+                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
+            }
+            if (val_t->kind == TK_ENUM) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
             }
             if (val_t->kind == TK_POINTER && val_t->name) {
@@ -5260,6 +5267,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (pet->kind == TK_ARRAY) pp_c_elem = "GrayArray";
             else if (pet->kind == TK_MAP) pp_c_elem = "GrayMap";
             else if (pet->kind == TK_STRUCT) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
+            else if (pet->kind == TK_ENUM) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
         }
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
