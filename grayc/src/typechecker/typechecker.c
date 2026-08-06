@@ -6605,7 +6605,15 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 
     case NODE_INDEX_EXPR: {
         GrayType *left = resolve_expression(checker, node->data.index_expr.left);
+        /* Propagate map key type as expected_type so .VARIANT resolves */
+        GrayType *saved_idx_expected = checker->expected_type;
+        if (left->kind == TK_MAP && left->key_type) {
+            GrayType *key_t = typechecker_type_from_name(checker, left->key_type);
+            if (key_t && key_t->kind == TK_ENUM && key_t->name)
+                checker->expected_type = key_t;
+        }
         GrayType *idx_t = resolve_expression(checker, node->data.index_expr.index);
+        checker->expected_type = saved_idx_expected;
         /* E3003: array index must be integer */
         if (left->kind == TK_ARRAY && idx_t->kind != TK_UNKNOWN &&
             !is_int_kind(idx_t->kind) && idx_t->kind != TK_BYTE) {

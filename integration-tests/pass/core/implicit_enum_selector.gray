@@ -170,6 +170,27 @@ do main() {
         failed += 1
     }
 
+    // Test 12: Map key bracket access (assignment)
+    mut palette [Color:string] = {:}
+    palette[.RED] = "#FF0000"
+    if palette[Color.RED] == "#FF0000" {
+        println("  [PASS] map key bracket assignment")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map key bracket assignment")
+        failed += 1
+    }
+
+    // Test 13: Map key bracket access (read)
+    mut label string = palette[.RED]
+    if label == "#FF0000" {
+        println("  [PASS] map key bracket read")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map key bracket read")
+        failed += 1
+    }
+
     // Summary
     println("")
     println("Results: ${passed} passed, ${failed} failed")
