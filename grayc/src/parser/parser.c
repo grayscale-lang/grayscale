@@ -1293,12 +1293,17 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     err_access2->data.member.object = tmp_label2;
     err_access2->data.member.member = "v1";
     if (fallback_count > 0) {
-        /* Custom fallback: return fallback_vals..., _tmp.v1 */
-        int total = fallback_count + 1;
+        /* Custom fallback values. If the user provided enough values to
+         * cover all return slots (including the error), use them as-is.
+         * Otherwise append the propagated error (_tmp.v1). */
+        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
+        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
+        int total = user_covers_error ? fallback_count : fallback_count + 1;
         ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
         for (int i = 0; i < fallback_count; i++)
             ret_stmt->data.return_stmt.values[i] = fallback_buf[i];
-        ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
+        if (!user_covers_error)
+            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
         ret_stmt->data.return_stmt.count = total;
     } else {
         /* Bare or_return: propagate just the error; codegen fills {0} for other slots */
@@ -1919,7 +1924,10 @@ static AstNode *parse_func_declaration(Parser *parser) {
 
     /* Body */
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
+    AstNode *saved_func = parser->current_func;
+    parser->current_func = node;
     node->data.func_decl.body = parse_block_statement(parser);
+    parser->current_func = saved_func;
 
     return node;
 }
@@ -3127,6 +3135,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->diag = diag;
     parser->depth = 0;
     parser->no_struct_literal = false;
+    parser->current_func = NULL;
 
     /* Read two tokens to fill cur and peek */
     next_token(parser);
