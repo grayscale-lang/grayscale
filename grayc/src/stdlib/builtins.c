@@ -46,23 +46,45 @@ static int fmt_shortest_float(char *buf, size_t buffer_size, double v) {
     return n;
 }
 
+/* Encode Unicode codepoint to UTF-8; returns byte count (1-4). */
+static int cp_to_utf8(int32_t cp, char *out) {
+    if (cp < 0x80)   { out[0] = (char)cp; return 1; }
+    if (cp < 0x800)  { out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
+    if (cp < 0x10000){ out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F)); out[2] = (char)(0x80|(cp&0x3F)); return 3; }
+    out[0]=(char)(0xF0|(cp>>18)); out[1]=(char)(0x80|((cp>>12)&0x3F)); out[2]=(char)(0x80|((cp>>6)&0x3F)); out[3]=(char)(0x80|(cp&0x3F)); return 4;
+}
+
+/* Decode next UTF-8 character; returns bytes consumed (1-4).
+   Writes decoded codepoint to *cp_out (0xFFFD on invalid input). */
+static int utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
+    uint8_t b = *p;
+    int32_t cp;
+    int bytes;
+    if (b < 0x80) {
+        *cp_out = b; return 1;
+    } else if ((b & 0xE0) == 0xC0) {
+        cp = b & 0x1F; bytes = 2;
+    } else if ((b & 0xF0) == 0xE0) {
+        cp = b & 0x0F; bytes = 3;
+    } else if ((b & 0xF8) == 0xF0) {
+        cp = b & 0x07; bytes = 4;
+    } else {
+        *cp_out = 0xFFFD; return 1;
+    }
+    if (p + bytes > end) { *cp_out = 0xFFFD; return 1; }
+    for (int i = 1; i < bytes; i++) {
+        if ((p[i] & 0xC0) != 0x80) { *cp_out = 0xFFFD; return 1; }
+        cp = (cp << 6) | (p[i] & 0x3F);
+    }
+    *cp_out = cp;
+    return bytes;
+}
+
 /* Write a Unicode code point as UTF-8 to a FILE stream */
 static void fput_utf8(int32_t c, FILE *f) {
-    if (c < 0x80) {
-        fputc(c, f);
-    } else if (c < 0x800) {
-        fputc(0xC0 | (c >> 6), f);
-        fputc(0x80 | (c & 0x3F), f);
-    } else if (c < 0x10000) {
-        fputc(0xE0 | (c >> 12), f);
-        fputc(0x80 | ((c >> 6) & 0x3F), f);
-        fputc(0x80 | (c & 0x3F), f);
-    } else if (c < 0x110000) {
-        fputc(0xF0 | (c >> 18), f);
-        fputc(0x80 | ((c >> 12) & 0x3F), f);
-        fputc(0x80 | ((c >> 6) & 0x3F), f);
-        fputc(0x80 | (c & 0x3F), f);
-    }
+    char buf[4];
+    int len = cp_to_utf8(c, buf);
+    fwrite(buf, 1, (size_t)len, f);
 }
 
 /* --- println --- */
@@ -331,14 +353,6 @@ double gray_builtin_string_to_float(GrayString s) {
 
 /* --- composite to_string --- */
 
-/* Encode Unicode codepoint to UTF-8; returns byte count (1-4). */
-static int cp_to_utf8(int32_t cp, char *out) {
-    if (cp < 0x80)   { out[0] = (char)cp; return 1; }
-    if (cp < 0x800)  { out[0] = (char)(0xC0|(cp>>6)); out[1] = (char)(0x80|(cp&0x3F)); return 2; }
-    if (cp < 0x10000){ out[0] = (char)(0xE0|(cp>>12)); out[1] = (char)(0x80|((cp>>6)&0x3F)); out[2] = (char)(0x80|(cp&0x3F)); return 3; }
-    out[0]=(char)(0xF0|(cp>>18)); out[1]=(char)(0x80|((cp>>12)&0x3F)); out[2]=(char)(0x80|((cp>>6)&0x3F)); out[3]=(char)(0x80|(cp&0x3F)); return 4;
-}
-
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind) {
     char buf[GRAY_TOSTRING_BUF_SIZE];
     int pos = 0;
@@ -402,31 +416,7 @@ int32_t gray_builtin_to_char(GrayString s, int64_t index, const char *file, int 
     int64_t cp_idx = 0;
     while (p < end) {
         int32_t cp;
-        int bytes;
-        uint8_t b = *p;
-        if (b < 0x80) {
-            cp = b; bytes = 1;
-        } else if ((b & 0xE0) == 0xC0) {
-            cp = b & 0x1F; bytes = 2;
-        } else if ((b & 0xF0) == 0xE0) {
-            cp = b & 0x0F; bytes = 3;
-        } else if ((b & 0xF8) == 0xF0) {
-            cp = b & 0x07; bytes = 4;
-        } else {
-            cp = 0xFFFD; bytes = 1; /* replacement character for invalid lead byte */
-        }
-        /* Validate we have enough continuation bytes */
-        if (p + bytes > end) {
-            cp = 0xFFFD; bytes = 1;
-        } else {
-            for (int i = 1; i < bytes; i++) {
-                if ((p[i] & 0xC0) != 0x80) {
-                    cp = 0xFFFD; bytes = 1;
-                    break;
-                }
-                cp = (cp << 6) | (p[i] & 0x3F);
-            }
-        }
+        int bytes = utf8_next(p, end, &cp);
         if (cp_idx == index) return cp;
         p += bytes;
         cp_idx++;
@@ -441,13 +431,8 @@ int64_t gray_builtin_char_count(GrayString s) {
     const uint8_t *end = p + s.len;
     int64_t count = 0;
     while (p < end) {
-        uint8_t b = *p;
-        if (b < 0x80) p += 1;
-        else if ((b & 0xE0) == 0xC0) p += 2;
-        else if ((b & 0xF0) == 0xE0) p += 3;
-        else if ((b & 0xF8) == 0xF0) p += 4;
-        else p += 1; /* invalid lead byte, skip one */
-        if (p > end) p = end; /* clamp if truncated */
+        int32_t cp;
+        p += utf8_next(p, end, &cp);
         count++;
     }
     return count;
@@ -455,28 +440,12 @@ int64_t gray_builtin_char_count(GrayString s) {
 
 GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp) {
     char buf[4];
-    int len = 0;
-    if (cp < 0x80) {
-        buf[0] = (char)cp; len = 1;
-    } else if (cp < 0x800) {
-        buf[0] = (char)(0xC0 | (cp >> 6));
-        buf[1] = (char)(0x80 | (cp & 0x3F));
-        len = 2;
-    } else if (cp < 0x10000) {
-        buf[0] = (char)(0xE0 | (cp >> 12));
-        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[2] = (char)(0x80 | (cp & 0x3F));
-        len = 3;
-    } else if (cp < 0x110000) {
-        buf[0] = (char)(0xF0 | (cp >> 18));
-        buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[3] = (char)(0x80 | (cp & 0x3F));
-        len = 4;
-    } else {
+    int len;
+    if (cp >= 0x110000) {
         /* Invalid codepoint — replacement character U+FFFD */
-        buf[0] = (char)0xEF; buf[1] = (char)0xBF; buf[2] = (char)0xBD;
-        len = 3;
+        len = cp_to_utf8(0xFFFD, buf);
+    } else {
+        len = cp_to_utf8(cp, buf);
     }
     return gray_string_new(arena, buf, (int32_t)len);
 }
