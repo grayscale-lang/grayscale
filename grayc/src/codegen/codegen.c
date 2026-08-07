@@ -636,9 +636,9 @@ static bool type_needs_deep_copy(CodeGen *codegen, const char *gray_tn) {
     return false;
 }
 
-/* Shared counter for unique temp names across all deep-copy emitters. */
-static int deep_copy_tag_counter = 0;
-static int next_deep_copy_tag(void) { return deep_copy_tag_counter++; }
+/* Return a unique integer for temporary variable names, drawn from the
+ * codegen-wide counter so every emitter gets a distinct id. */
+static int codegen_next_id(CodeGen *codegen) { return codegen->temp_counter++; }
 
 static void emit_value_deep_copy(CodeGen *codegen, const char *gray_tn, const char *src_var);
 
@@ -679,7 +679,7 @@ static void emit_array_deep_copy(CodeGen *codegen, const char *gray_tn, const ch
         snprintf(c_elem_buf, sizeof(c_elem_buf), "%s", c_elem_ptr ? c_elem_ptr : "");
     }
     const char *c_elem = c_elem_buf;
-    int tag = next_deep_copy_tag();
+    int tag = codegen_next_id(codegen);
     emit_formatted(codegen,
         "({ GrayArray _ds%d = %s; "
         "GrayArray _dd%d = gray_array_new(gray_default_arena, sizeof(%s), _ds%d.len); "
@@ -742,7 +742,7 @@ static void emit_map_deep_copy(CodeGen *codegen, const char *gray_tn, const char
      * deep-copy each value, and insert into a fresh map. */
     const char *c_key = gray_map_element_c_type(codegen, key_tn);
     const char *c_val = gray_map_element_c_type(codegen, val_tn);
-    int tag = next_deep_copy_tag();
+    int tag = codegen_next_id(codegen);
     emit_formatted(codegen,
         "({ GrayMap _ms%d = %s; "
         "GrayMap _md%d = gray_map_new_kind(gray_default_arena, _ms%d.key_size, _ms%d.value_size, "
@@ -802,7 +802,7 @@ static void emit_struct_deep_copy(CodeGen *codegen, const char *struct_tn, const
     }
     if (emit_struct_deep_copy_depth < CYCLE_GUARD_DEPTH) emit_struct_deep_copy_visiting[emit_struct_deep_copy_depth++] = struct_tn;
     const char *c_struct = gray_type_to_c_codegen(codegen, struct_tn);
-    int tag = next_deep_copy_tag();
+    int tag = codegen_next_id(codegen);
     emit_formatted(codegen,
         "({ %s _ss%d = %s; %s _sd%d = _ss%d; ",
         c_struct, tag, src_var, c_struct, tag, tag);
@@ -848,7 +848,7 @@ static void emit_value_deep_copy(CodeGen *codegen, const char *gray_tn, const ch
  * the temp name to emit_value_deep_copy with a reconstructed "[elem]"
  * type string. */
 static void emit_deep_array_copy(CodeGen *codegen, AstNode *src_node, const char *elem_type_name) {
-    int tag = next_deep_copy_tag();
+    int tag = codegen_next_id(codegen);
     emit_formatted(codegen, "({ GrayArray _dtop%d = ", tag);
     emit_expression(codegen, src_node);
     emit(codegen, "; ");
@@ -1639,8 +1639,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
          * Capture counter before emitting values; nested map literals will
          * re-enter this case and increment the counter, so each level gets
          * a unique temp name. */
-        static int map_lit_counter = 0;
-        int my_counter = map_lit_counter++;
+        int my_counter = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayMap _ml%d = gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), %d, %s); ",
             my_counter, c_key_type, c_val_type, count > 4 ? count * 2 : 8,
             gray_map_key_kind_macro(c_key_type));
@@ -2560,8 +2559,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 }
             }
             if (arr_ptr_obj) {
-                static int arr_dp_ctr = 0;
-                int my_dp = arr_dp_ctr++;
+                int my_dp = codegen_next_id(codegen);
                 emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
                 emit_expression(codegen, arr_ptr_obj);
                 emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
@@ -3085,7 +3083,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
     }
     GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
     if (arg_type && arg_type->kind == TK_ERROR) {
-        int tag = next_deep_copy_tag();
+        int tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayError *_gray_str_err%d = (", tag);
         emit_expression(codegen, arg);
         emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->message : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
@@ -3655,8 +3653,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             }
         }
         if (addr_ptr_expr && addr_field) {
-            static int addr_dp_ctr = 0;
-            int my_dp = addr_dp_ctr++;
+            int my_dp = codegen_next_id(codegen);
             emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
             emit_expression(codegen, addr_ptr_expr);
             emit_formatted(codegen, "; if (!_aadp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
@@ -3914,7 +3911,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
              * collections, collections containing such structs, and any
              * transitive mix of those all come out fully independent
              * of the source , ). */
-            int tag = next_deep_copy_tag();
+            int tag = codegen_next_id(codegen);
             const char *c_type = (arg_type->kind == TK_ARRAY) ? "GrayArray"
                                : (arg_type->kind == TK_MAP) ? "GrayMap"
                                : gray_type_to_c_codegen(codegen, arg_type->name);
@@ -7220,7 +7217,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
             if (node->data.var_decl.value &&
                 node->data.var_decl.value->kind == NODE_LABEL) {
-                int tag = next_deep_copy_tag();
+                int tag = codegen_next_id(codegen);
                 char src_var[VAR_NAME_BUF];
                 snprintf(src_var, sizeof(src_var), "_ms%d", tag);
                 emit_formatted(codegen, "({ GrayMap %s = ", src_var);
@@ -7247,7 +7244,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
             node->data.var_decl.value->kind == NODE_LABEL) {
             /* Copy-by-default: deep copy when assigning a map from another
              * variable so mutations to the copy don't alias the original. */
-            int tag = next_deep_copy_tag();
+            int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_ms%d", tag);
             emit_formatted(codegen, "({ GrayMap %s = ", src_var);
@@ -7509,7 +7506,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
                    type_name && type_needs_deep_copy(codegen, type_name)) {
             /* Copy-by-default: deep copy structs (and maps) that contain
              * arrays/maps/strings so the copy is fully independent. */
-            int tag = next_deep_copy_tag();
+            int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_vdc%d", tag);
             emit_formatted(codegen, "({ %s %s = ", c_type, src_var);
@@ -7595,8 +7592,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 if (_set_ptr_obj) {
-                    static int arr_set_dp_ctr = 0;
-                    int my_dp = arr_set_dp_ctr++;
+                    int my_dp = codegen_next_id(codegen);
                     TokenType aop2 = node->data.assign.op;
                     bool is_compound2 = (aop2 == TOK_PLUS_ASSIGN || aop2 == TOK_MINUS_ASSIGN || aop2 == TOK_ASTERISK_ASSIGN);
                     emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
@@ -8052,7 +8048,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
         /* Map copy-by-default: map2 = map1 deep-copies the map. */
         if (tgt_t && tgt_t->kind == TK_MAP) {
-            int tag = next_deep_copy_tag();
+            int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_ma%d", tag);
             emit(codegen, "{ GrayMap ");
@@ -8070,7 +8066,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
          * the outer arena so the copy survives scope destruction. */
         if (tgt_t && tgt_t->kind == TK_STRUCT && tgt_t->name &&
             type_needs_deep_copy(codegen, tgt_t->name)) {
-            int tag = next_deep_copy_tag();
+            int tag = codegen_next_id(codegen);
             const char *ct = gray_type_to_c_codegen(codegen, tgt_t->name);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_sa%d", tag);
@@ -8443,8 +8439,7 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
 
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     /* : per-block arena for if/otherwise so temporaries are freed */
-    static int if_scope_counter = 0;
-    int isc = if_scope_counter++;
+    int isc = codegen_next_id(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
     if (codegen->loop_scope_depth == 0) {
@@ -8558,11 +8553,10 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     AstNode *iter = node->data.for_stmt.iterable;
     if (iter && iter->kind == NODE_RANGE_EXPR) {
         /* for i in range(start, end) or range(start, end, step) */
-        static int blank_for_counter = 0;
-        static char blank_for_buf[64];
+        char blank_for_buf[64];
         const char *var;
         if (strcmp(node->data.for_stmt.var_name, "_") == 0) {
-            snprintf(blank_for_buf, sizeof(blank_for_buf), "_gray_for_blank_%d", blank_for_counter++);
+            snprintf(blank_for_buf, sizeof(blank_for_buf), "_gray_for_blank_%d", codegen_next_id(codegen));
             var = blank_for_buf;
         } else {
             var = sanitize_name(node->data.for_stmt.var_name);
@@ -8588,8 +8582,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
 
             if (iter->data.range_expr.step && !known_direction) {
                 /* Variable step: store step and end once, emit runtime direction ternary. */
-                static int step_var_counter = 0;
-                int svc = step_var_counter++;
+                int svc = codegen_next_id(codegen);
                 /* emit_indent already called above — use it for the var declaration line */
                 emit_formatted(codegen, "int64_t _gray_step_%d = ", svc);
                 emit_expression(codegen, iter->data.range_expr.step);
@@ -8900,9 +8893,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
 
         if (is_map_iter) {
             /* for_each on map; iterate occupied slots with internal counter */
-            static int map_iter_counter = 0;
+            int mi_id = codegen_next_id(codegen);
             char mi_name[SHORT_VAR_BUF];
-            snprintf(mi_name, sizeof(mi_name), "_gray_mi%d", map_iter_counter++);
+            snprintf(mi_name, sizeof(mi_name), "_gray_mi%d", mi_id);
 
             const char *c_key = "GrayString";
             const char *c_val = "int64_t";
@@ -8914,7 +8907,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
 
             map_needs_tmp = (coll->kind != NODE_LABEL);
             if (map_needs_tmp) {
-                snprintf(map_tmp_name, sizeof(map_tmp_name), "_gray_map%d", map_iter_counter - 1);
+                snprintf(map_tmp_name, sizeof(map_tmp_name), "_gray_map%d", mi_id);
                 emit_formatted(codegen, "{ GrayMap %s = ", map_tmp_name);
                 emit_expression(codegen, coll);
                 emit(codegen, ";\n");
@@ -8923,7 +8916,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
 
             /* Iterate in insertion order using the order array */
             char slot_name[SHORT_VAR_BUF];
-            snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", map_iter_counter - 1);
+            snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", mi_id);
             /* Guard against mutation during iteration */
             {
                 char *ge = iter_guard_expr(codegen, map_needs_tmp, map_tmp_name, coll);
@@ -9010,16 +9003,16 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             /* Snapshot the array length at loop start so appending during
              * iteration doesn't cause an infinite loop. The loop visits
              * only the elements that existed when for_each began. */
-            static int arr_iter_counter = 0;
+            int alen_id = codegen_next_id(codegen);
             char len_name[SHORT_VAR_BUF];
-            snprintf(len_name, sizeof(len_name), "_gray_alen%d", arr_iter_counter++);
+            snprintf(len_name, sizeof(len_name), "_gray_alen%d", alen_id);
             /* When the collection is a non-assignable expression (inline array
              * literal, function return, etc.) it is an rvalue in C and
              * cannot be mutated (.iterating++) or addressed (GRAY_ARRAY_GET).
              * Assign it to a named temporary first. */
             coll_needs_tmp = (coll->kind != NODE_LABEL);
             if (coll_needs_tmp) {
-                snprintf(arr_tmp_name, sizeof(arr_tmp_name), "_gray_arr%d", arr_iter_counter - 1);
+                snprintf(arr_tmp_name, sizeof(arr_tmp_name), "_gray_arr%d", alen_id);
                 emit_formatted(codegen, "{ GrayArray %s = ", arr_tmp_name);
                 emit_expression(codegen, coll);
                 emit(codegen, ";\n");
@@ -9124,9 +9117,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         /* Evaluate the match expression once into a temporary so that
          * side-effecting expressions (function calls, increments, etc.)
          * are not re-executed for each is-arm. */
-        static int when_tmp_ctr = 0;
         char when_tmp[64];
-        snprintf(when_tmp, sizeof(when_tmp), "_gray_when%d", when_tmp_ctr++);
+        snprintf(when_tmp, sizeof(when_tmp), "_gray_when%d", codegen_next_id(codegen));
         emit_indent(codegen);
         emit_formatted(codegen, "__auto_type %s = ", when_tmp);
         emit_expression(codegen, val);
@@ -9413,6 +9405,7 @@ CodeGen codegen_create(const char *file) {
     codegen.ns_func_names = NULL;
     codegen.ns_func_name_count = 0;
     codegen.ns_func_name_cap = 0;
+    codegen.temp_counter = 0;
     return codegen;
 }
 
