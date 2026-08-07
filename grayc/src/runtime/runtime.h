@@ -108,6 +108,15 @@ GrayString gray_c_string_dup(GrayArena *arena, const char *s);
 /* String formatting (for interpolation) */
 GrayString gray_string_format(GrayArena *arena, const char *fmt, ...);
 
+/* Null-terminate a GrayString into a caller-provided buffer.
+ * Truncates to buf_size-1 if needed. Returns buf for convenience. */
+static inline const char *gray_cstr(GrayString s, char *buf, size_t buf_size) {
+    size_t len = (size_t)s.len < buf_size - 1 ? (size_t)s.len : buf_size - 1;
+    memcpy(buf, s.data, len);
+    buf[len] = '\0';
+    return buf;
+}
+
 /* String comparison */
 static inline bool gray_string_eq(GrayString a, GrayString b) {
     if (a.len != b.len) return false;

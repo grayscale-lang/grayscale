@@ -24,20 +24,13 @@
 #define GRAY_NET_MAX_RECV_BUF     1048576
 #define GRAY_NET_LISTEN_BACKLOG   128
 
-/* Helper: null-terminate an GrayString */
-static const char *net_cstr(GrayString s, char *buf, size_t buffer_size) {
-    size_t len = (size_t)s.len < buffer_size - 1 ? (size_t)s.len : buffer_size - 1;
-    memcpy(buf, s.data, len);
-    buf[len] = '\0';
-    return buf;
-}
 
 GraySocket gray_net_dial(GrayArena *arena, GrayString host, int64_t port) {
     (void)arena;
     GraySocket sock = {-1};
 
     char host_buf[GRAY_NET_HOST_BUF];
-    net_cstr(host, host_buf, sizeof(host_buf));
+    gray_cstr(host, host_buf, sizeof(host_buf));
 
     /* Resolve hostname */
     struct addrinfo hints, *res;
@@ -150,7 +143,7 @@ void gray_net_set_timeout(GraySocket sock, int64_t milliseconds) {
 
 GrayString gray_net_resolve(GrayArena *arena, GrayString hostname) {
     char host_buf[GRAY_NET_HOST_BUF];
-    net_cstr(hostname, host_buf, sizeof(host_buf));
+    gray_cstr(hostname, host_buf, sizeof(host_buf));
 
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
@@ -194,7 +187,7 @@ GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port)
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     char host_buf[GRAY_NET_HOST_BUF];
-    net_cstr(host, host_buf, sizeof(host_buf));
+    gray_cstr(host, host_buf, sizeof(host_buf));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));

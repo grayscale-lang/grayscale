@@ -19,21 +19,9 @@
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success, non-zero on error. Caller must regfree on success. */
 static int compile_pattern(GrayString pattern, regex_t *re, int flags) {
-    /* Null-terminate the pattern */
     char pat_buf[GRAY_REGEX_PAT_BUF];
-    int pattern_length = pattern.len < (int32_t)sizeof(pat_buf) - 1 ? pattern.len : (int32_t)sizeof(pat_buf) - 1;
-    memcpy(pat_buf, pattern.data, (size_t)pattern_length);
-    pat_buf[pattern_length] = '\0';
-
+    gray_cstr(pattern, pat_buf, sizeof(pat_buf));
     return regcomp(re, pat_buf, flags | REG_EXTENDED);
-}
-
-/* Helper: null-terminate an GrayString into a buffer */
-static const char *to_cstr(GrayString s, char *buf, size_t buffer_size) {
-    size_t len = (size_t)s.len < buffer_size - 1 ? (size_t)s.len : buffer_size - 1;
-    memcpy(buf, s.data, len);
-    buf[len] = '\0';
-    return buf;
 }
 
 bool gray_regex_is_valid(GrayString pattern) {
@@ -48,7 +36,7 @@ bool gray_regex_match(GrayString pattern, GrayString text) {
     if (compile_pattern(pattern, &re, REG_NOSUB) != 0) return false;
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
-    to_cstr(text, txt_buf, sizeof(txt_buf));
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     int result = regexec(&re, txt_buf, 0, NULL, 0);
     regfree(&re);
@@ -62,7 +50,7 @@ GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text
     }
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
-    to_cstr(text, txt_buf, sizeof(txt_buf));
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     regmatch_t match;
     if (regexec(&re, txt_buf, 1, &match, 0) != 0) {
@@ -82,7 +70,7 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
     if (compile_pattern(pattern, &re, 0) != 0) return arr;
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
-    to_cstr(text, txt_buf, sizeof(txt_buf));
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     const char *cursor = txt_buf;
     regmatch_t match;
@@ -110,10 +98,10 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
     }
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
-    to_cstr(text, txt_buf, sizeof(txt_buf));
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     char repl_buf[GRAY_REGEX_PAT_BUF];
-    to_cstr(replacement, repl_buf, sizeof(repl_buf));
+    gray_cstr(replacement, repl_buf, sizeof(repl_buf));
     int repl_len = (int)strlen(repl_buf);
 
     /* First pass: compute exact output size */
@@ -178,7 +166,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
     }
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
-    to_cstr(text, txt_buf, sizeof(txt_buf));
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     const char *cursor = txt_buf;
     regmatch_t match;
