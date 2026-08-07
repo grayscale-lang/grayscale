@@ -235,10 +235,7 @@ static bool path_contains_map_index(TypeChecker *checker, AstNode *e) {
 static void register_struct(TypeChecker *checker, const char *name,
     const char *display_name,
     const char **field_names, GrayType **field_types, int field_count) {
-    if (checker->struct_count >= checker->struct_cap) {
-        checker->struct_cap = checker->struct_cap ? checker->struct_cap * 2 : 8;
-        checker->structs = xrealloc(checker->structs, sizeof(StructInfo) * checker->struct_cap);
-    }
+    GROW_ARRAY(checker->structs, checker->struct_count, checker->struct_cap);
     checker->structs_sorted_built = false;
     StructInfo *si = &checker->structs[checker->struct_count++];
     si->struct_name = name;
@@ -558,10 +555,7 @@ static bool type_name_has_wildcard(const char *tn) {
 static void register_func(TypeChecker *checker, const char *name,
     GrayType **param_types, int param_count,
     GrayType **return_types, int return_count) {
-    if (checker->func_count >= checker->func_cap) {
-        checker->func_cap = checker->func_cap ? checker->func_cap * 2 : 16;
-        checker->funcs = xrealloc(checker->funcs, sizeof(FuncSig) * checker->func_cap);
-    }
+    GROW_ARRAY(checker->funcs, checker->func_count, checker->func_cap);
     checker->funcs_sorted_built = false;
     FuncSig *fs = &checker->funcs[checker->func_count++];
     fs->name = name;
@@ -9518,11 +9512,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "mem.destroy", arena_name, arena_name);
                 } else {
-                    if (checker->destroyed_arena_count >= checker->destroyed_arena_cap) {
-                        checker->destroyed_arena_cap = checker->destroyed_arena_cap ? checker->destroyed_arena_cap * 2 : 8;
-                        checker->destroyed_arenas = xrealloc(checker->destroyed_arenas,
-                            (size_t)checker->destroyed_arena_cap * sizeof(const char *));
-                    }
+                    GROW_ARRAY(checker->destroyed_arenas, checker->destroyed_arena_count,
+                        checker->destroyed_arena_cap);
                     checker->destroyed_arenas[checker->destroyed_arena_count++] = arena_name;
                 }
             }
@@ -9552,11 +9543,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "destroy", arena_name, arena_name);
                 } else {
-                    if (checker->destroyed_arena_count >= checker->destroyed_arena_cap) {
-                        checker->destroyed_arena_cap = checker->destroyed_arena_cap ? checker->destroyed_arena_cap * 2 : 8;
-                        checker->destroyed_arenas = xrealloc(checker->destroyed_arenas,
-                            (size_t)checker->destroyed_arena_cap * sizeof(const char *));
-                    }
+                    GROW_ARRAY(checker->destroyed_arenas, checker->destroyed_arena_count,
+                        checker->destroyed_arena_cap);
                     checker->destroyed_arenas[checker->destroyed_arena_count++] = arena_name;
                 }
             }

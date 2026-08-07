@@ -877,10 +877,7 @@ static bool is_reference_variable(CodeGen *codegen, const char *name) {
 }
 
 static void register_reference_variable(CodeGen *codegen, const char *name) {
-    if (codegen->ref_var_count >= codegen->ref_var_cap) {
-        codegen->ref_var_cap = codegen->ref_var_cap ? codegen->ref_var_cap * 2 : 8;
-        codegen->ref_vars = xrealloc(codegen->ref_vars, sizeof(const char *) * codegen->ref_var_cap);
-    }
+    GROW_ARRAY(codegen->ref_vars, codegen->ref_var_count, codegen->ref_var_cap);
     codegen->ref_vars[codegen->ref_var_count++] = name;
 }
 
@@ -8186,11 +8183,7 @@ static void emit_ensure_cleanup(CodeGen *codegen) {
  * `or_return`) from inside a nested for_each/if/while/loop scope leaks
  * the per-scope arenas the codegen had emitted. */
 static void scope_arena_push(CodeGen *codegen, const char *arena_var, const char *saved_var) {
-    if (codegen->scope_arena_count >= codegen->scope_arena_cap) {
-        codegen->scope_arena_cap = codegen->scope_arena_cap ? codegen->scope_arena_cap * 2 : 8;
-        codegen->scope_arenas = xrealloc(codegen->scope_arenas,
-            sizeof(ScopeArena) * (size_t)codegen->scope_arena_cap);
-    }
+    GROW_ARRAY(codegen->scope_arenas, codegen->scope_arena_count, codegen->scope_arena_cap);
     ScopeArena *entry = &codegen->scope_arenas[codegen->scope_arena_count++];
     snprintf(entry->arena_var, sizeof(entry->arena_var), "%s", arena_var);
     snprintf(entry->saved_var, sizeof(entry->saved_var), "%s", saved_var);
@@ -8203,11 +8196,7 @@ static void scope_arena_pop(CodeGen *codegen) {
 /* Track active for_each iteration guards so early-return paths can
  * decrement .iterating for every live for_each loop. */
 static void iter_guard_push(CodeGen *codegen, const char *expr) {
-    if (codegen->iter_guard_count >= codegen->iter_guard_cap) {
-        codegen->iter_guard_cap = codegen->iter_guard_cap ? codegen->iter_guard_cap * 2 : 4;
-        codegen->iter_guards = xrealloc(codegen->iter_guards,
-            sizeof(char *) * (size_t)codegen->iter_guard_cap);
-    }
+    GROW_ARRAY(codegen->iter_guards, codegen->iter_guard_count, codegen->iter_guard_cap);
     codegen->iter_guards[codegen->iter_guard_count++] = strdup(expr);
 }
 
@@ -9331,11 +9320,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         /* Function-scoped using: add to using_modules so bare-name
          * dispatch works for the rest of this function body. */
         for (int j = 0; j < node->data.using_stmt.count; j++) {
-            if (codegen->using_module_count >= codegen->using_module_cap) {
-                codegen->using_module_cap = codegen->using_module_cap ? codegen->using_module_cap * 2 : 8;
-                codegen->using_modules = xrealloc(codegen->using_modules,
-                    sizeof(const char *) * (size_t)codegen->using_module_cap);
-            }
+            GROW_ARRAY(codegen->using_modules, codegen->using_module_count,
+                codegen->using_module_cap);
             codegen->using_modules[codegen->using_module_count++] = node->data.using_stmt.modules[j];
         }
         break;
@@ -9485,21 +9471,15 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 /* Collect C interop headers */
                 if (item->is_c_import && item->path) {
                     codegen->has_c_imports = true;
-                    if (codegen->c_header_count >= codegen->c_header_cap) {
-                        codegen->c_header_cap = codegen->c_header_cap ? codegen->c_header_cap * 2 : 4;
-                        codegen->c_headers = xrealloc(codegen->c_headers,
-                            sizeof(const char *) * (size_t)codegen->c_header_cap);
-                    }
+                    GROW_ARRAY(codegen->c_headers, codegen->c_header_count,
+                        codegen->c_header_cap);
                     codegen->c_headers[codegen->c_header_count++] = item->path;
                 }
                 /* Track all imported module names */
                 if (item->module) {
                     const char *mname = item->alias ? item->alias : item->module;
-                    if (codegen->imported_module_count >= codegen->imported_module_cap) {
-                        codegen->imported_module_cap = codegen->imported_module_cap ? codegen->imported_module_cap * 2 : 8;
-                        codegen->imported_modules = xrealloc(codegen->imported_modules,
-                            sizeof(const char *) * (size_t)codegen->imported_module_cap);
-                    }
+                    GROW_ARRAY(codegen->imported_modules, codegen->imported_module_count,
+                        codegen->imported_module_cap);
                     codegen->imported_modules[codegen->imported_module_count++] = mname;
                 }
                 /* Track alias → module mapping */
@@ -9521,11 +9501,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 for (int j = 0; j < stmt->data.import_stmt.count; j++) {
                     ImportItem *item = &stmt->data.import_stmt.items[j];
                     if (item->module) {
-                        if (codegen->using_module_count >= codegen->using_module_cap) {
-                            codegen->using_module_cap = codegen->using_module_cap ? codegen->using_module_cap * 2 : 8;
-                            codegen->using_modules = xrealloc(codegen->using_modules,
-                                sizeof(const char *) * (size_t)codegen->using_module_cap);
-                        }
+                        GROW_ARRAY(codegen->using_modules, codegen->using_module_count,
+                            codegen->using_module_cap);
                         codegen->using_modules[codegen->using_module_count++] = item->module;
                     }
                 }
@@ -9533,11 +9510,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         }
         if (stmt->kind == NODE_USING_STMT) {
             for (int j = 0; j < stmt->data.using_stmt.count; j++) {
-                if (codegen->using_module_count >= codegen->using_module_cap) {
-                    codegen->using_module_cap = codegen->using_module_cap ? codegen->using_module_cap * 2 : 8;
-                    codegen->using_modules = xrealloc(codegen->using_modules,
-                        sizeof(const char *) * (size_t)codegen->using_module_cap);
-                }
+                GROW_ARRAY(codegen->using_modules, codegen->using_module_count,
+                    codegen->using_module_cap);
                 codegen->using_modules[codegen->using_module_count++] = stmt->data.using_stmt.modules[j];
             }
         }
@@ -9556,11 +9530,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             continue; /* aliases are erased — not emitted */
         }
         if (stmt->kind == NODE_STRUCT_DECL) {
-            if (codegen->struct_decl_count >= codegen->struct_decl_cap) {
-                codegen->struct_decl_cap = codegen->struct_decl_cap ? codegen->struct_decl_cap * 2 : 16;
-                codegen->struct_decls = xrealloc(codegen->struct_decls,
-                    sizeof(AstNode *) * (size_t)codegen->struct_decl_cap);
-            }
+            GROW_ARRAY(codegen->struct_decls, codegen->struct_decl_count,
+                codegen->struct_decl_cap);
             codegen->struct_decls[codegen->struct_decl_count++] = stmt;
         } else if (stmt->kind == NODE_ENUM_DECL) {
             BUCKET_PUSH(enum_bucket, enum_bucket_count, enum_bucket_cap, stmt);
@@ -9957,10 +9928,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Collect all function declarations (including struct-namespaced) */
     for (int i = 0; i < func_bucket_count; i++) {
         AstNode *stmt = func_bucket[i];
-        if (codegen->func_count >= codegen->func_cap) {
-            codegen->func_cap = codegen->func_cap ? codegen->func_cap * 2 : 16;
-            codegen->all_funcs = xrealloc(codegen->all_funcs, sizeof(AstNode *) * codegen->func_cap);
-        }
+        GROW_ARRAY(codegen->all_funcs, codegen->func_count, codegen->func_cap);
         codegen->all_funcs[codegen->func_count++] = stmt;
     }
     /* Collect struct-namespaced functions with prefixed names */
@@ -9977,16 +9945,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 char *ns_name = malloc(ns_len);
                 snprintf(ns_name, ns_len, "%s_%s", struct_name, fn_name);
                 function_node->data.func_decl.name = ns_name;
-                if (codegen->ns_func_name_count >= codegen->ns_func_name_cap) {
-                    codegen->ns_func_name_cap = codegen->ns_func_name_cap ? codegen->ns_func_name_cap * 2 : 8;
-                    codegen->ns_func_names = xrealloc(codegen->ns_func_names, sizeof(char *) * codegen->ns_func_name_cap);
-                }
+                GROW_ARRAY(codegen->ns_func_names, codegen->ns_func_name_count,
+                    codegen->ns_func_name_cap);
                 codegen->ns_func_names[codegen->ns_func_name_count++] = ns_name;
 
-                if (codegen->func_count >= codegen->func_cap) {
-                    codegen->func_cap = codegen->func_cap ? codegen->func_cap * 2 : 16;
-                    codegen->all_funcs = xrealloc(codegen->all_funcs, sizeof(AstNode *) * codegen->func_cap);
-                }
+                GROW_ARRAY(codegen->all_funcs, codegen->func_count, codegen->func_cap);
                 codegen->all_funcs[codegen->func_count++] = function_node;
             }
         }
