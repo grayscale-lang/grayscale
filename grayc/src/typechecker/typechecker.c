@@ -6723,6 +6723,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
     }
 
     case NODE_MAP_VALUE: {
+        /* If expected_type is a map-of-enum, propagate value type for .VARIANT */
+        GrayType *saved_map_expected = checker->expected_type;
+        if (checker->expected_type && checker->expected_type->kind == TK_MAP &&
+            checker->expected_type->value_type) {
+            GrayType *val_t = typechecker_type_from_name(checker, checker->expected_type->value_type);
+            if (val_t && val_t->kind == TK_ENUM && val_t->name)
+                checker->expected_type = val_t;
+        }
         /* Resolve key and value types */
         for (int i = 0; i < node->data.map_value.count; i++) {
             GrayType *kt = resolve_expression(checker, node->data.map_value.keys[i]);
@@ -6761,6 +6769,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             t->value_type = strdup(vt ? type_name(vt) : "unknown");
         }
         result = t;
+        checker->expected_type = saved_map_expected;
         break;
     }
 
@@ -7651,6 +7660,10 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             else if (declared->kind == TK_ARRAY && declared->element_type) {
                 GrayType *elem_t = typechecker_type_from_name(checker, declared->element_type);
                 if (elem_t && elem_t->kind == TK_ENUM)
+                    checker->expected_type = declared;
+            } else if (declared->kind == TK_MAP && declared->value_type) {
+                GrayType *val_t = typechecker_type_from_name(checker, declared->value_type);
+                if (val_t && val_t->kind == TK_ENUM)
                     checker->expected_type = declared;
             }
             GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);

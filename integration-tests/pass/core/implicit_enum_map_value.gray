@@ -1,0 +1,25 @@
+// Implicit enum selectors resolve as map literal values
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut m map[string:Color] = {"stop": .RED, "go": .GREEN, "sky": .BLUE}
+    if m["stop"] == Color.RED {
+        passed++
+    } otherwise {
+        failed++
+    }
+    if m["sky"] == Color.BLUE {
+        passed++
+    } otherwise {
+        failed++
+    }
+
+    println("${passed} passed, ${failed} failed")
+}
