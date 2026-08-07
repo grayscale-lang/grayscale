@@ -9,6 +9,7 @@
  */
 
 #include "parser.h"
+#include "../typechecker/types.h"
 #include "../util/constants.h"
 #include "../util/reserved.h"
 #include <stdio.h>
@@ -1810,17 +1811,10 @@ static AstNode *parse_func_declaration(Parser *parser) {
                 bool is_type = false;
                 if (current_token_is(parser, TOK_IDENT)) {
                     const char *lit = parser->cur_token.literal;
-                    is_type = (strcmp(lit, "int") == 0 || strcmp(lit, "uint") == 0 ||
-                        strcmp(lit, "i8") == 0 || strcmp(lit, "i16") == 0 ||
-                        strcmp(lit, "i32") == 0 || strcmp(lit, "i64") == 0 ||
-                        strcmp(lit, "i128") == 0 || strcmp(lit, "i256") == 0 ||
-                        strcmp(lit, "u8") == 0 || strcmp(lit, "u16") == 0 ||
-                        strcmp(lit, "u32") == 0 || strcmp(lit, "u64") == 0 ||
-                        strcmp(lit, "u128") == 0 || strcmp(lit, "u256") == 0 ||
+                    is_type = (is_any_int_type(lit) ||
                         strcmp(lit, "float") == 0 || strcmp(lit, "f32") == 0 ||
                         strcmp(lit, "f64") == 0 || strcmp(lit, "string") == 0 ||
                         strcmp(lit, "bool") == 0 || strcmp(lit, "char") == 0 ||
-                        strcmp(lit, "byte") == 0 ||
                         (strcmp(lit, "map") == 0 && peek_token_is(parser, TOK_LBRACKET)) ||
                         (strcmp(lit, "func") == 0 && peek_token_is(parser, TOK_LPAREN)) ||
                         (lit[0] >= 'A' && lit[0] <= 'Z')); /* struct/enum types */

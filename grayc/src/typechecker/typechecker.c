@@ -1815,28 +1815,6 @@ static int int_type_name_rank(const char *n) {
     return 0;
 }
 
-static bool is_unsigned_type(const char *tn) {
-    if (!tn) return false;
-    return strcmp(tn, "uint") == 0 || strcmp(tn, "u8") == 0 ||
-           strcmp(tn, "u16") == 0 || strcmp(tn, "u32") == 0 ||
-           strcmp(tn, "u64") == 0 || strcmp(tn, "u128") == 0 ||
-           strcmp(tn, "u256") == 0 || strcmp(tn, "byte") == 0;
-}
-
-static bool is_signed_int_type(const char *tn) {
-    if (!tn) return false;
-    return strcmp(tn, "int") == 0 || strcmp(tn, "i8") == 0 ||
-           strcmp(tn, "i16") == 0 || strcmp(tn, "i32") == 0 ||
-           strcmp(tn, "i64") == 0 || strcmp(tn, "i128") == 0 ||
-           strcmp(tn, "i256") == 0;
-}
-
-static bool is_bigint_type(const char *tn) {
-    if (!tn) return false;
-    return strcmp(tn, "i128") == 0 || strcmp(tn, "u128") == 0 ||
-           strcmp(tn, "i256") == 0 || strcmp(tn, "u256") == 0;
-}
-
 /* --- Literal value extraction --- */
 
 /* Try to extract a compile-time integer value from a literal expression.
@@ -4017,11 +3995,9 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_CHAR;
     } else if ((strcmp(function_name, "int") == 0 ||
-                strcmp(function_name, "i128") == 0 ||
-                strcmp(function_name, "i256") == 0 ||
-                strcmp(function_name, "u128") == 0 ||
-                strcmp(function_name, "u256") == 0 || strcmp(function_name, "uint") == 0 ||
-                strcmp(function_name, "byte") == 0) &&
+                strcmp(function_name, "uint") == 0 ||
+                strcmp(function_name, "byte") == 0 ||
+                is_bigint_type(function_name)) &&
                node->data.call.arg_count == 1) {
         /* E3043: validate source type is convertible to numeric */
         GrayType *src_t = resolve_expression(checker, node->data.call.args[0]);
@@ -7386,13 +7362,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
              * detection is left to a separate check; for now we just ensure
              * the codegen fix applies (in_const_decl suppresses the runtime
              * wrapper). */
-            bool is_int_type =
-                strcmp(tn, "int") == 0 || strcmp(tn, "i64") == 0 ||
-                strcmp(tn, "i8") == 0 || strcmp(tn, "i16") == 0 || strcmp(tn, "i32") == 0 ||
-                strcmp(tn, "i128") == 0 || strcmp(tn, "i256") == 0 ||
-                strcmp(tn, "uint") == 0 || strcmp(tn, "u64") == 0 ||
-                strcmp(tn, "u8") == 0 || strcmp(tn, "u16") == 0 || strcmp(tn, "u32") == 0 ||
-                strcmp(tn, "u128") == 0 || strcmp(tn, "u256") == 0;
+            bool is_int_type = is_any_int_type(tn);
             if (is_int_type) {
                 int64_t folded = 0;
                 bool overflowed = false;

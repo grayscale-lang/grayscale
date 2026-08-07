@@ -881,13 +881,6 @@ static void register_reference_variable(CodeGen *codegen, const char *name) {
     codegen->ref_vars[codegen->ref_var_count++] = name;
 }
 
-/* Check if a type name is a wide integer type (i128/u128/i256/u256) */
-static bool is_bigint_type(const char *type_str) {
-    if (!type_str) return false;
-    return strcmp(type_str, "i128") == 0 || strcmp(type_str, "u128") == 0 ||
-           strcmp(type_str, "i256") == 0 || strcmp(type_str, "u256") == 0;
-}
-
 /* Returns true if the named enum is string-backed. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
     if (!name) return false;

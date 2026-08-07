@@ -12,6 +12,7 @@
 #define GRAYC_TYPES_H
 
 #include <stdbool.h>
+#include <string.h>
 
 typedef enum {
     TK_VOID,
@@ -86,5 +87,33 @@ GrayType *type_from_name(const char *name);
 
 /* Free all heap strings owned by pool entries and reset the pool */
 void type_pool_reset(void);
+
+/* --- Type-name string predicates --- */
+
+static inline bool is_unsigned_type(const char *tn) {
+    if (!tn) return false;
+    return strcmp(tn, "uint") == 0 || strcmp(tn, "u8") == 0 ||
+           strcmp(tn, "u16") == 0 || strcmp(tn, "u32") == 0 ||
+           strcmp(tn, "u64") == 0 || strcmp(tn, "u128") == 0 ||
+           strcmp(tn, "u256") == 0 || strcmp(tn, "byte") == 0;
+}
+
+static inline bool is_signed_int_type(const char *tn) {
+    if (!tn) return false;
+    return strcmp(tn, "int") == 0 || strcmp(tn, "i8") == 0 ||
+           strcmp(tn, "i16") == 0 || strcmp(tn, "i32") == 0 ||
+           strcmp(tn, "i64") == 0 || strcmp(tn, "i128") == 0 ||
+           strcmp(tn, "i256") == 0;
+}
+
+static inline bool is_any_int_type(const char *tn) {
+    return is_signed_int_type(tn) || is_unsigned_type(tn);
+}
+
+static inline bool is_bigint_type(const char *tn) {
+    if (!tn) return false;
+    return strcmp(tn, "i128") == 0 || strcmp(tn, "u128") == 0 ||
+           strcmp(tn, "i256") == 0 || strcmp(tn, "u256") == 0;
+}
 
 #endif
