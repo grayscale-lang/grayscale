@@ -10582,7 +10582,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             for (int const_index = 0; const_index < node->data.when_stmt.case_count && !has_enum_case; const_index++) {
                 for (int cj = 0; cj < node->data.when_stmt.cases[const_index].value_count && !has_enum_case; cj++) {
                     AstNode *cv = node->data.when_stmt.cases[const_index].values[cj];
-                    if (cv->kind == NODE_MEMBER_EXPR &&
+                    if (cv->kind == NODE_IMPLICIT_ENUM || cv->kind == NODE_WHEN_PATTERN) {
+                        has_enum_case = true;
+                    } else if (cv->kind == NODE_MEMBER_EXPR &&
                         cv->data.member.object->kind == NODE_LABEL) {
                         const char *name = cv->data.member.object->data.label.value;
                         if (is_enum_name(checker, name)) {
