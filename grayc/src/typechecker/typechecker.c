@@ -5274,6 +5274,10 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     reject_void_in_context(checker, node->data.infix.left, left, "binary operand");
     reject_void_in_context(checker, node->data.infix.right, right, "binary operand");
 
+    /* E3040: multi-return calls cannot appear as operands */
+    reject_multi_return_in_single_position(checker, node->data.infix.left);
+    reject_multi_return_in_single_position(checker, node->data.infix.right);
+
     /* String ordering operators not supported; use strings.compare() */
     if ((left->kind == TK_STRING || right->kind == TK_STRING) &&
         (op == TOK_LT || op == TOK_GT ||
@@ -6342,6 +6346,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             GrayType *pt = resolve_expression(checker, part);
             /* Only check non-literal parts (the ${expr} expressions) */
             if (part->kind == NODE_STRING_VALUE || !pt) continue;
+            /* E3040: multi-return calls cannot appear in interpolation */
+            reject_multi_return_in_single_position(checker, part);
             /* Interpolation expressions are re-lexed by a sub-lexer on
              * the extracted ${...} text, so part tokens have positions
              * relative to that sub-stream; not the original file.
@@ -9574,6 +9580,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3038", msg,
                 NODE_FILE(checker, c), c->token.line, c->token.column, 0);
         }
+        /* E3040: multi-return calls cannot be used as if condition */
+        reject_multi_return_in_single_position(checker, node->data.if_stmt.condition);
         if (cond_t && cond_t->kind != TK_UNKNOWN &&
             (cond_t->kind == TK_STRING || cond_t->kind == TK_ARRAY ||
              cond_t->kind == TK_MAP   || cond_t->kind == TK_STRUCT)) {
@@ -10358,6 +10366,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             AstNode *subj = node->data.when_stmt.value;
             diagnostic_warning_code(checker->diag, "W2012", NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
         }
+        /* E3040: multi-return calls cannot be used as when subject */
+        reject_multi_return_in_single_position(checker, node->data.when_stmt.value);
         /* E3121: struct, array, map, and pointer types are not valid when subjects.
          * Null out when_t so subsequent case type checks are skipped. */
         if (when_t && (when_t->kind == TK_STRUCT || when_t->kind == TK_ARRAY ||

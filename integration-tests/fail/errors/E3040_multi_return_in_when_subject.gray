@@ -1,0 +1,8 @@
+// Multi-return function cannot appear as when subject
+do two() -> (int, int) { return 5, 10 }
+do main() {
+    when two() {
+        is 5 { println("five") }
+        default { println("other") }
+    }
+}

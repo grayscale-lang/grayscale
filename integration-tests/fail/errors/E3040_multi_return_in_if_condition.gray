@@ -1,0 +1,5 @@
+// Multi-return function cannot appear as if condition
+do two() -> (int, bool) { return 10, true }
+do main() {
+    if two() { println("true") }
+}

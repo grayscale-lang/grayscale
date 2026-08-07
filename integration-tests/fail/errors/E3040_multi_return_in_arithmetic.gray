@@ -1,0 +1,6 @@
+// Multi-return function cannot appear as arithmetic operand
+do two() -> (int, int) { return 5, 10 }
+do main() {
+    mut x int = two() + 5
+    println("${x}")
+}
