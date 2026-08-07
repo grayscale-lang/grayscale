@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3041 - tagged enum in string interpolation
+ *
+ * "${r}" where r is a tagged enum used to fall through codegen's
+ * default %lld + (long long) cast and produce a raw clang diagnostic.
+ * Typechecker now rejects at the interpolation site.
+ */
+
+const Result enum {
+    Ok(int)
+    Err(string)
+    None
+}
+
+do main() {
+    mut r Result = .Ok(42)
+    println("result: ${r}")
+}

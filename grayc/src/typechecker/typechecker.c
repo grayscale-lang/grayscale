@@ -6331,6 +6331,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3041",
                     "cannot interpolate void expression; the function does not return a value",
                     NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_ENUM && pt->name && typechecker_enum_is_tagged(checker, pt->name)) {
+                char *msg = typechecker_format(checker,
+                    "cannot interpolate tagged enum '%s'; use when/is to destructure the payload first",
+                    enum_display_name(checker, pt->name));
+                diagnostic_error_message(checker->diag, "E3041", msg,
+                    NODE_FILE(checker, node), line, col, 0);
             } else if (pt->kind == TK_STRUCT ||
                        pt->kind == TK_POINTER ||
                        is_func_type) {
@@ -7482,6 +7488,19 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             strncmp(node->data.var_decl.type_name, "map[", 4) == 0) {
             diagnostic_error_code_help(checker->diag, "E3059", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "change 'const' to 'mut'; use a struct for fixed key-value data");
+        }
+        /* E5041: tagged enums cannot be map value types */
+        if (node->data.var_decl.type_name &&
+            strncmp(node->data.var_decl.type_name, "map[", 4) == 0) {
+            GrayType *map_t = typechecker_type_from_name(checker, node->data.var_decl.type_name);
+            if (map_t && map_t->value_type) {
+                GrayType *vt = typechecker_type_from_name(checker, map_t->value_type);
+                if (vt && vt->kind == TK_ENUM && vt->name && typechecker_enum_is_tagged(checker, vt->name)) {
+                    diagnostic_error_code_formatted(checker->diag, "E5041",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        enum_display_name(checker, vt->name));
+                }
+            }
         }
         /* const must have a value */
         if (!node->data.var_decl.mutable && !node->data.var_decl.value) {
