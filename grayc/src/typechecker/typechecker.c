@@ -4413,7 +4413,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 if (ar >= 5 && pr > 0 && pr < ar) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
-                        "argument %d of '%s': cannot implicitly narrow %s to %s; use %s() to convert explicitly",
+                        "argument %d of '%s': cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
                         argument_index + 1, function_name, arg_t->name, param_t->name, param_t->name);
                     diagnostic_error_message(checker->diag, "E3001", msg,
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
@@ -7858,7 +7858,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 if (dr > 0 && vr >= 5 && dr < vr) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
-                        "type mismatch: cannot implicitly narrow %s to %s; use %s() to convert explicitly",
+                        "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
                         value_type->name, declared->name, declared->name);
                     diagnostic_error_message(checker->diag, "E3001", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -9029,7 +9029,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             if (dr > 0 && vr > 0 && dr < vr) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
+                    "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
                     value_t->name, target_t->name, target->data.label.value, target_t->name);
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -9073,7 +9073,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             strcmp(target_t->name, "f32") == 0) {
             char *msg = NULL;
             msg = typechecker_format(checker,
-                "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use %s() to convert explicitly",
+                "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
                 value_t->name, target_t->name, target->data.label.value, target_t->name);
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
