@@ -336,7 +336,23 @@ mut c byte = 128   // decimal also works
 
 Assigning a value outside the range 0-255 to a `byte` is a check-time error.
 
-#### 3.1.8 Sized Integer Types
+#### 3.1.8 Sized Floating-Point Types
+
+Grayscale provides fixed-width floating-point types:
+
+| Type | Width | C Type | Precision |
+|------|-------|--------|-----------|
+| `f32` | 32-bit | `float` | ~7 decimal digits (IEEE 754 single-precision) |
+| `f64` | 64-bit | `double` | ~15 decimal digits (IEEE 754 double-precision) |
+
+`f64` is equivalent to `float`. Use `f32` when interfacing with C APIs that expect single-precision or when memory is constrained.
+
+```gray
+mut x f32 = 3.14    // single-precision
+mut y f64 = 3.14    // double-precision (same as float)
+```
+
+#### 3.1.9 Sized Integer Types
 
 Grayscale provides fixed-width integer types for precise control over integer size:
 
@@ -353,7 +369,7 @@ Grayscale provides fixed-width integer types for precise control over integer si
 
 Use `cast` for sized type conversions: `cast(value, i32)`, `cast(value, u16)`.
 
-#### 3.1.9 Wide Integer Types (`i128`, `u128`, `i256`, `u256`)
+#### 3.1.10 Wide Integer Types (`i128`, `u128`, `i256`, `u256`)
 
 Grayscale provides portable wide integer types backed by struct-based arithmetic (no compiler extensions required):
 
@@ -539,7 +555,7 @@ const Node struct {
 // Value-type self-reference is an error:
 const Bad struct {
     val  int
-    next Bad     // error: struct 'Bad' cannot contain itself by value; use ptr<Bad>
+    next Bad     // error: struct 'Bad' cannot contain itself by value; use a pointer field '^Bad'
 }
 ```
 
@@ -620,7 +636,7 @@ const Direction enum {
 
 > 💡 **Tip:** Enum variants must be on separate lines. Inline declarations like `const Color enum { RED; GREEN; BLUE }` are not allowed. Semicolons are never used in enum declarations.
 
-> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number.
+> 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `int` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status int = Direction.NORTH` assigns `0`.
 
 > 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, int) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
 
@@ -1523,11 +1539,25 @@ do double(x int) -> int {
 
 #### 7.2.2 Mutable Parameters
 
-Mutable parameters work with:
-- Primitive types
-- Struct fields: `increment(point.x)`
-- Array elements: `increment(arr[0])`
-- Map values: `increment(map["key"])`
+The `&` prefix on a parameter name declares it as mutable (pass-by-reference). The function can modify the caller's variable through the parameter:
+
+```gray
+do increment(&x int) {
+    x = x + 1
+}
+
+do main() {
+    mut val int = 5
+    increment(val)    // no & at the call site
+    println(val)      // 6
+}
+```
+
+**Rules:**
+- `&` goes before the parameter name in the function signature: `do f(&x int)`.
+- At the call site, pass the variable directly — no `&` prefix: `f(val)`.
+- Only `mut` variables can be passed to `&` parameters. Passing a `const` variable is a compile-time error (E3027).
+- `&` parameters also accept struct fields (`increment(point.x)`), array elements (`increment(arr[0])`), and map values (`increment(map["key"])`).
 
 #### 7.2.3 Grouped Parameters
 
@@ -2522,8 +2552,8 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> int` | Size of type in bytes |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
-| `new` | `(Type) -> ^Type` | Allocate zero-initialized struct on arena |
-| `ref` | `(variable T) -> ref<T>` | Create a transparent reference (alias) to a variable. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
+| `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
+| `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
 | `addr` | `(variable) -> ^T` | Get memory address of a variable |
 | `error` | `(message string) -> Error` | Create error value |
 | `assert` | `(condition bool [, message string])` | Terminate with `P0075` if condition is false. Message is optional. |
@@ -3436,11 +3466,13 @@ Message passing between threads. Compiler-only feature; requires POSIX threads.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `open` | `(capacity int) -> Channel` | Create a buffered channel |
-| `send` | `(ch Channel, value)` | Send a value into a channel |
-| `receive` | `(ch Channel) -> T` | Receive a value from a channel |
+| `send` | `(ch Channel, value int)` | Send an int value into a channel |
+| `receive` | `(ch Channel) -> int` | Receive an int value from a channel (blocks if empty) |
 | `close` | `(ch Channel)` | Close a channel |
 | `try_send` | `(ch Channel, value int) -> bool` | Non-blocking send; returns false if full |
 | `try_receive` | `(ch Channel) -> (int, bool)` | Non-blocking receive; returns value and success |
+
+Channels are **int-only**. Sending non-int types (`string`, `float`, `bool`, etc.) is a compile-time error.
 
 ### 9.25 Memory Module (`@mem`)
 
