@@ -1380,6 +1380,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                         else if (et->kind == TK_UINT) ek = 4;
                         else if (et->kind == TK_BYTE) ek = 5;
                         else if (et->kind == TK_CHAR) ek = 6;
+                        else if (et->kind == TK_ENUM) {
+                            ek = (part_type->element_type && codegen_enum_is_string(codegen, part_type->element_type)) ? 2 : 7;
+                        }
                     }
                     emit_formatted(codegen, "({ GrayArray _interp_arr = ");
                     emit_expression(codegen, part);
@@ -1396,6 +1399,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                         else if (vt->kind == TK_UINT) vk = 4;
                         else if (vt->kind == TK_BYTE) vk = 5;
                         else if (vt->kind == TK_CHAR) vk = 6;
+                        else if (vt->kind == TK_ENUM) {
+                            vk = (part_type->value_type && codegen_enum_is_string(codegen, part_type->value_type)) ? 2 : 7;
+                        }
                     }
                     emit_formatted(codegen, "({ GrayMap _interp_map = ");
                     emit_expression(codegen, part);

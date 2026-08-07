@@ -398,6 +398,10 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
             }
             break;
         }
+        case 7:
+            pos += snprintf(buf + pos, sizeof(buf) - pos, "%d",
+                GRAY_ARRAY_GET(*arr, int, i));
+            break;
         }
     }
     buf[pos++] = '}';
@@ -490,6 +494,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind
             }
             break;
         }
+        case 7: pos += snprintf(buf + pos, sizeof(buf) - pos, "%d", *(int *)vp); break;
         }
     }
     if (m->order_len == 0) { buf[pos++] = ':'; }
