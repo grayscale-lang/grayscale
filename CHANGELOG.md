@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.2.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.1...grayscale-v0.2.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **cli:** print error message for unknown subcommands ([#2288](https://github.com/grayscale-lang/grayscale/issues/2288)) ([d4a2226](https://github.com/grayscale-lang/grayscale/commit/d4a2226443616205ac742d607d5e67558b74dfc3))
+* **codegen:** add char/byte element types for arrays.append/insert_at/prepend ([#2297](https://github.com/grayscale-lang/grayscale/issues/2297)) ([8092089](https://github.com/grayscale-lang/grayscale/commit/8092089b6ded51acb6d90d528678fadbf1bc9a6b))
+* **codegen:** add missing element types for arrays.fill ([#2299](https://github.com/grayscale-lang/grayscale/issues/2299)) ([2a52728](https://github.com/grayscale-lang/grayscale/commit/2a52728e1983cecbdbe7f56752a3d084cd509c0a))
+* **codegen:** emit concrete enum type in arrays.append/insert_at/prepend ([#2242](https://github.com/grayscale-lang/grayscale/issues/2242)) ([7993715](https://github.com/grayscale-lang/grayscale/commit/799371554f70de698e4cb42efb977f2bc5b2ed69))
+* **codegen:** emit concrete enum type in arrays.append/insert_at/prepend ([#2242](https://github.com/grayscale-lang/grayscale/issues/2242)) ([0006121](https://github.com/grayscale-lang/grayscale/commit/0006121a7a42e45b5cecfb7416b9b283f675f9ef))
+* **codegen:** use correct C types for wide int arrays.append/insert_at/prepend ([#2298](https://github.com/grayscale-lang/grayscale/issues/2298)) ([f89a3a8](https://github.com/grayscale-lang/grayscale/commit/f89a3a85e93d2abf24981842f5c0d2596248f4ac))
+* **codegen:** use correct element size for enum array interpolation ([#2248](https://github.com/grayscale-lang/grayscale/issues/2248)) ([dda344e](https://github.com/grayscale-lang/grayscale/commit/dda344e9f0b69fd488cc676c9f6e7c540b12c8ac))
+* **parser:** correct or_return fallback count when user provides error value ([#2247](https://github.com/grayscale-lang/grayscale/issues/2247)) ([e0cb3e9](https://github.com/grayscale-lang/grayscale/commit/e0cb3e9a4e4213e25c153c6ca67448ad307ebd4e))
+* **parser:** parse compound types in tagged enum payloads ([#2287](https://github.com/grayscale-lang/grayscale/issues/2287)) ([8789d88](https://github.com/grayscale-lang/grayscale/commit/8789d88652deb3240206be40ec445b50020cc254))
+* **stdlib:** add parameterized query API to sqlite module ([#1690](https://github.com/grayscale-lang/grayscale/issues/1690)) ([55930b0](https://github.com/grayscale-lang/grayscale/commit/55930b09376b7c21fd4950ec86357901c7c14941))
+* **stdlib:** add parameterized query API to sqlite module ([#1690](https://github.com/grayscale-lang/grayscale/issues/1690)) ([b772cc7](https://github.com/grayscale-lang/grayscale/commit/b772cc7174003eabf196d372e1df125f7a6cf097))
+* **stdlib:** unescape doubled quotes in csv.parse() quoted fields ([#2239](https://github.com/grayscale-lang/grayscale/issues/2239)) ([84561c0](https://github.com/grayscale-lang/grayscale/commit/84561c0fd0fd7322a7c7160aa71a37f5959bdd7e))
+* **stdlib:** unescape doubled quotes in csv.parse() quoted fields ([#2239](https://github.com/grayscale-lang/grayscale/issues/2239)) ([cc184a8](https://github.com/grayscale-lang/grayscale/commit/cc184a8995277c8e76605ac240d6d8394a753260))
+* **tests:** register unused buffer test functions in test_util ([e55acf1](https://github.com/grayscale-lang/grayscale/commit/e55acf14381556dd6c97b201045a5cbe5a2a481d))
+* **typechecker:** allow explicit deref before struct function calls ([#2244](https://github.com/grayscale-lang/grayscale/issues/2244)) ([06e6ab6](https://github.com/grayscale-lang/grayscale/commit/06e6ab69644a77dbf730e8a090a9e1067d47d72f))
+* **typechecker:** correct E3001 narrowing hint to use cast() syntax ([#2264](https://github.com/grayscale-lang/grayscale/issues/2264)) ([77a78ba](https://github.com/grayscale-lang/grayscale/commit/77a78ba3feed89e232cc989f3ce1e274524398bb))
+* **typechecker:** emit W3005 for implicit enum selectors and tagged enum patterns in when/is ([#2259](https://github.com/grayscale-lang/grayscale/issues/2259)) ([1b28944](https://github.com/grayscale-lang/grayscale/commit/1b2894418b9f1367719bc71e8dcebac2352e3356))
+* **typechecker:** reject multi-return functions in 5 expression contexts ([#2260](https://github.com/grayscale-lang/grayscale/issues/2260)) ([fdbeeb4](https://github.com/grayscale-lang/grayscale/commit/fdbeeb488b8ec534db34da97fad99843cc6a37bf))
+* **typechecker:** reject tagged enums in interpolation and map values ([#2261](https://github.com/grayscale-lang/grayscale/issues/2261)) ([de576aa](https://github.com/grayscale-lang/grayscale/commit/de576aab0f162b82fe70362dde93b46ae738ee2b))
+* **typechecker:** resolve implicit enum selectors in map key bracket access ([#2246](https://github.com/grayscale-lang/grayscale/issues/2246)) ([93732d9](https://github.com/grayscale-lang/grayscale/commit/93732d93ad4995a711376c3c03489eeb9986146f))
+* **typechecker:** resolve implicit enum selectors in map key bracket access ([#2246](https://github.com/grayscale-lang/grayscale/issues/2246)) ([126f6fc](https://github.com/grayscale-lang/grayscale/commit/126f6fc4799e26ad3c9a137dfac811d45b9f3eed))
+* **typechecker:** resolve implicit enum selectors in map literal values ([#2249](https://github.com/grayscale-lang/grayscale/issues/2249)) ([ceaddcd](https://github.com/grayscale-lang/grayscale/commit/ceaddcd1885866439659383d49d4a888c8743753))
+* **typechecker:** resolve implicit enum selectors in struct field defaults ([#2223](https://github.com/grayscale-lang/grayscale/issues/2223)) ([96a410e](https://github.com/grayscale-lang/grayscale/commit/96a410e7ed9df9ec8c01aa1aa97f614d7a61cc86))
+* **typechecker:** resolve implicit enum selectors in struct field defaults ([#2223](https://github.com/grayscale-lang/grayscale/issues/2223)) ([98763db](https://github.com/grayscale-lang/grayscale/commit/98763db7fb010afb0c129576addeddf81715ab18))
+
 ## [0.2.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.0...grayscale-v0.2.1) (2026-08-05)
 
 
