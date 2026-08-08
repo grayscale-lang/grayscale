@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 379 codes** (258 errors, 17 warnings, 104 panics)
+**Total: 378 codes** (258 errors, 17 warnings, 103 panics)
 
 ---
 
@@ -405,7 +405,6 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0101` | server | server.cors: origin contains CR or LF — HTTP header injection is not allowed |
 | `P0102` | arithmetic | invalid digit in integer literal |
 | `P0103` | io | file path contains an embedded null byte |
-| `P0104` | platform | this operation is not yet supported on Windows |
 
 ---
 
