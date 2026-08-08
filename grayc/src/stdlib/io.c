@@ -16,6 +16,7 @@
 #endif
 
 #include "io.h"
+#include "../runtime/platform_rt.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,8 +24,10 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <errno.h>
-#include <glob.h>
 #include <stdlib.h>
+#if !GRAY_RT_WINDOWS
+#include <glob.h>
+#endif
 
 #define GRAY_IO_PATH_BUF          4096
 #define GRAY_IO_COPY_BUF          8192
@@ -33,6 +36,119 @@
 #define GRAY_IO_FILE_MODE         0644
 #define GRAY_IO_WALK_INITIAL_CAP  32
 #define GRAY_IO_MAX_TEMP_PATHS    256
+
+#if GRAY_RT_WINDOWS
+/* ---- glob(3) for Windows ----
+ *
+ * Windows has no glob(3), but MinGW does provide dirent, so the subset the
+ * standard library actually exposes is a directory walk plus a matcher:
+ * wildcards in the final path component, matched case-insensitively the way
+ * NTFS callers expect. Wildcards in directory components are not supported.
+ */
+#include <ctype.h>
+
+#define GLOB_NOSORT  0
+#define GLOB_NOMATCH 3
+
+typedef struct {
+    size_t gl_pathc;
+    char **gl_pathv;
+} glob_t;
+
+/* '*' and '?' matching, iterative with backtracking so a pattern like
+ * "*a*b" cannot blow the stack on a long name. */
+static bool gray_glob_match(const char *pat, const char *name) {
+    const char *star = NULL;
+    const char *retry = name;
+    while (*name) {
+        if (*pat == '?' || tolower((unsigned char)*pat) == tolower((unsigned char)*name)) {
+            pat++;
+            name++;
+        } else if (*pat == '*') {
+            star = pat++;
+            retry = name;
+        } else if (star) {
+            pat = star + 1;
+            name = ++retry;
+        } else {
+            return false;
+        }
+    }
+    while (*pat == '*') pat++;
+    return *pat == '\0';
+}
+
+static int glob(const char *pattern, int flags, void *errfn, glob_t *g) {
+    (void)flags;
+    (void)errfn;
+    g->gl_pathc = 0;
+    g->gl_pathv = NULL;
+
+    /* Split off the final component; everything before it is a literal directory. */
+    const char *sep = NULL;
+    for (const char *p = pattern; *p; p++) {
+        if (*p == '/' || *p == '\\') sep = p;
+    }
+
+    char dir[GRAY_IO_PATH_BUF];
+    const char *leaf;
+    if (sep) {
+        size_t dlen = (size_t)(sep - pattern);
+        if (dlen >= sizeof(dir)) return GLOB_NOMATCH;
+        memcpy(dir, pattern, dlen);
+        dir[dlen] = '\0';
+        if (dlen == 0) {
+            dir[0] = *sep;
+            dir[1] = '\0';
+        }
+        leaf = sep + 1;
+    } else {
+        dir[0] = '.';
+        dir[1] = '\0';
+        leaf = pattern;
+    }
+
+    DIR *d = opendir(dir);
+    if (!d) return GLOB_NOMATCH;
+
+    size_t cap = 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        if (!gray_glob_match(leaf, ent->d_name)) continue;
+
+        if (g->gl_pathc == cap) {
+            size_t ncap = cap ? cap * 2 : 16;
+            char **grown = realloc(g->gl_pathv, ncap * sizeof(char *));
+            if (!grown) break;
+            g->gl_pathv = grown;
+            cap = ncap;
+        }
+
+        /* Reuse the caller's own prefix verbatim so their separator style is
+         * preserved in the results. */
+        char full[GRAY_IO_PATH_BUF];
+        if (sep) {
+            snprintf(full, sizeof(full), "%.*s%s", (int)(sep - pattern + 1), pattern, ent->d_name);
+        } else {
+            snprintf(full, sizeof(full), "%s", ent->d_name);
+        }
+        char *copy = _strdup(full);
+        if (!copy) break;
+        g->gl_pathv[g->gl_pathc++] = copy;
+    }
+    closedir(d);
+
+    return g->gl_pathc > 0 ? 0 : GLOB_NOMATCH;
+}
+
+static void globfree(glob_t *g) {
+    for (size_t i = 0; i < g->gl_pathc; i++) free(g->gl_pathv[i]);
+    free(g->gl_pathv);
+    g->gl_pathv = NULL;
+    g->gl_pathc = 0;
+}
+#endif /* GRAY_RT_WINDOWS */
 
 /* ---- Temp cleanup registry ---- */
 
@@ -481,7 +597,7 @@ GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
 
 bool gray_io_make_dir(GrayString path) {
     validate_path(path);
-    return mkdir(path.data, GRAY_IO_DIR_MODE) == 0;
+    return gray_rt_mkdir(path.data, GRAY_IO_DIR_MODE) == 0;
 }
 
 bool gray_io_make_dir_all(GrayString path) {
@@ -494,11 +610,11 @@ bool gray_io_make_dir_all(GrayString path) {
     for (char *p = buf + 1; *p; p++) {
         if (*p == '/' || *p == '\\') {
             *p = '\0';
-            mkdir(buf, GRAY_IO_DIR_MODE);
+            gray_rt_mkdir(buf, GRAY_IO_DIR_MODE);
             *p = '/';
         }
     }
-    return mkdir(buf, GRAY_IO_DIR_MODE) == 0 || errno == EEXIST;
+    return gray_rt_mkdir(buf, GRAY_IO_DIR_MODE) == 0 || errno == EEXIST;
 }
 
 bool gray_io_remove_dir(GrayString path) {
