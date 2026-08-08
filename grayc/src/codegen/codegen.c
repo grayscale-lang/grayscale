@@ -5071,6 +5071,11 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_FUNCTION: c_elem = "void *"; break;
             default: break;
             }
+            /* Wide ints share TK_INT/TK_UINT but need their own C types */
+            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
+                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
+                if (mapped) c_elem = mapped;
+            }
             if (val_t->kind == TK_STRUCT) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
             }
@@ -5132,6 +5137,11 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_STRING: c_elem = "GrayString"; break;
             case TK_FUNCTION: c_elem = "void *"; break;
             default: break;
+            }
+            /* Wide ints share TK_INT/TK_UINT but need their own C types */
+            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
+                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
+                if (mapped) c_elem = mapped;
             }
             if (val_t->kind == TK_STRUCT) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
@@ -5292,6 +5302,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (pet->kind == TK_MAP) pp_c_elem = "GrayMap";
             else if (pet->kind == TK_STRUCT) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
             else if (pet->kind == TK_ENUM) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
+            else if (pet->kind == TK_INT || pet->kind == TK_UINT)
+                pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
         }
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
