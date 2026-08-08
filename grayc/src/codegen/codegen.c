@@ -5063,6 +5063,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_UINT: c_elem = "uint64_t"; break;
             case TK_FLOAT: c_elem = "double"; break;
             case TK_BOOL: c_elem = "bool"; break;
+            case TK_CHAR: c_elem = "int32_t"; break;
+            case TK_BYTE: c_elem = "uint8_t"; break;
             case TK_STRING: c_elem = "GrayString"; break;
             case TK_ARRAY: c_elem = "GrayArray"; break;
             case TK_MAP: c_elem = "GrayMap"; break;
@@ -5125,6 +5127,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_UINT: c_elem = "uint64_t"; break;
             case TK_FLOAT: c_elem = "double"; break;
             case TK_BOOL: c_elem = "bool"; break;
+            case TK_CHAR: c_elem = "int32_t"; break;
+            case TK_BYTE: c_elem = "uint8_t"; break;
             case TK_STRING: c_elem = "GrayString"; break;
             case TK_FUNCTION: c_elem = "void *"; break;
             default: break;
@@ -5281,6 +5285,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             GrayType *pet = type_from_name(pp_elem_tn);
             if (pet->kind == TK_FLOAT) pp_c_elem = "double";
             else if (pet->kind == TK_BOOL) pp_c_elem = "bool";
+            else if (pet->kind == TK_CHAR) pp_c_elem = "int32_t";
+            else if (pet->kind == TK_BYTE) pp_c_elem = "uint8_t";
             else if (pet->kind == TK_STRING) pp_c_elem = "GrayString";
             else if (pet->kind == TK_ARRAY) pp_c_elem = "GrayArray";
             else if (pet->kind == TK_MAP) pp_c_elem = "GrayMap";
