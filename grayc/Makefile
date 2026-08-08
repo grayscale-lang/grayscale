@@ -247,11 +247,10 @@ STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
 tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
-# The runtime, panic, and stdlib suites link against the runtime and standard
-# library, which are still POSIX-only; test_panics is additionally fork-based.
-# On Windows run the frontend suites, and say plainly what was left out.
+# test_panics forks a child per case to capture the panic, and there is no
+# fork on Windows. Every other suite runs everywhere.
 ifdef WINDOWS
-UNIT_SUITES = lexer parser typechecker util
+UNIT_SUITES = lexer parser typechecker util runtime stdlib
 else
 UNIT_SUITES = lexer parser typechecker util runtime panics stdlib
 endif
@@ -267,26 +266,19 @@ test-unit: $(TEST_DEPS) $(UNIT_BINS)
 	@rm -rf tests/*.dSYM
 ifdef WINDOWS
 	@echo ""
-	@echo "Skipped on Windows: runtime, panics, stdlib (need libgrayrt.a; panics is fork-based)."
+	@echo "Skipped on Windows: panics (fork-based)."
 endif
 
-ifdef WINDOWS
-test-e2e:
-	@echo "test-e2e is not available on Windows: tests/test_codegen.c uses popen()"
-	@echo "and /tmp, and it links Grayscale programs, which needs libgrayrt.a."
-else
 test-e2e: build tests/test_codegen$(EXE)
 	@echo ""
 	@echo "=== End-to-End Codegen Tests ==="
 	@./tests/test_codegen$(EXE)
 	@rm -f tests/test_codegen$(EXE)
 	@rm -rf tests/*.dSYM
-endif
 
 ifdef WINDOWS
-test-integration:
-	@echo "test-integration is not available on Windows: scripts/run_tests.sh"
-	@echo "needs bash, and the tests link binaries, which needs libgrayrt.a."
+test-integration: build
+	@powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/run_tests.ps1 -NoBuild
 else
 test-integration: build
 	@../scripts/run_tests.sh

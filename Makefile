@@ -3,10 +3,9 @@
        test test-unit test-e2e test-integration test-go \
        test-ubsan test-asan
 
-# Windows (MSYS2/Git Bash/MinGW make) needs an .exe suffix on every binary, and
-# cannot build libgrayrt.a yet because the runtime and standard library are
-# still POSIX-only. GNU make sets OS=Windows_NT there; everywhere else EXE is
-# empty and every rule below is byte-for-byte what it was.
+# Windows (MSYS2/Git Bash/MinGW make) needs an .exe suffix on every binary.
+# GNU make sets OS=Windows_NT there; everywhere else EXE is empty and every
+# rule below is byte-for-byte what it was.
 ifeq ($(OS),Windows_NT)
   EXE = .exe
   WINDOWS = 1
@@ -53,14 +52,13 @@ test: build
 	@echo ""
 	@"$(MAKE)" -C grayc test-unit
 	@"$(MAKE)" -C grayc test-e2e
-ifndef WINDOWS
+ifdef WINDOWS
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -NoBuild
+else
 	@bash scripts/run_tests.sh
 endif
 	@echo ""
 	@echo "All test suites completed."
-ifdef WINDOWS
-	@echo "Skipped on Windows: e2e and integration suites (see 'make test-integration')."
-endif
 
 test-unit:
 	@"$(MAKE)" -C grayc test-unit
@@ -69,10 +67,8 @@ test-e2e: build
 	@"$(MAKE)" -C grayc test-e2e
 
 ifdef WINDOWS
-test-integration:
-	@echo "test-integration is not available on Windows: scripts/run_tests.sh needs"
-	@echo "bash, and the tests compile Grayscale programs to binaries, which needs"
-	@echo "libgrayrt.a (the runtime and standard library are still POSIX-only)."
+test-integration: build
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run_tests.ps1 -NoBuild
 else
 test-integration: build
 	@bash scripts/run_tests.sh
@@ -126,12 +122,6 @@ endif
 	@echo ""
 	@echo "Build complete: ./$(BINARY_NAME)"
 	@echo "Run with: ./$(BINARY_NAME) <file.gray>"
-ifdef WINDOWS
-	@echo ""
-	@echo "Note: libgrayrt.a was not built - the Grayscale runtime and standard"
-	@echo "library are still POSIX-only, so 'gray build' and 'gray run' cannot"
-	@echo "produce a binary yet. 'check', 'fmt', 'doc', and '--emit-c' work."
-endif
 
 install: build
 	@echo "Installing Grayscale to $(INSTALL_PATH)..."
