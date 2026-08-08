@@ -158,41 +158,21 @@ fails with exit 1 and no diagnostic at all.)
 
 #### Build and test
 
-**With make** (MSYS2, Git Bash, or any GNU make with a POSIX shell) — the same
-commands as every other platform:
+Use `make`, the same as every other platform. It needs a POSIX shell, which
+MSYS2 and Git Bash both provide.
 
 ```bash
 make build       # grayc.exe + gray.exe
-make test-unit   # frontend unit suites
+make test-unit   # C unit suites
+make test-e2e    # end-to-end codegen tests
 make test-go     # Go unit tests
 make clean
 ```
 
 The Makefiles detect Windows via `OS=Windows_NT`, add the `.exe` suffix, select
-`gcc` over the nonexistent `cc`, switch to the MinGW flag set, and build the
-compiler without `libgrayrt.a`. Targets that genuinely cannot work here
-(`test-e2e`, `test-integration`, `test-ubsan`, `test-asan`, `leaks`) explain why
-instead of failing obscurely.
-
-**Without make** — PowerShell scripts that need no POSIX shell at all:
-
-```powershell
-.\scripts\build.ps1                    # grayc.exe + gray.exe
-.\scripts\build.ps1 -Target compiler   # just grayc.exe
-.\scripts\build.ps1 -DebugBuild        # -g -O0 -DDEBUG
-.\scripts\build.ps1 -CC C:\path\to\gcc.exe
-.\scripts\build.ps1 -Target clean
-
-.\scripts\test.ps1                     # frontend unit suites + Go tests
-```
-
-Run them from the repo root; they locate the repo from their own path, not from
-the working directory. `scripts/build.ps1` globs `grayc/src/**/*.c` minus the
-runtime, stdlib, and vendor trees, which is exactly the `SRC` list in
-`grayc/Makefile`, so the two cannot drift apart. Shared logic lives in
-`scripts/common.ps1`.
-
-Either path produces the same artifacts. Use whichever you prefer.
+`gcc` over the nonexistent `cc`, and switch to the MinGW flag set. The
+sanitizer and leak-check targets have no MinGW equivalent and say so rather
+than failing obscurely.
 
 `test_panics` is the one suite that does not run on Windows: it forks a child
 process per case to capture the panic, and Windows has no `fork`.

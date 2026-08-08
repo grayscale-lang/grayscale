@@ -77,13 +77,11 @@ Grayscale builds on Windows with [MinGW-w64](https://www.mingw-w64.org/).
 winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
 git clone https://github.com/grayscale-lang/grayscale.git
 cd grayscale
-make build             # if you have make (MSYS2 / Git Bash)
-.\scripts\build.ps1    # or, with no POSIX shell at all
+make build
 ```
 
-`make build`, `make test-unit`, `make test-go`, and `make clean` work the same
-as on macOS and Linux. `scripts/build.ps1` and `scripts/test.ps1` are equivalent
-PowerShell alternatives for machines without make.
+`make build`, `make test`, and `make clean` work the same as on macOS and
+Linux. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
 
 ---
 
