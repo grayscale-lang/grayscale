@@ -120,9 +120,17 @@ else ifeq ($(UNAME_M),x86_64)
   ATOMIC_ARCH = x86_64
 endif
 
-ifdef ATOMIC_ARCH
-  ATOMIC_SRC = src/runtime/arch/$(ATOMIC_ARCH)/atomic.s
-  ATOMIC_OBJ = src/runtime/arch/$(ATOMIC_ARCH)/atomic.o
+ifdef WINDOWS
+# arch/*/atomic.s is written for the System V AMD64 and AAPCS conventions,
+# taking arguments in rdi/rsi/rdx. Windows x64 passes them in rcx/rdx/r8, so
+# that assembly reads the wrong registers here — and it still assembles
+# cleanly, making the result silent corruption rather than a build error. Use
+# the intrinsic implementation instead, which is correct for any ABI.
+ATOMIC_SRC = src/runtime/atomic_builtin.c
+ATOMIC_OBJ = src/runtime/atomic_builtin.o
+else ifdef ATOMIC_ARCH
+ATOMIC_SRC = src/runtime/arch/$(ATOMIC_ARCH)/atomic.s
+ATOMIC_OBJ = src/runtime/arch/$(ATOMIC_ARCH)/atomic.o
 endif
 
 # Include paths for compiler source
@@ -146,10 +154,14 @@ $(BIN): $(OBJ)
 $(RT_LIB): $(RT_OBJ) $(ATOMIC_OBJ)
 	ar rcs $@ $^
 
-# Assembly rule for arch-specific atomic operations
+# Assembly rule for arch-specific atomic operations. On Windows ATOMIC_SRC is
+# a .c file, which the generic src/runtime/%.o rule below already builds with
+# the full runtime flags.
+ifndef WINDOWS
 ifdef ATOMIC_ARCH
 $(ATOMIC_OBJ): $(ATOMIC_SRC)
 	$(CC) -c -o $@ $<
+endif
 endif
 
 # Runtime/stdlib flags: same as CFLAGS but no -Wpedantic (GCC statement expressions)
