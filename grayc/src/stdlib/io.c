@@ -25,7 +25,9 @@
 #include <dirent.h>
 #include <errno.h>
 #include <stdlib.h>
-#if !GRAY_RT_WINDOWS
+#if GRAY_RT_WINDOWS
+#include "../runtime/win32.h"
+#else
 #include <glob.h>
 #endif
 
@@ -515,19 +517,40 @@ bool gray_io_append_bytes(GrayString path, GrayArray data) {
 }
 
 GrayString gray_io_temp_file(GrayArena *arena) {
+#if GRAY_RT_WINDOWS
+    char tmp[MAX_PATH];
+    if (!GetTempPathA(sizeof(tmp), tmp)) return gray_string_lit("");
+    char path[MAX_PATH];
+    if (!GetTempFileNameA(tmp, "gray", 0, path)) return gray_string_lit("");
+    temp_registry_add(path);
+    return gray_string_new(arena, path, (int32_t)strlen(path));
+#else
     char tmpl[] = "/tmp/gray_XXXXXX";
     int fd = mkstemp(tmpl);
     if (fd < 0) return gray_string_lit("");
     close(fd);
     temp_registry_add(tmpl);
     return gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+#endif
 }
 
 GrayString gray_io_temp_dir(GrayArena *arena) {
+#if GRAY_RT_WINDOWS
+    char tmp[MAX_PATH];
+    if (!GetTempPathA(sizeof(tmp), tmp)) return gray_string_lit("");
+    char path[MAX_PATH];
+    /* GetTempFileNameA creates a 0-byte file; repurpose the name as a dir. */
+    if (!GetTempFileNameA(tmp, "gray", 0, path)) return gray_string_lit("");
+    DeleteFileA(path);
+    if (!CreateDirectoryA(path, NULL)) return gray_string_lit("");
+    temp_registry_add(path);
+    return gray_string_new(arena, path, (int32_t)strlen(path));
+#else
     char tmpl[] = "/tmp/gray_XXXXXX";
     if (!mkdtemp(tmpl)) return gray_string_lit("");
     temp_registry_add(tmpl);
     return gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+#endif
 }
 
 bool gray_io_delete_file(GrayString path) {
@@ -1083,6 +1106,22 @@ GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, G
 
 GrayResult_string gray_io_temp_file_result(GrayArena *arena) {
     GrayResult_string r;
+#if GRAY_RT_WINDOWS
+    char tmp[MAX_PATH];
+    if (!GetTempPathA(sizeof(tmp), tmp)) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary file"));
+        return r;
+    }
+    char path[MAX_PATH];
+    if (!GetTempFileNameA(tmp, "gray", 0, path)) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary file"));
+        return r;
+    }
+    temp_registry_add(path);
+    r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
+#else
     char tmpl[] = "/tmp/gray_XXXXXX";
     int fd = mkstemp(tmpl);
     if (fd < 0) {
@@ -1093,12 +1132,35 @@ GrayResult_string gray_io_temp_file_result(GrayArena *arena) {
     close(fd);
     temp_registry_add(tmpl);
     r.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+#endif
     r.v1 = NULL;
     return r;
 }
 
 GrayResult_string gray_io_temp_dir_result(GrayArena *arena) {
     GrayResult_string r;
+#if GRAY_RT_WINDOWS
+    char tmp[MAX_PATH];
+    if (!GetTempPathA(sizeof(tmp), tmp)) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary directory"));
+        return r;
+    }
+    char path[MAX_PATH];
+    if (!GetTempFileNameA(tmp, "gray", 0, path)) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary directory"));
+        return r;
+    }
+    DeleteFileA(path);
+    if (!CreateDirectoryA(path, NULL)) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary directory"));
+        return r;
+    }
+    temp_registry_add(path);
+    r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
+#else
     char tmpl[] = "/tmp/gray_XXXXXX";
     if (!mkdtemp(tmpl)) {
         r.v0 = gray_string_lit("");
@@ -1107,6 +1169,7 @@ GrayResult_string gray_io_temp_dir_result(GrayArena *arena) {
     }
     temp_registry_add(tmpl);
     r.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+#endif
     r.v1 = NULL;
     return r;
 }
