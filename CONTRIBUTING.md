@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to Grayscale! This guide will help you get started.
 
-> **Platform note:** Grayscale supports **macOS** and **Linux** only. Windows is not a supported contributor platform — you won't be able to build or test locally.
+> **Platform note:** Grayscale runs on **macOS** and **Linux**. Windows contributors can build and test the compiler frontend — see [Building from Source -> Windows](#windows) — but the runtime and standard library are still POSIX-only, so Grayscale programs cannot be compiled to a binary on Windows yet.
 
 Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language specification. It's the canonical reference for syntax, types, and every stdlib module.
 
@@ -11,6 +11,8 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 - [Getting Started](#getting-started)
 - [Installing Go](#installing-go)
 - [Building from Source](#building-from-source)
+  - [Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux)
+  - [Windows](#windows)
 - [How the Compiler Works](#how-the-compiler-works)
 - [Making Changes](#making-changes)
 - [Project Structure](#project-structure)
@@ -96,6 +98,20 @@ go version
 
 ## Building from Source
 
+Grayscale builds with `make` on all three platforms. What differs is how
+complete the build is:
+
+| | macOS / Linux | Windows |
+|---|---|---|
+| Compiler (`grayc`) | builds | builds |
+| Runtime + stdlib (`libgrayrt.a`) | builds | not ported yet |
+| Compile a program to a binary | yes | no |
+
+Start with [Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux)
+or [Windows](#windows), then come back to the shared sections below.
+
+### Unix-based systems (macOS and Linux)
+
 ```bash
 # Build the binary
 make build
@@ -113,7 +129,7 @@ GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
 >
 > Without this, you'll silently run against whatever `grayc` is installed on your system and wonder why your changes had no effect.
 
-### Makefile Commands
+#### Makefile Commands
 
 | Command | Description |
 |---------|-------------|
@@ -129,6 +145,109 @@ GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
 | `make test-asan` | ASan+UBSan tests (Linux recommended) |
 
 All test targets can be run from the repo root — no need to `cd` into subdirectories.
+
+### Windows
+
+Windows contributors can work on the compiler frontend. The runtime and
+standard library (`grayc/src/runtime/`, `grayc/src/stdlib/`) are still
+POSIX-only, so `libgrayrt.a` is not built and Grayscale programs cannot be
+linked into a binary on Windows yet.
+
+#### Prerequisites
+
+- **MinGW-w64 GCC or Clang.** MSVC is not supported and is not planned: the
+  compiler emits GNU C (statement expressions, `__auto_type`, `__typeof__`,
+  `__builtin_*_overflow`) into every generated program.
+- **Go 1.23 or higher**
+
+```powershell
+winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
+```
+
+MSYS2 works too; the scripts find `C:\msys64\ucrt64\bin` and similar locations
+automatically and put them on `PATH` for the session. (That last part matters:
+`cc1.exe` loads its DLLs from beside `gcc.exe`, and without them the build
+fails with exit 1 and no diagnostic at all.)
+
+#### Build and test
+
+**With make** (MSYS2, Git Bash, or any GNU make with a POSIX shell) — the same
+commands as every other platform:
+
+```bash
+make build       # grayc.exe + gray.exe
+make test-unit   # frontend unit suites
+make test-go     # Go unit tests
+make clean
+```
+
+The Makefiles detect Windows via `OS=Windows_NT`, add the `.exe` suffix, select
+`gcc` over the nonexistent `cc`, switch to the MinGW flag set, and build the
+compiler without `libgrayrt.a`. Targets that genuinely cannot work here
+(`test-e2e`, `test-integration`, `test-ubsan`, `test-asan`, `leaks`) explain why
+instead of failing obscurely.
+
+**Without make** — PowerShell scripts that need no POSIX shell at all:
+
+```powershell
+.\scripts\build.ps1                    # grayc.exe + gray.exe
+.\scripts\build.ps1 -Target compiler   # just grayc.exe
+.\scripts\build.ps1 -DebugBuild        # -g -O0 -DDEBUG
+.\scripts\build.ps1 -CC C:\path\to\gcc.exe
+.\scripts\build.ps1 -Target clean
+
+.\scripts\test.ps1                     # frontend unit suites + Go tests
+```
+
+Run them from the repo root; they locate the repo from their own path, not from
+the working directory. `scripts/build.ps1` globs `grayc/src/**/*.c` minus the
+runtime, stdlib, and vendor trees, which is exactly the `SRC` list in
+`grayc/Makefile`, so the two cannot drift apart. Shared logic lives in
+`scripts/common.ps1`.
+
+Either path produces the same artifacts. Use whichever you prefer.
+
+#### What works
+
+| Command | Windows |
+|---------|:-------:|
+| `check`, `fmt`, `doc`, `new`, `man`, `version` | works |
+| `build <file> --emit-c` | works |
+| `build`, `run`, `verify`, `watch`, `cross` | needs the runtime port |
+
+| Test suite | Windows |
+|------------|:-------:|
+| `test_lexer`, `test_parser`, `test_typechecker`, `test_util` | run |
+| Go tests (`./cli/...`, `./internal/driver/...`) | run |
+| `test_codegen` (popen, `/tmp`), `test_panics` (fork) | pending |
+| `test_runtime`, `test_stdlib` (need `libgrayrt.a`) | pending |
+| `scripts/run_tests.sh` integration suite (bash) | pending |
+
+#### Writing portable compiler code
+
+`grayc/src/util/platform.h` is the single place OS differences are handled.
+When touching compiler code, use it rather than POSIX headers directly:
+
+| Instead of | Use |
+|------------|-----|
+| `strrchr(path, '/')` | `gray_path_basename()` / `gray_path_rsep()` |
+| `snprintf(buf, n, "%s/%s", a, b)` | `gray_path_join()` |
+| `realpath(p, NULL)` | `gray_realpath()` / `gray_realpath_into()` |
+| `strcmp()` on paths | `gray_path_equal()` |
+| `stat()` + `S_ISDIR`/`S_ISREG` | `gray_is_dir()` / `gray_is_file()` |
+| `access(p, R_OK)`, `unlink()`, `getcwd()` | `gray_file_readable()`, `gray_remove_file()`, `gray_getcwd()` |
+| `p[0] == '/'` | `gray_path_is_absolute()` |
+| `tmpfile()`, `/tmp/...` | `gray_tmpfile()`, `gray_temp_path()` |
+| `isatty(STDERR_FILENO)` | `gray_stderr_is_tty()` / `gray_stdout_is_tty()` |
+| `system()`, `fork()` + `execv()` | `gray_spawn_path()` / `gray_spawn_exact()` / `gray_spawn_quiet()` |
+
+The compiler invokes the C compiler through an **argv array**, never a shell
+string. That means arguments containing spaces need no quoting and can never be
+reinterpreted as shell syntax — do not reintroduce `system()`.
+
+`platform.h` deliberately does not include `<windows.h>`; that header defines
+`ERROR`, `min`, and `max` as macros, which collide with the compiler's own
+`Severity` enum. Keep Windows headers inside `platform.c`.
 
 ---
 

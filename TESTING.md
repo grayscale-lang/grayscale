@@ -117,5 +117,41 @@ All tests run automatically on push to `main` via GitHub Actions:
 |----------|:--------:|:----------:|:----------:|
 | Ubuntu   | unit + e2e + integration | UBSan + ASan |  |
 | macOS    | unit + e2e + integration | UBSan |  |
+| Windows  | lexer + parser + typechecker + util | — | ✓ |
 
 CI workflow: `.github/workflows/ci.yml`
+
+---
+
+## Windows
+
+Windows runs the compiler frontend suites only. The runtime and standard
+library have not been ported, so the suites that need `libgrayrt.a` or POSIX
+process facilities do not run there.
+
+```bash
+make test-unit             # frontend unit suites
+make test-go               # Go unit tests
+```
+
+Or, with no POSIX shell:
+
+```powershell
+.\scripts\test.ps1                 # frontend unit suites + Go tests
+.\scripts\test.ps1 -KeepBinaries   # leave the test .exe files in place
+.\scripts\test.ps1 -SkipGo
+```
+
+| Suite | Windows | Why |
+|-------|:-------:|-----|
+| `test_lexer`, `test_parser`, `test_typechecker`, `test_util` | runs | no runtime dependency |
+| Go tests | runs | |
+| `test_codegen` | pending | uses `popen()` and `/tmp` |
+| `test_panics` | pending | fork-based |
+| `test_runtime`, `test_stdlib` | pending | need `libgrayrt.a` |
+| `integration-tests/` | pending | `scripts/run_tests.sh` needs bash |
+
+`scripts/test.ps1` prints an explicit `SKIPPED` line for each of these rather than
+omitting them, so the gap is visible in the output.
+
+See [Building from Source -> Windows](CONTRIBUTING.md#windows) for setup.
