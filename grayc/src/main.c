@@ -13,7 +13,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdint.h>
-#include <dirent.h>
 #include <time.h>
 
 #include "util/arena.h"
@@ -544,25 +543,32 @@ static int gray_path_cmp(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
-static int scan_gray_files(const char *dir_path, char paths[][PATH_BUF_SIZE], int max_files) {
-    DIR *d = opendir(dir_path);
-    if (!d) return -1;
+struct scan_ctx {
+    const char *dir_path;
+    char (*paths)[PATH_BUF_SIZE];
+    int count;
+    int max;
+};
 
-    int count = 0;
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL && count < max_files) {
-        const char *name = ent->d_name;
-        if (name[0] == '.') continue; /* skip hidden files and . / .. */
-        size_t nlen = strlen(name);
-        if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0) continue;
-        gray_path_join(paths[count], PATH_BUF_SIZE, dir_path, name);
-        count++;
-    }
-    closedir(d);
+static bool scan_visitor(const char *name, void *arg) {
+    struct scan_ctx *ctx = arg;
+    if (name[0] == '.') return true; /* skip hidden files */
+    size_t nlen = strlen(name);
+    if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0)
+        return true;
+    if (ctx->count >= ctx->max) return false;
+    gray_path_join(ctx->paths[ctx->count], PATH_BUF_SIZE, ctx->dir_path, name);
+    ctx->count++;
+    return true;
+}
+
+static int scan_gray_files(const char *dir_path, char paths[][PATH_BUF_SIZE], int max_files) {
+    struct scan_ctx ctx = { dir_path, paths, 0, max_files };
+    if (!gray_scandir(dir_path, scan_visitor, &ctx)) return -1;
 
     /* Sort alphabetically for deterministic import order */
-    qsort(paths, (size_t)count, PATH_BUF_SIZE, gray_path_cmp);
-    return count;
+    qsort(paths, (size_t)ctx.count, PATH_BUF_SIZE, gray_path_cmp);
+    return ctx.count;
 }
 
 /* --- C compiler invocation ---

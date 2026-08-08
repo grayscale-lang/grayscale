@@ -105,6 +105,18 @@ bool gray_getcwd(char *buf, size_t n);
  * Binary mode: bytes land on disk exactly as given on every platform. */
 bool gray_write_file_mode(const char *path, const void *data, size_t len);
 
+/* --- Directory scanning --- */
+
+/* Callback invoked for each entry in a directory. `name` is the bare filename
+ * (not the full path), excluding "." and "..". Return true to continue
+ * iteration, false to stop early. */
+typedef bool (*gray_dir_visitor)(const char *name, void *ctx);
+
+/* Iterate over entries in `dir_path`, calling `fn` for each one (excluding
+ * "." and ".."). Returns true on success, false if the directory cannot be
+ * opened. */
+bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx);
+
 /* --- Self and temp locations --- */
 
 /* Directory containing the running executable, without a trailing separator.

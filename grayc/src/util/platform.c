@@ -44,6 +44,7 @@
 
 #else /* POSIX */
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <spawn.h>
 #include <sys/stat.h>
@@ -257,6 +258,44 @@ bool gray_getcwd(char *buf, size_t n) {
     return _getcwd(buf, (int)n) != NULL;
 #else
     return getcwd(buf, n) != NULL;
+#endif
+}
+
+bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx) {
+#if GRAY_OS_WINDOWS
+    char pattern[GRAY_PATH_BUF];
+    int len = snprintf(pattern, sizeof(pattern), "%s\\*", dir_path);
+    if (len < 0 || (size_t)len >= sizeof(pattern)) return false;
+
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE) return false;
+
+    do {
+        const char *name = fd.cFileName;
+        if (name[0] == '.' && (name[1] == '\0' ||
+            (name[1] == '.' && name[2] == '\0')))
+            continue;
+        if (!fn(name, ctx)) break;
+    } while (FindNextFileA(h, &fd));
+
+    FindClose(h);
+    return true;
+#else
+    DIR *d = opendir(dir_path);
+    if (!d) return false;
+
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        const char *name = ent->d_name;
+        if (name[0] == '.' && (name[1] == '\0' ||
+            (name[1] == '.' && name[2] == '\0')))
+            continue;
+        if (!fn(name, ctx)) break;
+    }
+
+    closedir(d);
+    return true;
 #endif
 }
 
