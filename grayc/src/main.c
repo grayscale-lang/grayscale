@@ -1624,23 +1624,6 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-#if GRAY_OS_WINDOWS
-    /* Producing a binary needs libgrayrt.a — the Grayscale runtime and standard
-     * library, which have not been ported to Windows yet. Everything up to and
-     * including C generation works; only the link step is missing.
-     * Deleting this block is what "the Windows runtime port is done" means. */
-    fprintf(stderr, "gray: compiling to a native binary is not yet supported on Windows.\n");
-    fprintf(stderr, "  Working today: gray check, gray fmt, gray doc, gray build --emit-c\n");
-    fprintf(stderr, "  The runtime and standard library Windows port is still in progress.\n");
-    codegen_destroy(&codegen);
-    typechecker_free(checker);
-    diagnostic_destroy(diag);
-    arena_destroy(arena);
-    free(source);
-    free(default_output);
-    return 1;
-#endif
-
 
     /* Pick a C compiler (skip detection when --cc overrides) */
     const char *cc_cmd = cc_override;

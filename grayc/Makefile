@@ -92,12 +92,20 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/sync.c \
          src/stdlib/atomic.c \
          src/stdlib/channels.c \
-         src/stdlib/regex.c \
-         src/stdlib/net.c \
-         src/stdlib/http.c \
-         src/stdlib/server.c \
          src/stdlib/strconv.c \
          src/vendor/sqlite3.c
+
+# Sockets (net, http, server) still need the Winsock port, and regex needs an
+# engine since Windows has no <regex.h>. They are left out of the archive on
+# Windows rather than stubbed: the linker only pulls objects a program actually
+# references, so everything that does not import these modules links normally.
+ifndef WINDOWS
+RT_SRC += src/stdlib/regex.c \
+          src/stdlib/net.c \
+          src/stdlib/http.c \
+          src/stdlib/server.c
+endif
+
 RT_OBJ = $(RT_SRC:.c=.o)
 RT_LIB = libgrayrt.a
 
@@ -124,18 +132,11 @@ INCLUDES = -Isrc
 
 all: build
 
-ifdef WINDOWS
-# The runtime and standard library are still POSIX-only, so libgrayrt.a cannot
-# be built here. The compiler frontend is self-contained and builds fine.
-build: compiler-only
-else
 build: $(BIN) $(RT_LIB)
 	@echo "gray: build complete ($(BIN) + $(RT_LIB))"
-endif
 
 # Compiler frontend only — skips libgrayrt.a. Useful for fast iteration on
-# the lexer/parser/typechecker, and it is all the Windows bootstrap can build
-# until the runtime/stdlib port lands.
+# the lexer/parser/typechecker.
 compiler-only: $(BIN)
 	@echo "gray: compiler-only build complete ($(BIN); $(RT_LIB) not built)"
 
