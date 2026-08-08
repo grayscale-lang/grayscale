@@ -5329,7 +5329,15 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             GrayType *fet = type_from_name(fl_arr_t->element_type);
             if (fet->kind == TK_FLOAT) fl_c_elem = "double";
             else if (fet->kind == TK_BOOL) fl_c_elem = "bool";
+            else if (fet->kind == TK_CHAR) fl_c_elem = "int32_t";
+            else if (fet->kind == TK_BYTE) fl_c_elem = "uint8_t";
             else if (fet->kind == TK_STRING) fl_c_elem = "GrayString";
+            else if (fet->kind == TK_ARRAY) fl_c_elem = "GrayArray";
+            else if (fet->kind == TK_MAP) fl_c_elem = "GrayMap";
+            else if (fet->kind == TK_STRUCT) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
+            else if (fet->kind == TK_ENUM) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
+            else if (fet->kind == TK_INT || fet->kind == TK_UINT)
+                fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
         }
         emit_formatted(codegen, "{ %s _fv = ", fl_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
