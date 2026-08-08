@@ -1,5 +1,5 @@
 <#
-    common.ps1 - shared helpers for build.ps1 and test.ps1.
+    common.ps1 - shared helpers for the PowerShell scripts in this directory.
 
     Dot-source this file; on its own it does nothing.
 
@@ -86,7 +86,7 @@ function Resolve-GrayCC {
     Write-Host '    choco install mingw'
     Write-Host '    (or install MSYS2 and add C:\msys64\ucrt64\bin to PATH)'
     Write-Host ''
-    Write-Host 'Already installed? Pass it explicitly:  .\scripts\build.ps1 -CC C:\path\to\gcc.exe'
+    Write-Host 'Already installed? Pass it explicitly:  make build CC=C:\path\to\gcc.exe'
     Write-Host ''
     exit 1
 }
