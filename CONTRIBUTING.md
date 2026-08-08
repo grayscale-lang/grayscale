@@ -213,7 +213,7 @@ Either path produces the same artifacts. Use whichever you prefer.
 |---------|:-------:|
 | `check`, `fmt`, `doc`, `new`, `man`, `version` | works |
 | `build <file> --emit-c` | works |
-| `build`, `run`, `verify`, `watch`, `cross` | needs the runtime port |
+| `gray <file>` (compile and run), `build`, `verify`, `watch`, `cross` | needs the runtime port |
 
 | Test suite | Windows |
 |------------|:-------:|

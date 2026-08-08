@@ -94,7 +94,7 @@ PowerShell alternatives for machines without make.
 |---------|:-------:|
 | `gray check`, `gray fmt`, `gray doc`, `gray new`, `gray man`, `gray version` | works |
 | `gray build <file> --emit-c` | works |
-| `gray build`, `gray run`, `gray verify`, `gray watch`, `gray cross` | needs the runtime port |
+| `gray <file>` (compile and run), `gray build`, `gray verify`, `gray watch`, `gray cross` | needs the runtime port |
 
 ---
 

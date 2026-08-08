@@ -9,8 +9,8 @@
       gray.exe   the Go CLI wrapper
 
     What it does NOT build: libgrayrt.a, the Grayscale runtime and standard
-    library. Those are still POSIX-only, so `gray build` and `gray run` cannot
-    produce a binary on Windows yet. `check`, `fmt`, `doc`, and
+    library. Those are still POSIX-only, so `gray build` and `gray <file>`
+    cannot produce a binary on Windows yet. `check`, `fmt`, `doc`, and
     `build --emit-c` all work.
 
     Usage (from the repo root):
