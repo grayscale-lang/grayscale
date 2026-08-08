@@ -1744,12 +1744,11 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Platform link flags. Windows drops -lpthread: the runtime and stdlib
-     * Windows port decides between winpthreads and the native primitives, and
-     * will add -lws2_32 (sockets) and -lbcrypt (entropy) here when it lands. */
+    /* Platform link flags. */
     argv_push(&cc_argv, "-lm");
-#if !GRAY_OS_WINDOWS
     argv_push(&cc_argv, "-lpthread");
+#if GRAY_OS_WINDOWS
+    argv_push(&cc_argv, "-lws2_32");  /* Winsock, used by net/http/server */
 #endif
     argv_push(&cc_argv, "-Wl,-w");
     argv_end(&cc_argv);

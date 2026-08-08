@@ -92,19 +92,12 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/sync.c \
          src/stdlib/atomic.c \
          src/stdlib/channels.c \
+         src/stdlib/regex.c \
+         src/stdlib/net.c \
+         src/stdlib/http.c \
+         src/stdlib/server.c \
          src/stdlib/strconv.c \
          src/vendor/sqlite3.c
-
-# Sockets (net, http, server) still need the Winsock port, and regex needs an
-# engine since Windows has no <regex.h>. They are left out of the archive on
-# Windows rather than stubbed: the linker only pulls objects a program actually
-# references, so everything that does not import these modules links normally.
-ifndef WINDOWS
-RT_SRC += src/stdlib/regex.c \
-          src/stdlib/net.c \
-          src/stdlib/http.c \
-          src/stdlib/server.c
-endif
 
 RT_OBJ = $(RT_SRC:.c=.o)
 RT_LIB = libgrayrt.a
