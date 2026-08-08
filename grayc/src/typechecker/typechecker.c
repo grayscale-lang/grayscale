@@ -3242,8 +3242,18 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                     /* Rewrite the call AST: change the member-expr
                      * object from the instance label to the type
-                     * name, and prepend the instance as arg[0]. */
-                    fn->data.member.object->data.label.value = strdup(struct_name);
+                     * name, and prepend the instance as arg[0].
+                     * When the object is an explicit deref (p^.func),
+                     * replace it with a plain label node first. */
+                    if (fn->data.member.object->kind != NODE_LABEL) {
+                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
+                        new_obj->kind = NODE_LABEL;
+                        new_obj->token = fn->data.member.object->token;
+                        new_obj->data.label.value = strdup(struct_name);
+                        fn->data.member.object = new_obj;
+                    } else {
+                        fn->data.member.object->data.label.value = strdup(struct_name);
+                    }
                     int orig_count = node->data.call.arg_count;
                     AstNode **new_args = xmalloc(sizeof(AstNode *) * (orig_count + 1));
                     AstNode *self_arg = xcalloc(1, sizeof(AstNode));
@@ -3446,7 +3456,15 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         snprintf(display, sizeof(display), "%s.%s", display_sname, mfn);
                         typechecker_resolve_named_arguments(checker, node, ssig->decl, display);
                     }
-                    fn->data.member.object->data.label.value = strdup(struct_name);
+                    if (fn->data.member.object->kind != NODE_LABEL) {
+                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
+                        new_obj->kind = NODE_LABEL;
+                        new_obj->token = fn->data.member.object->token;
+                        new_obj->data.label.value = strdup(struct_name);
+                        fn->data.member.object = new_obj;
+                    } else {
+                        fn->data.member.object->data.label.value = strdup(struct_name);
+                    }
                     ssig->used = true;
                     sym->used = true;
                     result = ssig->return_count > 0 ? ssig->return_types[0] : &TYPE_VOID;
@@ -5085,8 +5103,14 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         } else {
             result = &TYPE_UNKNOWN;
         }
-    } else if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object->kind == NODE_LABEL) {
-        const char *mod_raw = fn->data.member.object->data.label.value;
+    } else if (fn->kind == NODE_MEMBER_EXPR &&
+               (fn->data.member.object->kind == NODE_LABEL ||
+                (fn->data.member.object->kind == NODE_POSTFIX_EXPR &&
+                 fn->data.member.object->data.postfix.op == TOK_CARET &&
+                 fn->data.member.object->data.postfix.left->kind == NODE_LABEL))) {
+        const char *mod_raw = fn->data.member.object->kind == NODE_LABEL
+            ? fn->data.member.object->data.label.value
+            : fn->data.member.object->data.postfix.left->data.label.value;
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
