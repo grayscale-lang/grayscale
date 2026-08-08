@@ -1,0 +1,90 @@
+const Wrapper enum {
+    Val(int)
+    Ptr(^int)
+}
+
+const Container enum {
+    Empty
+    Items([int])
+}
+
+const MapHolder enum {
+    None
+    Data(map[string:int])
+}
+
+const Multi enum {
+    Pair(^int, [int])
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // pointer payload
+    mut x int = 42
+    mut w = Wrapper.Ptr(addr(x))
+    when w {
+        is Ptr(p) {
+            if p^ == 42 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+        }
+        default {
+            failed = failed + 1
+        }
+    }
+
+    // array payload
+    mut c = Container.Items({10, 20, 30})
+    when c {
+        is Items(arr) {
+            if arr[0] == 10 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+        }
+        default {
+            failed = failed + 1
+        }
+    }
+
+    // map payload
+    mut m map[string:int] = {:}
+    m["key"] = 99
+    mut mh = MapHolder.Data(m)
+    when mh {
+        is Data(d) {
+            if d["key"] == 99 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+        }
+        default {
+            failed = failed + 1
+        }
+    }
+
+    // multi-payload with compound types
+    mut y int = 7
+    mut mp = Multi.Pair(addr(y), {1, 2})
+    when mp {
+        is Pair(ptr, arr) {
+            if ptr^ == 7 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+        }
+        default {
+            failed = failed + 1
+        }
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

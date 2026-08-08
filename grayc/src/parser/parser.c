@@ -2405,7 +2405,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Check for payload types: VARIANT(type1, type2, ...) */
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser); /* consume ( */
-            next_token(parser); /* first type */
+            next_token(parser); /* first token of first type */
             int pt_cap = 4;
             ev->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
@@ -2415,8 +2415,10 @@ static AstNode *parse_enum_declaration(Parser *parser) {
                     memcpy(new_pt, ev->payload_types, sizeof(const char *) * ev->payload_count);
                     ev->payload_types = new_pt;
                 }
-                ev->payload_types[ev->payload_count++] = parser->cur_token.literal;
-                next_token(parser);
+                const char *type_str = parse_complex_type(parser);
+                if (!type_str) return NULL;
+                ev->payload_types[ev->payload_count++] = type_str;
+                next_token(parser); /* advance past last token of type */
                 if (current_token_is(parser, TOK_COMMA)) next_token(parser);
             }
             /* cur_token is now TOK_RPAREN */
