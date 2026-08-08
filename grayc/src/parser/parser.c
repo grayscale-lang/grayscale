@@ -9,6 +9,7 @@
  */
 
 #include "parser.h"
+#include "../typechecker/types.h"
 #include "../util/constants.h"
 #include "../util/reserved.h"
 #include <stdio.h>
@@ -1293,12 +1294,17 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     err_access2->data.member.object = tmp_label2;
     err_access2->data.member.member = "v1";
     if (fallback_count > 0) {
-        /* Custom fallback: return fallback_vals..., _tmp.v1 */
-        int total = fallback_count + 1;
+        /* Custom fallback values. If the user provided enough values to
+         * cover all return slots (including the error), use them as-is.
+         * Otherwise append the propagated error (_tmp.v1). */
+        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
+        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
+        int total = user_covers_error ? fallback_count : fallback_count + 1;
         ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
         for (int i = 0; i < fallback_count; i++)
             ret_stmt->data.return_stmt.values[i] = fallback_buf[i];
-        ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
+        if (!user_covers_error)
+            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
         ret_stmt->data.return_stmt.count = total;
     } else {
         /* Bare or_return: propagate just the error; codegen fills {0} for other slots */
@@ -1805,17 +1811,10 @@ static AstNode *parse_func_declaration(Parser *parser) {
                 bool is_type = false;
                 if (current_token_is(parser, TOK_IDENT)) {
                     const char *lit = parser->cur_token.literal;
-                    is_type = (strcmp(lit, "int") == 0 || strcmp(lit, "uint") == 0 ||
-                        strcmp(lit, "i8") == 0 || strcmp(lit, "i16") == 0 ||
-                        strcmp(lit, "i32") == 0 || strcmp(lit, "i64") == 0 ||
-                        strcmp(lit, "i128") == 0 || strcmp(lit, "i256") == 0 ||
-                        strcmp(lit, "u8") == 0 || strcmp(lit, "u16") == 0 ||
-                        strcmp(lit, "u32") == 0 || strcmp(lit, "u64") == 0 ||
-                        strcmp(lit, "u128") == 0 || strcmp(lit, "u256") == 0 ||
+                    is_type = (is_any_int_type(lit) ||
                         strcmp(lit, "float") == 0 || strcmp(lit, "f32") == 0 ||
                         strcmp(lit, "f64") == 0 || strcmp(lit, "string") == 0 ||
                         strcmp(lit, "bool") == 0 || strcmp(lit, "char") == 0 ||
-                        strcmp(lit, "byte") == 0 ||
                         (strcmp(lit, "map") == 0 && peek_token_is(parser, TOK_LBRACKET)) ||
                         (strcmp(lit, "func") == 0 && peek_token_is(parser, TOK_LPAREN)) ||
                         (lit[0] >= 'A' && lit[0] <= 'Z')); /* struct/enum types */
@@ -1919,7 +1918,10 @@ static AstNode *parse_func_declaration(Parser *parser) {
 
     /* Body */
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
+    AstNode *saved_func = parser->current_func;
+    parser->current_func = node;
     node->data.func_decl.body = parse_block_statement(parser);
+    parser->current_func = saved_func;
 
     return node;
 }
@@ -2403,7 +2405,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Check for payload types: VARIANT(type1, type2, ...) */
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser); /* consume ( */
-            next_token(parser); /* first type */
+            next_token(parser); /* first token of first type */
             int pt_cap = 4;
             ev->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
@@ -2413,8 +2415,10 @@ static AstNode *parse_enum_declaration(Parser *parser) {
                     memcpy(new_pt, ev->payload_types, sizeof(const char *) * ev->payload_count);
                     ev->payload_types = new_pt;
                 }
-                ev->payload_types[ev->payload_count++] = parser->cur_token.literal;
-                next_token(parser);
+                const char *type_str = parse_complex_type(parser);
+                if (!type_str) return NULL;
+                ev->payload_types[ev->payload_count++] = type_str;
+                next_token(parser); /* advance past last token of type */
                 if (current_token_is(parser, TOK_COMMA)) next_token(parser);
             }
             /* cur_token is now TOK_RPAREN */
@@ -2641,6 +2645,51 @@ static AstNode *parse_loop_statement(Parser *parser) {
     return node;
 }
 
+/* --- Speculative parse helpers for when-pattern detection --- */
+
+typedef struct {
+    int position, read_position;
+    char ch;
+    int line, column;
+    Token cur_token, peek_token;
+} ParserSnapshot;
+
+static void parser_snapshot_save(Parser *parser, ParserSnapshot *snap) {
+    snap->position = parser->lexer->position;
+    snap->read_position = parser->lexer->read_position;
+    snap->ch = parser->lexer->ch;
+    snap->line = parser->lexer->line;
+    snap->column = parser->lexer->column;
+    snap->cur_token = parser->cur_token;
+    snap->peek_token = parser->peek_token;
+}
+
+static void parser_snapshot_restore(Parser *parser, const ParserSnapshot *snap) {
+    parser->lexer->position = snap->position;
+    parser->lexer->read_position = snap->read_position;
+    parser->lexer->ch = snap->ch;
+    parser->lexer->line = snap->line;
+    parser->lexer->column = snap->column;
+    parser->cur_token = snap->cur_token;
+    parser->peek_token = snap->peek_token;
+}
+
+/* Check if current position holds IDENT(IDENT, ..., IDENT).
+ * Assumes cur_token is the IDENT before LPAREN and peek is LPAREN.
+ * Consumes tokens past the closing paren (caller must restore). */
+static bool scan_paren_bindings(Parser *parser) {
+    next_token(parser); /* skip IDENT */
+    next_token(parser); /* skip ( */
+    int bind_count = 0;
+    while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
+        if (!current_token_is(parser, TOK_IDENT)) return false;
+        bind_count++;
+        next_token(parser);
+        if (current_token_is(parser, TOK_COMMA)) next_token(parser);
+    }
+    return bind_count > 0 && current_token_is(parser, TOK_RPAREN);
+}
+
 static AstNode *parse_when_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_WHEN_STMT, parser->cur_token);
 
@@ -2688,111 +2737,32 @@ static AstNode *parse_when_statement(Parser *parser) {
                 Token pat_tok = parser->cur_token;
 
                 if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
-                    /* Save lexer state for lookahead */
-                    int sv_pos  = parser->lexer->position;
-                    int sv_rpos = parser->lexer->read_position;
-                    char sv_ch  = parser->lexer->ch;
-                    int sv_line = parser->lexer->line;
-                    int sv_col  = parser->lexer->column;
-                    Token sv_cur  = parser->cur_token;
-                    Token sv_peek = parser->peek_token;
-
-                    const char *vname = parser->cur_token.literal;
-                    next_token(parser); /* skip IDENT */
-                    next_token(parser); /* skip ( */
-                    bool all_idents = true;
-                    int bind_count = 0;
-                    while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                        if (!current_token_is(parser, TOK_IDENT)) { all_idents = false; break; }
-                        bind_count++;
-                        next_token(parser);
-                        if (current_token_is(parser, TOK_COMMA)) next_token(parser);
-                    }
-                    if (all_idents && bind_count > 0 && current_token_is(parser, TOK_RPAREN)) {
-                        try_pattern = true;
-                        (void)vname;
-                    }
-                    /* Restore lexer state */
-                    parser->lexer->position = sv_pos;
-                    parser->lexer->read_position = sv_rpos;
-                    parser->lexer->ch = sv_ch;
-                    parser->lexer->line = sv_line;
-                    parser->lexer->column = sv_col;
-                    parser->cur_token  = sv_cur;
-                    parser->peek_token = sv_peek;
+                    /* IDENT(IDENT,...) pattern form */
+                    ParserSnapshot snap;
+                    parser_snapshot_save(parser, &snap);
+                    try_pattern = scan_paren_bindings(parser);
+                    parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
                     /* IDENT.IDENT(IDENT,...) explicit enum pattern form */
-                    int sv_pos  = parser->lexer->position;
-                    int sv_rpos = parser->lexer->read_position;
-                    char sv_ch  = parser->lexer->ch;
-                    int sv_line = parser->lexer->line;
-                    int sv_col  = parser->lexer->column;
-                    Token sv_cur  = parser->cur_token;
-                    Token sv_peek = parser->peek_token;
-
-                    next_token(parser); /* skip first IDENT (enum name) */
+                    ParserSnapshot snap;
+                    parser_snapshot_save(parser, &snap);
+                    next_token(parser); /* skip enum name */
                     next_token(parser); /* skip DOT */
                     if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
-                        next_token(parser); /* skip second IDENT (variant) */
-                        next_token(parser); /* skip ( */
-                        bool all_idents = true;
-                        int bind_count = 0;
-                        while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                            if (!current_token_is(parser, TOK_IDENT)) { all_idents = false; break; }
-                            bind_count++;
-                            next_token(parser);
-                            if (current_token_is(parser, TOK_COMMA)) next_token(parser);
-                        }
-                        if (all_idents && bind_count > 0 && current_token_is(parser, TOK_RPAREN)) {
-                            try_pattern = true;
-                            is_explicit_enum = true;
-                        }
+                        try_pattern = scan_paren_bindings(parser);
+                        if (try_pattern) is_explicit_enum = true;
                     }
-                    /* Restore lexer state */
-                    parser->lexer->position = sv_pos;
-                    parser->lexer->read_position = sv_rpos;
-                    parser->lexer->ch = sv_ch;
-                    parser->lexer->line = sv_line;
-                    parser->lexer->column = sv_col;
-                    parser->cur_token  = sv_cur;
-                    parser->peek_token = sv_peek;
+                    parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_DOT) && peek_token_is(parser, TOK_IDENT)) {
-                    /* .IDENT(IDENT,...) form */
-                    int sv_pos  = parser->lexer->position;
-                    int sv_rpos = parser->lexer->read_position;
-                    char sv_ch  = parser->lexer->ch;
-                    int sv_line = parser->lexer->line;
-                    int sv_col  = parser->lexer->column;
-                    Token sv_cur  = parser->cur_token;
-                    Token sv_peek = parser->peek_token;
-
+                    /* .IDENT(IDENT,...) implicit pattern form */
+                    ParserSnapshot snap;
+                    parser_snapshot_save(parser, &snap);
                     next_token(parser); /* skip dot */
-                    const char *vname = parser->cur_token.literal;
                     if (peek_token_is(parser, TOK_LPAREN)) {
-                        next_token(parser); /* skip IDENT */
-                        next_token(parser); /* skip ( */
-                        bool all_idents = true;
-                        int bind_count = 0;
-                        while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                            if (!current_token_is(parser, TOK_IDENT)) { all_idents = false; break; }
-                            bind_count++;
-                            next_token(parser);
-                            if (current_token_is(parser, TOK_COMMA)) next_token(parser);
-                        }
-                        if (all_idents && bind_count > 0 && current_token_is(parser, TOK_RPAREN)) {
-                            try_pattern = true;
-                            is_implicit_pat = true;
-                            (void)vname;
-                        }
+                        try_pattern = scan_paren_bindings(parser);
+                        if (try_pattern) is_implicit_pat = true;
                     }
-                    /* Restore lexer state */
-                    parser->lexer->position = sv_pos;
-                    parser->lexer->read_position = sv_rpos;
-                    parser->lexer->ch = sv_ch;
-                    parser->lexer->line = sv_line;
-                    parser->lexer->column = sv_col;
-                    parser->cur_token  = sv_cur;
-                    parser->peek_token = sv_peek;
+                    parser_snapshot_restore(parser, &snap);
                 }
 
                 if (try_pattern) {
@@ -3127,6 +3097,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->diag = diag;
     parser->depth = 0;
     parser->no_struct_literal = false;
+    parser->current_func = NULL;
 
     /* Read two tokens to fill cur and peek */
     next_token(parser);

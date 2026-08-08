@@ -1,0 +1,20 @@
+/*
+ * Warning Test: W3005 - tagged enum destructuring pattern in when/is
+ * Expected: warning about non-strict when without default
+ */
+
+const Shape enum {
+    Circle(float)
+    Rect(float, float)
+    Point
+}
+
+do main() {
+    mut s Shape = .Circle(3.14)
+
+    when s {
+        is .Circle(r) {
+            println("circle r=${r}")
+        }
+    }
+}

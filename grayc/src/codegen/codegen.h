@@ -135,6 +135,11 @@ typedef struct {
      * emitted as C file-scope initializers, which C does not allow. */
     bool in_const_decl;
 
+    /* Monotonic counter for generating unique temporary variable names.
+     * Every emitter that needs a unique C identifier draws from this
+     * single counter via codegen_next_id(). */
+    int temp_counter;
+
     /* Stack of open per-scope scratch arenas (if / for_each / while /
      * loop). Each entry holds the exact C identifiers emitted at scope
      * entry so any early-exit path (return, or_return-desugared return)

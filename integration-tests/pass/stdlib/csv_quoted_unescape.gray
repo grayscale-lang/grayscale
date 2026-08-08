@@ -1,0 +1,64 @@
+/*
+ * csv_quoted_unescape.gray - Test RFC 4180 §2.7 doubled-quote unescaping
+ */
+
+import @csv
+
+do main() {
+    println("=== CSV Quoted Unescape Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: doubled quotes in a quoted field are unescaped
+    mut data1 string = "col\n\"has \"\"quotes\"\" inside\""
+    mut rows1 [[string]] = csv.parse(data1)
+    if rows1[1][0] == "has \"quotes\" inside" {
+        println("  [PASS] doubled quotes unescaped")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] doubled quotes unescaped: got '${rows1[1][0]}'")
+        failed += 1
+    }
+
+    // Test 2: quoted field with no doubled quotes stays unchanged
+    mut data2 string = "\"simple value\",other"
+    mut rows2 [[string]] = csv.parse(data2)
+    if rows2[0][0] == "simple value" {
+        println("  [PASS] quoted field without doubled quotes")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quoted field without doubled quotes: got '${rows2[0][0]}'")
+        failed += 1
+    }
+
+    // Test 3: field that is just a doubled quote
+    mut data3 string = "\"\"\"\""
+    mut rows3 [[string]] = csv.parse(data3)
+    if rows3[0][0] == "\"" {
+        println("  [PASS] single doubled quote unescaped")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] single doubled quote unescaped: got '${rows3[0][0]}'")
+        failed += 1
+    }
+
+    // Test 4: comma inside quoted field still works
+    mut data4 string = "\"value with, comma\""
+    mut rows4 [[string]] = csv.parse(data4)
+    if rows4[0][0] == "value with, comma" {
+        println("  [PASS] comma in quoted field preserved")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] comma in quoted field: got '${rows4[0][0]}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -270,10 +270,15 @@ int main(void) {
 
     printf("--- Buffer ---\n");
     RUN_TEST(test_buffer_create);
+    RUN_TEST(test_append_string_to_buffer);
+    RUN_TEST(test_append_bytes_to_buffer);
     RUN_TEST(test_buffer_append_growth);
+    RUN_TEST(test_append_format_to_buffer);
     RUN_TEST(test_buffer_append_formatted_large);
+    RUN_TEST(test_append_char_to_buffer);
     RUN_TEST(test_buffer_append_char_boundary);
     RUN_TEST(test_buffer_append_indent_zero);
+    RUN_TEST(test_append_indent_to_buffer);
     RUN_TEST(test_buffer_append_indent_large);
 
     printf("--- Scope ---\n");

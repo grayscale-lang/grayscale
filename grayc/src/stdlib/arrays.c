@@ -13,6 +13,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#define ARRAY_CHECK_ITER(arr) \
+    do { if ((arr)->iterating > 0) \
+        gray_panic_code("P0034", "cannot modify array during for_each iteration"); \
+    } while (0)
+
 /* === Modification === */
 
 void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value) {
@@ -20,8 +25,7 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value) {
 }
 
 void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, const void *value) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (index < 0 || index > arr->len) {
         gray_panic_code("P0043",
             "arrays.insert_at: index %d is out of bounds for an array of length %d",
@@ -58,8 +62,7 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value) {
 }
 
 void gray_arrays_remove_at(GrayArray *arr, int32_t index) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (index < 0 || index >= arr->len)
         gray_panic_code("P0044",
             "arrays.remove_at: index %d is out of bounds for an array of length %d",
@@ -99,8 +102,7 @@ void gray_arrays_remove_str(GrayArray *arr, GrayString value) {
 }
 
 void gray_arrays_clear(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     arr->len = 0;
 }
 
@@ -126,8 +128,7 @@ void *gray_arrays_last_ptr(GrayArray *arr) {
 }
 
 void gray_arrays_remove_first_raw(GrayArray *arr, void *out) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len == 0)
         gray_panic_code("P0047", "arrays.remove_first called on an empty array");
     memcpy(out, arr->data, arr->elem_size);
@@ -135,8 +136,7 @@ void gray_arrays_remove_first_raw(GrayArray *arr, void *out) {
 }
 
 void gray_arrays_remove_last_raw(GrayArray *arr, void *out) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len == 0)
         gray_panic_code("P0048", "arrays.remove_last called on an empty array");
     memcpy(out, (char *)arr->data + (arr->len - 1) * arr->elem_size, arr->elem_size);
@@ -154,8 +154,7 @@ int64_t gray_arrays_get_last(GrayArray *arr) {
 }
 
 int64_t gray_arrays_remove_last(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len == 0) gray_panic_code("P0048", "arrays.remove_last called on an empty array");
     int64_t val = *(int64_t *)((char *)arr->data + (arr->len - 1) * arr->elem_size);
     arr->len--;
@@ -403,43 +402,37 @@ static int cmp_str_desc(const void *a, const void *b) {
 }
 
 void gray_arrays_sort_asc(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_asc);
 }
 
 void gray_arrays_sort_asc_float(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_asc);
 }
 
 void gray_arrays_sort_asc_str(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_asc);
 }
 
 void gray_arrays_sort_desc(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_desc);
 }
 
 void gray_arrays_sort_desc_float(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_desc);
 }
 
 void gray_arrays_sort_desc_str(GrayArray *arr) {
-    if (arr->iterating > 0)
-        gray_panic_code("P0034", "cannot modify array during for_each iteration");
+    ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
 }

@@ -60,4 +60,18 @@ static inline char *read_file_to_string(const char *path) {
     return buf;
 }
 
+/* Initial capacity for GROW_ARRAY — small enough to avoid waste,
+ * large enough to cover the common case without early resizes. */
+#define GROW_ARRAY_INIT_CAP 8
+
+/* Grow a dynamic array when count reaches capacity.
+ * Doubles capacity (starting from GROW_ARRAY_INIT_CAP), then xrealloc's. */
+#define GROW_ARRAY(arr, count, cap) \
+    do { \
+        if ((count) >= (cap)) { \
+            (cap) = (cap) ? (cap) * 2 : GROW_ARRAY_INIT_CAP; \
+            (arr) = xrealloc((arr), sizeof(*(arr)) * (size_t)(cap)); \
+        } \
+    } while (0)
+
 #endif

@@ -23,13 +23,6 @@
 #define GRAY_HTTP_RESP_BUF        1048576
 #define GRAY_HTTP_MIN_RESP_LEN    12
 
-/* Helper: null-terminate an GrayString */
-static const char *http_cstr(GrayString s, char *buf, size_t buffer_size) {
-    size_t len = (size_t)s.len < buffer_size - 1 ? (size_t)s.len : buffer_size - 1;
-    memcpy(buf, s.data, len);
-    buf[len] = '\0';
-    return buf;
-}
 
 /* Parse a URL into host, port, and path components */
 static bool parse_url(const char *url, char *host, size_t host_sz,
@@ -154,7 +147,7 @@ static GrayHttpResponse do_request(GrayArena *arena, const char *method,
     err_resp.headers = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 4);
 
     char url_buf[GRAY_HTTP_URL_BUF];
-    http_cstr(url, url_buf, sizeof(url_buf));
+    gray_cstr(url, url_buf, sizeof(url_buf));
 
     if (strncmp(url_buf, "https://", 8) == 0) {
         const char *detail = "https:// is not supported; use http://";

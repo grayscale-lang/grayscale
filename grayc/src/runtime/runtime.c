@@ -9,15 +9,9 @@
  */
 
 #include "runtime.h"
+#include "util/colors.h"
 #include <stdarg.h>
 #include <unistd.h>
-
-/* --- ANSI color codes for panic output --- */
-
-#define P_RESET   "\033[0m"
-#define P_BOLD    "\033[1m"
-#define P_RED     "\033[31m"
-#define P_BLUE    "\033[34m"
 
 static inline int panic_use_color(void) {
     return isatty(STDERR_FILENO) && !getenv("NO_COLOR");
@@ -234,46 +228,43 @@ void gray_runtime_shutdown(void) {
 
 /* --- Panic --- */
 
-void gray_panic(const char *file, int line, const char *fmt, ...) {
+static _Noreturn void gray_panic_impl(const char *code, const char *file,
+    int line, const char *fmt, va_list args) {
     fflush(stdout);
     int c = panic_use_color();
-    fprintf(stderr, "%s%spanic%s at %s:%d: %s",
-        c ? P_BOLD : "", c ? P_RED : "", c ? P_RESET : "",
-        file, line,
-        c ? P_BOLD : "");
+
+    /* Label: "panic" or "panic[CODE]" in bold red */
+    fprintf(stderr, "%s%spanic", c ? COL_BOLD : "", c ? COL_RED : "");
+    if (code) {
+        fprintf(stderr, "[%s]", code);
+        if (!file) fputc(':', stderr);
+    }
+    fprintf(stderr, "%s", c ? COL_RESET : "");
+
+    /* Location (uncolored) */
+    if (file) fprintf(stderr, " at %s:%d:", file, line);
+
+    /* Message in bold */
+    fprintf(stderr, " %s", c ? COL_BOLD : "");
+    vfprintf(stderr, fmt, args);
+    fprintf(stderr, "%s\n", c ? COL_RESET : "");
+    exit(1);
+}
+
+void gray_panic(const char *file, int line, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "%s\n", c ? P_RESET : "");
-    exit(1);
+    gray_panic_impl(NULL, file, line, fmt, args);
 }
 
 void gray_panic_code(const char *code, const char *fmt, ...) {
-    fflush(stdout);
-    int c = panic_use_color();
-    fprintf(stderr, "%s%spanic[%s]:%s %s",
-        c ? P_BOLD : "", c ? P_RED : "", code, c ? P_RESET : "",
-        c ? P_BOLD : "");
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "%s\n", c ? P_RESET : "");
-    exit(1);
+    gray_panic_impl(code, NULL, 0, fmt, args);
 }
 
 void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...) {
-    fflush(stdout);
-    int c = panic_use_color();
-    fprintf(stderr, "%s%spanic[%s]%s at %s:%d: %s",
-        c ? P_BOLD : "", c ? P_RED : "", code, c ? P_RESET : "",
-        file, line,
-        c ? P_BOLD : "");
     va_list args;
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "%s\n", c ? P_RESET : "");
-    exit(1);
+    gray_panic_impl(code, file, line, fmt, args);
 }

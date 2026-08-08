@@ -1,0 +1,21 @@
+/*
+ * Warning Test: W3005 - implicit enum selector in when/is
+ * Expected: warning about non-strict when without default
+ */
+
+const Direction enum {
+    NORTH
+    SOUTH
+    EAST
+    WEST
+}
+
+do main() {
+    mut d Direction = .NORTH
+
+    when d {
+        is .NORTH {
+            println("north")
+        }
+    }
+}

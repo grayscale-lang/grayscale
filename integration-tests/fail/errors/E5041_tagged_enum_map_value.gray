@@ -1,0 +1,17 @@
+/*
+ * Error Test: E5041 - tagged enum as map value type
+ *
+ * map[string:Status] where Status is a tagged enum. Codegen emits
+ * int64_t for map value storage but tagged enums are C structs,
+ * causing a type mismatch. Typechecker now rejects the declaration.
+ */
+
+const Status enum {
+    Active(int)
+    Inactive
+}
+
+do main() {
+    mut m map[string:Status] = {:}
+    m["a"] = Status.Active(1)
+}

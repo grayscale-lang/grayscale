@@ -1,0 +1,98 @@
+/*
+ * sqlite_params.gray - Integration test for parameterized queries
+ */
+
+import @sqlite
+
+do main() {
+    println("=== SQLite Parameterized Query Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut db, _ = sqlite.open(":memory:")
+    mut _, _ = sqlite.exec(db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age TEXT)")
+
+    // exec_params: insert with parameterized values
+    mut ok, err = sqlite.exec_params(db, "INSERT INTO users (id, name, age) VALUES (?, ?, ?)", {"1", "Alice", "30"})
+    if ok {
+        println("  [PASS] exec_params INSERT")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] exec_params INSERT: ${err}")
+        failed += 1
+    }
+
+    // exec_params: insert value containing SQL metacharacters
+    mut ok2, err2 = sqlite.exec_params(db, "INSERT INTO users (id, name, age) VALUES (?, ?, ?)", {"2", "O'Brien; DROP TABLE users; --", "25"})
+    if ok2 {
+        println("  [PASS] exec_params with SQL metacharacters")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] exec_params with SQL metacharacters: ${err2}")
+        failed += 1
+    }
+
+    // query_params: retrieve by name
+    mut rows, qerr = sqlite.query_params(db, "SELECT * FROM users WHERE name = ?", {"Alice"})
+    if qerr != nil {
+        println("  [FAIL] query_params: ${qerr}")
+        failed += 1
+    } otherwise {
+        if len(rows) == 1 {
+            println("  [PASS] query_params returns 1 row for Alice")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] query_params: expected 1 row, got ${len(rows)}")
+            failed += 1
+        }
+    }
+
+    // query_params: SQL injection attempt returns no rows
+    mut rows2, qerr2 = sqlite.query_params(db, "SELECT * FROM users WHERE name = ?", {"' OR '1'='1"})
+    if qerr2 != nil {
+        println("  [FAIL] query_params injection test: ${qerr2}")
+        failed += 1
+    } otherwise {
+        if len(rows2) == 0 {
+            println("  [PASS] query_params safely handles injection attempt")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] query_params injection: expected 0 rows, got ${len(rows2)}")
+            failed += 1
+        }
+    }
+
+    // query_params: integer parameter bound as text works via SQLite type affinity
+    mut rows3, qerr3 = sqlite.query_params(db, "SELECT * FROM users WHERE id = ?", {"1"})
+    if qerr3 != nil {
+        println("  [FAIL] query_params integer bind: ${qerr3}")
+        failed += 1
+    } otherwise {
+        if len(rows3) == 1 {
+            println("  [PASS] query_params integer parameter binding")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] query_params integer bind: expected 1 row, got ${len(rows3)}")
+            failed += 1
+        }
+    }
+
+    // verify the metacharacter row survived (table not dropped)
+    mut rows4, _ = sqlite.query(db, "SELECT * FROM users")
+    if len(rows4) == 2 {
+        println("  [PASS] table intact after metacharacter insert")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 2 total rows, got ${len(rows4)}")
+        failed += 1
+    }
+
+    sqlite.close(db)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("Some tests failed!")
+    }
+    println("ALL TESTS PASSED")
+}

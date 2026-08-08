@@ -1,0 +1,5 @@
+// Multi-return function cannot appear in comparison expression
+do two() -> (int, int) { return 5, 10 }
+do main() {
+    if two() == 5 { println("equal") }
+}

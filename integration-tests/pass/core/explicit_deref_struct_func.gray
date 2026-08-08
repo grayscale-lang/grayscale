@@ -1,0 +1,52 @@
+const Vec2 struct {
+    x int
+    y int
+    do sum(v Vec2) -> int {
+        return v.x + v.y
+    }
+    do scale(&self Vec2, factor int) {
+        self.x = self.x * factor
+        self.y = self.y * factor
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p = new(Vec2)
+    p^.x = 3
+    p^.y = 4
+
+    // explicit deref with value self
+    mut s = p^.sum()
+    if s == 7 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // explicit deref with mutable self
+    p^.scale(2)
+    if p^.x == 6 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    if p^.y == 8 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // auto-deref still works
+    mut s2 = p.sum()
+    if s2 == 14 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

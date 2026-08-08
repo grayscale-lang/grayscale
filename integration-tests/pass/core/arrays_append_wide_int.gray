@@ -1,0 +1,45 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // i128
+    mut i128s [i128] = {}
+    arrays.append(i128s, cast(42, i128))
+    if len(i128s) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // u128
+    mut u128s [u128] = {}
+    arrays.append(u128s, cast(99, u128))
+    if len(u128s) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // i256
+    mut i256s [i256] = {}
+    arrays.append(i256s, cast(7, i256))
+    if len(i256s) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // u256
+    mut u256s [u256] = {}
+    arrays.append(u256s, cast(88, u256))
+    if len(u256s) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

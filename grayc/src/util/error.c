@@ -21,14 +21,7 @@
 #define DIAG_INITIAL_CAP     16
 #define DIAG_FORMAT_BUF      1024
 
-/* --- ANSI color codes --- */
-
-#define COL_RESET   "\033[0m"
-#define COL_BOLD    "\033[1m"
-#define COL_RED     "\033[31m"
-#define COL_YELLOW  "\033[33m"
-#define COL_CYAN    "\033[36m"
-#define COL_BLUE    "\033[34m"
+#include "colors.h"
 
 static const char *col(DiagnosticList *diagnostics, const char *code) {
     return diagnostics->use_color ? code : "";

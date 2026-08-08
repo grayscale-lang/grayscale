@@ -28,6 +28,7 @@ typedef struct {
     int depth;
     bool no_struct_literal; /* suppress struct literal parsing (RHS of in/not_in) */
     bool in_interp;         /* true when parsing a ${...} sub-expression */
+    AstNode *current_func;  /* enclosing function node (for or_return) */
 } Parser;
 
 Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticList *diag);

@@ -1,0 +1,45 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // char fill
+    mut chars [char] = {}
+    arrays.fill(chars, 'X', 3)
+    if len(chars) == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte fill
+    mut barr [byte] = {}
+    arrays.fill(barr, cast(0xAB, byte), 2)
+    if len(barr) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // i128 fill
+    mut i128s [i128] = {}
+    arrays.fill(i128s, cast(42, i128), 3)
+    if len(i128s) == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // u256 fill
+    mut u256s [u256] = {}
+    arrays.fill(u256s, cast(7, u256), 2)
+    if len(u256s) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

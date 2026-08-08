@@ -1,0 +1,64 @@
+import @arrays
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Shape enum {
+    Circle(float)
+    Rect(float, float)
+    Point
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: append non-tagged enum
+    mut colors [Color] = {}
+    arrays.append(colors, Color.RED)
+    arrays.append(colors, Color.GREEN)
+    if len(colors) == 2 && colors[0] == Color.RED && colors[1] == Color.GREEN {
+        println("  [PASS] append non-tagged enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] append non-tagged enum")
+        failed += 1
+    }
+
+    // Test 2: append tagged enum
+    mut shapes [Shape] = {}
+    arrays.append(shapes, Shape.Circle(3.14))
+    arrays.append(shapes, Shape.Point)
+    if len(shapes) == 2 {
+        println("  [PASS] append tagged enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] append tagged enum")
+        failed += 1
+    }
+
+    // Test 3: insert_at with enum
+    arrays.insert_at(colors, 1, Color.BLUE)
+    if len(colors) == 3 && colors[1] == Color.BLUE {
+        println("  [PASS] insert_at enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] insert_at enum")
+        failed += 1
+    }
+
+    // Test 4: prepend with enum
+    arrays.prepend(colors, Color.BLUE)
+    if len(colors) == 4 && colors[0] == Color.BLUE {
+        println("  [PASS] prepend enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] prepend enum")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+}

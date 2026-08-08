@@ -1,0 +1,43 @@
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: enum array interpolation
+    mut colors [Color] = {Color.RED, Color.GREEN, Color.BLUE}
+    mut result string = "${colors}"
+    if result == "{0, 1, 2}" {
+        println("  [PASS] enum array interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum array interpolation: got ${result}")
+        failed += 1
+    }
+
+    // Test 2: single-element enum array
+    mut one [Color] = {Color.GREEN}
+    mut result2 string = "${one}"
+    if result2 == "{1}" {
+        println("  [PASS] single-element enum array interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] single-element enum array interpolation: got ${result2}")
+        failed += 1
+    }
+
+    // Test 3: individual element access still works
+    if colors[0] == Color.RED && colors[1] == Color.GREEN && colors[2] == Color.BLUE {
+        println("  [PASS] individual enum element access")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] individual enum element access")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+}

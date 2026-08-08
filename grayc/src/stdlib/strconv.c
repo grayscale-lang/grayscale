@@ -17,15 +17,22 @@
 
 #define STRCONV_BUF_SIZE 64
 
+/* Truncate a GrayString into a stack buffer and null-terminate it.
+   Returns the (possibly clamped) length. */
+static int strconv_prepare(GrayString s, char *buf, size_t buf_size) {
+    int len = s.len < (int32_t)buf_size - 1 ? s.len : (int32_t)buf_size - 1;
+    memcpy(buf, s.data, (size_t)len);
+    buf[len] = '\0';
+    return len;
+}
+
 /* --- Panicking conversions --- */
 
 int64_t gray_strconv_to_int(GrayString s, int base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0054", "strconv.to_int: invalid base %d; must be between 2 and 36", base);
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to int (base %d)", buf, base);
     char *end = NULL;
@@ -40,9 +47,7 @@ uint64_t gray_strconv_to_uint(GrayString s, int base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0056", "strconv.to_uint: invalid base %d; must be between 2 and 36", base);
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to uint (base %d)", buf, base);
     /* Reject negative numbers */
@@ -61,9 +66,7 @@ uint64_t gray_strconv_to_uint(GrayString s, int base) {
 
 double gray_strconv_to_float(GrayString s) {
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to float", buf);
     char *end = NULL;
@@ -78,9 +81,7 @@ bool gray_strconv_to_bool(GrayString s) {
     if (s.len == 4 && strncasecmp(s.data, "true", 4) == 0) return true;
     if (s.len == 5 && strncasecmp(s.data, "false", 5) == 0) return false;
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    strconv_prepare(s, buf, sizeof(buf));
     gray_panic_code("P0060", "strconv.to_bool: cannot convert '%s' to bool", buf);
 }
 
@@ -93,9 +94,7 @@ GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
         return (GrayResult_int){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to int");
         GrayError *err = gray_error_new(gray_default_arena, msg);
@@ -119,9 +118,7 @@ GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
         return (GrayResult_uint){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to uint");
         GrayError *err = gray_error_new(gray_default_arena, msg);
@@ -149,9 +146,7 @@ GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
 
 GrayResult_float gray_strconv_to_float_result(GrayString s) {
     char buf[STRCONV_BUF_SIZE];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
-    buf[len] = '\0';
+    int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to float");
         GrayError *err = gray_error_new(gray_default_arena, msg);

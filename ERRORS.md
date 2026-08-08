@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.sh` to regenerate.
+> Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 377 codes** (257 errors, 17 warnings, 103 panics)
+**Total: 378 codes** (258 errors, 17 warnings, 103 panics)
 
 ---
 
@@ -249,6 +249,7 @@
 | `E5038` | usage | tagged enum '%s' cannot be passed to %s(); use when/is to destructure the payload first |
 | `E5039` | usage | constant expression overflows type '%s' |
 | `E5040` | usage | constant requires a compile-time value; function calls are evaluated at runtime |
+| `E5041` | usage | tagged enum '%s' cannot be used as a map value type; use when/is to destructure before storing |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -428,4 +429,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-02 03:39:48 UTC*
+*Generated on 2026-08-08 11:00:39 UTC*

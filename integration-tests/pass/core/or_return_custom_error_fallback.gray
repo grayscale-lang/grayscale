@@ -1,0 +1,28 @@
+// or_return with user-provided error fallback value
+do read_file(path string) -> (string, Error) {
+    return "", error("file not found")
+}
+
+do load() -> (string, Error) {
+    mut content = read_file("data.txt") or_return "", error("failed to load")
+    return content, nil
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut val, err = load()
+    if val == "" {
+        passed++
+    } otherwise {
+        failed++
+    }
+    if err != nil {
+        passed++
+    } otherwise {
+        failed++
+    }
+
+    println("${passed} passed, ${failed} failed")
+}
