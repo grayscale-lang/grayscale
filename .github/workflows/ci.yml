@@ -67,12 +67,9 @@ jobs:
         run: make test-asan
 
   # Windows is a separate job rather than a matrix entry: the steps above run
-  # make, bash scripts, and sanitizers that have no Windows equivalent. This
-  # job covers what the Windows bootstrap actually supports — the compiler
-  # frontend and the CLI. The runtime and standard library are still
-  # POSIX-only, so no binary can be linked here yet.
+  # bash scripts and sanitizers that have no Windows equivalent.
   windows:
-    name: Windows Bootstrap (compiler frontend)
+    name: Windows Build and Test
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -107,15 +104,13 @@ jobs:
         shell: bash
         run: |
           make test-unit
+          make test-e2e
           make test-go
-
-      - name: Build with scripts/build.ps1
-        run: .\scripts\build.ps1
 
       - name: Test with scripts/test.ps1
         run: .\scripts\test.ps1
 
-      - name: Smoke test - check, emit-c, fmt
+      - name: Smoke test - check, emit-c
         run: |
           .\grayc\grayc.exe version
           .\grayc\grayc.exe check .\cli\tests.gray
@@ -135,11 +130,22 @@ jobs:
           }
           Write-Host "Generated C is clean."
 
-      - name: Verify build to binary reports the unsupported-platform notice
+      # Compiling from an absolute Windows path is its own regression risk: the
+      # source path is emitted into C string literals, so an unescaped
+      # C:\Users\... would be read as escape sequences and \U is a hard error.
+      # Build from $env:TEMP specifically, not a repo-relative path.
+      - name: Compile and run a program from an absolute path
         run: |
-          .\gray.exe build .\cli\tests.gray
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Expected 'gray build' to fail on Windows until the runtime is ported."
-            exit 1
-          }
-          Write-Host "Reported as expected."
+          $src = Join-Path $env:TEMP 'ci_smoke.gray'
+          $exe = Join-Path $env:TEMP 'ci_smoke.exe'
+          Set-Content -Path $src -Encoding ascii -Value @(
+            'do main() {',
+            '    println("windows ok")',
+            '}'
+          )
+          .\grayc\grayc.exe $src -o $exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "compile failed"; exit 1 }
+          $out = & $exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "program exited $LASTEXITCODE"; exit 1 }
+          if ($out -ne 'windows ok') { Write-Host "unexpected output: $out"; exit 1 }
+          Write-Host "Compiled and ran from an absolute path."
