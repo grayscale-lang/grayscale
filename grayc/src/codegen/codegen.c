@@ -94,6 +94,8 @@ static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
 
 /* --- Helpers --- */
 
+static char *normalize_path_separators(const char *path);
+
 static void emit(CodeGen *codegen, const char *text) {
     append_string_to_buffer(&codegen->output, text);
 }
@@ -3703,11 +3705,15 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
          * follows it, which is what NODE_CALL_EXPR's own token points at). */
         AstNode *function_node = node->data.call.function;
         Token tok = function_node ? function_node->token : node->token;
-        const char *file = tok.file ? tok.file : codegen->file;
+        /* tok.file comes straight from the parser for imported files, so it
+         * still needs the separator normalization codegen->file already had. */
+        char *normalized = tok.file ? normalize_path_separators(tok.file) : NULL;
+        const char *file = normalized ? normalized : codegen->file;
         emit_formatted(codegen,
             "(GrayStruct_SourceLocation){.file = gray_string_lit(\"%s\"), "
             ".line = %d, .column = %d}",
             file ? file : "", tok.line, tok.column);
+        free(normalized);
         return true;
     }
 
@@ -9347,6 +9353,25 @@ static int codegen_enum_index(CodeGen *codegen, const char *name) {
     return -1;
 }
 
+/* Source paths are emitted into C string literals in roughly a hundred places
+ * (panic sites, gray_enter_func, here()). A Windows path like C:\Users\... would
+ * be read as escape sequences there, and \U is a hard error rather than a
+ * warning, so every program compiled from an absolute Windows path would fail
+ * to build. Every Windows file API accepts forward slashes, so normalize once
+ * on the way in instead of escaping at each emit site. This also keeps the
+ * generated C identical across platforms, and fixes path handling in embed(),
+ * which searches for '/' when splitting off the source directory. */
+static char *normalize_path_separators(const char *path) {
+    if (!path) return NULL;
+    size_t len = strlen(path);
+    char *copy = xmalloc(len + 1);
+    memcpy(copy, path, len + 1);
+    for (char *p = copy; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+    return copy;
+}
+
 CodeGen codegen_create(const char *file) {
     CodeGen codegen;
     codegen.output = buffer_create(OUTPUT_BUF_INITIAL);
@@ -9354,7 +9379,8 @@ CodeGen codegen_create(const char *file) {
     codegen.indent = 0;
     codegen.has_mem = false;
     codegen.has_fmt = false;
-    codegen.file = file;
+    codegen.file_owned = normalize_path_separators(file);
+    codegen.file = codegen.file_owned;
     codegen.enum_names = NULL;
     codegen.enum_is_string = NULL;
     codegen.enum_is_tagged = NULL;
@@ -10095,6 +10121,7 @@ const char *codegen_result(CodeGen *codegen) {
 void codegen_destroy(CodeGen *codegen) {
     buffer_destroy(&codegen->output);
     buffer_destroy(&codegen->global_init);
+    free(codegen->file_owned);
     free(codegen->enum_names);
     free(codegen->enum_is_string);
     free(codegen->enum_is_tagged);

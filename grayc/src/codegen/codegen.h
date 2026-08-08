@@ -28,6 +28,7 @@ typedef struct {
     bool has_mem;       /* Whether @mem was imported */
     bool has_fmt;       /* Whether @fmt was imported */
     const char *file;
+    char *file_owned; /* normalized copy backing `file`; freed by codegen_destroy */
 
     /* Track declared type names for codegen */
     const char **enum_names;
