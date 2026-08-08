@@ -29,10 +29,14 @@
 
 #include <direct.h>
 #include <io.h>
+#include <stdio.h>
 
 /* Windows has no permission bits, so _mkdir takes no mode. Wrap it so callers
  * can keep passing the POSIX mode they would use everywhere else. */
 #define gray_rt_mkdir(path, mode) _mkdir(path)
+
+#define gray_rt_isatty(fd)      _isatty(fd)
+#define gray_rt_stderr_fileno() _fileno(stderr)
 
 #else
 
@@ -40,6 +44,9 @@
 #include <unistd.h>
 
 #define gray_rt_mkdir(path, mode) mkdir((path), (mode))
+
+#define gray_rt_isatty(fd)      isatty(fd)
+#define gray_rt_stderr_fileno() STDERR_FILENO
 
 #endif
 

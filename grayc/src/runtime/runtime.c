@@ -9,12 +9,13 @@
  */
 
 #include "runtime.h"
+#include "platform_rt.h"
 #include "util/colors.h"
 #include <stdarg.h>
-#include <unistd.h>
+#include <stdlib.h>
 
 static inline int panic_use_color(void) {
-    return isatty(STDERR_FILENO) && !getenv("NO_COLOR");
+    return gray_rt_isatty(gray_rt_stderr_fileno()) && !getenv("NO_COLOR");
 }
 
 /* --- Per-thread default arena --- */
