@@ -3,7 +3,16 @@
        test test-unit test-e2e test-integration test-go \
        test-ubsan test-asan
 
-BINARY_NAME=gray
+# Windows (MSYS2/Git Bash/MinGW make) needs an .exe suffix on every binary, and
+# cannot build libgrayrt.a yet because the runtime and standard library are
+# still POSIX-only. GNU make sets OS=Windows_NT there; everywhere else EXE is
+# empty and every rule below is byte-for-byte what it was.
+ifeq ($(OS),Windows_NT)
+  EXE = .exe
+  WINDOWS = 1
+endif
+
+BINARY_NAME=gray$(EXE)
 INSTALL_PATH=/usr/local/bin
 GO=go
 
@@ -42,20 +51,32 @@ test: build
 	@echo "=== Go Unit Tests ==="
 	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
 	@echo ""
-	@$(MAKE) -C grayc test-unit
-	@$(MAKE) -C grayc test-e2e
+	@"$(MAKE)" -C grayc test-unit
+	@"$(MAKE)" -C grayc test-e2e
+ifndef WINDOWS
 	@bash scripts/run_tests.sh
+endif
 	@echo ""
 	@echo "All test suites completed."
+ifdef WINDOWS
+	@echo "Skipped on Windows: e2e and integration suites (see 'make test-integration')."
+endif
 
 test-unit:
-	@$(MAKE) -C grayc test-unit
+	@"$(MAKE)" -C grayc test-unit
 
 test-e2e: build
-	@$(MAKE) -C grayc test-e2e
+	@"$(MAKE)" -C grayc test-e2e
 
+ifdef WINDOWS
+test-integration:
+	@echo "test-integration is not available on Windows: scripts/run_tests.sh needs"
+	@echo "bash, and the tests compile Grayscale programs to binaries, which needs"
+	@echo "libgrayrt.a (the runtime and standard library are still POSIX-only)."
+else
 test-integration: build
 	@bash scripts/run_tests.sh
+endif
 
 test-go: stubs
 	@echo ""
@@ -63,13 +84,13 @@ test-go: stubs
 	$(GO) test -v -count=1 ./cli/... ./internal/driver/...
 
 test-ubsan:
-	@$(MAKE) -C grayc test-ubsan
+	@"$(MAKE)" -C grayc test-ubsan
 
 test-asan:
-	@$(MAKE) -C grayc test-asan
+	@"$(MAKE)" -C grayc test-asan
 
 leaks:
-	@$(MAKE) -C grayc leaks
+	@"$(MAKE)" -C grayc leaks
 
 # Create zero-length embed stubs. go:embed directives in
 # internal/driver/embedded.go require these files to exist at `go build`
@@ -90,10 +111,14 @@ stubs:
 # as embedded assets and extracts them on first use to ~/.gray/runtime/.
 build: stubs
 	@echo "Building compiler..."
-	@$(MAKE) -C grayc build
+	@"$(MAKE)" -C grayc build
 	@echo "Staging embedded runtime assets..."
-	@cp grayc/grayc $(EMBED_DIR)/grayc
+	@# go:embed reads the literal path runtime/grayc on every platform; the
+	@# .exe rename happens on extraction (internal/driver/embedded.go).
+	@cp grayc/grayc$(EXE) $(EMBED_DIR)/grayc
+ifndef WINDOWS
 	@cp grayc/libgrayrt.a $(EMBED_DIR)/libgrayrt.a
+endif
 	@cp grayc/src/runtime/*.h grayc/src/runtime/*.c $(EMBED_DIR)/src/runtime/
 	@cp grayc/src/stdlib/*.h grayc/src/stdlib/*.c $(EMBED_DIR)/src/stdlib/
 	@echo "Building gray CLI (with embedded runtime)..."
@@ -101,6 +126,12 @@ build: stubs
 	@echo ""
 	@echo "Build complete: ./$(BINARY_NAME)"
 	@echo "Run with: ./$(BINARY_NAME) <file.gray>"
+ifdef WINDOWS
+	@echo ""
+	@echo "Note: libgrayrt.a was not built - the Grayscale runtime and standard"
+	@echo "library are still POSIX-only, so 'gray build' and 'gray run' cannot"
+	@echo "produce a binary yet. 'check', 'fmt', 'doc', and '--emit-c' work."
+endif
 
 install: build
 	@echo "Installing Grayscale to $(INSTALL_PATH)..."
@@ -139,5 +170,5 @@ clean:
 	@# Embed assets are gitignored — delete entirely, not truncate
 	@rm -f $(EMBED_DIR)/grayc $(EMBED_DIR)/libgrayrt.a
 	@rm -rf $(EMBED_DIR)/src
-	@$(MAKE) -C grayc clean
+	@"$(MAKE)" -C grayc clean
 	@echo "Clean complete"
