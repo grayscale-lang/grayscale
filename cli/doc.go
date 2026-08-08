@@ -41,8 +41,11 @@ func generateDocs(args []string, outputPath string) {
 	var entries []DocEntry
 
 	for _, arg := range args {
-		if strings.HasSuffix(arg, "/...") {
-			baseDir := strings.TrimSuffix(arg, "/...")
+		// Accept both src/... and src\... — Windows tab completion produces
+		// backslashes, and the recursive suffix should work either way.
+		slashed := filepath.ToSlash(arg)
+		if strings.HasSuffix(slashed, "/...") {
+			baseDir := filepath.FromSlash(strings.TrimSuffix(slashed, "/..."))
 			if baseDir == "." || baseDir == "" {
 				baseDir = "."
 			}

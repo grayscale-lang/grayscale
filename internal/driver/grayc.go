@@ -12,8 +12,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
+
+// graycBinaryName is the on-disk file name of the compiler binary for this
+// platform. Used both when extracting the embedded copy and when searching
+// beside the gray binary, so the two can never disagree.
+func graycBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "grayc.exe"
+	}
+	return "grayc"
+}
 
 // Find locates the grayc binary using priority-ordered lookup:
 // 1. GRAY_COMPILER_PATH environment variable (explicit override, always wins)
@@ -39,21 +50,23 @@ func Find() (string, error) {
 
 	// 3. Same directory as gray binary
 	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "grayc")
+		candidate := filepath.Join(filepath.Dir(exe), graycBinaryName())
 		if statFile(candidate) {
 			return candidate, nil
 		}
 	}
 
-	// 4. PATH lookup
+	// 4. PATH lookup (honors PATHEXT on Windows, so "grayc" finds grayc.exe)
 	if p, err := exec.LookPath("grayc"); err == nil {
 		return p, nil
 	}
 
 	// 5. Known install locations
-	for _, p := range []string{"/usr/local/bin/grayc", "/usr/bin/grayc"} {
-		if statFile(p) {
-			return p, nil
+	if runtime.GOOS != "windows" {
+		for _, p := range []string{"/usr/local/bin/grayc", "/usr/bin/grayc"} {
+			if statFile(p) {
+				return p, nil
+			}
 		}
 	}
 
