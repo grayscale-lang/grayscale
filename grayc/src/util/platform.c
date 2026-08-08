@@ -13,6 +13,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -255,6 +256,7 @@ bool gray_remove_file(const char *path) {
 
 bool gray_getcwd(char *buf, size_t n) {
 #if GRAY_OS_WINDOWS
+    if (n > (size_t)INT_MAX) n = (size_t)INT_MAX;
     return _getcwd(buf, (int)n) != NULL;
 #else
     return getcwd(buf, n) != NULL;
