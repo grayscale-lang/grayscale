@@ -10,12 +10,12 @@
 #include "error.h"
 #include "error_codes.h"
 #include "constants.h"
+#include "platform.h"
 #include "xalloc.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #define MAX_ERRORS_DISPLAYED 20
 #define DIAG_INITIAL_CAP     16
@@ -65,7 +65,7 @@ static void build_line_index(DiagSourceSlot *slot) {
 DiagnosticList *diagnostic_create(void) {
     DiagnosticList *diagnostics = xmalloc(sizeof(DiagnosticList));
     memset(diagnostics, 0, sizeof(DiagnosticList));
-    diagnostics->use_color = isatty(STDERR_FILENO);
+    diagnostics->use_color = gray_stderr_is_tty();
     return diagnostics;
 }
 

@@ -11,20 +11,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <stdint.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
 #include <dirent.h>
 #include <time.h>
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 
 #include "util/arena.h"
 #include "util/error.h"
 #include "util/constants.h"
+#include "util/platform.h"
 #include "util/xalloc.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
@@ -36,7 +31,6 @@
 #define GRAY_VERSION "unknown"
 #endif
 #define PATH_BUF_SIZE 2048
-#define CMD_BUF_SIZE 8192
 #define MAX_IMPORTS 256
 #define COMPILER_ARENA_SIZE (1024 * 1024)
 #define GRAY_EXT      ".gray"
@@ -115,80 +109,31 @@ static char *read_file(const char *path) {
     return buf;
 }
 
+/* Write text content to a file. Binary mode: the generated C must be
+ * byte-identical on every platform, so no newline translation. */
 static bool write_file(const char *path, const char *content) {
-    FILE *f = fopen(path, "w");
-    if (!f) {
+    if (!gray_write_file_mode(path, content, strlen(content))) {
         fprintf(stderr, "gray: cannot write '%s': ", path);
         perror("");
         return false;
     }
-    if (fputs(content, f) == EOF) {
-        fprintf(stderr, "gray: failed to write '%s'\n", path);
-        fclose(f);
-        return false;
-    }
-    fclose(f);
     return true;
 }
 
-/* Resolve the directory containing the grayc binary itself */
-static const char *get_self_dir(const char *argv0) {
-    static char buf[PATH_BUF_SIZE];
-
-#ifdef __APPLE__
-    /* macOS: use _NSGetExecutablePath */
-    uint32_t size = sizeof(buf);
-    if (_NSGetExecutablePath(buf, &size) == 0) {
-        char *resolved = realpath(buf, NULL);
-        if (resolved) {
-            strncpy(buf, resolved, sizeof(buf) - 1);
-            free(resolved);
-            char *slash = strrchr(buf, '/');
-            if (slash) *slash = '\0';
-            return buf;
-        }
-    }
-#endif
-
-#ifdef __linux__
-    /* Linux: read /proc/self/exe */
-    ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-    if (len > 0) {
-        buf[len] = '\0';
-        char *slash = strrchr(buf, '/');
-        if (slash) *slash = '\0';
-        return buf;
-    }
-#endif
-
-    /* Fallback: try to resolve argv[0] */
-    if (argv0) {
-        char *resolved = realpath(argv0, NULL);
-        if (resolved) {
-            strncpy(buf, resolved, sizeof(buf) - 1);
-            free(resolved);
-            char *slash = strrchr(buf, '/');
-            if (slash) *slash = '\0';
-            return buf;
-        }
-    }
-
-    return NULL;
-}
-
-/* Strip .gray extension and return base name */
+/* Strip the .gray extension from the base name and append the platform's
+ * executable suffix, so `gray build foo.gray` yields foo.exe on Windows. */
 static char *output_name_from_input(const char *input) {
-    const char *slash = strrchr(input, '/');
-    const char *base = slash ? slash + 1 : input;
+    const char *base = gray_path_basename(input);
 
     size_t len = strlen(base);
     if (len > GRAY_EXT_LEN && strcmp(base + len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
         len -= GRAY_EXT_LEN;
     }
 
-    char *out = malloc(len + 1);
+    size_t suffix_len = strlen(GRAY_EXE_SUFFIX);
+    char *out = malloc(len + suffix_len + 1);
     memcpy(out, base, len);
-    out[len] = '\0';
+    memcpy(out + len, GRAY_EXE_SUFFIX, suffix_len + 1);
     return out;
 }
 
@@ -207,25 +152,25 @@ static const char *find_runtime_dir(const char *argv0) {
 
     /* 1. Environment variable override */
     const char *env = getenv("GRAY_RUNTIME");
-    if (env && access(env, R_OK) == 0) {
-        snprintf(path, sizeof(path), "%s/runtime/runtime.h", env);
-        if (access(path, R_OK) == 0) return env;
+    if (env && gray_file_readable(env)) {
+        gray_path_join(path, sizeof(path), env, "runtime/runtime.h");
+        if (gray_file_readable(path)) return env;
     }
 
     /* 2-3. Relative to binary location */
-    const char *self_dir = get_self_dir(argv0);
+    const char *self_dir = gray_self_dir(argv0);
     if (self_dir) {
         /* Installed layout: binary in /usr/local/bin, runtime in /usr/local/lib/grayc */
-        snprintf(path, sizeof(path), "%s/../lib/grayc/runtime/runtime.h", self_dir);
-        if (access(path, R_OK) == 0) {
-            snprintf(path, sizeof(path), "%s/../lib/grayc", self_dir);
+        gray_path_join(path, sizeof(path), self_dir, "../lib/grayc/runtime/runtime.h");
+        if (gray_file_readable(path)) {
+            gray_path_join(path, sizeof(path), self_dir, "../lib/grayc");
             return path;
         }
 
         /* Development layout: binary in grayc/, runtime in grayc/src/runtime */
-        snprintf(path, sizeof(path), "%s/src/runtime/runtime.h", self_dir);
-        if (access(path, R_OK) == 0) {
-            snprintf(path, sizeof(path), "%s/src", self_dir);
+        gray_path_join(path, sizeof(path), self_dir, "src/runtime/runtime.h");
+        if (gray_file_readable(path)) {
+            gray_path_join(path, sizeof(path), self_dir, "src");
             return path;
         }
     }
@@ -233,25 +178,28 @@ static const char *find_runtime_dir(const char *argv0) {
     /* 4. Walk up from CWD looking for the project root */
     {
         char cwd[PATH_BUF_SIZE];
-        if (getcwd(cwd, sizeof(cwd))) {
+        if (gray_getcwd(cwd, sizeof(cwd))) {
             char probe[PATH_BUF_SIZE];
             char *dir = cwd;
             while (*dir) {
-                snprintf(probe, sizeof(probe), "%s/grayc/src/runtime/runtime.h", dir);
-                if (access(probe, R_OK) == 0) {
-                    snprintf(path, sizeof(path), "%s/grayc/src", dir);
+                gray_path_join(probe, sizeof(probe), dir, "grayc/src/runtime/runtime.h");
+                if (gray_file_readable(probe)) {
+                    gray_path_join(path, sizeof(path), dir, "grayc/src");
                     return path;
                 }
-                /* Move to parent */
-                char *slash = strrchr(dir, '/');
-                if (!slash || slash == dir) break;
-                *slash = '\0';
+                /* Move to parent. Stop at a filesystem root — on Windows that
+                 * is a drive or UNC share, which has no separator to strip and
+                 * would otherwise loop forever. */
+                if (gray_path_is_root(dir)) break;
+                char *sep = gray_path_rsep(dir);
+                if (!sep || sep == dir) break;
+                *sep = '\0';
             }
         }
     }
 
     /* 5. System install location */
-    if (access("/usr/local/lib/grayc/runtime/runtime.h", R_OK) == 0) {
+    if (gray_file_readable("/usr/local/lib/grayc/runtime/runtime.h")) {
         return "/usr/local/lib/grayc";
     }
 
@@ -607,7 +555,7 @@ static int scan_gray_files(const char *dir_path, char paths[][PATH_BUF_SIZE], in
         if (name[0] == '.') continue; /* skip hidden files and . / .. */
         size_t nlen = strlen(name);
         if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0) continue;
-        snprintf(paths[count], PATH_BUF_SIZE, "%s/%s", dir_path, name);
+        gray_path_join(paths[count], PATH_BUF_SIZE, dir_path, name);
         count++;
     }
     closedir(d);
@@ -617,7 +565,84 @@ static int scan_gray_files(const char *dir_path, char paths[][PATH_BUF_SIZE], in
     return count;
 }
 
+/* --- C compiler invocation ---
+ *
+ * The compile command is handed to the C compiler as an argv array rather than
+ * a shell string. No shell means no quoting rules to get wrong (paths with
+ * spaces just work), no command-line length ceiling, and no way for a path to
+ * be reinterpreted as shell syntax. */
+#define MAX_CC_ARGS 128
+
+typedef struct {
+    const char *v[MAX_CC_ARGS];
+    int n;
+    bool overflow;
+} ArgV;
+
+static void argv_push(ArgV *a, const char *s) {
+    if (a->n >= MAX_CC_ARGS - 1) {
+        a->overflow = true;
+        return;
+    }
+    a->v[a->n++] = s;
+}
+
+/* Push a formatted argument, copied into the arena so it outlives this call. */
+static void argv_pushf(ArgV *a, Arena *arena, const char *fmt, ...) {
+    char buf[PATH_BUF_SIZE];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    argv_push(a, arena_copy_string(arena, buf));
+}
+
+/* Split a compiler command into words, the way the shell used to when this
+ * was interpolated into a system() string. `--cc "zig cc -target x86_64-linux-gnu"`
+ * has to arrive as four separate arguments. */
+static void argv_push_command(ArgV *a, Arena *arena, const char *cmd) {
+    for (const char *p = cmd; *p;) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        const char *start = p;
+        while (*p && *p != ' ' && *p != '\t') p++;
+        argv_pushf(a, arena, "%.*s", (int)(p - start), start);
+    }
+}
+
+static void argv_end(ArgV *a) {
+    a->v[a->n] = NULL;
+}
+
+static void argv_print(const ArgV *a, FILE *out) {
+    for (int i = 0; i < a->n; i++) fprintf(out, "%s%s", i ? " " : "", a->v[i]);
+    fputc('\n', out);
+}
+
+/* Pick the first C compiler that actually runs. The candidate that answers is
+ * the one we go on to invoke — probing one name and then invoking a different
+ * one breaks on any system that has gcc but no cc, which is every Windows
+ * install and plenty of minimal Linux images. */
+static const char *detect_cc(void) {
+    static const char *const candidates[] = {
+#if GRAY_OS_WINDOWS
+        "gcc", "clang", "cc",
+#else
+        "cc", "gcc", "clang",
+#endif
+    };
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        const char *probe[] = {candidates[i], "--version", NULL};
+        if (gray_spawn_quiet(probe) == 0) return candidates[i];
+    }
+    return NULL;
+}
+
 int main(int argc, char **argv) {
+    /* Windows consoles need to be opted into ANSI escape handling before any
+     * colored diagnostic is written. No-op everywhere else. */
+    gray_enable_vt_mode();
+
     if (argc < 2) {
         print_usage();
         return 1;
@@ -727,7 +752,7 @@ int main(int argc, char **argv) {
 
     /* fmt mode: reformat and write back, then exit */
     if (fmt_mode) {
-        FILE *tmp = tmpfile();
+        FILE *tmp = gray_tmpfile();
         if (!tmp) {
             fprintf(stderr, "gray: fmt: could not create temp file\n");
             free(source);
@@ -753,23 +778,12 @@ int main(int argc, char **argv) {
         fmt_buf[fmt_len] = '\0';
         fclose(tmp);
         /* Write back to the original file with explicit 0644 permissions */
-        int wfd = open(input_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-        if (wfd < 0) {
+        if (!gray_write_file_mode(input_file, fmt_buf, (size_t)fmt_len)) {
             fprintf(stderr, "gray: fmt: cannot write '%s'\n", input_file);
             free(fmt_buf);
             free(source);
             return 1;
         }
-        FILE *f = fdopen(wfd, "w");
-        if (!f) {
-            fprintf(stderr, "gray: fmt: cannot write '%s'\n", input_file);
-            close(wfd);
-            free(fmt_buf);
-            free(source);
-            return 1;
-        }
-        fwrite(fmt_buf, 1, fmt_len, f);
-        fclose(f);
         free(fmt_buf);
         free(source);
         return 0;
@@ -843,15 +857,13 @@ int main(int argc, char **argv) {
          * Use realpath so that diamond dependencies reaching the main file via
          * different relative paths are still detected as duplicates. */
         {
-            char *rp = realpath(input_file, NULL);
+            char *rp = gray_realpath(input_file);
             mark_imported(rp ? arena_copy_string(arena, rp) : input_file);
             free(rp);
         }
 
         /* Derive main file's module name for circular import resolution */
-        const char *main_base = input_file;
-        const char *main_slash = strrchr(input_file, '/');
-        if (main_slash) main_base = main_slash + 1;
+        const char *main_base = gray_path_basename(input_file);
         char main_mod_buf[MSG_BUF_SIZE];
         size_t main_mod_len = strlen(main_base);
         if (main_mod_len > GRAY_EXT_LEN && strcmp(main_base + main_mod_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
@@ -865,8 +877,8 @@ int main(int argc, char **argv) {
         char input_dir[PATH_BUF_SIZE];
         strncpy(input_dir, input_file, sizeof(input_dir) - 1);
         input_dir[sizeof(input_dir) - 1] = '\0';
-        char *last_slash = strrchr(input_dir, '/');
-        if (last_slash) *(last_slash + 1) = '\0';
+        char *last_sep = gray_path_rsep(input_dir);
+        if (last_sep) *(last_sep + 1) = '\0';
         else { input_dir[0] = '.'; input_dir[1] = '/'; input_dir[2] = '\0'; }
 
         /* Snapshot of original main-program nodes taken before any imports are merged.
@@ -929,8 +941,7 @@ int main(int argc, char **argv) {
                     /* Case 2: try appending .gray (extensionless file import) */
                     char try_file[PATH_BUF_SIZE];
                     snprintf(try_file, sizeof(try_file), "%s.gray", import_path);
-                    struct stat st;
-                    if (stat(try_file, &st) == 0 && S_ISREG(st.st_mode)) {
+                    if (gray_is_file(try_file)) {
                         file_list = arena_alloc(arena, sizeof(char[PATH_BUF_SIZE]));
                         strncpy(file_list[0], try_file, PATH_BUF_SIZE - 1);
                         file_list[0][PATH_BUF_SIZE - 1] = '\0';
@@ -938,15 +949,15 @@ int main(int argc, char **argv) {
                         /* Update import_path so collision detection uses the resolved path */
                         strncpy(import_path, try_file, sizeof(import_path) - 1);
                         import_path[sizeof(import_path) - 1] = '\0';
-                    } else if (stat(import_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                    } else if (gray_is_dir(import_path)) {
                         /* Case 3: directory import — scan for .gray files */
 
                         /* Self-referential directory import: if the importing file
                          * lives inside the directory it is trying to import, reject. */
                         if (item->source_dir) {
-                            char *norm_dir = realpath(import_path, NULL);
-                            char *norm_src = realpath(item->source_dir, NULL);
-                            if (norm_dir && norm_src && strcmp(norm_dir, norm_src) == 0) {
+                            char *norm_dir = gray_realpath(import_path);
+                            char *norm_src = gray_realpath(item->source_dir);
+                            if (norm_dir && norm_src && gray_path_equal(norm_dir, norm_src)) {
                                 char msg[MSG_BUF_LARGE];
                                 snprintf(msg, sizeof(msg),
                                     "cannot import own module directory '%s'", item->path);
@@ -980,18 +991,18 @@ int main(int argc, char **argv) {
                 }
 
                 /* Derive module name from filename/directory (strip directory and .gray) */
-                const char *mod_base = rel;
-                const char *slash = strrchr(rel, '/');
-                if (slash) mod_base = slash + 1;
+                const char *mod_base = gray_path_basename(rel);
 
-                /* For directory imports the path ends with '/' so mod_base
-                 * points at the empty string after it.  Back up to extract
-                 * the actual directory name (e.g. "engine" from "src/engine/"). */
-                if (mod_base[0] == '\0' && slash && slash > rel) {
-                    const char *prev = slash - 1;
-                    while (prev > rel && *prev != '/') prev--;
-                    if (*prev == '/') prev++;
-                    size_t dlen = (size_t)(slash - prev);
+                /* For directory imports the path ends with a separator so
+                 * mod_base points at the empty string after it.  Back up to
+                 * extract the actual directory name (e.g. "engine" from
+                 * "src/engine/"). */
+                if (mod_base[0] == '\0' && mod_base > rel + 1) {
+                    const char *sep = mod_base - 1;
+                    const char *prev = sep - 1;
+                    while (prev > rel && !gray_is_path_sep(*prev)) prev--;
+                    if (gray_is_path_sep(*prev)) prev++;
+                    size_t dlen = (size_t)(sep - prev);
                     char dir_name[MSG_BUF_SIZE];
                     memcpy(dir_name, prev, dlen);
                     dir_name[dlen] = '\0';
@@ -1011,7 +1022,7 @@ int main(int argc, char **argv) {
                 /* Normalize import_path so diamond deps resolve to the same canonical path */
                 char norm_import[PATH_BUF_SIZE];
                 {
-                    char *rp = realpath(import_path, NULL);
+                    char *rp = gray_realpath(import_path);
                     if (rp) {
                         strncpy(norm_import, rp, sizeof(norm_import) - 1);
                         norm_import[sizeof(norm_import) - 1] = '\0';
@@ -1095,7 +1106,7 @@ int main(int argc, char **argv) {
 
                     /* Normalize the path so diamond dependencies (same file
                      * reached via different relative paths) are deduplicated. */
-                    char *norm = realpath(cur_file_path, NULL);
+                    char *norm = gray_realpath(cur_file_path);
                     const char *norm_path = norm ? arena_copy_string(arena, norm) : cur_file_path;
                     free(norm);
 
@@ -1158,13 +1169,13 @@ int main(int argc, char **argv) {
                         char cur_dir[PATH_BUF_SIZE];
                         strncpy(cur_dir, cur_file_path, sizeof(cur_dir) - 1);
                         cur_dir[sizeof(cur_dir) - 1] = '\0';
-                        char *cd_slash = strrchr(cur_dir, '/');
-                        if (cd_slash) *(cd_slash + 1) = '\0';
+                        char *cd_sep = gray_path_rsep(cur_dir);
+                        if (cd_sep) *(cd_sep + 1) = '\0';
                         else { cur_dir[0] = '.'; cur_dir[1] = '/'; cur_dir[2] = '\0'; }
                         const char *src_dir = arena_copy_string(arena, cur_dir);
 
                         /* Normalize the directory being imported for sibling detection */
-                        char *norm_import_dir = realpath(import_path, NULL);
+                        char *norm_import_dir = gray_realpath(import_path);
 
                         for (int ti = 0; ti < imp_program->data.program.stmt_count; ti++) {
                             AstNode *ts = imp_program->data.program.stmts[ti];
@@ -1195,18 +1206,19 @@ int main(int argc, char **argv) {
                                     snprintf(tres_gray, sizeof(tres_gray), "%s.gray", tres);
                                     tres_check = tres_gray;
                                 }
-                                char *norm_tres = realpath(tres_check, NULL);
+                                char *norm_tres = gray_realpath(tres_check);
                                 if (norm_tres && norm_import_dir) {
-                                    /* Check if the file's directory matches import_path */
-                                    char *tslash = strrchr(norm_tres, '/');
-                                    if (tslash) {
-                                        size_t dir_len = (size_t)(tslash - norm_tres);
+                                    /* Check if the file's directory matches import_path.
+                                     * Both buffers are ours to truncate in place. */
+                                    char *tsep = gray_path_rsep(norm_tres);
+                                    if (tsep) {
+                                        *tsep = '\0';
+                                        /* Strip trailing separator from norm_import_dir */
                                         size_t imp_dir_len = strlen(norm_import_dir);
-                                        /* Strip trailing slash from norm_import_dir for comparison */
-                                        if (imp_dir_len > 0 && norm_import_dir[imp_dir_len - 1] == '/')
-                                            imp_dir_len--;
-                                        if (dir_len == imp_dir_len &&
-                                            strncmp(norm_tres, norm_import_dir, dir_len) == 0) {
+                                        if (imp_dir_len > 0 &&
+                                            gray_is_path_sep(norm_import_dir[imp_dir_len - 1]))
+                                            norm_import_dir[imp_dir_len - 1] = '\0';
+                                        if (gray_path_equal(norm_tres, norm_import_dir)) {
                                             is_sibling = true;
                                         }
                                     }
@@ -1218,9 +1230,7 @@ int main(int argc, char **argv) {
                                     const char *sib_alias = titem->alias;
                                     if (!sib_alias) {
                                         /* Derive alias from path (filename without .gray) */
-                                        const char *sib_base = trel;
-                                        const char *sib_slash = strrchr(trel, '/');
-                                        if (sib_slash) sib_base = sib_slash + 1;
+                                        const char *sib_base = gray_path_basename(trel);
                                         char sib_buf[MSG_BUF_SIZE];
                                         size_t sib_len = strlen(sib_base);
                                         if (sib_len > GRAY_EXT_LEN && strcmp(sib_base + sib_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
@@ -1551,18 +1561,20 @@ int main(int argc, char **argv) {
     if (run_mode && !output_file) {
         /* Run mode: use temp file */
         default_output = malloc(PATH_BUF_SIZE);
-        snprintf(default_output, PATH_BUF_SIZE, "/tmp/gray_run_%d", (int)getpid());
+        gray_temp_path(default_output, PATH_BUF_SIZE, "gray_run_", GRAY_EXE_SUFFIX);
         output_file = default_output;
     } else if (!output_file) {
         default_output = output_name_from_input(input_file);
         output_file = default_output;
     }
 
-    /* Write generated C to temp file */
-    const char *out_base = strrchr(output_file, '/');
-    out_base = out_base ? out_base + 1 : output_file;
+    /* Write generated C to a temp file. The name carries the output's base name
+     * for readability under --verbose, plus a pid and counter so concurrent
+     * builds in different directories cannot collide. */
+    char c_prefix[PATH_BUF_SIZE];
+    snprintf(c_prefix, sizeof(c_prefix), "gray_%s_", gray_path_basename(output_file));
     char c_file[PATH_BUF_SIZE];
-    snprintf(c_file, sizeof(c_file), "/tmp/gray_%s.c", out_base);
+    gray_temp_path(c_file, sizeof(c_file), c_prefix, ".c");
 
     if (!write_file(c_file, c_code)) {
         codegen_destroy(&codegen);
@@ -1582,8 +1594,7 @@ int main(int argc, char **argv) {
             c_out = output_file;
         } else {
             /* Derive from input: foo.gray -> foo.c */
-            const char *sl = strrchr(input_file, '/');
-            const char *base = sl ? sl + 1 : input_file;
+            const char *base = gray_path_basename(input_file);
             size_t blen = strlen(base);
             if (blen > GRAY_EXT_LEN && strcmp(base + blen - GRAY_EXT_LEN, GRAY_EXT) == 0)
                 blen -= GRAY_EXT_LEN;
@@ -1613,15 +1624,35 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    /* Check that a C compiler is available (skip when --cc overrides) */
-    if (!cc_override) {
-        if (system("cc --version >/dev/null 2>&1") != 0 &&
-            system("gcc --version >/dev/null 2>&1") != 0 &&
-            system("clang --version >/dev/null 2>&1") != 0) {
+#if GRAY_OS_WINDOWS
+    /* Producing a binary needs libgrayrt.a — the Grayscale runtime and standard
+     * library, which have not been ported to Windows yet. Everything up to and
+     * including C generation works; only the link step is missing.
+     * Deleting this block is what "the Windows runtime port is done" means. */
+    fprintf(stderr, "gray: compiling to a native binary is not yet supported on Windows.\n");
+    fprintf(stderr, "  Working today: gray check, gray fmt, gray doc, gray build --emit-c\n");
+    fprintf(stderr, "  The runtime and standard library Windows port is still in progress.\n");
+    codegen_destroy(&codegen);
+    typechecker_free(checker);
+    diagnostic_destroy(diag);
+    arena_destroy(arena);
+    free(source);
+    free(default_output);
+    return 1;
+#endif
+
+
+    /* Pick a C compiler (skip detection when --cc overrides) */
+    const char *cc_cmd = cc_override;
+    if (!cc_cmd) {
+        cc_cmd = detect_cc();
+        if (!cc_cmd) {
             fprintf(stderr, "gray: no C compiler found.\n");
             fprintf(stderr, "  Install gcc or clang to compile Grayscale programs.\n");
             fprintf(stderr, "  On macOS: xcode-select --install\n");
             fprintf(stderr, "  On Ubuntu: sudo apt install gcc\n");
+            fprintf(stderr, "  On Windows: install MinGW-w64, e.g.\n");
+            fprintf(stderr, "    winget install BrechtSanders.WinLibs.POSIX.UCRT.Base\n");
             codegen_destroy(&codegen);
             typechecker_free(checker);
             arena_destroy(arena);
@@ -1630,8 +1661,6 @@ int main(int argc, char **argv) {
             return 1;
         }
     }
-
-    const char *cc_cmd = cc_override ? cc_override : "cc";
 
     /* Find runtime directory */
     const char *runtime_dir = find_runtime_dir(argv[0]);
@@ -1650,8 +1679,12 @@ int main(int argc, char **argv) {
         free(default_output);
         return 1;
     }
-    if (strchr(runtime_dir, '\'')) {
-        fprintf(stderr, "gray: GRAY_RUNTIME path must not contain single quotes\n");
+#if GRAY_OS_WINDOWS
+    /* The compiler is spawned with an argv array, so quoting and spaces are
+     * handled for us. The one thing the C runtime cannot round-trip when it
+     * re-serializes argv into a Windows command line is an embedded quote. */
+    if (strchr(runtime_dir, '"') || strchr(output_file, '"')) {
+        fprintf(stderr, "gray: paths must not contain double quotes\n");
         codegen_destroy(&codegen);
         typechecker_free(checker);
         arena_destroy(arena);
@@ -1659,61 +1692,50 @@ int main(int argc, char **argv) {
         free(default_output);
         return 1;
     }
-    if (strchr(output_file, '\'')) {
-        fprintf(stderr, "gray: output path must not contain single quotes\n");
-        codegen_destroy(&codegen);
-        typechecker_free(checker);
-        arena_destroy(arena);
-        free(source);
-        free(default_output);
-        return 1;
-    }
+#endif
 
     /* Compile the generated C code.
      * Try linking against pre-compiled libgrayrt.a first (fast path).
      * Fall back to compiling runtime from source if archive not found. */
-    char cmd[CMD_BUF_SIZE];
     char lib_path[PATH_BUF_SIZE];
     bool has_archive = false;
 
-    /* Check for libgrayrt.a relative to binary */
-    snprintf(lib_path, sizeof(lib_path), "%s/../libgrayrt.a", runtime_dir);
-    if (access(lib_path, R_OK) == 0) {
+    /* Check for libgrayrt.a next to the runtime dir, then next to the binary */
+    gray_path_join(lib_path, sizeof(lib_path), runtime_dir, "../libgrayrt.a");
+    if (gray_file_readable(lib_path)) {
         has_archive = true;
     } else {
-        /* Check in install location */
-        snprintf(lib_path, sizeof(lib_path), "%s/../libgrayrt.a", runtime_dir);
-        if (access(lib_path, R_OK) != 0) {
-            /* Check next to the runtime dir */
-            const char *self = get_self_dir(NULL);
-            if (self) {
-                snprintf(lib_path, sizeof(lib_path), "%s/libgrayrt.a", self);
-                if (access(lib_path, R_OK) == 0) has_archive = true;
-            }
+        const char *self = gray_self_dir(NULL);
+        if (self) {
+            gray_path_join(lib_path, sizeof(lib_path), self, "libgrayrt.a");
+            if (gray_file_readable(lib_path)) has_archive = true;
         }
-    }
-
-    /* Build debug/optimization flags */
-    char extra_flags[TYPE_NAME_MAX] = "";
-    if (debug_symbols) {
-        snprintf(extra_flags, sizeof(extra_flags), "-g %s", opt_level);
-    } else {
-        snprintf(extra_flags, sizeof(extra_flags), "%s", opt_level);
     }
 
     clock_t t_cc_start = clock();
 
+    ArgV cc_argv = {0};
+    argv_push_command(&cc_argv, arena, cc_cmd);
+    argv_push(&cc_argv, "-std=c11");
+    if (debug_symbols) argv_push(&cc_argv, "-g");
+    argv_push(&cc_argv, opt_level);
+    argv_push(&cc_argv, "-Wall");
+    argv_push(&cc_argv, "-Wno-unused-function");
+    argv_push(&cc_argv, "-Wno-unused-variable");
+    argv_push(&cc_argv, "-Wno-unused-but-set-variable");
+    argv_push(&cc_argv, "-Wno-tautological-compare");
+    argv_push(&cc_argv, "-Wno-infinite-recursion");
+    argv_push(&cc_argv, "-Wno-incompatible-pointer-types-discards-qualifiers");
+    argv_push(&cc_argv, "-isystem");
+    argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
+    argv_push(&cc_argv, "-isystem");
+    argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
+    argv_push(&cc_argv, "-o");
+    argv_push(&cc_argv, output_file);
+    argv_push(&cc_argv, c_file);
+
     if (has_archive) {
-        snprintf(cmd, sizeof(cmd),
-            "%s -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
-            "-Wno-tautological-compare -Wno-infinite-recursion "
-            "-Wno-incompatible-pointer-types-discards-qualifiers "
-            "-isystem '%s'/runtime -isystem '%s'/stdlib "
-            "-o '%s' '%s' '%s' "
-            "-lm -lpthread -Wl,-w 2>&1",
-            cc_cmd, extra_flags,
-            runtime_dir, runtime_dir,
-            output_file, c_file, lib_path);
+        argv_push(&cc_argv, lib_path);
     } else {
         /* Build source list from all runtime and stdlib .c files */
         static const char *runtime_srcs[] = {
@@ -1731,37 +1753,26 @@ int main(int argc, char **argv) {
             "stdlib/threads.c",
             "stdlib/time.c",     "stdlib/uuid.c", "stdlib/strconv.c"
         };
-        char srcs[CMD_BUF_SIZE];
-        int off = 0;
-        for (int i = 0; i < (int)(sizeof(runtime_srcs)/sizeof(runtime_srcs[0])); i++) {
-            int w = snprintf(srcs + off, sizeof(srcs) - (size_t)off, "'%s/%s' ", runtime_dir, runtime_srcs[i]);
-            if (w > 0 && (size_t)w < sizeof(srcs) - (size_t)off) off += w;
-            else { off = (int)sizeof(srcs); break; }
+        for (size_t i = 0; i < sizeof(runtime_srcs) / sizeof(runtime_srcs[0]); i++) {
+            argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, runtime_srcs[i]);
         }
-        for (int i = 0; i < (int)(sizeof(stdlib_srcs)/sizeof(stdlib_srcs[0])); i++) {
-            int w = snprintf(srcs + off, sizeof(srcs) - (size_t)off, "'%s/%s' ", runtime_dir, stdlib_srcs[i]);
-            if (w > 0 && (size_t)w < sizeof(srcs) - (size_t)off) off += w;
-            else { off = (int)sizeof(srcs); break; }
+        for (size_t i = 0; i < sizeof(stdlib_srcs) / sizeof(stdlib_srcs[0]); i++) {
+            argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, stdlib_srcs[i]);
         }
-
-        snprintf(cmd, sizeof(cmd),
-            "%s -std=c11 %s -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable "
-            "-Wno-tautological-compare -Wno-infinite-recursion "
-            "-Wno-incompatible-pointer-types-discards-qualifiers "
-            "-isystem '%s'/runtime -isystem '%s'/stdlib "
-            "-o '%s' '%s' %s"
-            "-lm -lpthread -Wl,-w 2>&1",
-            cc_cmd, extra_flags,
-            runtime_dir, runtime_dir,
-            output_file, c_file, srcs);
     }
 
-    if (verbose) {
-        fprintf(stderr, "gray: %s\n", cmd);
-    }
+    /* Platform link flags. Windows drops -lpthread: the runtime and stdlib
+     * Windows port decides between winpthreads and the native primitives, and
+     * will add -lws2_32 (sockets) and -lbcrypt (entropy) here when it lands. */
+    argv_push(&cc_argv, "-lm");
+#if !GRAY_OS_WINDOWS
+    argv_push(&cc_argv, "-lpthread");
+#endif
+    argv_push(&cc_argv, "-Wl,-w");
+    argv_end(&cc_argv);
 
-    if (strlen(cmd) >= CMD_BUF_SIZE - 1) {
-        fprintf(stderr, "gray: compile command too long (paths may be too deep)\n");
+    if (cc_argv.overflow) {
+        fprintf(stderr, "gray: too many arguments to the C compiler\n");
         codegen_destroy(&codegen);
         typechecker_free(checker);
         diagnostic_destroy(diag);
@@ -1771,7 +1782,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    int ret = system(cmd);
+    if (verbose) {
+        fprintf(stderr, "gray: ");
+        argv_print(&cc_argv, stderr);
+    }
+
+    int ret = gray_spawn_path(cc_argv.v);
+    if (ret < 0) {
+        fprintf(stderr, "gray: could not run the C compiler '%s'\n", cc_argv.v[0]);
+        ret = 1;
+    }
 
     clock_t t_cc_end = clock();
 
@@ -1795,11 +1815,17 @@ int main(int argc, char **argv) {
         }
         fprintf(stderr, "gray: generated C source at %s\n", c_file);
     } else {
-        unlink(c_file);
+        gray_remove_file(c_file);
 
         double total_ms = (double)(t_cc_end - t_start) / CLOCKS_PER_SEC * 1000.0;
         if (!run_mode) {
-            fprintf(stdout, "\033[32mCompiled '\033[1m%s\033[22m' in %.0fms!\033[0m\n", out_base, total_ms);
+            const char *out_base = gray_path_basename(output_file);
+            if (!no_color && gray_stdout_is_tty()) {
+                fprintf(stdout, "\033[32mCompiled '\033[1m%s\033[22m' in %.0fms!\033[0m\n",
+                    out_base, total_ms);
+            } else {
+                fprintf(stdout, "Compiled '%s' in %.0fms!\n", out_base, total_ms);
+            }
             fflush(stdout);
         }
 
@@ -1811,25 +1837,17 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Run mode: execute the binary and clean up.
-     * Use fork+execv instead of system() to avoid shell injection — the
-     * output path comes from user-supplied CLI input. */
+    /* Run mode: execute the binary and clean up. Spawned without a shell and
+     * without a PATH search — the output path comes from user-supplied CLI
+     * input, and a bare name must not resolve to some unrelated binary. */
     if (ret == 0 && run_mode) {
-        pid_t pid = fork();
-        if (pid == 0) {
-            char *args[] = { output_file, NULL };
-            execv(output_file, args);
-            perror("gray: exec");
-            _exit(127);
-        } else if (pid > 0) {
-            int status = 0;
-            waitpid(pid, &status, 0);
-            ret = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-        } else {
-            perror("gray: fork");
+        const char *run_argv[] = {output_file, NULL};
+        ret = gray_spawn_exact(run_argv);
+        if (ret < 0) {
+            fprintf(stderr, "gray: cannot execute '%s'\n", output_file);
             ret = 1;
         }
-        unlink(output_file);
+        gray_remove_file(output_file);
     }
 
     codegen_destroy(&codegen);
