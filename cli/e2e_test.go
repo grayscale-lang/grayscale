@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,14 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(dir)
 
-	bin := filepath.Join(dir, "gray")
+	// The .exe suffix is required even for an absolute path: os/exec resolves
+	// executables through PATHEXT on Windows and will not run an
+	// extensionless file.
+	name := "gray"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(dir, name)
 	build := exec.Command("go", "build", "-o", bin, "./cli")
 	build.Dir = findRepoRoot()
 	build.Stderr = os.Stderr
