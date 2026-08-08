@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to Grayscale! This guide will help you get started.
 
-> **Platform note:** Grayscale runs on **macOS** and **Linux**. Windows contributors can build and test the compiler frontend — see [Building from Source -> Windows](#windows) — but the runtime and standard library are still POSIX-only, so Grayscale programs cannot be compiled to a binary on Windows yet.
+> **Platform note:** Grayscale builds on **macOS**, **Linux**, and **Windows**. Windows contributors should read [Building from Source -> Windows](#windows) for toolchain setup.
 
 Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language specification. It's the canonical reference for syntax, types, and every stdlib module.
 
@@ -98,17 +98,9 @@ go version
 
 ## Building from Source
 
-Grayscale builds with `make` on all three platforms. What differs is how
-complete the build is:
-
-| | macOS / Linux | Windows |
-|---|---|---|
-| Compiler (`grayc`) | builds | builds |
-| Runtime + stdlib (`libgrayrt.a`) | builds | not ported yet |
-| Compile a program to a binary | yes | no |
-
-Start with [Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux)
-or [Windows](#windows), then come back to the shared sections below.
+Grayscale builds with `make` on all three platforms. Start with
+[Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux) or
+[Windows](#windows), then come back to the shared sections below.
 
 ### Unix-based systems (macOS and Linux)
 
@@ -147,11 +139,6 @@ GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
 All test targets can be run from the repo root — no need to `cd` into subdirectories.
 
 ### Windows
-
-Windows contributors can work on the compiler frontend. The runtime and
-standard library (`grayc/src/runtime/`, `grayc/src/stdlib/`) are still
-POSIX-only, so `libgrayrt.a` is not built and Grayscale programs cannot be
-linked into a binary on Windows yet.
 
 #### Prerequisites
 
@@ -207,21 +194,8 @@ runtime, stdlib, and vendor trees, which is exactly the `SRC` list in
 
 Either path produces the same artifacts. Use whichever you prefer.
 
-#### What works
-
-| Command | Windows |
-|---------|:-------:|
-| `check`, `fmt`, `doc`, `new`, `man`, `version` | works |
-| `build <file> --emit-c` | works |
-| `gray <file>` (compile and run), `build`, `verify`, `watch`, `cross` | needs the runtime port |
-
-| Test suite | Windows |
-|------------|:-------:|
-| `test_lexer`, `test_parser`, `test_typechecker`, `test_util` | run |
-| Go tests (`./cli/...`, `./internal/driver/...`) | run |
-| `test_codegen` (popen, `/tmp`), `test_panics` (fork) | pending |
-| `test_runtime`, `test_stdlib` (need `libgrayrt.a`) | pending |
-| `scripts/run_tests.sh` integration suite (bash) | pending |
+`test_panics` is the one suite that does not run on Windows: it forks a child
+process per case to capture the panic, and Windows has no `fork`.
 
 #### Writing portable compiler code
 

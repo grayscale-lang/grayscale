@@ -69,14 +69,9 @@ make build
 make install
 ```
 
-> **Note:** Running Grayscale programs is supported on **macOS** and **Linux**.
-> Windows support is in progress — see below.
+### Windows
 
-### Windows (in progress)
-
-The compiler frontend builds and runs on Windows with [MinGW-w64](https://www.mingw-w64.org/). The runtime
-and standard library have not been ported yet, so Grayscale programs cannot be
-compiled to a binary on Windows.
+Grayscale builds on Windows with [MinGW-w64](https://www.mingw-w64.org/).
 
 ```powershell
 winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
@@ -89,12 +84,6 @@ make build             # if you have make (MSYS2 / Git Bash)
 `make build`, `make test-unit`, `make test-go`, and `make clean` work the same
 as on macOS and Linux. `scripts/build.ps1` and `scripts/test.ps1` are equivalent
 PowerShell alternatives for machines without make.
-
-| Command | Windows |
-|---------|:-------:|
-| `gray check`, `gray fmt`, `gray doc`, `gray new`, `gray man`, `gray version` | works |
-| `gray build <file> --emit-c` | works |
-| `gray <file>` (compile and run), `gray build`, `gray verify`, `gray watch`, `gray cross` | needs the runtime port |
 
 ---
 
