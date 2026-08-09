@@ -3185,6 +3185,18 @@ static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_idx
         } else if (arg_type && arg_type->kind == TK_BOOL) {
             emit_expression(codegen, arg);
             emit(codegen, " ? \"true\" : \"false\"");
+        } else if (arg_type && arg_type->kind == TK_INT && !is_bigint_type(arg_type->name)) {
+            /* The directive may have been upgraded to %lld (a 64-bit read),
+             * but an integer literal emits as C `int`. Cast so the vararg
+             * slot always carries the full width — the Win64 ABI leaves the
+             * upper half of a 32-bit store as garbage. */
+            emit(codegen, "(long long)(");
+            emit_expression(codegen, arg);
+            emit(codegen, ")");
+        } else if (arg_type && arg_type->kind == TK_UINT && !is_bigint_type(arg_type->name)) {
+            emit(codegen, "(unsigned long long)(");
+            emit_expression(codegen, arg);
+            emit(codegen, ")");
         } else {
             emit_expression(codegen, arg);
         }
