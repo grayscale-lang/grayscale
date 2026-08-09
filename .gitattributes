@@ -12,6 +12,10 @@ go.sum linguist-generated
 
 # Enforce LF line endings
 * text=auto
+
+# Fixtures embedded byte-for-byte by embed() — checkout must be identical
+# on every platform or content assertions diverge from the committed bytes
+integration-tests/**/embed_fixture.txt text eol=lf
 *.s text eol=lf
 *.c text eol=lf
 *.h text eol=lf
@@ -22,3 +26,4 @@ Makefile text eol=lf
 
 # Windows-specific files keep CRLF
 *.bat text eol=crlf
+*.ps1 text eol=crlf

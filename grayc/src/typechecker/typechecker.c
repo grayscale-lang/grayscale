@@ -9,6 +9,7 @@
 
 #include "typechecker.h"
 #include "../util/constants.h"
+#include "../util/platform.h"
 #include "../util/reserved.h"
 #include "../util/xalloc.h"
 #include <stdio.h>
@@ -19,6 +20,20 @@
 #include <ctype.h>
 
 #define MAX_STRUCT_DEPTH 32
+
+/* True when `path` is `dir` itself or sits underneath it. Both arguments must
+ * already be canonicalized. Used to keep embed() from reaching outside the
+ * source tree. */
+static bool path_within_dir(const char *path, const char *dir) {
+    size_t dir_len = strlen(dir);
+    if (strlen(path) < dir_len) return false;
+    if (path[dir_len] != '\0' && !gray_is_path_sep(path[dir_len])) return false;
+    char prefix[4096];
+    if (dir_len >= sizeof(prefix)) return false;
+    memcpy(prefix, path, dir_len);
+    prefix[dir_len] = '\0';
+    return gray_path_equal(prefix, dir);
+}
 
 /* Helper: get the source file from an AST node's token, falling back to checker->file.
  * Imported nodes carry their original file path in token.file; main-file nodes have NULL. */
@@ -3788,45 +3803,34 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 const char *embed_path = arg->data.string_value.value;
                 char resolved[4096];
                 const char *source_file = NODE_FILE(checker, node);
-                if (embed_path[0] != '/' && source_file) {
-                    const char *last_slash = strrchr(source_file, '/');
-                    if (last_slash) {
-                        snprintf(resolved, sizeof(resolved), "%.*s%s",
-                            (int)(last_slash - source_file + 1), source_file, embed_path);
-                    } else {
-                        snprintf(resolved, sizeof(resolved), "%s", embed_path);
-                    }
+                /* Length of source_file's directory prefix, including the
+                 * trailing separator; 0 when the path has no directory part. */
+                size_t src_dir_len =
+                    source_file ? (size_t)(gray_path_basename(source_file) - source_file) : 0;
+                if (!gray_path_is_absolute(embed_path) && src_dir_len > 0) {
+                    snprintf(resolved, sizeof(resolved), "%.*s%s",
+                        (int)src_dir_len, source_file, embed_path);
                 } else {
                     snprintf(resolved, sizeof(resolved), "%s", embed_path);
                 }
                 /* Reject path traversal outside the source directory */
                 char real_embed[4096];
                 char real_src_dir[4096];
-                if (realpath(resolved, real_embed)) {
+                if (gray_realpath_into(resolved, real_embed, sizeof(real_embed))) {
                     bool escaped = true;
                     if (source_file) {
-                        const char *last_slash2 = strrchr(source_file, '/');
-                        if (last_slash2) {
+                        bool have_dir;
+                        if (src_dir_len > 0) {
                             char src_dir[4096];
                             snprintf(src_dir, sizeof(src_dir), "%.*s",
-                                (int)(last_slash2 - source_file), source_file);
-                            if (realpath(src_dir, real_src_dir)) {
-                                size_t dir_len = strlen(real_src_dir);
-                                if (strncmp(real_embed, real_src_dir, dir_len) == 0 &&
-                                    (real_embed[dir_len] == '/' || real_embed[dir_len] == '\0')) {
-                                    escaped = false;
-                                }
-                            }
+                                (int)(src_dir_len - 1), source_file);
+                            have_dir =
+                                gray_realpath_into(src_dir, real_src_dir, sizeof(real_src_dir));
                         } else {
                             /* source file has no directory component — cwd is the root */
-                            if (realpath(".", real_src_dir)) {
-                                size_t dir_len = strlen(real_src_dir);
-                                if (strncmp(real_embed, real_src_dir, dir_len) == 0 &&
-                                    (real_embed[dir_len] == '/' || real_embed[dir_len] == '\0')) {
-                                    escaped = false;
-                                }
-                            }
+                            have_dir = gray_realpath_into(".", real_src_dir, sizeof(real_src_dir));
                         }
+                        if (have_dir && path_within_dir(real_embed, real_src_dir)) escaped = false;
                     }
                     if (escaped) {
                         diagnostic_error_code(checker->diag, "E5027",
@@ -5463,12 +5467,13 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
 
     /* E3032: different enum types in comparison — catches both
      * direct enum literals (Color.RED == Dir.NORTH) and variables
-     * of different enum types (c == d where c:Color, d:Dir). */
+     * of different enum types (c == d where c:Color, d:Dir).
+     * Use display-name comparison so cross-module aliases unify. */
     if (!infix_errored &&
         (op == TOK_EQ || op == TOK_NOT_EQ) &&
         left->kind == TK_ENUM && right->kind == TK_ENUM &&
         left->name && right->name &&
-        strcmp(left->name, right->name) != 0) {
+        !typechecker_same_enum_type(checker, left->name, right->name)) {
         diagnostic_error_code_formatted(checker->diag, "E3032", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             enum_display_name(checker, left->name), enum_display_name(checker, right->name));
         infix_errored = true;
@@ -5708,12 +5713,21 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         snprintf(prefixed_type, sizeof(prefixed_type), "%s_%s", mod_name, type_name);
         /* Check if it's a module-qualified enum access */
         if (is_enum_name(checker, prefixed_type)) {
-            bool is_str_enum = false;
+            /* Validate variant exists */
+            bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
                 if (strcmp(checker->enum_names[enum_index], prefixed_type) == 0) {
-                    is_str_enum = checker->enum_is_string[enum_index];
+                    for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
+                        if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
+                            member_found = true;
+                            break;
+                        }
+                    }
                     break;
                 }
+            }
+            if (!member_found) {
+                diagnostic_error_code_formatted(checker->diag, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, prefixed_type, member);
             }
             /* Mark module as used */
             for (int mi = 0; mi < checker->import_count; mi++) {
@@ -5722,7 +5736,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                     break;
                 }
             }
-            result = is_str_enum ? &TYPE_STRING : &TYPE_INT;
+            result = type_enum(prefixed_type);
             return result;
         }
     }
@@ -5779,12 +5793,10 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (is_enum_name(checker, resolved_obj)) {
             /* Rewrite the label to the resolved enum name for codegen */
             obj->data.label.value = resolved_obj;
-            /* Check if this is a string enum and validate member exists */
-            bool is_str_enum = false;
+            /* Validate member exists */
             bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
                 if (strcmp(checker->enum_names[enum_index], resolved_obj) == 0) {
-                    is_str_enum = checker->enum_is_string[enum_index];
                     for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
                         if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
                             member_found = true;
@@ -6065,6 +6077,9 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                          strcmp(expected_t->name, val_t->name) != 0)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_ENUM) &&
                        !(expected_t->kind == TK_ENUM && is_int_kind(val_t->kind)) &&
+                       /* string enum → string coercion */
+                       !(expected_t->kind == TK_STRING && val_t->kind == TK_ENUM &&
+                         val_t->name && typechecker_enum_is_string(checker, val_t->name)) &&
                        !(expected_t->kind == TK_STRUCT && is_int_kind(val_t->kind)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_STRUCT) &&
                        !(expected_t->kind == TK_FLOAT && is_int_kind(val_t->kind)) &&
@@ -8146,11 +8161,13 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                             /* E3053: cross-enum mismatch — both are TK_ENUM but
                              * from different enum types (e.g. Color vs Dir).
                              * The kind-level check above passes since both are
-                             * TK_ENUM, so we need a name-level comparison. */
+                             * TK_ENUM, so we need a name-level comparison.
+                             * Use display-name comparison so cross-module
+                             * aliases (e.g. types_Status vs Status) unify. */
                             if (actual_et && expected_et &&
                                 actual_et->kind == TK_ENUM && expected_et->kind == TK_ENUM &&
                                 actual_et->name && expected_et->name &&
-                                strcmp(actual_et->name, expected_et->name) != 0) {
+                                !typechecker_same_enum_type(checker, actual_et->name, expected_et->name)) {
                                 diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                     arr->data.array_value.elements[enum_index]->token.line,
                                     arr->data.array_value.elements[enum_index]->token.column, 0, expected_et->name, actual_et->name);
@@ -8590,6 +8607,27 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     const char *mfn = fn->data.member.member;
                     char prefixed[MSG_BUF_SIZE];
                     snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, mfn);
+                    FuncSig *sig = find_func(checker, prefixed);
+                    if (sig && sig->return_count > 1) {
+                        Symbol *sym = scope_lookup_local(checker->current_scope,
+                            node->data.var_decl.name);
+                        if (sym) {
+                            sym->ret_types = sig->return_types;
+                            sym->ret_count = sig->return_count;
+                        }
+                    }
+                }
+                /* Triple-chain calls (mod.Type.func); look up mod_Type_func
+                 * and propagate multi-return types for destructuring. */
+                if (fn->kind == NODE_MEMBER_EXPR &&
+                    fn->data.member.object->kind == NODE_MEMBER_EXPR &&
+                    fn->data.member.object->data.member.object->kind == NODE_LABEL) {
+                    const char *mod_raw = fn->data.member.object->data.member.object->data.label.value;
+                    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+                    const char *sname = fn->data.member.object->data.member.member;
+                    const char *mfn = fn->data.member.member;
+                    char prefixed[MSG_BUF_SIZE];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", mod, sname, mfn);
                     FuncSig *sig = find_func(checker, prefixed);
                     if (sig && sig->return_count > 1) {
                         Symbol *sym = scope_lookup_local(checker->current_scope,
@@ -9322,10 +9360,12 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* Struct-to-struct return name mismatch */
+            /* Struct-to-struct return name mismatch.
+             * Use display-name comparison so cross-module aliases
+             * (e.g. types_Item vs Item) unify correctly. */
             if (ret_t->kind == TK_STRUCT && expected->kind == TK_STRUCT &&
                 ret_t->name && expected->name &&
-                strcmp(ret_t->name, expected->name) != 0) {
+                !typechecker_same_struct_type(checker, ret_t->name, expected->name)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",

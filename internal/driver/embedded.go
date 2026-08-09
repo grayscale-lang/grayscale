@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sync"
 )
 
@@ -47,7 +46,11 @@ var (
 // once per process via sync.Once.
 func extractEmbedded() (string, error) {
 	extractOnce.Do(func() {
-		if len(embeddedGrayc) == 0 || len(embeddedLibgrayrt) == 0 {
+		// libgrayrt.a may legitimately be an empty stub: the Windows
+		// bootstrap ships a compiler without the runtime archive, which is
+		// enough for check, fmt, doc, and --emit-c. Only a missing compiler
+		// means "this is a dev build, fall back to a path search".
+		if len(embeddedGrayc) == 0 {
 			extractErr = ErrNoEmbed
 			return
 		}
@@ -71,20 +74,18 @@ func extractEmbedded() (string, error) {
 			return
 		}
 
-		graycName := "grayc"
-		if runtime.GOOS == "windows" {
-			graycName = "grayc.exe"
-		}
-		graycDest := filepath.Join(dir, graycName)
+		graycDest := filepath.Join(dir, graycBinaryName())
 		libDest := filepath.Join(dir, "libgrayrt.a")
 
 		if err := writeIfMissing(graycDest, embeddedGrayc, 0o755); err != nil {
 			extractErr = err
 			return
 		}
-		if err := writeIfMissing(libDest, embeddedLibgrayrt, 0o644); err != nil {
-			extractErr = err
-			return
+		if len(embeddedLibgrayrt) > 0 {
+			if err := writeIfMissing(libDest, embeddedLibgrayrt, 0o644); err != nil {
+				extractErr = err
+				return
+			}
 		}
 
 		// Extract runtime and stdlib source files so grayc can find its

@@ -8,11 +8,19 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+/* Must precede every <stdlib.h> inclusion (also transitive ones via uuid.h)
+ * so the CRT declares rand_s, the Windows entropy source below. */
+#ifdef _WIN32
+#define _CRT_RAND_S
+#include <stdlib.h>
+#endif
+
 #include "uuid.h"
 #include "builtins.h"
 #include <time.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__linux__)
 #include <unistd.h>
@@ -25,10 +33,20 @@
 #define GRAY_UUID_COMPACT_LEN     32
 
 /* Cryptographically-suitable random bytes. Prefers getentropy() (macOS,
- * BSDs, glibc 2.25+) and falls back to /dev/urandom. On failure, returns
+ * BSDs, glibc 2.25+) and falls back to /dev/urandom; on Windows, rand_s
+ * (RtlGenRandom under the hood, no extra link library). On failure, returns
  * false; callers should treat that as fatal since UUID uniqueness is the
  * whole point. */
 static bool gray_uuid_random_bytes(uint8_t *buf, size_t n) {
+#ifdef _WIN32
+    for (size_t i = 0; i < n; i += sizeof(unsigned int)) {
+        unsigned int r;
+        if (rand_s(&r) != 0) return false;
+        size_t chunk = (n - i < sizeof(r)) ? n - i : sizeof(r);
+        memcpy(buf + i, &r, chunk);
+    }
+    return true;
+#else
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__linux__)
     if (n <= 256 && getentropy(buf, n) == 0) return true;
 #endif
@@ -37,6 +55,7 @@ static bool gray_uuid_random_bytes(uint8_t *buf, size_t n) {
     size_t got = fread(buf, 1, n, f);
     fclose(f);
     return got == n;
+#endif
 }
 
 static void gray_uuid_format_hyphenated(const uint8_t *bytes, char *buf) {

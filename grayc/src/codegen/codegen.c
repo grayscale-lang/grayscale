@@ -94,6 +94,8 @@ static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
 
 /* --- Helpers --- */
 
+static char *normalize_path_separators(const char *path);
+
 static void emit(CodeGen *codegen, const char *text) {
     append_string_to_buffer(&codegen->output, text);
 }
@@ -149,15 +151,17 @@ static int keyword_compare(const void *key, const void *element) {
     return strcmp((const char *)key, *(const char *const *)element);
 }
 
-/* Check if a name collides with a C keyword and mangle it if so.
- * Uses a rotating pool of static buffers so multiple calls can appear
- * in one format string (up to 4 simultaneous uses). */
+/* Check if a name collides with a C keyword — or an identifier the C
+ * standard defines as a macro (stdin/stdout/stderr, errno, EOF): those
+ * expand to function calls on some libcs (MinGW), so a local variable
+ * with that name is a syntax error there. Sorted for bsearch. */
 static bool is_c_keyword(const char *name) {
     static const char *keywords[] = {
-        "NULL", "auto", "bool", "break", "case", "char", "const", "continue",
-        "default", "do", "double", "else", "enum", "extern", "false", "float",
-        "for", "goto", "if", "inline", "int", "long", "register", "restrict",
-        "return", "short", "signed", "sizeof", "static", "struct", "switch",
+        "EOF", "NULL", "auto", "bool", "break", "case", "char", "const",
+        "continue", "default", "do", "double", "else", "enum", "errno",
+        "extern", "false", "float", "for", "goto", "if", "inline", "int",
+        "long", "register", "restrict", "return", "short", "signed", "sizeof",
+        "static", "stderr", "stdin", "stdout", "struct", "switch",
         "true", "typedef", "union", "unsigned", "void", "volatile", "while"
     };
     return bsearch(name, keywords, sizeof(keywords) / sizeof(keywords[0]),
@@ -3181,6 +3185,18 @@ static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_idx
         } else if (arg_type && arg_type->kind == TK_BOOL) {
             emit_expression(codegen, arg);
             emit(codegen, " ? \"true\" : \"false\"");
+        } else if (arg_type && arg_type->kind == TK_INT && !is_bigint_type(arg_type->name)) {
+            /* The directive may have been upgraded to %lld (a 64-bit read),
+             * but an integer literal emits as C `int`. Cast so the vararg
+             * slot always carries the full width — the Win64 ABI leaves the
+             * upper half of a 32-bit store as garbage. */
+            emit(codegen, "(long long)(");
+            emit_expression(codegen, arg);
+            emit(codegen, ")");
+        } else if (arg_type && arg_type->kind == TK_UINT && !is_bigint_type(arg_type->name)) {
+            emit(codegen, "(unsigned long long)(");
+            emit_expression(codegen, arg);
+            emit(codegen, ")");
         } else {
             emit_expression(codegen, arg);
         }
@@ -3703,11 +3719,15 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
          * follows it, which is what NODE_CALL_EXPR's own token points at). */
         AstNode *function_node = node->data.call.function;
         Token tok = function_node ? function_node->token : node->token;
-        const char *file = tok.file ? tok.file : codegen->file;
+        /* tok.file comes straight from the parser for imported files, so it
+         * still needs the separator normalization codegen->file already had. */
+        char *normalized = tok.file ? normalize_path_separators(tok.file) : NULL;
+        const char *file = normalized ? normalized : codegen->file;
         emit_formatted(codegen,
             "(GrayStruct_SourceLocation){.file = gray_string_lit(\"%s\"), "
             ".line = %d, .column = %d}",
             file ? file : "", tok.line, tok.column);
+        free(normalized);
         return true;
     }
 
@@ -4151,13 +4171,23 @@ static bool expression_is_assignable(AstNode *expr) {
 /* Emit &expr, materialising rvalues into a statement-expression temporary.
  * `tmp` is the temp variable name (must be unique within the enclosing expr). */
 static void emit_address_of(CodeGen *codegen, AstNode *expr, const char *tmp) {
+    (void)tmp;
     if (expression_is_assignable(expr)) {
         emit(codegen, "&");
         emit_expression(codegen, expr);
     } else {
-        emit_formatted(codegen, "({ __auto_type %s = ", tmp);
+        /* Materialize the rvalue as a one-element array compound literal,
+         * which decays to the pointer the callee wants. Its lifetime is the
+         * enclosing block — unlike a statement-expression local, whose
+         * storage ends at the closing brace, leaving the escaping pointer
+         * dangling (GCC -O2 reuses the slot; clang only survived by luck).
+         * __typeof__ does not evaluate its operand, so the expression text
+         * appears twice but runs once. */
+        emit(codegen, "(__typeof__(");
         emit_expression(codegen, expr);
-        emit_formatted(codegen, "; &%s; })", tmp);
+        emit(codegen, ")[]){");
+        emit_expression(codegen, expr);
+        emit(codegen, "}");
     }
 }
 
@@ -5038,14 +5068,18 @@ static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
     }
     /* Default: take address of the expression directly.
      * If the expression is an rvalue (e.g. a function call), materialise it
-     * into a statement-expression temporary so the generated C is valid. */
+     * as a one-element array compound literal that decays to the pointer —
+     * its lifetime is the enclosing block, unlike a statement-expression
+     * local whose storage ends at the closing brace (see emit_address_of). */
     if (arg->kind == NODE_LABEL || arg->kind == NODE_MEMBER_EXPR || arg->kind == NODE_INDEX_EXPR) {
         emit(codegen, "&");
         emit_expression(codegen, arg);
     } else {
-        emit(codegen, "({ __auto_type _aa = ");
+        emit(codegen, "(__typeof__(");
         emit_expression(codegen, arg);
-        emit(codegen, "; &_aa; })");
+        emit(codegen, ")[]){");
+        emit_expression(codegen, arg);
+        emit(codegen, "}");
     }
 }
 
@@ -5458,9 +5492,14 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 emit(codegen, "&");
                 emit_expression(codegen, rarg);
             } else {
-                emit(codegen, "({ __auto_type _aa = ");
+                /* Rvalue: compound literal, not a statement-expression temp
+                 * (whose storage dies at the closing brace — see
+                 * emit_address_of). */
+                emit(codegen, "(__typeof__(");
                 emit_expression(codegen, rarg);
-                emit(codegen, "; &_aa; })");
+                emit(codegen, ")[]){");
+                emit_expression(codegen, rarg);
+                emit(codegen, "}");
             }
         } else {
             emit_expression(codegen, node->data.call.args[i]);
@@ -6365,6 +6404,24 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             char ns_name[IDENT_BUF];
             snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
             AstNode *ns_func = find_function(codegen, ns_name);
+            /* If not found, try using-module-prefixed struct names so
+             * bare Product.create() from 'import and use' resolves to
+             * types_Product_create. */
+            static char using_resolved[IDENT_BUF];
+            if (!ns_func && resolved_name[0] >= 'A' && resolved_name[0] <= 'Z') {
+                for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                    const char *real_mod = resolve_alias(codegen, codegen->using_modules[ui]);
+                    char prefixed[IDENT_BUF];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", real_mod, resolved_name, member);
+                    ns_func = find_function(codegen, prefixed);
+                    if (ns_func) {
+                        snprintf(using_resolved, sizeof(using_resolved), "%s_%s", real_mod, resolved_name);
+                        resolved_name = using_resolved;
+                        snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
+                        break;
+                    }
+                }
+            }
             bool instance_dispatch = false;
             bool obj_is_ptr = false;
             if (!ns_func) {
@@ -9373,14 +9430,38 @@ static int codegen_enum_index(CodeGen *codegen, const char *name) {
     return -1;
 }
 
+/* Source paths are emitted into C string literals in roughly a hundred places
+ * (panic sites, gray_enter_func, here()). A Windows path like C:\Users\... would
+ * be read as escape sequences there, and \U is a hard error rather than a
+ * warning, so every program compiled from an absolute Windows path would fail
+ * to build. Every Windows file API accepts forward slashes, so normalize once
+ * on the way in instead of escaping at each emit site. This also keeps the
+ * generated C identical across platforms, and fixes path handling in embed(),
+ * which searches for '/' when splitting off the source directory. */
+static char *normalize_path_separators(const char *path) {
+    if (!path) return NULL;
+    size_t len = strlen(path);
+    char *copy = xmalloc(len + 1);
+    memcpy(copy, path, len + 1);
+    for (char *p = copy; *p; p++) {
+        if (*p == '\\') *p = '/';
+    }
+    return copy;
+}
+
 CodeGen codegen_create(const char *file) {
-    CodeGen codegen;
+    /* Zero-initialize so fields absent from the explicit list below (e.g.
+     * in_const_decl, current_var_name) start false/NULL instead of stack
+     * garbage. A truthy in_const_decl silently suppresses every runtime
+     * overflow and division check in the file. */
+    CodeGen codegen = {0};
     codegen.output = buffer_create(OUTPUT_BUF_INITIAL);
     codegen.global_init = buffer_create(MSG_BUF_SIZE);
     codegen.indent = 0;
     codegen.has_mem = false;
     codegen.has_fmt = false;
-    codegen.file = file;
+    codegen.file_owned = normalize_path_separators(file);
+    codegen.file = codegen.file_owned;
     codegen.enum_names = NULL;
     codegen.enum_is_string = NULL;
     codegen.enum_is_tagged = NULL;
@@ -10096,7 +10177,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Emit C main() */
     emit(codegen, "int main(int argc, char **argv) {\n");
     emit(codegen, "    (void)argc; (void)argv;\n");
-    emit(codegen, "    gray_runtime_init();\n");
+    {
+        size_t limit = codegen->arena_limit > 0
+            ? codegen->arena_limit : (size_t)1073741824;
+        emit_formatted(codegen, "    gray_runtime_init(%zuULL);\n", limit);
+    }
     emit(codegen, "    gray_os_init(argc, argv);\n");
     /* Initialize file-scope arrays that can't use C static initializers */
     if (codegen->global_init.len > 0) {
@@ -10121,6 +10206,7 @@ const char *codegen_result(CodeGen *codegen) {
 void codegen_destroy(CodeGen *codegen) {
     buffer_destroy(&codegen->output);
     buffer_destroy(&codegen->global_init);
+    free(codegen->file_owned);
     free(codegen->enum_names);
     free(codegen->enum_is_string);
     free(codegen->enum_is_tagged);

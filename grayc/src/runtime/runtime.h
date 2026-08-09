@@ -35,6 +35,8 @@ typedef struct {
     GrayArenaBlock *first;
     GrayArenaBlock *current;
     size_t default_block_size;
+    size_t max_bytes;         /* 0 = unlimited (user arenas) */
+    size_t total_allocated;   /* cumulative bytes across all blocks */
     bool destroyed;
 } GrayArena;
 
@@ -128,7 +130,7 @@ GrayString gray_string_concat(GrayArena *arena, GrayString a, GrayString b);
 
 /* --- Runtime Init/Shutdown --- */
 
-void gray_runtime_init(void);
+void gray_runtime_init(size_t arena_limit);
 void gray_runtime_shutdown(void);
 
 /* --- Scope-based memory management --- */

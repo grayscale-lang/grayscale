@@ -12,19 +12,34 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
+// graycBinaryName is the on-disk file name of the compiler binary for this
+// platform. Used both when extracting the embedded copy and when searching
+// beside the gray binary, so the two can never disagree.
+func graycBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "grayc.exe"
+	}
+	return "grayc"
+}
+
 // Find locates the grayc binary using priority-ordered lookup:
 // 1. GRAY_COMPILER_PATH environment variable (explicit override, always wins)
-// 2. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
-// 3. Same directory as the running gray binary (side-by-side install)
-// 4. PATH lookup
-// 5. Known install locations
+// 2. grayc/ subdirectory next to the running gray binary (repo checkout, so
+//    a dev loop of `make -C grayc build` is picked up without env vars)
+// 3. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
+// 4. Same directory as the running gray binary (side-by-side install)
+// 5. PATH lookup
+// 6. Known install locations
 //
-// Release builds should always hit path 2; the fallback search paths are
-// retained so a dev `go build ./cli` without running `make build`
-// first (which leaves the embedded assets as empty stubs) still works.
+// Release builds should always hit path 3; installed binaries have no grayc/
+// subdirectory, so path 2 only ever fires inside a source checkout. The
+// remaining search paths are retained so a dev `go build ./cli` without
+// running `make build` first (which leaves the embedded assets as empty
+// stubs) still works.
 func Find() (string, error) {
 	// 1. Explicit override
 	if p := os.Getenv("GRAY_COMPILER_PATH"); p != "" && statFile(p) {
@@ -32,28 +47,38 @@ func Find() (string, error) {
 		return p, nil
 	}
 
-	// 2. Embedded runtime (release builds)
-	if p, err := extractEmbedded(); err == nil {
-		return p, nil
-	}
-
-	// 3. Same directory as gray binary
+	// 2. Repo checkout: grayc/grayc next to the gray binary
 	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "grayc")
+		candidate := filepath.Join(filepath.Dir(exe), "grayc", graycBinaryName())
 		if statFile(candidate) {
 			return candidate, nil
 		}
 	}
 
-	// 4. PATH lookup
+	// 3. Embedded runtime (release builds)
+	if p, err := extractEmbedded(); err == nil {
+		return p, nil
+	}
+
+	// 4. Same directory as gray binary
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), graycBinaryName())
+		if statFile(candidate) {
+			return candidate, nil
+		}
+	}
+
+	// 5. PATH lookup (honors PATHEXT on Windows, so "grayc" finds grayc.exe)
 	if p, err := exec.LookPath("grayc"); err == nil {
 		return p, nil
 	}
 
-	// 5. Known install locations
-	for _, p := range []string{"/usr/local/bin/grayc", "/usr/bin/grayc"} {
-		if statFile(p) {
-			return p, nil
+	// 6. Known install locations
+	if runtime.GOOS != "windows" {
+		for _, p := range []string{"/usr/local/bin/grayc", "/usr/bin/grayc"} {
+			if statFile(p) {
+				return p, nil
+			}
 		}
 	}
 
@@ -80,6 +105,7 @@ type BuildOpts struct {
 	Quiet      bool   // Suppress all warnings
 	QuietCodes string // Suppress specific warning codes (comma-separated)
 	CC         string // Override C compiler command (e.g. "zig cc -target x86_64-linux-gnu")
+	ArenaLimit uint64 // Arena growth limit in bytes (0 = default 1 GB)
 }
 
 // Run compiles and executes a Grayscale source file via grayc run.
@@ -128,6 +154,9 @@ func buildArgs(file string, opts BuildOpts) []string {
 	}
 	if opts.CC != "" {
 		args = append(args, "--cc", opts.CC)
+	}
+	if opts.ArenaLimit > 0 {
+		args = append(args, fmt.Sprintf("--arena-limit=%d", opts.ArenaLimit))
 	}
 	return args
 }

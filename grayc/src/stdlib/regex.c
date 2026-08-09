@@ -9,7 +9,12 @@
  */
 
 #include "regex.h"
+#include "../runtime/platform_rt.h"
+#if GRAY_RT_WINDOWS
+#include "../runtime/regex_win.h" /* Windows ships no <regex.h> */
+#else
 #include <regex.h>
+#endif
 #include <string.h>
 #include <stdio.h>
 

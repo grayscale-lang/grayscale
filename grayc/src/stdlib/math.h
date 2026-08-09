@@ -13,7 +13,11 @@
 #define GRAY_MATH_H
 
 #include "../runtime/runtime.h"
-#include <math.h>
+/* This header is named math.h and generated programs see its directory via
+ * -isystem, so a plain #include <math.h> resolves back to this file and the
+ * libc math functions are never declared. include_next (GNU C, required by
+ * this project) continues the search past this directory to the real one. */
+#include_next <math.h>
 
 /*@man abs
  *@module math

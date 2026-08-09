@@ -8,6 +8,13 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+/* Must precede every <stdlib.h> inclusion (also transitive ones via random.h)
+ * so the CRT declares rand_s, the Windows entropy source. */
+#ifdef _WIN32
+#define _CRT_RAND_S
+#include <stdlib.h>
+#endif
+
 #include "random.h"
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +34,9 @@ static void ensure_seed(void) {
         unsigned seed;
 #if defined(__APPLE__) || defined(__FreeBSD__)
         arc4random_buf(&seed, sizeof(seed));
+#elif defined(_WIN32)
+        /* rand_s is RtlGenRandom under the hood: CSPRNG, no extra link lib. */
+        if (rand_s(&seed) != 0) seed = (unsigned)time(NULL) ^ (unsigned)getpid();
 #else
         FILE *f = fopen("/dev/urandom", "rb");
         if (f) { fread(&seed, sizeof(seed), 1, f); fclose(f); }
@@ -64,6 +74,15 @@ static uint64_t rand64(void) {
     uint64_t v;
 #if defined(__APPLE__) || defined(__FreeBSD__)
     arc4random_buf(&v, sizeof(v));
+#elif defined(_WIN32)
+    unsigned int hi, lo;
+    if (rand_s(&hi) == 0 && rand_s(&lo) == 0) {
+        v = ((uint64_t)hi << 32) | lo;
+    } else {
+        v = ((uint64_t)(unsigned)rand() << 33) ^
+            ((uint64_t)(unsigned)rand() << 2)  ^
+            ((uint64_t)(unsigned)rand());
+    }
 #else
     FILE *f = fopen("/dev/urandom", "rb");
     if (f) { fread(&v, sizeof(v), 1, f); fclose(f); }

@@ -11,6 +11,7 @@ package driver
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -27,9 +28,18 @@ func TestStatFile(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
+	// Creating a symlink on Windows needs Developer Mode or elevation. Skip
+	// only when permission is actually denied, so Developer Mode machines
+	// keep the coverage.
 	symlink := filepath.Join(dir, "a_symlink_to_file")
+	haveSymlink := true
 	if err := os.Symlink(regular, symlink); err != nil {
-		t.Fatalf("symlink: %v", err)
+		if runtime.GOOS == "windows" {
+			t.Logf("skipping symlink case: %v (Developer Mode disabled?)", err)
+			haveSymlink = false
+		} else {
+			t.Fatalf("symlink: %v", err)
+		}
 	}
 
 	cases := []struct {
@@ -41,9 +51,15 @@ func TestStatFile(t *testing.T) {
 		{"directory", subdir, false},
 		{"nonexistent", filepath.Join(dir, "nope"), false},
 		{"empty path", "", false},
+	}
+	if haveSymlink {
 		// os.Stat follows symlinks, so a symlink pointing at a regular
 		// file stats as a regular file. Documenting current behavior.
-		{"symlink to regular", symlink, true},
+		cases = append(cases, struct {
+			name string
+			path string
+			want bool
+		}{"symlink to regular", symlink, true})
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

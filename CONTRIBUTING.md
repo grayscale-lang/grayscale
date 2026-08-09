@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to Grayscale! This guide will help you get started.
 
-> **Platform note:** Grayscale supports **macOS** and **Linux** only. Windows is not a supported contributor platform — you won't be able to build or test locally.
+> **Platform note:** Grayscale builds on **macOS**, **Linux**, and **Windows**. Windows contributors should read [Building from Source -> Windows](#windows) for toolchain setup.
 
 Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language specification. It's the canonical reference for syntax, types, and every stdlib module.
 
@@ -11,6 +11,8 @@ Before you start coding, skim [`STANDARD.md`](./STANDARD.md) — the language sp
 - [Getting Started](#getting-started)
 - [Installing Go](#installing-go)
 - [Building from Source](#building-from-source)
+  - [Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux)
+  - [Windows](#windows)
 - [How the Compiler Works](#how-the-compiler-works)
 - [Making Changes](#making-changes)
 - [Project Structure](#project-structure)
@@ -96,24 +98,29 @@ go version
 
 ## Building from Source
 
+Grayscale builds with `make` on all three platforms. Start with
+[Unix-based systems (macOS and Linux)](#unix-based-systems-macos-and-linux) or
+[Windows](#windows), then come back to the shared sections below.
+
+### Unix-based systems (macOS and Linux)
+
 ```bash
 # Build the binary
 make build
 
 # Verify it works — write a quick test file and run it
 echo 'do main() { println("hello") }' > /tmp/test.gray
-GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
+./gray /tmp/test.gray
 ```
 
-> **Iterating on the compiler?** When you edit anything under `grayc/src/` and rebuild locally, you need to tell the `gray` wrapper to use your *local* `grayc` binary instead of the system-installed one. Set `GRAY_COMPILER_PATH=./grayc/grayc` on every command while iterating:
->
-> ```bash
-> GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
-> ```
->
-> Without this, you'll silently run against whatever `grayc` is installed on your system and wonder why your changes had no effect.
+> **Iterating on the compiler?** When `./gray` runs from a source checkout, it
+> automatically prefers the locally built `grayc/grayc` binary next to it over
+> the embedded or installed compiler, so a `make -C grayc build` is picked up
+> on the next run with no extra setup. To point at a compiler somewhere else
+> entirely, set `GRAY_COMPILER_PATH=/path/to/grayc` — the explicit override
+> always wins.
 
-### Makefile Commands
+#### Makefile Commands
 
 | Command | Description |
 |---------|-------------|
@@ -129,6 +136,90 @@ GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
 | `make test-asan` | ASan+UBSan tests (Linux recommended) |
 
 All test targets can be run from the repo root — no need to `cd` into subdirectories.
+
+### Windows
+
+#### Prerequisites
+
+- **MinGW-w64 GCC or Clang.** MSVC is not supported and is not planned: the
+  compiler emits GNU C (statement expressions, `__auto_type`, `__typeof__`,
+  `__builtin_*_overflow`) into every generated program.
+- **Go 1.23 or higher**
+
+```powershell
+winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
+```
+
+MSYS2 works too; the scripts find `C:\msys64\ucrt64\bin` and similar locations
+automatically and put them on `PATH` for the session. (That last part matters:
+`cc1.exe` loads its DLLs from beside `gcc.exe`, and without them the build
+fails with exit 1 and no diagnostic at all.)
+
+#### Build and test
+
+Use `make`, the same as every other platform. It needs a POSIX shell, which
+MSYS2 and Git Bash both provide.
+
+```bash
+make build       # grayc.exe + gray.exe
+make install     # install to %USERPROFILE%\.gray\bin (prints PATH instructions)
+make test-unit   # C unit suites
+make test-e2e    # end-to-end codegen tests
+make test-go     # Go unit tests
+make clean
+```
+
+The Makefiles detect Windows via `OS=Windows_NT`, add the `.exe` suffix, select
+`gcc` over the nonexistent `cc`, and switch to the MinGW flag set. The
+sanitizer and leak-check targets have no MinGW equivalent and say so rather
+than failing obscurely.
+
+`test_panics` is the one suite that does not run on Windows: it forks a child
+process per case to capture the panic, and Windows has no `fork`.
+
+#### How grayc finds a C compiler
+
+grayc picks the C compiler for generated programs in this order:
+
+1. `--cc <command>` on the grayc command line (what `gray cross` uses)
+2. `GRAY_CC`, then `CC` environment variables — each probed with `--version`
+   and skipped if it does not run; multi-word values are ignored, use `--cc`
+   for those
+3. `gcc`, `clang`, then `cc` on `PATH`
+4. Windows only: well-known install locations
+   (`C:\msys64\{ucrt64,mingw64,clang64}\bin`, `C:\mingw64\bin`, chocolatey's
+   MinGW, `%ProgramFiles%\LLVM`)
+
+When the winner is an absolute path, its directory is prepended to `PATH` for
+the process — `cc1.exe` resolves its DLLs via `PATH` from beside `gcc.exe`,
+so the path alone is not enough. The practical upshot: `grayc.exe` works from
+PowerShell or cmd even when MinGW is not on `PATH`.
+
+#### Writing portable compiler code
+
+`grayc/src/util/platform.h` is the single place OS differences are handled.
+When touching compiler code, use it rather than POSIX headers directly:
+
+| Instead of | Use |
+|------------|-----|
+| `strrchr(path, '/')` | `gray_path_basename()` / `gray_path_rsep()` |
+| `snprintf(buf, n, "%s/%s", a, b)` | `gray_path_join()` |
+| `realpath(p, NULL)` | `gray_realpath()` / `gray_realpath_into()` |
+| `strcmp()` on paths | `gray_path_equal()` |
+| `stat()` + `S_ISDIR`/`S_ISREG` | `gray_is_dir()` / `gray_is_file()` |
+| `access(p, R_OK)`, `unlink()`, `getcwd()` | `gray_file_readable()`, `gray_remove_file()`, `gray_getcwd()` |
+| `p[0] == '/'` | `gray_path_is_absolute()` |
+| `tmpfile()`, `/tmp/...` | `gray_tmpfile()`, `gray_temp_path()` |
+| `isatty(STDERR_FILENO)` | `gray_stderr_is_tty()` / `gray_stdout_is_tty()` |
+| `system()`, `fork()` + `execv()` | `gray_spawn_path()` / `gray_spawn_exact()` / `gray_spawn_quiet()` |
+
+The compiler invokes the C compiler through an **argv array**, never a shell
+string. That means arguments containing spaces need no quoting and can never be
+reinterpreted as shell syntax — do not reintroduce `system()`.
+
+`platform.h` deliberately does not include `<windows.h>`; that header defines
+`ERROR`, `min`, and `max` as macros, which collide with the compiler's own
+`Severity` enum. Keep Windows headers inside `platform.c`.
 
 ---
 
@@ -168,7 +259,7 @@ make build
 
 # 3. Test with a quick .gray file
 echo 'do main() { println("hello") }' > /tmp/test.gray
-GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
+./gray /tmp/test.gray
 ```
 
 This is a great way to quickly validate your change while developing. When your feature is working, make sure to add proper tests before submitting your PR (see [Writing Tests](#writing-tests)).

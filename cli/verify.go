@@ -12,6 +12,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/grayscale-lang/grayscale/internal/driver"
 	"github.com/spf13/cobra"
@@ -23,6 +24,16 @@ var verifyTestSrc []byte
 // runVerify writes the embedded tests.gray to a temp file, compiles and runs it
 // with grayc, then reports pass/fail. Returns the exit code (0 = pass).
 func runVerify() int {
+	// verify compiles and runs a program, which needs the Grayscale runtime.
+	// Say so up front — otherwise "Running verification test..." followed by a
+	// compile error reads as a broken install rather than a missing feature.
+	if runtime.GOOS == "windows" {
+		fmt.Fprintln(os.Stderr, "gray verify is not available on Windows yet.")
+		fmt.Fprintln(os.Stderr, "  It compiles and runs a program, which needs the Grayscale runtime.")
+		fmt.Fprintln(os.Stderr, "  Working today: gray check, gray fmt, gray doc, gray build --emit-c")
+		return 1
+	}
+
 	tmp, err := os.CreateTemp("", "gray-verify-*.gray")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: could not create temp file: %v\n", err)

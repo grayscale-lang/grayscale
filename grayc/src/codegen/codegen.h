@@ -28,6 +28,7 @@ typedef struct {
     bool has_mem;       /* Whether @mem was imported */
     bool has_fmt;       /* Whether @fmt was imported */
     const char *file;
+    char *file_owned; /* normalized copy backing `file`; freed by codegen_destroy */
 
     /* Track declared type names for codegen */
     const char **enum_names;
@@ -134,6 +135,9 @@ typedef struct {
      * Prevents runtime overflow-check wrappers (gray_add_check etc.) from being
      * emitted as C file-scope initializers, which C does not allow. */
     bool in_const_decl;
+
+    /* Arena growth limit in bytes (0 = use 1 GB default) */
+    size_t arena_limit;
 
     /* Monotonic counter for generating unique temporary variable names.
      * Every emitter that needs a unique C identifier draws from this

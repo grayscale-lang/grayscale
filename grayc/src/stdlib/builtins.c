@@ -9,13 +9,19 @@
  */
 
 #include "builtins.h"
+#include "../runtime/platform_rt.h"
 #include "../util/constants.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
-#include <unistd.h>
 #include <time.h>
+
+#if GRAY_RT_WINDOWS
+#include "../runtime/win32.h"
+#else
+#include <unistd.h>
+#endif
 
 #define GRAY_TOSTRING_BUF_SIZE    4096
 #define GRAY_TOSTRING_SAFE_LIMIT  (GRAY_TOSTRING_BUF_SIZE - 96)
@@ -200,26 +206,39 @@ void gray_builtin_exit(int64_t code) {
 
 void gray_builtin_sleep_s(int64_t seconds) {
     if (seconds < 0) gray_panic_code("P0083", "sleep duration cannot be negative (%lld)", (long long)seconds);
+#if GRAY_RT_WINDOWS
+    if (seconds > 0) Sleep((DWORD)(seconds * MS_PER_SEC));
+#else
     if (seconds > 0) sleep((unsigned int)seconds);
+#endif
 }
 
 void gray_builtin_sleep_ms(int64_t ms) {
     if (ms < 0) gray_panic_code("P0083", "sleep duration cannot be negative (%lld)", (long long)ms);
+#if GRAY_RT_WINDOWS
+    if (ms > 0) Sleep((DWORD)ms);
+#else
     if (ms > 0) {
         struct timespec ts;
         ts.tv_sec = ms / MS_PER_SEC;
         ts.tv_nsec = (ms % MS_PER_SEC) * NS_PER_MS;
         nanosleep(&ts, NULL);
     }
+#endif
 }
 
 void gray_builtin_sleep_ns(int64_t ns) {
+#if GRAY_RT_WINDOWS
+    /* Sleep() has millisecond granularity; round up so we never sleep 0. */
+    if (ns > 0) Sleep((DWORD)((ns + NS_PER_MS - 1) / NS_PER_MS));
+#else
     if (ns > 0) {
         struct timespec ts;
         ts.tv_sec = ns / NS_PER_SEC;
         ts.tv_nsec = ns % NS_PER_SEC;
         nanosleep(&ts, NULL);
     }
+#endif
 }
 
 /* --- to_string --- */

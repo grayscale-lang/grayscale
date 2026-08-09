@@ -65,3 +65,88 @@ jobs:
         env:
           ASAN_OPTIONS: detect_leaks=0
         run: make test-asan
+
+  # Windows is a separate job rather than a matrix entry: the steps above run
+  # bash scripts and sanitizers that have no Windows equivalent.
+  windows:
+    name: Windows Build and Test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: true
+
+      # Pin the toolchain rather than relying on whatever gcc the runner image
+      # happens to expose (windows-latest surfaces Strawberry Perl's, which
+      # drifts and is not a MinGW-w64 target).
+      - name: Install MinGW-w64 and GNU make
+        run: choco install mingw make --no-progress
+
+      - name: Toolchain versions
+        run: |
+          gcc --version
+          gcc -dumpmachine
+          go version
+
+      # Both supported build paths are exercised, because either can rot on
+      # its own: make is what contributors on MSYS2/Git Bash use, and the
+      # PowerShell scripts are what a machine with no POSIX shell uses.
+      - name: Build with make
+        shell: bash
+        run: make build
+
+      - name: Test with make
+        shell: bash
+        run: |
+          make test-unit
+          make test-e2e
+          make test-integration
+          make test-go
+
+      - name: Test with scripts/test.ps1
+        run: .\scripts\test.ps1
+
+      - name: Smoke test - check, emit-c
+        run: |
+          .\grayc\grayc.exe version
+          .\grayc\grayc.exe check .\cli\tests.gray
+          .\grayc\grayc.exe -c .\cli\tests.gray
+          .\gray.exe check .\cli\tests.gray
+
+      # The generated C must not contain literal "zu"/"lld" conversions. That
+      # is what -std=c11 would silently produce on MinGW by unbinding printf
+      # from the ANSI-conforming implementation; see scripts/common.ps1.
+      - name: Verify generated C has no broken printf conversions
+        run: |
+          $bad = Select-String -Path .\tests.c -Pattern '(^|[^%a-zA-Z])(zu|lld|llu)([^a-zA-Z]|$)'
+          if ($bad) {
+            Write-Host "Literal printf conversions leaked into generated C:"
+            $bad | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "Generated C is clean."
+
+      # Compiling from an absolute Windows path is its own regression risk: the
+      # source path is emitted into C string literals, so an unescaped
+      # C:\Users\... would be read as escape sequences and \U is a hard error.
+      # Build from $env:TEMP specifically, not a repo-relative path.
+      - name: Compile and run a program from an absolute path
+        run: |
+          $src = Join-Path $env:TEMP 'ci_smoke.gray'
+          $exe = Join-Path $env:TEMP 'ci_smoke.exe'
+          Set-Content -Path $src -Encoding ascii -Value @(
+            'do main() {',
+            '    println("windows ok")',
+            '}'
+          )
+          .\grayc\grayc.exe $src -o $exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "compile failed"; exit 1 }
+          $out = & $exe
+          if ($LASTEXITCODE -ne 0) { Write-Host "program exited $LASTEXITCODE"; exit 1 }
+          if ($out -ne 'windows ok') { Write-Host "unexpected output: $out"; exit 1 }
+          Write-Host "Compiled and ran from an absolute path."

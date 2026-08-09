@@ -69,7 +69,21 @@ make build
 make install
 ```
 
-> **Note:** Grayscale currently supports **macOS** and **Linux** only.
+### Windows
+
+Grayscale builds on Windows with [MinGW-w64](https://www.mingw-w64.org/).
+
+```powershell
+winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
+git clone https://github.com/grayscale-lang/grayscale.git
+cd grayscale
+make build
+```
+
+`make build`, `make test`, and `make clean` work the same as on macOS and
+Linux. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
+The compiler finds MinGW in its default install locations automatically —
+it does not need to be on `PATH`.
 
 ---
 
@@ -80,6 +94,7 @@ make install
 | `gray <file>` | Compile and run | `gray main.gray` |
 | `gray build <file> -o <name>` | Compile to a distributable binary | `gray build main.gray -o myapp` |
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
+| `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
 | `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
