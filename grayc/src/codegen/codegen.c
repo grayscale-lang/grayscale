@@ -151,15 +151,17 @@ static int keyword_compare(const void *key, const void *element) {
     return strcmp((const char *)key, *(const char *const *)element);
 }
 
-/* Check if a name collides with a C keyword and mangle it if so.
- * Uses a rotating pool of static buffers so multiple calls can appear
- * in one format string (up to 4 simultaneous uses). */
+/* Check if a name collides with a C keyword — or an identifier the C
+ * standard defines as a macro (stdin/stdout/stderr, errno, EOF): those
+ * expand to function calls on some libcs (MinGW), so a local variable
+ * with that name is a syntax error there. Sorted for bsearch. */
 static bool is_c_keyword(const char *name) {
     static const char *keywords[] = {
-        "NULL", "auto", "bool", "break", "case", "char", "const", "continue",
-        "default", "do", "double", "else", "enum", "extern", "false", "float",
-        "for", "goto", "if", "inline", "int", "long", "register", "restrict",
-        "return", "short", "signed", "sizeof", "static", "struct", "switch",
+        "EOF", "NULL", "auto", "bool", "break", "case", "char", "const",
+        "continue", "default", "do", "double", "else", "enum", "errno",
+        "extern", "false", "float", "for", "goto", "if", "inline", "int",
+        "long", "register", "restrict", "return", "short", "signed", "sizeof",
+        "static", "stderr", "stdin", "stdout", "struct", "switch",
         "true", "typedef", "union", "unsigned", "void", "volatile", "while"
     };
     return bsearch(name, keywords, sizeof(keywords) / sizeof(keywords[0]),
