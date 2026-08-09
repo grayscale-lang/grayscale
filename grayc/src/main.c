@@ -1733,7 +1733,17 @@ int main(int argc, char **argv) {
     } else {
         argv_push(&cc_argv, cc_cmd);
     }
+#if GRAY_OS_WINDOWS
+    /* gnu11, not c11: -std=c11 defines __STRICT_ANSI__ on MinGW-w64, which
+     * unbinds printf from the ANSI-conforming implementation (%zu breaks on
+     * msvcrt) and hides the POSIX-shaped names in <io.h>. These must match
+     * how libgrayrt.a is built (see grayc/Makefile STD_FLAGS). */
+    argv_push(&cc_argv, "-std=gnu11");
+    argv_push(&cc_argv, "-D__USE_MINGW_ANSI_STDIO=1");
+    argv_push(&cc_argv, "-D_WIN32_WINNT=0x0601");
+#else
     argv_push(&cc_argv, "-std=c11");
+#endif
     if (debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opt_level);
     argv_push(&cc_argv, "-Wall");
@@ -1743,6 +1753,10 @@ int main(int argc, char **argv) {
     argv_push(&cc_argv, "-Wno-tautological-compare");
     argv_push(&cc_argv, "-Wno-infinite-recursion");
     argv_push(&cc_argv, "-Wno-incompatible-pointer-types-discards-qualifiers");
+#if GRAY_OS_WINDOWS
+    /* GCC's spelling of the Clang-only flag above. */
+    argv_push(&cc_argv, "-Wno-discarded-qualifiers");
+#endif
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
     argv_push(&cc_argv, "-isystem");
@@ -1783,6 +1797,10 @@ int main(int argc, char **argv) {
     argv_push(&cc_argv, "-lpthread");
 #if GRAY_OS_WINDOWS
     argv_push(&cc_argv, "-lws2_32");  /* Winsock, used by net/http/server */
+    /* Self-contained exe: winpthread and libgcc link statically so the binary
+     * runs without MinGW's bin directory on PATH. System import libraries
+     * (kernel32, msvcrt, ws2_32) stay dynamic — those DLLs ship with the OS. */
+    argv_push(&cc_argv, "-static");
 #endif
     argv_push(&cc_argv, "-Wl,-w");
     argv_end(&cc_argv);
