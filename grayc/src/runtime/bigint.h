@@ -177,24 +177,28 @@ static inline gray_u128 gray_u128_from_u256(gray_u256 a) {
 
 /* --- i128 Arithmetic --- */
 
+/* The hi-limb arithmetic must be unsigned: these wrap by design, and the
+ * *_checked wrappers detect overflow from the wrapped sign afterward. Done
+ * in int64_t, the wrap is signed-overflow UB, and GCC at -O2 uses that to
+ * prove the panic branches unreachable and delete them. */
 static inline gray_i128 gray_i128_add(gray_i128 a, gray_i128 b) {
     gray_i128 r;
     r.lo = a.lo + b.lo;
-    r.hi = a.hi + b.hi + (r.lo < a.lo ? 1 : 0);
+    r.hi = (int64_t)((uint64_t)a.hi + (uint64_t)b.hi + (r.lo < a.lo ? 1 : 0));
     return r;
 }
 
 static inline gray_i128 gray_i128_sub(gray_i128 a, gray_i128 b) {
     gray_i128 r;
     r.lo = a.lo - b.lo;
-    r.hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0);
+    r.hi = (int64_t)((uint64_t)a.hi - (uint64_t)b.hi - (a.lo < b.lo ? 1 : 0));
     return r;
 }
 
 static inline gray_i128 gray_i128_neg(gray_i128 a) {
     gray_i128 r;
     r.lo = ~a.lo + 1;
-    r.hi = ~a.hi + (r.lo == 0 ? 1 : 0);
+    r.hi = (int64_t)(~(uint64_t)a.hi + (r.lo == 0 ? 1 : 0));
     return r;
 }
 
