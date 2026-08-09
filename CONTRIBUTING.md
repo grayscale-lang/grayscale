@@ -110,16 +110,15 @@ make build
 
 # Verify it works — write a quick test file and run it
 echo 'do main() { println("hello") }' > /tmp/test.gray
-GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
+./gray /tmp/test.gray
 ```
 
-> **Iterating on the compiler?** When you edit anything under `grayc/src/` and rebuild locally, you need to tell the `gray` wrapper to use your *local* `grayc` binary instead of the system-installed one. Set `GRAY_COMPILER_PATH=./grayc/grayc` on every command while iterating:
->
-> ```bash
-> GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
-> ```
->
-> Without this, you'll silently run against whatever `grayc` is installed on your system and wonder why your changes had no effect.
+> **Iterating on the compiler?** When `./gray` runs from a source checkout, it
+> automatically prefers the locally built `grayc/grayc` binary next to it over
+> the embedded or installed compiler, so a `make -C grayc build` is picked up
+> on the next run with no extra setup. To point at a compiler somewhere else
+> entirely, set `GRAY_COMPILER_PATH=/path/to/grayc` — the explicit override
+> always wins.
 
 #### Makefile Commands
 
@@ -176,6 +175,24 @@ than failing obscurely.
 
 `test_panics` is the one suite that does not run on Windows: it forks a child
 process per case to capture the panic, and Windows has no `fork`.
+
+#### How grayc finds a C compiler
+
+grayc picks the C compiler for generated programs in this order:
+
+1. `--cc <command>` on the grayc command line (what `gray cross` uses)
+2. `GRAY_CC`, then `CC` environment variables — each probed with `--version`
+   and skipped if it does not run; multi-word values are ignored, use `--cc`
+   for those
+3. `gcc`, `clang`, then `cc` on `PATH`
+4. Windows only: well-known install locations
+   (`C:\msys64\{ucrt64,mingw64,clang64}\bin`, `C:\mingw64\bin`, chocolatey's
+   MinGW, `%ProgramFiles%\LLVM`)
+
+When the winner is an absolute path, its directory is prepended to `PATH` for
+the process — `cc1.exe` resolves its DLLs via `PATH` from beside `gcc.exe`,
+so the path alone is not enough. The practical upshot: `grayc.exe` works from
+PowerShell or cmd even when MinGW is not on `PATH`.
 
 #### Writing portable compiler code
 
@@ -241,7 +258,7 @@ make build
 
 # 3. Test with a quick .gray file
 echo 'do main() { println("hello") }' > /tmp/test.gray
-GRAY_COMPILER_PATH=./grayc/grayc ./gray /tmp/test.gray
+./gray /tmp/test.gray
 ```
 
 This is a great way to quickly validate your change while developing. When your feature is working, make sure to add proper tests before submitting your PR (see [Writing Tests](#writing-tests)).

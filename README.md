@@ -82,6 +82,8 @@ make build
 
 `make build`, `make test`, and `make clean` work the same as on macOS and
 Linux. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
+The compiler finds MinGW in its default install locations automatically —
+it does not need to be on `PATH`.
 
 ---
 
