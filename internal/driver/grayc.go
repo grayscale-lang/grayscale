@@ -28,14 +28,18 @@ func graycBinaryName() string {
 
 // Find locates the grayc binary using priority-ordered lookup:
 // 1. GRAY_COMPILER_PATH environment variable (explicit override, always wins)
-// 2. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
-// 3. Same directory as the running gray binary (side-by-side install)
-// 4. PATH lookup
-// 5. Known install locations
+// 2. grayc/ subdirectory next to the running gray binary (repo checkout, so
+//    a dev loop of `make -C grayc build` is picked up without env vars)
+// 3. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
+// 4. Same directory as the running gray binary (side-by-side install)
+// 5. PATH lookup
+// 6. Known install locations
 //
-// Release builds should always hit path 2; the fallback search paths are
-// retained so a dev `go build ./cli` without running `make build`
-// first (which leaves the embedded assets as empty stubs) still works.
+// Release builds should always hit path 3; installed binaries have no grayc/
+// subdirectory, so path 2 only ever fires inside a source checkout. The
+// remaining search paths are retained so a dev `go build ./cli` without
+// running `make build` first (which leaves the embedded assets as empty
+// stubs) still works.
 func Find() (string, error) {
 	// 1. Explicit override
 	if p := os.Getenv("GRAY_COMPILER_PATH"); p != "" && statFile(p) {
@@ -43,12 +47,20 @@ func Find() (string, error) {
 		return p, nil
 	}
 
-	// 2. Embedded runtime (release builds)
+	// 2. Repo checkout: grayc/grayc next to the gray binary
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), "grayc", graycBinaryName())
+		if statFile(candidate) {
+			return candidate, nil
+		}
+	}
+
+	// 3. Embedded runtime (release builds)
 	if p, err := extractEmbedded(); err == nil {
 		return p, nil
 	}
 
-	// 3. Same directory as gray binary
+	// 4. Same directory as gray binary
 	if exe, err := os.Executable(); err == nil {
 		candidate := filepath.Join(filepath.Dir(exe), graycBinaryName())
 		if statFile(candidate) {
@@ -56,12 +68,12 @@ func Find() (string, error) {
 		}
 	}
 
-	// 4. PATH lookup (honors PATHEXT on Windows, so "grayc" finds grayc.exe)
+	// 5. PATH lookup (honors PATHEXT on Windows, so "grayc" finds grayc.exe)
 	if p, err := exec.LookPath("grayc"); err == nil {
 		return p, nil
 	}
 
-	// 5. Known install locations
+	// 6. Known install locations
 	if runtime.GOOS != "windows" {
 		for _, p := range []string{"/usr/local/bin/grayc", "/usr/bin/grayc"} {
 			if statFile(p) {
