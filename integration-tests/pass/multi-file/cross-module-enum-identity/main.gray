@@ -1,0 +1,75 @@
+import and use "./types.gray"
+import "./store.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: enum array initializer with import and use (bare name)
+    mut statuses [Status] = {Status.ACTIVE, Status.INACTIVE}
+    if statuses[0] == Status.ACTIVE {
+        println("  [PASS] enum array init with import and use")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum array init with import and use")
+        failed += 1
+    }
+
+    // Test 2: fully qualified enum array initializer
+    mut statuses2 [types.Status] = {types.Status.ACTIVE, types.Status.INACTIVE}
+    if statuses2[1] == Status.INACTIVE {
+        println("  [PASS] fully qualified enum array init")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] fully qualified enum array init")
+        failed += 1
+    }
+
+    // Test 3: enum field comparison across 3 files
+    mut item1 = make_item("first", Status.ACTIVE)
+    mut items [types.Item] = {item1}
+    mut s = store.Store{items: items}
+    if store.Store.check_active(s) {
+        println("  [PASS] enum field comparison across 3 files")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum field comparison across 3 files")
+        failed += 1
+    }
+
+    // Test 4: multi-return with cross-module struct type (3 files)
+    mut found_item, found = store.Store.find(s)
+    if found == true {
+        println("  [PASS] multi-return with cross-module type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] multi-return with cross-module type")
+        failed += 1
+    }
+
+    // Test 5: verify returned item has correct name
+    if found_item.name == "first" {
+        println("  [PASS] multi-return item has correct data")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] multi-return item has correct data: got '${found_item.name}'")
+        failed += 1
+    }
+
+    // Test 6: mixed qualified and unqualified enum usage
+    mut mixed_item = types.make_item("mixed", types.Status.ACTIVE)
+    if mixed_item.status == Status.ACTIVE {
+        println("  [PASS] mixed qualified/unqualified enum comparison")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mixed qualified/unqualified enum comparison")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
