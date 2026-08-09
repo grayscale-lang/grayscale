@@ -117,5 +117,32 @@ All tests run automatically on push to `main` via GitHub Actions:
 |----------|:--------:|:----------:|:----------:|
 | Ubuntu   | unit + e2e + integration | UBSan + ASan |  |
 | macOS    | unit + e2e + integration | UBSan |  |
+| Windows  | unit + e2e + integration | — | ✓ |
 
 CI workflow: `.github/workflows/ci.yml`
+
+---
+
+## Windows
+
+```bash
+make test-unit             # C unit suites
+make test-e2e              # end-to-end codegen tests
+make test-integration      # integration tests (runs via scripts/run_tests.ps1)
+make test-go               # Go unit tests
+```
+
+Or, with no POSIX shell:
+
+```powershell
+.\scripts\test.ps1                 # unit suites + Go tests
+.\scripts\test.ps1 -KeepBinaries   # leave the test .exe files in place
+.\scripts\test.ps1 -SkipGo
+```
+
+`test_panics` is the one suite that does not run on Windows: it forks a child
+process per case to capture the panic, and Windows has no `fork`. The runner
+prints an explicit `SKIPPED` line for it rather than omitting it, so the gap is
+visible in the output.
+
+See [Building from Source -> Windows](CONTRIBUTING.md#windows) for setup.

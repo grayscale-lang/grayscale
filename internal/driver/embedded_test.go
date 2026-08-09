@@ -10,6 +10,7 @@ package driver
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -80,6 +81,13 @@ func TestWriteIfMissing_CreatesParentDirError(t *testing.T) {
 }
 
 func TestWriteIfMissing_SetsMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows has no execute bit; Go synthesizes a mode from the
+		// read-only attribute, so there is nothing meaningful to assert.
+		// Executability there comes from the .exe extension instead.
+		t.Skip("file permission bits are not modeled on Windows")
+	}
+
 	dir := t.TempDir()
 	dest := filepath.Join(dir, "exec.bin")
 

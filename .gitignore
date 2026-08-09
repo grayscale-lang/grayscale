@@ -7,6 +7,8 @@
 *.o
 *.a
 *.d
+# GCC response files written by scripts/build.ps1 and scripts/test.ps1
+*.rsp
 /gray
 /grayc/grayc
 /grayc/libgrayrt.a

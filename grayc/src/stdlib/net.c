@@ -11,13 +11,8 @@
 #include "net.h"
 #include <string.h>
 #include <stdio.h>
-#include <unistd.h>
+#include "../runtime/net_rt.h"
 #include <errno.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/time.h>
 
 #define GRAY_NET_HOST_BUF         256
 #define GRAY_NET_PORT_BUF         16
@@ -27,6 +22,7 @@
 
 GraySocket gray_net_dial(GrayArena *arena, GrayString host, int64_t port) {
     (void)arena;
+    gray_net_startup();
     GraySocket sock = {-1};
 
     char host_buf[GRAY_NET_HOST_BUF];
@@ -52,7 +48,7 @@ GraySocket gray_net_dial(GrayArena *arena, GrayString host, int64_t port) {
     }
 
     if (connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
-        close(fd);
+        gray_sock_close(fd);
         freeaddrinfo(res);
         return sock;
     }
@@ -64,13 +60,13 @@ GraySocket gray_net_dial(GrayArena *arena, GrayString host, int64_t port) {
 
 void gray_net_close(GraySocket sock) {
     if (sock.fd >= 0) {
-        close(sock.fd);
+        gray_sock_close(sock.fd);
     }
 }
 
 int64_t gray_net_send(GraySocket sock, GrayString data) {
     if (sock.fd < 0 || !data.data) return -1;
-    ssize_t sent = send(sock.fd, data.data, (size_t)data.len, 0);
+    int64_t sent = (int64_t)send(sock.fd, data.data, (int)data.len, 0);
     return (int64_t)sent;
 }
 
@@ -81,7 +77,7 @@ GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t max_bytes) {
     if (buffer_size > GRAY_NET_MAX_RECV_BUF) buffer_size = GRAY_NET_MAX_RECV_BUF; /* cap at 1MB */
     char *buf = gray_arena_alloc(arena, buffer_size);
 
-    ssize_t n = recv(sock.fd, buf, buffer_size, 0);
+    int64_t n = (int64_t)recv(sock.fd, buf, (int)buffer_size, 0);
     if (n <= 0) return (GrayString){"", 0};
 
     return (GrayString){buf, (int32_t)n};
@@ -89,6 +85,7 @@ GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t max_bytes) {
 
 GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
     (void)arena;
+    gray_net_startup();
     GraySocket sock = {-1};
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -96,7 +93,7 @@ GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
 
     /* Allow port reuse */
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -105,12 +102,12 @@ GraySocket gray_net_listen(GrayArena *arena, int64_t port) {
     addr.sin_port = htons((uint16_t)port);
 
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
+        gray_sock_close(fd);
         return sock;
     }
 
     if (listen(fd, GRAY_NET_LISTEN_BACKLOG) != 0) {
-        close(fd);
+        gray_sock_close(fd);
         return sock;
     }
 
@@ -124,7 +121,7 @@ GraySocket gray_net_accept(GrayArena *arena, GraySocket listener) {
     if (listener.fd < 0) return sock;
 
     struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
+    gray_socklen_t client_len = sizeof(client_addr);
     int fd = accept(listener.fd, (struct sockaddr *)&client_addr, &client_len);
     if (fd < 0) return sock;
 
@@ -134,14 +131,14 @@ GraySocket gray_net_accept(GrayArena *arena, GraySocket listener) {
 
 void gray_net_set_timeout(GraySocket sock, int64_t milliseconds) {
     if (sock.fd < 0) return;
-    struct timeval tv;
-    tv.tv_sec = milliseconds / 1000;
-    tv.tv_usec = (milliseconds % 1000) * 1000;
-    setsockopt(sock.fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(sock.fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    GRAY_SOCK_TIMEOUT_TYPE tv;
+    gray_sock_timeout_value(milliseconds, &tv);
+    setsockopt(sock.fd, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(tv), sizeof(tv));
+    setsockopt(sock.fd, SOL_SOCKET, SO_SNDTIMEO, gray_sock_timeout_arg(tv), sizeof(tv));
 }
 
 GrayString gray_net_resolve(GrayArena *arena, GrayString hostname) {
+    gray_net_startup();
     char host_buf[GRAY_NET_HOST_BUF];
     gray_cstr(hostname, host_buf, sizeof(host_buf));
 
@@ -178,13 +175,14 @@ GrayResult_socket gray_net_dial_result(GrayArena *arena, GrayString host, int64_
 
 GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port) {
     (void)arena;
+    gray_net_startup();
     GraySocket sock = {-1};
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return sock;
 
     int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt, sizeof(opt));
 
     char host_buf[GRAY_NET_HOST_BUF];
     gray_cstr(host, host_buf, sizeof(host_buf));
@@ -195,17 +193,17 @@ GraySocket gray_net_listen_host(GrayArena *arena, GrayString host, int64_t port)
     addr.sin_port = htons((uint16_t)port);
 
     if (inet_pton(AF_INET, host_buf, &addr.sin_addr) != 1) {
-        close(fd);
+        gray_sock_close(fd);
         return sock;
     }
 
     if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        close(fd);
+        gray_sock_close(fd);
         return sock;
     }
 
     if (listen(fd, GRAY_NET_LISTEN_BACKLOG) != 0) {
-        close(fd);
+        gray_sock_close(fd);
         return sock;
     }
 

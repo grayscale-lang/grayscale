@@ -14,10 +14,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include "../runtime/net_rt.h"
 #include <pthread.h>
-#include <sys/socket.h>
-#include <sys/time.h>
 
 #define GRAY_SERVER_BUF_SIZE          65536
 #define GRAY_SERVER_REQUEST_ARENA     (64 * 1024)
@@ -250,16 +248,15 @@ static void *handle_connection(void *arg) {
     GrayArena *arena = gray_arena_create(GRAY_SERVER_REQUEST_ARENA); /* 64KB per request */
 
     /* Apply read timeout so slow or idle connections don't hold threads indefinitely */
-    struct timeval tv;
-    tv.tv_sec  = GRAY_SERVER_READ_TIMEOUT_MS / 1000;
-    tv.tv_usec = (GRAY_SERVER_READ_TIMEOUT_MS % 1000) * 1000;
-    setsockopt(ctx->client_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    GRAY_SOCK_TIMEOUT_TYPE tv;
+    gray_sock_timeout_value(GRAY_SERVER_READ_TIMEOUT_MS, &tv);
+    setsockopt(ctx->client_fd, SOL_SOCKET, SO_RCVTIMEO, gray_sock_timeout_arg(tv), sizeof(tv));
 
     /* Receive request data */
     char buf[GRAY_SERVER_BUF_SIZE];
-    ssize_t n = recv(ctx->client_fd, buf, sizeof(buf) - 1, 0);
+    int64_t n = (int64_t)recv(ctx->client_fd, buf, (int)sizeof(buf) - 1, 0);
     if (n <= 0) {
-        close(ctx->client_fd);
+        gray_sock_close(ctx->client_fd);
         free(ctx);
         gray_arena_destroy(arena, __FILE__, __LINE__);
         free(arena);
@@ -285,7 +282,7 @@ static void *handle_connection(void *arg) {
         if (req.method.len >= GRAY_HTTP_METHOD_BUF || req.path.len >= GRAY_HTTP_PATH_BUF_SERVER) {
             const char *err = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(ctx->client_fd, err, strlen(err), 0);
-            close(ctx->client_fd);
+            gray_sock_close(ctx->client_fd);
             free(ctx);
             gray_arena_destroy(arena, __FILE__, __LINE__);
             free(arena);
@@ -361,7 +358,7 @@ static void *handle_connection(void *arg) {
     size_t send_len = (response_length > 0 && (size_t)response_length < sizeof(response_buffer))
         ? (size_t)response_length : sizeof(response_buffer) - 1;
     send(ctx->client_fd, response_buffer, send_len, 0);
-    close(ctx->client_fd);
+    gray_sock_close(ctx->client_fd);
     free(ctx);
     gray_arena_destroy(arena, __FILE__, __LINE__);
     free(arena);
@@ -389,14 +386,14 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
             gray_atomic_sub32(&active_connections, 1);
             const char *r503 = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(client.fd, r503, strlen(r503), 0);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
 
         ConnCtx *ctx = malloc(sizeof(ConnCtx));
         if (!ctx) {
             gray_atomic_sub32(&active_connections, 1);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
         ctx->client_fd = client.fd;
@@ -407,7 +404,7 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
             gray_atomic_sub32(&active_connections, 1);
             fprintf(stderr, "server: failed to create thread\n");
             free(ctx);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
         pthread_detach(thread);
@@ -435,14 +432,14 @@ void gray_server_listen(int64_t port, GrayRouter *r) {
             gray_atomic_sub32(&active_connections, 1);
             const char *r503 = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(client.fd, r503, strlen(r503), 0);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
 
         ConnCtx *ctx = malloc(sizeof(ConnCtx));
         if (!ctx) {
             gray_atomic_sub32(&active_connections, 1);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
         ctx->client_fd = client.fd;
@@ -453,7 +450,7 @@ void gray_server_listen(int64_t port, GrayRouter *r) {
             gray_atomic_sub32(&active_connections, 1);
             fprintf(stderr, "server: failed to create thread\n");
             free(ctx);
-            close(client.fd);
+            gray_sock_close(client.fd);
             continue;
         }
         pthread_detach(thread);

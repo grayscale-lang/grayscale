@@ -9,6 +9,7 @@
 
 #include "typechecker.h"
 #include "../util/constants.h"
+#include "../util/platform.h"
 #include "../util/reserved.h"
 #include "../util/xalloc.h"
 #include <stdio.h>
@@ -19,6 +20,20 @@
 #include <ctype.h>
 
 #define MAX_STRUCT_DEPTH 32
+
+/* True when `path` is `dir` itself or sits underneath it. Both arguments must
+ * already be canonicalized. Used to keep embed() from reaching outside the
+ * source tree. */
+static bool path_within_dir(const char *path, const char *dir) {
+    size_t dir_len = strlen(dir);
+    if (strlen(path) < dir_len) return false;
+    if (path[dir_len] != '\0' && !gray_is_path_sep(path[dir_len])) return false;
+    char prefix[4096];
+    if (dir_len >= sizeof(prefix)) return false;
+    memcpy(prefix, path, dir_len);
+    prefix[dir_len] = '\0';
+    return gray_path_equal(prefix, dir);
+}
 
 /* Helper: get the source file from an AST node's token, falling back to checker->file.
  * Imported nodes carry their original file path in token.file; main-file nodes have NULL. */
@@ -3788,45 +3803,34 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 const char *embed_path = arg->data.string_value.value;
                 char resolved[4096];
                 const char *source_file = NODE_FILE(checker, node);
-                if (embed_path[0] != '/' && source_file) {
-                    const char *last_slash = strrchr(source_file, '/');
-                    if (last_slash) {
-                        snprintf(resolved, sizeof(resolved), "%.*s%s",
-                            (int)(last_slash - source_file + 1), source_file, embed_path);
-                    } else {
-                        snprintf(resolved, sizeof(resolved), "%s", embed_path);
-                    }
+                /* Length of source_file's directory prefix, including the
+                 * trailing separator; 0 when the path has no directory part. */
+                size_t src_dir_len =
+                    source_file ? (size_t)(gray_path_basename(source_file) - source_file) : 0;
+                if (!gray_path_is_absolute(embed_path) && src_dir_len > 0) {
+                    snprintf(resolved, sizeof(resolved), "%.*s%s",
+                        (int)src_dir_len, source_file, embed_path);
                 } else {
                     snprintf(resolved, sizeof(resolved), "%s", embed_path);
                 }
                 /* Reject path traversal outside the source directory */
                 char real_embed[4096];
                 char real_src_dir[4096];
-                if (realpath(resolved, real_embed)) {
+                if (gray_realpath_into(resolved, real_embed, sizeof(real_embed))) {
                     bool escaped = true;
                     if (source_file) {
-                        const char *last_slash2 = strrchr(source_file, '/');
-                        if (last_slash2) {
+                        bool have_dir;
+                        if (src_dir_len > 0) {
                             char src_dir[4096];
                             snprintf(src_dir, sizeof(src_dir), "%.*s",
-                                (int)(last_slash2 - source_file), source_file);
-                            if (realpath(src_dir, real_src_dir)) {
-                                size_t dir_len = strlen(real_src_dir);
-                                if (strncmp(real_embed, real_src_dir, dir_len) == 0 &&
-                                    (real_embed[dir_len] == '/' || real_embed[dir_len] == '\0')) {
-                                    escaped = false;
-                                }
-                            }
+                                (int)(src_dir_len - 1), source_file);
+                            have_dir =
+                                gray_realpath_into(src_dir, real_src_dir, sizeof(real_src_dir));
                         } else {
                             /* source file has no directory component — cwd is the root */
-                            if (realpath(".", real_src_dir)) {
-                                size_t dir_len = strlen(real_src_dir);
-                                if (strncmp(real_embed, real_src_dir, dir_len) == 0 &&
-                                    (real_embed[dir_len] == '/' || real_embed[dir_len] == '\0')) {
-                                    escaped = false;
-                                }
-                            }
+                            have_dir = gray_realpath_into(".", real_src_dir, sizeof(real_src_dir));
                         }
+                        if (have_dir && path_within_dir(real_embed, real_src_dir)) escaped = false;
                     }
                     if (escaped) {
                         diagnostic_error_code(checker->diag, "E5027",

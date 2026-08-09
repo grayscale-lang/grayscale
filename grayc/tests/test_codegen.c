@@ -13,7 +13,53 @@
 #include <string.h>
 #include <unistd.h>
 
+#ifdef _WIN32
+#include <io.h>
+#define popen  _popen
+#define pclose _pclose
+#define unlink _unlink
+/* system() and popen() route through cmd.exe, which does not accept "./" as a
+ * command prefix -- it reports "'.' is not recognized". Backslash is required. */
+#define E2E_COMPILER ".\\grayc.exe"
+#define E2E_EXE_SUFFIX ".exe"
+/* /tmp is not a real location for a native Windows process; it would resolve
+ * against the current drive root. */
+static const char *e2e_tmpdir(void) {
+    const char *t = getenv("TEMP");
+    if (!t || !*t) t = getenv("TMP");
+    return (t && *t) ? t : ".";
+}
+#else
+#define E2E_COMPILER "./grayc"
+#define E2E_EXE_SUFFIX ""
+static const char *e2e_tmpdir(void) { return "/tmp"; }
+#endif
+
 static int test_number = 0;
+
+/* Compile a .gray file to a binary. Diagnostics are captured and printed only
+ * on failure — a swallowed compiler error once turned "gcc is not on PATH"
+ * into 121 opaque NULL-output failures. */
+static int e2e_compile(const char *gray_file, const char *binary_file) {
+    char command[1024];
+    snprintf(command, sizeof(command), E2E_COMPILER " \"%s\" -o \"%s\" 2>&1", gray_file, binary_file);
+    FILE *pipe = popen(command, "r");
+    if (!pipe) return -1;
+
+    char cc_out[8192];
+    size_t total = 0;
+    size_t bytes_read;
+    while ((bytes_read = fread(cc_out + total, 1, sizeof(cc_out) - total - 1, pipe)) > 0) {
+        total += bytes_read;
+    }
+    cc_out[total] = '\0';
+
+    int rc = pclose(pipe);
+    if (rc != 0) {
+        fprintf(stderr, "  test %d: compile failed:\n%s", test_number, cc_out);
+    }
+    return rc;
+}
 
 /* Compile and run a Grayscale program, return its stdout output */
 static char *compile_and_run(const char *gray_source) {
@@ -21,8 +67,8 @@ static char *compile_and_run(const char *gray_source) {
     static char output[4096];
     char gray_file[128], binary_file[128];
 
-    snprintf(gray_file, sizeof(gray_file), "/tmp/grayc_e2e_%d.gray", test_number);
-    snprintf(binary_file, sizeof(binary_file), "/tmp/grayc_e2e_%d", test_number);
+    snprintf(gray_file, sizeof(gray_file), "%s/grayc_e2e_%d.gray", e2e_tmpdir(), test_number);
+    snprintf(binary_file, sizeof(binary_file), "%s/grayc_e2e_%d" E2E_EXE_SUFFIX, e2e_tmpdir(), test_number);
 
     /* Write source */
     FILE *file = fopen(gray_file, "w");
@@ -31,16 +77,14 @@ static char *compile_and_run(const char *gray_source) {
     fclose(file);
 
     /* Compile */
-    char command[1024];
-    snprintf(command, sizeof(command), "./grayc %s -o %s >/dev/null 2>&1", gray_file, binary_file);
-    if (system(command) != 0) {
+    if (e2e_compile(gray_file, binary_file) != 0) {
         unlink(gray_file);
         return NULL;
     }
 
     /* Run and capture output */
     char run_cmd[256];
-    snprintf(run_cmd, sizeof(run_cmd), "%s 2>&1", binary_file);
+    snprintf(run_cmd, sizeof(run_cmd), "\"%s\" 2>&1", binary_file);
     FILE *pipe = popen(run_cmd, "r");
     if (!pipe) {
         unlink(gray_file);
@@ -55,6 +99,15 @@ static char *compile_and_run(const char *gray_source) {
     }
     output[total] = '\0';
     pclose(pipe);
+
+    /* Text-mode _popen translates CRLF already; strip any '\r' a binary-mode
+     * child leaks through so comparisons stay byte-exact. */
+    size_t w = 0;
+    for (size_t r = 0; r < total; r++) {
+        if (output[r] != '\r') output[w++] = output[r];
+    }
+    total = w;
+    output[total] = '\0';
 
     /* Remove trailing newline for easier comparison */
     if (total > 0 && output[total - 1] == '\n') {
@@ -990,8 +1043,8 @@ static void test_e2e_divide_by_zero(void) {
     /* Compile and run — should panic, not crash silently */
     test_number++;
     char gray_file[128], binary_file[128];
-    snprintf(gray_file, sizeof(gray_file), "/tmp/grayc_e2e_%d.gray", test_number);
-    snprintf(binary_file, sizeof(binary_file), "/tmp/grayc_e2e_%d", test_number);
+    snprintf(gray_file, sizeof(gray_file), "%s/grayc_e2e_%d.gray", e2e_tmpdir(), test_number);
+    snprintf(binary_file, sizeof(binary_file), "%s/grayc_e2e_%d" E2E_EXE_SUFFIX, e2e_tmpdir(), test_number);
 
     const char *src =
         ""
@@ -1006,15 +1059,13 @@ static void test_e2e_divide_by_zero(void) {
     fputs(src, file);
     fclose(file);
 
-    char command[1024];
-    snprintf(command, sizeof(command), "./grayc %s -o %s >/dev/null 2>&1", gray_file, binary_file);
-    if (system(command) != 0) {
+    if (e2e_compile(gray_file, binary_file) != 0) {
         unlink(gray_file);
         ASSERT(0 && "compile failed");
     }
 
     char run_cmd[256];
-    snprintf(run_cmd, sizeof(run_cmd), "%s 2>&1", binary_file);
+    snprintf(run_cmd, sizeof(run_cmd), "\"%s\" 2>&1", binary_file);
     FILE *pipe = popen(run_cmd, "r");
     char output[4096] = {0};
     if (pipe) {
@@ -1945,7 +1996,7 @@ static void test_e2e_array_of_structs(void) {
 
 int main(void) {
     /* Must run from the grayc/ directory */
-    if (access("./grayc", X_OK) != 0) {
+    if (access(E2E_COMPILER, 0) != 0) {
         fprintf(stderr, "test_codegen: must run from the grayc/ directory\n");
         return 1;
     }

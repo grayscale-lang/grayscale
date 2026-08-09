@@ -109,6 +109,10 @@ jobs:
             goos: darwin
             goarch: amd64
             grayc_arch: darwin-amd64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            grayc_arch: windows-amd64
     runs-on: ${{ matrix.os }}
     env:
       RELEASE_TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag_name }}
@@ -123,33 +127,50 @@ jobs:
         with:
           go-version: '1.23'
 
+      # Pin the toolchain rather than relying on whatever gcc the runner
+      # image happens to expose (same rationale as ci.yml's Windows job).
+      - name: Install MinGW-w64 and GNU make (Windows)
+        if: runner.os == 'Windows'
+        run: choco install mingw make --no-progress
+
       # #1461: single-binary release. Build grayc first, stage into the
       # embed directory, then `go build` so the Go CLI bakes the compiler
       # and runtime in as assets.
       - name: Build Grayscale compiler
+        shell: bash
         run: |
           cd grayc
           make clean
           make build
 
       - name: Create embed stubs
+        shell: bash
         run: make stubs
 
       - name: Stage embedded runtime assets
         shell: bash
         run: |
-          cp grayc/grayc internal/driver/runtime/grayc
+          EXE=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXE=".exe"; fi
+          # go:embed reads the literal path runtime/grayc on every platform;
+          # the .exe rename happens on extraction (internal/driver/embedded.go).
+          cp "grayc/grayc${EXE}" internal/driver/runtime/grayc
           cp grayc/libgrayrt.a internal/driver/runtime/libgrayrt.a
           cp grayc/src/runtime/*.h grayc/src/runtime/*.c internal/driver/runtime/src/runtime/
           cp grayc/src/stdlib/*.h grayc/src/stdlib/*.c internal/driver/runtime/src/stdlib/
+          # runtime.c and builtins.c include util/ headers; without them the
+          # compile-from-source fallback cannot build (mirrors Makefile staging).
+          cp grayc/src/util/*.h internal/driver/runtime/src/util/
 
       - name: Build Grayscale CLI (with embedded runtime)
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
+          EXE=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXE=".exe"; fi
           BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')
-          go build -ldflags "-X main.Version=${RELEASE_TAG} -X main.BuildTime=${BUILD_TIME}" -o gray ./cli
+          go build -ldflags "-X main.Version=${RELEASE_TAG} -X main.BuildTime=${BUILD_TIME}" -o "gray${EXE}" ./cli
         shell: bash
 
       - name: Package single-binary release
@@ -157,16 +178,24 @@ jobs:
         run: |
           ARCH="${{ matrix.grayc_arch }}"
           mkdir -p staging dist
-          cp gray staging/
-          tar czf "dist/gray-${ARCH}.tar.gz" -C staging .
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            # .zip, not .tar.gz: gray update's extractor picks the format by
+            # platform (cli/update.go getAssetName/extractZip).
+            cp gray.exe staging/
+            (cd staging && 7z a "../dist/gray-${ARCH}.zip" gray.exe)
+          else
+            cp gray staging/
+            tar czf "dist/gray-${ARCH}.tar.gz" -C staging .
+          fi
 
       - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          for f in dist/*.tar.gz; do
-            [ -f "$f" ] && gh release upload "$RELEASE_TAG" "$f" --clobber
+          for f in dist/*.tar.gz dist/*.zip; do
+            [ -f "$f" ] || continue
+            gh release upload "$RELEASE_TAG" "$f" --clobber
           done
 
   # WASM playground update is disabled — the interpreter has been removed.

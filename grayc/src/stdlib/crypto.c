@@ -8,6 +8,13 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+/* Must precede every <stdlib.h> inclusion (also transitive ones via crypto.h)
+ * so the CRT declares rand_s, the Windows entropy source. */
+#ifdef _WIN32
+#define _CRT_RAND_S
+#include <stdlib.h>
+#endif
+
 #include "crypto.h"
 #include <string.h>
 #include <stdio.h>
@@ -158,6 +165,16 @@ GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
     arc4random_buf(raw, (size_t)nbytes);
+#elif defined(_WIN32)
+    /* rand_s is RtlGenRandom under the hood: CSPRNG, no extra link library. */
+    for (int64_t i = 0; i < nbytes; i += (int64_t)sizeof(unsigned int)) {
+        unsigned int r;
+        if (rand_s(&r) != 0) {
+            gray_panic_code("P0052", "crypto.random_hex: failed to read from the system CSPRNG");
+        }
+        size_t chunk = (size_t)(nbytes - i) < sizeof(r) ? (size_t)(nbytes - i) : sizeof(r);
+        memcpy(raw + i, &r, chunk);
+    }
 #else
     FILE *uf = fopen("/dev/urandom", "rb");
     if (!uf || (int64_t)fread(raw, 1, (size_t)nbytes, uf) != nbytes) {

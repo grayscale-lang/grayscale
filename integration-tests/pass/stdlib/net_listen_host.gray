@@ -9,8 +9,9 @@ do main() {
     if err == nil { pass += 1 } otherwise { fail += 1 }
     net.close(listener)
 
-    // Bind to 0.0.0.0 explicitly
-    mut listener2, err2 = net.listen("0.0.0.0", 0)
+    // Second explicit-host bind, also loopback: binding 0.0.0.0 here would
+    // trigger a firewall prompt on Windows and macOS on every suite run.
+    mut listener2, err2 = net.listen("127.0.0.1", 0)
     if err2 == nil { pass += 1 } otherwise { fail += 1 }
     net.close(listener2)
 

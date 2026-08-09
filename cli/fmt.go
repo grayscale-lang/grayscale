@@ -94,8 +94,10 @@ func collectFmtFiles(args []string) []string {
 	}
 
 	for _, arg := range args {
-		if strings.HasSuffix(arg, "/...") || arg == "..." {
-			baseDir := strings.TrimSuffix(arg, "/...")
+		// Accept both src/... and src\... — Windows tab completion produces
+		// backslashes, and the recursive suffix should work either way.
+		if slashed := filepath.ToSlash(arg); strings.HasSuffix(slashed, "/...") || arg == "..." {
+			baseDir := filepath.FromSlash(strings.TrimSuffix(slashed, "/..."))
 			if baseDir == "" || baseDir == "." || baseDir == "..." {
 				baseDir = "."
 			}

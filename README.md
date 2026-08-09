@@ -69,7 +69,21 @@ make build
 make install
 ```
 
-> **Note:** Grayscale currently supports **macOS** and **Linux** only.
+### Windows
+
+Grayscale builds on Windows with [MinGW-w64](https://www.mingw-w64.org/).
+
+```powershell
+winget install BrechtSanders.WinLibs.POSIX.UCRT.Base   # or: choco install mingw
+git clone https://github.com/grayscale-lang/grayscale.git
+cd grayscale
+make build
+```
+
+`make build`, `make test`, and `make clean` work the same as on macOS and
+Linux. `make` needs a POSIX shell, which MSYS2 and Git Bash both provide.
+The compiler finds MinGW in its default install locations automatically —
+it does not need to be on `PATH`.
 
 ---
 
