@@ -1,0 +1,24 @@
+import and use "./types.gray"
+
+const Store struct {
+    items [types.Item]
+
+    do check_active(self Store) -> bool {
+        for_each item in self.items {
+            if item.status == Status.ACTIVE {
+                return true
+            }
+        }
+        return false
+    }
+
+    do find(self Store) -> (types.Item, bool) {
+        for_each item in self.items {
+            if item.status == Status.ACTIVE {
+                return item, true
+            }
+        }
+        mut empty = Item{name: "", status: Status.INACTIVE}
+        return empty, false
+    }
+}
