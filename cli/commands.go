@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -213,6 +214,10 @@ var reportCmd = &cobra.Command{
 		if runtime.GOOS == "linux" {
 			memCmd = exec.Command("sh", "-c", "grep MemTotal /proc/meminfo | awk '{print $2 * 1024}'")
 		}
+		if runtime.GOOS == "windows" {
+			memCmd = exec.Command("powershell", "-NoProfile", "-Command",
+				"[string](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory")
+		}
 		if out, err := memCmd.Output(); err == nil {
 			s := strings.TrimSpace(string(out))
 			var bytes uint64
@@ -247,13 +252,20 @@ func reportInstallPath() string {
 	return exe
 }
 
-// reportKernel returns `uname -sr` output (e.g. "Darwin 25.5.0").
+// reportKernel returns `uname -sr` output (e.g. "Darwin 25.5.0"). On Windows,
+// uname only exists inside MSYS2/Git Bash shells; fall back to `cmd /c ver`
+// so PowerShell and cmd users get a kernel version too.
 func reportKernel() string {
 	out, err := exec.Command("uname", "-sr").Output()
-	if err != nil {
-		return ""
+	if err == nil {
+		return strings.TrimSpace(string(out))
 	}
-	return strings.TrimSpace(string(out))
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("cmd", "/c", "ver").Output(); err == nil {
+			return strings.TrimSpace(string(out))
+		}
+	}
+	return ""
 }
 
 // reportCPUModel returns the human-readable CPU brand string, or empty.
@@ -266,6 +278,17 @@ func reportCPUModel() string {
 	case "linux":
 		if out, err := exec.Command("sh", "-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2-").Output(); err == nil {
 			return strings.TrimSpace(string(out))
+		}
+	case "windows":
+		// wmic is deprecated and gone from newer Windows 11 builds; the
+		// registry holds the brand string and reg.exe is always present.
+		out, err := exec.Command("reg", "query",
+			`HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`,
+			"/v", "ProcessorNameString").Output()
+		if err == nil {
+			if i := strings.Index(string(out), "REG_SZ"); i >= 0 {
+				return strings.TrimSpace(string(out)[i+len("REG_SZ"):])
+			}
 		}
 	}
 	return "unknown"
@@ -280,6 +303,28 @@ func reportCCompiler() (path, version, triple string) {
 		for _, candidate := range []string{"clang", "gcc", "cc"} {
 			if p, err := exec.LookPath(candidate); err == nil {
 				cc = p
+				break
+			}
+		}
+	}
+	if cc == "" && runtime.GOOS == "windows" {
+		// Mirror grayc's own fallback (grayc/src/util/platform.c,
+		// gray_find_cc_fallback): a toolchain in a well-known install
+		// location works for compiles even when it is not on PATH, and the
+		// report should describe what grayc will actually use.
+		wellKnown := []string{
+			`C:\msys64\ucrt64\bin\gcc.exe`,
+			`C:\msys64\mingw64\bin\gcc.exe`,
+			`C:\msys64\clang64\bin\clang.exe`,
+			`C:\mingw64\bin\gcc.exe`,
+			`C:\ProgramData\mingw64\mingw64\bin\gcc.exe`,
+		}
+		if pf := os.Getenv("ProgramFiles"); pf != "" {
+			wellKnown = append(wellKnown, filepath.Join(pf, "LLVM", "bin", "clang.exe"))
+		}
+		for _, candidate := range wellKnown {
+			if st, err := os.Stat(candidate); err == nil && st.Mode().IsRegular() {
+				cc = candidate
 				break
 			}
 		}
