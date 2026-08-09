@@ -95,11 +95,12 @@ leaks:
 # themselves are gitignored — `make build` overwrites the stubs with
 # real content before invoking `go build`.
 stubs:
-	@mkdir -p $(EMBED_DIR)/src/runtime $(EMBED_DIR)/src/stdlib
+	@mkdir -p $(EMBED_DIR)/src/runtime $(EMBED_DIR)/src/stdlib $(EMBED_DIR)/src/util
 	@test -f $(EMBED_DIR)/grayc || : > $(EMBED_DIR)/grayc
 	@test -f $(EMBED_DIR)/libgrayrt.a || : > $(EMBED_DIR)/libgrayrt.a
 	@test -f $(EMBED_DIR)/src/runtime/.stub || : > $(EMBED_DIR)/src/runtime/.stub
 	@test -f $(EMBED_DIR)/src/stdlib/.stub || : > $(EMBED_DIR)/src/stdlib/.stub
+	@test -f $(EMBED_DIR)/src/util/.stub || : > $(EMBED_DIR)/src/util/.stub
 
 # Single-binary build: compile the C compiler first, stage the
 # artifacts into internal/driver/runtime/ so go:embed picks them up, then
@@ -112,11 +113,12 @@ build: stubs
 	@# go:embed reads the literal path runtime/grayc on every platform; the
 	@# .exe rename happens on extraction (internal/driver/embedded.go).
 	@cp grayc/grayc$(EXE) $(EMBED_DIR)/grayc
-ifndef WINDOWS
 	@cp grayc/libgrayrt.a $(EMBED_DIR)/libgrayrt.a
-endif
 	@cp grayc/src/runtime/*.h grayc/src/runtime/*.c $(EMBED_DIR)/src/runtime/
 	@cp grayc/src/stdlib/*.h grayc/src/stdlib/*.c $(EMBED_DIR)/src/stdlib/
+	@# runtime.c and builtins.c include util/colors.h and util/constants.h;
+	@# without these headers the compile-from-source fallback cannot build.
+	@cp grayc/src/util/*.h $(EMBED_DIR)/src/util/
 	@echo "Building gray CLI (with embedded runtime)..."
 	$(GO) build $(LDFLAGS) -o $(BINARY_NAME) ./cli
 	@echo ""
