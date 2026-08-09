@@ -9373,7 +9373,11 @@ static char *normalize_path_separators(const char *path) {
 }
 
 CodeGen codegen_create(const char *file) {
-    CodeGen codegen;
+    /* Zero-initialize so fields absent from the explicit list below (e.g.
+     * in_const_decl, current_var_name) start false/NULL instead of stack
+     * garbage. A truthy in_const_decl silently suppresses every runtime
+     * overflow and division check in the file. */
+    CodeGen codegen = {0};
     codegen.output = buffer_create(OUTPUT_BUF_INITIAL);
     codegen.global_init = buffer_create(MSG_BUF_SIZE);
     codegen.indent = 0;
