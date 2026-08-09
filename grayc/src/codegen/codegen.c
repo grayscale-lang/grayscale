@@ -4171,13 +4171,23 @@ static bool expression_is_assignable(AstNode *expr) {
 /* Emit &expr, materialising rvalues into a statement-expression temporary.
  * `tmp` is the temp variable name (must be unique within the enclosing expr). */
 static void emit_address_of(CodeGen *codegen, AstNode *expr, const char *tmp) {
+    (void)tmp;
     if (expression_is_assignable(expr)) {
         emit(codegen, "&");
         emit_expression(codegen, expr);
     } else {
-        emit_formatted(codegen, "({ __auto_type %s = ", tmp);
+        /* Materialize the rvalue as a one-element array compound literal,
+         * which decays to the pointer the callee wants. Its lifetime is the
+         * enclosing block — unlike a statement-expression local, whose
+         * storage ends at the closing brace, leaving the escaping pointer
+         * dangling (GCC -O2 reuses the slot; clang only survived by luck).
+         * __typeof__ does not evaluate its operand, so the expression text
+         * appears twice but runs once. */
+        emit(codegen, "(__typeof__(");
         emit_expression(codegen, expr);
-        emit_formatted(codegen, "; &%s; })", tmp);
+        emit(codegen, ")[]){");
+        emit_expression(codegen, expr);
+        emit(codegen, "}");
     }
 }
 
@@ -5058,14 +5068,18 @@ static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
     }
     /* Default: take address of the expression directly.
      * If the expression is an rvalue (e.g. a function call), materialise it
-     * into a statement-expression temporary so the generated C is valid. */
+     * as a one-element array compound literal that decays to the pointer —
+     * its lifetime is the enclosing block, unlike a statement-expression
+     * local whose storage ends at the closing brace (see emit_address_of). */
     if (arg->kind == NODE_LABEL || arg->kind == NODE_MEMBER_EXPR || arg->kind == NODE_INDEX_EXPR) {
         emit(codegen, "&");
         emit_expression(codegen, arg);
     } else {
-        emit(codegen, "({ __auto_type _aa = ");
+        emit(codegen, "(__typeof__(");
         emit_expression(codegen, arg);
-        emit(codegen, "; &_aa; })");
+        emit(codegen, ")[]){");
+        emit_expression(codegen, arg);
+        emit(codegen, "}");
     }
 }
 
@@ -5452,9 +5466,14 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 emit(codegen, "&");
                 emit_expression(codegen, rarg);
             } else {
-                emit(codegen, "({ __auto_type _aa = ");
+                /* Rvalue: compound literal, not a statement-expression temp
+                 * (whose storage dies at the closing brace — see
+                 * emit_address_of). */
+                emit(codegen, "(__typeof__(");
                 emit_expression(codegen, rarg);
-                emit(codegen, "; &_aa; })");
+                emit(codegen, ")[]){");
+                emit_expression(codegen, rarg);
+                emit(codegen, "}");
             }
         } else {
             emit_expression(codegen, node->data.call.args[i]);
