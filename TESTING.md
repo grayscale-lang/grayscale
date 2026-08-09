@@ -117,7 +117,7 @@ All tests run automatically on push to `main` via GitHub Actions:
 |----------|:--------:|:----------:|:----------:|
 | Ubuntu   | unit + e2e + integration | UBSan + ASan |  |
 | macOS    | unit + e2e + integration | UBSan |  |
-| Windows  | unit + e2e | — | ✓ |
+| Windows  | unit + e2e + integration | — | ✓ |
 
 CI workflow: `.github/workflows/ci.yml`
 
@@ -128,6 +128,7 @@ CI workflow: `.github/workflows/ci.yml`
 ```bash
 make test-unit             # C unit suites
 make test-e2e              # end-to-end codegen tests
+make test-integration      # integration tests (runs via scripts/run_tests.ps1)
 make test-go               # Go unit tests
 ```
 
