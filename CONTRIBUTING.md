@@ -162,6 +162,7 @@ MSYS2 and Git Bash both provide.
 
 ```bash
 make build       # grayc.exe + gray.exe
+make install     # install to %USERPROFILE%\.gray\bin (prints PATH instructions)
 make test-unit   # C unit suites
 make test-e2e    # end-to-end codegen tests
 make test-go     # Go unit tests

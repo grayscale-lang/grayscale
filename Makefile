@@ -12,7 +12,14 @@ ifeq ($(OS),Windows_NT)
 endif
 
 BINARY_NAME=gray$(EXE)
-INSTALL_PATH=/usr/local/bin
+# Windows has no /usr/local/bin and no sudo; install per-user next to gray's
+# own data directory (~/.gray) instead. Not added to PATH automatically —
+# the install target prints instructions.
+ifdef WINDOWS
+  INSTALL_PATH=$(USERPROFILE)/.gray/bin
+else
+  INSTALL_PATH=/usr/local/bin
+endif
 GO=go
 
 # Version info
@@ -127,6 +134,10 @@ build: stubs
 
 install: build
 	@echo "Installing Grayscale to $(INSTALL_PATH)..."
+ifdef WINDOWS
+	@mkdir -p "$(INSTALL_PATH)"
+	@cp $(BINARY_NAME) "$(INSTALL_PATH)/$(BINARY_NAME)"
+else
 	@if [ -w $(INSTALL_PATH) ]; then \
 		mkdir -p $(INSTALL_PATH); \
 		cp $(BINARY_NAME) $(INSTALL_PATH)/$(BINARY_NAME); \
@@ -137,6 +148,7 @@ install: build
 		sudo cp $(BINARY_NAME) $(INSTALL_PATH)/$(BINARY_NAME); \
 		sudo chmod +x $(INSTALL_PATH)/$(BINARY_NAME); \
 	fi
+endif
 	@echo ""
 	@echo '  ____                               _'
 	@echo ' / ___|_ __ __ _ _   _ ___  ___ __ _| | ___'
@@ -147,6 +159,12 @@ install: build
 	@echo 'Programming On Your Terms'
 	@echo ""
 	@echo "Grayscale installed successfully!"
+ifdef WINDOWS
+	@echo ""
+	@echo "If 'gray' is not found in new shells, add %USERPROFILE%\.gray\bin to your"
+	@echo "user PATH (Settings > Environment Variables). For Git Bash instead:"
+	@echo "  echo 'export PATH=\"\$$HOME/.gray/bin:\$$PATH\"' >> ~/.bashrc"
+endif
 
 uninstall:
 	@echo "Uninstalling Grayscale..."
