@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.2...grayscale-v0.3.0) (2026-08-09)
+
+
+### Features
+
+* add Windows support ([#1342](https://github.com/grayscale-lang/grayscale/issues/1342)) ([e41ba3d](https://github.com/grayscale-lang/grayscale/commit/e41ba3dbb4fd277fc5e04890966b61cd759477bd))
+
+
+### Bug Fixes
+
+* **build:** make install work on Windows ([7580baf](https://github.com/grayscale-lang/grayscale/commit/7580baf71a68893d7eb26160cfd081ab02d076aa))
+* **cli:** embed runtime archive on Windows and shared util headers ([32a60b2](https://github.com/grayscale-lang/grayscale/commit/32a60b20c961c5c025d1ba367167ce75cdce26c3))
+* **cli:** prefer a repo-local grayc build over the embedded compiler ([ef9dec3](https://github.com/grayscale-lang/grayscale/commit/ef9dec338fbb8f6f104111d560a9e7ca56051520))
+* **cli:** report CPU, RAM, kernel, and compiler on Windows ([3f361cb](https://github.com/grayscale-lang/grayscale/commit/3f361cb4840ace6ccb38b691f674fc6e427a93a2))
+* **codegen:** mangle identifiers the C standard defines as macros ([feeeb04](https://github.com/grayscale-lang/grayscale/commit/feeeb0477edcd30d2108f668a203be22e7035e23))
+* **codegen:** materialize rvalue arguments as compound literals ([0370551](https://github.com/grayscale-lang/grayscale/commit/037055173c3bf81efa9ae1b08821b47e4356f8b8))
+* **codegen:** pass 64-bit values to upgraded fmt directives ([647456d](https://github.com/grayscale-lang/grayscale/commit/647456d693ef2f99b1fd78146178fd7ceec25fb9))
+* **codegen:** resolve struct function names through using-modules ([#2291](https://github.com/grayscale-lang/grayscale/issues/2291)) ([e53c25c](https://github.com/grayscale-lang/grayscale/commit/e53c25c1283fb66d0adf5e1022b0d8622b5ae7b8))
+* **codegen:** zero-initialize codegen state ([a1284f2](https://github.com/grayscale-lang/grayscale/commit/a1284f23bf38abe9b901f5414e59687eb7b3c638))
+* **compiler:** build generated programs with gnu11 and -static on Windows ([7c9a49f](https://github.com/grayscale-lang/grayscale/commit/7c9a49fa42acad28291ab6869660521cfc96d5fd))
+* **compiler:** find C compilers that are not on PATH on Windows ([8fd81a5](https://github.com/grayscale-lang/grayscale/commit/8fd81a5be5d5ac602724caf7df5567b808b37c24))
+* **compiler:** resolve util headers when building runtime from source ([585fe26](https://github.com/grayscale-lang/grayscale/commit/585fe26b4373c55a8639cce8643ca26a780be2b6))
+* **runtime:** use unsigned limb arithmetic in i128 add/sub/neg ([5ad92a7](https://github.com/grayscale-lang/grayscale/commit/5ad92a7ed6906a5fbe4143cc8f201e35f4468061))
+* **stdlib:** reach the system math.h from the math module header ([05e0f72](https://github.com/grayscale-lang/grayscale/commit/05e0f72872b269f279ef40f53be086834b13b235))
+* **stdlib:** use the system CSPRNG for random seeding on Windows ([ce46d5d](https://github.com/grayscale-lang/grayscale/commit/ce46d5d46d8ecb75fac769b047736c6482fa50be))
+* **stdlib:** use the system CSPRNG for uuid and crypto on Windows ([d2e9d57](https://github.com/grayscale-lang/grayscale/commit/d2e9d573d8c37b6639f073b8e8c21458d019aa3c))
+* **typechecker:** unify cross-module enum type identity ([bffb8b0](https://github.com/grayscale-lang/grayscale/commit/bffb8b0b74db21be191da911879f95766283a44b))
+* **typechecker:** unify cross-module enum type identity ([#2290](https://github.com/grayscale-lang/grayscale/issues/2290)) ([7de0d67](https://github.com/grayscale-lang/grayscale/commit/7de0d6784d9e3b163dff8a9b3d6d3403f5daf840))
+
 ## [0.2.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.1...grayscale-v0.2.2) (2026-08-08)
 
 
