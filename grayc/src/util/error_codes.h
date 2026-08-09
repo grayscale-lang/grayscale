@@ -405,7 +405,8 @@
     GRAY_PANIC("P0100", "arithmetic", "cast from u256 failed; value exceeds the representable range of uint64") \
     GRAY_PANIC("P0101", "server",     "server.cors: origin contains CR or LF — HTTP header injection is not allowed") \
     GRAY_PANIC("P0102", "arithmetic", "invalid digit in integer literal") \
-    GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte")
+    GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
+    GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

@@ -1,0 +1,39 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // char append
+    mut chars [char] = {}
+    arrays.append(chars, 'A')
+    arrays.append(chars, 'Z')
+    if chars[0] == 'A' {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    if chars[1] == 'Z' {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte append
+    mut barr [byte] = {}
+    arrays.append(barr, cast(0xFF, byte))
+    arrays.append(barr, cast(0x00, byte))
+    if barr[0] == cast(255, byte) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    if barr[1] == cast(0, byte) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

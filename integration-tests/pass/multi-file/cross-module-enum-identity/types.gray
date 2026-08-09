@@ -1,0 +1,13 @@
+const Status enum {
+    ACTIVE
+    INACTIVE
+}
+
+const Item struct {
+    name string
+    status Status
+}
+
+do make_item(name string, s Status) -> Item {
+    return Item{name: name, status: s}
+}

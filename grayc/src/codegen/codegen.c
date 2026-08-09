@@ -5097,11 +5097,18 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_UINT: c_elem = "uint64_t"; break;
             case TK_FLOAT: c_elem = "double"; break;
             case TK_BOOL: c_elem = "bool"; break;
+            case TK_CHAR: c_elem = "int32_t"; break;
+            case TK_BYTE: c_elem = "uint8_t"; break;
             case TK_STRING: c_elem = "GrayString"; break;
             case TK_ARRAY: c_elem = "GrayArray"; break;
             case TK_MAP: c_elem = "GrayMap"; break;
             case TK_FUNCTION: c_elem = "void *"; break;
             default: break;
+            }
+            /* Wide ints share TK_INT/TK_UINT but need their own C types */
+            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
+                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
+                if (mapped) c_elem = mapped;
             }
             if (val_t->kind == TK_STRUCT) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
@@ -5159,9 +5166,16 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             case TK_UINT: c_elem = "uint64_t"; break;
             case TK_FLOAT: c_elem = "double"; break;
             case TK_BOOL: c_elem = "bool"; break;
+            case TK_CHAR: c_elem = "int32_t"; break;
+            case TK_BYTE: c_elem = "uint8_t"; break;
             case TK_STRING: c_elem = "GrayString"; break;
             case TK_FUNCTION: c_elem = "void *"; break;
             default: break;
+            }
+            /* Wide ints share TK_INT/TK_UINT but need their own C types */
+            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
+                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
+                if (mapped) c_elem = mapped;
             }
             if (val_t->kind == TK_STRUCT) {
                 c_elem = gray_type_to_c_codegen(codegen, val_t->name);
@@ -5315,11 +5329,15 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             GrayType *pet = type_from_name(pp_elem_tn);
             if (pet->kind == TK_FLOAT) pp_c_elem = "double";
             else if (pet->kind == TK_BOOL) pp_c_elem = "bool";
+            else if (pet->kind == TK_CHAR) pp_c_elem = "int32_t";
+            else if (pet->kind == TK_BYTE) pp_c_elem = "uint8_t";
             else if (pet->kind == TK_STRING) pp_c_elem = "GrayString";
             else if (pet->kind == TK_ARRAY) pp_c_elem = "GrayArray";
             else if (pet->kind == TK_MAP) pp_c_elem = "GrayMap";
             else if (pet->kind == TK_STRUCT) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
             else if (pet->kind == TK_ENUM) pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
+            else if (pet->kind == TK_INT || pet->kind == TK_UINT)
+                pp_c_elem = gray_type_to_c_codegen(codegen, pp_elem_tn);
         }
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
@@ -5345,7 +5363,15 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             GrayType *fet = type_from_name(fl_arr_t->element_type);
             if (fet->kind == TK_FLOAT) fl_c_elem = "double";
             else if (fet->kind == TK_BOOL) fl_c_elem = "bool";
+            else if (fet->kind == TK_CHAR) fl_c_elem = "int32_t";
+            else if (fet->kind == TK_BYTE) fl_c_elem = "uint8_t";
             else if (fet->kind == TK_STRING) fl_c_elem = "GrayString";
+            else if (fet->kind == TK_ARRAY) fl_c_elem = "GrayArray";
+            else if (fet->kind == TK_MAP) fl_c_elem = "GrayMap";
+            else if (fet->kind == TK_STRUCT) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
+            else if (fet->kind == TK_ENUM) fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
+            else if (fet->kind == TK_INT || fet->kind == TK_UINT)
+                fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
         }
         emit_formatted(codegen, "{ %s _fv = ", fl_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
@@ -6378,6 +6404,24 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             char ns_name[IDENT_BUF];
             snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
             AstNode *ns_func = find_function(codegen, ns_name);
+            /* If not found, try using-module-prefixed struct names so
+             * bare Product.create() from 'import and use' resolves to
+             * types_Product_create. */
+            static char using_resolved[IDENT_BUF];
+            if (!ns_func && resolved_name[0] >= 'A' && resolved_name[0] <= 'Z') {
+                for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                    const char *real_mod = resolve_alias(codegen, codegen->using_modules[ui]);
+                    char prefixed[IDENT_BUF];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", real_mod, resolved_name, member);
+                    ns_func = find_function(codegen, prefixed);
+                    if (ns_func) {
+                        snprintf(using_resolved, sizeof(using_resolved), "%s_%s", real_mod, resolved_name);
+                        resolved_name = using_resolved;
+                        snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
+                        break;
+                    }
+                }
+            }
             bool instance_dispatch = false;
             bool obj_is_ptr = false;
             if (!ns_func) {
@@ -10133,7 +10177,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Emit C main() */
     emit(codegen, "int main(int argc, char **argv) {\n");
     emit(codegen, "    (void)argc; (void)argv;\n");
-    emit(codegen, "    gray_runtime_init();\n");
+    {
+        size_t limit = codegen->arena_limit > 0
+            ? codegen->arena_limit : (size_t)1073741824;
+        emit_formatted(codegen, "    gray_runtime_init(%zuULL);\n", limit);
+    }
     emit(codegen, "    gray_os_init(argc, argv);\n");
     /* Initialize file-scope arrays that can't use C static initializers */
     if (codegen->global_init.len > 0) {

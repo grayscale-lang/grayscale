@@ -51,6 +51,8 @@ GrayArena *gray_arena_create(size_t initial_size) {
     arena->default_block_size = initial_size;
     arena->first = gray_arena_block_create(initial_size);
     arena->current = arena->first;
+    arena->max_bytes = 0;
+    arena->total_allocated = initial_size;
     arena->destroyed = false;
     return arena;
 }
@@ -62,9 +64,16 @@ void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
     if (size > arena->current->size - arena->current->used) {
         size_t block_size = arena->default_block_size;
         if (size > block_size) block_size = size;
+        if (arena->max_bytes > 0 &&
+            arena->total_allocated + block_size > arena->max_bytes) {
+            gray_panic_code("P0104",
+                "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes",
+                arena->max_bytes);
+        }
         GrayArenaBlock *block = gray_arena_block_create(block_size);
         arena->current->next = block;
         arena->current = block;
+        arena->total_allocated += block_size;
     }
     void *ptr = arena->current->data + arena->current->used;
     arena->current->used += size;
@@ -85,6 +94,7 @@ void gray_arena_reset(GrayArena *arena) {
         block = block->next;
     }
     arena->current = arena->first;
+    arena->total_allocated = arena->first ? arena->first->size : 0;
 }
 
 void gray_arena_destroy(GrayArena *arena, const char *file, int line) {
@@ -211,9 +221,13 @@ int gray_call_depth = 0;
 
 /* --- Runtime Init/Shutdown --- */
 
-void gray_runtime_init(void) {
+void gray_runtime_init(size_t arena_limit) {
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
     gray_heap_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
+    if (arena_limit > 0) {
+        gray_default_arena->max_bytes = arena_limit;
+        gray_heap_arena->max_bytes = arena_limit;
+    }
 }
 
 void gray_runtime_shutdown(void) {

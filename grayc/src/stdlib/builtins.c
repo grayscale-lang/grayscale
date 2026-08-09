@@ -93,135 +93,62 @@ static void fput_utf8(int32_t c, FILE *f) {
     fwrite(buf, 1, (size_t)len, f);
 }
 
-/* --- println --- */
+/* --- Core print helpers (one per type) --- */
 
-void gray_builtin_println_str(GrayString s) {
-    fwrite(s.data, 1, (size_t)s.len, stdout);
-    putchar('\n');
+static void print_core_str(GrayString s, FILE *stream, bool newline) {
+    fwrite(s.data, 1, (size_t)s.len, stream);
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_int(int64_t v) {
-    printf("%" PRId64 "\n", v);
+static void print_core_int(int64_t v, FILE *stream, bool newline) {
+    fprintf(stream, "%" PRId64, v);
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_uint(uint64_t v) {
-    printf("%" PRIu64 "\n", v);
+static void print_core_uint(uint64_t v, FILE *stream, bool newline) {
+    fprintf(stream, "%" PRIu64, v);
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_float(double v) {
+static void print_core_float(double v, FILE *stream, bool newline) {
     char buf[GRAY_FLOAT_STR_BUF];
     fmt_shortest_float(buf, sizeof(buf), v);
-    printf("%s\n", buf);
+    fprintf(stream, "%s", buf);
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_bool(bool v) {
-    printf("%s\n", v ? "true" : "false");
+static void print_core_bool(bool v, FILE *stream, bool newline) {
+    fprintf(stream, "%s", v ? "true" : "false");
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_char(int32_t c) {
-    fput_utf8(c, stdout);
-    putchar('\n');
+static void print_core_char(int32_t c, FILE *stream, bool newline) {
+    fput_utf8(c, stream);
+    if (newline) fputc('\n', stream);
 }
 
-void gray_builtin_println_addr(uintptr_t v) {
-    printf("0x%" PRIxPTR "\n", v);
+static void print_core_addr(uintptr_t v, FILE *stream, bool newline) {
+    fprintf(stream, "0x%" PRIxPTR, v);
+    if (newline) fputc('\n', stream);
 }
 
-/* --- print --- */
+/* --- Public print/println/eprint/eprintln wrappers --- */
 
-void gray_builtin_print_str(GrayString s) {
-    fwrite(s.data, 1, (size_t)s.len, stdout);
-}
+#define PRINT_FAMILY(SUFFIX, CTYPE)                                                         \
+    void gray_builtin_println_##SUFFIX(CTYPE v)  { print_core_##SUFFIX(v, stdout, true);  } \
+    void gray_builtin_print_##SUFFIX(CTYPE v)    { print_core_##SUFFIX(v, stdout, false); } \
+    void gray_builtin_eprintln_##SUFFIX(CTYPE v) { print_core_##SUFFIX(v, stderr, true);  } \
+    void gray_builtin_eprint_##SUFFIX(CTYPE v)   { print_core_##SUFFIX(v, stderr, false); }
 
-void gray_builtin_print_int(int64_t v) {
-    printf("%" PRId64, v);
-}
+PRINT_FAMILY(str,   GrayString)
+PRINT_FAMILY(int,   int64_t)
+PRINT_FAMILY(uint,  uint64_t)
+PRINT_FAMILY(float, double)
+PRINT_FAMILY(bool,  bool)
+PRINT_FAMILY(char,  int32_t)
+PRINT_FAMILY(addr,  uintptr_t)
 
-void gray_builtin_print_uint(uint64_t v) {
-    printf("%" PRIu64, v);
-}
-
-void gray_builtin_print_float(double v) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    fmt_shortest_float(buf, sizeof(buf), v);
-    printf("%s", buf);
-}
-
-void gray_builtin_print_bool(bool v) {
-    printf("%s", v ? "true" : "false");
-}
-
-void gray_builtin_print_char(int32_t c) {
-    fput_utf8(c, stdout);
-}
-
-void gray_builtin_print_addr(uintptr_t v) {
-    printf("0x%" PRIxPTR, v);
-}
-
-/* --- eprintln / eprint --- */
-
-void gray_builtin_eprintln_str(GrayString s) {
-    fwrite(s.data, 1, (size_t)s.len, stderr);
-    fputc('\n', stderr);
-}
-
-void gray_builtin_eprintln_int(int64_t v) {
-    fprintf(stderr, "%" PRId64 "\n", v);
-}
-
-void gray_builtin_eprintln_uint(uint64_t v) {
-    fprintf(stderr, "%" PRIu64 "\n", v);
-}
-
-void gray_builtin_eprintln_char(int32_t c) {
-    fput_utf8(c, stderr);
-    fputc('\n', stderr);
-}
-
-void gray_builtin_eprintln_float(double v) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    fmt_shortest_float(buf, sizeof(buf), v);
-    fprintf(stderr, "%s\n", buf);
-}
-
-void gray_builtin_eprintln_bool(bool v) {
-    fprintf(stderr, "%s\n", v ? "true" : "false");
-}
-
-void gray_builtin_eprintln_addr(uintptr_t v) {
-    fprintf(stderr, "0x%" PRIxPTR "\n", v);
-}
-
-void gray_builtin_eprint_str(GrayString s) {
-    fwrite(s.data, 1, (size_t)s.len, stderr);
-}
-
-void gray_builtin_eprint_int(int64_t v) {
-    fprintf(stderr, "%" PRId64, v);
-}
-
-void gray_builtin_eprint_uint(uint64_t v) {
-    fprintf(stderr, "%" PRIu64, v);
-}
-
-void gray_builtin_eprint_float(double v) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    fmt_shortest_float(buf, sizeof(buf), v);
-    fprintf(stderr, "%s", buf);
-}
-
-void gray_builtin_eprint_bool(bool v) {
-    fprintf(stderr, "%s", v ? "true" : "false");
-}
-
-void gray_builtin_eprint_char(int32_t c) {
-    fput_utf8(c, stderr);
-}
-
-void gray_builtin_eprint_addr(uintptr_t v) {
-    fprintf(stderr, "0x%" PRIxPTR, v);
-}
+#undef PRINT_FAMILY
 
 /* --- input --- */
 

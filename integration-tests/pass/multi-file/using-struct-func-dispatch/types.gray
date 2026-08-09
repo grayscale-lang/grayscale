@@ -1,0 +1,11 @@
+const Item struct {
+    name string
+
+    do describe(self Item) -> string {
+        return "Item: ${self.name}"
+    }
+
+    do create(name string) -> Item {
+        return Item{name: name}
+    }
+}

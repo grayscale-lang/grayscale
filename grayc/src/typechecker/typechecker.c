@@ -3257,8 +3257,18 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                     /* Rewrite the call AST: change the member-expr
                      * object from the instance label to the type
-                     * name, and prepend the instance as arg[0]. */
-                    fn->data.member.object->data.label.value = strdup(struct_name);
+                     * name, and prepend the instance as arg[0].
+                     * When the object is an explicit deref (p^.func),
+                     * replace it with a plain label node first. */
+                    if (fn->data.member.object->kind != NODE_LABEL) {
+                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
+                        new_obj->kind = NODE_LABEL;
+                        new_obj->token = fn->data.member.object->token;
+                        new_obj->data.label.value = strdup(struct_name);
+                        fn->data.member.object = new_obj;
+                    } else {
+                        fn->data.member.object->data.label.value = strdup(struct_name);
+                    }
                     int orig_count = node->data.call.arg_count;
                     AstNode **new_args = xmalloc(sizeof(AstNode *) * (orig_count + 1));
                     AstNode *self_arg = xcalloc(1, sizeof(AstNode));
@@ -3461,7 +3471,15 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         snprintf(display, sizeof(display), "%s.%s", display_sname, mfn);
                         typechecker_resolve_named_arguments(checker, node, ssig->decl, display);
                     }
-                    fn->data.member.object->data.label.value = strdup(struct_name);
+                    if (fn->data.member.object->kind != NODE_LABEL) {
+                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
+                        new_obj->kind = NODE_LABEL;
+                        new_obj->token = fn->data.member.object->token;
+                        new_obj->data.label.value = strdup(struct_name);
+                        fn->data.member.object = new_obj;
+                    } else {
+                        fn->data.member.object->data.label.value = strdup(struct_name);
+                    }
                     ssig->used = true;
                     sym->used = true;
                     result = ssig->return_count > 0 ? ssig->return_types[0] : &TYPE_VOID;
@@ -5089,8 +5107,14 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         } else {
             result = &TYPE_UNKNOWN;
         }
-    } else if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object->kind == NODE_LABEL) {
-        const char *mod_raw = fn->data.member.object->data.label.value;
+    } else if (fn->kind == NODE_MEMBER_EXPR &&
+               (fn->data.member.object->kind == NODE_LABEL ||
+                (fn->data.member.object->kind == NODE_POSTFIX_EXPR &&
+                 fn->data.member.object->data.postfix.op == TOK_CARET &&
+                 fn->data.member.object->data.postfix.left->kind == NODE_LABEL))) {
+        const char *mod_raw = fn->data.member.object->kind == NODE_LABEL
+            ? fn->data.member.object->data.label.value
+            : fn->data.member.object->data.postfix.left->data.label.value;
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
@@ -5443,12 +5467,13 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
 
     /* E3032: different enum types in comparison — catches both
      * direct enum literals (Color.RED == Dir.NORTH) and variables
-     * of different enum types (c == d where c:Color, d:Dir). */
+     * of different enum types (c == d where c:Color, d:Dir).
+     * Use display-name comparison so cross-module aliases unify. */
     if (!infix_errored &&
         (op == TOK_EQ || op == TOK_NOT_EQ) &&
         left->kind == TK_ENUM && right->kind == TK_ENUM &&
         left->name && right->name &&
-        strcmp(left->name, right->name) != 0) {
+        !typechecker_same_enum_type(checker, left->name, right->name)) {
         diagnostic_error_code_formatted(checker->diag, "E3032", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             enum_display_name(checker, left->name), enum_display_name(checker, right->name));
         infix_errored = true;
@@ -5688,12 +5713,21 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         snprintf(prefixed_type, sizeof(prefixed_type), "%s_%s", mod_name, type_name);
         /* Check if it's a module-qualified enum access */
         if (is_enum_name(checker, prefixed_type)) {
-            bool is_str_enum = false;
+            /* Validate variant exists */
+            bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
                 if (strcmp(checker->enum_names[enum_index], prefixed_type) == 0) {
-                    is_str_enum = checker->enum_is_string[enum_index];
+                    for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
+                        if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
+                            member_found = true;
+                            break;
+                        }
+                    }
                     break;
                 }
+            }
+            if (!member_found) {
+                diagnostic_error_code_formatted(checker->diag, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, prefixed_type, member);
             }
             /* Mark module as used */
             for (int mi = 0; mi < checker->import_count; mi++) {
@@ -5702,7 +5736,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                     break;
                 }
             }
-            result = is_str_enum ? &TYPE_STRING : &TYPE_INT;
+            result = type_enum(prefixed_type);
             return result;
         }
     }
@@ -5759,12 +5793,10 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (is_enum_name(checker, resolved_obj)) {
             /* Rewrite the label to the resolved enum name for codegen */
             obj->data.label.value = resolved_obj;
-            /* Check if this is a string enum and validate member exists */
-            bool is_str_enum = false;
+            /* Validate member exists */
             bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
                 if (strcmp(checker->enum_names[enum_index], resolved_obj) == 0) {
-                    is_str_enum = checker->enum_is_string[enum_index];
                     for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
                         if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
                             member_found = true;
@@ -6045,6 +6077,9 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                          strcmp(expected_t->name, val_t->name) != 0)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_ENUM) &&
                        !(expected_t->kind == TK_ENUM && is_int_kind(val_t->kind)) &&
+                       /* string enum → string coercion */
+                       !(expected_t->kind == TK_STRING && val_t->kind == TK_ENUM &&
+                         val_t->name && typechecker_enum_is_string(checker, val_t->name)) &&
                        !(expected_t->kind == TK_STRUCT && is_int_kind(val_t->kind)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_STRUCT) &&
                        !(expected_t->kind == TK_FLOAT && is_int_kind(val_t->kind)) &&
@@ -8126,11 +8161,13 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                             /* E3053: cross-enum mismatch — both are TK_ENUM but
                              * from different enum types (e.g. Color vs Dir).
                              * The kind-level check above passes since both are
-                             * TK_ENUM, so we need a name-level comparison. */
+                             * TK_ENUM, so we need a name-level comparison.
+                             * Use display-name comparison so cross-module
+                             * aliases (e.g. types_Status vs Status) unify. */
                             if (actual_et && expected_et &&
                                 actual_et->kind == TK_ENUM && expected_et->kind == TK_ENUM &&
                                 actual_et->name && expected_et->name &&
-                                strcmp(actual_et->name, expected_et->name) != 0) {
+                                !typechecker_same_enum_type(checker, actual_et->name, expected_et->name)) {
                                 diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                     arr->data.array_value.elements[enum_index]->token.line,
                                     arr->data.array_value.elements[enum_index]->token.column, 0, expected_et->name, actual_et->name);
@@ -8570,6 +8607,27 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     const char *mfn = fn->data.member.member;
                     char prefixed[MSG_BUF_SIZE];
                     snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, mfn);
+                    FuncSig *sig = find_func(checker, prefixed);
+                    if (sig && sig->return_count > 1) {
+                        Symbol *sym = scope_lookup_local(checker->current_scope,
+                            node->data.var_decl.name);
+                        if (sym) {
+                            sym->ret_types = sig->return_types;
+                            sym->ret_count = sig->return_count;
+                        }
+                    }
+                }
+                /* Triple-chain calls (mod.Type.func); look up mod_Type_func
+                 * and propagate multi-return types for destructuring. */
+                if (fn->kind == NODE_MEMBER_EXPR &&
+                    fn->data.member.object->kind == NODE_MEMBER_EXPR &&
+                    fn->data.member.object->data.member.object->kind == NODE_LABEL) {
+                    const char *mod_raw = fn->data.member.object->data.member.object->data.label.value;
+                    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+                    const char *sname = fn->data.member.object->data.member.member;
+                    const char *mfn = fn->data.member.member;
+                    char prefixed[MSG_BUF_SIZE];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", mod, sname, mfn);
                     FuncSig *sig = find_func(checker, prefixed);
                     if (sig && sig->return_count > 1) {
                         Symbol *sym = scope_lookup_local(checker->current_scope,
@@ -9302,10 +9360,12 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* Struct-to-struct return name mismatch */
+            /* Struct-to-struct return name mismatch.
+             * Use display-name comparison so cross-module aliases
+             * (e.g. types_Item vs Item) unify correctly. */
             if (ret_t->kind == TK_STRUCT && expected->kind == TK_STRUCT &&
                 ret_t->name && expected->name &&
-                strcmp(ret_t->name, expected->name) != 0) {
+                !typechecker_same_struct_type(checker, ret_t->name, expected->name)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",

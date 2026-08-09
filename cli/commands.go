@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/grayscale-lang/grayscale/internal/driver"
@@ -26,6 +27,41 @@ import (
 type ExitError struct{ Code int }
 
 func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
+
+// parseArenaLimit parses a human-readable size string (e.g. "512KB", "2MB",
+// "1GB") into bytes. Returns 0 if the input is empty (no limit set).
+func parseArenaLimit(s string) (uint64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	s = strings.TrimSpace(s)
+	upper := strings.ToUpper(s)
+
+	var multiplier uint64
+	var numStr string
+	switch {
+	case strings.HasSuffix(upper, "GB"):
+		multiplier = 1024 * 1024 * 1024
+		numStr = s[:len(s)-2]
+	case strings.HasSuffix(upper, "MB"):
+		multiplier = 1024 * 1024
+		numStr = s[:len(s)-2]
+	case strings.HasSuffix(upper, "KB"):
+		multiplier = 1024
+		numStr = s[:len(s)-2]
+	default:
+		return 0, fmt.Errorf("invalid arena limit '%s': must end with KB, MB, or GB (e.g. 512MB, 1GB)", s)
+	}
+
+	n, err := strconv.ParseUint(strings.TrimSpace(numStr), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid arena limit '%s': numeric part must be a positive integer", s)
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("invalid arena limit '%s': value must be greater than zero", s)
+	}
+	return n * multiplier, nil
+}
 
 var checkCmd = &cobra.Command{
 	Use:   "check [file.gray | directory]",
@@ -70,13 +106,20 @@ var buildCmd = &cobra.Command{
 		quiet, _ := cmd.Flags().GetString("quiet")
 		showTime, _ := cmd.Flags().GetBool("time")
 		noColor, _ := cmd.Flags().GetBool("no-color")
+		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
+
+		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		if err != nil {
+			return err
+		}
 
 		opts := driver.BuildOpts{
-			Output:  output,
-			Verbose: verbose,
-			EmitC:   emitC,
-			Time:    showTime,
-			NoColor: noColor,
+			Output:     output,
+			Verbose:    verbose,
+			EmitC:      emitC,
+			Time:       showTime,
+			NoColor:    noColor,
+			ArenaLimit: arenaLimit,
 		}
 		if quiet == "all" {
 			opts.Quiet = true
@@ -657,6 +700,13 @@ var rootCmd = &cobra.Command{
 		if noColor, _ := cmd.Flags().GetBool("no-color"); noColor {
 			compilerArgs = append(compilerArgs, "--no-color")
 		}
+		if arenaLimitStr, _ := cmd.Flags().GetString("arena-limit"); arenaLimitStr != "" {
+			arenaLimit, err := parseArenaLimit(arenaLimitStr)
+			if err != nil {
+				return err
+			}
+			compilerArgs = append(compilerArgs, fmt.Sprintf("--arena-limit=%d", arenaLimit))
+		}
 		compilerArgs = append(compilerArgs, extraArgs...)
 
 		code, err := driver.Run(args[0], compilerArgs)
@@ -757,13 +807,20 @@ var crossBuildCmd = &cobra.Command{
 		showTime, _ := cmd.Flags().GetBool("time")
 		quiet, _ := cmd.Flags().GetString("quiet")
 		noColor, _ := cmd.Flags().GetBool("no-color")
+		arenaLimitStr, _ := cmd.Flags().GetString("arena-limit")
+
+		arenaLimit, err := parseArenaLimit(arenaLimitStr)
+		if err != nil {
+			return err
+		}
 
 		opts := driver.BuildOpts{
-			Output:  output,
-			EmitC:   emitC,
-			Time:    showTime,
-			NoColor: noColor,
-			CC:      fmt.Sprintf("%s cc -target %s", zigPath, zigTriple),
+			Output:     output,
+			EmitC:      emitC,
+			Time:       showTime,
+			NoColor:    noColor,
+			ArenaLimit: arenaLimit,
+			CC:         fmt.Sprintf("%s cc -target %s", zigPath, zigTriple),
 		}
 		if quiet == "all" {
 			opts.Quiet = true
@@ -813,8 +870,9 @@ Available Commands:
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), `
 Flags:
-  -q, --quiet string   Suppress warnings ('all' or comma-separated codes like W1001,W1002)
-      --no-color       Disable colored output
+  -q, --quiet string       Suppress warnings ('all' or comma-separated codes like W1001,W1002)
+      --no-color           Disable colored output
+      --arena-limit size   Max arena memory per program (e.g. 512MB, 1GB; default: 1GB)
 
 Use "gray [command] --help" for more information about a command.
 See the full language standard: https://github.com/grayscale-lang/grayscale/blob/main/STANDARD.md
@@ -832,7 +890,9 @@ See the full language standard: https://github.com/grayscale-lang/grayscale/blob
 	buildCmd.Flags().Bool("no-color", false, "Disable colored output")
 	rootCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
 	rootCmd.Flags().Bool("no-color", false, "Disable colored output")
+	rootCmd.Flags().String("arena-limit", "", "Maximum arena memory per program (e.g. 512KB, 256MB, 1GB; default: 1GB)")
 	buildCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
+	buildCmd.Flags().String("arena-limit", "", "Maximum arena memory per program (e.g. 512KB, 256MB, 1GB; default: 1GB)")
 	checkCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
 	watchCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
 
@@ -851,4 +911,5 @@ See the full language standard: https://github.com/grayscale-lang/grayscale/blob
 	crossBuildCmd.Flags().Bool("time", false, "Show compilation timing")
 	crossBuildCmd.Flags().StringP("quiet", "q", "", "Suppress warnings (use 'all' or comma-separated codes like W1001,W1002)")
 	crossBuildCmd.Flags().Bool("no-color", false, "Disable colored output")
+	crossBuildCmd.Flags().String("arena-limit", "", "Maximum arena memory per program (e.g. 512KB, 256MB, 1GB; default: 1GB)")
 }
