@@ -3,6 +3,8 @@
  *
  * Verifies that io.read_file() works with explicit typed single-var
  * assignment (mut content string = io.read_file(...)).
+ * Writes its own fixture file: a hardcoded system path like /etc/hosts
+ * does not exist on every platform.
  */
 
 import @io
@@ -12,8 +14,11 @@ do main() {
     mut passed int = 0
     mut failed int = 0
 
+    const fixture string = "io_single_var_fixture.txt"
+    mut _, _ = io.write_file(fixture, "single-var assignment fixture content\n")
+
     // Test 1: io.read_file with explicit string type (the core bug case)
-    mut hosts, _ = io.read_file("/etc/hosts")
+    mut hosts, _ = io.read_file(fixture)
     if len(hosts) > 0 {
         println("  [PASS] io.read_file single-var string assignment")
         passed += 1
@@ -23,7 +28,7 @@ do main() {
     }
 
     // Test 2: read_file result used in len()
-    mut data, _ = io.read_file("/etc/hosts")
+    mut data, _ = io.read_file(fixture)
     if len(data) > 10 {
         println("  [PASS] len(io.read_file(...)) > 10")
         passed += 1
@@ -33,7 +38,7 @@ do main() {
     }
 
     // Test 3: read_file result used in interpolation
-    mut file_data, _ = io.read_file("/etc/hosts")
+    mut file_data, _ = io.read_file(fixture)
     mut msg string = "read ${len(file_data)} bytes"
     if len(msg) > 0 {
         println("  [PASS] io.read_file result in interpolation")
@@ -44,8 +49,8 @@ do main() {
     }
 
     // Test 4: multiple explicit typed reads in same function
-    mut read1, _ = io.read_file("/etc/hosts")
-    mut read2, _ = io.read_file("/etc/hosts")
+    mut read1, _ = io.read_file(fixture)
+    mut read2, _ = io.read_file(fixture)
     if read1 == read2 {
         println("  [PASS] multiple explicit typed reads consistent")
         passed += 1
@@ -53,6 +58,8 @@ do main() {
         println("  [FAIL] reads returned different content")
         failed += 1
     }
+
+    mut _, _ = io.delete_file(fixture)
 
     // Summary
     println("")

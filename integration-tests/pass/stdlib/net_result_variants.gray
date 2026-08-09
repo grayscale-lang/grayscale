@@ -40,8 +40,9 @@ do main() {
         failed += 1
     }
 
-    // Test 4: net.listen success on ephemeral port
-    mut sock, err4 = net.listen(0)
+    // Test 4: net.listen success on ephemeral port. Loopback bind: listening
+    // on all interfaces triggers a firewall prompt on Windows and macOS.
+    mut sock, err4 = net.listen("127.0.0.1", 0)
     if err4 == nil {
         println("  [PASS] net.listen success on ephemeral port")
         net.close(sock)

@@ -12,8 +12,9 @@ do main() {
     mut ip, _ = net.resolve("localhost")
     if ip == "127.0.0.1" { pass += 1 } otherwise { fail += 1 }
 
-    // TCP listen and close (port 0 = any available)
-    mut listener, _ = net.listen(0)
+    // TCP listen and close (port 0 = any available). Loopback bind: listening
+    // on all interfaces triggers a firewall prompt on Windows and macOS.
+    mut listener, _ = net.listen("127.0.0.1", 0)
     net.close(listener)
     pass += 1
 
