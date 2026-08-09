@@ -151,4 +151,20 @@ int gray_spawn_exact(const char *const *argv);
 /* Like gray_spawn_path, but with the child's stdout and stderr discarded. */
 int gray_spawn_quiet(const char *const *argv);
 
+/* --- Toolchain discovery --- */
+
+/* Windows only: probe well-known MinGW/MSYS2/LLVM install locations for a C
+ * compiler that is not on PATH. On success returns an absolute path in a
+ * static buffer and prepends its bin directory to PATH — the compiler's
+ * helper processes (cc1.exe) load their DLLs via PATH from beside the driver,
+ * so the absolute path alone is not enough. Returns NULL when nothing is
+ * found, and always NULL on POSIX. */
+const char *gray_find_cc_fallback(void);
+
+/* If the first token of `cmd` is a filesystem path to an executable, prepend
+ * its directory to PATH so the helper processes it spawns can load DLLs that
+ * live beside it (cc1.exe resolves its DLLs via PATH). No-op on POSIX, for
+ * bare command names, and when the directory already leads PATH. */
+void gray_ensure_tool_dir_on_path(const char *cmd);
+
 #endif

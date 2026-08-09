@@ -500,3 +500,94 @@ int gray_spawn_quiet(const char *const *argv) {
     gray_sys_close(devnull);
     return rc;
 }
+
+/* --- Toolchain discovery --- */
+
+void gray_ensure_tool_dir_on_path(const char *cmd) {
+#if GRAY_OS_WINDOWS
+    /* First whitespace-delimited token — the same split argv_push_command
+     * applies to multi-word compiler commands. */
+    char head[GRAY_PATH_BUF];
+    size_t n = strcspn(cmd, " \t");
+    if (n == 0 || n >= sizeof(head)) return;
+    memcpy(head, cmd, n);
+    head[n] = '\0';
+
+    char *sep = gray_path_rsep(head);
+    if (!sep) return; /* bare command name — PATH already resolves it */
+    *sep = '\0';
+    if (!*head) return;
+
+    const char *old_path = getenv("PATH");
+    if (!old_path) old_path = "";
+
+    /* Skip when already the front entry so repeat calls do not grow PATH. */
+    size_t dir_len = strlen(head);
+    if (strncmp(old_path, head, dir_len) == 0 &&
+        (old_path[dir_len] == ';' || old_path[dir_len] == '\0')) {
+        return;
+    }
+
+    size_t new_len = dir_len + 1 + strlen(old_path) + 1;
+    char *new_path = malloc(new_len);
+    if (!new_path) return;
+    snprintf(new_path, new_len, "%s;%s", head, old_path);
+    /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
+     * block child processes inherit. The two are separate on Windows, so
+     * both are needed (same pattern as gray_os_set_env). */
+    _putenv_s("PATH", new_path);
+    SetEnvironmentVariableA("PATH", new_path);
+    free(new_path);
+#else
+    (void)cmd;
+#endif
+}
+
+const char *gray_find_cc_fallback(void) {
+#if GRAY_OS_WINDOWS
+    /* The same well-known install locations scripts/common.ps1 probes, in the
+     * same order. MSYS2 and the common MinGW distributions deliberately do not
+     * add themselves to PATH, so a working toolchain that grayc cannot see is
+     * the common case on Windows, not an edge case. */
+    static const char *const fixed[] = {
+        "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+        "C:\\msys64\\mingw64\\bin\\gcc.exe",
+        "C:\\msys64\\clang64\\bin\\clang.exe",
+        "C:\\mingw64\\bin\\gcc.exe",
+        "C:\\ProgramData\\mingw64\\mingw64\\bin\\gcc.exe",
+        NULL, /* %ProgramFiles%\LLVM\bin\clang.exe, built below */
+    };
+    static char found[GRAY_PATH_BUF];
+    char candidate[GRAY_PATH_BUF];
+
+    for (size_t i = 0; i < sizeof(fixed) / sizeof(fixed[0]); i++) {
+        if (fixed[i]) {
+            snprintf(candidate, sizeof(candidate), "%s", fixed[i]);
+        } else {
+            const char *pf = getenv("ProgramFiles");
+            if (!pf || !*pf) continue;
+            if (gray_path_join(candidate, sizeof(candidate), pf,
+                               "LLVM\\bin\\clang.exe") >= (int)sizeof(candidate)) {
+                continue;
+            }
+        }
+        if (!gray_file_readable(candidate)) continue;
+
+        /* cc1.exe and the driver's other helpers load their DLLs via PATH
+         * from beside the compiler binary, so spawning by absolute path alone
+         * fails with exit 1 and no diagnostic. Prepend the bin directory;
+         * children of this process inherit it, which is the point. */
+        gray_ensure_tool_dir_on_path(candidate);
+
+        const char *probe[] = {candidate, "--version", NULL};
+        if (gray_spawn_quiet(probe) == 0) {
+            snprintf(found, sizeof(found), "%s", candidate);
+            return found;
+        }
+        /* Probe failed; the dead PATH entry left behind is harmless. */
+    }
+    return NULL;
+#else
+    return NULL;
+#endif
+}

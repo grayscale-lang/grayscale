@@ -629,7 +629,22 @@ static void argv_print(const ArgV *a, FILE *out) {
  * the one we go on to invoke — probing one name and then invoking a different
  * one breaks on any system that has gcc but no cc, which is every Windows
  * install and plenty of minimal Linux images. */
+static bool cc_probe_ok(const char *cc) {
+    const char *probe[] = {cc, "--version", NULL};
+    return gray_spawn_quiet(probe) == 0;
+}
+
 static const char *detect_cc(void) {
+    /* GRAY_CC / CC are probed, not trusted: a stale CC=cc from a profile must
+     * not break a system that only has gcc. Multi-word values ("zig cc")
+     * cannot go through a single-token probe — use --cc for those. */
+    static const char *const env_names[] = {"GRAY_CC", "CC"};
+    for (size_t i = 0; i < sizeof(env_names) / sizeof(env_names[0]); i++) {
+        const char *val = getenv(env_names[i]);
+        if (!val || !*val || strpbrk(val, " \t")) continue;
+        if (cc_probe_ok(val)) return val;
+    }
+
     static const char *const candidates[] = {
 #if GRAY_OS_WINDOWS
         "gcc", "clang", "cc",
@@ -638,10 +653,11 @@ static const char *detect_cc(void) {
 #endif
     };
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
-        const char *probe[] = {candidates[i], "--version", NULL};
-        if (gray_spawn_quiet(probe) == 0) return candidates[i];
+        if (cc_probe_ok(candidates[i])) return candidates[i];
     }
-    return NULL;
+
+    /* Nothing on PATH — check the well-known Windows install locations. */
+    return gray_find_cc_fallback();
 }
 
 int main(int argc, char **argv) {
@@ -1651,6 +1667,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* A compiler chosen by filesystem path (--cc, GRAY_CC/CC, or the
+     * well-known-location fallback) may live outside PATH; its helper
+     * processes resolve their DLLs via PATH. No-op for bare command names. */
+    gray_ensure_tool_dir_on_path(cc_cmd);
+
     /* Find runtime directory */
     const char *runtime_dir = find_runtime_dir(argv[0]);
     if (!runtime_dir) {
@@ -1672,7 +1693,7 @@ int main(int argc, char **argv) {
     /* The compiler is spawned with an argv array, so quoting and spaces are
      * handled for us. The one thing the C runtime cannot round-trip when it
      * re-serializes argv into a Windows command line is an embedded quote. */
-    if (strchr(runtime_dir, '"') || strchr(output_file, '"')) {
+    if (strchr(runtime_dir, '"') || strchr(output_file, '"') || strchr(cc_cmd, '"')) {
         fprintf(stderr, "gray: paths must not contain double quotes\n");
         codegen_destroy(&codegen);
         typechecker_free(checker);
@@ -1704,7 +1725,14 @@ int main(int argc, char **argv) {
     clock_t t_cc_start = clock();
 
     ArgV cc_argv = {0};
-    argv_push_command(&cc_argv, arena, cc_cmd);
+    /* Only --cc values are multi-word commands ("zig cc -target ...").
+     * Detected compilers are single tokens that may contain spaces
+     * (C:\Program Files\LLVM\bin\clang.exe) and must not be word-split. */
+    if (cc_override) {
+        argv_push_command(&cc_argv, arena, cc_cmd);
+    } else {
+        argv_push(&cc_argv, cc_cmd);
+    }
     argv_push(&cc_argv, "-std=c11");
     if (debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opt_level);
