@@ -1768,6 +1768,11 @@ int main(int argc, char **argv) {
     if (has_archive) {
         argv_push(&cc_argv, lib_path);
     } else {
+        /* The runtime sources reach shared headers via "util/..." includes
+         * (runtime.c wants util/colors.h); expose the src root so those
+         * resolve when building the runtime from source. */
+        argv_push(&cc_argv, "-isystem");
+        argv_push(&cc_argv, runtime_dir);
         /* Build source list from all runtime and stdlib .c files */
         static const char *runtime_srcs[] = {
             "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
