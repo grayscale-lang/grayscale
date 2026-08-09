@@ -23,9 +23,7 @@
 #define E2E_COMPILER ".\\grayc.exe"
 #define E2E_EXE_SUFFIX ".exe"
 /* /tmp is not a real location for a native Windows process; it would resolve
- * against the current drive root. Redirection also needs cmd.exe's device
- * name rather than /dev/null. */
-#define E2E_NULL_DEVICE "NUL"
+ * against the current drive root. */
 static const char *e2e_tmpdir(void) {
     const char *t = getenv("TEMP");
     if (!t || !*t) t = getenv("TMP");
@@ -34,11 +32,34 @@ static const char *e2e_tmpdir(void) {
 #else
 #define E2E_COMPILER "./grayc"
 #define E2E_EXE_SUFFIX ""
-#define E2E_NULL_DEVICE "/dev/null"
 static const char *e2e_tmpdir(void) { return "/tmp"; }
 #endif
 
 static int test_number = 0;
+
+/* Compile a .gray file to a binary. Diagnostics are captured and printed only
+ * on failure — a swallowed compiler error once turned "gcc is not on PATH"
+ * into 121 opaque NULL-output failures. */
+static int e2e_compile(const char *gray_file, const char *binary_file) {
+    char command[1024];
+    snprintf(command, sizeof(command), E2E_COMPILER " \"%s\" -o \"%s\" 2>&1", gray_file, binary_file);
+    FILE *pipe = popen(command, "r");
+    if (!pipe) return -1;
+
+    char cc_out[8192];
+    size_t total = 0;
+    size_t bytes_read;
+    while ((bytes_read = fread(cc_out + total, 1, sizeof(cc_out) - total - 1, pipe)) > 0) {
+        total += bytes_read;
+    }
+    cc_out[total] = '\0';
+
+    int rc = pclose(pipe);
+    if (rc != 0) {
+        fprintf(stderr, "  test %d: compile failed:\n%s", test_number, cc_out);
+    }
+    return rc;
+}
 
 /* Compile and run a Grayscale program, return its stdout output */
 static char *compile_and_run(const char *gray_source) {
@@ -56,9 +77,7 @@ static char *compile_and_run(const char *gray_source) {
     fclose(file);
 
     /* Compile */
-    char command[1024];
-    snprintf(command, sizeof(command), E2E_COMPILER " \"%s\" -o \"%s\" >" E2E_NULL_DEVICE " 2>&1", gray_file, binary_file);
-    if (system(command) != 0) {
+    if (e2e_compile(gray_file, binary_file) != 0) {
         unlink(gray_file);
         return NULL;
     }
@@ -80,6 +99,15 @@ static char *compile_and_run(const char *gray_source) {
     }
     output[total] = '\0';
     pclose(pipe);
+
+    /* Text-mode _popen translates CRLF already; strip any '\r' a binary-mode
+     * child leaks through so comparisons stay byte-exact. */
+    size_t w = 0;
+    for (size_t r = 0; r < total; r++) {
+        if (output[r] != '\r') output[w++] = output[r];
+    }
+    total = w;
+    output[total] = '\0';
 
     /* Remove trailing newline for easier comparison */
     if (total > 0 && output[total - 1] == '\n') {
@@ -1031,9 +1059,7 @@ static void test_e2e_divide_by_zero(void) {
     fputs(src, file);
     fclose(file);
 
-    char command[1024];
-    snprintf(command, sizeof(command), E2E_COMPILER " \"%s\" -o \"%s\" >" E2E_NULL_DEVICE " 2>&1", gray_file, binary_file);
-    if (system(command) != 0) {
+    if (e2e_compile(gray_file, binary_file) != 0) {
         unlink(gray_file);
         ASSERT(0 && "compile failed");
     }
