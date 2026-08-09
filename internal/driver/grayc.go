@@ -80,6 +80,7 @@ type BuildOpts struct {
 	Quiet      bool   // Suppress all warnings
 	QuietCodes string // Suppress specific warning codes (comma-separated)
 	CC         string // Override C compiler command (e.g. "zig cc -target x86_64-linux-gnu")
+	ArenaLimit uint64 // Arena growth limit in bytes (0 = default 1 GB)
 }
 
 // Run compiles and executes a Grayscale source file via grayc run.
@@ -128,6 +129,9 @@ func buildArgs(file string, opts BuildOpts) []string {
 	}
 	if opts.CC != "" {
 		args = append(args, "--cc", opts.CC)
+	}
+	if opts.ArenaLimit > 0 {
+		args = append(args, fmt.Sprintf("--arena-limit=%d", opts.ArenaLimit))
 	}
 	return args
 }

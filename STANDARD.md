@@ -3896,6 +3896,15 @@ When `return`, `break`, or `continue` exits through nested scopes, the runtime u
 
 Arenas start at a fixed size but are not limited by it. If an allocation exceeds the remaining space, the arena chains a new, larger block automatically. An arena never fails due to its initial size being too small.
 
+By default, the runtime's managed arenas (default and heap) are capped at **1 GB** each. If a program attempts to grow beyond this limit, it panics with `P0104`. Use the `--arena-limit` flag to adjust the cap:
+
+```bash
+gray build main.gray --arena-limit=256MB   # restrict to 256 MB
+gray build main.gray --arena-limit=2GB     # allow up to 2 GB
+```
+
+User-created arenas (via `mem.arena()`) are not subject to this limit.
+
 ---
 
 ## 12. Program Execution
@@ -3974,6 +3983,7 @@ These flags are available on `gray <file>`, `build`, `check`, and `watch`:
 |------|-------------|
 | `-q, --quiet <codes>` | Suppress warnings. Use `all` to suppress all, or a comma-separated list of codes (e.g. `W1001,W1003`). |
 | `--no-color` | Disable colored diagnostic output. |
+| `--arena-limit=<size>` | Maximum arena memory per program. Accepts a size with unit suffix: `KB`, `MB`, or `GB` (e.g. `512MB`, `1GB`). Defaults to `1GB`. When exceeded at runtime, the program panics with `P0104`. |
 
 ### 13.1 `gray <file.gray>`
 
@@ -4006,12 +4016,14 @@ gray build <file.gray> [flags]
 | `--time` | Show compilation timing. |
 | `-q, --quiet <codes>` | Suppress warnings. |
 | `--no-color` | Disable colored output. |
+| `--arena-limit=<size>` | Cap arena memory (e.g. `512MB`, `1GB`). Default: `1GB`. |
 
 ```bash
 gray build main.gray -o myapp
 gray build main.gray --emit-c
 gray build main.gray --emit-c -o output.c
 gray build main.gray --time -q all
+gray build main.gray --arena-limit=256MB
 ```
 
 ### 13.3 `gray check`

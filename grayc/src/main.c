@@ -58,6 +58,7 @@ static void print_usage(void) {
     fprintf(stderr, "  --time          Show compilation timing\n");
     fprintf(stderr, "  --quiet         Suppress all warnings\n");
     fprintf(stderr, "  --quiet W1001   Suppress specific warnings (comma-separated)\n");
+    fprintf(stderr, "  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)\n");
     fprintf(stderr, "  --no-color      Disable colored output\n");
     fprintf(stderr, "  -h, --help      Show this help\n");
 }
@@ -637,6 +638,7 @@ int main(int argc, char **argv) {
     const char *quiet_codes_arg = NULL;
     const char *opt_level = "-O2";
     const char *cc_override = NULL;
+    size_t arena_limit = 0; /* 0 = let codegen use 1 GB default */
 
     /* Parse arguments */
     for (int i = 1; i < argc; i++) {
@@ -703,6 +705,10 @@ int main(int argc, char **argv) {
         }
         if (strcmp(argv[i], "--fmt") == 0) {
             fmt_mode = true;
+            continue;
+        }
+        if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
+            arena_limit = strtoull(argv[i] + 14, NULL, 10);
             continue;
         }
         if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
@@ -1543,6 +1549,7 @@ int main(int argc, char **argv) {
     /* Generate C code */
     CodeGen codegen = codegen_create(input_file);
     codegen.type_table = typechecker_get_table(checker);
+    codegen.arena_limit = arena_limit;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
 

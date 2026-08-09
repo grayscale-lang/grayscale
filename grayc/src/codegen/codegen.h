@@ -135,6 +135,9 @@ typedef struct {
      * emitted as C file-scope initializers, which C does not allow. */
     bool in_const_decl;
 
+    /* Arena growth limit in bytes (0 = use 1 GB default) */
+    size_t arena_limit;
+
     /* Monotonic counter for generating unique temporary variable names.
      * Every emitter that needs a unique C identifier draws from this
      * single counter via codegen_next_id(). */

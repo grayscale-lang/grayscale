@@ -10114,7 +10114,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Emit C main() */
     emit(codegen, "int main(int argc, char **argv) {\n");
     emit(codegen, "    (void)argc; (void)argv;\n");
-    emit(codegen, "    gray_runtime_init();\n");
+    {
+        size_t limit = codegen->arena_limit > 0
+            ? codegen->arena_limit : (size_t)1073741824;
+        emit_formatted(codegen, "    gray_runtime_init(%zuULL);\n", limit);
+    }
     emit(codegen, "    gray_os_init(argc, argv);\n");
     /* Initialize file-scope arrays that can't use C static initializers */
     if (codegen->global_init.len > 0) {
