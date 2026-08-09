@@ -1,0 +1,6 @@
+import and use "./types.gray"
+
+do make_and_describe(name string) -> string {
+    mut item = Item.create(name)
+    return Item.describe(item)
+}

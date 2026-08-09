@@ -1,0 +1,54 @@
+import and use "./types.gray"
+import "./helper.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: struct function via unqualified name (2 files)
+    mut item = Item.create("direct")
+    if item.name == "direct" {
+        println("  [PASS] struct create via unqualified name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct create via unqualified name")
+        failed += 1
+    }
+
+    // Test 2: struct function via qualified name
+    mut item2 = types.Item.create("qualified")
+    if item2.name == "qualified" {
+        println("  [PASS] struct create via qualified name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct create via qualified name")
+        failed += 1
+    }
+
+    // Test 3: struct function called from imported module (3 files)
+    mut desc = helper.make_and_describe("from-helper")
+    if desc == "Item: from-helper" {
+        println("  [PASS] struct func dispatch from imported module")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct func dispatch from imported module: got '${desc}'")
+        failed += 1
+    }
+
+    // Test 4: instance describe via unqualified name
+    mut desc2 = Item.describe(item)
+    if desc2 == "Item: direct" {
+        println("  [PASS] instance describe via unqualified name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] instance describe via unqualified name: got '${desc2}'")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -6365,6 +6365,24 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             char ns_name[IDENT_BUF];
             snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
             AstNode *ns_func = find_function(codegen, ns_name);
+            /* If not found, try using-module-prefixed struct names so
+             * bare Product.create() from 'import and use' resolves to
+             * types_Product_create. */
+            static char using_resolved[IDENT_BUF];
+            if (!ns_func && resolved_name[0] >= 'A' && resolved_name[0] <= 'Z') {
+                for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                    const char *real_mod = resolve_alias(codegen, codegen->using_modules[ui]);
+                    char prefixed[IDENT_BUF];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", real_mod, resolved_name, member);
+                    ns_func = find_function(codegen, prefixed);
+                    if (ns_func) {
+                        snprintf(using_resolved, sizeof(using_resolved), "%s_%s", real_mod, resolved_name);
+                        resolved_name = using_resolved;
+                        snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
+                        break;
+                    }
+                }
+            }
             bool instance_dispatch = false;
             bool obj_is_ptr = false;
             if (!ns_func) {
