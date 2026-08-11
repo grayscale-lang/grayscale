@@ -95,6 +95,7 @@ typedef enum {
     TOK_FLAGS,          /* #flags */
     TOK_DOC,            /* #doc */
     TOK_JSON_ATTR,      /* #json */
+    TOK_DISCARD,        /* #discard */
 
     /* Keywords */
     TOK_MUT,

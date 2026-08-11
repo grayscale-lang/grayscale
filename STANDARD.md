@@ -1840,6 +1840,7 @@ const Person struct {
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
+| `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -1892,6 +1893,41 @@ do main() {
 - Field names in the JSON must match the struct field names exactly.
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `int`, `uint`, `float`, `string`, `bool`. Nested `#json` structs and arrays of `#json` structs are also supported.
+
+#### 7.5.3 `#discard` Attribute
+
+The `#discard` attribute marks a function whose return value may safely be ignored by callers. Without `#discard`, calling a non-void function as a bare statement produces E5011 ("return value not used"). With `#discard`, callers may call the function without capturing the return value, and the compiler will not emit E5011.
+
+```gray
+#discard
+do tryInsert(value int) -> bool {
+    // ... returns true on success, but caller may not care
+    return true
+}
+
+do main() {
+    tryInsert(42)               // OK — no E5011
+    mut ok bool = tryInsert(7)  // also OK — capturing is still allowed
+}
+```
+
+`#discard` can also be applied to struct functions:
+
+```gray
+const List struct {
+    items [int]
+
+    #discard
+    do push(self List, value int) -> int {
+        return len(self.items) + 1
+    }
+}
+```
+
+**Rules:**
+
+- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
+- `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
 
 ### 7.6 Function References
 

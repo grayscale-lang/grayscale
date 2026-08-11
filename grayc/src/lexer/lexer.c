@@ -527,9 +527,12 @@ Token lexer_next_token(Lexer *lexer) {
         } else if (check_upcoming_chars(lexer, "#json", 5)) {
             tok = make_token(TOK_JSON_ATTR, "#json", tok.line, tok.column);
             for (int i = 0; i < 4; i++) read_char(lexer);
+        } else if (check_upcoming_chars(lexer, "#discard", 8)) {
+            tok = make_token(TOK_DISCARD, "#discard", tok.line, tok.column);
+            for (int i = 0; i < 7; i++) read_char(lexer);
         } else {
             lexer->error_code = "E1019";
-            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc' for attributes";
+            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard' for attributes";
             tok = make_token(TOK_ILLEGAL, lexer->error_msg, tok.line, tok.column);
         }
         break;

@@ -47,6 +47,7 @@ typedef struct {
     bool used;          /* true if function was called */
     int def_line;       /* line where function was declared */
     bool is_private;    /* true if declared with 'private' keyword */
+    bool is_discard;    /* true if declared with #discard attribute */
 
     /* Wildcard type support .
      * A function is "generic" if any of its param or return type strings

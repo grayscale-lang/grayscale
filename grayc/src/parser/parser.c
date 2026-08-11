@@ -2111,6 +2111,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     node->data.struct_decl.func_count = 0;
     node->data.struct_decl.funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
 
+    bool pending_discard = false;
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
@@ -2124,10 +2125,21 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             next_token(parser);
             continue;
         }
+        /* #discard inside struct body: set pending flag, then the
+         * next iteration will attach it to the parsed function. */
+        if (current_token_is(parser, TOK_DISCARD)) {
+            pending_discard = true;
+            next_token(parser);
+            continue;
+        }
         /* Check for struct-namespaced function: do func() or private do func() */
         if (current_token_is(parser, TOK_DO)) {
             AstNode *fn = parse_func_declaration(parser);
             if (fn) {
+                if (pending_discard) {
+                    fn->data.func_decl.is_discard = true;
+                    pending_discard = false;
+                }
                 if (node->data.struct_decl.func_count >= func_cap) {
                     func_cap *= 2;
                     StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
@@ -2145,6 +2157,10 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             AstNode *fn = parse_func_declaration(parser);
             if (fn) {
                 fn->data.func_decl.is_private = true;
+                if (pending_discard) {
+                    fn->data.func_decl.is_discard = true;
+                    pending_discard = false;
+                }
                 if (node->data.struct_decl.func_count >= func_cap) {
                     func_cap *= 2;
                     StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
@@ -3011,6 +3027,19 @@ static AstNode *parse_statement(Parser *parser) {
         } else {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
+    case TOK_DISCARD: {
+        /* #discard; applies to the next function declaration */
+        next_token(parser);
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_discard = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;

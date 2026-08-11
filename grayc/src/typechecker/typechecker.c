@@ -582,6 +582,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->def_line = 0;
     fs->is_private = false;
     fs->is_generic = false;
+    fs->is_discard = false;
     fs->decl = NULL;
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
@@ -9560,24 +9561,33 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                         mem_name = fn->data.member.member;
                     }
                     if (obj_name && mem_name && !is_side_effect) {
-                        char full[MSG_BUF_SIZE];
-                        const char *display_obj = struct_display_name(checker, obj_name);
-                        snprintf(full, sizeof(full), "%s.%s()", display_obj, mem_name);
-                        char *msg = typechecker_format(checker, "return value of '%s' is not used", full);
-                        diagnostic_error_help(checker->diag, "E5011", msg,
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            "assign the result to a variable, or use 'mut _ = ...' to discard it");
+                        /* Check if struct function has #discard attribute */
+                        char prefixed[MSG_BUF_SIZE];
+                        snprintf(prefixed, sizeof(prefixed), "%s_%s", obj_name, mem_name);
+                        FuncSig *fs = find_func(checker, prefixed);
+                        if (!fs || !fs->is_discard) {
+                            char full[MSG_BUF_SIZE];
+                            const char *display_obj = struct_display_name(checker, obj_name);
+                            snprintf(full, sizeof(full), "%s.%s()", display_obj, mem_name);
+                            char *msg = typechecker_format(checker, "return value of '%s' is not used", full);
+                            diagnostic_error_help(checker->diag, "E5011", msg,
+                                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                                "assign the result to a variable, or use 'mut _ = ...' to discard it");
+                        }
                     }
                     is_side_effect = true; /* already handled */
                 }
             }
             if (!is_side_effect && function_name) {
-                char full[MSG_BUF_SIZE];
-                snprintf(full, sizeof(full), "%s()", function_name);
-                char *msg = typechecker_format(checker, "return value of '%s' is not used", full);
-                diagnostic_error_help(checker->diag, "E5011", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "assign the result to a variable, or use 'mut _ = ...' to discard it");
+                FuncSig *fs = find_func(checker, function_name);
+                if (!fs || !fs->is_discard) {
+                    char full[MSG_BUF_SIZE];
+                    snprintf(full, sizeof(full), "%s()", function_name);
+                    char *msg = typechecker_format(checker, "return value of '%s' is not used", full);
+                    diagnostic_error_help(checker->diag, "E5011", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        "assign the result to a variable, or use 'mut _ = ...' to discard it");
+                }
             }
         }
         /* : double-free detection for mem.destroy() */
@@ -11338,6 +11348,12 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
                 const char *prefixed = arena_copy_string(checker->arena, buffer);
                 register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
                 checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
+                checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
+                if (fn->data.func_decl.is_discard && return_count == 0) {
+                    diagnostic_error_code_formatted(checker->diag, "E5042",
+                        NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
+                        FUNC_DISPLAY_NAME(fn));
+                }
                 finalize_generic_signature(&checker->funcs[checker->func_count - 1], fn);
             }
         }
@@ -11391,6 +11407,13 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
             }
             register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
+            checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+            /* E5042: #discard on a void function is an error */
+            if (stmt->data.func_decl.is_discard && return_count == 0) {
+                diagnostic_error_code_formatted(checker->diag, "E5042",
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                    FUNC_DISPLAY_NAME(stmt));
+            }
             /* Store line for unused function warning */
             checker->funcs[checker->func_count - 1].def_line = stmt->token.line;
             finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
@@ -11410,6 +11433,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
                             fn[mod_len] == '_') {
                             register_func(checker, unprefixed, ptypes, parameter_count, rtypes, return_count);
                             checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
+                            checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
                             checker->funcs[checker->func_count - 1].def_line = 0; /* suppress unused warning */
                             finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
                             break;
@@ -11694,6 +11718,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                         checker->funcs[field_index].param_count,
                         checker->funcs[field_index].return_types,
                         checker->funcs[field_index].return_count);
+                    checker->funcs[checker->func_count - 1].is_discard = checker->funcs[field_index].is_discard;
                     checker->funcs[checker->func_count - 1].def_line = 0;
                 }
             }
