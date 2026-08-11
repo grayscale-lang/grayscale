@@ -9970,7 +9970,24 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     }
     emit(codegen, "\n");
 
-    /* Emit enum type definitions FIRST (before structs, since structs may reference enums) */
+    /* Emit struct forward declarations before enums so tagged union
+     * payloads can reference struct types by name. */
+    {
+        int struct_count = codegen->struct_decl_count < MAX_STRUCT_DECLS
+                         ? codegen->struct_decl_count : MAX_STRUCT_DECLS;
+        AstNode **structs = codegen->struct_decls;
+        for (int i = 0; i < struct_count; i++) {
+            if (structs[i]->data.struct_decl.is_generic) continue;
+            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n",
+                structs[i]->data.struct_decl.name,
+                structs[i]->data.struct_decl.name);
+        }
+        if (struct_count > 0) emit(codegen, "\n");
+    }
+
+    /* Register all enums and emit non-tagged enum typedefs.
+     * Tagged enum typedefs are deferred until after struct body
+     * definitions because their payloads may contain struct values. */
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         /* Check if this is a string enum (auto-detect from values) */
@@ -10012,46 +10029,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 }
                 emit(codegen, "\n");
             } else if (is_tagged) {
+                /* Defer tagged enum typedefs — only emit the tag enum now */
                 const char *ename = stmt->data.enum_decl.name;
-                /* Tag enum */
                 emit_formatted(codegen, "typedef enum {\n");
                 for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
                     emit_formatted(codegen, "    GrayEnum_%s_TAG_%s = %d,\n", ename, stmt->data.enum_decl.values[j].name, j);
                 }
                 emit_formatted(codegen, "} GrayEnum_%s_Tag;\n\n", ename);
-
-                /* Payload structs (only for variants with payloads) */
-                for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-                    EnumVal *ev = &stmt->data.enum_decl.values[j];
-                    if (ev->payload_count > 0) {
-                        emit_formatted(codegen, "typedef struct {");
-                        for (int k = 0; k < ev->payload_count; k++) {
-                            if (k > 0) emit(codegen, "");
-                            emit_formatted(codegen, " %s _%d;", gray_type_to_c_codegen(codegen, ev->payload_types[k]), k);
-                        }
-                        emit_formatted(codegen, " } GrayEnum_%s_Data_%s;\n", ename, ev->name);
-                    }
-                }
-
-                /* Tagged union struct */
-                emit_formatted(codegen, "typedef struct {\n");
-                emit_formatted(codegen, "    GrayEnum_%s_Tag tag;\n", ename);
-                /* Only emit union if any variant has a payload */
-                bool has_any_payload = false;
-                for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-                    if (stmt->data.enum_decl.values[j].payload_count > 0) { has_any_payload = true; break; }
-                }
-                if (has_any_payload) {
-                    emit_formatted(codegen, "    union {\n");
-                    for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-                        EnumVal *ev = &stmt->data.enum_decl.values[j];
-                        if (ev->payload_count > 0) {
-                            emit_formatted(codegen, "        GrayEnum_%s_Data_%s %s;\n", ename, ev->name, ev->name);
-                        }
-                    }
-                    emit_formatted(codegen, "    } data;\n");
-                }
-                emit_formatted(codegen, "} GrayEnum_%s;\n\n", ename);
             } else {
                 bool is_flags = stmt->data.enum_decl.is_flags;
                 emit_formatted(codegen, "typedef enum {\n");
@@ -10076,21 +10060,12 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     }
 
     /* Emit struct declarations in dependency order (topological sort).
-     * Structs that reference other structs as value fields must come after them. */
+     * Structs that reference other structs as value fields must come after them.
+     * Forward declarations were already emitted above (before enums). */
     {
         int struct_count = codegen->struct_decl_count < MAX_STRUCT_DECLS
                          ? codegen->struct_decl_count : MAX_STRUCT_DECLS;
         AstNode **structs = codegen->struct_decls;
-
-        /* Emit forward declarations so pointer fields can reference any struct.
-         * Skip generic structs; their forward decls are per-instantiation. */
-        for (int i = 0; i < struct_count; i++) {
-            if (structs[i]->data.struct_decl.is_generic) continue;
-            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n",
-                structs[i]->data.struct_decl.name,
-                structs[i]->data.struct_decl.name);
-        }
-        if (struct_count > 0) emit(codegen, "\n");
 
         /* Simple topological sort: repeatedly emit structs with no unresolved deps */
         bool emitted[MAX_STRUCT_DECLS] = {false};
@@ -10140,6 +10115,46 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 emit(codegen, "};\n\n");
             }
         }
+    }
+
+    /* Emit deferred tagged enum typedefs now that full struct
+     * definitions are available for by-value payload fields. */
+    for (int i = 0; i < enum_bucket_count; i++) {
+        AstNode *stmt = enum_bucket[i];
+        if (!stmt->data.enum_decl.is_tagged) continue;
+        const char *ename = stmt->data.enum_decl.name;
+
+        /* Payload structs (only for variants with payloads) */
+        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+            EnumVal *ev = &stmt->data.enum_decl.values[j];
+            if (ev->payload_count > 0) {
+                emit_formatted(codegen, "typedef struct {");
+                for (int k = 0; k < ev->payload_count; k++) {
+                    if (k > 0) emit(codegen, "");
+                    emit_formatted(codegen, " %s _%d;", gray_type_to_c_codegen(codegen, ev->payload_types[k]), k);
+                }
+                emit_formatted(codegen, " } GrayEnum_%s_Data_%s;\n", ename, ev->name);
+            }
+        }
+
+        /* Tagged union struct */
+        emit_formatted(codegen, "typedef struct {\n");
+        emit_formatted(codegen, "    GrayEnum_%s_Tag tag;\n", ename);
+        bool has_any_payload = false;
+        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+            if (stmt->data.enum_decl.values[j].payload_count > 0) { has_any_payload = true; break; }
+        }
+        if (has_any_payload) {
+            emit_formatted(codegen, "    union {\n");
+            for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+                EnumVal *ev = &stmt->data.enum_decl.values[j];
+                if (ev->payload_count > 0) {
+                    emit_formatted(codegen, "        GrayEnum_%s_Data_%s %s;\n", ename, ev->name, ev->name);
+                }
+            }
+            emit_formatted(codegen, "    } data;\n");
+        }
+        emit_formatted(codegen, "} GrayEnum_%s;\n\n", ename);
     }
 
     /* : emit per-instantiation typedefs for generic (wildcard) structs.
