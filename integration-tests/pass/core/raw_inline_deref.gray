@@ -1,0 +1,26 @@
+// Test: inline raw() dereference skips nil check
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut x int = 42
+    // raw(x)^ should produce a bare dereference with no nil check
+    mut val int = raw(x)^
+    if val == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] raw(x)^ produced wrong value")
+        failed = failed + 1
+    }
+
+    // Also test inline in expression context
+    if raw(x)^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] raw(x)^ in expression produced wrong value")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

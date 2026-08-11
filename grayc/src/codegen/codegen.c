@@ -2220,7 +2220,14 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
     case NODE_POSTFIX_EXPR:
         if (node->data.postfix.op == TOK_CARET) {
             AstNode *_dp_left = node->data.postfix.left;
-            if (_dp_left->kind == NODE_LABEL && is_raw_variable(codegen, _dp_left->data.label.value)) {
+            bool is_raw_deref = (_dp_left->kind == NODE_LABEL &&
+                                 is_raw_variable(codegen, _dp_left->data.label.value));
+            if (!is_raw_deref && _dp_left->kind == NODE_CALL_EXPR &&
+                _dp_left->data.call.function->kind == NODE_LABEL &&
+                strcmp(_dp_left->data.call.function->data.label.value, "raw") == 0) {
+                is_raw_deref = true;
+            }
+            if (is_raw_deref) {
                 /* Raw pointer: bare dereference, no nil check */
                 emit(codegen, "(*");
                 emit_expression(codegen, _dp_left);
