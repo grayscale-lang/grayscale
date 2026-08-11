@@ -1368,24 +1368,30 @@ static AstNode *parse_discard_statement(Parser *parser) {
     return node;
 }
 
-static AstNode *parse_var_declaration(Parser *parser) {
+static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
     AstNode *node = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
-    node->data.var_decl.mutable = (parser->cur_token.type == TOK_MUT);
 
-    if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_BLANK)) {
-        next_token(parser);
-    } else if (is_keyword_token(parser->peek_token.type)) {
-        char msg[MSG_BUF_SIZE];
-        snprintf(msg, sizeof(msg),
-            "'%s' is a reserved keyword and cannot be used as a variable name",
-            parser->peek_token.literal);
-        diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-        synchronize_parser(parser);
-        return NULL;
+    if (bare) {
+        node->data.var_decl.mutable = true;
+        /* cur_token is already the variable name — don't advance */
     } else {
-        expect_peek_token(parser, TOK_IDENT); /* will error */
-        return NULL;
+        node->data.var_decl.mutable = (parser->cur_token.type == TOK_MUT);
+
+        if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_BLANK)) {
+            next_token(parser);
+        } else if (is_keyword_token(parser->peek_token.type)) {
+            char msg[MSG_BUF_SIZE];
+            snprintf(msg, sizeof(msg),
+                "'%s' is a reserved keyword and cannot be used as a variable name",
+                parser->peek_token.literal);
+            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+                parser->file, parser->peek_token.line, parser->peek_token.column, 0);
+            synchronize_parser(parser);
+            return NULL;
+        } else {
+            expect_peek_token(parser, TOK_IDENT); /* will error */
+            return NULL;
+        }
     }
     node->data.var_decl.name = parser->cur_token.literal;
 
@@ -1534,6 +1540,10 @@ static AstNode *parse_var_declaration(Parser *parser) {
     }
 
     return node;
+}
+
+static AstNode *parse_var_declaration(Parser *parser) {
+    return parse_var_declaration_ex(parser, false);
 }
 
 static AstNode *parse_return_statement(Parser *parser) {
@@ -3071,10 +3081,12 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_ensure_statement(parser);
     case TOK_BLANK:
         /* Bare throwaway: `_ = expr` discards the RHS without creating
-         * a symbol. Any other use of `_` at statement position (bare
-         * `_`, `_ +=`, `_, x = ...`) is invalid. */
+         * a symbol. `_, x = func()` is a bare multi-var declaration. */
         if (peek_token_is(parser, TOK_ASSIGN)) {
             return parse_discard_statement(parser);
+        }
+        if (peek_token_is(parser, TOK_COMMA)) {
+            return parse_var_declaration_ex(parser, true);
         }
         diagnostic_error_message(parser->diag, "E2002",
             arena_copy_string(parser->arena,"unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
@@ -3082,17 +3094,10 @@ static AstNode *parse_statement(Parser *parser) {
         synchronize_parser(parser);
         return NULL;
     default: {
-        /* IDENT IDENT at statement position means the user tried to
-         * declare a variable but typed the wrong leading keyword
-         * (e.g. `cont myVar = 10`). No valid Grayscale statement has this
-         * shape, so we can confidently redirect them at 'const' or
-         * 'mut'. Consume the botched header and keep parsing. */
-        if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_IDENT)) {
-            diagnostic_error_code_formatted(parser->diag, "E2078",
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                parser->peek_token.literal, parser->peek_token.literal);
-            synchronize_parser(parser);
-            return NULL;
+        /* Bare variable declaration: x int = 5  or  x, err = func() */
+        if (current_token_is(parser, TOK_IDENT) &&
+            (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA))) {
+            return parse_var_declaration_ex(parser, true);
         }
         /* Could be assignment or expression statement */
         AstNode *expr = parse_expression(parser, PREC_LOWEST);

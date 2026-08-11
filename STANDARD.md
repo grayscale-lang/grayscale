@@ -917,16 +917,16 @@ private alias InternalID = int
 
 ### 4.1 Variable Declarations
 
-Variables are declared using the `mut` keyword:
+Variables are mutable by default. The `mut` keyword is accepted but optional:
 
 ```gray
-mut count int = 0
-mut name string = "Alice"
-mut items [int] = {1, 2, 3}
+x int = 42              // mutable (default)
+mut x int = 42          // also mutable (explicit, accepted)
+name = "hello"          // mutable, type inferred
+result, err = func()    // mutable, multi-return inferred
 ```
 
-Variables declared with `mut`:
-- Must be initialized at declaration
+Variables declared this way:
 - Can be reassigned after declaration
 - Are scoped to their containing block
 

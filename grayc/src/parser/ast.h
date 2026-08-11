@@ -242,6 +242,7 @@ struct AstNode {
             AstNode *target;
             TokenType op;
             AstNode *value;
+            bool is_decl;  /* true when typechecker promotes to implicit declaration */
         } assign;
 
         /* NODE_RETURN_STMT */

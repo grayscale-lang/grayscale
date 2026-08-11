@@ -7763,6 +7763,21 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
+    /* Implicit declaration: emit as C variable declaration */
+    if (node->data.assign.is_decl &&
+        node->data.assign.target->kind == NODE_LABEL) {
+        emit_indent(codegen);
+        GrayType *t = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.assign.target)
+            : NULL;
+        const char *c_type = t ? gray_type_to_c_codegen(codegen, type_name(t)) : "__auto_type";
+        emit_formatted(codegen, "%s %s = ", c_type,
+            sanitize_name(node->data.assign.target->data.label.value));
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ";\n");
+        return;
+    }
+
     emit_indent(codegen);
 
     /* Check for array index assignment: arr[i] = value */

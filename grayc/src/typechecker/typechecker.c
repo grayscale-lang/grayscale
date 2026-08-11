@@ -8779,6 +8779,33 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
     }
 
     case NODE_ASSIGN_STMT: {
+        /* Implicit declaration: x = expr where x is not in scope */
+        {
+            AstNode *target = node->data.assign.target;
+            if (target->kind == NODE_LABEL &&
+                node->data.assign.op == TOK_ASSIGN &&
+                strcmp(target->data.label.value, "_") != 0) {
+                const char *name = target->data.label.value;
+                Symbol *sym = scope_lookup(checker->current_scope, name);
+                if (!sym && !typechecker_is_builtin(name) &&
+                    !is_struct_name(checker, name) && !is_enum_name(checker, name) &&
+                    !find_func(checker, name)) {
+                    /* Resolve RHS to infer type */
+                    GrayType *val_t = resolve_expression(checker, node->data.assign.value);
+                    if (val_t && val_t->kind != TK_UNKNOWN && val_t->kind != TK_VOID) {
+                        scope_define(checker->current_scope, name, val_t, true);
+                        Symbol *new_sym = scope_lookup_local(checker->current_scope, name);
+                        if (new_sym) {
+                            new_sym->def_line = node->token.line;
+                            new_sym->def_column = node->token.column;
+                        }
+                        node->data.assign.is_decl = true;
+                        break; /* done — skip normal assignment validation */
+                    }
+                }
+            }
+        }
+
         GrayType *target_t = resolve_expression(checker, node->data.assign.target);
         /* Set expected_type for implicit enum resolution (.VARIANT) */
         GrayType *saved_expected = checker->expected_type;

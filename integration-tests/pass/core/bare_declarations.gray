@@ -1,0 +1,185 @@
+/*
+ * bare_declarations.gray - Test mutable-by-default variable declarations
+ */
+
+do pair() -> (int, int) {
+    return 10, 20
+}
+
+do main() {
+    println("=== Bare Declarations Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // ==================== TYPED BARE ====================
+    println("  -- Typed Bare --")
+
+    // Test 1: bare typed int
+    x int = 5
+    if x == 5 {
+        println("  [PASS] x int = 5")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] x int = 5: got ${x}")
+        failed += 1
+    }
+
+    // Test 2: bare typed string
+    name string = "hello"
+    if name == "hello" {
+        println("  [PASS] name string = \"hello\"")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] name string = \"hello\": got ${name}")
+        failed += 1
+    }
+
+    // Test 3: bare typed float
+    pi float = 3.14
+    if pi == 3.14 {
+        println("  [PASS] pi float = 3.14")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pi float = 3.14: got ${pi}")
+        failed += 1
+    }
+
+    // Test 4: bare typed bool
+    flag bool = true
+    if flag {
+        println("  [PASS] flag bool = true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] flag bool = true")
+        failed += 1
+    }
+
+    // Test 5: mutability — bare decls are mutable
+    x = 10
+    if x == 10 {
+        println("  [PASS] x = 10 (mutated)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] x = 10 (mutated): got ${x}")
+        failed += 1
+    }
+
+    // ==================== INFERRED BARE ====================
+    println("  -- Inferred Bare --")
+
+    // Test 6: inferred int
+    count = 42
+    if count == 42 {
+        println("  [PASS] count = 42")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] count = 42: got ${count}")
+        failed += 1
+    }
+
+    // Test 7: inferred string
+    greeting = "world"
+    if greeting == "world" {
+        println("  [PASS] greeting = \"world\"")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] greeting = \"world\": got ${greeting}")
+        failed += 1
+    }
+
+    // Test 8: inferred bool
+    ok = true
+    if ok {
+        println("  [PASS] ok = true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ok = true")
+        failed += 1
+    }
+
+    // Test 9: mutability — inferred decls are mutable
+    count = 99
+    if count == 99 {
+        println("  [PASS] count = 99 (mutated)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] count = 99 (mutated): got ${count}")
+        failed += 1
+    }
+
+    // ==================== MULTI-VAR BARE ====================
+    println("  -- Multi-Var Bare --")
+
+    // Test 10: bare multi-var
+    a, b = pair()
+    if a == 10 {
+        println("  [PASS] a = 10 from pair()")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] a from pair(): got ${a}")
+        failed += 1
+    }
+    if b == 20 {
+        println("  [PASS] b = 20 from pair()")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] b from pair(): got ${b}")
+        failed += 1
+    }
+
+    // Test 11: multi-var with blank
+    _, d = pair()
+    if d == 20 {
+        println("  [PASS] _, d = pair() -> d = 20")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] _, d = pair(): got ${d}")
+        failed += 1
+    }
+
+    // ==================== NESTED SCOPE ====================
+    println("  -- Nested Scope --")
+
+    // Test 12: bare in if block
+    if true {
+        inner int = 100
+        if inner == 100 {
+            println("  [PASS] inner int = 100 in if block")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] inner int = 100 in if block: got ${inner}")
+            failed += 1
+        }
+    }
+
+    // ==================== MUT STILL WORKS ====================
+    println("  -- Mut Regression --")
+
+    // Test 13: explicit mut still works
+    mut old_style int = 77
+    if old_style == 77 {
+        println("  [PASS] mut old_style int = 77")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut old_style int = 77: got ${old_style}")
+        failed += 1
+    }
+
+    // Test 14: explicit mut with inference
+    mut inferred = 88
+    if inferred == 88 {
+        println("  [PASS] mut inferred = 88")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut inferred = 88: got ${inferred}")
+        failed += 1
+    }
+
+    // ==================== SUMMARY ====================
+    println("")
+    println("Passed: ${passed}")
+    println("Failed: ${failed}")
+    if failed > 0 {
+        panic("${failed} test(s) failed")
+    }
+}
