@@ -330,7 +330,7 @@ void gray_builtin_sleep_ns(int64_t ns);
 
 /*@man raw
  *@sig raw(variable) -> ^T
- *@desc Returns an unchecked pointer to a variable. Unlike addr(), raw() skips nil-check panics and const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
+ *@desc Returns a raw pointer to a variable. Unlike addr(), raw pointers are unsafe: dereferences skip nil-check panics and the compiler does not enforce const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
  *@example
  *   mut x int = 10
  *   mut p = raw(x)

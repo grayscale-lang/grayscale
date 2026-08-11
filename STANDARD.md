@@ -441,7 +441,7 @@ p1^ = 99
 println(p2^)    // 99 — p1 and p2 point to the same variable
 ```
 
-**Unchecked pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but the resulting pointer has no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
+**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
 
 ```gray
 const x int = 42
@@ -453,7 +453,7 @@ mut q ^int = raw(x)
 // q^ dereference has no nil-check — if q were nil, behavior is undefined
 ```
 
-`raw()` is intended for performance-critical code where nil checks are a measurable overhead and the programmer guarantees pointer validity. Prefer `addr()` in all other cases.
+`raw()` is considered unsafe and is intended for performance-critical code where nil checks are a measurable overhead and the programmer guarantees pointer validity. Prefer `addr()` in all other cases.
 
 > 💡 **Tip:** You can dereference directly on a call result without storing the pointer first. `new(Foo)^` allocates a `Foo` and immediately gives you the value, handy when a function returns `^Type` and you want the value right at the call site: `return new(Foo)^` or `mut val = make_thing()^`.
 
