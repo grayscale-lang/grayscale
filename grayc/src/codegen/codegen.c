@@ -886,15 +886,26 @@ static void register_reference_variable(CodeGen *codegen, const char *name) {
 }
 
 static bool is_raw_variable(CodeGen *codegen, const char *name) {
-    for (int i = 0; i < codegen->raw_var_count; i++) {
-        if (strcmp(codegen->raw_vars[i], name) == 0) return true;
+    /* Search from end: most recent entry for this name wins. */
+    for (int i = codegen->raw_var_count - 1; i >= 0; i--) {
+        if (strcmp(codegen->raw_vars[i].name, name) == 0)
+            return codegen->raw_vars[i].is_raw;
     }
     return false;
 }
 
 static void register_raw_variable(CodeGen *codegen, const char *name) {
     GROW_ARRAY(codegen->raw_vars, codegen->raw_var_count, codegen->raw_var_cap);
-    codegen->raw_vars[codegen->raw_var_count++] = name;
+    codegen->raw_vars[codegen->raw_var_count].name = name;
+    codegen->raw_vars[codegen->raw_var_count].is_raw = true;
+    codegen->raw_var_count++;
+}
+
+static void unregister_raw_variable(CodeGen *codegen, const char *name) {
+    GROW_ARRAY(codegen->raw_vars, codegen->raw_var_count, codegen->raw_var_cap);
+    codegen->raw_vars[codegen->raw_var_count].name = name;
+    codegen->raw_vars[codegen->raw_var_count].is_raw = false;
+    codegen->raw_var_count++;
 }
 
 /* Returns true if the named enum is string-backed. */
@@ -7606,11 +7617,19 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
     }
 
     /* Detect raw() assignment; register as raw pointer (nil check skipped on deref) */
+    bool is_raw_init = false;
     if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
         AstNode *fn = node->data.var_decl.value->data.call.function;
         if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "raw") == 0) {
             register_raw_variable(codegen, node->data.var_decl.name);
+            is_raw_init = true;
         }
+    }
+    /* If a pointer variable shadows a raw variable from an outer scope,
+     * push a non-raw override so inner dereferences get nil checks. */
+    if (!is_raw_init && type_name && type_name[0] == '^' &&
+        is_raw_variable(codegen, node->data.var_decl.name)) {
+        unregister_raw_variable(codegen, node->data.var_decl.name);
     }
 
     if (!node->data.var_decl.mutable) {
@@ -8735,6 +8754,7 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
 
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     /* : per-block arena for if/otherwise so temporaries are freed */
+    int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
@@ -8807,6 +8827,7 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     }
 
     codegen->loop_scope_depth--;
+    codegen->raw_var_count = prev_raw_var_count;
     scope_arena_pop(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
@@ -8820,6 +8841,7 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
         emit_indent(codegen);
         emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena;\n");
     }
+    int prev_raw_var_count = codegen->raw_var_count;
     int depth = codegen->loop_scope_depth;
     emit_indent(codegen);
     emit_formatted(codegen, "GrayArena *_iter_arena_%d = gray_arena_create(%d);\n", depth, LOOP_ARENA_SIZE);
@@ -8836,6 +8858,7 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
     }
     emit_block(codegen, body);
     codegen->loop_scope_depth--;
+    codegen->raw_var_count = prev_raw_var_count;
     scope_arena_pop(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "gray_default_arena = _saved_arena_%d;\n", depth);
