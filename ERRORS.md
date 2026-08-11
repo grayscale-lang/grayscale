@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 380 codes** (259 errors, 17 warnings, 104 panics)
+**Total: 381 codes** (260 errors, 17 warnings, 104 panics)
 
 ---
 
@@ -251,6 +251,7 @@
 | `E5040` | usage | constant requires a compile-time value; function calls are evaluated at runtime |
 | `E5041` | usage | tagged enum '%s' cannot be used as a map value type; use when/is to destructure before storing |
 | `E5042` | usage | #discard attribute is not allowed on void function '%s'; only functions that return a value can use #discard |
+| `E5043` | usage | fields() requires a struct instance, got '%s' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -431,4 +432,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-11 09:00:41 UTC*
+*Generated on 2026-08-11 10:04:09 UTC*

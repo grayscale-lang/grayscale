@@ -2601,6 +2601,7 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `len` | `(collection) -> int` | Length of array, map, or string (byte length for strings, not character count) |
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> int` | Size of type in bytes |
+| `fields` | `(instance) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |

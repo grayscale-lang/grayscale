@@ -3650,6 +3650,34 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         return true;
     }
 
+    if (strcmp(func, "fields") == 0 && node->data.call.arg_count == 1) {
+        AstNode *arg = node->data.call.args[0];
+        GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        const char *sname = NULL;
+        if (type && type->kind == TK_STRUCT && type->name) {
+            sname = type->name;
+        } else if (type && type->kind == TK_POINTER && type->element_type) {
+            sname = type->element_type;
+        }
+        AstNode *sdecl = sname ? find_struct_declaration(codegen, sname) : NULL;
+        if (sdecl) {
+            int fc = sdecl->data.struct_decl.field_count;
+            if (fc == 0) {
+                emit(codegen, "gray_array_from(gray_default_arena, (GrayString[]){gray_string_lit(\"\")}, sizeof(GrayString), 0)");
+            } else {
+                emit(codegen, "gray_array_from(gray_default_arena, (GrayString[]){");
+                for (int i = 0; i < fc; i++) {
+                    if (i > 0) emit(codegen, ", ");
+                    emit_formatted(codegen, "gray_string_lit(\"%s\")", sdecl->data.struct_decl.fields[i].name);
+                }
+                emit_formatted(codegen, "}, sizeof(GrayString), %d)", fc);
+            }
+        } else {
+            emit(codegen, "gray_array_from(gray_default_arena, (GrayString[]){gray_string_lit(\"\")}, sizeof(GrayString), 0)");
+        }
+        return true;
+    }
+
     if (strcmp(func, "size_of") == 0 && node->data.call.arg_count == 1) {
         AstNode *type_arg = node->data.call.args[0];
         if (type_arg->kind == NODE_LABEL) {

@@ -278,6 +278,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@end
  */
 
+/*@man fields
+ *@sig fields(instance) -> [string]
+ *@desc Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs.
+ *@example
+ *   const Point struct { x int; y int }
+ *   mut p = Point{x: 1, y: 2}
+ *   println(fields(p))
+ *@end
+ */
+
 /*@man size_of
  *@sig size_of(Type) -> int
  *@desc Returns the size in bytes of a type. int=8, float=8, bool=1, string=16.

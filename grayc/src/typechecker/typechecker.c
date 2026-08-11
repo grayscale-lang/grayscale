@@ -1507,7 +1507,7 @@ static bool typechecker_is_builtin(const char *name) {
     static const char *const builtins[] = {
         "addr", "assert", "bool", "byte", "c_string", "cast",
         "char", "char_count", "copy", "embed", "eprint", "eprintln",
-        "error", "exit", "f32", "f64", "float", "here",
+        "error", "exit", "f32", "f64", "fields", "float", "here",
         "i128", "i16", "i256", "i32", "i64", "i8",
         "input", "int", "len", "new", "panic", "print", "println",
         "range", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
@@ -3719,6 +3719,33 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
         }
         result = &TYPE_STRING;
+    } else if (strcmp(function_name, "fields") == 0) {
+        /* E5008: fields() requires exactly 1 argument */
+        if (node->data.call.arg_count != 1) {
+            char *msg = typechecker_format(checker,
+                "fields() expects 1 argument, got %d",
+                node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            result = type_array("string");
+            return result;
+        }
+        GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
+        /* Auto-deref pointers to structs */
+        if (arg_t && arg_t->kind == TK_POINTER && arg_t->element_type) {
+            if (is_struct_name(checker, arg_t->element_type)) {
+                arg_t = typechecker_type_from_name(checker, arg_t->element_type);
+            }
+        }
+        /* E5043: fields() requires a struct */
+        if (arg_t && arg_t->kind != TK_STRUCT && arg_t->kind != TK_UNKNOWN) {
+            char *msg = typechecker_format(checker,
+                "fields() requires a struct instance, got '%s'",
+                type_name(arg_t));
+            diagnostic_error_message(checker->diag, "E5043", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        result = type_array("string");
     } else if (strcmp(function_name, "size_of") == 0) {
         /* Rewrite size_of(T) → size_of(?) when T is a type param */
         if (node->data.call.arg_count == 1 &&

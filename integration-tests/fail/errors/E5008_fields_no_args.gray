@@ -1,0 +1,9 @@
+/*
+ * Error Test: E5008 - fields() called with wrong argument count
+ *
+ * fields() with no arguments should emit E5008.
+ */
+
+do main() {
+    println(fields())
+}
