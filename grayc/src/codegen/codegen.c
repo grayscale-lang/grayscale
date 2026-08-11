@@ -8441,7 +8441,8 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, " = gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len); }\n");
             return;
         }
-        if (tgt_t && tgt_t->name && type_needs_deep_copy(codegen, tgt_t->name)) {
+        if (tgt_t && tgt_t->kind == TK_STRUCT && tgt_t->name &&
+            type_needs_deep_copy(codegen, tgt_t->name)) {
             const char *c_type = gray_type_to_c_codegen(codegen, tgt_t->name);
             emit_formatted(codegen, "{ %s _esc_v = ", c_type);
             emit_expression(codegen, node->data.assign.value);

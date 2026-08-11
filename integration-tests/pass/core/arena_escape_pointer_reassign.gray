@@ -1,0 +1,41 @@
+import @arrays
+
+const Node struct {
+    val int
+    name string
+    children [int]
+}
+
+do make_node(v int) -> ^Node {
+    mut n = new(Node)
+    n.val = v
+    n.name = "node"
+    arrays.append(n.children, v)
+    return n
+}
+
+do test() -> ^Node {
+    mut left = make_node(0)
+    mut i int = 0
+    as_long_as i < 3 {
+        left = make_node(i)
+        i = i + 1
+    }
+    return left
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut result = test()
+    if result.val == 2 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] expected val 2, got ${result.val}")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}
