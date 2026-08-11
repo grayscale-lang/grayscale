@@ -3743,6 +3743,20 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             emit_formatted(codegen, "; if (!_aadp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
                       "&_aadp%d->%s; })",
                   my_dp, codegen->file, node->token.line, my_dp, sanitize_name(addr_field));
+        } else if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
+            /* addr(p^): &(*p) simplifies to p; nil-check p first */
+            AstNode *inner = arg->data.postfix.left;
+            bool inner_raw = (inner->kind == NODE_LABEL &&
+                              is_raw_variable(codegen, inner->data.label.value));
+            if (inner_raw) {
+                emit_expression(codegen, inner);
+            } else {
+                int my_dp = codegen_next_id(codegen);
+                emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
+                emit_expression(codegen, inner);
+                emit_formatted(codegen, "; if (!_aadp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _aadp%d; })",
+                      my_dp, codegen->file, node->token.line, my_dp);
+            }
         } else {
             /* addr() returns a pointer to the argument */
             emit(codegen, "&");
@@ -3777,6 +3791,9 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             emit(codegen, "&(");
             emit_expression(codegen, raw_ptr_expr);
             emit_formatted(codegen, ")->%s", sanitize_name(raw_field));
+        } else if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
+            /* raw(p^): &(*p) simplifies to p, no nil check */
+            emit_expression(codegen, arg->data.postfix.left);
         } else {
             emit(codegen, "&");
             emit_expression(codegen, arg);
