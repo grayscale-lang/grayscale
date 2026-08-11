@@ -441,6 +441,20 @@ p1^ = 99
 println(p2^)    // 99 — p1 and p2 point to the same variable
 ```
 
+**Unchecked pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but the resulting pointer has no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
+
+```gray
+const x int = 42
+mut p = raw(x)
+p^ = 99           // allowed — raw() bypasses const-source protection
+println(p^)        // 99
+
+mut q ^int = raw(x)
+// q^ dereference has no nil-check — if q were nil, behavior is undefined
+```
+
+`raw()` is intended for performance-critical code where nil checks are a measurable overhead and the programmer guarantees pointer validity. Prefer `addr()` in all other cases.
+
 > 💡 **Tip:** You can dereference directly on a call result without storing the pointer first. `new(Foo)^` allocates a `Foo` and immediately gives you the value, handy when a function returns `^Type` and you want the value right at the call site: `return new(Foo)^` or `mut val = make_thing()^`.
 
 > 💡 **Tip:** The dot operator (`.`) automatically dereferences pointers to structs. If `p` is a `^MyStruct`, writing `p.field` is equivalent to `p^.field`. This auto-dereference applies to field access and struct function calls but does **not** apply in other contexts. For example, `println(p)` prints the address, and `return p` returns the pointer itself. Use explicit `p^` when you need the pointee value rather than field access.
@@ -2596,7 +2610,7 @@ println(r2[4])        // Prints 6 - r2 sees the change
 | `const r = ref(x)`    | `const` | yes |
 | `mut r = ref(x)`      | `const` | **no**; you cannot get a mutable reference to a const source. Use `copy(x)` to obtain an independent mutable instance. |
 
-**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
+**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
 
 **`assert()` — runtime assertion**
 
@@ -3856,7 +3870,9 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------------|
 | Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
-| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
+| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
+| Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
+| Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
 For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.

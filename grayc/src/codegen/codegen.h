@@ -68,6 +68,11 @@ typedef struct {
     int ref_var_count;
     int ref_var_cap;
 
+    /* Raw pointer variables (from raw()) — dereference skips nil check */
+    const char **raw_vars;
+    int raw_var_count;
+    int raw_var_cap;
+
     /* Track declared bigint variable types (name → type_name) */
     const char **bigint_var_names;
     const char **bigint_var_types;

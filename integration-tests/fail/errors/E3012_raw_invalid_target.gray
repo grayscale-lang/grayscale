@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3012 - raw() needs a variable, not a literal
+ * Expected: "raw() requires a variable"
+ */
+
+do main() {
+    mut p ^int = raw(42)
+}

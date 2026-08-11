@@ -3597,6 +3597,20 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         GrayType *arg_t = resolve_expression(checker, arg);
         result = type_pointer(type_name(arg_t));
+    } else if (strcmp(function_name, "raw") == 0 && node->data.call.arg_count == 1) {
+        AstNode *arg = node->data.call.args[0];
+        if (path_contains_map_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "raw() cannot take the address of a map index expression; map values may relocate on rehash",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        if (!is_assignment_target(arg)) {
+            diagnostic_error_message(checker->diag, "E3012",
+                "raw() requires a variable, field, or index expression; cannot take address of a literal or expression",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        GrayType *arg_t = resolve_expression(checker, arg);
+        result = type_pointer(type_name(arg_t));
     } else if (strcmp(function_name, "ref") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
         /* ref(func_name) returns func type; resolve the
@@ -4828,7 +4842,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         if (arg->kind == NODE_CALL_EXPR &&
             arg->data.call.function &&
             arg->data.call.function->kind == NODE_LABEL &&
-            strcmp(arg->data.call.function->data.label.value, "addr") == 0 &&
+            (strcmp(arg->data.call.function->data.label.value, "addr") == 0 ||
+             strcmp(arg->data.call.function->data.label.value, "raw") == 0) &&
             arg->data.call.arg_count == 1 &&
             arg->data.call.args[0]->kind == NODE_LABEL) {
             const char *addr_var = arg->data.call.args[0]->data.label.value;
@@ -7124,6 +7139,7 @@ static bool expression_contains_call(AstNode *node) {
                 strcmp(name, "ref") == 0 ||
                 strcmp(name, "copy") == 0 ||
                 strcmp(name, "addr") == 0 ||
+                strcmp(name, "raw") == 0 ||
                 strcmp(name, "make_size") == 0 ||
                 strcmp(name, "len") == 0 ||
                 strcmp(name, "type_of") == 0 ||
@@ -9192,7 +9208,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         if (target->kind == NODE_LABEL && node->data.assign.value &&
             node->data.assign.value->kind == NODE_CALL_EXPR &&
             node->data.assign.value->data.call.function->kind == NODE_LABEL &&
-            strcmp(node->data.assign.value->data.call.function->data.label.value, "addr") == 0 &&
+            (strcmp(node->data.assign.value->data.call.function->data.label.value, "addr") == 0 ||
+             strcmp(node->data.assign.value->data.call.function->data.label.value, "raw") == 0) &&
             node->data.assign.value->data.call.arg_count == 1 &&
             node->data.assign.value->data.call.args[0]->kind == NODE_LABEL) {
             const char *ptr_name = target->data.label.value;

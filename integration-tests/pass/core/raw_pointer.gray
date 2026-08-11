@@ -1,0 +1,77 @@
+/*
+ * raw_pointer.gray - raw() returns a pointer with no nil check
+ * and no const-source protection.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    println("=== raw() pointer tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: raw() on a const var, write through it (bypasses const_source)
+    const val int = 10
+    mut p ^int = raw(val)
+    p^ = 99
+    if p^ == 99 {
+        println("  [PASS] write through raw(const) pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write through raw(const) pointer")
+        failed += 1
+    }
+
+    // Test 2: raw() on a mut var, basic dereference
+    mut x int = 42
+    mut q ^int = raw(x)
+    if q^ == 42 {
+        println("  [PASS] read through raw(mut) pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read through raw(mut) pointer")
+        failed += 1
+    }
+
+    // Test 3: raw() on a struct, field access through pointer
+    mut pt Point = Point{ x: 1, y: 2 }
+    mut sp ^Point = raw(pt)
+    sp.x = 100
+    if sp.x == 100 {
+        println("  [PASS] write struct field through raw pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write struct field through raw pointer")
+        failed += 1
+    }
+
+    // Test 4: raw() with explicit deref field access (p^.field)
+    sp^.y = 200
+    if sp^.y == 200 {
+        println("  [PASS] write struct field via p^.field with raw pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write struct field via p^.field with raw pointer")
+        failed += 1
+    }
+
+    // Test 5: addr() still nil-checks (ensure raw didn't break addr)
+    mut z int = 7
+    mut ap ^int = addr(z)
+    if ap^ == 7 {
+        println("  [PASS] addr() still works correctly")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] addr() still works correctly")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("raw pointer tests failed")
+    }
+}

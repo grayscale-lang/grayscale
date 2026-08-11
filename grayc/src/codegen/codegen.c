@@ -885,6 +885,18 @@ static void register_reference_variable(CodeGen *codegen, const char *name) {
     codegen->ref_vars[codegen->ref_var_count++] = name;
 }
 
+static bool is_raw_variable(CodeGen *codegen, const char *name) {
+    for (int i = 0; i < codegen->raw_var_count; i++) {
+        if (strcmp(codegen->raw_vars[i], name) == 0) return true;
+    }
+    return false;
+}
+
+static void register_raw_variable(CodeGen *codegen, const char *name) {
+    GROW_ARRAY(codegen->raw_vars, codegen->raw_var_count, codegen->raw_var_cap);
+    codegen->raw_vars[codegen->raw_var_count++] = name;
+}
+
 /* Returns true if the named enum is string-backed. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
     if (!name) return false;
@@ -2207,10 +2219,18 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
 
     case NODE_POSTFIX_EXPR:
         if (node->data.postfix.op == TOK_CARET) {
-            /* Pointer dereference: p^ → (*p) with nil check */
-            emit(codegen, "({ __auto_type _dp = ");
-            emit_expression(codegen, node->data.postfix.left);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } *_dp; })", codegen->file, node->token.line);
+            AstNode *_dp_left = node->data.postfix.left;
+            if (_dp_left->kind == NODE_LABEL && is_raw_variable(codegen, _dp_left->data.label.value)) {
+                /* Raw pointer: bare dereference, no nil check */
+                emit(codegen, "(*");
+                emit_expression(codegen, _dp_left);
+                emit(codegen, ")");
+            } else {
+                /* Pointer dereference: p^ → (*p) with nil check */
+                emit(codegen, "({ __auto_type _dp = ");
+                emit_expression(codegen, _dp_left);
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } *_dp; })", codegen->file, node->token.line);
+            }
         } else if (node->data.postfix.op == TOK_INCREMENT) {
             /* Overflow-checked increment; sized types need bounds check */
             GrayType *postfix_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.postfix.left) : NULL;
@@ -2492,12 +2512,20 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
             /* Ref vars are already dereferenced by label emission; use . not -> */
             bool obj_is_ref = (node->data.member.object->kind == NODE_LABEL &&
                 is_reference_variable(codegen, node->data.member.object->data.label.value));
+            bool obj_is_raw = (node->data.member.object->kind == NODE_LABEL &&
+                is_raw_variable(codegen, node->data.member.object->data.label.value));
             if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
-                /* Nil-guarded pointer field access */
-                emit(codegen, "({ __auto_type _dp = ");
-                emit_expression(codegen, node->data.member.object);
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp->%s; })",
-                    codegen->file, node->token.line, sanitize_name(node->data.member.member));
+                if (obj_is_raw) {
+                    /* Raw pointer: direct field access, no nil check */
+                    emit_expression(codegen, node->data.member.object);
+                    emit_formatted(codegen, "->%s", sanitize_name(node->data.member.member));
+                } else {
+                    /* Nil-guarded pointer field access */
+                    emit(codegen, "({ __auto_type _dp = ");
+                    emit_expression(codegen, node->data.member.object);
+                    emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp->%s; })",
+                        codegen->file, node->token.line, sanitize_name(node->data.member.member));
+                }
             } else if (!obj_is_ref && obj_t && obj_t->kind == TK_ERROR) {
                 emit_expression(codegen, node->data.member.object);
                 emit_formatted(codegen, "->%s", sanitize_name(node->data.member.member));
@@ -2569,12 +2597,18 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 }
             }
             if (arr_ptr_obj) {
+                bool _arr_raw = (arr_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, arr_ptr_obj->data.label.value));
                 int my_dp = codegen_next_id(codegen);
                 emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
                 emit_expression(codegen, arr_ptr_obj);
-                emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
-                          "GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, codegen->file, node->token.line, my_dp, sanitize_name(arr_ptr_field), c_elem);
+                if (_arr_raw) {
+                    emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
+                          my_dp, sanitize_name(arr_ptr_field), c_elem);
+                } else {
+                    emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                              "GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
+                          my_dp, codegen->file, node->token.line, my_dp, sanitize_name(arr_ptr_field), c_elem);
+                }
                 emit_expression(codegen, node->data.index_expr.index);
                 emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
             } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR) {
@@ -3683,6 +3717,39 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                   my_dp, codegen->file, node->token.line, my_dp, sanitize_name(addr_field));
         } else {
             /* addr() returns a pointer to the argument */
+            emit(codegen, "&");
+            emit_expression(codegen, arg);
+        }
+        return true;
+    }
+
+    if (strcmp(func, "raw") == 0 && node->data.call.arg_count == 1) {
+        AstNode *arg = node->data.call.args[0];
+        /* Handle raw(p^.field) / raw(p.field) where p is a pointer —
+         * same pattern as addr() but without the nil check. */
+        AstNode *raw_ptr_expr = NULL;
+        const char *raw_field = NULL;
+        if (arg->kind == NODE_MEMBER_EXPR) {
+            AstNode *obj = arg->data.member.object;
+            if (obj->kind == NODE_POSTFIX_EXPR &&
+                obj->data.postfix.op == TOK_CARET) {
+                raw_ptr_expr = obj->data.postfix.left;
+                raw_field = arg->data.member.member;
+            } else {
+                GrayType *obj_t = codegen->type_table
+                    ? typetable_get(codegen->type_table, obj) : NULL;
+                if (obj_t && obj_t->kind == TK_POINTER) {
+                    raw_ptr_expr = obj;
+                    raw_field = arg->data.member.member;
+                }
+            }
+        }
+        if (raw_ptr_expr && raw_field) {
+            /* raw(p^.field): bare &p->field, no nil check */
+            emit(codegen, "&(");
+            emit_expression(codegen, raw_ptr_expr);
+            emit_formatted(codegen, ")->%s", sanitize_name(raw_field));
+        } else {
             emit(codegen, "&");
             emit_expression(codegen, arg);
         }
@@ -5058,11 +5125,18 @@ static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
         bool obj_is_ref = is_reference_variable(codegen, obj_name);
         GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, arg->data.member.object) : NULL;
         if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
-            /* Pointer field: nil-check then take address of the field */
-            emit(codegen, "({ __auto_type _dp = ");
-            emit_expression(codegen, arg->data.member.object);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } &_dp->%s; })",
-                codegen->file, arg->token.line, sanitize_name(arg->data.member.member));
+            if (is_raw_variable(codegen, obj_name)) {
+                /* Raw pointer: take address of field, no nil check */
+                emit(codegen, "&(");
+                emit_expression(codegen, arg->data.member.object);
+                emit_formatted(codegen, ")->%s", sanitize_name(arg->data.member.member));
+            } else {
+                /* Pointer field: nil-check then take address of the field */
+                emit(codegen, "({ __auto_type _dp = ");
+                emit_expression(codegen, arg->data.member.object);
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } &_dp->%s; })",
+                    codegen->file, arg->token.line, sanitize_name(arg->data.member.member));
+            }
             return;
         }
     }
@@ -7472,6 +7546,14 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    /* Detect raw() assignment; register as raw pointer (nil check skipped on deref) */
+    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+        AstNode *fn = node->data.var_decl.value->data.call.function;
+        if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "raw") == 0) {
+            register_raw_variable(codegen, node->data.var_decl.name);
+        }
+    }
+
     if (!node->data.var_decl.mutable) {
         if (type_name && type_name[0] == '^') {
             /* const pointer: T * const p — the pointer is immutable, not the
@@ -7681,14 +7763,20 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 if (_set_ptr_obj) {
+                    bool _set_raw = (_set_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, _set_ptr_obj->data.label.value));
                     int my_dp = codegen_next_id(codegen);
                     TokenType aop2 = node->data.assign.op;
                     bool is_compound2 = (aop2 == TOK_PLUS_ASSIGN || aop2 == TOK_MINUS_ASSIGN || aop2 == TOK_ASTERISK_ASSIGN);
                     emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
                     emit_expression(codegen, _set_ptr_obj);
-                    emit_formatted(codegen, "; if (!_asdp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
-                              "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                          my_dp, codegen->file, node->token.line, my_dp, sanitize_name(_set_ptr_field), c_elem);
+                    if (_set_raw) {
+                        emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
+                              my_dp, sanitize_name(_set_ptr_field), c_elem);
+                    } else {
+                        emit_formatted(codegen, "; if (!_asdp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                                  "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
+                              my_dp, codegen->file, node->token.line, my_dp, sanitize_name(_set_ptr_field), c_elem);
+                    }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
                     if (is_compound2) {
@@ -7781,9 +7869,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
              * expression for nil-checked deref yields an rvalue and &(rvalue)
              * is illegal. Instead, nil-check then use -> to get an assignable target. */
             bool map_via_ptr = false;
+            bool map_raw = false;
             if (left->kind == NODE_MEMBER_EXPR) {
                 GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, left->data.member.object) : NULL;
-                if (obj_t && obj_t->kind == TK_POINTER) map_via_ptr = true;
+                if (obj_t && obj_t->kind == TK_POINTER) {
+                    map_via_ptr = true;
+                    map_raw = (left->data.member.object->kind == NODE_LABEL &&
+                        is_raw_variable(codegen, left->data.member.object->data.label.value));
+                }
             }
 
             bool ms_compound = (node->data.assign.op != TOK_ASSIGN);
@@ -7818,11 +7911,18 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     /* Capture _mp early so _cur can reference the map field. */
                     emit_formatted(codegen, "__auto_type _mp = ");
                     emit_expression(codegen, left->data.member.object);
-                    emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
-                          "void *_cur = gray_map_get(&_mp->%s, &_mk); "
-                          "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
-                          codegen->file, node->token.line, sanitize_name(left->data.member.member),
-                          codegen->file, node->token.line);
+                    if (map_raw) {
+                        emit_formatted(codegen, "; void *_cur = gray_map_get(&_mp->%s, &_mk); "
+                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                              sanitize_name(left->data.member.member),
+                              codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                              "void *_cur = gray_map_get(&_mp->%s, &_mk); "
+                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                              codegen->file, node->token.line, sanitize_name(left->data.member.member),
+                              codegen->file, node->token.line);
+                    }
                 } else {
                     emit_formatted(codegen, "void *_cur = gray_map_get(&");
                     emit_expression(codegen, left);
@@ -7856,9 +7956,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     /* Nil-check the pointer, then use -> to yield an assignable target. */
                     emit_formatted(codegen, "{ __auto_type _mp = ");
                     emit_expression(codegen, left->data.member.object);
-                    emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
-                        "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
-                        codegen->file, node->token.line, ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+                    if (map_raw) {
+                        emit_formatted(codegen, "; gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
+                            ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                            "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
+                            codegen->file, node->token.line, ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+                    }
                 }
             } else {
                 emit_formatted(codegen, "gray_map_set(%s, &", ms_arena);
@@ -7877,9 +7982,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         const char *bi_elem = (ptr_t && ptr_t->kind == TK_POINTER && ptr_t->element_type &&
                                is_bigint_type(ptr_t->element_type))
                               ? ptr_t->element_type : NULL;
+        bool _deref_raw = (ptr_node->kind == NODE_LABEL && is_raw_variable(codegen, ptr_node->data.label.value));
         emit(codegen, "{ __auto_type _dp = ");
         emit_expression(codegen, ptr_node);
-        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+        if (!_deref_raw) {
+            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+        } else {
+            emit(codegen, "; ");
+        }
         if (!bi_elem && emit_checked_ptr_compound(codegen, node, "*_dp")) {
             emit(codegen, "; }\n");
             return;
@@ -7901,9 +8011,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         node->data.assign.target->data.member.object->data.postfix.op == TOK_CARET) {
         AstNode *ptr = node->data.assign.target->data.member.object->data.postfix.left;
         const char *field = node->data.assign.target->data.member.member;
+        bool _fld_raw = (ptr->kind == NODE_LABEL && is_raw_variable(codegen, ptr->data.label.value));
         emit(codegen, "{ __auto_type _dp = ");
         emit_expression(codegen, ptr);
-        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+        if (_fld_raw) {
+            emit(codegen, "; ");
+        } else {
+            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+        }
         char _ref2[MSG_BUF_SIZE];
         snprintf(_ref2, sizeof(_ref2), "_dp->%s", field);
         if (emit_checked_ptr_compound(codegen, node, _ref2)) {
@@ -7935,9 +8050,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             cur = obj;
         }
         if (ptr_root && depth > 1) {
+            bool _nest_raw = (ptr_root->kind == NODE_LABEL && is_raw_variable(codegen, ptr_root->data.label.value));
             emit(codegen, "{ __auto_type _dp = ");
             emit_expression(codegen, ptr_root);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            if (_nest_raw) {
+                emit(codegen, "; ");
+            } else {
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            }
             /* Build the field reference string for the chain */
             char _ref3[MSG_BUF_SIZE];
             int _pos = snprintf(_ref3, sizeof(_ref3), "_dp->");
@@ -7961,6 +8081,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         AstNode *obj = node->data.assign.target->data.member.object;
         GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
         bool is_ref = (obj->kind == NODE_LABEL && is_reference_variable(codegen, obj->data.label.value));
+        bool _pf_raw = (obj->kind == NODE_LABEL && is_raw_variable(codegen, obj->data.label.value));
         if (!is_ref && obj_t && obj_t->kind == TK_POINTER) {
             const char *field = node->data.assign.target->data.member.member;
             /* When assigning an array/string to a struct field inside a
@@ -7973,7 +8094,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     snprintf(type_str, sizeof(type_str), "[%s]", field_t->element_type ? field_t->element_type : "");
                     emit(codegen, "{ __auto_type _dp = ");
                     emit_expression(codegen, obj);
-                    emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    if (_pf_raw) {
+                        emit(codegen, "; ");
+                    } else {
+                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    }
                     emit_formatted(codegen, "{ GrayArray _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, "; GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
@@ -7985,7 +8110,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (field_t && field_t->kind == TK_STRING) {
                     emit(codegen, "{ __auto_type _dp = ");
                     emit_expression(codegen, obj);
-                    emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    if (_pf_raw) {
+                        emit(codegen, "; ");
+                    } else {
+                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    }
                     emit_formatted(codegen, "{ GrayString _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
                     emit_formatted(codegen, "; _dp->%s = gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len); } }\n",
@@ -7995,7 +8124,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             }
             emit(codegen, "{ __auto_type _dp = ");
             emit_expression(codegen, obj);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            if (_pf_raw) {
+                emit(codegen, "; ");
+            } else {
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            }
             char _ref4[MSG_BUF_SIZE];
             snprintf(_ref4, sizeof(_ref4), "_dp->%s", sanitize_name(field));
             if (emit_checked_ptr_compound(codegen, node, _ref4)) {
@@ -8884,6 +9017,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     AstNode *prev_func = codegen->current_func;
     int prev_using_count = codegen->using_module_count;
     int prev_ref_var_count = codegen->ref_var_count;
+    int prev_raw_var_count = codegen->raw_var_count;
     int prev_bigint_var_count = codegen->bigint_var_count;
     int prev_iter_guard_count = codegen->iter_guard_count;
     codegen->current_func = node;
@@ -8927,6 +9061,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     codegen->current_func = prev_func;
     codegen->using_module_count = prev_using_count;
     codegen->ref_var_count = prev_ref_var_count;
+    codegen->raw_var_count = prev_raw_var_count;
     codegen->bigint_var_count = prev_bigint_var_count;
     codegen->iter_guard_count = prev_iter_guard_count;
     codegen->indent--;
@@ -9479,6 +9614,9 @@ CodeGen codegen_create(const char *file) {
     codegen.ref_vars = NULL;
     codegen.ref_var_count = 0;
     codegen.ref_var_cap = 0;
+    codegen.raw_vars = NULL;
+    codegen.raw_var_count = 0;
+    codegen.raw_var_cap = 0;
     codegen.bigint_var_names = NULL;
     codegen.bigint_var_types = NULL;
     codegen.bigint_var_count = 0;
@@ -10214,6 +10352,7 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->all_funcs);
     free(codegen->funcs_by_name);
     free(codegen->ref_vars);
+    free(codegen->raw_vars);
     free(codegen->bigint_var_names);
     free(codegen->bigint_var_types);
     free(codegen->struct_decls);
