@@ -512,10 +512,7 @@ Token lexer_next_token(Lexer *lexer) {
     case '^': tok = make_token(TOK_CARET, "^", tok.line, tok.column); break;
 
     case '#':
-        if (check_upcoming_chars(lexer, "#suppress", 9)) {
-            tok = make_token(TOK_SUPPRESS, "#suppress", tok.line, tok.column);
-            for (int i = 0; i < 8; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#strict", 7)) {
+        if (check_upcoming_chars(lexer, "#strict", 7)) {
             tok = make_token(TOK_STRICT, "#strict", tok.line, tok.column);
             for (int i = 0; i < 6; i++) read_char(lexer);
         } else if (check_upcoming_chars(lexer, "#flags", 6)) {

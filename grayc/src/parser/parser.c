@@ -3054,19 +3054,6 @@ static AstNode *parse_statement(Parser *parser) {
         }
         return stmt;
     }
-    case TOK_SUPPRESS:
-        diagnostic_error_message(parser->diag, "E2002",
-            arena_copy_string(parser->arena,"#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
-            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-        /* Consume the attribute and its args to avoid cascading errors */
-        if (peek_token_is(parser, TOK_LPAREN)) {
-            next_token(parser);
-            while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                next_token(parser);
-            }
-        }
-        next_token(parser);
-        return parse_statement(parser);
     case TOK_DOC:
         /* Skip #doc attribute tokens; consume args if present */
         if (peek_token_is(parser, TOK_LPAREN)) {

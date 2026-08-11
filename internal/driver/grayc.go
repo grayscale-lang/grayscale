@@ -27,13 +27,13 @@ func graycBinaryName() string {
 }
 
 // Find locates the grayc binary using priority-ordered lookup:
-// 1. GRAY_COMPILER_PATH environment variable (explicit override, always wins)
-// 2. grayc/ subdirectory next to the running gray binary (repo checkout, so
-//    a dev loop of `make -C grayc build` is picked up without env vars)
-// 3. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
-// 4. Same directory as the running gray binary (side-by-side install)
-// 5. PATH lookup
-// 6. Known install locations
+//  1. GRAY_COMPILER_PATH environment variable (explicit override, always wins)
+//  2. grayc/ subdirectory next to the running gray binary (repo checkout, so
+//     a dev loop of `make -C grayc build` is picked up without env vars)
+//  3. Embedded runtime extracted to ~/.gray/runtime/<hash>/ (release builds)
+//  4. Same directory as the running gray binary (side-by-side install)
+//  5. PATH lookup
+//  6. Known install locations
 //
 // Release builds should always hit path 3; installed binaries have no grayc/
 // subdirectory, so path 2 only ever fires inside a source checkout. The
