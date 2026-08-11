@@ -1983,14 +1983,17 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
 
             /* Map or array membership */
             GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.infix.right) : NULL;
-            /* Map membership: key in map → gray_maps_has_key */
+            /* Map membership: key in map → gray_maps_has_key
+             * Bind the map to a temp so &_im works even when the map
+             * expression is an rvalue (e.g. pointer field access). */
             if (arr_t && arr_t->kind == TK_MAP) {
+                int mid = codegen_next_id(codegen);
                 if (negated) emit(codegen, "!");
-                emit_formatted(codegen, "({ %s _ik = ", gray_map_element_c_type(codegen, arr_t->key_type));
-                emit_expression(codegen, node->data.infix.left);
-                emit(codegen, "; gray_maps_has_key(&");
+                emit_formatted(codegen, "({ __auto_type _im%d = ", mid);
                 emit_expression(codegen, node->data.infix.right);
-                emit(codegen, ", &_ik); })");
+                emit_formatted(codegen, "; %s _ik%d = ", gray_map_element_c_type(codegen, arr_t->key_type), mid);
+                emit_expression(codegen, node->data.infix.left);
+                emit_formatted(codegen, "; gray_maps_has_key(&_im%d, &_ik%d); })", mid, mid);
                 break;
             }
             /* String membership: char in string or string in string */
