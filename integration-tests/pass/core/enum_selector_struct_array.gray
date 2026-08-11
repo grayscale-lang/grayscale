@@ -1,0 +1,25 @@
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Palette struct {
+    colors [Color]
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p = Palette{colors: {.RED, .GREEN, .BLUE}}
+    if len(p.colors) == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] expected 3 colors")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

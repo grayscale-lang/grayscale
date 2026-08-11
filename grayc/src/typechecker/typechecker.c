@@ -6108,7 +6108,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             }
         }
         GrayType *saved_sv_expected = checker->expected_type;
-        if (field_expected_t && field_expected_t->kind == TK_ENUM && field_expected_t->name)
+        if (field_expected_t)
             checker->expected_type = field_expected_t;
         GrayType *val_t = resolve_expression(checker, node->data.struct_value.field_values[i]);
         checker->expected_type = saved_sv_expected;
