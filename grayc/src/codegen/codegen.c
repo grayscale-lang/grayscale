@@ -7821,6 +7821,22 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         return;
     }
 
+    /* Track raw/addr reassignment: p = raw(x) makes p raw,
+     * p = addr(x) removes raw status so nil checks are restored. */
+    if (node->data.assign.target->kind == NODE_LABEL &&
+        node->data.assign.value && node->data.assign.value->kind == NODE_CALL_EXPR) {
+        AstNode *fn = node->data.assign.value->data.call.function;
+        if (fn->kind == NODE_LABEL) {
+            const char *var = node->data.assign.target->data.label.value;
+            if (strcmp(fn->data.label.value, "raw") == 0) {
+                register_raw_variable(codegen, var);
+            } else if (strcmp(fn->data.label.value, "addr") == 0 &&
+                       is_raw_variable(codegen, var)) {
+                unregister_raw_variable(codegen, var);
+            }
+        }
+    }
+
     emit_indent(codegen);
 
     /* Check for array index assignment: arr[i] = value */
