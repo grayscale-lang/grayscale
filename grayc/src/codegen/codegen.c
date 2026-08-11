@@ -2532,7 +2532,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 is_reference_variable(codegen, node->data.member.object->data.label.value));
             bool obj_is_raw = (node->data.member.object->kind == NODE_LABEL &&
                 is_raw_variable(codegen, node->data.member.object->data.label.value));
-            if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
+            /* Multi-return temp vars are always value types — never pointer-deref them */
+            bool obj_is_multi_temp = (node->data.member.object->kind == NODE_LABEL &&
+                is_result_temporary(node->data.member.object->data.label.value));
+            if (!obj_is_multi_temp && !obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
                 if (obj_is_raw) {
                     /* Raw pointer: direct field access, no nil check */
                     emit_expression(codegen, node->data.member.object);
