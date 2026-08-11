@@ -318,6 +318,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@end
  */
 
+/*@man raw
+ *@sig raw(variable) -> ^T
+ *@desc Returns an unchecked pointer to a variable. Unlike addr(), raw() skips nil-check panics and const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
+ *@example
+ *   mut x int = 10
+ *   mut p = raw(x)
+ *   println(p^)
+ *@end
+ */
+
 /*@man copy
  *@sig copy(value T) -> T
  *@desc Creates a deep copy of any value. Mutations to the copy do not affect the original.
@@ -419,6 +429,17 @@ void gray_builtin_sleep_ns(int64_t ns);
  *   println("${err}")
  *@end
  */
+
+/*@man system
+ *@sig system(command string) -> int
+ *@desc Runs a shell command and returns its exit code. Mirrors C's system(). Returns -1 if the process was killed by a signal.
+ *@example
+ *   mut code int = system("ls -la")
+ *   println(code)
+ *   system("echo hello")
+ *@end
+ */
+int64_t gray_builtin_system(GrayString cmd);
 
 /* to_string — internal runtime overloads, not user-callable by name */
 GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t v);

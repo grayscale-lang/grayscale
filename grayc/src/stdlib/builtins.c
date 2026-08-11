@@ -21,6 +21,7 @@
 #include "../runtime/win32.h"
 #else
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 
 #define GRAY_TOSTRING_BUF_SIZE    4096
@@ -238,6 +239,23 @@ void gray_builtin_sleep_ns(int64_t ns) {
         ts.tv_nsec = ns % NS_PER_SEC;
         nanosleep(&ts, NULL);
     }
+#endif
+}
+
+/* --- system --- */
+
+int64_t gray_builtin_system(GrayString cmd) {
+    char *cstr = malloc((size_t)cmd.len + 1);
+    if (!cstr) return -1;
+    memcpy(cstr, cmd.data, (size_t)cmd.len);
+    cstr[cmd.len] = '\0';
+    int status = system(cstr);
+    free(cstr);
+#if GRAY_RT_WINDOWS
+    return (int64_t)status;
+#else
+    if (WIFEXITED(status)) return (int64_t)WEXITSTATUS(status);
+    return -1;
 #endif
 }
 

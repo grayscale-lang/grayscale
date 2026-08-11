@@ -2569,6 +2569,7 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
 | `addr` | `(variable) -> ^T` | Get memory address of a variable |
+| `raw` | `(variable) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
 | `error` | `(message string) -> Error` | Create error value |
 | `assert` | `(condition bool [, message string])` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
@@ -2579,6 +2580,7 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
 | `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
+| `system` | `(command string) -> int` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 
 **Reference behavior with `ref()`:**
 

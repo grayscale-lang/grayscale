@@ -3780,6 +3780,13 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         return true;
     }
 
+    if (strcmp(func, "system") == 0 && node->data.call.arg_count == 1) {
+        emit(codegen, "gray_builtin_system(");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
+
     if (strcmp(func, "here") == 0 && node->data.call.arg_count == 0) {
         /* Compile-time substitution: emit a SourceLocation literal with the
          * source position of the 'here' identifier itself (not the '(' that

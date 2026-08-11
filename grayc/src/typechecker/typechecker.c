@@ -1510,7 +1510,7 @@ static bool typechecker_is_builtin(const char *name) {
         "i128", "i16", "i256", "i32", "i64", "i8",
         "input", "int", "len", "new", "panic", "print", "println",
         "range", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
-        "string", "to_char", "type_of",
+        "string", "system", "to_char", "type_of",
         "u128", "u16", "u256", "u32", "u64", "u8", "uint",
     };
     return string_set_contains(builtins, (int)(sizeof(builtins)/sizeof(builtins[0])), name);
@@ -3984,6 +3984,25 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             }
         }
         result = &TYPE_VOID;
+    } else if (strcmp(function_name, "system") == 0) {
+        if (node->data.call.arg_count != 1) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "system() expects 1 argument, got %d",
+                node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        } else {
+            GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+            if (at->kind != TK_UNKNOWN && at->kind != TK_STRING) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "system() expects a string argument, got '%s'", type_name(at));
+                diagnostic_error_message(checker->diag, "E3001", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+        }
+        result = &TYPE_INT;
     } else if (strcmp(function_name, "copy") == 0 && node->data.call.arg_count == 1) {
         result = resolve_expression(checker, node->data.call.args[0]);
         if (result->kind == TK_FUNCTION) {
@@ -9523,7 +9542,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 strcmp(function_name, "eprintln") == 0 || strcmp(function_name, "eprint") == 0 ||
                 strcmp(function_name, "panic") == 0 || strcmp(function_name, "assert") == 0 ||
                 strcmp(function_name, "exit") == 0 || strcmp(function_name, "sleep_s") == 0 ||
-                strcmp(function_name, "sleep_ms") == 0 || strcmp(function_name, "sleep_ns") == 0);
+                strcmp(function_name, "sleep_ms") == 0 || strcmp(function_name, "sleep_ns") == 0 ||
+                strcmp(function_name, "system") == 0);
             /* For member expression calls, check if the return type is void —
              * only warn about non-void return values being discarded */
             if (fn->kind == NODE_MEMBER_EXPR) {
