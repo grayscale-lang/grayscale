@@ -2618,6 +2618,24 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 }
                 emit_expression(codegen, node->data.index_expr.index);
                 emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
+            } else if (node->data.index_expr.left->kind == NODE_POSTFIX_EXPR &&
+                       node->data.index_expr.left->data.postfix.op == TOK_CARET) {
+                /* p^[i]: direct dereference of container pointer */
+                AstNode *_dp_inner = node->data.index_expr.left->data.postfix.left;
+                bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
+                int my_dp = codegen_next_id(codegen);
+                emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
+                emit_expression(codegen, _dp_inner);
+                if (_dp_raw) {
+                    emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
+                          my_dp, c_elem);
+                } else {
+                    emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                              "GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
+                          my_dp, codegen->file, node->token.line, my_dp, c_elem);
+                }
+                emit_expression(codegen, node->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
             } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR) {
                 emit_formatted(codegen, "({ GrayArray _ea = ");
                 emit_expression(codegen, node->data.index_expr.left);
@@ -2649,6 +2667,11 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 if (obj_t && obj_t->kind == TK_POINTER) map_is_rvalue = true;
                 if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
                     map_is_rvalue = true;
+            }
+            /* p^["key"]: direct dereference of map pointer yields rvalue */
+            if (!map_is_rvalue && node->data.index_expr.left->kind == NODE_POSTFIX_EXPR &&
+                node->data.index_expr.left->data.postfix.op == TOK_CARET) {
+                map_is_rvalue = true;
             }
             if (map_is_rvalue) {
                 emit_formatted(codegen, "({ GrayMap _mt = ");
@@ -5203,6 +5226,21 @@ static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
             return;
         }
     }
+    /* p^: direct dereference of container pointer — the pointer itself
+     * is already a GrayArray*, so nil-check and return it directly. */
+    if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
+        AstNode *_dp_inner = arg->data.postfix.left;
+        bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
+        if (_dp_raw) {
+            emit_expression(codegen, _dp_inner);
+        } else {
+            emit(codegen, "({ __auto_type _dp = ");
+            emit_expression(codegen, _dp_inner);
+            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp; })",
+                codegen->file, arg->token.line);
+        }
+        return;
+    }
     /* Default: take address of the expression directly.
      * If the expression is an rvalue (e.g. a function call), materialise it
      * as a one-element array compound literal that decays to the pointer —
@@ -7736,6 +7774,40 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     return;
                 }
             }
+            /* p^[i] = v: direct dereference of array pointer */
+            if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
+                AstNode *_dp_inner = left->data.postfix.left;
+                bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
+                int my_dp = codegen_next_id(codegen);
+                TokenType aop3 = node->data.assign.op;
+                bool is_compound3 = (aop3 == TOK_PLUS_ASSIGN || aop3 == TOK_MINUS_ASSIGN || aop3 == TOK_ASTERISK_ASSIGN);
+                emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
+                emit_expression(codegen, _dp_inner);
+                if (_dp_raw) {
+                    emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
+                          my_dp, c_elem);
+                } else {
+                    emit_formatted(codegen, "; if (!_asdp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                              "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
+                          my_dp, codegen->file, node->token.line, my_dp, c_elem);
+                }
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit(codegen, ", ");
+                if (is_compound3) {
+                    const char *binop = "+";
+                    if (aop3 == TOK_MINUS_ASSIGN) binop = "-";
+                    else if (aop3 == TOK_ASTERISK_ASSIGN) binop = "*";
+                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", my_dp, c_elem);
+                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                    emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else {
+                    emit_expression(codegen, node->data.assign.value);
+                }
+                emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+                return;
+            }
             /* Compound assignment on array element with sized-type overflow check */
             TokenType aop = node->data.assign.op;
             bool is_compound = (aop == TOK_PLUS_ASSIGN || aop == TOK_MINUS_ASSIGN || aop == TOK_ASTERISK_ASSIGN);
@@ -7819,6 +7891,15 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         is_raw_variable(codegen, left->data.member.object->data.label.value));
                 }
             }
+            /* p^["key"] = v: direct dereference of map pointer. The pointer
+             * is already a GrayMap*, so nil-check and pass it directly. */
+            bool map_direct_deref = false;
+            bool map_deref_raw = false;
+            if (!map_via_ptr && left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
+                map_direct_deref = true;
+                map_deref_raw = (left->data.postfix.left->kind == NODE_LABEL &&
+                    is_raw_variable(codegen, left->data.postfix.left->data.label.value));
+            }
 
             bool ms_compound = (node->data.assign.op != TOK_ASSIGN);
             const char *ms_base_op = NULL;
@@ -7864,6 +7945,20 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                               codegen->file, node->token.line, sanitize_name(left->data.member.member),
                               codegen->file, node->token.line);
                     }
+                } else if (map_direct_deref) {
+                    emit_formatted(codegen, "__auto_type _mp = ");
+                    emit_expression(codegen, left->data.postfix.left);
+                    if (map_deref_raw) {
+                        emit_formatted(codegen, "; void *_cur = gray_map_get(_mp, &_mk); "
+                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                              codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                              "void *_cur = gray_map_get(_mp, &_mk); "
+                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                              codegen->file, node->token.line,
+                              codegen->file, node->token.line);
+                    }
                 } else {
                     emit_formatted(codegen, "void *_cur = gray_map_get(&");
                     emit_expression(codegen, left);
@@ -7904,6 +7999,23 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
                             "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
                             codegen->file, node->token.line, ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+                    }
+                }
+            } else if (map_direct_deref) {
+                if (ms_compound) {
+                    /* _mp was captured above; pass it directly as GrayMap*. */
+                    emit_formatted(codegen, "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); }\n",
+                        ms_arena, codegen->file, node->token.line);
+                } else {
+                    emit_formatted(codegen, "{ __auto_type _mp = ");
+                    emit_expression(codegen, left->data.postfix.left);
+                    if (map_deref_raw) {
+                        emit_formatted(codegen, "; gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
+                            ms_arena, codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                            "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
+                            codegen->file, node->token.line, ms_arena, codegen->file, node->token.line);
                     }
                 }
             } else {

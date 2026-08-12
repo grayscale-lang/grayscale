@@ -1,0 +1,71 @@
+/*
+ * Test: operations on dereferenced container pointers from new()
+ * Verifies that p^[i], p^["key"] = v, and arrays.append(p^, v)
+ * all work without leaking C compiler errors.
+ */
+
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: array index read through deref pointer
+    mut pa = new([int])
+    arrays.append(pa^, 10)
+    arrays.append(pa^, 20)
+    if pa^[0] == 10 {
+        println("  [PASS] pa^[0] reads correctly")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pa^[0]: expected 10, got ${pa^[0]}")
+        failed += 1
+    }
+
+    // Test 2: array element assignment through deref pointer
+    pa^[1] = 99
+    if pa^[1] == 99 {
+        println("  [PASS] pa^[1] = 99 works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pa^[1] = 99: got ${pa^[1]}")
+        failed += 1
+    }
+
+    // Test 3: map key assignment through deref pointer
+    mut pm = new(map[string:int])
+    pm^["x"] = 42
+    if pm^["x"] == 42 {
+        println("  [PASS] pm^[\"x\"] = 42 works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pm^[\"x\"]: expected 42, got ${pm^["x"]}")
+        failed += 1
+    }
+
+    // Test 4: map key overwrite through deref pointer
+    pm^["x"] = 100
+    if pm^["x"] == 100 {
+        println("  [PASS] pm^[\"x\"] overwrite works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pm^[\"x\"] overwrite: expected 100, got ${pm^["x"]}")
+        failed += 1
+    }
+
+    // Test 5: len on dereferenced container pointer
+    if len(pa^) == 2 {
+        println("  [PASS] len(pa^) == 2")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len(pa^): expected 2, got ${len(pa^)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
