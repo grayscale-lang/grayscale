@@ -52,6 +52,17 @@ static inline bool using_module_accessible(TypeChecker *checker, int using_index
     return false;
 }
 
+/* Mark an imported module as used by name. Returns true if found. */
+static bool mark_import_used(TypeChecker *checker, const char *mod_name) {
+    for (int mi = 0; mi < checker->import_count; mi++) {
+        if (strcmp(checker->imported_modules[mi], mod_name) == 0) {
+            checker->import_used[mi] = true;
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Helper: get the user-facing display name for a declaration.
  * Import merging prefixes names (e.g. foo → mod_foo) but errors should
  * show the original name the user wrote. */
@@ -4202,13 +4213,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             FuncSig *psig = find_func(checker, pfx);
             if (psig) {
                 psig->used = true;
-                for (int mi = 0; mi < checker->import_count; mi++) {
-                    if (strcmp(checker->imported_modules[mi], checker->using_modules[using_index]) == 0 ||
-                        strcmp(checker->imported_modules[mi], real_mod) == 0) {
-                        checker->import_used[mi] = true;
-                        break;
-                    }
-                }
+                mark_import_used(checker, checker->using_modules[using_index]);
+                mark_import_used(checker, real_mod);
                 break;
             }
         }
@@ -4806,13 +4812,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
                 if (found_in_using) {
                     /* Mark module as used */
-                    for (int mi = 0; mi < checker->import_count; mi++) {
-                        if (strcmp(checker->imported_modules[mi], umod) == 0 ||
-                            strcmp(checker->imported_modules[mi], real_mod) == 0) {
-                            checker->import_used[mi] = true;
-                            break;
-                        }
-                    }
+                    mark_import_used(checker, umod);
+                    mark_import_used(checker, real_mod);
                 }
             }
             if (found_in_using) {
@@ -5075,12 +5076,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         const char *struct_name = fn->data.member.object->data.member.member;
         const char *func_name = fn->data.member.member;
         /* Mark module as used */
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], mod_name) == 0) {
-                checker->import_used[mi] = true;
-                break;
-            }
-        }
+        mark_import_used(checker, mod_name);
         /* Look up mod_Struct_func */
         char prefixed[MSG_BUF_SIZE];
         snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", mod_name, struct_name, func_name);
@@ -5197,15 +5193,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
-        bool mod_imported = false;
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], mod_raw) == 0 ||
-                strcmp(checker->imported_modules[mi], mod) == 0) {
-                checker->import_used[mi] = true;
-                mod_imported = true;
-                break;
-            }
-        }
+        bool mod_imported = mark_import_used(checker, mod_raw) ||
+                            mark_import_used(checker, mod);
         if (!mod_imported && is_stdlib_module_name(mod)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
@@ -5229,10 +5218,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         /* C interop: c.func(); skip type checking but reject bigints */
         if (strcmp(mod, "c") == 0 && mod_imported) {
             /* Mark all C imports as used */
-            for (int mi = 0; mi < checker->import_count; mi++) {
-                if (strcmp(checker->imported_modules[mi], "c") == 0)
-                    checker->import_used[mi] = true;
-            }
+            mark_import_used(checker, "c");
             /* Validate arguments; reject types that don't translate to C */
             for (int argument_index = 0; argument_index < node->data.call.arg_count; argument_index++) {
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
@@ -5809,12 +5795,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, prefixed_type, member);
             }
             /* Mark module as used */
-            for (int mi = 0; mi < checker->import_count; mi++) {
-                if (strcmp(checker->imported_modules[mi], mod_name) == 0) {
-                    checker->import_used[mi] = true;
-                    break;
-                }
-            }
+            mark_import_used(checker, mod_name);
             result = type_enum(prefixed_type);
             return result;
         }
@@ -5826,12 +5807,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         const char *obj_name = obj->data.label.value;
 
         /* Mark module as used (for member access like math.PI) */
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], obj_name) == 0) {
-                checker->import_used[mi] = true;
-                break;
-            }
-        }
+        mark_import_used(checker, obj_name);
 
         /* Check for module constants */
         if (strcmp(obj_name, "math") == 0) {
@@ -5907,12 +5883,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 mod_sym->used = true;
                 result = mod_sym->type;
                 /* Mark module as used */
-                for (int mi = 0; mi < checker->import_count; mi++) {
-                    if (strcmp(checker->imported_modules[mi], obj_name) == 0) {
-                        checker->import_used[mi] = true;
-                        break;
-                    }
-                }
+                mark_import_used(checker, obj_name);
                 return result;
             }
         }
@@ -6014,12 +5985,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 if (is_enum_name(checker, prefixed)) {
                     result = &TYPE_INT;
                     /* Mark module as used */
-                    for (int mi = 0; mi < checker->import_count; mi++) {
-                        if (strcmp(checker->imported_modules[mi], mod) == 0) {
-                            checker->import_used[mi] = true;
-                            break;
-                        }
-                    }
+                    mark_import_used(checker, mod);
                     return result;
                 }
             }
@@ -6525,13 +6491,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     /* Rewrite the label to the prefixed name so codegen finds it */
                     node->data.label.value = strdup(prefixed);
                     /* Mark module as used */
-                    for (int mi = 0; mi < checker->import_count; mi++) {
-                        if (strcmp(checker->imported_modules[mi], checker->using_modules[using_index]) == 0 ||
-                            strcmp(checker->imported_modules[mi], umod) == 0) {
-                            checker->import_used[mi] = true;
-                            break;
-                        }
-                    }
+                    mark_import_used(checker, checker->using_modules[using_index]);
+                    mark_import_used(checker, umod);
                     break;
                 }
             }
