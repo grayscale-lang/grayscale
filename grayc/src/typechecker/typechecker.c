@@ -1540,7 +1540,7 @@ static bool typechecker_is_builtin(const char *name) {
         "error", "exit", "f32", "f64", "fields", "float", "here",
         "i128", "i16", "i256", "i32", "i64", "i8",
         "input", "int", "len", "new", "panic", "print", "println",
-        "range", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
+        "range", "raw", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
         "string", "system", "to_char", "type_of",
         "u128", "u16", "u256", "u32", "u64", "u8", "uint",
     };
@@ -3793,6 +3793,15 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = type_array("string");
     } else if (strcmp(function_name, "size_of") == 0) {
+        if (node->data.call.arg_count != 1) {
+            char *msg = typechecker_format(checker,
+                "size_of() expects 1 argument, got %d",
+                node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            result = &TYPE_INT;
+            return result;
+        }
         /* Rewrite size_of(T) → size_of(?) when T is a type param */
         if (node->data.call.arg_count == 1 &&
             node->data.call.args[0]->kind == NODE_LABEL &&
@@ -3852,6 +3861,15 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_INT;
     } else if (strcmp(function_name, "c_string") == 0) {
+        if (node->data.call.arg_count != 1) {
+            char *msg = typechecker_format(checker,
+                "c_string() expects 1 argument, got %d",
+                node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            result = &TYPE_STRING;
+            return result;
+        }
         if (node->data.call.arg_count >= 1) {
             GrayType *arg0 = resolve_expression(checker, node->data.call.args[0]);
             if (arg0 && arg0->kind != TK_POINTER && arg0->kind != TK_UNKNOWN) {
@@ -3942,6 +3960,15 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "error") == 0) {
+        if (node->data.call.arg_count != 1) {
+            char *msg = typechecker_format(checker,
+                "error() expects 1 argument, got %d",
+                node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            result = type_from_name("Error");
+            return result;
+        }
         result = type_from_name("Error");
     } else if (strcmp(function_name, "println") == 0 || strcmp(function_name, "eprintln") == 0) {
         /* println/eprintln accept 0 or 1 arguments */
@@ -4198,6 +4225,18 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         diagnostic_error_code_formatted(checker->diag, "E5036", NODE_FILE(checker, node),
             node->token.line, node->token.column, 0, function_name, function_name);
         result = type_from_name(function_name);
+    } else if (typechecker_is_builtin(function_name)) {
+        /* Builtin name matched but arg count was wrong — the specific handler
+         * above requires a certain number of arguments and this call didn't
+         * satisfy it.  Emit E5008 instead of falling through to the
+         * user-defined function path, which would leak a C compiler error. */
+        char *msg = typechecker_format(checker,
+            "%s() expects 1 argument, got %d",
+            function_name, node->data.call.arg_count);
+        diagnostic_error_message(checker->diag, "E5008", msg,
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        GrayType *bt = type_from_name(function_name);
+        result = (bt != &TYPE_UNKNOWN) ? bt : &TYPE_UNKNOWN;
     } else {
         return NULL;
     }
