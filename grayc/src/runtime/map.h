@@ -80,4 +80,7 @@ void *gray_map_value_at(GrayMap *m, int32_t internal_idx);
  * the original. */
 GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src);
 
+/* Initialize the per-process hash seed (called by gray_runtime_init). */
+void gray_map_init_seed(void);
+
 #endif

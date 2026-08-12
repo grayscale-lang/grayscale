@@ -9,6 +9,7 @@
  */
 
 #include "runtime.h"
+#include "map.h"
 #include "platform_rt.h"
 #include "util/colors.h"
 #include <stdarg.h>
@@ -222,6 +223,7 @@ int gray_call_depth = 0;
 /* --- Runtime Init/Shutdown --- */
 
 void gray_runtime_init(size_t arena_limit) {
+    gray_map_init_seed();
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
     gray_heap_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
     if (arena_limit > 0) {
