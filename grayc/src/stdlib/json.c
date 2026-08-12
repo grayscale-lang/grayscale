@@ -350,10 +350,6 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
 
 static bool v_value(const char **s, const char *end, int depth);
 
-static void v_skip_ws(const char **s, const char *end) {
-    while (*s < end && isspace((unsigned char)**s)) (*s)++;
-}
-
 static bool v_string_lit(const char **s, const char *end) {
     if (*s >= end || **s != '"') return false;
     (*s)++;
@@ -425,12 +421,12 @@ static bool v_literal(const char **s, const char *end, const char *lit) {
 static bool v_array(const char **s, const char *end, int depth) {
     if (*s >= end || **s != '[') return false;
     (*s)++;
-    v_skip_ws(s, end);
+    skip_ws(s, end);
     if (*s < end && **s == ']') { (*s)++; return true; }
     for (;;) {
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (!v_value(s, end, depth + 1)) return false;
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (*s >= end) return false;
         if (**s == ',') { (*s)++; continue; }
         if (**s == ']') { (*s)++; return true; }
@@ -441,17 +437,17 @@ static bool v_array(const char **s, const char *end, int depth) {
 static bool v_object(const char **s, const char *end, int depth) {
     if (*s >= end || **s != '{') return false;
     (*s)++;
-    v_skip_ws(s, end);
+    skip_ws(s, end);
     if (*s < end && **s == '}') { (*s)++; return true; }
     for (;;) {
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (!v_string_lit(s, end)) return false;
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (*s >= end || **s != ':') return false;
         (*s)++;
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (!v_value(s, end, depth + 1)) return false;
-        v_skip_ws(s, end);
+        skip_ws(s, end);
         if (*s >= end) return false;
         if (**s == ',') { (*s)++; continue; }
         if (**s == '}') { (*s)++; return true; }
@@ -461,7 +457,7 @@ static bool v_object(const char **s, const char *end, int depth) {
 
 static bool v_value(const char **s, const char *end, int depth) {
     if (depth > GRAY_JSON_MAX_DEPTH) return false;
-    v_skip_ws(s, end);
+    skip_ws(s, end);
     if (*s >= end) return false;
     char c = **s;
     if (c == '{') return v_object(s, end, depth);
@@ -478,10 +474,10 @@ bool gray_json_is_valid(GrayString text) {
     if (text.len <= 0 || !text.data) return false;
     const char *s = text.data;
     const char *end = s + text.len;
-    v_skip_ws(&s, end);
+    skip_ws(&s, end);
     if (s >= end) return false;
     if (!v_value(&s, end, 0)) return false;
-    v_skip_ws(&s, end);
+    skip_ws(&s, end);
     return s == end;
 }
 
