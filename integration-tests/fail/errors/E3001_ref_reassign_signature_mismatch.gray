@@ -1,0 +1,12 @@
+do add(a int, b int) -> int {
+    return a + b
+}
+
+do greet(name string) -> string {
+    return "hello ${name}"
+}
+
+do main() {
+    mut r = ref(add)
+    r = ref(greet)
+}

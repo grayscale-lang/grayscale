@@ -3680,7 +3680,19 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             find_func(checker, arg->data.label.value)) {
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
-            result = type_from_name("func");
+            /* Build typed function reference: "func(int,string)->int" */
+            char sig[MSG_BUF_SIZE];
+            int pos = 0;
+            pos += snprintf(sig + pos, sizeof(sig) - pos, "func(");
+            for (int i = 0; i < rfs->param_count; i++) {
+                if (i > 0) pos += snprintf(sig + pos, sizeof(sig) - pos, ",");
+                pos += snprintf(sig + pos, sizeof(sig) - pos, "%s", type_name(rfs->param_types[i]));
+            }
+            pos += snprintf(sig + pos, sizeof(sig) - pos, ")");
+            if (rfs->return_count > 0) {
+                pos += snprintf(sig + pos, sizeof(sig) - pos, "->%s", type_name(rfs->return_types[0]));
+            }
+            result = type_from_name(sig);
         } else {
             /* Same assignment target requirement as addr(): reject literals,
              * call results, arithmetic expressions — anything
@@ -7801,9 +7813,12 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             /* E3102: cannot assign a func-type return value to a variable.
-             * Func references must be created with ()func_name or ref(func_name). */
+             * Func references must be created with ()func_name or ref(func_name).
+             * Skip ref() itself — it is the canonical way to create a func reference. */
             if (value_type->kind == TK_FUNCTION &&
-                node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+                node->data.var_decl.value->kind == NODE_CALL_EXPR &&
+                !(node->data.var_decl.value->data.call.function->kind == NODE_LABEL &&
+                  strcmp(node->data.var_decl.value->data.call.function->data.label.value, "ref") == 0)) {
                 AstNode *call_fn = node->data.var_decl.value->data.call.function;
                 const char *called = "function";
                 char called_buf[MSG_BUF_SIZE];
@@ -9118,6 +9133,18 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign enum '%s' to enum '%s' variable '%s'",
+                type_display_name(checker, value_t), type_display_name(checker, target_t),
+                target->data.label.value);
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        /* Function-to-function signature mismatch on direct variable assignment */
+        if (target->kind == NODE_LABEL &&
+            target_t->kind == TK_FUNCTION && value_t->kind == TK_FUNCTION &&
+            target_t->name && value_t->name &&
+            strcmp(target_t->name, value_t->name) != 0) {
+            char *msg = typechecker_format(checker,
+                "type mismatch: cannot assign '%s' to '%s' variable '%s'",
                 type_display_name(checker, value_t), type_display_name(checker, target_t),
                 target->data.label.value);
             diagnostic_error_message(checker->diag, "E3001", msg,
