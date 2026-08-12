@@ -1826,6 +1826,28 @@ static bool is_int_kind(TypeKind k) {
     return k == TK_INT || k == TK_UINT || k == TK_BYTE;
 }
 
+/* Returns true if src can be assigned to dest under the standard coercion rules.
+ * Does NOT cover context-specific exceptions (nil→ptr, ref→ptr, struct↔int)
+ * which callers handle separately. */
+static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src) {
+    if (!dest || !src) return false;
+    if (dest->kind == src->kind) return true;
+    /* Int-family interop (byte ↔ uint excluded) */
+    if (is_int_kind(dest->kind) && is_int_kind(src->kind) &&
+        !((dest->kind == TK_BYTE && src->kind == TK_UINT) ||
+          (dest->kind == TK_UINT && src->kind == TK_BYTE)))
+        return true;
+    /* Enum → int (enums are int-backed) */
+    if (is_int_kind(dest->kind) && src->kind == TK_ENUM) return true;
+    /* Int → float coercion */
+    if (dest->kind == TK_FLOAT && is_int_kind(src->kind)) return true;
+    /* String enum → string */
+    if (dest->kind == TK_STRING && src->kind == TK_ENUM &&
+        typechecker_enum_is_string(checker, src->name))
+        return true;
+    return false;
+}
+
 /* Rank for named integer types; 0 = not a named integer type.
  * Used to detect narrowing (declared rank < value rank). */
 static int int_type_name_rank(const char *n) {
@@ -3073,12 +3095,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                 }
                 if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                    arg_t->kind != param_t->kind &&
-                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
+                    !types_assignable(checker, param_t, arg_t) &&
                     !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                     !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                    !(param_t->kind == TK_FLOAT && is_int_kind(arg_t->kind))) {
+                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected %s, got %s",
@@ -3382,12 +3402,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             checker->expected_type = saved_expected_s;
                             if (arg_t && param_t &&
                                 arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                                arg_t->kind != param_t->kind &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
+                                !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                                !(param_t->kind == TK_FLOAT && is_int_kind(arg_t->kind))) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -3528,12 +3546,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             GrayType *param_t = ssig->param_types[argument_index];
                             if (arg_t && param_t &&
                                 arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                                arg_t->kind != param_t->kind &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
+                                !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                                !(param_t->kind == TK_FLOAT && is_int_kind(arg_t->kind))) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -4418,12 +4434,10 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                arg_t->kind != param_t->kind &&
-                !(is_int_kind(param_t->kind) && arg_t->kind == TK_ENUM) &&
+                !types_assignable(checker, param_t, arg_t) &&
                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                !(param_t->kind == TK_FLOAT && is_int_kind(arg_t->kind))) {
+                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
@@ -4602,9 +4616,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *pt = ref_sig->param_types[argument_index];
                         if (at && pt && at->kind != TK_UNKNOWN &&
                             pt->kind != TK_UNKNOWN &&
-                            at->kind != pt->kind &&
-                            !(is_int_kind(at->kind) && is_int_kind(pt->kind)) &&
-                            !(pt->kind == TK_FLOAT && is_int_kind(at->kind))) {
+                            !types_assignable(checker, pt, at)) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",
@@ -4671,9 +4683,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *at = resolve_expression(checker, arg);
                         GrayType *pt = sig->param_types[argument_index] ? type_from_name(sig->param_types[argument_index]) : NULL;
                         if (at && pt && at->kind != TK_UNKNOWN && pt->kind != TK_UNKNOWN &&
-                            at->kind != pt->kind &&
-                            !(is_int_kind(at->kind) && is_int_kind(pt->kind)) &&
-                            !(pt->kind == TK_FLOAT && is_int_kind(at->kind))) {
+                            !types_assignable(checker, pt, at)) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",
@@ -5037,8 +5047,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                             GrayType *exp_t = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][argument_index]);
                             if (arg_t && exp_t &&
                                 arg_t->kind != TK_UNKNOWN && exp_t->kind != TK_UNKNOWN &&
-                                arg_t->kind != exp_t->kind &&
-                                !(is_int_kind(arg_t->kind) && is_int_kind(exp_t->kind))) {
+                                !types_assignable(checker, exp_t, arg_t)) {
                                 diagnostic_error_code_formatted(checker->diag, "E3001", NODE_FILE(checker, node->data.call.args[argument_index]),
                                     node->data.call.args[argument_index]->token.line, node->data.call.args[argument_index]->token.column, 0);
                             }
@@ -5167,8 +5176,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     GrayType *expected_t = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][argument_index]);
                     if (arg_t && expected_t &&
                         arg_t->kind != TK_UNKNOWN && expected_t->kind != TK_UNKNOWN &&
-                        arg_t->kind != expected_t->kind &&
-                        !(is_int_kind(arg_t->kind) && is_int_kind(expected_t->kind))) {
+                        !types_assignable(checker, expected_t, arg_t)) {
                         diagnostic_error_code_formatted(checker->diag, "E3001", NODE_FILE(checker, node->data.call.args[argument_index]),
                             node->data.call.args[argument_index]->token.line, node->data.call.args[argument_index]->token.column, 0);
                     }
@@ -5685,15 +5693,15 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         const char *right_tn = type_name(right);
         if (right->kind == TK_ARRAY && right->element_type) {
             GrayType *elem = type_from_name(right->element_type);
-            if (elem->kind != TK_UNKNOWN && left->kind != elem->kind &&
-                !(is_int_kind(left->kind) && is_int_kind(elem->kind)) &&
+            if (elem->kind != TK_UNKNOWN &&
+                !types_assignable(checker, elem, left) &&
                 !(left->name && strcmp(left->name, right->element_type) == 0)) {
                 mismatch = true;
             }
         } else if (right->kind == TK_MAP && right->key_type) {
             GrayType *key = type_from_name(right->key_type);
-            if (key->kind != TK_UNKNOWN && left->kind != key->kind &&
-                !(is_int_kind(left->kind) && is_int_kind(key->kind)) &&
+            if (key->kind != TK_UNKNOWN &&
+                !types_assignable(checker, key, left) &&
                 !(left->name && strcmp(left->name, right->key_type) == 0)) {
                 mismatch = true;
             }
@@ -6139,21 +6147,16 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                        expected_t->kind != TK_UNKNOWN &&
                        /* kinds differ, OR both are pointers to different types,
                         * OR both are structs with different names */
-                       (expected_t->kind != val_t->kind ||
+                       (!types_assignable(checker, expected_t, val_t) ||
                         (expected_t->kind == TK_POINTER &&
                          expected_t->name && val_t->name &&
                          strcmp(expected_t->name, val_t->name) != 0) ||
                         (expected_t->kind == TK_STRUCT && val_t->kind == TK_STRUCT &&
                          expected_t->name && val_t->name &&
                          strcmp(expected_t->name, val_t->name) != 0)) &&
-                       !(is_int_kind(expected_t->kind) && val_t->kind == TK_ENUM) &&
                        !(expected_t->kind == TK_ENUM && is_int_kind(val_t->kind)) &&
-                       /* string enum → string coercion */
-                       !(expected_t->kind == TK_STRING && val_t->kind == TK_ENUM &&
-                         val_t->name && typechecker_enum_is_string(checker, val_t->name)) &&
                        !(expected_t->kind == TK_STRUCT && is_int_kind(val_t->kind)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_STRUCT) &&
-                       !(expected_t->kind == TK_FLOAT && is_int_kind(val_t->kind)) &&
                        /* nil is a valid value for pointer and Error fields */
                        !(val_t->kind == TK_NIL &&
                          (expected_t->kind == TK_POINTER || expected_t->kind == TK_ERROR))) {
@@ -6788,10 +6791,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 reject_multi_return_in_single_position(checker, node->data.array_value.elements[i]);
                 if (!element_resolved || element_resolved->kind == TK_UNKNOWN || !first || first->kind == TK_UNKNOWN)
                     continue;
-                bool compatible = (element_resolved->kind == first->kind) ||
-                    (is_int_kind(element_resolved->kind) && is_int_kind(first->kind)) ||
-                    (element_resolved->kind == TK_BYTE && is_int_kind(first->kind)) ||
-                    (is_int_kind(element_resolved->kind) && first->kind == TK_BYTE);
+                bool compatible = types_assignable(checker, first, element_resolved);
                 if (!compatible) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
@@ -7912,33 +7912,15 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 declared = value_type;
             } else if (value_type->kind != TK_UNKNOWN &&
                        value_type->kind != TK_VOID &&
-                       declared->kind != value_type->kind &&
                        value_type->kind != TK_NIL &&
-                       /* Skip mismatch between compatible int kinds (handled by E3019),
-                        * but byte and u8/uint are distinct semantic types and must not
-                        * be implicitly assigned to each other. */
-                       !(is_int_kind(declared->kind) && is_int_kind(value_type->kind) &&
-                         !((declared->kind == TK_BYTE && value_type->kind == TK_UINT) ||
-                           (declared->kind == TK_UINT && value_type->kind == TK_BYTE))) &&
-                       /* Allow enum → int (enums are int-backed) but not
-                        * the reverse; int literals / variables can't be
-                        * assigned to enum variables (). */
-                       !(is_int_kind(declared->kind) && value_type->kind == TK_ENUM) &&
-                       /* Allow string enum → string (string enums hold GrayString values) */
-                       !(declared->kind == TK_STRING && value_type->kind == TK_ENUM &&
-                         typechecker_enum_is_string(checker, value_type->name)) &&
-                       /* Note: multi-var expansion (.v0/.v1 access) is intentionally
-                        * NOT skipped here — type mismatch on reversed multi-return
-                        * types must be caught. */
+                       !types_assignable(checker, declared, value_type) &&
                        /* Skip mismatch when assigning ref var to ^T pointer */
                        !(declared->kind == TK_POINTER && node->data.var_decl.value &&
                          node->data.var_decl.value->kind == NODE_LABEL &&
                          scope_lookup(checker->current_scope, node->data.var_decl.value->data.label.value) &&
                          scope_lookup(checker->current_scope, node->data.var_decl.value->data.label.value)->is_ref) &&
                        /* Skip mismatch when assigning pointer (addr) to ^T */
-                       !(declared->kind == TK_POINTER && value_type->kind == TK_POINTER) &&
-                       /* : implicit int→float coercion when target is float */
-                       !(declared->kind == TK_FLOAT && is_int_kind(value_type->kind))) {
+                       !(declared->kind == TK_POINTER && value_type->kind == TK_POINTER)) {
                 /* Type mismatch */
                 char *msg = NULL;
                 msg = typechecker_format(checker,
@@ -8207,23 +8189,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                             if (actual_et && actual_et->kind != TK_UNKNOWN &&
                                 expected_et && expected_et->kind != TK_UNKNOWN &&
                                 actual_et->kind != expected_et->kind) {
-                                /* Allow compatible integer kinds + enum↔int */
-                                bool compatible = false;
-                                if ((expected_et->kind == TK_INT || expected_et->kind == TK_UINT ||
-                                     expected_et->kind == TK_BYTE) &&
-                                    (actual_et->kind == TK_INT || actual_et->kind == TK_UINT ||
-                                     actual_et->kind == TK_BYTE)) {
-                                    compatible = true;
-                                }
-                                if (is_int_kind(expected_et->kind) && actual_et->kind == TK_ENUM)
-                                    compatible = true;
-                                if (expected_et->kind == TK_ENUM && is_int_kind(actual_et->kind))
-                                    compatible = true;
-                                if (expected_et->kind == TK_ENUM && actual_et->kind == TK_ENUM)
-                                    compatible = true;
-                                /* : int→float coercion in array initializer */
-                                if (expected_et->kind == TK_FLOAT && is_int_kind(actual_et->kind))
-                                    compatible = true;
+                                bool compatible = types_assignable(checker, expected_et, actual_et) ||
+                                    (expected_et->kind == TK_ENUM && is_int_kind(actual_et->kind));
                                 if (!compatible) {
                                     diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                         arr->data.array_value.elements[enum_index]->token.line,
@@ -8297,11 +8264,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                                 GrayType *vt = resolve_expression(checker, vn);
                                 if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
                                     expected_k && expected_k->kind != TK_UNKNOWN &&
-                                    kt->kind != expected_k->kind &&
-                                    !(is_int_kind(expected_k->kind) && is_int_kind(kt->kind)) &&
-                                    !(is_int_kind(expected_k->kind) && kt->kind == TK_ENUM) &&
-                                    !(expected_k->kind == TK_ENUM && is_int_kind(kt->kind)) &&
-                                    !(expected_k->kind == TK_FLOAT && is_int_kind(kt->kind))) {
+                                    !types_assignable(checker, expected_k, kt) &&
+                                    !(expected_k->kind == TK_ENUM && is_int_kind(kt->kind))) {
                                     char *msg = NULL;
                                     msg = typechecker_format(checker,
                                         "type mismatch in map literal key; expected '%s', got '%s'",
@@ -8323,12 +8287,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                                 }
                                 if (vt && vt->kind != TK_UNKNOWN && vt->kind != TK_VOID &&
                                     expected_v && expected_v->kind != TK_UNKNOWN &&
-                                    vt->kind != expected_v->kind &&
-                                    !(is_int_kind(expected_v->kind) && is_int_kind(vt->kind)) &&
-                                    !(is_int_kind(expected_v->kind) && vt->kind == TK_ENUM) &&
+                                    !types_assignable(checker, expected_v, vt) &&
                                     !(expected_v->kind == TK_ENUM && is_int_kind(vt->kind)) &&
-                                    !(expected_v->kind == TK_POINTER && vt->kind == TK_POINTER) &&
-                                    !(expected_v->kind == TK_FLOAT && is_int_kind(vt->kind))) {
+                                    !(expected_v->kind == TK_POINTER && vt->kind == TK_POINTER)) {
                                     char *msg = NULL;
                                     msg = typechecker_format(checker,
                                         "type mismatch in map literal value; expected '%s', got '%s'",
@@ -8989,11 +8950,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 GrayType *elem_t = type_from_name(indexed_t->element_type);
                 GrayType *val_t = resolve_expression(checker, node->data.assign.value);
                 if (val_t && val_t->kind != TK_UNKNOWN && elem_t && elem_t->kind != TK_UNKNOWN &&
-                    val_t->kind != elem_t->kind &&
-                    !(is_int_kind(val_t->kind) && is_int_kind(elem_t->kind)) &&
-                    !(val_t->kind == TK_ENUM   && is_int_kind(elem_t->kind)) &&
-                    !(is_int_kind(val_t->kind) && elem_t->kind == TK_FLOAT)  &&
-                    !(val_t->kind == TK_FLOAT  && is_int_kind(elem_t->kind)) &&
+                    !types_assignable(checker, elem_t, val_t) &&
+                    !(val_t->kind == TK_FLOAT && is_int_kind(elem_t->kind)) &&
                     /* enum array: type_from_name returns TK_STRUCT for enum names */
                     !(val_t->kind == TK_ENUM && elem_t->kind == TK_STRUCT &&
                       indexed_t->element_type && is_enum_name(checker, indexed_t->element_type))) {
@@ -9072,18 +9030,12 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
             if (sym && sym->type->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
                 target_t->kind != TK_UNKNOWN &&
-                target_t->kind != value_t->kind &&
-                !(is_int_kind(target_t->kind) && is_int_kind(value_t->kind) &&
-                  !((target_t->kind == TK_BYTE && value_t->kind == TK_UINT) ||
-                    (target_t->kind == TK_UINT && value_t->kind == TK_BYTE))) &&
+                !types_assignable(checker, target_t, value_t) &&
                 !(target_t->kind == TK_ENUM && is_int_kind(value_t->kind)) &&
-                !(is_int_kind(target_t->kind) && value_t->kind == TK_ENUM) &&
                 !(target_t->kind == TK_STRUCT && is_int_kind(value_t->kind)) &&
                 !(target_t->kind == TK_POINTER && node->data.assign.value->kind == NODE_LABEL &&
                   scope_lookup(checker->current_scope, node->data.assign.value->data.label.value) &&
                   scope_lookup(checker->current_scope, node->data.assign.value->data.label.value)->is_ref) &&
-                /* : implicit int→float coercion */
-                !(target_t->kind == TK_FLOAT && is_int_kind(value_t->kind)) &&
                 /* nil is a valid value for pointer and Error variables */
                 !(value_t->kind == TK_NIL &&
                   (target_t->kind == TK_POINTER || target_t->kind == TK_ERROR))) {
@@ -9250,16 +9202,13 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 GrayType *field_t = struct_field_type(checker, sym->type->name, target->data.member.member);
                 if (field_t->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
                     /* kinds differ, OR both are pointers/structs to different types */
-                    (field_t->kind != value_t->kind ||
+                    (!types_assignable(checker, field_t, value_t) ||
                      (field_t->kind == TK_POINTER &&
                       field_t->name && value_t->name &&
                       strcmp(field_t->name, value_t->name) != 0) ||
                      (field_t->kind == TK_STRUCT && value_t->kind == TK_STRUCT &&
                       field_t->name && value_t->name &&
                       strcmp(field_t->name, value_t->name) != 0)) &&
-                    !(is_int_kind(field_t->kind) && is_int_kind(value_t->kind)) &&
-                    !(is_int_kind(field_t->kind) && value_t->kind == TK_ENUM) &&
-                    !(field_t->kind == TK_FLOAT && is_int_kind(value_t->kind)) &&
                     /* nil is a valid value for pointer and Error fields */
                     !(value_t->kind == TK_NIL &&
                       (field_t->kind == TK_POINTER || field_t->kind == TK_ERROR))) {
@@ -9442,17 +9391,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 ret_t = expected;
             }
             if (ret_t->kind != TK_UNKNOWN && expected->kind != TK_UNKNOWN &&
-                ret_t->kind != expected->kind && ret_t->kind != TK_NIL &&
-                /* int/uint are compatible at kind level (E5024 checks signedness) */
-                !(is_int_kind(expected->kind) && is_int_kind(ret_t->kind)) &&
-                /* Allow enum → int return (enums are int-backed) but not
-                 * the reverse; returning an int from a function declared
-                 * to return an enum is a type error (). */
-                !(is_int_kind(expected->kind) && ret_t->kind == TK_ENUM) &&
-                !(expected->kind == TK_FLOAT && is_int_kind(ret_t->kind)) &&
-                /* Allow string enum → string return */
-                !(expected->kind == TK_STRING && ret_t->kind == TK_ENUM &&
-                  typechecker_enum_is_string(checker, ret_t->name))) {
+                ret_t->kind != TK_NIL &&
+                !types_assignable(checker, expected, ret_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "return type mismatch: expected %s, got %s",
@@ -10152,8 +10092,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 GrayType *def_t = resolve_expression(checker, p->default_value);
                 checker->expected_type = saved_def_expected;
                 if (def_t->kind != TK_UNKNOWN && ptype->kind != TK_UNKNOWN &&
-                    def_t->kind != ptype->kind &&
-                    !(is_int_kind(def_t->kind) && is_int_kind(ptype->kind)) &&
+                    !types_assignable(checker, ptype, def_t) &&
                     !(def_t->kind == TK_NIL)) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
@@ -10592,15 +10531,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     val_i->kind != NODE_RANGE_EXPR &&
                     !(val_i->kind == NODE_CALL_EXPR && val_i->data.call.function->kind == NODE_LABEL &&
                       strcmp(val_i->data.call.function->data.label.value, "range") == 0)) {
-                    bool compat = (when_t->kind == case_t->kind) ||
-                        (is_int_kind(when_t->kind) && is_int_kind(case_t->kind)) ||
-                        (is_int_kind(when_t->kind) && case_t->kind == TK_ENUM) ||
+                    bool compat = types_assignable(checker, when_t, case_t) ||
                         (when_t->kind == TK_ENUM && is_int_kind(case_t->kind)) ||
-                        (is_int_kind(when_t->kind) && case_t->kind == TK_BYTE) ||
-                        (when_t->kind == TK_BYTE && is_int_kind(case_t->kind)) ||
-                        /* string subject with string-enum arm, or vice versa */
-                        (when_t->kind == TK_STRING && case_t->kind == TK_ENUM &&
-                         typechecker_enum_is_string(checker, case_t->name)) ||
                         (when_t->kind == TK_ENUM && case_t->kind == TK_STRING &&
                          typechecker_enum_is_string(checker, when_t->name));
                     if (!compat) {
