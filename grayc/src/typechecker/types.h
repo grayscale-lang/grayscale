@@ -85,6 +85,9 @@ const char *type_name(GrayType *type);
 /* Resolve a type name string to an GrayType */
 GrayType *type_from_name(const char *name);
 
+/* Return true if name matches a builtin type keyword (int, string, etc.) */
+bool is_builtin_type_name(const char *name);
+
 /* Free all heap strings owned by pool entries and reset the pool */
 void type_pool_reset(void);
 

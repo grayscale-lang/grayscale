@@ -200,17 +200,27 @@ static const char *operator_to_string(TokenType op) {
     }
 }
 
+/* Forward declarations for type-name checks used by is_assignment_target */
+static bool is_struct_name(TypeChecker *checker, const char *name);
+static bool is_enum_name(TypeChecker *checker, const char *name);
+
 /* True if the expression is an assignment target (something with a stable
  * address): a variable, a field of an assignment target, an index into an
- * assignment target, or a pointer dereference. Used by addr() and ref() to
- * reject literals, call results, arithmetic expressions, etc. — none of
- * which have an address to take. */
-static bool is_assignment_target(AstNode *e) {
+ * assignment target, or a pointer dereference. Used by addr(), raw(), and
+ * ref() to reject literals, call results, arithmetic expressions, and type
+ * names — none of which have an address to take. */
+static bool is_assignment_target(TypeChecker *checker, AstNode *e) {
     if (!e) return false;
     switch (e->kind) {
-    case NODE_LABEL:        return true;
-    case NODE_MEMBER_EXPR:  return is_assignment_target(e->data.member.object);
-    case NODE_INDEX_EXPR:   return is_assignment_target(e->data.index_expr.left);
+    case NODE_LABEL: {
+        const char *name = e->data.label.value;
+        if (is_builtin_type_name(name)) return false;
+        if (is_struct_name(checker, name)) return false;
+        if (is_enum_name(checker, name)) return false;
+        return true;
+    }
+    case NODE_MEMBER_EXPR:  return is_assignment_target(checker, e->data.member.object);
+    case NODE_INDEX_EXPR:   return is_assignment_target(checker, e->data.index_expr.left);
     case NODE_POSTFIX_EXPR:
         /* p^ (dereference) is an assignment target */
         return e->data.postfix.op == TOK_CARET;
@@ -3627,7 +3637,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "addr() cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        if (!is_assignment_target(arg)) {
+        if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "addr() requires a variable, field, or index expression; cannot take address of a literal or expression",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -3641,7 +3651,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "raw() cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        if (!is_assignment_target(arg)) {
+        if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "raw() requires a variable, field, or index expression; cannot take address of a literal or expression",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -3671,7 +3681,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                     "ref() cannot take a reference to a map index expression; map values may relocate on rehash",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            if (!is_assignment_target(arg)) {
+            if (!is_assignment_target(checker, arg)) {
                 diagnostic_error_message(checker->diag, "E3012",
                     "ref() requires a variable, field, or index expression; cannot take a reference to a literal, call result, or expression",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
