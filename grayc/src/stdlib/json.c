@@ -61,29 +61,25 @@ static size_t json_map_val_len(GrayString *val) {
 GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
     /* Pass 1: compute exact size */
     size_t need = 2; /* { } */
-    int counted = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (counted > 0) need += 1; /* comma */
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) need += 1; /* comma */
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         GrayString *val = (GrayString *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         need += json_escaped_len(*key) + 1 /* colon */ + json_map_val_len(val);
-        counted++;
     }
     /* Pass 2: write */
     char *buf = gray_arena_alloc(arena, need + 1);
     int pos = 0;
     buf[pos++] = '{';
-    int entry = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (entry > 0) { buf[pos++] = ','; }
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) { buf[pos++] = ','; }
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         GrayString *val = (GrayString *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         json_append_escaped(buf, &pos, *key);
         buf[pos++] = ':';
         json_append_escaped(buf, &pos, *val);
-        entry++;
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
@@ -179,22 +175,19 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr) {
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
     /* Pass 1: exact size — key (escaped) + colon + int (max 21) */
     size_t need = 2;
-    int counted = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (counted > 0) need += 1;
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) need += 1;
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         need += json_escaped_len(*key) + 1 + 21;
-        counted++;
     }
     /* Pass 2: write */
     char *buf = gray_arena_alloc(arena, need + 1);
     int pos = 0;
     buf[pos++] = '{';
-    int entry = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (entry > 0) { buf[pos++] = ','; }
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) { buf[pos++] = ','; }
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         int64_t *val = (int64_t *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         json_append_escaped(buf, &pos, *key);
@@ -202,7 +195,6 @@ GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
         int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, *val);
         if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
         else { pos = (int)need; break; }
-        entry++;
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
@@ -212,22 +204,19 @@ GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
 GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
     /* Pass 1: exact size — key (escaped) + colon + float (max 24) */
     size_t need = 2;
-    int counted = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (counted > 0) need += 1;
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) need += 1;
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         need += json_escaped_len(*key) + 1 + 24;
-        counted++;
     }
     /* Pass 2: write */
     char *buf = gray_arena_alloc(arena, need + 1);
     int pos = 0;
     buf[pos++] = '{';
-    int entry = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (entry > 0) { buf[pos++] = ','; }
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) { buf[pos++] = ','; }
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         double *val = (double *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         json_append_escaped(buf, &pos, *key);
@@ -235,7 +224,6 @@ GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
         int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", *val);
         if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
         else { pos = (int)need; break; }
-        entry++;
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
@@ -245,30 +233,26 @@ GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
 GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m) {
     /* Pass 1: exact size */
     size_t need = 2;
-    int counted = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (counted > 0) need += 1;
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) need += 1;
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         bool *val = (bool *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         need += json_escaped_len(*key) + 1 + (*val ? 4 : 5);
-        counted++;
     }
     /* Pass 2: write */
     char *buf = gray_arena_alloc(arena, need + 1);
     int pos = 0;
     buf[pos++] = '{';
-    int entry = 0;
-    for (int32_t i = 0; i < m->capacity; i++) {
-        if (m->states[i] != 1) continue;
-        if (entry > 0) { buf[pos++] = ','; }
+    for (int32_t oi = 0; oi < m->order_len; oi++) {
+        if (oi > 0) { buf[pos++] = ','; }
+        int32_t i = m->order[oi];
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
         bool *val = (bool *)((char *)m->values + (size_t)i * (size_t)m->value_size);
         json_append_escaped(buf, &pos, *key);
         buf[pos++] = ':';
         if (*val) { memcpy(buf + pos, "true", 4); pos += 4; }
         else { memcpy(buf + pos, "false", 5); pos += 5; }
-        entry++;
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
