@@ -213,6 +213,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@end
  */
 
+/*@man func
+ *@sig func(...) -> ReturnType
+ *@desc The function reference type. Holds a reference to a named function created with ()name or ref(name). Used as parameter types, struct fields, and in arrays/maps. References are const-only and not printable.
+ *@example
+ *   do double(n int) -> int { return n * 2 }
+ *   const f = ()double
+ *   f(5)   // 10
+ *@end
+ */
+
 /*@man cast
  *@sig cast(value, TargetType) -> TargetType
  *@desc Explicit type conversion. Required for sized integer types (i8, u32, etc). Truncates floats. Enforces range at runtime.

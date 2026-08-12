@@ -770,6 +770,26 @@ when shape {
 
 The number of bindings in a pattern must match the variant's payload count. `#strict` exhaustiveness checking works with tagged enums.
 
+#### 3.2.5 Function References
+
+`func` is a type keyword that represents a reference to a named function. Function references are created with `()name` or `ref(name)` and are always `const`. The `func` type is used in parameter declarations, struct fields, arrays, and maps to accept or store callable references.
+
+```gray
+do double(n int) -> int { return n * 2 }
+const f = ()double
+f(5)   // 10
+```
+
+A typed `func` signature specifies parameter and return types:
+
+```gray
+do apply(x int, f func(int) -> int) -> int {
+    return f(x)
+}
+```
+
+See [§7.6 Function References](#76-function-references) for full documentation including calling conventions, parameter usage, and struct field storage.
+
 ### 3.3 Type Inference
 
 Grayscale is a statically-typed language with type inference. The type of every variable is known at compile time, and explicit type annotations are optional in most contexts when the compiler can determine the type from the initializer.
