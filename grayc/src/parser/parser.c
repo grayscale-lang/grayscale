@@ -1113,7 +1113,17 @@ static AstNode *parse_call_expression(Parser *parser, AstNode *function) {
                 next_token(parser); /* skip colon, now on value */
             }
 
-            args[count] = parse_expression(parser, PREC_LOWEST);
+            /* size_of(^T): parse pointer type as a type expression, not a general expression */
+            if (function->kind == NODE_LABEL &&
+                strcmp(function->data.label.value, "size_of") == 0 &&
+                current_token_is(parser, TOK_CARET)) {
+                const char *type_str = parse_complex_type(parser);
+                AstNode *label = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
+                label->data.label.value = type_str;
+                args[count] = label;
+            } else {
+                args[count] = parse_expression(parser, PREC_LOWEST);
+            }
             count++;
 
             if (!peek_token_is(parser, TOK_COMMA)) break;

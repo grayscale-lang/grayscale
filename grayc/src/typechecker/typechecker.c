@@ -4932,11 +4932,18 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     bool is_ref_call = (node->data.call.function &&
         node->data.call.function->kind == NODE_LABEL &&
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
+    bool is_size_of_call = (node->data.call.function &&
+        node->data.call.function->kind == NODE_LABEL &&
+        strcmp(node->data.call.function->data.label.value, "size_of") == 0);
     for (int i = 0; i < node->data.call.arg_count; i++) {
         if (is_ref_call && node->data.call.args[i]->kind == NODE_LABEL &&
             find_func(checker, node->data.call.args[i]->data.label.value)) {
             continue;
         }
+        /* Skip size_of() label arguments — the builtin handler treats
+         * them as type names (e.g. size_of(^int)), not variables. */
+        if (is_size_of_call && node->data.call.args[i]->kind == NODE_LABEL)
+            continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
         if (node->data.call.args[i]->kind == NODE_IMPLICIT_ENUM)
