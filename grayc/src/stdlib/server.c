@@ -93,12 +93,12 @@ void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
 
     /* Null-terminate method and pattern */
     GrayArena *arena = get_server_arena();
-    char *method_copy = gray_arena_alloc(arena, method.len + 1);
+    char *method_copy = gray_arena_alloc_uninitialized(arena,method.len + 1);
     memcpy(method_copy, method.data, method.len);
     method_copy[method.len] = '\0';
     route->method = method_copy;
 
-    char *pattern_copy = gray_arena_alloc(arena, pattern.len + 1);
+    char *pattern_copy = gray_arena_alloc_uninitialized(arena,pattern.len + 1);
     memcpy(pattern_copy, pattern.data, pattern.len);
     pattern_copy[pattern.len] = '\0';
     route->pattern = pattern_copy;
@@ -113,7 +113,7 @@ void gray_server_cors(GrayRouter *r, GrayString origin) {
         }
     }
     GrayArena *arena = get_server_arena();
-    char *origin_copy = gray_arena_alloc(arena, origin.len + 1);
+    char *origin_copy = gray_arena_alloc_uninitialized(arena,origin.len + 1);
     memcpy(origin_copy, origin.data, origin.len);
     origin_copy[origin.len] = '\0';
     r->cors_origin = origin_copy;

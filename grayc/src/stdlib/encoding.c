@@ -17,7 +17,7 @@ static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 
 GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString s) {
     int32_t output_length = ((s.len + 2) / 3) * 4;
-    char *out = gray_arena_alloc(arena, (size_t)output_length + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     int j = 0;
     for (int i = 0; i < s.len; i += 3) {
         uint32_t a = (uint8_t)s.data[i];
@@ -57,7 +57,7 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s) {
     if (s.len >= 2 && s.data[s.len - 2] == '=') pad++;
 
     int32_t output_length = (s.len / 4) * 3 - pad;
-    char *out = gray_arena_alloc(arena, (size_t)output_length + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     int32_t j = 0;
 
     for (int32_t i = 0; i < s.len; i += 4) {
@@ -96,7 +96,7 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s) {
 
 GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString s) {
     int32_t output_length = s.len * 2;
-    char *out = gray_arena_alloc(arena, (size_t)output_length + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     for (int i = 0; i < s.len; i++) {
         snprintf(out + i * 2, 3, "%02x", (uint8_t)s.data[i]);
     }
@@ -110,7 +110,7 @@ GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s) {
         gray_panic_code("P0040", "encoding.hex_decode: input length %d is not even", s.len);
     }
     int32_t output_length = s.len / 2;
-    char *out = gray_arena_alloc(arena, (size_t)output_length + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     for (int i = 0; i < output_length; i++) {
         unsigned char hi = (unsigned char)s.data[i * 2];
         unsigned char lo = (unsigned char)s.data[i * 2 + 1];
@@ -128,7 +128,7 @@ GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s) {
 
 GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s) {
     /* Worst case: every char becomes %XX (3x) */
-    char *out = gray_arena_alloc(arena, (size_t)s.len * 3 + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)s.len * 3 + 1);
     int j = 0;
     for (int i = 0; i < s.len; i++) {
         unsigned char c = (unsigned char)s.data[i];
@@ -144,7 +144,7 @@ GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s) {
 }
 
 GrayString gray_encoding_url_decode(GrayArena *arena, GrayString s) {
-    char *out = gray_arena_alloc(arena, (size_t)s.len + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
     int j = 0;
     for (int i = 0; i < s.len; i++) {
         if (s.data[i] == '%' && i + 2 < s.len) {
@@ -197,7 +197,7 @@ GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex) {
 
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes) {
     int32_t output_length = bytes->len * 2;
-    char *hex = gray_arena_alloc(arena, (size_t)output_length + 1);
+    char *hex = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     uint8_t *data = (uint8_t *)bytes->data;
     for (int32_t i = 0; i < bytes->len; i++) {
         snprintf(hex + i * 2, 3, "%02x", data[i]);

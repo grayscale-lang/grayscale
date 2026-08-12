@@ -115,7 +115,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayStri
     if (match_count == 0) return text;
 
     /* Second pass: build result into arena-allocated buffer */
-    char *result = (char *)gray_arena_alloc(arena, out_size + 1);
+    char *result = (char *)gray_arena_alloc_uninitialized(arena, out_size + 1);
     int pos = 0;
     cursor = txt_buf;
 

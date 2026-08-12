@@ -156,7 +156,7 @@ GrayUUID gray_uuid_parse(GrayArena *arena, GrayString s) {
     if (!gray_uuid_is_valid(s)) {
         gray_builtin_panic_msg(gray_string_lit("uuid.parse: invalid UUID string"));
     }
-    char *buf = (char *)gray_arena_alloc(arena, GRAY_UUID_LEN + 1);
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, GRAY_UUID_LEN + 1);
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
         char c = s.data[i];
         buf[i] = (c >= 'A' && c <= 'F') ? (char)(c - 'A' + 'a') : c;

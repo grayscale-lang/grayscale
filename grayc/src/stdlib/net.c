@@ -75,7 +75,7 @@ GrayString gray_net_recv(GrayArena *arena, GraySocket sock, int64_t max_bytes) {
 
     size_t buffer_size = (size_t)max_bytes;
     if (buffer_size > GRAY_NET_MAX_RECV_BUF) buffer_size = GRAY_NET_MAX_RECV_BUF; /* cap at 1MB */
-    char *buf = gray_arena_alloc(arena, buffer_size);
+    char *buf = gray_arena_alloc_uninitialized(arena, buffer_size);
 
     int64_t n = (int64_t)recv(sock.fd, buf, (int)buffer_size, 0);
     if (n <= 0) return (GrayString){"", 0};

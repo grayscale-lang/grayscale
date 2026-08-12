@@ -36,7 +36,7 @@ GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
 
                 /* RFC 4180 §2.7: unescape doubled quotes ("") to single (") */
                 if (memchr(field_start, '"', (size_t)field_length)) {
-                    char *buf = gray_arena_alloc(arena, (size_t)field_length);
+                    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)field_length);
                     int32_t out = 0;
                     for (int32_t k = 0; k < field_length; k++) {
                         buf[out++] = field_start[k];
@@ -76,7 +76,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
             GrayString s = GRAY_ARRAY_GET(*data, GrayString, i);
             total += s.len + 1;
         }
-        char *buf = gray_arena_alloc(arena, (size_t)total + 1);
+        char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
         int32_t pos = 0;
         for (int32_t i = 0; i < data->len; i++) {
             GrayString s = GRAY_ARRAY_GET(*data, GrayString, i);
@@ -100,7 +100,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         }
         total++; /* newline */
     }
-    char *buf = gray_arena_alloc(arena, (size_t)total + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
     int32_t pos = 0;
     for (int32_t i = 0; i < data->len; i++) {
         GrayArray *row = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
@@ -130,7 +130,7 @@ static GrayArray csv_read_from(GrayArena *arena, FILE *f) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *content = gray_arena_alloc(arena, (size_t)size + 1);
+    char *content = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
     size_t n = fread(content, 1, (size_t)size, f);
     content[n] = '\0';
     GrayString s = { content, (int32_t)n };

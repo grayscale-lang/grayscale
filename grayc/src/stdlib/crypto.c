@@ -79,7 +79,7 @@ GrayString gray_crypto_sha256(GrayArena *arena, GrayString data) {
         h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
     }
 
-    char *hex = gray_arena_alloc(arena, 65);
+    char *hex = gray_arena_alloc_uninitialized(arena, 65);
     for (int i = 0; i < 8; i++)
         snprintf(hex + i*8, 9, "%08x", h[i]);
     hex[64] = '\0';
@@ -140,7 +140,7 @@ GrayString gray_crypto_md5(GrayArena *arena, GrayString data) {
         a0+=A; b0+=B; c0+=C; d0+=D;
     }
 
-    char *hex = gray_arena_alloc(arena, 33);
+    char *hex = gray_arena_alloc_uninitialized(arena, 33);
     uint8_t digest[16];
     memcpy(digest, &a0, 4); memcpy(digest+4, &b0, 4);
     memcpy(digest+8, &c0, 4); memcpy(digest+12, &d0, 4);
@@ -155,13 +155,13 @@ GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
         gray_panic_code("P0051", "crypto.random_hex: length must be non-negative (got %lld)", (long long)length);
     }
     if (length == 0) {
-        char *empty = gray_arena_alloc(arena, 1);
+        char *empty = gray_arena_alloc_uninitialized(arena, 1);
         empty[0] = '\0';
         return (GrayString){empty, 0};
     }
 
     int64_t nbytes = (length + 1) / 2;
-    uint8_t *raw = (uint8_t *)gray_arena_alloc(arena, (size_t)nbytes);
+    uint8_t *raw = (uint8_t *)gray_arena_alloc_uninitialized(arena, (size_t)nbytes);
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
     arc4random_buf(raw, (size_t)nbytes);
@@ -185,7 +185,7 @@ GrayString gray_crypto_random_hex(GrayArena *arena, int64_t length) {
 #endif
 
     static const char hex_chars[] = "0123456789abcdef";
-    char *hex = gray_arena_alloc(arena, (size_t)length + 1);
+    char *hex = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
     for (int64_t i = 0; i < length; i++) {
         int nibble = (i % 2 == 0) ? ((raw[i / 2] >> 4) & 0x0f) : (raw[i / 2] & 0x0f);
         hex[i] = hex_chars[nibble];

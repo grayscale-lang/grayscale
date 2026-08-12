@@ -196,7 +196,7 @@ static DWORD WINAPI drain_pipe(LPVOID param) {
         }
         if (r->total + got > r->cap) {
             size_t new_cap = r->cap * 2 + got;
-            char *grown = gray_arena_alloc(r->arena, new_cap);
+            char *grown = gray_arena_alloc_uninitialized(r->arena, new_cap);
             memcpy(grown, r->buf, r->total);
             r->buf = grown;
             r->cap = new_cap;
@@ -261,8 +261,8 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     CloseHandle(out_w);
     CloseHandle(err_w);
 
-    PipeReader out_reader = {out_r, arena, gray_arena_alloc(arena, 4096), 0, 4096, false};
-    PipeReader err_reader = {err_r, arena, gray_arena_alloc(arena, 4096), 0, 4096, false};
+    PipeReader out_reader = {out_r, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
+    PipeReader err_reader = {err_r, arena, gray_arena_alloc_uninitialized(arena, 4096), 0, 4096, false};
 
     HANDLE out_thread = CreateThread(NULL, 0, drain_pipe, &out_reader, 0, NULL);
     drain_pipe(&err_reader);
@@ -295,7 +295,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
 
     /* Build null-terminated argv: argv[0] = cmd, argv[1..n] = args, argv[n+1] = NULL */
     int argc = 1 + args.len;
-    char **argv = gray_arena_alloc(arena, sizeof(char *) * (size_t)(argc + 1));
+    char **argv = gray_arena_alloc_uninitialized(arena, sizeof(char *) * (size_t)(argc + 1));
     argv[0] = (char *)cmd.data;
     for (int i = 0; i < args.len; i++) {
         GrayString s = GRAY_ARRAY_GET(args, GrayString, i);
@@ -338,8 +338,8 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
     char buf[4096];
     size_t out_total = 0, err_total = 0;
     size_t out_cap = sizeof(buf), err_cap = sizeof(buf);
-    char *out_buf = gray_arena_alloc(arena, out_cap);
-    char *err_buf = gray_arena_alloc(arena, err_cap);
+    char *out_buf = gray_arena_alloc_uninitialized(arena, out_cap);
+    char *err_buf = gray_arena_alloc_uninitialized(arena, err_cap);
     int out_fd = stdout_pipe[0];
     int err_fd = stderr_pipe[0];
     bool out_done = false, err_done = false;
@@ -365,7 +365,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
             } else {
                 if (out_total + (size_t)n > out_cap) {
                     size_t new_cap = out_cap * 2 + (size_t)n;
-                    char *grown = gray_arena_alloc(arena, new_cap);
+                    char *grown = gray_arena_alloc_uninitialized(arena, new_cap);
                     memcpy(grown, out_buf, out_total);
                     out_buf = grown;
                     out_cap = new_cap;
@@ -387,7 +387,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
             } else {
                 if (err_total + (size_t)n > err_cap) {
                     size_t new_cap = err_cap * 2 + (size_t)n;
-                    char *grown = gray_arena_alloc(arena, new_cap);
+                    char *grown = gray_arena_alloc_uninitialized(arena, new_cap);
                     memcpy(grown, err_buf, err_total);
                     err_buf = grown;
                     err_cap = new_cap;

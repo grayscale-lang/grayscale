@@ -238,7 +238,7 @@ GrayString gray_io_dirname(GrayArena *arena, GrayString path) {
     if (last_separator < 0) return gray_string_lit(".");
     /* Collapse leading separator: dirname("/foo") -> "/" */
     if (last_separator == 0) return gray_string_lit("/");
-    char *buf = gray_arena_alloc(arena, (size_t)last_separator + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)last_separator + 1);
     memcpy(buf, path.data, (size_t)last_separator);
     buf[last_separator] = '\0';
     return (GrayString){ buf, (int32_t)last_separator };
@@ -253,7 +253,7 @@ GrayString gray_io_basename(GrayArena *arena, GrayString path) {
     int start = end;
     while (start > 0 && path.data[start - 1] != '/' && path.data[start - 1] != '\\') start--;
     int32_t len = (int32_t)(end - start);
-    char *buf = gray_arena_alloc(arena, (size_t)len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(buf, path.data + start, (size_t)len);
     buf[len] = '\0';
     return (GrayString){ buf, len };
@@ -274,7 +274,7 @@ GrayString gray_io_extension(GrayArena *arena, GrayString path) {
     /* Dotfiles: leading dot with no other dot is part of the name, not an extension */
     if (dot_position == search_start) return gray_string_lit("");
     int32_t len = (int32_t)(path.len - dot_position);
-    char *buf = gray_arena_alloc(arena, (size_t)len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(buf, path.data + dot_position, (size_t)len);
     buf[len] = '\0';
     return (GrayString){ buf, len };
@@ -286,7 +286,7 @@ bool gray_io_is_absolute(GrayString path) {
 
 GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
     if (path.len == 0) return gray_string_lit(".");
-    char *buf = gray_arena_alloc(arena, (size_t)path.len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 1);
     /* Copy input, converting backslashes to forward slashes */
     for (int i = 0; i < path.len; i++) {
         buf[i] = (path.data[i] == '\\') ? '/' : path.data[i];
@@ -317,7 +317,7 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
     }
 
     /* Rebuild */
-    char *out = gray_arena_alloc(arena, (size_t)path.len + 2);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 2);
     int pos = 0;
     if (absolute) out[pos++] = '/';
     for (int i = 0; i < seg_count; i++) {
@@ -348,7 +348,7 @@ static GrayString io_read_file_impl(GrayArena *arena, FILE *f) {
     }
 
     if (size >= 0 && size <= INT32_MAX) {
-        char *buf = gray_arena_alloc(arena, (size_t)size + 1);
+        char *buf = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
         size_t bytes = fread(buf, 1, (size_t)size, f);
         buf[bytes] = '\0';
         return (GrayString){ buf, (int32_t)bytes };
@@ -361,14 +361,14 @@ static GrayString io_read_file_impl(GrayArena *arena, FILE *f) {
     clearerr(f);
     size_t capacity = GRAY_IO_READ_BUF;
     size_t len = 0;
-    char *buf = gray_arena_alloc(arena, capacity);
+    char *buf = gray_arena_alloc_uninitialized(arena, capacity);
     for (;;) {
         if (len == capacity) {
             if (capacity > (size_t)INT32_MAX / 2) {
                 return (GrayString){ NULL, -1 };
             }
             size_t new_capacity = capacity * 2;
-            char *new_buffer = gray_arena_alloc(arena, new_capacity);
+            char *new_buffer = gray_arena_alloc_uninitialized(arena, new_capacity);
             memcpy(new_buffer, buf, len);
             buf = new_buffer;
             capacity = new_capacity;
@@ -378,7 +378,7 @@ static GrayString io_read_file_impl(GrayArena *arena, FILE *f) {
         len += got;
     }
     if (len == capacity) {
-        char *grow = gray_arena_alloc(arena, len + 1);
+        char *grow = gray_arena_alloc_uninitialized(arena, len + 1);
         memcpy(grow, buf, len);
         buf = grow;
     }
@@ -434,7 +434,7 @@ GrayArray gray_io_read_lines(GrayArena *arena, GrayString path) {
         int32_t len = (int32_t)(nl - p);
         /* Strip trailing \r for Windows line endings */
         if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc(arena, (size_t)len + 1);
+        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };
@@ -964,7 +964,7 @@ GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path) {
         while (nl < end && *nl != '\n') nl++;
         int32_t len = (int32_t)(nl - p);
         if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc(arena, (size_t)len + 1);
+        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };

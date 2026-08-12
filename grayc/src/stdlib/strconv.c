@@ -204,7 +204,7 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString s) {
 GrayString gray_strconv_from_int(GrayArena *arena, int64_t n) {
     char buf[STRCONV_BUF_SIZE];
     int len = snprintf(buf, sizeof(buf), "%" PRId64, n);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
@@ -212,7 +212,7 @@ GrayString gray_strconv_from_int(GrayArena *arena, int64_t n) {
 GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t n) {
     char buf[STRCONV_BUF_SIZE];
     int len = snprintf(buf, sizeof(buf), "%" PRIu64, n);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
@@ -220,7 +220,7 @@ GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t n) {
 GrayString gray_strconv_from_float(GrayArena *arena, double f) {
     char buf[STRCONV_BUF_SIZE];
     int len = gray_fmt_shortest_float(buf, sizeof(buf), f);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
