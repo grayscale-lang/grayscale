@@ -20,7 +20,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#if !defined(_WIN32)
 #include <unistd.h>
+#endif
 
 /* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
 #if defined(__APPLE__) || defined(__FreeBSD__)

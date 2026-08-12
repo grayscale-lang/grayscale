@@ -12,7 +12,6 @@
 #include "time.h"
 #include "../util/constants.h"
 #include <time.h>
-#include <unistd.h>
 #include <string.h>
 
 int64_t gray_time_now(void) { return (int64_t)time(NULL); }
