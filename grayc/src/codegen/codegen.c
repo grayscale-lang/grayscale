@@ -864,11 +864,12 @@ static void emit_deep_array_copy(CodeGen *codegen, AstNode *src_node, const char
     emit(codegen, "; })");
 }
 
-/* Resolve an import alias to the actual module name, or return the name itself */
+/* Resolve an import alias to the actual module name, or return the name itself.
+ * alias_names is sorted after the init pass, so we use bsearch. */
 static const char *resolve_alias(CodeGen *codegen, const char *name) {
-    for (int i = 0; i < codegen->alias_count; i++) {
-        if (strcmp(codegen->alias_names[i], name) == 0) return codegen->alias_modules[i];
-    }
+    const char **hit = bsearch(name, codegen->alias_names, (size_t)codegen->alias_count,
+                               sizeof(const char *), keyword_compare);
+    if (hit) return codegen->alias_modules[hit - codegen->alias_names];
     return name;
 }
 
@@ -908,13 +909,13 @@ static void unregister_raw_variable(CodeGen *codegen, const char *name) {
     codegen->raw_var_count++;
 }
 
-/* Returns true if the named enum is string-backed. */
+/* Returns true if the named enum is string-backed.
+ * enum_names is sorted after the init pass, so we use bsearch. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
     if (!name) return false;
-    for (int i = 0; i < codegen->enum_count; i++) {
-        if (strcmp(codegen->enum_names[i], name) == 0)
-            return codegen->enum_is_string[i];
-    }
+    const char **hit = bsearch(name, codegen->enum_names, (size_t)codegen->enum_count,
+                               sizeof(const char *), keyword_compare);
+    if (hit) return codegen->enum_is_string[hit - codegen->enum_names];
     return false;
 }
 
@@ -1595,15 +1596,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         case TK_STRING: c_type = "GrayString"; break;
         case TK_STRUCT: c_type = gray_type_to_c_codegen(codegen, elem_t->name); break;
         case TK_ENUM: {
-            bool is_str = false;
-            if (elem_t->name) {
-                for (int ei = 0; ei < codegen->enum_count; ei++) {
-                    if (strcmp(codegen->enum_names[ei], elem_t->name) == 0) {
-                        is_str = codegen->enum_is_string[ei];
-                        break;
-                    }
-                }
-            }
+            bool is_str = elem_t->name ? codegen_enum_is_string(codegen, elem_t->name) : false;
             static char enum_arr_buf[MSG_BUF_SIZE];
             if (is_str) {
                 c_type = "GrayString";
@@ -1880,20 +1873,10 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         bool left_is_str = (left_type && left_type->kind == TK_STRING) || node->data.infix.left->kind == NODE_STRING_VALUE;
         bool right_is_str = (right_type && right_type->kind == TK_STRING) || node->data.infix.right->kind == NODE_STRING_VALUE;
         /* Also treat string enum operands as strings for comparison purposes */
-        if (left_type && left_type->kind == TK_ENUM && left_type->name) {
-            for (int ei = 0; ei < codegen->enum_count; ei++) {
-                if (strcmp(codegen->enum_names[ei], left_type->name) == 0 && codegen->enum_is_string[ei]) {
-                    left_is_str = true; break;
-                }
-            }
-        }
-        if (right_type && right_type->kind == TK_ENUM && right_type->name) {
-            for (int ei = 0; ei < codegen->enum_count; ei++) {
-                if (strcmp(codegen->enum_names[ei], right_type->name) == 0 && codegen->enum_is_string[ei]) {
-                    right_is_str = true; break;
-                }
-            }
-        }
+        if (left_type && left_type->kind == TK_ENUM && left_type->name &&
+            codegen_enum_is_string(codegen, left_type->name)) left_is_str = true;
+        if (right_type && right_type->kind == TK_ENUM && right_type->name &&
+            codegen_enum_is_string(codegen, right_type->name)) right_is_str = true;
 
         if ((left_is_str || right_is_str) && op == TOK_PLUS) {
             /* String concatenation is rejected by the typechecker (E3048).
@@ -9270,15 +9253,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         bool when_is_tagged = false;
         const char *when_tagged_ename = NULL;
         if (!when_is_string && when_val_t && when_val_t->kind == TK_ENUM && when_val_t->name) {
-            for (int ei = 0; ei < codegen->enum_count; ei++) {
-                if (strcmp(codegen->enum_names[ei], when_val_t->name) == 0) {
-                    if (codegen->enum_is_string[ei]) when_is_string = true;
-                    if (codegen->enum_is_tagged[ei]) {
-                        when_is_tagged = true;
-                        when_tagged_ename = when_val_t->name;
-                    }
-                    break;
-                }
+            if (codegen_enum_is_string(codegen, when_val_t->name)) when_is_string = true;
+            if (codegen_enum_is_tagged(codegen, when_val_t->name)) {
+                when_is_tagged = true;
+                when_tagged_ename = when_val_t->name;
             }
         }
         /* Detect wide integer type for the when value */
@@ -9491,23 +9469,21 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
 /* --- Public API --- */
 
 static bool codegen_is_enum(CodeGen *codegen, const char *name) {
-    for (int i = 0; i < codegen->enum_count; i++) {
-        if (strcmp(codegen->enum_names[i], name) == 0) return true;
-    }
-    return false;
+    return bsearch(name, codegen->enum_names, (size_t)codegen->enum_count,
+                   sizeof(const char *), keyword_compare) != NULL;
 }
 
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name) {
-    for (int i = 0; i < codegen->enum_count; i++) {
-        if (strcmp(codegen->enum_names[i], name) == 0) return codegen->enum_is_tagged[i];
-    }
+    const char **hit = bsearch(name, codegen->enum_names, (size_t)codegen->enum_count,
+                               sizeof(const char *), keyword_compare);
+    if (hit) return codegen->enum_is_tagged[hit - codegen->enum_names];
     return false;
 }
 
 static int codegen_enum_index(CodeGen *codegen, const char *name) {
-    for (int i = 0; i < codegen->enum_count; i++) {
-        if (strcmp(codegen->enum_names[i], name) == 0) return i;
-    }
+    const char **hit = bsearch(name, codegen->enum_names, (size_t)codegen->enum_count,
+                               sizeof(const char *), keyword_compare);
+    if (hit) return (int)(hit - codegen->enum_names);
     return -1;
 }
 
@@ -9727,6 +9703,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         }
     }
 
+    /* Sort alias arrays for O(log n) bsearch in resolve_alias() */
+    for (int i = 1; i < codegen->alias_count; i++) {
+        const char *kn = codegen->alias_names[i];
+        const char *km = codegen->alias_modules[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(codegen->alias_names[j], kn) > 0) {
+            codegen->alias_names[j+1] = codegen->alias_names[j];
+            codegen->alias_modules[j+1] = codegen->alias_modules[j];
+            j--;
+        }
+        codegen->alias_names[j+1] = kn;
+        codegen->alias_modules[j+1] = km;
+    }
+
     /* Emit preamble — core headers always included, stdlib headers only when imported */
     emit(codegen, "/* Generated by grayc */\n");
     emit(codegen, "#include \"runtime.h\"\n");
@@ -9882,6 +9872,26 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 }
                 emit_formatted(codegen, "} GrayEnum_%s;\n\n", stmt->data.enum_decl.name);
             }
+    }
+
+    /* Sort enum arrays for O(log n) bsearch in enum lookup functions */
+    for (int i = 1; i < codegen->enum_count; i++) {
+        const char *kn = codegen->enum_names[i];
+        bool ks = codegen->enum_is_string[i];
+        bool kt = codegen->enum_is_tagged[i];
+        AstNode *kd = codegen->enum_decls[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(codegen->enum_names[j], kn) > 0) {
+            codegen->enum_names[j+1] = codegen->enum_names[j];
+            codegen->enum_is_string[j+1] = codegen->enum_is_string[j];
+            codegen->enum_is_tagged[j+1] = codegen->enum_is_tagged[j];
+            codegen->enum_decls[j+1] = codegen->enum_decls[j];
+            j--;
+        }
+        codegen->enum_names[j+1] = kn;
+        codegen->enum_is_string[j+1] = ks;
+        codegen->enum_is_tagged[j+1] = kt;
+        codegen->enum_decls[j+1] = kd;
     }
 
     /* Emit struct declarations in dependency order (topological sort).
