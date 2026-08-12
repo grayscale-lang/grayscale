@@ -217,4 +217,8 @@ GrayType *typetable_get(TypeTable *table, AstNode *node);
 /* Get the type table from the checker */
 TypeTable *typechecker_get_table(TypeChecker *checker);
 
+/* Check if (mod, fn) is a known stdlib function.
+ * Used by codegen for unqualified 'using' dispatch. */
+bool stdlib_has_func(const char *mod, const char *fn);
+
 #endif

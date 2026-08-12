@@ -1303,6 +1303,15 @@ static const StdlibFuncMeta *find_stdlib_meta(const char *mod, const char *fn) {
     return hit ? *hit : NULL;
 }
 
+bool stdlib_has_func(const char *mod, const char *fn) {
+    for (int i = 0; i < STDLIB_META_N; i++) {
+        if (strcmp(stdlib_func_meta[i].mod, mod) == 0 &&
+            strcmp(stdlib_func_meta[i].fn, fn) == 0)
+            return true;
+    }
+    return false;
+}
+
 static GrayType *resolve_return_type(const char *rt) {
     if (!rt) return NULL;
     if (strcmp(rt, "void") == 0) return &TYPE_VOID;
