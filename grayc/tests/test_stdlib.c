@@ -913,7 +913,7 @@ static void test_strconv_from_uint(void) {
 
 static void test_strconv_from_float(void) {
     ASSERT_GRAY_STR(gray_strconv_from_float(arena, 3.14), "3.14");
-    ASSERT_GRAY_STR(gray_strconv_from_float(arena, 0.0), "0");
+    ASSERT_GRAY_STR(gray_strconv_from_float(arena, 0.0), "0.0");
 }
 
 static void test_strconv_from_bool(void) {
