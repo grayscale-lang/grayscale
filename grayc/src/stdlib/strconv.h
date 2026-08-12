@@ -90,6 +90,10 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString s);
  *   println(strconv.from_int(42))
  *@end
  */
+/* Format a double using the shortest representation that round-trips.
+ * Used by both builtins (to_string) and strconv (from_float). */
+int gray_fmt_shortest_float(char *buf, size_t buffer_size, double v);
+
 /* Type to string conversions */
 GrayString gray_strconv_from_int(GrayArena *arena, int64_t n);
 
