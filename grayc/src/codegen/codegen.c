@@ -10119,6 +10119,16 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
 
     /* Emit deferred tagged enum typedefs now that full struct
      * definitions are available for by-value payload fields. */
+
+    /* Forward-declare all tagged enum types so self-referential
+     * pointer payloads (e.g. ^Expr inside Expr) can resolve. */
+    for (int i = 0; i < enum_bucket_count; i++) {
+        AstNode *stmt = enum_bucket[i];
+        if (!stmt->data.enum_decl.is_tagged) continue;
+        const char *ename = stmt->data.enum_decl.name;
+        emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
+    }
+
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         if (!stmt->data.enum_decl.is_tagged) continue;
@@ -10137,8 +10147,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
         }
 
-        /* Tagged union struct */
-        emit_formatted(codegen, "typedef struct {\n");
+        /* Tagged union struct (matches forward declaration above) */
+        emit_formatted(codegen, "struct GrayEnum_%s {\n", ename);
         emit_formatted(codegen, "    GrayEnum_%s_Tag tag;\n", ename);
         bool has_any_payload = false;
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
@@ -10154,7 +10164,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
             emit_formatted(codegen, "    } data;\n");
         }
-        emit_formatted(codegen, "} GrayEnum_%s;\n\n", ename);
+        emit_formatted(codegen, "};\n\n");
     }
 
     /* : emit per-instantiation typedefs for generic (wildcard) structs.
