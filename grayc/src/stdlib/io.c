@@ -614,17 +614,24 @@ bool gray_io_move_file(GrayString src, GrayString dst) {
 
 /* ---- Directory operations ---- */
 
-GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
-    validate_path(path);
+/* Read directory entries from an already-opened DIR handle.
+ * Caller is responsible for closedir. */
+static GrayArray io_list_dir_from(GrayArena *arena, DIR *d) {
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    DIR *d = opendir(path.data);
-    if (!d) return arr;
     struct dirent *ent;
     while ((ent = readdir(d)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         GrayString name = gray_string_format(arena, "%s", ent->d_name);
         GRAY_ARRAY_PUSH(arena, &arr, &name);
     }
+    return arr;
+}
+
+GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
+    validate_path(path);
+    DIR *d = opendir(path.data);
+    if (!d) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = io_list_dir_from(arena, d);
     closedir(d);
     return arr;
 }
@@ -827,15 +834,8 @@ GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, Gr
 }
 
 GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path, GrayString new_path) {
-    GrayResult_bool r;
-    if (gray_io_rename_file(old_path, new_path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot rename '%s' to '%s'", old_path.data, new_path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_rename_file(old_path, new_path),
+        gray_string_format(arena, "cannot rename '%s' to '%s'", old_path.data, new_path.data));
 }
 
 GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayString dst) {
@@ -858,15 +858,8 @@ GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayS
 }
 
 GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayString dst) {
-    GrayResult_bool r;
-    if (gray_io_move_file(src, dst)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot move '%s' to '%s'", src.data, dst.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_move_file(src, dst),
+        gray_string_format(arena, "cannot move '%s' to '%s'", src.data, dst.data));
 }
 
 GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
@@ -878,70 +871,41 @@ GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot list directory '%s'", path.data));
         return r;
     }
+    r.v0 = io_list_dir_from(arena, d);
     closedir(d);
-    r.v0 = gray_io_list_dir(arena, path);
     r.v1 = NULL;
     return r;
 }
 
 GrayResult_bool gray_io_make_dir_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_make_dir(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create directory '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_make_dir(path),
+        gray_string_format(arena, "cannot create directory '%s'", path.data));
 }
 
 GrayResult_bool gray_io_make_dir_all_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_make_dir_all(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create directories '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_make_dir_all(path),
+        gray_string_format(arena, "cannot create directories '%s'", path.data));
 }
 
 GrayResult_bool gray_io_remove_dir_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_remove_dir(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot remove directory '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_remove_dir(path),
+        gray_string_format(arena, "cannot remove directory '%s'", path.data));
 }
 
 GrayResult_bool gray_io_remove_dir_all_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_remove_dir_all(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot recursively remove '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_remove_dir_all(path),
+        gray_string_format(arena, "cannot recursively remove '%s'", path.data));
 }
 
 GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array r;
-    DIR *d = opendir(path.data);
-    if (!d) {
+    struct stat st;
+    if (stat(path.data, &st) != 0 || !S_ISDIR(st.st_mode)) {
         r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot walk directory '%s'", path.data));
         return r;
     }
-    closedir(d);
     r.v0 = gray_io_walk(arena, path);
     r.v1 = NULL;
     return r;

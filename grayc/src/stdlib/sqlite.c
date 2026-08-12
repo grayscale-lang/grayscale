@@ -63,18 +63,11 @@ bool gray_sqlite_exec_params(GraySqlite *db, GrayString sql, GrayArray params) {
     return rc == SQLITE_DONE;
 }
 
-GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params) {
-    GrayArray rows = gray_array_new(arena, sizeof(GrayMap), 8);
-    if (!db || !db->handle) return rows;
-
-    sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
-    if (rc != SQLITE_OK || !stmt) return rows;
-
-    rc = bind_string_params(stmt, params);
-    if (rc != SQLITE_OK) { sqlite3_finalize(stmt); return rows; }
-
+/* Step through a prepared statement and collect all result rows into a GrayArray
+ * of GrayMap. Caller is responsible for sqlite3_finalize. */
+static GrayArray sqlite_collect_rows(GrayArena *arena, sqlite3_stmt *stmt) {
     int col_count = sqlite3_column_count(stmt);
+    GrayArray rows = gray_array_new(arena, sizeof(GrayMap), 8);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         GrayMap row = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), col_count * 2);
@@ -94,38 +87,32 @@ GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *db, GrayString 
         GRAY_ARRAY_PUSH(arena, &rows, &row);
     }
 
-    sqlite3_finalize(stmt);
     return rows;
 }
 
 GrayArray gray_sqlite_query(GrayArena *arena, GraySqlite *db, GrayString sql) {
-    GrayArray rows = gray_array_new(arena, sizeof(GrayMap), 8);
-    if (!db || !db->handle) return rows;
+    if (!db || !db->handle) return gray_array_new(arena, sizeof(GrayMap), 8);
 
     sqlite3_stmt *stmt = NULL;
-    int return_code =sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
-    if (return_code !=SQLITE_OK || !stmt) return rows;
+    int rc = sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
+    if (rc != SQLITE_OK || !stmt) return gray_array_new(arena, sizeof(GrayMap), 8);
 
-    int col_count = sqlite3_column_count(stmt);
+    GrayArray rows = sqlite_collect_rows(arena, stmt);
+    sqlite3_finalize(stmt);
+    return rows;
+}
 
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        GrayMap row = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), col_count * 2);
-        for (int i = 0; i < col_count; i++) {
-            const char *col_name = sqlite3_column_name(stmt, i);
-            GrayString key = gray_string_new(arena, col_name, (int32_t)strlen(col_name));
+GrayArray gray_sqlite_query_params(GrayArena *arena, GraySqlite *db, GrayString sql, GrayArray params) {
+    if (!db || !db->handle) return gray_array_new(arena, sizeof(GrayMap), 8);
 
-            const char *val_text = (const char *)sqlite3_column_text(stmt, i);
-            GrayString val;
-            if (val_text) {
-                val = gray_string_new(arena, val_text, (int32_t)strlen(val_text));
-            } else {
-                val = gray_string_lit("");
-            }
-            GRAY_MAP_SET(arena, &row, &key, &val);
-        }
-        GRAY_ARRAY_PUSH(arena, &rows, &row);
-    }
+    sqlite3_stmt *stmt = NULL;
+    int rc = sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
+    if (rc != SQLITE_OK || !stmt) return gray_array_new(arena, sizeof(GrayMap), 8);
 
+    rc = bind_string_params(stmt, params);
+    if (rc != SQLITE_OK) { sqlite3_finalize(stmt); return gray_array_new(arena, sizeof(GrayMap), 8); }
+
+    GrayArray rows = sqlite_collect_rows(arena, stmt);
     sqlite3_finalize(stmt);
     return rows;
 }
@@ -212,15 +199,15 @@ GrayResult_array gray_sqlite_query_result(GrayArena *arena, GraySqlite *db, Gray
         return r;
     }
     sqlite3_stmt *stmt = NULL;
-    int return_code =sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
-    if (return_code !=SQLITE_OK || !stmt) {
+    int rc = sqlite3_prepare_v2((sqlite3 *)db->handle, sql.data, sql.len, &stmt, NULL);
+    if (rc != SQLITE_OK || !stmt) {
         r.v0 = gray_array_new(arena, sizeof(GrayMap), 0);
         const char *errmsg = sqlite3_errmsg((sqlite3 *)db->handle);
         r.v1 = gray_error_new(arena, gray_string_format(arena, "query failed: %s", errmsg ? errmsg : "unknown error"));
         return r;
     }
+    r.v0 = sqlite_collect_rows(arena, stmt);
     sqlite3_finalize(stmt);
-    r.v0 = gray_sqlite_query(arena, db, sql);
     r.v1 = NULL;
     return r;
 }
@@ -240,8 +227,16 @@ GrayResult_array gray_sqlite_query_params_result(GrayArena *arena, GraySqlite *d
         r.v1 = gray_error_new(arena, gray_string_format(arena, "query_params failed: %s", errmsg ? errmsg : "unknown error"));
         return r;
     }
+    rc = bind_string_params(stmt, params);
+    if (rc != SQLITE_OK) {
+        const char *errmsg = sqlite3_errmsg((sqlite3 *)db->handle);
+        sqlite3_finalize(stmt);
+        r.v0 = gray_array_new(arena, sizeof(GrayMap), 0);
+        r.v1 = gray_error_new(arena, gray_string_format(arena, "query_params bind failed: %s", errmsg ? errmsg : "unknown error"));
+        return r;
+    }
+    r.v0 = sqlite_collect_rows(arena, stmt);
     sqlite3_finalize(stmt);
-    r.v0 = gray_sqlite_query_params(arena, db, sql, params);
     r.v1 = NULL;
     return r;
 }
