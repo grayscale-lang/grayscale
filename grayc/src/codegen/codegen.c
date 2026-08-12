@@ -3774,6 +3774,18 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
 
     if (strcmp(func, "raw") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
+        /* raw() is the unsafe escape hatch that bypasses const-source write
+         * protection.  When the source variable is const, &var produces a
+         * const-qualified pointer in C, which __auto_type would propagate.
+         * Look up the result type and emit an explicit cast to strip const. */
+        const char *raw_cast = NULL;
+        GrayType *raw_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node) : NULL;
+        if (raw_t && raw_t->kind == TK_POINTER && raw_t->name) {
+            char pname[MSG_BUF_SIZE];
+            snprintf(pname, sizeof(pname), "^%s", raw_t->name);
+            raw_cast = gray_type_to_c_codegen(codegen, pname);
+        }
         /* Handle raw(p^.field) / raw(p.field) where p is a pointer —
          * same pattern as addr() but without the nil check. */
         AstNode *raw_ptr_expr = NULL;
@@ -3795,13 +3807,16 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         }
         if (raw_ptr_expr && raw_field) {
             /* raw(p^.field): bare &p->field, no nil check */
+            if (raw_cast) emit_formatted(codegen, "(%s)", raw_cast);
             emit(codegen, "&(");
             emit_expression(codegen, raw_ptr_expr);
             emit_formatted(codegen, ")->%s", sanitize_name(raw_field));
         } else if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
             /* raw(p^): &(*p) simplifies to p, no nil check */
+            if (raw_cast) emit_formatted(codegen, "(%s)", raw_cast);
             emit_expression(codegen, arg->data.postfix.left);
         } else {
+            if (raw_cast) emit_formatted(codegen, "(%s)", raw_cast);
             emit(codegen, "&");
             emit_expression(codegen, arg);
         }
