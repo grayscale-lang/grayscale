@@ -11,7 +11,6 @@
 #include "arrays.h"
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 
 #define ARRAY_CHECK_ITER(arr) \
     do { if ((arr)->iterating > 0) \
@@ -34,12 +33,15 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, cons
 
     /* Grow if needed — same policy as gray_array_push */
     if (arr->len >= arr->cap) {
-        int32_t new_cap = arr->cap < GRAY_ARRAY_MIN_CAP ? GRAY_ARRAY_MIN_CAP : arr->cap * 2;
-        if (new_cap < arr->cap) {
-            fprintf(stderr, "Grayscale runtime: array capacity overflow\n");
-            exit(1);
+        int32_t new_cap;
+        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
+            new_cap = GRAY_ARRAY_MIN_CAP;
+        } else if (arr->cap > INT32_MAX / 2) {
+            gray_panic_code("P0035", "array capacity overflow");
+        } else {
+            new_cap = arr->cap * 2;
         }
-        void *new_data = gray_arena_alloc(arena, (size_t)new_cap * (size_t)arr->elem_size);
+        void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
         if (arr->data && arr->len > 0) {
             memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
         }
