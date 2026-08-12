@@ -1,0 +1,4 @@
+do main() {
+    mut arr [int] = {1, 2, 3}
+    arr.banana(4)
+}

@@ -3602,8 +3602,19 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         }
                     }
                 } else {
-                    result = &TYPE_VOID;
+                    diagnostic_error_code_formatted(checker->diag, "E4018",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        display_sname, mfn);
+                    result = &TYPE_UNKNOWN;
                 }
+            } else if (sym && sym->type &&
+                       sym->type->kind != TK_UNKNOWN && sym->type->kind != TK_VOID) {
+                char *msg = typechecker_format(checker,
+                    "type '%s' does not support function calls via dot notation",
+                    type_name(sym->type));
+                diagnostic_error_message(checker->diag, "E3013", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                result = &TYPE_UNKNOWN;
             } else {
                 result = &TYPE_VOID;
             }
