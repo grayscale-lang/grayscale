@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5008 - ref() calls validate argument count
+ * Expected: "expects 2 argument(s), got 0"
+ */
+
+do add(a int, b int) -> int {
+    return a + b
+}
+
+do main() {
+    mut r = ref(add)
+    println(r())
+}

@@ -8717,6 +8717,35 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                     if (sym) sym->func_ref_name = rname;
                 }
             }
+            /* ref(func_name) also creates a func reference — capture the
+             * referenced function name so call-site validation works. */
+            if (node->data.var_decl.value &&
+                node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+                AstNode *call_fn = node->data.var_decl.value->data.call.function;
+                if (call_fn->kind == NODE_LABEL &&
+                    strcmp(call_fn->data.label.value, "ref") == 0 &&
+                    node->data.var_decl.value->data.call.arg_count == 1) {
+                    AstNode *ref_arg = node->data.var_decl.value->data.call.args[0];
+                    const char *rname = NULL;
+                    if (ref_arg->kind == NODE_LABEL &&
+                        find_func(checker, ref_arg->data.label.value)) {
+                        rname = ref_arg->data.label.value;
+                    } else if (ref_arg->kind == NODE_MEMBER_EXPR &&
+                               ref_arg->data.member.object->kind == NODE_LABEL) {
+                        char buffer[MSG_BUF_SIZE];
+                        snprintf(buffer, sizeof(buffer), "%s_%s",
+                            ref_arg->data.member.object->data.label.value,
+                            ref_arg->data.member.member);
+                        if (find_func(checker, buffer))
+                            rname = arena_copy_string(checker->arena, buffer);
+                    }
+                    if (rname) {
+                        Symbol *sym = scope_lookup_local(checker->current_scope,
+                            node->data.var_decl.name);
+                        if (sym) sym->func_ref_name = rname;
+                    }
+                }
+            }
             /* Per-element tracking for [func] arrays initialised with a
              * literal of func refs (). Preserves each element's
              * originating function name so constant-index calls can
