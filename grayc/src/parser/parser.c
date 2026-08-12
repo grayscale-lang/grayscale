@@ -1460,11 +1460,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
 
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
-                next_token(parser); /* name (IDENT or _), or mut/const */
-                /* Allow repeated mut/const before subsequent variable names */
-                if (current_token_is(parser, TOK_MUT) || current_token_is(parser, TOK_CONST)) {
-                    next_token(parser); /* skip to actual name */
-                }
+                next_token(parser); /* name (IDENT or _) */
                 names[var_count] = parser->cur_token.literal;
                 if (current_token_is(parser, TOK_BLANK)) names[var_count] = "_";
                 if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_CARET) ||
