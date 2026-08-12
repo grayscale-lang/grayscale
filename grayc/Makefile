@@ -83,7 +83,6 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/uuid.c \
          src/stdlib/encoding.c \
          src/stdlib/crypto.c \
-         src/stdlib/bytes.c \
          src/stdlib/binary.c \
          src/stdlib/csv.c \
          src/stdlib/json.c \

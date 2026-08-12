@@ -2,12 +2,12 @@
  * chained_stdlib_calls.gray - Test rvalue args to &-taking stdlib functions
  *
  * Ensures the compiler materialises rvalues into temporaries instead of
- * emitting invalid C like &function_call().  Covers binary, bytes, arrays,
+ * emitting invalid C like &function_call().  Covers binary, encoding, arrays,
  * maps, and strings chaining.
  */
 
 import @binary
-import @bytes
+import @encoding
 import @arrays
 import @maps
 import @strings
@@ -36,22 +36,22 @@ do main() {
         failed += 1
     }
 
-    // bytes: to_string(from_string(...)) chain
-    mut s1 string = bytes.to_string(bytes.from_string("hello"))
+    // encoding: to_string(from_string(...)) chain
+    mut s1 string = encoding.to_string(encoding.from_string("hello"))
     if s1 == "hello" {
-        println("  [PASS] bytes round-trip")
+        println("  [PASS] encoding byte round-trip")
         passed += 1
     } otherwise {
-        println("  [FAIL] bytes round-trip: got '${s1}'")
+        println("  [FAIL] encoding byte round-trip: got '${s1}'")
         failed += 1
     }
 
-    mut s2 string = bytes.to_hex(bytes.from_string("AB"))
+    mut s2 string = encoding.to_hex(encoding.from_string("AB"))
     if s2 == "4142" {
-        println("  [PASS] bytes to_hex chain")
+        println("  [PASS] encoding to_hex chain")
         passed += 1
     } otherwise {
-        println("  [FAIL] bytes to_hex chain: got '${s2}'")
+        println("  [FAIL] encoding to_hex chain: got '${s2}'")
         failed += 1
     }
 

@@ -2564,7 +2564,7 @@ import "./c.gray"         // Error: 'c' is reserved
 
 ## 9. Standard Library
 
-The Grayscale standard library consists of 27 modules plus built-in functions that require no import.
+The Grayscale standard library consists of 26 modules plus built-in functions that require no import.
 
 ### 9.1 Built-in Functions
 
@@ -3253,6 +3253,8 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 
 ### 9.13 Encoding Module (`@encoding`)
 
+#### String Encoding
+
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `base64_encode` | `(s string) -> string` | Encode to base64 |
@@ -3261,6 +3263,17 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 | `hex_decode` | `(s string) -> string` | Decode from hex |
 | `url_encode` | `(s string) -> string` | URL percent-encode |
 | `url_decode` | `(s string) -> string` | URL percent-decode |
+
+#### Byte Conversion
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `from_string` | `(s string) -> [byte]` | Create from UTF-8 string |
+| `from_hex` | `(hex string) -> [byte]` | Decode hex string |
+| `from_base64` | `(b64 string) -> [byte]` | Decode base64 string |
+| `to_string` | `(bytes [byte]) -> string` | Convert to UTF-8 string |
+| `to_hex` | `(bytes [byte]) -> string` | Encode to hex string |
+| `to_base64` | `(bytes [byte]) -> string` | Encode to base64 string |
 
 ### 9.14 UUID Module (`@uuid`)
 
@@ -3283,18 +3296,7 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 
 UUID randomness comes from `getentropy()` (macOS, BSDs, glibc 2.25+) with a fallback to `/dev/urandom`, suitable for security-sensitive identifiers.
 
-### 9.15 Bytes Module (`@bytes`)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `from_string` | `(s string) -> [byte]` | Create from UTF-8 string |
-| `from_hex` | `(hex string) -> [byte]` | Decode hex string |
-| `from_base64` | `(b64 string) -> [byte]` | Decode base64 string |
-| `to_string` | `(bytes [byte]) -> string` | Convert to UTF-8 string |
-| `to_hex` | `(bytes [byte]) -> string` | Encode to hex string |
-| `to_base64` | `(bytes [byte]) -> string` | Encode to base64 string |
-
-### 9.16 Binary Module (`@binary`)
+### 9.15 Binary Module (`@binary`)
 
 Binary encoding/decoding for integers and floats in little-endian (le) and big-endian (be) formats.
 
@@ -3347,7 +3349,7 @@ Binary encoding/decoding for integers and floats in little-endian (le) and big-e
 | `encode_f32_le`, `encode_f32_be`, `decode_f32_le`, `decode_f32_be` | 32-bit float |
 | `encode_f64_le`, `encode_f64_be`, `decode_f64_le`, `decode_f64_be` | 64-bit float |
 
-### 9.17 SQLite Module (`@sqlite`)
+### 9.16 SQLite Module (`@sqlite`)
 
 SQLite database access for persistent storage.
 
@@ -3380,7 +3382,7 @@ for_each row in rows {
 sqlite.close(db)
 ```
 
-### 9.18 Server Module (`@server`)
+### 9.17 Server Module (`@server`)
 
 An HTTP server module with dynamic handlers and path parameters.
 
@@ -3439,7 +3441,7 @@ do main() {
 }
 ```
 
-### 9.19 Regex Module (`@regex`)
+### 9.18 Regex Module (`@regex`)
 
 Regular expression operations using POSIX extended regex syntax.
 
@@ -3454,7 +3456,7 @@ Regular expression operations using POSIX extended regex syntax.
 
 Error-returning variants: `find`, `find_all`, `replace`, `split`
 
-### 9.20 CSV Module (`@csv`)
+### 9.19 CSV Module (`@csv`)
 
 Reading and writing CSV (Comma-Separated Values) data.
 
@@ -3466,7 +3468,7 @@ Reading and writing CSV (Comma-Separated Values) data.
 | `write_file` | `(path string, data [[string]]) -> (bool, Error)` | Write 2D array to CSV file — always use destructuring |
 | `headers` | `(data [[string]]) -> [string]` | Extract header row from parsed CSV data |
 
-### 9.21 Net Module (`@net`)
+### 9.20 Net Module (`@net`)
 
 TCP sockets and DNS resolution.
 
@@ -3483,7 +3485,7 @@ TCP sockets and DNS resolution.
 
 Error-returning variants: `connect`, `listen`, `accept`, `send`, `receive`, `resolve`
 
-### 9.22 Threads Module (`@threads`)
+### 9.21 Threads Module (`@threads`)
 
 Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 
@@ -3500,7 +3502,7 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | `sleep` | `(ms int)` | Sleep the current thread for `ms` milliseconds |
 | `thread_count` | `() -> int` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
 
-### 9.23 Sync Module (`@sync`)
+### 9.22 Sync Module (`@sync`)
 
 Synchronization primitives for thread-safe access to shared data. Compiler-only feature; requires POSIX threads.
 
@@ -3512,7 +3514,7 @@ Synchronization primitives for thread-safe access to shared data. Compiler-only 
 | `try_lock` | `(m Mutex)` | Try to acquire a mutex (non-blocking) |
 | `destroy` | `(m Mutex)` | Destroy a mutex |
 
-### 9.24 Channels Module (`@channels`)
+### 9.23 Channels Module (`@channels`)
 
 Message passing between threads. Compiler-only feature; requires POSIX threads.
 
@@ -3527,7 +3529,7 @@ Message passing between threads. Compiler-only feature; requires POSIX threads.
 
 Channels are **int-only**. Sending non-int types (`string`, `float`, `bool`, etc.) is a compile-time error.
 
-### 9.25 Memory Module (`@mem`)
+### 9.24 Memory Module (`@mem`)
 
 Arena-based memory allocation. Compiler-only feature.
 
@@ -3546,7 +3548,7 @@ Arena-based memory allocation. Compiler-only feature.
 | `zero` | `(p ptr, n int)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value int, n int)` | Set `n` bytes at `p` to `value` |
 
-### 9.26 Atomic Module (`@atomic`)
+### 9.25 Atomic Module (`@atomic`)
 
 Lock-free atomic operations backed by hand-written assembly (ARM64 and x86_64). Compiler-only feature.
 
@@ -3581,7 +3583,7 @@ All pointer arguments must be `^int` (pointer to int).
 |----------|-----------|-------------|
 | `fence` | `()` | Full memory barrier (sequential consistency) |
 
-### 9.27 Fmt Module (`@fmt`)
+### 9.26 Fmt Module (`@fmt`)
 
 Formatted output and string formatting functions.
 
@@ -3648,7 +3650,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 
 Accepts `string`, `int`, `float`, and `bool` arguments for formatted output functions. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
-### 9.28 Strconv Module (`@strconv`)
+### 9.27 Strconv Module (`@strconv`)
 
 String-to-type and type-to-string conversion functions with proper error handling.
 

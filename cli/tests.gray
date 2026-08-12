@@ -4,7 +4,7 @@
  * Covers: primitives, strings, control flow, loops, functions,
  * structs, enums, arrays, maps, casting, pointers, @math, @strings,
  * @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv,
- * @crypto, @regex, @binary, @bytes, @uuid, @mem.
+ * @crypto, @regex, @binary, @uuid, @mem.
  *
  * Every test prints [PASS] or [FAIL] with the actual value on failure.
  * Exits non-zero if any assertion fails.
@@ -14,7 +14,7 @@
  *   ./grayc/grayc cli/tests.gray -o /tmp/out && /tmp/out
  */
 
-import @math, @strings, @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv, @crypto, @regex, @binary, @bytes, @uuid, @mem
+import @math, @strings, @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv, @crypto, @regex, @binary, @uuid, @mem
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -1527,58 +1527,58 @@ do main() {
 
     // =========================================================================
     println("")
-    println("=== 25. @bytes ===")
+    println("=== 25. encoding byte conversions ===")
     // =========================================================================
 
-    mut by1_bytes [byte] = bytes.from_string("hello")
-    mut by1 string = bytes.to_string(by1_bytes)
+    mut by1_bytes [byte] = encoding.from_string("hello")
+    mut by1 string = encoding.to_string(by1_bytes)
     if by1 == "hello" {
-        println("  [PASS] bytes.to_string(bytes.from_string(\"hello\")) = \"hello\"")
+        println("  [PASS] encoding.to_string(encoding.from_string(\"hello\")) = \"hello\"")
         passed++
     } otherwise {
-        println("  [FAIL] bytes roundtrip string: expected \"hello\", got \"${by1}\"")
+        println("  [FAIL] encoding byte roundtrip string: expected \"hello\", got \"${by1}\"")
         failed++
     }
 
-    mut by2_bytes [byte] = bytes.from_string("AB")
-    mut by2 string = bytes.to_hex(by2_bytes)
+    mut by2_bytes [byte] = encoding.from_string("AB")
+    mut by2 string = encoding.to_hex(by2_bytes)
     if by2 == "4142" {
-        println("  [PASS] bytes.to_hex(bytes.from_string(\"AB\")) = \"4142\"")
+        println("  [PASS] encoding.to_hex(encoding.from_string(\"AB\")) = \"4142\"")
         passed++
     } otherwise {
-        println("  [FAIL] bytes.to_hex: expected \"4142\", got \"${by2}\"")
+        println("  [FAIL] encoding.to_hex: expected \"4142\", got \"${by2}\"")
         failed++
     }
 
-    mut by3_a [byte] = bytes.from_string("test")
-    mut by3_hex string = bytes.to_hex(by3_a)
-    mut by3_b [byte] = bytes.from_hex(by3_hex)
-    mut by3 string = bytes.to_string(by3_b)
+    mut by3_a [byte] = encoding.from_string("test")
+    mut by3_hex string = encoding.to_hex(by3_a)
+    mut by3_b [byte] = encoding.from_hex(by3_hex)
+    mut by3 string = encoding.to_string(by3_b)
     if by3 == "test" {
-        println("  [PASS] bytes hex roundtrip \"test\" = \"test\"")
+        println("  [PASS] encoding hex roundtrip \"test\" = \"test\"")
         passed++
     } otherwise {
-        println("  [FAIL] bytes hex roundtrip: expected \"test\", got \"${by3}\"")
+        println("  [FAIL] encoding hex roundtrip: expected \"test\", got \"${by3}\"")
         failed++
     }
 
-    mut by4_bytes [byte] = bytes.from_string("hello")
-    mut by4 string = bytes.to_base64(by4_bytes)
+    mut by4_bytes [byte] = encoding.from_string("hello")
+    mut by4 string = encoding.to_base64(by4_bytes)
     if by4 == "aGVsbG8=" {
-        println("  [PASS] bytes.to_base64(bytes.from_string(\"hello\")) = \"aGVsbG8=\"")
+        println("  [PASS] encoding.to_base64(encoding.from_string(\"hello\")) = \"aGVsbG8=\"")
         passed++
     } otherwise {
-        println("  [FAIL] bytes.to_base64: expected \"aGVsbG8=\", got \"${by4}\"")
+        println("  [FAIL] encoding.to_base64: expected \"aGVsbG8=\", got \"${by4}\"")
         failed++
     }
 
-    mut by5_bytes [byte] = bytes.from_base64("aGVsbG8=")
-    mut by5 string = bytes.to_string(by5_bytes)
+    mut by5_bytes [byte] = encoding.from_base64("aGVsbG8=")
+    mut by5 string = encoding.to_string(by5_bytes)
     if by5 == "hello" {
-        println("  [PASS] bytes.to_string(bytes.from_base64(\"aGVsbG8=\")) = \"hello\"")
+        println("  [PASS] encoding.to_string(encoding.from_base64(\"aGVsbG8=\")) = \"hello\"")
         passed++
     } otherwise {
-        println("  [FAIL] bytes.from_base64 roundtrip: expected \"hello\", got \"${by5}\"")
+        println("  [FAIL] encoding.from_base64 roundtrip: expected \"hello\", got \"${by5}\"")
         failed++
     }
 

@@ -4782,8 +4782,15 @@ static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *func) {
 /* --- @encoding module --- */
 
 static bool emit_encoding_call(CodeGen *codegen, AstNode *node, const char *func) {
+    /* Byte conversion functions (formerly @bytes) need address-of for array args */
+    bool is_byte_to = (strcmp(func, "to_string") == 0 || strcmp(func, "to_hex") == 0 ||
+        strcmp(func, "to_base64") == 0);
     emit_formatted(codegen, "gray_encoding_%s(gray_default_arena, ", func);
-    emit_expression(codegen, node->data.call.args[0]);
+    if (is_byte_to) {
+        emit_address_of(codegen, node->data.call.args[0], "_ba");
+    } else {
+        emit_expression(codegen, node->data.call.args[0]);
+    }
     emit(codegen, ")");
     return true;
 }
@@ -4793,24 +4800,6 @@ static bool emit_encoding_call(CodeGen *codegen, AstNode *node, const char *func
 static bool emit_crypto_call(CodeGen *codegen, AstNode *node, const char *func) {
     emit_formatted(codegen, "gray_crypto_%s(gray_default_arena, ", func);
     emit_expression(codegen, node->data.call.args[0]);
-    emit(codegen, ")");
-    return true;
-}
-
-/* --- @bytes module --- */
-
-static bool emit_bytes_call(CodeGen *codegen, AstNode *node, const char *func) {
-    bool needs_arena = (strcmp(func, "from_string") == 0 || strcmp(func, "from_hex") == 0 ||
-        strcmp(func, "from_base64") == 0);
-    bool needs_arena_ptr = (strcmp(func, "to_string") == 0 || strcmp(func, "to_hex") == 0 ||
-        strcmp(func, "to_base64") == 0);
-    emit_formatted(codegen, "gray_bytes_%s(", func);
-    if (needs_arena || needs_arena_ptr) emit(codegen, "gray_default_arena, ");
-    if (needs_arena_ptr) {
-        emit_address_of(codegen, node->data.call.args[0], "_ba");
-    } else {
-        emit_expression(codegen, node->data.call.args[0]);
-    }
     emit(codegen, ")");
     return true;
 }
@@ -6184,7 +6173,6 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
             {"arrays",   emit_arrays_call},
             {"atomic",   emit_atomic_call},
             {"binary",   emit_binary_call},
-            {"bytes",    emit_bytes_call},
             {"channels", emit_channels_call},
             {"crypto",   emit_crypto_call},
             {"csv",      emit_csv_call},
@@ -9764,7 +9752,6 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"uuid",     "uuid.h"},
         {"encoding", "encoding.h"},
         {"crypto",   "crypto.h"},
-        {"bytes",    "bytes.h"},
         {"binary",   "binary.h"},
         {"csv",      "csv.h"},
         {"json",     "json.h"},

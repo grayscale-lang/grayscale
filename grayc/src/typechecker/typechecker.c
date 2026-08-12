@@ -987,13 +987,13 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"binary", "encode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
     {"binary", "encode_u64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
     {"binary", "encode_u8",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "[byte]"},
-    /* bytes */
-    {"bytes", "from_base64", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
-    {"bytes", "from_hex",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
-    {"bytes", "from_string", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
-    {"bytes", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
-    {"bytes", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
-    {"bytes", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    /* encoding — byte conversion (formerly @bytes) */
+    {"encoding", "from_base64", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"encoding", "from_hex",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"encoding", "from_string", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
+    {"encoding", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"encoding", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"encoding", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
     /* channels */
     {"channels", "close",       1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "void"},
     {"channels", "open",        1, 1, false, FT_NONE, 0, {{0}},"Channel"},
