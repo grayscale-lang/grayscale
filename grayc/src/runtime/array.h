@@ -12,6 +12,7 @@
 #define GRAY_ARRAY_H
 
 #include "runtime.h"
+#include "atomic.h"
 
 #define GRAY_ARRAY_MIN_CAP            4
 #define GRAY_MAX_INLINE_ELEM_SIZE     64

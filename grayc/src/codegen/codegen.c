@@ -8535,7 +8535,7 @@ static void iter_guard_pop(CodeGen *codegen) {
 
 static void emit_iter_guard_unwind(CodeGen *codegen) {
     for (int i = codegen->iter_guard_count - 1; i >= 0; i--) {
-        emit_formatted(codegen, "%s.iterating--; ", codegen->iter_guards[i]);
+        emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1); ", codegen->iter_guards[i]);
     }
 }
 
@@ -9267,9 +9267,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 iter_guard_push(codegen, ge);
                 free(ge);
             }
-            if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-            else emit_expression(codegen, coll);
-            emit(codegen, ".iterating++;\n");
+            if (map_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", map_tmp_name);
+            else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             emit_indent(codegen);
             emit_formatted(codegen, "for (int32_t %s = 0; %s < ", mi_name, mi_name);
             if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
@@ -9372,8 +9371,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 free(ge);
             }
             emit_indent(codegen);
-            if (coll_needs_tmp) emit_formatted(codegen, "%s.iterating++;\n", arr_tmp_name);
-            else { emit_expression(codegen, coll); emit(codegen, ".iterating++;\n"); }
+            if (coll_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", arr_tmp_name);
+            else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             emit_indent(codegen);
             emit_formatted(codegen, "for (int32_t %s = 0; %s < %s; %s++) {\n", idx_name, idx_name, len_name, idx_name);
             codegen->indent++;
@@ -9391,9 +9390,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         if (is_map_iter) {
             iter_guard_pop(codegen);
             emit_indent(codegen);
-            if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-            else emit_expression(codegen, coll);
-            emit(codegen, ".iterating--;\n");
+            if (map_needs_tmp) emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", map_tmp_name);
+            else { emit(codegen, "gray_atomic_sub32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             if (map_needs_tmp) {
                 emit_indent(codegen);
                 emit(codegen, "}\n");
@@ -9408,8 +9406,8 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         if (coll_t && coll_t->kind != TK_MAP && coll_t->kind != TK_STRING) {
             iter_guard_pop(codegen);
             emit_indent(codegen);
-            if (coll_needs_tmp) emit_formatted(codegen, "%s.iterating--;\n", arr_tmp_name);
-            else { emit_expression(codegen, coll); emit(codegen, ".iterating--;\n"); }
+            if (coll_needs_tmp) emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", arr_tmp_name);
+            else { emit(codegen, "gray_atomic_sub32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             emit_indent(codegen);
             emit(codegen, "}\n");
             /* Close the outer temporary block if we materialized a C temp */

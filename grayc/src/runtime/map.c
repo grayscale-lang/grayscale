@@ -187,7 +187,7 @@ void *gray_map_get(GrayMap *m, const void *key) {
 }
 
 void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     /* Check load factor */
     if (m->count * GRAY_MAP_LOAD_DEN >= m->capacity * GRAY_MAP_LOAD_NUM) {
@@ -235,7 +235,7 @@ bool gray_map_has(GrayMap *m, const void *key) {
 }
 
 bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     int32_t idx = find_slot(m, key);
     if (idx < 0) return false;
@@ -256,7 +256,7 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
 }
 
 void gray_map_clear(GrayMap *m, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     if (m->states) memset(m->states, 0, sizeof(uint8_t) * (size_t)m->capacity);
     m->count = 0;

@@ -12,6 +12,7 @@
 #define GRAY_MAP_H
 
 #include "runtime.h"
+#include "atomic.h"
 
 #define GRAY_MAP_MIN_CAP      8
 #define GRAY_MAP_LOAD_NUM     3
