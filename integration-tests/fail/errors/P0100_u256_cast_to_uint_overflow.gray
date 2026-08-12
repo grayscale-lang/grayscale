@@ -1,0 +1,7 @@
+/* Panic Test: P0100 - cast from u256 to uint overflows uint64 range */
+do main() {
+    mut x = u256(9223372036854775807)
+    mut big = x * u256(3)
+    mut y uint = cast(big, uint)
+    println(y)
+}

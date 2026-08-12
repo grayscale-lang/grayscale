@@ -1,0 +1,6 @@
+/* Panic Test: P0082 - string index out of bounds */
+do main() {
+    mut s string = "hi"
+    mut ch = s[10]
+    println(ch)
+}

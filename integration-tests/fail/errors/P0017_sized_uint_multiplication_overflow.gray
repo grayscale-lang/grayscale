@@ -1,0 +1,7 @@
+/* Panic Test: P0017 - sized unsigned integer multiplication overflow */
+do main() {
+    mut x u8 = 200
+    mut y u8 = 2
+    mut z u8 = x * y
+    println(z)
+}

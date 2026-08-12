@@ -1,0 +1,3 @@
+do w2013_value() -> int {
+    return 42
+}

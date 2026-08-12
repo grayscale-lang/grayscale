@@ -1,0 +1,7 @@
+/* Panic Test: P0068 - math.asin value outside [-1, 1] */
+import @math
+
+do main() {
+    mut x float = math.asin(2.0)
+    println(x)
+}

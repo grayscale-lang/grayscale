@@ -1,0 +1,6 @@
+/* Panic Test: P0087 - io.write_file cannot write to a directory */
+import @io
+
+do main() {
+    io.write_file("/tmp", "test content")
+}

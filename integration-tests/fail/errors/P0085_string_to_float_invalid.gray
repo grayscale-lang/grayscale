@@ -1,0 +1,6 @@
+/* Panic Test: P0085 - cannot convert string to float at runtime */
+do main() {
+    mut s string = "not_a_float"
+    mut x float = cast(s, float)
+    println(x)
+}

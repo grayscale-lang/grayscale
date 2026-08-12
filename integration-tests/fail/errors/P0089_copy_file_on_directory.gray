@@ -1,0 +1,6 @@
+/* Panic Test: P0089 - io.copy_file cannot copy a directory */
+import @io
+
+do main() {
+    io.copy_file("/tmp", "/tmp/gray_test_p0089_copy")
+}

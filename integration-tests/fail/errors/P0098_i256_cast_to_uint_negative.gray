@@ -1,0 +1,6 @@
+/* Panic Test: P0098 - cast from i256 to uint fails; value is negative */
+do main() {
+    mut x = i256(-1)
+    mut y uint = cast(x, uint)
+    println(y)
+}

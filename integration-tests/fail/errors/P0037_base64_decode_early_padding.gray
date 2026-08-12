@@ -1,0 +1,7 @@
+/* Panic Test: P0037 - base64 decode padding before end */
+import @encoding
+
+do main() {
+    mut result string = encoding.base64_decode("a=bc")
+    println(result)
+}

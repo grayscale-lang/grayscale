@@ -1,0 +1,7 @@
+/* Panic Test: P0051 - crypto.random_hex with negative length */
+import @crypto
+
+do main() {
+    mut hex string = crypto.random_hex(-1)
+    println(hex)
+}

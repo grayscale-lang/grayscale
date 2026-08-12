@@ -1,0 +1,3 @@
+do w2015_helper_a() -> int {
+    return 100
+}

@@ -1,0 +1,7 @@
+/* Panic Test: P0007 - int negation overflow */
+do main() {
+    mut x int = -9223372036854775807
+    x = x - 1
+    mut y int = -x
+    println(y)
+}

@@ -1,0 +1,9 @@
+/* Panic Test: P0028 - i256 subtraction overflow */
+do main() {
+    mut x = i256(-9223372036854775807)
+    mut big = x * i256(9223372036854775807)
+    big = big * big
+    big = big * big
+    mut result = big - big - big - big
+    println(result)
+}

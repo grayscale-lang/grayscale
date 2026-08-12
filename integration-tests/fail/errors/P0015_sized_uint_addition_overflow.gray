@@ -1,0 +1,7 @@
+/* Panic Test: P0015 - sized unsigned integer addition overflow */
+do main() {
+    mut x u8 = 250
+    mut y u8 = 10
+    mut z u8 = x + y
+    println(z)
+}

@@ -1,0 +1,6 @@
+/* Panic Test: P0081 - key not found in map */
+do main() {
+    mut m [string:int] = {"a": 1, "b": 2}
+    mut x int = m["z"]
+    println(x)
+}

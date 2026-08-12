@@ -1,0 +1,9 @@
+/* Panic Test: P0001 - allocate from destroyed arena */
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mem.destroy(a)
+    mut ptr = mem.alloc(a, 64)
+    println(ptr)
+}

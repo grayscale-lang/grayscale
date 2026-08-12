@@ -1,0 +1,9 @@
+/* Panic Test: P0003 - maximum recursion depth exceeded */
+do recurse(n int) -> int {
+    return recurse(n + 1)
+}
+
+do main() {
+    mut x int = recurse(0)
+    println(x)
+}

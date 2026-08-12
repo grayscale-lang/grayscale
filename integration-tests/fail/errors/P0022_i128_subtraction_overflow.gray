@@ -1,0 +1,9 @@
+/* Panic Test: P0022 - i128 subtraction overflow */
+do main() {
+    mut x = i128(9223372036854775807)
+    mut big = x * x
+    mut neg = i128(0) - big
+    mut result = neg - big
+    result = result - big
+    println(result)
+}

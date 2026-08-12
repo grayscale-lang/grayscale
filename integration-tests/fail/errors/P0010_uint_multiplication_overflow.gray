@@ -1,0 +1,6 @@
+/* Panic Test: P0010 - uint multiplication overflow */
+do main() {
+    mut x uint = 9223372036854775807
+    mut y uint = x * 3
+    println(y)
+}

@@ -1,0 +1,8 @@
+/* Panic Test: P0021 - i128 addition overflow */
+do main() {
+    mut x = i128(9223372036854775807)
+    mut big = x * x
+    mut sum = big + big
+    sum = sum + big
+    println(sum)
+}

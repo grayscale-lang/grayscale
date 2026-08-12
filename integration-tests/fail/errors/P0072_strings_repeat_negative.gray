@@ -1,0 +1,7 @@
+/* Panic Test: P0072 - strings.repeat with negative count */
+import @strings
+
+do main() {
+    mut s string = strings.repeat("hello", -1)
+    println(s)
+}

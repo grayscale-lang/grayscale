@@ -1,0 +1,7 @@
+/* Panic Test: P0008 - uint addition overflow */
+do main() {
+    mut x uint = 9223372036854775807
+    mut y uint = x + x
+    mut z uint = y + y
+    println(z)
+}

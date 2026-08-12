@@ -1,0 +1,7 @@
+/* Panic Test: P0040 - hex decode input length not even */
+import @encoding
+
+do main() {
+    mut result string = encoding.hex_decode("abc")
+    println(result)
+}

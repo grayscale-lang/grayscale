@@ -1,0 +1,7 @@
+/* Panic Test: P0077 - io.delete_file cannot delete a directory */
+import @io
+
+do main() {
+    io.make_dir("/tmp/gray_test_p0077")
+    io.delete_file("/tmp/gray_test_p0077")
+}

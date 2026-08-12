@@ -1,0 +1,6 @@
+/* Panic Test: P0033 - array index out of bounds */
+do main() {
+    mut arr [int] = {1, 2, 3}
+    mut x int = arr[5]
+    println(x)
+}

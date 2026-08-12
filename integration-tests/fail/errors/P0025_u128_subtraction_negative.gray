@@ -1,0 +1,6 @@
+/* Panic Test: P0025 - u128 subtraction goes negative */
+do main() {
+    mut x = u128(0)
+    mut y = x - u128(1)
+    println(y)
+}

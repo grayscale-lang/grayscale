@@ -1,0 +1,6 @@
+/* Panic Test: P0049 - to_char with negative index */
+do main() {
+    mut s string = "hello"
+    mut ch int = to_char(s, -1)
+    println(ch)
+}

@@ -1,0 +1,7 @@
+/* Panic Test: P0016 - sized unsigned integer subtraction goes negative */
+do main() {
+    mut x u8 = 0
+    mut y u8 = 1
+    mut z u8 = x - y
+    println(z)
+}
