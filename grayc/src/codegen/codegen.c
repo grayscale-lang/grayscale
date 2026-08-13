@@ -7321,176 +7321,145 @@ static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
     }
 }
 
-static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
-    emit_indent(codegen);
+/* ── variable declaration sub-handlers ─────────────────────────────── */
 
-    const char *type_name = node->data.var_decl.type_name;
-    const char *elem_type = extract_array_element_type(type_name);
-
-    if (elem_type) {
-        /* [func] with a single func ref init: emit as void* (function pointer),
-         * not GrayArray. Array-literal inits still use GrayArray. */
-        if ((strcmp(elem_type, "func") == 0 || strncmp(elem_type, "func(", 5) == 0) &&
-            node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_FUNC_REF) {
-            emit_formatted(codegen, "void *%s = ", sanitize_name(node->data.var_decl.name));
-            emit_expression(codegen, node->data.var_decl.value);
+static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
+                                const char *type_name, const char *elem_type) {
+    /* [func] with a single func ref init: emit as void* (function pointer),
+     * not GrayArray. Array-literal inits still use GrayArray. */
+    if ((strcmp(elem_type, "func") == 0 || strncmp(elem_type, "func(", 5) == 0) &&
+        node->data.var_decl.value &&
+        node->data.var_decl.value->kind == NODE_FUNC_REF) {
+        emit_formatted(codegen, "void *%s = ", sanitize_name(node->data.var_decl.name));
+        emit_expression(codegen, node->data.var_decl.value);
+        emit(codegen, ";\n");
+        return;
+    }
+    int fixed_size = extract_array_size(type_name);
+    if (fixed_size > 0) {
+        /* Fixed-size array: use GrayArray but initialized with exact capacity */
+        if (codegen->indent == 0) {
+            /* File scope: emit uninitialized global, defer init to gray_init_globals */
+            emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
+            /* Store deferred init in the init buffer */
+            if (node->data.var_decl.value) {
+                append_format_to_buffer(&codegen->global_init, "    %s = ", sanitize_name(node->data.var_decl.name));
+                /* Temporarily redirect output to global_init buffer */
+                Buf saved = codegen->output;
+                codegen->output = codegen->global_init;
+                codegen->indent = 1;
+                emit_fixed_size_array_initializer(codegen, node->data.var_decl.value, elem_type, fixed_size);
+                emit(codegen, ";\n");
+                codegen->global_init = codegen->output;
+                codegen->output = saved;
+                codegen->indent = 0;
+            }
+        } else {
+            emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
+            if (node->data.var_decl.value) {
+                emit_fixed_size_array_initializer(codegen, node->data.var_decl.value, elem_type, fixed_size);
+            } else {
+                const char *c_elem_type = gray_type_to_c_codegen(codegen, elem_type);
+                emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), %d)", c_elem_type, fixed_size);
+            }
             emit(codegen, ";\n");
-            return;
         }
-        int fixed_size = extract_array_size(type_name);
-        if (fixed_size > 0) {
-            /* Fixed-size array: use GrayArray but initialized with exact capacity */
-            if (codegen->indent == 0) {
-                /* File scope: emit uninitialized global, defer init to gray_init_globals */
-                emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
-                /* Store deferred init in the init buffer */
-                if (node->data.var_decl.value) {
-                    append_format_to_buffer(&codegen->global_init, "    %s = ", sanitize_name(node->data.var_decl.name));
-                    /* Temporarily redirect output to global_init buffer */
-                    Buf saved = codegen->output;
-                    codegen->output = codegen->global_init;
-                    codegen->indent = 1;
-                    emit_fixed_size_array_initializer(codegen, node->data.var_decl.value, elem_type, fixed_size);
-                    emit(codegen, ";\n");
-                    codegen->global_init = codegen->output;
-                    codegen->output = saved;
-                    codegen->indent = 0;
-                }
-            } else {
-                emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
-                if (node->data.var_decl.value) {
-                    emit_fixed_size_array_initializer(codegen, node->data.var_decl.value, elem_type, fixed_size);
-                } else {
-                    const char *c_elem_type = gray_type_to_c_codegen(codegen, elem_type);
-                    emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), %d)", c_elem_type, fixed_size);
-                }
-                emit(codegen, ";\n");
-            }
-            return;
-        }
+        return;
+    }
 
-        if (is_nested_array_type(type_name)) {
-            codegen->current_var_type = type_name;
-            AstNode *init = node->data.var_decl.value;
-            bool label_init = init && init->kind == NODE_LABEL;
-            const char *label_elem_tn = NULL;
-            if (label_init) {
-                GrayType *src_t = codegen->type_table
-                    ? typetable_get(codegen->type_table, init) : NULL;
-                if (src_t && src_t->kind == TK_ARRAY) {
-                    label_elem_tn = src_t->element_type;
-                }
+    if (is_nested_array_type(type_name)) {
+        codegen->current_var_type = type_name;
+        AstNode *init = node->data.var_decl.value;
+        bool label_init = init && init->kind == NODE_LABEL;
+        const char *label_elem_tn = NULL;
+        if (label_init) {
+            GrayType *src_t = codegen->type_table
+                ? typetable_get(codegen->type_table, init) : NULL;
+            if (src_t && src_t->kind == TK_ARRAY) {
+                label_elem_tn = src_t->element_type;
             }
-            if (codegen->indent == 0) {
-                emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
-                Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
-                emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
-                if (label_init) emit_deep_array_copy(codegen, init, label_elem_tn);
-                else if (init) emit_expression(codegen, init);
-                else emit(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
-                emit(codegen, ";\n");
-                codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
-            } else {
-                emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
-                if (label_init) emit_deep_array_copy(codegen, init, label_elem_tn);
-                else if (init) emit_expression(codegen, init);
-                else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
-                emit(codegen, ";\n");
-            }
-            return;
         }
-
-        /* Dynamic array: use GrayArray */
-        const char *c_elem_type = gray_type_to_c_codegen(codegen, elem_type);
         if (codegen->indent == 0) {
             emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
             Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
             emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
-            if (node->data.var_decl.value) emit_expression(codegen, node->data.var_decl.value);
-            else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+            if (label_init) emit_deep_array_copy(codegen, init, label_elem_tn);
+            else if (init) emit_expression(codegen, init);
+            else emit(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
             emit(codegen, ";\n");
             codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
         } else {
-        emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
-        if (node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_ARRAY_VALUE &&
-            node->data.var_decl.value->data.array_value.count == 0) {
-            /* Empty array literal with type annotation; use correct elem size */
-            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
-        } else if (node->data.var_decl.value &&
-                   (node->data.var_decl.value->kind == NODE_LABEL ||
-                    node->data.var_decl.value->kind == NODE_MEMBER_EXPR)) {
-            /* Copy-by-default: deep copy when assigning from another variable
-             * or a struct field access (e.g. `mut copy [int] = s.field`).
-             * Without this, member-expr sources share backing storage with the
-             * originating struct field (#1789). */
-            GrayType *src_t = codegen->type_table
-                ? typetable_get(codegen->type_table, node->data.var_decl.value) : NULL;
-            const char *elem_tn = (src_t && src_t->kind == TK_ARRAY)
-                ? src_t->element_type : NULL;
-            emit_deep_array_copy(codegen, node->data.var_decl.value, elem_tn);
-        } else if (node->data.var_decl.value) {
-            /* Thread the declared array type so the array-literal codegen
-             * can infer the element type when the typetable misses the
-             * first element (e.g. module-qualified struct function calls). */
-            const char *saved_var_type = codegen->current_var_type;
-            codegen->current_var_type = type_name;
-            emit_expression(codegen, node->data.var_decl.value);
-            codegen->current_var_type = saved_var_type;
-        } else {
-            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+            emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
+            if (label_init) emit_deep_array_copy(codegen, init, label_elem_tn);
+            else if (init) emit_expression(codegen, init);
+            else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
+            emit(codegen, ";\n");
         }
-        emit(codegen, ";\n");
-        } /* end else (indent > 0) */
         return;
     }
 
-    /* Map type: map[K:V] */
-    if (type_name && strncmp(type_name, "map[", 4) == 0) {
-        /* Parse K:V from type string to determine C types */
-        GrayType *map_type = type_from_name(type_name);
-        const char *c_kt = "GrayString";
-        const char *c_vt = "int64_t";
-        if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
-        if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
+    /* Dynamic array: use GrayArray */
+    const char *c_elem_type = gray_type_to_c_codegen(codegen, elem_type);
+    if (codegen->indent == 0) {
+        emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
+        Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
+        emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
+        if (node->data.var_decl.value) emit_expression(codegen, node->data.var_decl.value);
+        else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+        emit(codegen, ";\n");
+        codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
+    } else {
+    emit_formatted(codegen, "GrayArray %s = ", sanitize_name(node->data.var_decl.name));
+    if (node->data.var_decl.value &&
+        node->data.var_decl.value->kind == NODE_ARRAY_VALUE &&
+        node->data.var_decl.value->data.array_value.count == 0) {
+        /* Empty array literal with type annotation; use correct elem size */
+        emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+    } else if (node->data.var_decl.value &&
+               (node->data.var_decl.value->kind == NODE_LABEL ||
+                node->data.var_decl.value->kind == NODE_MEMBER_EXPR)) {
+        /* Copy-by-default: deep copy when assigning from another variable
+         * or a struct field access (e.g. `mut copy [int] = s.field`).
+         * Without this, member-expr sources share backing storage with the
+         * originating struct field (#1789). */
+        GrayType *src_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.var_decl.value) : NULL;
+        const char *elem_tn = (src_t && src_t->kind == TK_ARRAY)
+            ? src_t->element_type : NULL;
+        emit_deep_array_copy(codegen, node->data.var_decl.value, elem_tn);
+    } else if (node->data.var_decl.value) {
+        /* Thread the declared array type so the array-literal codegen
+         * can infer the element type when the typetable misses the
+         * first element (e.g. module-qualified struct function calls). */
+        const char *saved_var_type = codegen->current_var_type;
+        codegen->current_var_type = type_name;
+        emit_expression(codegen, node->data.var_decl.value);
+        codegen->current_var_type = saved_var_type;
+    } else {
+        emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+    }
+    emit(codegen, ";\n");
+    } /* end else (indent > 0) */
+}
 
-        if (codegen->indent == 0) {
-            /* File scope: emit zero-init global, defer initializer to
-             * gray_init_globals — map literals expand to GCC statement
-             * expressions which are not legal at file scope. */
-            emit_formatted(codegen, "GrayMap %s;\n", sanitize_name(node->data.var_decl.name));
-            Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
-            emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
-            if (node->data.var_decl.value &&
-                node->data.var_decl.value->kind == NODE_LABEL) {
-                int tag = codegen_next_id(codegen);
-                char src_var[VAR_NAME_BUF];
-                snprintf(src_var, sizeof(src_var), "_ms%d", tag);
-                emit_formatted(codegen, "({ GrayMap %s = ", src_var);
-                emit_expression(codegen, node->data.var_decl.value);
-                emit(codegen, "; ");
-                emit_value_deep_copy(codegen, type_name, src_var);
-                emit(codegen, "; })");
-            } else if (node->data.var_decl.value) {
-                const char *saved_var_type = codegen->current_var_type;
-                codegen->current_var_type = type_name;
-                emit_expression(codegen, node->data.var_decl.value);
-                codegen->current_var_type = saved_var_type;
-            } else {
-                emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
-                    c_kt, c_vt, gray_map_key_kind_macro(c_kt));
-            }
-            emit(codegen, ";\n");
-            codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
-            return;
-        }
+static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
+                              const char *type_name) {
+    /* Parse K:V from type string to determine C types */
+    GrayType *map_type = type_from_name(type_name);
+    const char *c_kt = "GrayString";
+    const char *c_vt = "int64_t";
+    if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
+    if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
 
-        emit_formatted(codegen, "GrayMap %s = ", sanitize_name(node->data.var_decl.name));
+    if (codegen->indent == 0) {
+        /* File scope: emit zero-init global, defer initializer to
+         * gray_init_globals — map literals expand to GCC statement
+         * expressions which are not legal at file scope. */
+        emit_formatted(codegen, "GrayMap %s;\n", sanitize_name(node->data.var_decl.name));
+        Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
+        emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
         if (node->data.var_decl.value &&
             node->data.var_decl.value->kind == NODE_LABEL) {
-            /* Copy-by-default: deep copy when assigning a map from another
-             * variable so mutations to the copy don't alias the original. */
             int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_ms%d", tag);
@@ -7505,162 +7474,42 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.var_decl.value);
             codegen->current_var_type = saved_var_type;
         } else {
-            /* No initializer; create empty map */
             emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
                 c_kt, c_vt, gray_map_key_kind_macro(c_kt));
         }
         emit(codegen, ";\n");
+        codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
         return;
     }
 
-    const char *c_type = gray_type_to_c_codegen(codegen, type_name);
-
-    /* Register bigint variable for type tracking */
-    if (type_name && is_bigint_type(type_name)) {
-        register_bigint_variable(codegen, node->data.var_decl.name, type_name);
-    } else if (!type_name && node->data.var_decl.value) {
-        /* Inferred-type var (e.g. `mut b = copy(a)`): consult the typetable
-         * so wide-integer types propagate through copy(), function calls,
-         * member access, etc. Without this the var is silently treated as
-         * int and downstream uses (println, arithmetic) emit the wrong
-         * runtime calls. Also try resolve_bigint_type() so constructor
-         * calls like `mut a = i128(42)` register correctly when the
-         * typetable stores the base type name ("int") rather than the
-         * width-specific name ("i128"). */
-        GrayType *vt = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.var_decl.value)
-            : NULL;
-        const char *bi_name = (vt && vt->name && is_bigint_type(vt->name))
-            ? vt->name : resolve_bigint_type(codegen, node->data.var_decl.value);
-        if (bi_name) {
-            register_bigint_variable(codegen, node->data.var_decl.name, bi_name);
-        }
-    }
-
-    /* Skip blank identifiers (_) */
-    if (strcmp(node->data.var_decl.name, "_") == 0) {
-        if (node->data.var_decl.value) {
-            emit_indent(codegen);
-            emit(codegen, "(void)(");
-            emit_expression(codegen, node->data.var_decl.value);
-            emit(codegen, ");\n");
-        }
-        return;
-    }
-
-    /* If no type annotation, try to infer from value */
-    if (!type_name && node->data.var_decl.value) {
-        AstNode *val = node->data.var_decl.value;
-        if (val->kind == NODE_STRING_VALUE || val->kind == NODE_INTERPOLATED_STRING) {
-            c_type = "GrayString";
-        } else if (val->kind == NODE_FLOAT_VALUE) {
-            c_type = "double";
-        } else if (val->kind == NODE_BOOL_VALUE) {
-            c_type = "bool";
-        } else if (val->kind == NODE_ARRAY_VALUE) {
-            c_type = "GrayArray";
-        } else if (val->kind == NODE_MAP_VALUE) {
-            c_type = "GrayMap";
-        } else if (val->kind == NODE_STRUCT_VALUE) {
-            /* : use mangled name for generic struct instantiations */
-            if (val->data.struct_value.wildcard_binding) {
-                const char *binding = val->data.struct_value.wildcard_binding;
-                const char *base = val->data.struct_value.name;
-                static char sv_buf[MSG_BUF_SIZE];
-                size_t string_pos = snprintf(sv_buf, sizeof(sv_buf), "%s__", base);
-                for (const char *ch = binding; *ch && string_pos < sizeof(sv_buf) - 1; ch++)
-                    sv_buf[string_pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
-                sv_buf[string_pos] = '\0';
-                c_type = gray_type_to_c_codegen(codegen, sv_buf);
-            } else {
-                c_type = gray_type_to_c_codegen(codegen, val->data.struct_value.name);
-            }
-        } else if (val->kind == NODE_INFIX_EXPR) {
-            /* Check type table for infix result type */
-            GrayType *infix_t = codegen->type_table ? typetable_get(codegen->type_table, val) : NULL;
-            if (infix_t && infix_t->kind == TK_STRING) {
-                c_type = "GrayString";
-            } else if (infix_t && infix_t->kind == TK_FLOAT) {
-                c_type = "double";
-            } else if (infix_t && infix_t->kind == TK_BOOL) {
-                c_type = "bool";
-            } else {
-                c_type = "__auto_type";
-            }
-        } else if (val->kind == NODE_CALL_EXPR || val->kind == NODE_NEW_EXPR ||
-                   val->kind == NODE_MEMBER_EXPR || val->kind == NODE_INDEX_EXPR ||
-                   val->kind == NODE_POSTFIX_EXPR) {
-            /* Use __auto_type for function calls, new(), member access, index,
-             * and postfix expressions (e.g. ptr^ dereference — without this,
-             * `mut x = p^` where p is ^StructType would be emitted as int64_t
-             * instead of the correct struct type). */
-            c_type = "__auto_type";
-        } else if (val->kind == NODE_FUNC_REF) {
-            /* Function reference; use __auto_type to capture the pointer type */
-            c_type = "__auto_type";
-        } else if (val->kind == NODE_LABEL) {
-            /* Variable reference; use __auto_type to propagate the source type */
-            c_type = "__auto_type";
-        } else if (val->kind == NODE_CAST_EXPR) {
-            /* Cast expression; use the target type */
-            c_type = gray_type_to_c_codegen(codegen, val->data.cast.target_type);
-        }
-    }
-
-    /* Detect ref() assignment; register as transparent reference (but not for function refs) */
-    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
-        AstNode *function_node = node->data.var_decl.value->data.call.function;
-        if (function_node->kind == NODE_LABEL && strcmp(function_node->data.label.value, "ref") == 0) {
-            /* Register as a transparent reference for any assignable source —
-             * variable, struct field, or index expression. Without this,
-             * ref(struct.field) was registered as a plain value var and
-             * later GRAY_ARRAY_SET(&(r), ...) produced GrayArray ** instead of
-             * GrayArray *. The auto-deref path in NODE_LABEL emission
-             * handles field/index sources the same as variable sources. */
-            if (node->data.var_decl.value->data.call.arg_count == 1) {
-                AstNode *arg = node->data.var_decl.value->data.call.args[0];
-                bool is_assignable =
-                    (arg->kind == NODE_LABEL && !find_function(codegen, arg->data.label.value)) ||
-                    arg->kind == NODE_MEMBER_EXPR ||
-                    arg->kind == NODE_INDEX_EXPR;
-                if (is_assignable) {
-                    register_reference_variable(codegen, node->data.var_decl.name);
-                }
-            }
-        }
-    }
-
-    /* Detect raw() assignment; register as raw pointer (nil check skipped on deref) */
-    bool is_raw_init = false;
-    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
-        AstNode *fn = node->data.var_decl.value->data.call.function;
-        if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "raw") == 0) {
-            register_raw_variable(codegen, node->data.var_decl.name);
-            is_raw_init = true;
-        }
-    }
-    /* If a pointer variable shadows a raw variable from an outer scope,
-     * push a non-raw override so inner dereferences get nil checks. */
-    if (!is_raw_init && type_name && type_name[0] == '^' &&
-        is_raw_variable(codegen, node->data.var_decl.name)) {
-        unregister_raw_variable(codegen, node->data.var_decl.name);
-    }
-
-    if (!node->data.var_decl.mutable) {
-        if (type_name && type_name[0] == '^') {
-            /* const pointer: T * const p — the pointer is immutable, not the
-             * pointed-to data.  Placing const before the type would produce
-             * const T * p (pointer to const T), which incorrectly propagates
-             * the const qualifier through dereferences and field accesses. */
-            emit_formatted(codegen, "%s const %s", c_type, sanitize_name(node->data.var_decl.name));
-        } else {
-            emit(codegen, "const ");
-            emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
-        }
+    emit_formatted(codegen, "GrayMap %s = ", sanitize_name(node->data.var_decl.name));
+    if (node->data.var_decl.value &&
+        node->data.var_decl.value->kind == NODE_LABEL) {
+        /* Copy-by-default: deep copy when assigning a map from another
+         * variable so mutations to the copy don't alias the original. */
+        int tag = codegen_next_id(codegen);
+        char src_var[VAR_NAME_BUF];
+        snprintf(src_var, sizeof(src_var), "_ms%d", tag);
+        emit_formatted(codegen, "({ GrayMap %s = ", src_var);
+        emit_expression(codegen, node->data.var_decl.value);
+        emit(codegen, "; ");
+        emit_value_deep_copy(codegen, type_name, src_var);
+        emit(codegen, "; })");
+    } else if (node->data.var_decl.value) {
+        const char *saved_var_type = codegen->current_var_type;
+        codegen->current_var_type = type_name;
+        emit_expression(codegen, node->data.var_decl.value);
+        codegen->current_var_type = saved_var_type;
     } else {
-        emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
+        /* No initializer; create empty map */
+        emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
+            c_kt, c_vt, gray_map_key_kind_macro(c_kt));
     }
+    emit(codegen, ";\n");
+}
 
+static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
+                               const char *c_type, const char *type_name) {
     if (node->data.var_decl.value) {
         emit(codegen, " = ");
         codegen->current_var_name = node->data.var_decl.name;
@@ -7817,6 +7666,174 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
     }
 
     emit(codegen, ";\n");
+}
+
+static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
+    emit_indent(codegen);
+
+    const char *type_name = node->data.var_decl.type_name;
+    const char *elem_type = extract_array_element_type(type_name);
+
+    if (elem_type) {
+        emit_vardecl_array(codegen, node, type_name, elem_type);
+        return;
+    }
+
+    /* Map type: map[K:V] */
+    if (type_name && strncmp(type_name, "map[", 4) == 0) {
+        emit_vardecl_map(codegen, node, type_name);
+        return;
+    }
+
+    const char *c_type = gray_type_to_c_codegen(codegen, type_name);
+
+    /* Register bigint variable for type tracking */
+    if (type_name && is_bigint_type(type_name)) {
+        register_bigint_variable(codegen, node->data.var_decl.name, type_name);
+    } else if (!type_name && node->data.var_decl.value) {
+        /* Inferred-type var (e.g. `mut b = copy(a)`): consult the typetable
+         * so wide-integer types propagate through copy(), function calls,
+         * member access, etc. Without this the var is silently treated as
+         * int and downstream uses (println, arithmetic) emit the wrong
+         * runtime calls. Also try resolve_bigint_type() so constructor
+         * calls like `mut a = i128(42)` register correctly when the
+         * typetable stores the base type name ("int") rather than the
+         * width-specific name ("i128"). */
+        GrayType *vt = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.var_decl.value)
+            : NULL;
+        const char *bi_name = (vt && vt->name && is_bigint_type(vt->name))
+            ? vt->name : resolve_bigint_type(codegen, node->data.var_decl.value);
+        if (bi_name) {
+            register_bigint_variable(codegen, node->data.var_decl.name, bi_name);
+        }
+    }
+
+    /* Skip blank identifiers (_) */
+    if (strcmp(node->data.var_decl.name, "_") == 0) {
+        if (node->data.var_decl.value) {
+            emit_indent(codegen);
+            emit(codegen, "(void)(");
+            emit_expression(codegen, node->data.var_decl.value);
+            emit(codegen, ");\n");
+        }
+        return;
+    }
+
+    /* If no type annotation, try to infer from value */
+    if (!type_name && node->data.var_decl.value) {
+        AstNode *val = node->data.var_decl.value;
+        if (val->kind == NODE_STRING_VALUE || val->kind == NODE_INTERPOLATED_STRING) {
+            c_type = "GrayString";
+        } else if (val->kind == NODE_FLOAT_VALUE) {
+            c_type = "double";
+        } else if (val->kind == NODE_BOOL_VALUE) {
+            c_type = "bool";
+        } else if (val->kind == NODE_ARRAY_VALUE) {
+            c_type = "GrayArray";
+        } else if (val->kind == NODE_MAP_VALUE) {
+            c_type = "GrayMap";
+        } else if (val->kind == NODE_STRUCT_VALUE) {
+            /* : use mangled name for generic struct instantiations */
+            if (val->data.struct_value.wildcard_binding) {
+                const char *binding = val->data.struct_value.wildcard_binding;
+                const char *base = val->data.struct_value.name;
+                static char sv_buf[MSG_BUF_SIZE];
+                size_t string_pos = snprintf(sv_buf, sizeof(sv_buf), "%s__", base);
+                for (const char *ch = binding; *ch && string_pos < sizeof(sv_buf) - 1; ch++)
+                    sv_buf[string_pos++] = (isalnum((unsigned char)*ch) || *ch == '_') ? *ch : '_';
+                sv_buf[string_pos] = '\0';
+                c_type = gray_type_to_c_codegen(codegen, sv_buf);
+            } else {
+                c_type = gray_type_to_c_codegen(codegen, val->data.struct_value.name);
+            }
+        } else if (val->kind == NODE_INFIX_EXPR) {
+            /* Check type table for infix result type */
+            GrayType *infix_t = codegen->type_table ? typetable_get(codegen->type_table, val) : NULL;
+            if (infix_t && infix_t->kind == TK_STRING) {
+                c_type = "GrayString";
+            } else if (infix_t && infix_t->kind == TK_FLOAT) {
+                c_type = "double";
+            } else if (infix_t && infix_t->kind == TK_BOOL) {
+                c_type = "bool";
+            } else {
+                c_type = "__auto_type";
+            }
+        } else if (val->kind == NODE_CALL_EXPR || val->kind == NODE_NEW_EXPR ||
+                   val->kind == NODE_MEMBER_EXPR || val->kind == NODE_INDEX_EXPR ||
+                   val->kind == NODE_POSTFIX_EXPR) {
+            /* Use __auto_type for function calls, new(), member access, index,
+             * and postfix expressions (e.g. ptr^ dereference — without this,
+             * `mut x = p^` where p is ^StructType would be emitted as int64_t
+             * instead of the correct struct type). */
+            c_type = "__auto_type";
+        } else if (val->kind == NODE_FUNC_REF) {
+            /* Function reference; use __auto_type to capture the pointer type */
+            c_type = "__auto_type";
+        } else if (val->kind == NODE_LABEL) {
+            /* Variable reference; use __auto_type to propagate the source type */
+            c_type = "__auto_type";
+        } else if (val->kind == NODE_CAST_EXPR) {
+            /* Cast expression; use the target type */
+            c_type = gray_type_to_c_codegen(codegen, val->data.cast.target_type);
+        }
+    }
+
+    /* Detect ref() assignment; register as transparent reference (but not for function refs) */
+    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+        AstNode *function_node = node->data.var_decl.value->data.call.function;
+        if (function_node->kind == NODE_LABEL && strcmp(function_node->data.label.value, "ref") == 0) {
+            /* Register as a transparent reference for any assignable source —
+             * variable, struct field, or index expression. Without this,
+             * ref(struct.field) was registered as a plain value var and
+             * later GRAY_ARRAY_SET(&(r), ...) produced GrayArray ** instead of
+             * GrayArray *. The auto-deref path in NODE_LABEL emission
+             * handles field/index sources the same as variable sources. */
+            if (node->data.var_decl.value->data.call.arg_count == 1) {
+                AstNode *arg = node->data.var_decl.value->data.call.args[0];
+                bool is_assignable =
+                    (arg->kind == NODE_LABEL && !find_function(codegen, arg->data.label.value)) ||
+                    arg->kind == NODE_MEMBER_EXPR ||
+                    arg->kind == NODE_INDEX_EXPR;
+                if (is_assignable) {
+                    register_reference_variable(codegen, node->data.var_decl.name);
+                }
+            }
+        }
+    }
+
+    /* Detect raw() assignment; register as raw pointer (nil check skipped on deref) */
+    bool is_raw_init = false;
+    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+        AstNode *fn = node->data.var_decl.value->data.call.function;
+        if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "raw") == 0) {
+            register_raw_variable(codegen, node->data.var_decl.name);
+            is_raw_init = true;
+        }
+    }
+    /* If a pointer variable shadows a raw variable from an outer scope,
+     * push a non-raw override so inner dereferences get nil checks. */
+    if (!is_raw_init && type_name && type_name[0] == '^' &&
+        is_raw_variable(codegen, node->data.var_decl.name)) {
+        unregister_raw_variable(codegen, node->data.var_decl.name);
+    }
+
+    if (!node->data.var_decl.mutable) {
+        if (type_name && type_name[0] == '^') {
+            /* const pointer: T * const p — the pointer is immutable, not the
+             * pointed-to data.  Placing const before the type would produce
+             * const T * p (pointer to const T), which incorrectly propagates
+             * the const qualifier through dereferences and field accesses. */
+            emit_formatted(codegen, "%s const %s", c_type, sanitize_name(node->data.var_decl.name));
+        } else {
+            emit(codegen, "const ");
+            emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
+        }
+    } else {
+        emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
+    }
+
+    emit_vardecl_init(codegen, node, c_type, type_name);
 }
 
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
