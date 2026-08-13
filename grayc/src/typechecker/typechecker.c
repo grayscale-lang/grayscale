@@ -1870,6 +1870,12 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
             return strcmp(dest->name, src->name) == 0;
         return true;
     }
+    /* Array types must match element types ([int] != [string]) */
+    if (dest->kind == TK_ARRAY && src->kind == TK_ARRAY) {
+        if (dest->element_type && src->element_type)
+            return strcmp(dest->element_type, src->element_type) == 0;
+        return true; /* unknown element type: allow */
+    }
     if (dest->kind == src->kind) return true;
     /* Int-family interop (byte ↔ uint excluded) */
     if (is_int_kind(dest->kind) && is_int_kind(src->kind) &&
