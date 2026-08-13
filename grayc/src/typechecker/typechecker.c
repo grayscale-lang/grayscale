@@ -1858,6 +1858,12 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
             return strcmp(dest->element_type, src->element_type) == 0;
         return true; /* unknown element type: allow */
     }
+    /* Struct types must match by name (Point != Size) */
+    if (dest->kind == TK_STRUCT && src->kind == TK_STRUCT) {
+        if (dest->name && src->name)
+            return strcmp(dest->name, src->name) == 0;
+        return true;
+    }
     if (dest->kind == src->kind) return true;
     /* Int-family interop (byte ↔ uint excluded) */
     if (is_int_kind(dest->kind) && is_int_kind(src->kind) &&

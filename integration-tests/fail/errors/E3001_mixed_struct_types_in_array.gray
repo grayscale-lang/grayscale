@@ -1,0 +1,15 @@
+const Point struct {
+    x int
+    y int
+}
+
+const Size struct {
+    w int
+    h int
+}
+
+do main() {
+    for_each val in {Point{x: 1, y: 2}, Size{w: 10, h: 20}} {
+        println(val)
+    }
+}
