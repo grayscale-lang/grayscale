@@ -6110,10 +6110,14 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
     } else {
-        /* Object is an expression (e.g. foo().bar); resolve its type */
+        /* Object is an expression (e.g. foo().bar, p^.field); resolve its type */
         GrayType *obj_t = resolve_expression(checker, obj);
         if (obj_t && obj_t->kind == TK_STRUCT) {
             result = struct_field_type(checker, obj_t->name, member);
+            if (result->kind == TK_UNKNOWN && member[0] != 'v') {
+                diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    struct_display_name(checker, obj_t->name), member);
+            }
         } else if (obj_t && obj_t->kind != TK_UNKNOWN && obj_t->kind != TK_VOID) {
             char *msg = NULL;
             msg = typechecker_format(checker,
@@ -9348,6 +9352,25 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                         NODE_FILE(checker, node->data.assign.value),
                         node->data.assign.value->token.line,
                         node->data.assign.value->token.column, 0);
+                }
+            }
+        }
+        /* Type mismatch on explicit deref field assignment: p^.field = value */
+        if (target->kind == NODE_MEMBER_EXPR &&
+            target->data.member.object->kind == NODE_POSTFIX_EXPR &&
+            target->data.member.object->data.postfix.op == TOK_CARET) {
+            GrayType *obj_t = resolve_expression(checker, target->data.member.object);
+            if (obj_t && obj_t->kind == TK_STRUCT && obj_t->name) {
+                GrayType *field_t = struct_field_type(checker, obj_t->name, target->data.member.member);
+                if (field_t->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
+                    !types_assignable(checker, field_t, value_t) &&
+                    !(value_t->kind == TK_NIL &&
+                      (field_t->kind == TK_POINTER || field_t->kind == TK_ERROR))) {
+                    char *msg = typechecker_format(checker,
+                        "type mismatch: cannot assign %s to %s field '%s'",
+                        type_display_name(checker, value_t), type_display_name(checker, field_t), target->data.member.member);
+                    diagnostic_error_message(checker->diag, "E3001", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 }
             }
         }
