@@ -6894,6 +6894,10 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     break;
                 }
             }
+        } else if (!saved_arr_expected || !saved_arr_expected->element_type) {
+            /* Empty inline array with no type context — cannot infer element type */
+            diagnostic_error_code(checker->diag, "E3136", NODE_FILE(checker, node),
+                node->token.line, node->token.column, 0);
         }
         checker->expected_type = saved_arr_expected;
         break;
@@ -7821,9 +7825,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (declared->kind == TK_ENUM && declared->name)
             checker->expected_type = declared;
         else if (declared->kind == TK_ARRAY && declared->element_type) {
-            GrayType *elem_t = typechecker_type_from_name(checker, declared->element_type);
-            if (elem_t && elem_t->kind == TK_ENUM)
-                checker->expected_type = declared;
+            checker->expected_type = declared;
         } else if (declared->kind == TK_MAP && declared->value_type) {
             GrayType *val_t = typechecker_type_from_name(checker, declared->value_type);
             if (val_t && val_t->kind == TK_ENUM)

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 381 codes** (260 errors, 17 warnings, 104 panics)
+**Total: 382 codes** (261 errors, 17 warnings, 104 panics)
 
 ---
 
@@ -202,6 +202,7 @@
 | `E3133` | types | alias '%s' creates a circular reference |
 | `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
 | `E3135` | types | alias '%s' cannot target the wildcard type '?' |
+| `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -432,4 +433,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-13 08:54:30 UTC*
+*Generated on 2026-08-13 16:39:02 UTC*

@@ -217,7 +217,8 @@
     GRAY_ERROR("E3132", "types", "alias target type '%s' is not defined") \
     GRAY_ERROR("E3133", "types", "alias '%s' creates a circular reference") \
     GRAY_ERROR("E3134", "types", "alias '%s' cannot target a module-qualified type; only local types can be aliased") \
-    GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'")
+    GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
+    GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
