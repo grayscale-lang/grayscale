@@ -9188,6 +9188,22 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3098", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* General type mismatch through pointer dereference (e.g. p^ = "hello"
+         * where p is ^Foo).  E3098 above catches struct-to-struct name mismatches;
+         * this covers all other cross-kind mismatches (struct^ = string, int^ = string, etc.). */
+        if (target->kind == NODE_POSTFIX_EXPR &&
+            target->data.postfix.op == TOK_CARET &&
+            target_t && value_t &&
+            target_t->kind != TK_UNKNOWN && value_t->kind != TK_UNKNOWN &&
+            !types_assignable(checker, target_t, value_t) &&
+            !(value_t->kind == TK_NIL &&
+              (target_t->kind == TK_POINTER || target_t->kind == TK_ERROR))) {
+            char *msg = typechecker_format(checker,
+                "type mismatch: cannot assign %s to %s through pointer dereference",
+                type_display_name(checker, value_t), type_display_name(checker, target_t));
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* Pointer-to-pointer: pointee types differ on reassignment (e.g., p = q where ^int ≠ ^string).
          * The outer kind-equality guard short-circuits, so a dedicated check is required. */
         if (target->kind == NODE_LABEL &&

@@ -1,0 +1,10 @@
+const Foo struct {
+    name string
+    value string
+}
+
+do main() {
+    mut foo = new(Foo)^
+    const a = addr(foo)
+    a^ = "hello"
+}
