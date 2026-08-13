@@ -3098,9 +3098,12 @@ static AstNode *parse_statement(Parser *parser) {
         synchronize_parser(parser);
         return NULL;
     default: {
-        /* Bare variable declaration: x int = 5  or  x, err = func() */
+        /* Bare variable declaration: x int = 5  or  x, err = func()
+         * Also handles array types: x [int] = {1,2,3}
+         * Whitespace before '[' disambiguates from index expressions (E2075). */
         if (current_token_is(parser, TOK_IDENT) &&
-            (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA))) {
+            (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA) ||
+             (peek_token_is(parser, TOK_LBRACKET) && parser->peek_token.preceded_by_ws))) {
             return parse_var_declaration_ex(parser, true);
         }
         /* Could be assignment or expression statement */
