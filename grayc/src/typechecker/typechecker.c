@@ -1864,6 +1864,12 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
             return strcmp(dest->name, src->name) == 0;
         return true;
     }
+    /* Enum types must match by name (Color != Dir) */
+    if (dest->kind == TK_ENUM && src->kind == TK_ENUM) {
+        if (dest->name && src->name)
+            return strcmp(dest->name, src->name) == 0;
+        return true;
+    }
     if (dest->kind == src->kind) return true;
     /* Int-family interop (byte ↔ uint excluded) */
     if (is_int_kind(dest->kind) && is_int_kind(src->kind) &&

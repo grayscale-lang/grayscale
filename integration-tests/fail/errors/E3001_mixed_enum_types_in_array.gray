@@ -1,0 +1,16 @@
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Dir enum {
+    UP
+    DOWN
+}
+
+do main() {
+    for_each val in {Color.RED, Dir.UP} {
+        println(val)
+    }
+}
