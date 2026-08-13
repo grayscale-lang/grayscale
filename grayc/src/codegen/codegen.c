@@ -9276,6 +9276,147 @@ static void emit_expression_statement(CodeGen *codegen, AstNode *node) {
     emit(codegen, ";\n");
 }
 
+/* ── for_each helpers ──────────────────────────────────────────────── */
+
+static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
+                              GrayType *coll_t, const char *idx_name,
+                              bool *out_map_needs_tmp, char *map_tmp_name,
+                              size_t map_tmp_size) {
+    int mi_id = codegen_next_id(codegen);
+    char mi_name[SHORT_VAR_BUF];
+    snprintf(mi_name, sizeof(mi_name), "_gray_mi%d", mi_id);
+
+    const char *c_key = "GrayString";
+    const char *c_val = "int64_t";
+    if (coll_t->key_type) {
+        GrayType *kt = type_from_name(coll_t->key_type);
+        if (kt->kind == TK_INT || kt->kind == TK_UINT) c_key = "int64_t";
+    }
+    if (coll_t->value_type) c_val = gray_map_element_c_type(codegen, coll_t->value_type);
+
+    *out_map_needs_tmp = (coll->kind != NODE_LABEL);
+    if (*out_map_needs_tmp) {
+        snprintf(map_tmp_name, map_tmp_size, "_gray_map%d", mi_id);
+        emit_formatted(codegen, "{ GrayMap %s = ", map_tmp_name);
+        emit_expression(codegen, coll);
+        emit(codegen, ";\n");
+        emit_indent(codegen);
+    }
+
+    char slot_name[SHORT_VAR_BUF];
+    snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", mi_id);
+    {
+        char *ge = iter_guard_expr(codegen, *out_map_needs_tmp, map_tmp_name, coll);
+        iter_guard_push(codegen, ge);
+        free(ge);
+    }
+    if (*out_map_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", map_tmp_name);
+    else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
+    emit_indent(codegen);
+    emit_formatted(codegen, "for (int32_t %s = 0; %s < ", mi_name, mi_name);
+    if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
+    else emit_expression(codegen, coll);
+    emit_formatted(codegen, ".order_len; %s++) {\n", mi_name);
+    codegen->indent++;
+    emit_indent(codegen);
+    emit_formatted(codegen, "int32_t %s = ", slot_name);
+    if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
+    else emit_expression(codegen, coll);
+    emit_formatted(codegen, ".order[%s];\n", mi_name);
+
+    if (node->data.for_each.index_name) {
+        if (strcmp(node->data.for_each.index_name, "_") != 0) {
+            emit_indent(codegen);
+            emit_formatted(codegen, "%s %s = *(%s *)gray_map_key_at(&",
+                c_key, sanitize_name(node->data.for_each.index_name), c_key);
+            if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
+            else emit_expression(codegen, coll);
+            emit_formatted(codegen, ", %s);\n", slot_name);
+        }
+        if (strcmp(node->data.for_each.var_name, "_") != 0) {
+            emit_indent(codegen);
+            emit_formatted(codegen, "%s %s = *(%s *)gray_map_value_at(&",
+                c_val, sanitize_name(node->data.for_each.var_name), c_val);
+            if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
+            else emit_expression(codegen, coll);
+            emit_formatted(codegen, ", %s);\n", slot_name);
+        }
+    } else {
+        emit_indent(codegen);
+        emit_formatted(codegen, "%s %s = *(%s *)gray_map_key_at(&",
+            c_key, sanitize_name(node->data.for_each.var_name), c_key);
+        if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
+        else emit_expression(codegen, coll);
+        emit_formatted(codegen, ", %s);\n", slot_name);
+    }
+}
+
+static void emit_foreach_string(CodeGen *codegen, AstNode *node, AstNode *coll,
+                                 const char *idx_name) {
+    emit_formatted(codegen, "{ GrayString _gray_str = ");
+    emit_expression(codegen, coll);
+    emit(codegen, ";\n");
+    emit_indent(codegen);
+    emit_formatted(codegen, "for (int32_t %s = 0; %s < _gray_str.len; %s++) {\n", idx_name, idx_name, idx_name);
+    codegen->indent++;
+    emit_indent(codegen);
+    emit_formatted(codegen, "int32_t %s = _gray_str.data[%s];\n", sanitize_name(node->data.for_each.var_name), idx_name);
+}
+
+static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
+                                GrayType *coll_t, const char *idx_name,
+                                bool *out_coll_needs_tmp, char *arr_tmp_name,
+                                size_t arr_tmp_size) {
+    const char *c_elem = "int64_t";
+    if (coll_t && coll_t->kind == TK_ARRAY && coll_t->element_type) {
+        const char *elem_tn = codegen_effective_type_string(codegen, coll_t->element_type);
+        GrayType *et = type_from_name(elem_tn);
+        if (et->kind == TK_FLOAT) c_elem = "double";
+        else if (et->kind == TK_BOOL) c_elem = "bool";
+        else if (et->kind == TK_STRING) c_elem = "GrayString";
+        else if (et->kind == TK_ARRAY) c_elem = "GrayArray";
+        else if (et->kind == TK_MAP) c_elem = "GrayMap";
+        else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+        else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+        else if (et->kind == TK_CHAR) c_elem = "int32_t";
+        else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+        else if (et->kind == TK_ENUM) {
+            c_elem = codegen_enum_is_string(codegen, elem_tn)
+                ? "GrayString" : gray_type_to_c_codegen(codegen, elem_tn);
+        }
+    }
+
+    int alen_id = codegen_next_id(codegen);
+    char len_name[SHORT_VAR_BUF];
+    snprintf(len_name, sizeof(len_name), "_gray_alen%d", alen_id);
+    *out_coll_needs_tmp = (coll->kind != NODE_LABEL);
+    if (*out_coll_needs_tmp) {
+        snprintf(arr_tmp_name, arr_tmp_size, "_gray_arr%d", alen_id);
+        emit_formatted(codegen, "{ GrayArray %s = ", arr_tmp_name);
+        emit_expression(codegen, coll);
+        emit(codegen, ";\n");
+        emit_indent(codegen);
+    }
+    emit_formatted(codegen, "{ int32_t %s = ", len_name);
+    if (*out_coll_needs_tmp) emit_formatted(codegen, "%s.len;\n", arr_tmp_name);
+    else { emit_expression(codegen, coll); emit(codegen, ".len;\n"); }
+    {
+        char *ge = iter_guard_expr(codegen, *out_coll_needs_tmp, arr_tmp_name, coll);
+        iter_guard_push(codegen, ge);
+        free(ge);
+    }
+    emit_indent(codegen);
+    if (*out_coll_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", arr_tmp_name);
+    else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
+    emit_indent(codegen);
+    emit_formatted(codegen, "for (int32_t %s = 0; %s < %s; %s++) {\n", idx_name, idx_name, len_name, idx_name);
+    codegen->indent++;
+    emit_indent(codegen);
+    emit_formatted(codegen, "%s %s = GRAY_ARRAY_GET_AT(", c_elem, sanitize_name(node->data.for_each.var_name));
+    if (*out_coll_needs_tmp) emit_formatted(codegen, "%s, %s, %s, \"%s\", %d);\n", arr_tmp_name, c_elem, idx_name, codegen->file, node->token.line);
+    else { emit_expression(codegen, coll); emit_formatted(codegen, ", %s, %s, \"%s\", %d);\n", c_elem, idx_name, codegen->file, node->token.line); }
+}
+
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     if (!node) return;
 
@@ -9306,10 +9447,6 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         const char *idx_name = node->data.for_each.index_name;
         if (!idx_name) idx_name = "_gray_idx";
         bool is_map_iter = (coll_t && coll_t->kind == TK_MAP);
-        /* When the collection is a non-assignable expression (function
-         * call, literal, etc.) it is an rvalue in C and cannot be
-         * mutated (.iterating++) or addressed (&coll). Both the array
-         * and map branches materialize a named C temporary. */
         bool coll_needs_tmp = false;
         char arr_tmp_name[SHORT_VAR_BUF];
         arr_tmp_name[0] = '\0';
@@ -9318,150 +9455,13 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         map_tmp_name[0] = '\0';
 
         if (is_map_iter) {
-            /* for_each on map; iterate occupied slots with internal counter */
-            int mi_id = codegen_next_id(codegen);
-            char mi_name[SHORT_VAR_BUF];
-            snprintf(mi_name, sizeof(mi_name), "_gray_mi%d", mi_id);
-
-            const char *c_key = "GrayString";
-            const char *c_val = "int64_t";
-            if (coll_t->key_type) {
-                GrayType *kt = type_from_name(coll_t->key_type);
-                if (kt->kind == TK_INT || kt->kind == TK_UINT) c_key = "int64_t";
-            }
-            if (coll_t->value_type) c_val = gray_map_element_c_type(codegen, coll_t->value_type);
-
-            map_needs_tmp = (coll->kind != NODE_LABEL);
-            if (map_needs_tmp) {
-                snprintf(map_tmp_name, sizeof(map_tmp_name), "_gray_map%d", mi_id);
-                emit_formatted(codegen, "{ GrayMap %s = ", map_tmp_name);
-                emit_expression(codegen, coll);
-                emit(codegen, ";\n");
-                emit_indent(codegen);
-            }
-
-            /* Iterate in insertion order using the order array */
-            char slot_name[SHORT_VAR_BUF];
-            snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", mi_id);
-            /* Guard against mutation during iteration */
-            {
-                char *ge = iter_guard_expr(codegen, map_needs_tmp, map_tmp_name, coll);
-                iter_guard_push(codegen, ge);
-                free(ge);
-            }
-            if (map_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", map_tmp_name);
-            else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
-            emit_indent(codegen);
-            emit_formatted(codegen, "for (int32_t %s = 0; %s < ", mi_name, mi_name);
-            if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-            else emit_expression(codegen, coll);
-            emit_formatted(codegen, ".order_len; %s++) {\n", mi_name);
-            codegen->indent++;
-            emit_indent(codegen);
-            emit_formatted(codegen, "int32_t %s = ", slot_name);
-            if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-            else emit_expression(codegen, coll);
-            emit_formatted(codegen, ".order[%s];\n", mi_name);
-
-            if (node->data.for_each.index_name) {
-                /* Two-var form: for_each k, v in map */
-                if (strcmp(node->data.for_each.index_name, "_") != 0) {
-                    emit_indent(codegen);
-                    emit_formatted(codegen, "%s %s = *(%s *)gray_map_key_at(&",
-                        c_key, sanitize_name(node->data.for_each.index_name), c_key);
-                    if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-                    else emit_expression(codegen, coll);
-                    emit_formatted(codegen, ", %s);\n", slot_name);
-                }
-                if (strcmp(node->data.for_each.var_name, "_") != 0) {
-                    emit_indent(codegen);
-                    emit_formatted(codegen, "%s %s = *(%s *)gray_map_value_at(&",
-                        c_val, sanitize_name(node->data.for_each.var_name), c_val);
-                    if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-                    else emit_expression(codegen, coll);
-                    emit_formatted(codegen, ", %s);\n", slot_name);
-                }
-            } else {
-                /* One-var form: for_each key in map (keys only) */
-                emit_indent(codegen);
-                emit_formatted(codegen, "%s %s = *(%s *)gray_map_key_at(&",
-                    c_key, sanitize_name(node->data.for_each.var_name), c_key);
-                if (map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
-                else emit_expression(codegen, coll);
-                emit_formatted(codegen, ", %s);\n", slot_name);
-            }
+            emit_foreach_map(codegen, node, coll, coll_t, idx_name,
+                             &map_needs_tmp, map_tmp_name, sizeof(map_tmp_name));
         } else if (coll_t && coll_t->kind == TK_STRING) {
-            /* for_each ch in "string" → iterate characters */
-            emit_formatted(codegen, "{ GrayString _gray_str = ");
-            emit_expression(codegen, coll);
-            emit(codegen, ";\n");
-            emit_indent(codegen);
-            emit_formatted(codegen, "for (int32_t %s = 0; %s < _gray_str.len; %s++) {\n", idx_name, idx_name, idx_name);
-            codegen->indent++;
-            emit_indent(codegen);
-            emit_formatted(codegen, "int32_t %s = _gray_str.data[%s];\n", sanitize_name(node->data.for_each.var_name), idx_name);
+            emit_foreach_string(codegen, node, coll, idx_name);
         } else {
-            /* for_each item in array → iterate GrayArray */
-            const char *c_elem = "int64_t";
-            if (coll_t && coll_t->kind == TK_ARRAY && coll_t->element_type) {
-                /* Wildcard substitution ): a generic parameter
-                 * typed `[?]` stores "?" as its element_type; swap it
-                 * out for the active instantiation's concrete binding
-                 * before resolving to a C type. */
-                const char *elem_tn = codegen_effective_type_string(codegen, coll_t->element_type);
-                GrayType *et = type_from_name(elem_tn);
-                if (et->kind == TK_FLOAT) c_elem = "double";
-                else if (et->kind == TK_BOOL) c_elem = "bool";
-                else if (et->kind == TK_STRING) c_elem = "GrayString";
-                else if (et->kind == TK_ARRAY) c_elem = "GrayArray";
-                else if (et->kind == TK_MAP) c_elem = "GrayMap";
-                else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
-                else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
-                else if (et->kind == TK_CHAR) c_elem = "int32_t";
-                else if (et->kind == TK_BYTE) c_elem = "uint8_t";
-                else if (et->kind == TK_ENUM) {
-                    c_elem = codegen_enum_is_string(codegen, elem_tn)
-                        ? "GrayString" : gray_type_to_c_codegen(codegen, elem_tn);
-                }
-            }
-
-            /* Snapshot the array length at loop start so appending during
-             * iteration doesn't cause an infinite loop. The loop visits
-             * only the elements that existed when for_each began. */
-            int alen_id = codegen_next_id(codegen);
-            char len_name[SHORT_VAR_BUF];
-            snprintf(len_name, sizeof(len_name), "_gray_alen%d", alen_id);
-            /* When the collection is a non-assignable expression (inline array
-             * literal, function return, etc.) it is an rvalue in C and
-             * cannot be mutated (.iterating++) or addressed (GRAY_ARRAY_GET).
-             * Assign it to a named temporary first. */
-            coll_needs_tmp = (coll->kind != NODE_LABEL);
-            if (coll_needs_tmp) {
-                snprintf(arr_tmp_name, sizeof(arr_tmp_name), "_gray_arr%d", alen_id);
-                emit_formatted(codegen, "{ GrayArray %s = ", arr_tmp_name);
-                emit_expression(codegen, coll);
-                emit(codegen, ";\n");
-                emit_indent(codegen);
-            }
-            emit_formatted(codegen, "{ int32_t %s = ", len_name);
-            if (coll_needs_tmp) emit_formatted(codegen, "%s.len;\n", arr_tmp_name);
-            else { emit_expression(codegen, coll); emit(codegen, ".len;\n"); }
-            /* Guard against mutation during iteration */
-            {
-                char *ge = iter_guard_expr(codegen, coll_needs_tmp, arr_tmp_name, coll);
-                iter_guard_push(codegen, ge);
-                free(ge);
-            }
-            emit_indent(codegen);
-            if (coll_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", arr_tmp_name);
-            else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
-            emit_indent(codegen);
-            emit_formatted(codegen, "for (int32_t %s = 0; %s < %s; %s++) {\n", idx_name, idx_name, len_name, idx_name);
-            codegen->indent++;
-            emit_indent(codegen);
-            emit_formatted(codegen, "%s %s = GRAY_ARRAY_GET_AT(", c_elem, sanitize_name(node->data.for_each.var_name));
-            if (coll_needs_tmp) emit_formatted(codegen, "%s, %s, %s, \"%s\", %d);\n", arr_tmp_name, c_elem, idx_name, codegen->file, node->token.line);
-            else { emit_expression(codegen, coll); emit_formatted(codegen, ", %s, %s, \"%s\", %d);\n", c_elem, idx_name, codegen->file, node->token.line); }
+            emit_foreach_array(codegen, node, coll, coll_t, idx_name,
+                               &coll_needs_tmp, arr_tmp_name, sizeof(arr_tmp_name));
         }
 
         emit_loop_body_with_arena(codegen, node->data.for_each.body);
@@ -9492,7 +9492,6 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             else { emit(codegen, "gray_atomic_sub32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
             emit_indent(codegen);
             emit(codegen, "}\n");
-            /* Close the outer temporary block if we materialized a C temp */
             if (coll_needs_tmp) {
                 emit_indent(codegen);
                 emit(codegen, "}\n");
