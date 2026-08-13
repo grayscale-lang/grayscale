@@ -11047,9 +11047,9 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
 }
 
-static void register_declarations(TypeChecker *checker, AstNode *program) {
-    checker->registering = true;
-    /* Validate and record imports */
+/* ── declaration registration sub-handlers ────────────────────────── */
+
+static void register_decl_imports(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind == NODE_IMPORT_STMT) {
@@ -11090,8 +11090,10 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
             }
         }
     }
+}
 
-    /* Pass 1b: Register type aliases BEFORE enums/structs so that alias
+static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
+    /* Register type aliases BEFORE enums/structs so that alias
      * names can be used in struct fields and enum payloads. */
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -11170,12 +11172,11 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
          * after struct/enum registration so aliases to user-defined types
          * don't false-positive during this early pass. We'll check later. */
     }
+}
 
-    /* Pass 2a: Register enums BEFORE structs so that struct field types
-     * referencing enums resolve correctly via typechecker_type_from_name(). Without
-     * this ordering guarantee, a struct field typed as an enum (e.g. `color
-     * Color`) resolves as TK_STRUCT instead of TK_ENUM when the struct
-     * appears before the enum in the merged AST (common with imports). */
+static void register_decl_enums(TypeChecker *checker, AstNode *program) {
+    /* Register enums BEFORE structs so that struct field types
+     * referencing enums resolve correctly via typechecker_type_from_name(). */
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind != NODE_ENUM_DECL) continue;
@@ -11316,294 +11317,299 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
         }
         register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags);
     }
+}
 
-    /* Pass 2b: Register structs and functions (enums already registered above) */
+static void register_decl_structs(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_STRUCT_DECL) continue;
         checker->current_check_file = stmt->token.file;
 
-        if (stmt->kind == NODE_STRUCT_DECL) {
-            /* E2067: empty struct */
-            if (stmt->data.struct_decl.field_count == 0) {
-                diagnostic_error_code_formatted(checker->diag, "E2067", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, STRUCT_DISPLAY_NAME(stmt));
-            }
-            int field_count = stmt->data.struct_decl.field_count;
-            const char **fnames = arena_alloc(checker->arena, sizeof(const char *) * (field_count ? field_count : 1));
-            GrayType **ftypes = arena_alloc(checker->arena, sizeof(GrayType *) * (field_count ? field_count : 1));
-            for (int j = 0; j < field_count; j++) {
-                fnames[j] = stmt->data.struct_decl.fields[j].name;
-                ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
-                /* E3038: void field type */
-                if (stmt->data.struct_decl.fields[j].type_name &&
-                    strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "'void' cannot be used as a struct field type (field '%s')",
-                        fnames[j]);
-                    diagnostic_error_message(checker->diag, "E3038", msg,
-                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                }
-                /* E2066: field name matches struct type name */
-                if (strcmp(fnames[j], stmt->data.struct_decl.name) == 0) {
-                    diagnostic_error_code_formatted(checker->diag, "E2066", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, fnames[j], STRUCT_DISPLAY_NAME(stmt));
-                }
-                /* E5016: builtin function name as struct field name */
-                if (is_reserved_builtin_func_name(fnames[j])) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "'%s' is a builtin function and cannot be used as a struct field name",
-                        fnames[j]);
-                    diagnostic_error_message(checker->diag, "E5016", msg,
-                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                }
-                /* E5035: stdlib module name as struct field name */
-                if (is_stdlib_module_name(fnames[j])) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "'%s' is a standard library module and cannot be used as a struct field name",
-                        fnames[j]);
-                    diagnostic_error_message(checker->diag, "E5035", msg,
-                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                }
-                /* E3061 (): struct field cannot be the enclosing
-                 * struct by value; that produces an infinite-size
-                 * type. Direct self-reference or transitive cycles
-                 * through other by-value struct fields both count.
-                 * Pointer/array/map fields are fine because they're
-                 * heap-indirected and have a finite header size. */
-                const char *ftn = stmt->data.struct_decl.fields[j].type_name;
-                if (ftn && *ftn && ftn[0] != '^' && ftn[0] != '[' &&
-                    strncmp(ftn, "map[", 4) != 0) {
-                    bool is_cycle = false;
-                    const char *self_name = stmt->data.struct_decl.name;
-                    if (strcmp(ftn, self_name) == 0) {
-                        is_cycle = true;
-                    } else {
-                        AstNode *child = find_struct_in_program(program, ftn);
-                        if (child) {
-                            const char *visited[MAX_STRUCT_DEPTH];
-                            int variant_count = 0;
-                            is_cycle = struct_contains_by_value(
-                                program, child, self_name, visited, &variant_count, 32);
-                        }
-                    }
-                    if (is_cycle) {
-                        char *msg = NULL;
-                        const char *display = STRUCT_DISPLAY_NAME(stmt);
-                        if (strcmp(ftn, self_name) == 0) {
-                            msg = typechecker_format(checker,
-                                "struct '%s' cannot contain itself by value; use a pointer field '^%s' for recursive types",
-                                display, display);
-                        } else {
-                            msg = typechecker_format(checker,
-                                "struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s'",
-                                display, ftn, ftn);
-                        }
-                        diagnostic_error_message(checker->diag, "E3061", msg,
-                            NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                    }
-                }
-                /* Validate all named types within the field type recursively.
-                 * Covers ^T, [T], map[K:V], and arbitrary nesting thereof. */
-                if (ftn && *ftn)
-                    validate_field_type_recursive(checker, program, ftn, fnames[j], stmt);
-                /* Check for duplicate field names */
-                for (int k = 0; k < j; k++) {
-                    if (strcmp(fnames[k], fnames[j]) == 0) {
-                        diagnostic_error_code_formatted(checker->diag, "E2013", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, fnames[j], STRUCT_DISPLAY_NAME(stmt));
-                        break;
-                    }
-                }
-                /* Resolve implicit enum selectors in field default values */
-                if (stmt->data.struct_decl.fields[j].default_value) {
-                    GrayType *saved_expected = checker->expected_type;
-                    if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
-                        checker->expected_type = ftypes[j];
-                    resolve_expression(checker, stmt->data.struct_decl.fields[j].default_value);
-                    checker->expected_type = saved_expected;
-                }
-            }
-            /* E2037/E2038: reserved name check for structs */
-            const char *sn = STRUCT_DISPLAY_NAME(stmt);
-            if (is_reserved_type_name(stmt->data.struct_decl.name)) {
-                char *msg = NULL;
-                msg = typechecker_format(checker, "'%s' is a reserved type name and cannot be used as a struct name", sn);
-                diagnostic_error_message(checker->diag, "E2037", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-            }
-            /* E5016: builtin function name as struct name */
-            if (is_reserved_builtin_func_name(stmt->data.struct_decl.name)) {
-                char *msg = NULL;
-                msg = typechecker_format(checker, "'%s' is a builtin function and cannot be used as a struct name", sn);
-                diagnostic_error_message(checker->diag, "E5016", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-            }
-            /* E5035: stdlib module name as struct name */
-            if (is_stdlib_module_name(stmt->data.struct_decl.name)) {
-                char *msg = NULL;
-                msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as a struct name", sn);
-                diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-            }
-            /* E4007: duplicate struct name */
-            if (is_struct_name(checker, stmt->data.struct_decl.name) ||
-                is_enum_name(checker, stmt->data.struct_decl.name)) {
+        /* E2067: empty struct */
+        if (stmt->data.struct_decl.field_count == 0) {
+            diagnostic_error_code_formatted(checker->diag, "E2067", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, STRUCT_DISPLAY_NAME(stmt));
+        }
+        int field_count = stmt->data.struct_decl.field_count;
+        const char **fnames = arena_alloc(checker->arena, sizeof(const char *) * (field_count ? field_count : 1));
+        GrayType **ftypes = arena_alloc(checker->arena, sizeof(GrayType *) * (field_count ? field_count : 1));
+        for (int j = 0; j < field_count; j++) {
+            fnames[j] = stmt->data.struct_decl.fields[j].name;
+            ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
+            /* E3038: void field type */
+            if (stmt->data.struct_decl.fields[j].type_name &&
+                strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "a type named '%s' is already declared",
-                    STRUCT_DISPLAY_NAME(stmt));
-                diagnostic_error_message(checker->diag, "E4007", msg,
+                    "'void' cannot be used as a struct field type (field '%s')",
+                    fnames[j]);
+                diagnostic_error_message(checker->diag, "E3038", msg,
                     NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             }
-            register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
-
-            /* : detect generic structs (any field with ? in type) */
-            stmt->data.struct_decl.is_generic = false;
-            stmt->data.struct_decl.instantiations = NULL;
-            stmt->data.struct_decl.instantiation_count = 0;
-            for (int j = 0; j < field_count; j++) {
-                if (stmt->data.struct_decl.fields[j].type_name &&
-                    strchr(stmt->data.struct_decl.fields[j].type_name, '?')) {
-                    stmt->data.struct_decl.is_generic = true;
+            /* E2066: field name matches struct type name */
+            if (strcmp(fnames[j], stmt->data.struct_decl.name) == 0) {
+                diagnostic_error_code_formatted(checker->diag, "E2066", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, fnames[j], STRUCT_DISPLAY_NAME(stmt));
+            }
+            /* E5016: builtin function name as struct field name */
+            if (is_reserved_builtin_func_name(fnames[j])) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "'%s' is a builtin function and cannot be used as a struct field name",
+                    fnames[j]);
+                diagnostic_error_message(checker->diag, "E5016", msg,
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            }
+            /* E5035: stdlib module name as struct field name */
+            if (is_stdlib_module_name(fnames[j])) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "'%s' is a standard library module and cannot be used as a struct field name",
+                    fnames[j]);
+                diagnostic_error_message(checker->diag, "E5035", msg,
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            }
+            /* E3061: struct field cannot be the enclosing struct by value */
+            const char *ftn = stmt->data.struct_decl.fields[j].type_name;
+            if (ftn && *ftn && ftn[0] != '^' && ftn[0] != '[' &&
+                strncmp(ftn, "map[", 4) != 0) {
+                bool is_cycle = false;
+                const char *self_name = stmt->data.struct_decl.name;
+                if (strcmp(ftn, self_name) == 0) {
+                    is_cycle = true;
+                } else {
+                    AstNode *child = find_struct_in_program(program, ftn);
+                    if (child) {
+                        const char *visited[MAX_STRUCT_DEPTH];
+                        int variant_count = 0;
+                        is_cycle = struct_contains_by_value(
+                            program, child, self_name, visited, &variant_count, 32);
+                    }
+                }
+                if (is_cycle) {
+                    char *msg = NULL;
+                    const char *display = STRUCT_DISPLAY_NAME(stmt);
+                    if (strcmp(ftn, self_name) == 0) {
+                        msg = typechecker_format(checker,
+                            "struct '%s' cannot contain itself by value; use a pointer field '^%s' for recursive types",
+                            display, display);
+                    } else {
+                        msg = typechecker_format(checker,
+                            "struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s'",
+                            display, ftn, ftn);
+                    }
+                    diagnostic_error_message(checker->diag, "E3061", msg,
+                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+                }
+            }
+            /* Validate all named types within the field type recursively. */
+            if (ftn && *ftn)
+                validate_field_type_recursive(checker, program, ftn, fnames[j], stmt);
+            /* Check for duplicate field names */
+            for (int k = 0; k < j; k++) {
+                if (strcmp(fnames[k], fnames[j]) == 0) {
+                    diagnostic_error_code_formatted(checker->diag, "E2013", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, fnames[j], STRUCT_DISPLAY_NAME(stmt));
                     break;
                 }
             }
+            /* Resolve implicit enum selectors in field default values */
+            if (stmt->data.struct_decl.fields[j].default_value) {
+                GrayType *saved_expected = checker->expected_type;
+                if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
+                    checker->expected_type = ftypes[j];
+                resolve_expression(checker, stmt->data.struct_decl.fields[j].default_value);
+                checker->expected_type = saved_expected;
+            }
+        }
+        /* E2037/E2038: reserved name check for structs */
+        const char *sn = STRUCT_DISPLAY_NAME(stmt);
+        if (is_reserved_type_name(stmt->data.struct_decl.name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker, "'%s' is a reserved type name and cannot be used as a struct name", sn);
+            diagnostic_error_message(checker->diag, "E2037", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        /* E5016: builtin function name as struct name */
+        if (is_reserved_builtin_func_name(stmt->data.struct_decl.name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker, "'%s' is a builtin function and cannot be used as a struct name", sn);
+            diagnostic_error_message(checker->diag, "E5016", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        /* E5035: stdlib module name as struct name */
+        if (is_stdlib_module_name(stmt->data.struct_decl.name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as a struct name", sn);
+            diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        /* E4007: duplicate struct name */
+        if (is_struct_name(checker, stmt->data.struct_decl.name) ||
+            is_enum_name(checker, stmt->data.struct_decl.name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "a type named '%s' is already declared",
+                STRUCT_DISPLAY_NAME(stmt));
+            diagnostic_error_message(checker->diag, "E4007", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
 
-            /* Register struct-namespaced functions as StructName_funcName */
-            for (int j = 0; j < stmt->data.struct_decl.func_count; j++) {
-                AstNode *fn = stmt->data.struct_decl.funcs[j].func_decl;
-                if (!fn || fn->kind != NODE_FUNC_DECL) continue;
-                /* E2037: check for duplicate function names in struct */
-                for (int k = 0; k < j; k++) {
-                    AstNode *prev = stmt->data.struct_decl.funcs[k].func_decl;
-                    if (prev && prev->kind == NODE_FUNC_DECL &&
-                        strcmp(prev->data.func_decl.name, fn->data.func_decl.name) == 0) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "duplicate function '%s' in struct '%s'",
-                            FUNC_DISPLAY_NAME(fn), STRUCT_DISPLAY_NAME(stmt));
-                        diagnostic_error_message(checker->diag, "E2037", msg,
-                            NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0);
-                        break;
-                    }
-                }
-                /* E2064: function name conflicts with field name */
-                for (int k = 0; k < field_count; k++) {
-                    if (strcmp(fnames[k], fn->data.func_decl.name) == 0) {
-                        diagnostic_error_code_formatted(checker->diag, "E2064", NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0, FUNC_DISPLAY_NAME(fn), fnames[k],
-                            STRUCT_DISPLAY_NAME(stmt));
-                        break;
-                    }
-                }
-                int parameter_count = fn->data.func_decl.param_count;
-                GrayType **ptypes = arena_alloc(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
-                for (int k = 0; k < parameter_count; k++) {
-                    ptypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.params[k].type_name);
-                }
-                int return_count = fn->data.func_decl.return_type_count;
-                GrayType **rtypes = arena_alloc(checker->arena, sizeof(GrayType *) * (return_count ? return_count : 1));
-                for (int k = 0; k < return_count; k++) {
-                    rtypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.return_types[k]);
-                }
-                /* Register with prefixed name: StructName_funcName */
-                char buffer[MSG_BUF_SIZE];
-                snprintf(buffer, sizeof(buffer), "%s_%s", stmt->data.struct_decl.name, fn->data.func_decl.name);
-                const char *prefixed = arena_copy_string(checker->arena, buffer);
-                register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
-                checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
-                checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
-                if (fn->data.func_decl.is_discard && return_count == 0) {
-                    diagnostic_error_code_formatted(checker->diag, "E5042",
-                        NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
-                        FUNC_DISPLAY_NAME(fn));
-                }
-                finalize_generic_signature(&checker->funcs[checker->func_count - 1], fn);
+        /* Detect generic structs (any field with ? in type) */
+        stmt->data.struct_decl.is_generic = false;
+        stmt->data.struct_decl.instantiations = NULL;
+        stmt->data.struct_decl.instantiation_count = 0;
+        for (int j = 0; j < field_count; j++) {
+            if (stmt->data.struct_decl.fields[j].type_name &&
+                strchr(stmt->data.struct_decl.fields[j].type_name, '?')) {
+                stmt->data.struct_decl.is_generic = true;
+                break;
             }
         }
 
-        /* Enums already processed in pass 2a above */
-
-        if (stmt->kind == NODE_FUNC_DECL) {
-            int parameter_count = stmt->data.func_decl.param_count;
+        /* Register struct-namespaced functions as StructName_funcName */
+        for (int j = 0; j < stmt->data.struct_decl.func_count; j++) {
+            AstNode *fn = stmt->data.struct_decl.funcs[j].func_decl;
+            if (!fn || fn->kind != NODE_FUNC_DECL) continue;
+            /* E2037: check for duplicate function names in struct */
+            for (int k = 0; k < j; k++) {
+                AstNode *prev = stmt->data.struct_decl.funcs[k].func_decl;
+                if (prev && prev->kind == NODE_FUNC_DECL &&
+                    strcmp(prev->data.func_decl.name, fn->data.func_decl.name) == 0) {
+                    char *msg = NULL;
+                    msg = typechecker_format(checker,
+                        "duplicate function '%s' in struct '%s'",
+                        FUNC_DISPLAY_NAME(fn), STRUCT_DISPLAY_NAME(stmt));
+                    diagnostic_error_message(checker->diag, "E2037", msg,
+                        NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0);
+                    break;
+                }
+            }
+            /* E2064: function name conflicts with field name */
+            for (int k = 0; k < field_count; k++) {
+                if (strcmp(fnames[k], fn->data.func_decl.name) == 0) {
+                    diagnostic_error_code_formatted(checker->diag, "E2064", NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0, FUNC_DISPLAY_NAME(fn), fnames[k],
+                        STRUCT_DISPLAY_NAME(stmt));
+                    break;
+                }
+            }
+            int parameter_count = fn->data.func_decl.param_count;
             GrayType **ptypes = arena_alloc(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
-            for (int j = 0; j < parameter_count; j++) {
-                ptypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.params[j].type_name);
-                typechecker_mark_type_module_used(checker, stmt->data.func_decl.params[j].type_name);
+            for (int k = 0; k < parameter_count; k++) {
+                ptypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.params[k].type_name);
             }
-
-            int return_count = stmt->data.func_decl.return_type_count;
+            int return_count = fn->data.func_decl.return_type_count;
             GrayType **rtypes = arena_alloc(checker->arena, sizeof(GrayType *) * (return_count ? return_count : 1));
-            for (int j = 0; j < return_count; j++) {
-                rtypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.return_types[j]);
-                typechecker_mark_type_module_used(checker, stmt->data.func_decl.return_types[j]);
+            for (int k = 0; k < return_count; k++) {
+                rtypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.return_types[k]);
             }
+            /* Register with prefixed name: StructName_funcName */
+            char buffer[MSG_BUF_SIZE];
+            snprintf(buffer, sizeof(buffer), "%s_%s", stmt->data.struct_decl.name, fn->data.func_decl.name);
+            const char *prefixed = arena_copy_string(checker->arena, buffer);
+            register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
+            checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
+            checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
+            if (fn->data.func_decl.is_discard && return_count == 0) {
+                diagnostic_error_code_formatted(checker->diag, "E5042",
+                    NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
+                    FUNC_DISPLAY_NAME(fn));
+            }
+            finalize_generic_signature(&checker->funcs[checker->func_count - 1], fn);
+        }
+    }
+}
 
-            /* E4008: main() cannot have parameters or return types */
-            if (strcmp(stmt->data.func_decl.name, "main") == 0) {
-                if (parameter_count > 0) {
-                    diagnostic_error_message(checker->diag, "E4008",
-                        "'main' function cannot have parameters; main() takes no arguments",
-                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                }
-                if (return_count > 0) {
-                    diagnostic_error_message(checker->diag, "E4008",
-                        "'main' function cannot have a return type; main() always returns void",
-                        NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
-                }
-            }
-            /* Check for reserved prefix */
-            check_reserved_name(checker, stmt->data.func_decl.name,
-                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
-            /* Check for duplicate function names */
-            if (find_func(checker, stmt->data.func_decl.name)) {
-                diagnostic_error_code_formatted(checker->diag, "E4004", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, FUNC_DISPLAY_NAME(stmt));
-            }
-            /* E4007: function name conflicts with a type */
-            if (is_struct_name(checker, stmt->data.func_decl.name) ||
-                is_enum_name(checker, stmt->data.func_decl.name)) {
-                char *msg = NULL;
-                msg = typechecker_format(checker,
-                    "function '%s' conflicts with a type of the same name",
-                    FUNC_DISPLAY_NAME(stmt));
-                diagnostic_error_message(checker->diag, "E4007", msg,
+static void register_decl_functions(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_FUNC_DECL) continue;
+        checker->current_check_file = stmt->token.file;
+
+        int parameter_count = stmt->data.func_decl.param_count;
+        GrayType **ptypes = arena_alloc(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
+        for (int j = 0; j < parameter_count; j++) {
+            ptypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.params[j].type_name);
+            typechecker_mark_type_module_used(checker, stmt->data.func_decl.params[j].type_name);
+        }
+
+        int return_count = stmt->data.func_decl.return_type_count;
+        GrayType **rtypes = arena_alloc(checker->arena, sizeof(GrayType *) * (return_count ? return_count : 1));
+        for (int j = 0; j < return_count; j++) {
+            rtypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.return_types[j]);
+            typechecker_mark_type_module_used(checker, stmt->data.func_decl.return_types[j]);
+        }
+
+        /* E4008: main() cannot have parameters or return types */
+        if (strcmp(stmt->data.func_decl.name, "main") == 0) {
+            if (parameter_count > 0) {
+                diagnostic_error_message(checker->diag, "E4008",
+                    "'main' function cannot have parameters; main() takes no arguments",
                     NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             }
-            register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
-            checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
-            checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
-            /* E5042: #discard on a void function is an error */
-            if (stmt->data.func_decl.is_discard && return_count == 0) {
-                diagnostic_error_code_formatted(checker->diag, "E5042",
-                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
-                    FUNC_DISPLAY_NAME(stmt));
+            if (return_count > 0) {
+                diagnostic_error_message(checker->diag, "E4008",
+                    "'main' function cannot have a return type; main() always returns void",
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             }
-            /* Store line for unused function warning */
-            checker->funcs[checker->func_count - 1].def_line = stmt->token.line;
-            finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
-            /* Also register unprefixed name for internal cross-references.
-             * If name is "lib_foo", also register "foo" so calls within imported
-             * function bodies can resolve unprefixed names.
-             * Skip "main" — it's the entry point and must not collide. */
-            const char *fn = stmt->data.func_decl.name;
-            const char *underscore = strchr(fn, '_');
-            if (underscore && underscore != fn) {
-                const char *unprefixed = underscore + 1;
-                if (strcmp(unprefixed, "main") != 0) {
-                    /* Only register if the prefix matches a known import */
-                    for (int ii = 0; ii < checker->import_count; ii++) {
-                        size_t mod_len = strlen(checker->imported_modules[ii]);
-                        if (strncmp(fn, checker->imported_modules[ii], mod_len) == 0 &&
-                            fn[mod_len] == '_') {
-                            register_func(checker, unprefixed, ptypes, parameter_count, rtypes, return_count);
-                            checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
-                            checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
-                            checker->funcs[checker->func_count - 1].def_line = 0; /* suppress unused warning */
-                            finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
-                            break;
-                        }
+        }
+        /* Check for reserved prefix */
+        check_reserved_name(checker, stmt->data.func_decl.name,
+            NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+        /* Check for duplicate function names */
+        if (find_func(checker, stmt->data.func_decl.name)) {
+            diagnostic_error_code_formatted(checker->diag, "E4004", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, FUNC_DISPLAY_NAME(stmt));
+        }
+        /* E4007: function name conflicts with a type */
+        if (is_struct_name(checker, stmt->data.func_decl.name) ||
+            is_enum_name(checker, stmt->data.func_decl.name)) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "function '%s' conflicts with a type of the same name",
+                FUNC_DISPLAY_NAME(stmt));
+            diagnostic_error_message(checker->diag, "E4007", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
+        checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
+        checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+        /* E5042: #discard on a void function is an error */
+        if (stmt->data.func_decl.is_discard && return_count == 0) {
+            diagnostic_error_code_formatted(checker->diag, "E5042",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                FUNC_DISPLAY_NAME(stmt));
+        }
+        /* Store line for unused function warning */
+        checker->funcs[checker->func_count - 1].def_line = stmt->token.line;
+        finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
+        /* Also register unprefixed name for internal cross-references. */
+        const char *fn = stmt->data.func_decl.name;
+        const char *underscore = strchr(fn, '_');
+        if (underscore && underscore != fn) {
+            const char *unprefixed = underscore + 1;
+            if (strcmp(unprefixed, "main") != 0) {
+                /* Only register if the prefix matches a known import */
+                for (int ii = 0; ii < checker->import_count; ii++) {
+                    size_t mod_len = strlen(checker->imported_modules[ii]);
+                    if (strncmp(fn, checker->imported_modules[ii], mod_len) == 0 &&
+                        fn[mod_len] == '_') {
+                        register_func(checker, unprefixed, ptypes, parameter_count, rtypes, return_count);
+                        checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
+                        checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+                        checker->funcs[checker->func_count - 1].def_line = 0; /* suppress unused warning */
+                        finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
+                        break;
                     }
                 }
             }
         }
     }
-    /* Pass 2c: Validate alias targets exist now that structs/enums are registered */
+}
+
+static void register_declarations(TypeChecker *checker, AstNode *program) {
+    checker->registering = true;
+    register_decl_imports(checker, program);
+    register_decl_aliases(checker, program);
+    register_decl_enums(checker, program);
+    register_decl_structs(checker, program);
+    register_decl_functions(checker, program);
+
+    /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {
         const char *resolved = resolve_type_alias(checker, checker->type_alias_targets[i]);
         /* Check if the resolved name is a known type */
