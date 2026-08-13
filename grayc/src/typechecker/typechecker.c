@@ -11956,9 +11956,25 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     check_keyword_alias_consistency(checker, program);
 
     /* Pass 2: check all statements */
+    const char *prev_file = NULL;
+    bool seen_file_decl = false;
     for (int i = 0; i < program->data.program.stmt_count; i++) {
-        checker->current_check_file = program->data.program.stmts[i]->token.file;
-        check_statement(checker, program->data.program.stmts[i]);
+        AstNode *stmt = program->data.program.stmts[i];
+        checker->current_check_file = stmt->token.file;
+        /* Track per-file: reject imports after non-import declarations */
+        if (!prev_file || strcmp(stmt->token.file, prev_file) != 0) {
+            prev_file = stmt->token.file;
+            seen_file_decl = false;
+        }
+        if (stmt->kind == NODE_IMPORT_STMT) {
+            if (seen_file_decl) {
+                diagnostic_error_code(checker->diag, "E2036", NODE_FILE(checker, stmt),
+                    stmt->token.line, stmt->token.column, 0);
+            }
+        } else if (stmt->kind != NODE_USING_STMT) {
+            seen_file_decl = true;
+        }
+        check_statement(checker, stmt);
     }
 
     /* Pass 3: re-check generic function bodies per instantiation
