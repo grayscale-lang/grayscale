@@ -6118,6 +6118,13 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     struct_display_name(checker, obj_t->name), member);
             }
+        } else if (obj_t && obj_t->kind == TK_POINTER && obj_t->element_type) {
+            /* Auto-deref pointer from expression (array index, map index, call) */
+            result = struct_field_type(checker, obj_t->element_type, member);
+            if (result->kind == TK_UNKNOWN && member[0] != 'v') {
+                diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    obj_t->element_type, member);
+            }
         } else if (obj_t && obj_t->kind != TK_UNKNOWN && obj_t->kind != TK_VOID) {
             char *msg = NULL;
             msg = typechecker_format(checker,
