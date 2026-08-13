@@ -1852,6 +1852,12 @@ static bool is_int_kind(TypeKind k) {
  * which callers handle separately. */
 static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src) {
     if (!dest || !src) return false;
+    /* Pointer types must match element types (^int != ^float) */
+    if (dest->kind == TK_POINTER && src->kind == TK_POINTER) {
+        if (dest->element_type && src->element_type)
+            return strcmp(dest->element_type, src->element_type) == 0;
+        return true; /* unknown element type: allow */
+    }
     if (dest->kind == src->kind) return true;
     /* Int-family interop (byte ↔ uint excluded) */
     if (is_int_kind(dest->kind) && is_int_kind(src->kind) &&
@@ -8280,6 +8286,17 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                                 diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                     arr->data.array_value.elements[enum_index]->token.line,
                                     arr->data.array_value.elements[enum_index]->token.column, 0, expected_et->name, actual_et->name);
+                            }
+                            /* E3053: cross-pointer mismatch — both are TK_POINTER but
+                             * point to different types (e.g. ^int vs ^float). */
+                            if (actual_et && expected_et &&
+                                actual_et->kind == TK_POINTER && expected_et->kind == TK_POINTER &&
+                                actual_et->element_type && expected_et->element_type &&
+                                strcmp(actual_et->element_type, expected_et->element_type) != 0) {
+                                diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
+                                    arr->data.array_value.elements[enum_index]->token.line,
+                                    arr->data.array_value.elements[enum_index]->token.column, 0,
+                                    type_display_name(checker, expected_et), type_display_name(checker, actual_et));
                             }
                         }
                     }

@@ -1,0 +1,6 @@
+do main() {
+    mut x int = 1
+    mut y float = 2.0
+    mut arr [^int] = {addr(x), addr(y)}
+    println(arr[0]^)
+}
