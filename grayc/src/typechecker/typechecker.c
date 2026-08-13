@@ -6719,7 +6719,9 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* E5015: ++ and -- require a variable, not a literal */
             if (node->data.postfix.left->kind != NODE_LABEL &&
                 node->data.postfix.left->kind != NODE_INDEX_EXPR &&
-                node->data.postfix.left->kind != NODE_MEMBER_EXPR) {
+                node->data.postfix.left->kind != NODE_MEMBER_EXPR &&
+                !(node->data.postfix.left->kind == NODE_POSTFIX_EXPR &&
+                  node->data.postfix.left->data.postfix.op == TOK_CARET)) {
                 diagnostic_error_message(checker->diag, "E5015",
                     "++ and -- require a variable; you cannot increment a literal or expression",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
