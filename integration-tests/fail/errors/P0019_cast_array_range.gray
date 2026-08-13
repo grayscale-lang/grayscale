@@ -1,0 +1,12 @@
+/*
+ * Panic Test: P0019 - array cast element out of range
+ *
+ * cast(arr, [u8]) must panic when an element exceeds the target
+ * type's range (300 > 255 for u8).
+ */
+
+do main() {
+    mut ints [int] = {1, 2, 300}
+    mut bytes [u8] = cast(ints, [u8])
+    println(bytes)
+}

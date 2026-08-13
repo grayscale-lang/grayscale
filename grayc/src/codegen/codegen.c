@@ -2798,6 +2798,52 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         else if (val->kind == NODE_INT_VALUE) val_kind = TK_INT;
     }
 
+    /* Array cast: allocate new array and convert each element with range checks */
+    if (node->data.cast.is_array) {
+        const char *src_elem = (val_t && val_t->element_type) ? val_t->element_type : "int";
+        const char *dst_elem = node->data.cast.element_type;
+        const char *src_c = gray_type_to_c_codegen(codegen, src_elem);
+        const char *dst_c = gray_type_to_c_codegen(codegen, dst_elem);
+        int id = codegen_next_id(codegen);
+
+        bool src_is_float = (strcmp(src_elem, "float") == 0 || strcmp(src_elem, "f32") == 0 || strcmp(src_elem, "f64") == 0);
+        bool dst_is_float = (strcmp(dst_elem, "float") == 0 || strcmp(dst_elem, "f32") == 0 || strcmp(dst_elem, "f64") == 0);
+        bool dst_is_uint = (strcmp(dst_elem, "uint") == 0 || strcmp(dst_elem, "u64") == 0);
+
+        emit_formatted(codegen, "({ GrayArray _ca%d = ", id);
+        emit_expression(codegen, val);
+        emit_formatted(codegen, "; GrayArray _cr%d = gray_array_new(gray_default_arena, sizeof(%s), _ca%d.len); ", id, dst_c, id);
+        emit_formatted(codegen, "for (int32_t _ci%d = 0; _ci%d < _ca%d.len; _ci%d++) { ", id, id, id, id);
+        emit_formatted(codegen, "%s _cv%d = ((%s*)_ca%d.data)[_ci%d]; ", src_c, id, src_c, id, id);
+
+        if (src_is_float && !dst_is_float) {
+            /* float → integer: use overflow-safe float conversion */
+            if (dst_is_uint) {
+                emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)gray_float_to_uint((double)_cv%d, \"%s\", %d); ",
+                    dst_c, id, id, dst_c, id, codegen->file, node->token.line);
+            } else {
+                emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)gray_float_to_int((double)_cv%d, \"%s\", %d); ",
+                    dst_c, id, id, dst_c, id, codegen->file, node->token.line);
+            }
+        } else {
+            /* Integer → integer or integer → float: range-check for narrowing */
+            const char *smin = NULL, *smax = NULL;
+            bool is_unsigned = false;
+            sized_int_bounds(dst_elem, &smin, &smax, &is_unsigned);
+            if (smax && is_unsigned) {
+                emit_formatted(codegen, "gray_ucast_check(_cv%d, %s, \"%s\", \"%s\", %d); ",
+                    id, smax, dst_elem, codegen->file, node->token.line);
+            } else if (smax) {
+                emit_formatted(codegen, "gray_cast_check(_cv%d, %s, %s, \"%s\", \"%s\", %d); ",
+                    id, smin, smax, dst_elem, codegen->file, node->token.line);
+            }
+            emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)_cv%d; ", dst_c, id, id, dst_c, id);
+        }
+
+        emit_formatted(codegen, "} _cr%d.len = _ca%d.len; _cr%d; })", id, id, id);
+        return;
+    }
+
     if (strcmp(target, "string") == 0) {
         /* any → string: use to_string functions */
         if (val_kind == TK_CHAR) {
