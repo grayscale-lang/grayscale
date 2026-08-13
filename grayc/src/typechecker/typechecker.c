@@ -6882,7 +6882,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 reject_multi_return_in_single_position(checker, node->data.array_value.elements[i]);
                 if (!element_resolved || element_resolved->kind == TK_UNKNOWN || !first || first->kind == TK_UNKNOWN)
                     continue;
-                bool compatible = types_assignable(checker, first, element_resolved);
+                /* Strict type equality for array elements — no coercions */
+                bool compatible = (first->kind == element_resolved->kind);
+                if (compatible && first->name && element_resolved->name)
+                    compatible = strcmp(first->name, element_resolved->name) == 0;
+                if (compatible && first->element_type && element_resolved->element_type)
+                    compatible = strcmp(first->element_type, element_resolved->element_type) == 0;
                 if (!compatible) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,

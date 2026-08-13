@@ -1,0 +1,6 @@
+do main() {
+    mut x uint = 5
+    for_each val in {1, x, 3} {
+        println(val)
+    }
+}
