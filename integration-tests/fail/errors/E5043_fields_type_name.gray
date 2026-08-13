@@ -1,0 +1,9 @@
+const Foo struct {
+    a int
+    b string
+    c bool
+}
+
+do main() {
+    println(fields(Foo))
+}
