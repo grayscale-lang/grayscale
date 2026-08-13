@@ -1,0 +1,8 @@
+do main() {
+    mut x int = 42
+    mut p ^int = addr(x)
+
+    if p {
+        println("should not compile")
+    }
+}

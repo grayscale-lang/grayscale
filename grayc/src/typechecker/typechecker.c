@@ -3799,6 +3799,20 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = type_array("string");
             return result;
         }
+        /* E5043: reject bare type names (fields() needs an instance) */
+        if (node->data.call.args[0]->kind == NODE_LABEL) {
+            const char *aname = node->data.call.args[0]->data.label.value;
+            Symbol *sym = scope_lookup(checker->current_scope, aname);
+            if (!sym && (is_struct_name(checker, aname) || is_enum_name(checker, aname))) {
+                char *msg = typechecker_format(checker,
+                    "fields() requires a struct instance, not a type name '%s'; use fields(instance) instead",
+                    aname);
+                diagnostic_error_message(checker->diag, "E5043", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                result = type_array("string");
+                return result;
+            }
+        }
         GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
         /* Auto-deref pointers to structs */
         if (arg_t && arg_t->kind == TK_POINTER && arg_t->element_type) {
@@ -9772,7 +9786,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         reject_multi_return_in_single_position(checker, node->data.if_stmt.condition);
         if (cond_t && cond_t->kind != TK_UNKNOWN &&
             (cond_t->kind == TK_STRING || cond_t->kind == TK_ARRAY ||
-             cond_t->kind == TK_MAP   || cond_t->kind == TK_STRUCT)) {
+             cond_t->kind == TK_MAP   || cond_t->kind == TK_STRUCT ||
+             cond_t->kind == TK_POINTER)) {
             AstNode *c = node->data.if_stmt.condition;
             diagnostic_error_code_formatted(checker->diag, "E3091", NODE_FILE(checker, c), c->token.line, c->token.column, 0,
                 type_display_name(checker, cond_t));
@@ -9955,7 +9970,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         }
         if (wh_cond_t && wh_cond_t->kind != TK_UNKNOWN &&
             (wh_cond_t->kind == TK_STRING || wh_cond_t->kind == TK_ARRAY ||
-             wh_cond_t->kind == TK_MAP   || wh_cond_t->kind == TK_STRUCT)) {
+             wh_cond_t->kind == TK_MAP   || wh_cond_t->kind == TK_STRUCT ||
+             wh_cond_t->kind == TK_POINTER)) {
             AstNode *c = node->data.while_stmt.condition;
             diagnostic_error_code_formatted(checker->diag, "E3091", NODE_FILE(checker, c), c->token.line, c->token.column, 0,
                 type_display_name(checker, wh_cond_t));
