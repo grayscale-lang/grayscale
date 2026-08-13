@@ -1,0 +1,6 @@
+import and use "./models.gray"
+
+do build_report() -> Report {
+    mut c [int] = {1, 2, 3}
+    return Report{title: "test", counts: c}
+}

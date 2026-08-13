@@ -1,0 +1,4 @@
+const Report struct {
+    title string
+    counts [int]
+}

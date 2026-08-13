@@ -443,26 +443,14 @@ static void rewrite_labels(AstNode *node, const char **orig, const char **prefix
         rewrite_labels(node->data.range_expr.step, orig, prefixed, count, arena);
         break;
     case NODE_FUNC_DECL:
-        /* Rewrite return types in nested function declarations */
         for (int i = 0; i < node->data.func_decl.return_type_count; i++) {
-            const char *rt = node->data.func_decl.return_types[i];
-            for (int j = 0; j < count; j++) {
-                if (strcmp(rt, orig[j]) == 0) {
-                    node->data.func_decl.return_types[i] = prefixed[j];
-                    break;
-                }
-            }
+            node->data.func_decl.return_types[i] = rewrite_type_name(
+                node->data.func_decl.return_types[i], orig, prefixed, count, arena);
         }
-        /* Rewrite parameter types in nested function declarations */
         for (int i = 0; i < node->data.func_decl.param_count; i++) {
-            const char *pt = node->data.func_decl.params[i].type_name;
-            if (!pt) continue;
-            for (int j = 0; j < count; j++) {
-                if (strcmp(pt, orig[j]) == 0) {
-                    node->data.func_decl.params[i].type_name = prefixed[j];
-                    break;
-                }
-            }
+            if (!node->data.func_decl.params[i].type_name) continue;
+            node->data.func_decl.params[i].type_name = rewrite_type_name(
+                node->data.func_decl.params[i].type_name, orig, prefixed, count, arena);
         }
         rewrite_labels(node->data.func_decl.body, orig, prefixed, count, arena);
         break;
@@ -1529,12 +1517,13 @@ int main(int argc, char **argv) {
                 }
                 } /* end for (pi: rewrite+merge pass) */
 
-                /* Rewrite label references in the main program's own statements.
-                 * Imported nodes are already rewritten inline above; only the
-                 * original main-file nodes need updating here. Using the snapshot
-                 * avoids re-walking all previously merged imports on every pass. */
-                for (int si = 0; si < main_stmt_snapshot_count; si++) {
-                    rewrite_labels(main_stmt_snapshot[si],
+                /* Rewrite label references in ALL program statements — both the
+                 * original main-file nodes and previously merged imports.
+                 * Previously merged imports may reference types from the module
+                 * currently being processed (cross-module struct returns, etc.)
+                 * and those references must be rewritten too. */
+                for (int si = 0; si < program->data.program.stmt_count; si++) {
+                    rewrite_labels(program->data.program.stmts[si],
                         orig_names, new_names, name_count, arena);
                 }
 
