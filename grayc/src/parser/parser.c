@@ -2241,6 +2241,13 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             continue;
         }
 
+        /* E2089: #discard on a struct field instead of a function */
+        if (pending_discard) {
+            diagnostic_error_code(parser->diag, "E2089",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            pending_discard = false;
+        }
+
         /* E2002: multiple fields on the same line */
         if (prev_field_line >= 0 && parser->cur_token.line == prev_field_line) {
             diagnostic_error_message(parser->diag, "E2002",

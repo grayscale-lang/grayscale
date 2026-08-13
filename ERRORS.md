@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 380 codes** (259 errors, 17 warnings, 104 panics)
+**Total: 381 codes** (260 errors, 17 warnings, 104 panics)
 
 ---
 
@@ -80,6 +80,7 @@
 | `E2086` | syntax | '%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range |
 | `E2087` | syntax | type parameters (<?>) cannot be mixed with value parameters in the same function |
 | `E2088` | syntax | mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d |
+| `E2089` | syntax | #discard attribute can only be applied to function declarations, not struct fields |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -431,4 +432,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-12 03:19:11 UTC*
+*Generated on 2026-08-13 08:54:30 UTC*
