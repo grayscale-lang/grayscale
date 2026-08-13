@@ -1434,7 +1434,7 @@ static void typechecker_check_stdlib_arg_types(TypeChecker *checker, const char 
             if (!arg_kind_matches(m->arg_types[i].kind, arg_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "%s.%s() expects %s as argument %d, got '%s'",
+                    "'%s.%s()' expects %s as argument %d, got '%s'",
                     mod, fn, expected_kind_name(m->arg_types[i].kind), idx + 1, type_name(arg_t));
                 diagnostic_error_message(checker->diag, "E5026", msg,
                     NODE_FILE(checker, node->data.call.args[idx]),
@@ -2536,7 +2536,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 if (arr_t && arr_t->kind != TK_ARRAY && arr_t->kind != TK_UNKNOWN) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
-                        "arrays.%s() expects an array as the first argument, got %s",
+                        "'arrays.%s()' expects an array as the first argument, got '%s'",
                         op_name, type_name(arr_t));
                     diagnostic_error_message(checker->diag, "E3001", msg,
                         NODE_FILE(checker, arr_arg), arr_arg->token.line, arr_arg->token.column, 0);
@@ -2778,7 +2778,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (arg0_t && arg0_t->kind != TK_ARRAY && arg0_t->kind != TK_UNKNOWN) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "arrays.%s() expects an array as the first argument, got '%s'",
+                    "'arrays.%s()' expects an array as the first argument, got '%s'",
                     mfn, type_name(arg0_t));
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0);
@@ -5590,7 +5590,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     /* String + string: reject with helpful message */
     if ((left->kind == TK_STRING || right->kind == TK_STRING) && op == TOK_PLUS) {
         diagnostic_error_code_help(checker->diag, "E3048", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use string interpolation \"${a}${b}\" or fmt.format() to combine strings");
+            "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
         infix_errored = true;
     }
 
@@ -5766,7 +5766,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         left->kind == TK_ARRAY && right->kind == TK_ARRAY) {
         diagnostic_error_code_help(checker->diag, "E3074",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use arrays.is_equal(a, b) to compare arrays element-by-element");
+            "use 'arrays.is_equal(a, b)' to compare arrays element-by-element");
         infix_errored = true;
     }
     if ((op == TOK_EQ || op == TOK_NOT_EQ ||
@@ -5775,7 +5775,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         left->kind == TK_MAP && right->kind == TK_MAP) {
         diagnostic_error_code_help(checker->diag, "E3076",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use maps.is_equal(a, b) to compare maps for equality");
+            "use 'maps.is_equal(a, b)' to compare maps for equality");
         infix_errored = true;
     }
     if ((op == TOK_EQ || op == TOK_NOT_EQ ||
@@ -5784,7 +5784,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         left->kind == TK_STRUCT && right->kind == TK_STRUCT) {
         diagnostic_error_code_help(checker->diag, "E3077",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "compare individual fields instead, e.g. a.x == b.x");
+            "compare individual fields instead, e.g. 'a.x == b.x'");
         infix_errored = true;
     }
 
@@ -7711,11 +7711,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
             diagnostic_error_code_help(checker->diag, "E3050",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. mut x [int] = {1, 2, 3}");
+                "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'");
         } else if (node->data.var_decl.value->kind == NODE_MAP_VALUE) {
             diagnostic_error_code_help(checker->diag, "E3051",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. mut x [string:int] = {\"a\": 1}");
+                "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
         }
     }
 
@@ -7933,7 +7933,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         /* Reject bare 'mut x = nil' with no type context */
         if (value_type->kind == TK_NIL && declared->kind == TK_UNKNOWN) {
             diagnostic_error_message(checker->diag, "E3001",
-                "cannot infer type from nil; add a type annotation (e.g., mut x Error = nil)",
+                "cannot infer type from 'nil'; add a type annotation (e.g., 'mut x Error = nil')",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* E3066: typed-func variable assigned a function reference with a
@@ -8933,7 +8933,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 aop == TOK_PLUS_ASSIGN) {
                 diagnostic_error_code_help(checker->diag, "E3048",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "use string interpolation \"${a}${b}\" or fmt.format() to combine strings");
+                    "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
             }
 
             /* E3002: string in non-plus arithmetic */

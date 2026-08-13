@@ -976,7 +976,7 @@ static AstNode *parse_prefix(Parser *parser) {
         if (type_string_has_wildcard(node->data.new_expr.type_name)) {
             diagnostic_error_message(parser->diag, "E2070",
                 arena_copy_string(parser->arena,
-                    "wildcard type '?' cannot be used with new(); new() requires a concrete type"),
+                    "wildcard type '?' cannot be used with 'new()'; 'new()' requires a concrete type"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         if (!expect_peek_token(parser, TOK_RPAREN)) return NULL;
@@ -2038,13 +2038,13 @@ static AstNode *parse_import_statement(Parser *parser) {
             /* Reject 'c' as a module name; reserved for C interop */
             if (item->alias && strcmp(item->alias, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., 'import myc \"./c.gray\"')"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
         } else if (current_token_is(parser, TOK_IDENT)) {
             char buf[MSG_BUF_SIZE];
             snprintf(buf, sizeof(buf),
-                "expected @module or \"path\" after import, got '%s'",
+                "expected '@module' or '\"path\"' after 'import', got '%s'",
                 parser->cur_token.literal);
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
