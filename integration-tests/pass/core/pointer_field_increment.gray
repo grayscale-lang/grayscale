@@ -1,0 +1,24 @@
+const Counter struct {
+    val int
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut c = new(Counter)
+    c.val = 10
+    c.val++
+    if c.val == 11 { passed++ } otherwise { failed++ }
+
+    c.val--
+    if c.val == 10 { passed++ } otherwise { failed++ }
+
+    c^.val++
+    if c^.val == 11 { passed++ } otherwise { failed++ }
+
+    c^.val--
+    if c^.val == 10 { passed++ } otherwise { failed++ }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

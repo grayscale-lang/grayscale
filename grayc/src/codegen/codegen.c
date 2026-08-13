@@ -2272,6 +2272,47 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
                 }
             } else {
+            /* Pointer member field: c.val++ where c is ^Struct, or c^.val++ */
+            bool _inc_member_ptr = false;
+            if (node->data.postfix.left->kind == NODE_MEMBER_EXPR) {
+                AstNode *_mobj = node->data.postfix.left->data.member.object;
+                GrayType *_mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                bool _is_ref = (_mobj->kind == NODE_LABEL && is_reference_variable(codegen, _mobj->data.label.value));
+                /* Also handle explicit deref: c^.val++ where object is NODE_POSTFIX_EXPR with TOK_CARET */
+                bool _is_explicit_deref = (_mobj->kind == NODE_POSTFIX_EXPR && _mobj->data.postfix.op == TOK_CARET);
+                if (_is_explicit_deref) {
+                    _mobj = _mobj->data.postfix.left; /* unwrap to the pointer itself */
+                    _mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                }
+                if (!_is_ref && ((_mot && _mot->kind == TK_POINTER) || _is_explicit_deref)) {
+                    _inc_member_ptr = true;
+                    const char *_fld = sanitize_name(node->data.postfix.left->data.member.member);
+                    bool _raw = (_mobj->kind == NODE_LABEL && is_raw_variable(codegen, _mobj->data.label.value));
+                    emit(codegen, "({ __auto_type _dp = ");
+                    emit_expression(codegen, _mobj);
+                    emit(codegen, "; ");
+                    if (!_raw) {
+                        emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
+                            codegen->file, node->token.line);
+                    }
+                    if (smax) {
+                        if (su) {
+                            emit_formatted(codegen, "_dp->%s = gray_usized_add_check(_dp->%s", _fld, _fld);
+                            emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sized_name, codegen->file, node->token.line);
+                        } else {
+                            emit_formatted(codegen, "_dp->%s = gray_sized_add_check(_dp->%s", _fld, _fld);
+                            emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sized_name, codegen->file, node->token.line);
+                        }
+                    } else if (is_uint) {
+                        emit_formatted(codegen, "_dp->%s = gray_uadd_check(_dp->%s", _fld, _fld);
+                        emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "_dp->%s = gray_add_check(_dp->%s", _fld, _fld);
+                        emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
+                    }
+                }
+            }
+            if (!_inc_member_ptr) {
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2292,6 +2333,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " = gray_add_check(");
                 emit_expression(codegen, node->data.postfix.left);
                 emit_formatted(codegen, ", 1, \"%s\", %d))", codegen->file, node->token.line);
+            }
             }
             }
         } else if (node->data.postfix.op == TOK_DECREMENT) {
@@ -2331,6 +2373,47 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
                 }
             } else {
+            /* Pointer member field: c.val-- where c is ^Struct, or c^.val-- */
+            bool _dec_member_ptr = false;
+            if (node->data.postfix.left->kind == NODE_MEMBER_EXPR) {
+                AstNode *_mobj = node->data.postfix.left->data.member.object;
+                GrayType *_mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                bool _is_ref = (_mobj->kind == NODE_LABEL && is_reference_variable(codegen, _mobj->data.label.value));
+                /* Also handle explicit deref: c^.val-- where object is NODE_POSTFIX_EXPR with TOK_CARET */
+                bool _is_explicit_deref = (_mobj->kind == NODE_POSTFIX_EXPR && _mobj->data.postfix.op == TOK_CARET);
+                if (_is_explicit_deref) {
+                    _mobj = _mobj->data.postfix.left;
+                    _mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                }
+                if (!_is_ref && ((_mot && _mot->kind == TK_POINTER) || _is_explicit_deref)) {
+                    _dec_member_ptr = true;
+                    const char *_fld = sanitize_name(node->data.postfix.left->data.member.member);
+                    bool _raw = (_mobj->kind == NODE_LABEL && is_raw_variable(codegen, _mobj->data.label.value));
+                    emit(codegen, "({ __auto_type _dp = ");
+                    emit_expression(codegen, _mobj);
+                    emit(codegen, "; ");
+                    if (!_raw) {
+                        emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
+                            codegen->file, node->token.line);
+                    }
+                    if (smax) {
+                        if (su) {
+                            emit_formatted(codegen, "_dp->%s = gray_usized_sub_check(_dp->%s", _fld, _fld);
+                            emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sn, codegen->file, node->token.line);
+                        } else {
+                            emit_formatted(codegen, "_dp->%s = gray_sized_sub_check(_dp->%s", _fld, _fld);
+                            emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sn, codegen->file, node->token.line);
+                        }
+                    } else if (is_uint) {
+                        emit_formatted(codegen, "_dp->%s = gray_usub_check(_dp->%s", _fld, _fld);
+                        emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, "_dp->%s = gray_sub_check(_dp->%s", _fld, _fld);
+                        emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
+                    }
+                }
+            }
+            if (!_dec_member_ptr) {
             emit(codegen, "(");
             emit_expression(codegen, node->data.postfix.left);
             if (smax) {
@@ -2351,6 +2434,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " = gray_sub_check(");
                 emit_expression(codegen, node->data.postfix.left);
                 emit_formatted(codegen, ", 1, \"%s\", %d))", codegen->file, node->token.line);
+            }
             }
             }
         } else {
