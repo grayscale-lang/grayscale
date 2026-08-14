@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.4.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.3.0...grayscale-v0.4.0) (2026-08-14)
+
+
+### Features
+
+* **attrs:** add #discard attribute for unused return values ([#2139](https://github.com/grayscale-lang/grayscale/issues/2139)) ([94ad4fd](https://github.com/grayscale-lang/grayscale/commit/94ad4fd6e7fa38a101115e9c45dd64f0aaecdec7))
+* **builtins:** add fields() builtin for struct field introspection ([#2220](https://github.com/grayscale-lang/grayscale/issues/2220)) ([a64c6db](https://github.com/grayscale-lang/grayscale/commit/a64c6db81aaf43d1f4859731f9bb183d0a0402ff))
+* **builtins:** add system() builtin and document raw() ([#2221](https://github.com/grayscale-lang/grayscale/issues/2221)) ([12d460f](https://github.com/grayscale-lang/grayscale/commit/12d460f970e0a4ff6d806fc3946a540872b761a9))
+* **lang:** make variable declarations mutable by default ([#2087](https://github.com/grayscale-lang/grayscale/issues/2087)) ([5139454](https://github.com/grayscale-lang/grayscale/commit/51394542fcbdc78daaa3aebe94763ab9d9de1377))
+* **mem:** add raw() builtin for unchecked pointer access ([#2194](https://github.com/grayscale-lang/grayscale/issues/2194)) ([095c958](https://github.com/grayscale-lang/grayscale/commit/095c9583cd42e68b6a72943bfb406ef312e195cd))
+
+
+### Bug Fixes
+
+* **build:** reject unknown make targets before running anything ([#2370](https://github.com/grayscale-lang/grayscale/issues/2370)) ([e9111bd](https://github.com/grayscale-lang/grayscale/commit/e9111bd2b67b107a4a0b25ef936abb9d6002eae6))
+* **codegen:** bind map to temp in 'in' check to avoid rvalue address ([#2315](https://github.com/grayscale-lang/grayscale/issues/2315)) ([7a5a22d](https://github.com/grayscale-lang/grayscale/commit/7a5a22d031b2016d87c31c105245e5bf10b30e23))
+* **codegen:** emit element-wise conversion for array casts ([#2371](https://github.com/grayscale-lang/grayscale/issues/2371)) ([33b1eac](https://github.com/grayscale-lang/grayscale/commit/33b1eac4be18f1dcad6ce44b5a59d15b9b241350))
+* **codegen:** emit lvalue-safe code for ++/-- on struct fields through pointers ([#2358](https://github.com/grayscale-lang/grayscale/issues/2358)) ([7e41eb1](https://github.com/grayscale-lang/grayscale/commit/7e41eb1356b8565dfc3389ffff27d188f5167db2))
+* **codegen:** emit tagged enum typedefs after struct body definitions ([#2262](https://github.com/grayscale-lang/grayscale/issues/2262)) ([15f7868](https://github.com/grayscale-lang/grayscale/commit/15f7868a14954a2e67af43101a8a13b580e1a2a6))
+* **codegen:** forward-declare tagged enum types for self-referential payloads ([#2319](https://github.com/grayscale-lang/grayscale/issues/2319)) ([6bc4f51](https://github.com/grayscale-lang/grayscale/commit/6bc4f519b71894a928bf9e2e0007ef2c6443e4f8))
+* **codegen:** handle dereference args in raw() and addr() ([#2322](https://github.com/grayscale-lang/grayscale/issues/2322)) ([7fac2e5](https://github.com/grayscale-lang/grayscale/commit/7fac2e58ab0ba21f1309f9e998668dea925a1cb4))
+* **codegen:** handle dereferenced container pointer operations ([#2346](https://github.com/grayscale-lang/grayscale/issues/2346)) ([acd78f7](https://github.com/grayscale-lang/grayscale/commit/acd78f786cbba68700084c4763723dbc0b421f2f))
+* **codegen:** raw() on const struct no longer leaks C error ([#2345](https://github.com/grayscale-lang/grayscale/issues/2345)) ([d6fbe60](https://github.com/grayscale-lang/grayscale/commit/d6fbe607b5c68d0bfea49adc17818b80e0e7e761))
+* **codegen:** rewrite cross-module type refs in merged imports ([#2294](https://github.com/grayscale-lang/grayscale/issues/2294)) ([cd91725](https://github.com/grayscale-lang/grayscale/commit/cd917251c305e4993afaf6f0d211f8948b3999b8))
+* **codegen:** scope-aware raw variable tracking for shadowed pointers ([#2324](https://github.com/grayscale-lang/grayscale/issues/2324)) ([928e6b2](https://github.com/grayscale-lang/grayscale/commit/928e6b27fbccd21821e7719405682d374d6d6c4d))
+* **codegen:** skip nil check for inline raw() dereference ([#2323](https://github.com/grayscale-lang/grayscale/issues/2323)) ([a4b379b](https://github.com/grayscale-lang/grayscale/commit/a4b379b84d348449f01e09b0132c53c52c2b3596))
+* **codegen:** skip struct deep-copy escape for pointer type assignments ([#2317](https://github.com/grayscale-lang/grayscale/issues/2317)) ([8df341c](https://github.com/grayscale-lang/grayscale/commit/8df341cf246e5e8c1f6e4b111eb1e4f292f79277))
+* **codegen:** update raw status on pointer reassignment to addr/raw ([#2325](https://github.com/grayscale-lang/grayscale/issues/2325)) ([c86d1c0](https://github.com/grayscale-lang/grayscale/commit/c86d1c0830b1889d103eb6a9561d8e539170476f))
+* **codegen:** use dot access for multi-return temps with pointer types ([#2314](https://github.com/grayscale-lang/grayscale/issues/2314)) ([3299004](https://github.com/grayscale-lang/grayscale/commit/3299004eae928ac2d26c1b8b558d2a290800cd8d))
+* **parser:** allow mut-less array declarations without triggering E2075 ([#2363](https://github.com/grayscale-lang/grayscale/issues/2363)) ([f173be9](https://github.com/grayscale-lang/grayscale/commit/f173be94ae9feb6c462f926b6903dcbdd15cf728))
+* **parser:** allow repeated mut/const in multi-var declarations ([#2349](https://github.com/grayscale-lang/grayscale/issues/2349)) ([d6b076f](https://github.com/grayscale-lang/grayscale/commit/d6b076feb3736d14d14458f37119c55863800261))
+* **parser:** allow size_of(^T) pointer type expressions ([#2353](https://github.com/grayscale-lang/grayscale/issues/2353)) ([29c1ddf](https://github.com/grayscale-lang/grayscale/commit/29c1ddf492f7c8b401477523cb0336107f139318))
+* **parser:** reject #discard attribute on struct fields ([#2360](https://github.com/grayscale-lang/grayscale/issues/2360)) ([e4794d1](https://github.com/grayscale-lang/grayscale/commit/e4794d1b4fcd9a8c83caba6d306603121120c038))
+* **tests:** update strconv from_float expectation to match shortest-roundtrip output ([#2337](https://github.com/grayscale-lang/grayscale/issues/2337)) ([8f44593](https://github.com/grayscale-lang/grayscale/commit/8f44593c09a7a1927cb9b14c6c5c47f71ebd6794))
+* **typechecker,codegen:** allow ++/-- on pointer dereference targets ([#2351](https://github.com/grayscale-lang/grayscale/issues/2351)) ([db1139e](https://github.com/grayscale-lang/grayscale/commit/db1139eb4234833dc50008d0b5e3118fb1edd787))
+* **typechecker:** auto-dereference pointers from expressions, not just variables ([#2355](https://github.com/grayscale-lang/grayscale/issues/2355)) ([333b56c](https://github.com/grayscale-lang/grayscale/commit/333b56cf16163b3928268aa405e8996013b886d9))
+* **typechecker:** propagate expected type for struct field array initializers ([#2263](https://github.com/grayscale-lang/grayscale/issues/2263)) ([85ca91e](https://github.com/grayscale-lang/grayscale/commit/85ca91e77a9023ee6e09533e83e2fe6cccadd448))
+* **typechecker:** reject bare pointer as if/for condition ([#2356](https://github.com/grayscale-lang/grayscale/issues/2356)) ([9371df9](https://github.com/grayscale-lang/grayscale/commit/9371df91f53d3fc975877921794b3f4bbe3e2e04))
+* **typechecker:** reject different enum types in inline array literals ([#2368](https://github.com/grayscale-lang/grayscale/issues/2368)) ([6604a6f](https://github.com/grayscale-lang/grayscale/commit/6604a6f11df999bf420521780f62c5307ac4ae32))
+* **typechecker:** reject different struct types in inline array literals ([#2367](https://github.com/grayscale-lang/grayscale/issues/2367)) ([1b9d782](https://github.com/grayscale-lang/grayscale/commit/1b9d78264bb8de4dd92e3c025641eabd07fb6482))
+* **typechecker:** reject dot-notation calls on non-struct variables ([#2354](https://github.com/grayscale-lang/grayscale/issues/2354)) ([56d9b88](https://github.com/grayscale-lang/grayscale/commit/56d9b88c3b4a7f3261016f85e3a918f90f39b423))
+* **typechecker:** reject empty inline array literals with no type context ([#2369](https://github.com/grayscale-lang/grayscale/issues/2369)) ([2a2c2fa](https://github.com/grayscale-lang/grayscale/commit/2a2c2fa3f9b1c36cb9c6649a7640b1937de226e1))
+* **typechecker:** reject import statements after file-scope declarations ([#2364](https://github.com/grayscale-lang/grayscale/issues/2364)) ([66f74dd](https://github.com/grayscale-lang/grayscale/commit/66f74dddabd8843d3be51b83e62d1b7979e95d53))
+* **typechecker:** reject int/uint mixing in inline array literals ([#2366](https://github.com/grayscale-lang/grayscale/issues/2366)) ([5a09c47](https://github.com/grayscale-lang/grayscale/commit/5a09c47a78f6ed29fb6e524063053ac5eb1bf33e))
+* **typechecker:** reject mixed pointer element types in array literals ([#2359](https://github.com/grayscale-lang/grayscale/issues/2359)) ([7437a18](https://github.com/grayscale-lang/grayscale/commit/7437a187234151e037903857d9953e0c86e1c8eb))
+* **typechecker:** reject nested array literals with mismatched element types ([#2365](https://github.com/grayscale-lang/grayscale/issues/2365)) ([a6eb829](https://github.com/grayscale-lang/grayscale/commit/a6eb8294d601a81337dfe4ac3e03f22799610b6b))
+* **typechecker:** reject ref() reassignment with incompatible signature ([#2350](https://github.com/grayscale-lang/grayscale/issues/2350)) ([9cbe510](https://github.com/grayscale-lang/grayscale/commit/9cbe51017d2477efed7ae14048798c67af40c40b))
+* **typechecker:** reject type mismatch on pointer dereference assignment ([#2342](https://github.com/grayscale-lang/grayscale/issues/2342)) ([49e8541](https://github.com/grayscale-lang/grayscale/commit/49e8541117ec46ba63d0c8189fc268e8accb80bd))
+* **typechecker:** reject type names as arguments to raw() and addr() ([#2343](https://github.com/grayscale-lang/grayscale/issues/2343)) ([42f48d8](https://github.com/grayscale-lang/grayscale/commit/42f48d873ae1a4a9de011bc9a0543578c9861949))
+* **typechecker:** reject type names in fields() builtin ([#2361](https://github.com/grayscale-lang/grayscale/issues/2361)) ([c712784](https://github.com/grayscale-lang/grayscale/commit/c7127849da677513d590e429cbf7dc5106a99e58))
+* **typechecker:** reject zero-arg calls to builtins that require arguments ([#2344](https://github.com/grayscale-lang/grayscale/issues/2344)) ([7188dbd](https://github.com/grayscale-lang/grayscale/commit/7188dbdfbaa01ba69870e7a3c701a3fa6b76f57d))
+* **typechecker:** use cross-module-aware type comparison in assignments and array literals ([d761ac8](https://github.com/grayscale-lang/grayscale/commit/d761ac8d056488ff2d505317433eee089b05e9a7))
+* **typechecker:** validate argument count and types for ref() calls ([#2347](https://github.com/grayscale-lang/grayscale/issues/2347)) ([c831255](https://github.com/grayscale-lang/grayscale/commit/c8312551337c9331aea938b4423e675b560bf485))
+* **typechecker:** validate field access through explicit pointer dereference ([#2357](https://github.com/grayscale-lang/grayscale/issues/2357), [#2352](https://github.com/grayscale-lang/grayscale/issues/2352)) ([0c15217](https://github.com/grayscale-lang/grayscale/commit/0c15217f0459961d2889691771ed863d7e3e6518))
+
+
+### Performance Improvements
+
+* **codegen:** replace linear scans with bsearch for alias and enum lookups ([#2331](https://github.com/grayscale-lang/grayscale/issues/2331)) ([b38e03d](https://github.com/grayscale-lang/grayscale/commit/b38e03d56699d71a96cc956b9ee3fecc72b326d9))
+* **stdlib:** fix insert_at() overflow UB and use panic infrastructure ([#2335](https://github.com/grayscale-lang/grayscale/issues/2335)) ([6b41915](https://github.com/grayscale-lang/grayscale/commit/6b41915a8b21bf809622979f7975b5c258c3d666))
+* **stdlib:** iterate order array instead of capacity in JSON map encoders ([#2333](https://github.com/grayscale-lang/grayscale/issues/2333)) ([45d2d94](https://github.com/grayscale-lang/grayscale/commit/45d2d94f81479c0032b95f68190b92663a34baaa))
+* **stdlib:** replace O(n²) deduplicate with O(n) hash set ([#2334](https://github.com/grayscale-lang/grayscale/issues/2334)) ([63d1b47](https://github.com/grayscale-lang/grayscale/commit/63d1b470334f0ecba6c8feab6c75991ceef2555a))
+* **stdlib:** use uninitialized arena alloc for immediately-overwritten buffers ([#2332](https://github.com/grayscale-lang/grayscale/issues/2332)) ([5f4cf54](https://github.com/grayscale-lang/grayscale/commit/5f4cf54c41e0fdb4579be22041f56997cc25592e))
+* **typechecker:** extract mark_import_used() to replace 10 inline loops ([#2330](https://github.com/grayscale-lang/grayscale/issues/2330)) ([b806c9d](https://github.com/grayscale-lang/grayscale/commit/b806c9d6685ee37eb3c496a77008b11a8e302fa9))
+
 ## [0.3.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.2.2...grayscale-v0.3.0) (2026-08-09)
 
 
