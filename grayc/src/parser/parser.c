@@ -2578,7 +2578,7 @@ static AstNode *parse_for_statement(Parser *parser) {
             if (!current_token_is(parser, TOK_RANGE)) {
                 char msg[MSG_BUF_SIZE];
                 snprintf(msg, sizeof(msg),
-                    "'for %s in ...' only supports range(); use 'for_each %s in ...' to iterate over a collection",
+                    "'for %s in ...' only supports 'range()'; use 'for_each %s in ...' to iterate over a collection",
                     var, var);
                 diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                     parser->file, for_tok.line, for_tok.column, 0);

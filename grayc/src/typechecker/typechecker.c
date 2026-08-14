@@ -2547,7 +2547,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
                         char *msg = NULL;
                         msg = typechecker_format(checker,
-                            "type mismatch in arrays.%s(); cannot add %s to array of %s",
+                            "type mismatch in 'arrays.%s()'; cannot add '%s' to array of '%s'",
                             op_name, type_name(val_t), arr_t->element_type);
                         diagnostic_error_message(checker->diag, "E3001", msg,
                             NODE_FILE(checker, val_node), val_node->token.line, val_node->token.column, 0);
@@ -2563,7 +2563,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (idx_t && idx_t->kind != TK_UNKNOWN && !is_int_kind(idx_t->kind)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "arrays.%s() expects an int index, got %s",
+                    "'arrays.%s()' expects an int index, got '%s'",
                     mfn, type_name(idx_t));
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, idx_node), idx_node->token.line, idx_node->token.column, 0);
@@ -2832,7 +2832,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         ? "Listener" : "Socket";
                     char *msg = NULL;
                     msg = typechecker_format(checker,
-                        "net.%s() expects a %s as the first argument, got %s",
+                        "'net.%s()' expects a '%s' as the first argument, got '%s'",
                         mfn, expected,
                         arg1_type->name ? arg1_type->name : "non-struct type");
                     diagnostic_error_message(checker->diag, "E5026", msg,
@@ -2848,7 +2848,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             if (arg2_type && arg2_type->kind == TK_STRING) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "csv.%s() expects an array as the second argument, got string",
+                    "'csv.%s()' expects an array as the second argument, got string",
                     mfn);
                 diagnostic_error_message(checker->diag, "E5026", msg,
                     NODE_FILE(checker, node), node->data.call.args[1]->token.line,
@@ -4140,7 +4140,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (at->kind != TK_UNKNOWN && !is_int_kind(at->kind)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "%s() expects an integer argument, got '%s'", function_name, type_name(at));
+                    "'%s()' expects an integer argument, got '%s'", function_name, type_name(at));
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
