@@ -352,4 +352,12 @@ struct GrayMap_tag;
 typedef struct { int64_t v0; GrayError *v1; } GrayResult_int;
 typedef struct { void *v0; GrayError *v1; } GrayResult_ptr;
 
+/* Wrap a bool-returning call into a GrayResult_bool.
+ * Usage: GRAY_RESULT_WRAP_BOOL(arena, some_call(...), error_message); */
+#define GRAY_RESULT_WRAP_BOOL(arena, call, err_msg) \
+    do { GrayResult_bool _r; _r.v0 = (call); \
+         if (_r.v0) { _r.v1 = NULL; } \
+         else { _r.v1 = gray_error_new((arena), (err_msg)); } \
+         return _r; } while (0)
+
 #endif

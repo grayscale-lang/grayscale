@@ -1,0 +1,15 @@
+/*
+ * Warning Test: W3006 - empty default in when statement
+ * Expected: warning about empty default branch silently ignoring unmatched values
+ */
+
+do main() {
+    mut x int = 5
+    when x {
+        is 1 { println("one") }
+        is 2 { println("two") }
+        is 3 { println("three") }
+        default { }
+    }
+    println("done")
+}

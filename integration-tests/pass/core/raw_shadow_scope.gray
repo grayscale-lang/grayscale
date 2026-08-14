@@ -1,0 +1,39 @@
+// Test: addr() pointer in inner scope is not treated as raw
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut x int = 42
+    mut p ^int = raw(x)
+
+    // Outer p is raw — bare dereference, no nil check
+    if p^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] outer raw p^ wrong value")
+        failed = failed + 1
+    }
+
+    if true {
+        mut y int = 99
+        mut p ^int = addr(y) // shadows outer raw p with addr
+        // Inner p should NOT be raw — nil check must be emitted
+        if p^ == 99 {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] inner addr p^ wrong value")
+            failed = failed + 1
+        }
+    }
+
+    // Outer p should still be raw after leaving inner scope
+    if p^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] outer p^ after inner scope wrong value")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

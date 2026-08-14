@@ -1,0 +1,6 @@
+/* Panic Test: P0005 - int subtraction overflow */
+do main() {
+    mut x int = -9223372036854775807
+    mut y int = x - 2
+    println(y)
+}

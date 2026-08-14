@@ -1,0 +1,7 @@
+/* Panic Test: P0074 - uuid.parse with invalid UUID string */
+import @uuid
+
+do main() {
+    mut result string = uuid.parse("not-a-valid-uuid")
+    println(result)
+}

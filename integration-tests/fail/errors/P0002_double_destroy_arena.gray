@@ -1,0 +1,8 @@
+/* Panic Test: P0002 - mem.destroy called twice on same arena */
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mem.destroy(a)
+    mem.destroy(a)
+}

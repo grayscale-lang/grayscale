@@ -1,0 +1,34 @@
+const Node struct {
+    val int
+}
+
+do make_node(v int) -> ^Node {
+    mut n = new(Node)
+    n.val = v
+    return n
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut n = new(Node)
+    n.val = 42
+
+    // auto-deref on array index
+    mut nodes [^Node] = {n}
+    if nodes[0].val == 42 { passed++ } otherwise { failed++ }
+
+    // assignment through array index auto-deref
+    nodes[0].val = 99
+    if nodes[0].val == 99 { passed++ } otherwise { failed++ }
+
+    // auto-deref on function return
+    if make_node(7).val == 7 { passed++ } otherwise { failed++ }
+
+    // auto-deref on map index
+    mut m map[string:^Node] = {"key": n}
+    if m["key"].val == 99 { passed++ } otherwise { failed++ }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

@@ -36,7 +36,7 @@ GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
 
                 /* RFC 4180 §2.7: unescape doubled quotes ("") to single (") */
                 if (memchr(field_start, '"', (size_t)field_length)) {
-                    char *buf = gray_arena_alloc(arena, (size_t)field_length);
+                    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)field_length);
                     int32_t out = 0;
                     for (int32_t k = 0; k < field_length; k++) {
                         buf[out++] = field_start[k];
@@ -76,7 +76,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
             GrayString s = GRAY_ARRAY_GET(*data, GrayString, i);
             total += s.len + 1;
         }
-        char *buf = gray_arena_alloc(arena, (size_t)total + 1);
+        char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
         int32_t pos = 0;
         for (int32_t i = 0; i < data->len; i++) {
             GrayString s = GRAY_ARRAY_GET(*data, GrayString, i);
@@ -100,7 +100,7 @@ GrayString gray_csv_stringify(GrayArena *arena, GrayArray *data) {
         }
         total++; /* newline */
     }
-    char *buf = gray_arena_alloc(arena, (size_t)total + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
     int32_t pos = 0;
     for (int32_t i = 0; i < data->len; i++) {
         GrayArray *row = (GrayArray *)((char *)data->data + (size_t)i * sizeof(GrayArray));
@@ -124,18 +124,25 @@ GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
     return gray_array_new(arena, sizeof(GrayString), 0);
 }
 
-GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
-    FILE *f = fopen(path.data, "rb");
-    if (!f) return gray_array_new(arena, sizeof(GrayArray), 1);
+/* Read and parse CSV from an already-opened FILE handle.
+ * Caller is responsible for fclose. */
+static GrayArray csv_read_from(GrayArena *arena, FILE *f) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *content = gray_arena_alloc(arena, (size_t)size + 1);
-    size_t read = fread(content, 1, (size_t)size, f);
-    content[read] = '\0';
-    fclose(f);
-    GrayString s = { content, (int32_t)read };
+    char *content = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
+    size_t n = fread(content, 1, (size_t)size, f);
+    content[n] = '\0';
+    GrayString s = { content, (int32_t)n };
     return gray_csv_parse(arena, s);
+}
+
+GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
+    FILE *f = fopen(path.data, "rb");
+    if (!f) return gray_array_new(arena, sizeof(GrayArray), 1);
+    GrayArray result = csv_read_from(arena, f);
+    fclose(f);
+    return result;
 }
 
 bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
@@ -157,20 +164,13 @@ GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read CSV file '%s'", path.data));
         return r;
     }
+    r.v0 = csv_read_from(arena, f);
     fclose(f);
-    r.v0 = gray_csv_read(arena, path);
     r.v1 = NULL;
     return r;
 }
 
 GrayResult_bool gray_csv_write_result(GrayArena *arena, GrayString path, GrayArray *data) {
-    GrayResult_bool r;
-    if (gray_csv_write(arena, path, data)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot write CSV file '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_csv_write(arena, path, data),
+        gray_string_format(arena, "cannot write CSV file '%s'", path.data));
 }

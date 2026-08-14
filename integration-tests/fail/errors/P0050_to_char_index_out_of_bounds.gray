@@ -1,0 +1,6 @@
+/* Panic Test: P0050 - to_char index exceeds string length */
+do main() {
+    mut s string = "hello"
+    mut ch int = to_char(s, 100)
+    println(ch)
+}

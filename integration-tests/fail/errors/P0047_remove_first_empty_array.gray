@@ -1,0 +1,8 @@
+/* Panic Test: P0047 - arrays.remove_first on empty array */
+import @arrays
+
+do main() {
+    mut arr [int] = {}
+    arrays.remove_first(&arr)
+    println(arr)
+}

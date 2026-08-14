@@ -1,0 +1,16 @@
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut x int = 10
+    mut p ^int = addr(x)
+    p^++
+    if x == 11 { passed++ } otherwise { failed++ }
+
+    mut y int = 5
+    mut q ^int = addr(y)
+    q^--
+    if y == 4 { passed++ } otherwise { failed++ }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

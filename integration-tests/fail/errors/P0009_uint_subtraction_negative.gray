@@ -1,0 +1,6 @@
+/* Panic Test: P0009 - uint subtraction goes negative */
+do main() {
+    mut x uint = 0
+    mut y uint = x - 1
+    println(y)
+}

@@ -42,7 +42,7 @@ void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int li
 }
 
 void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line) {
-    if (arr->iterating > 0)
+    if (gray_atomic_load32(&arr->iterating) > 0)
         gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (index < 0 || index >= arr->len) {
         gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
@@ -52,7 +52,7 @@ void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char
 }
 
 void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line) {
-    if (arr->iterating > 0)
+    if (gray_atomic_load32(&arr->iterating) > 0)
         gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (arr->len >= arr->cap) {
         int32_t new_cap;

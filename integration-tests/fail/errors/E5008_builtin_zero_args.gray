@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5008 - builtins reject zero arguments
+ * Expected: "expects 1 argument, got 0"
+ */
+
+do main() {
+    mut a = int()
+    mut b = string()
+    mut c = size_of()
+    mut d = error()
+}

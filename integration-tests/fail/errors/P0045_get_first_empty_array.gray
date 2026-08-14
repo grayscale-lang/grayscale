@@ -1,0 +1,8 @@
+/* Panic Test: P0045 - arrays.get_first on empty array */
+import @arrays
+
+do main() {
+    mut arr [int] = {}
+    mut x int = arrays.get_first(arr)
+    println(x)
+}

@@ -11,10 +11,30 @@
 #include "map.h"
 #include <string.h>
 
-/* FNV-1a hash */
+/* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+void arc4random_buf(void *buf, size_t nbytes);
+#endif
+
+/* Per-process random seed mixed into every hash to prevent collision DoS. */
+static uint64_t gray_hash_seed = 0;
+
+void gray_map_init_seed(void) {
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+    arc4random_buf(&gray_hash_seed, sizeof(gray_hash_seed));
+#else
+    FILE *f = fopen("/dev/urandom", "rb");
+    if (f) {
+        fread(&gray_hash_seed, sizeof(gray_hash_seed), 1, f);
+        fclose(f);
+    }
+#endif
+}
+
+/* FNV-1a hash with per-process seed */
 static uint64_t hash_bytes(const void *data, int32_t size) {
     const uint8_t *bytes = (const uint8_t *)data;
-    uint64_t hash = 14695981039346656037ULL;
+    uint64_t hash = 14695981039346656037ULL ^ gray_hash_seed;
     for (int32_t i = 0; i < size; i++) {
         hash ^= bytes[i];
         hash *= 1099511628211ULL;
@@ -187,7 +207,7 @@ void *gray_map_get(GrayMap *m, const void *key) {
 }
 
 void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *value, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     /* Check load factor */
     if (m->count * GRAY_MAP_LOAD_DEN >= m->capacity * GRAY_MAP_LOAD_NUM) {
@@ -235,7 +255,7 @@ bool gray_map_has(GrayMap *m, const void *key) {
 }
 
 bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     int32_t idx = find_slot(m, key);
     if (idx < 0) return false;
@@ -256,7 +276,7 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
 }
 
 void gray_map_clear(GrayMap *m, const char *file, int line) {
-    if (m->iterating > 0)
+    if (gray_atomic_load32(&m->iterating) > 0)
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     if (m->states) memset(m->states, 0, sizeof(uint8_t) * (size_t)m->capacity);
     m->count = 0;

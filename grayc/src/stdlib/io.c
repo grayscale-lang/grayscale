@@ -32,12 +32,16 @@
 #endif
 
 #define GRAY_IO_PATH_BUF          4096
+#define GRAY_IO_READ_BUF          4096
 #define GRAY_IO_COPY_BUF          8192
 #define GRAY_IO_MAX_SEGMENTS      256
 #define GRAY_IO_DIR_MODE          0755
 #define GRAY_IO_FILE_MODE         0644
 #define GRAY_IO_WALK_INITIAL_CAP  32
 #define GRAY_IO_MAX_TEMP_PATHS    256
+#if !GRAY_RT_WINDOWS
+#define GRAY_IO_TEMP_TEMPLATE     "/tmp/gray_XXXXXX"
+#endif
 
 #if GRAY_RT_WINDOWS
 /* ---- glob(3) for Windows ----
@@ -234,7 +238,7 @@ GrayString gray_io_dirname(GrayArena *arena, GrayString path) {
     if (last_separator < 0) return gray_string_lit(".");
     /* Collapse leading separator: dirname("/foo") -> "/" */
     if (last_separator == 0) return gray_string_lit("/");
-    char *buf = gray_arena_alloc(arena, (size_t)last_separator + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)last_separator + 1);
     memcpy(buf, path.data, (size_t)last_separator);
     buf[last_separator] = '\0';
     return (GrayString){ buf, (int32_t)last_separator };
@@ -249,7 +253,7 @@ GrayString gray_io_basename(GrayArena *arena, GrayString path) {
     int start = end;
     while (start > 0 && path.data[start - 1] != '/' && path.data[start - 1] != '\\') start--;
     int32_t len = (int32_t)(end - start);
-    char *buf = gray_arena_alloc(arena, (size_t)len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(buf, path.data + start, (size_t)len);
     buf[len] = '\0';
     return (GrayString){ buf, len };
@@ -270,7 +274,7 @@ GrayString gray_io_extension(GrayArena *arena, GrayString path) {
     /* Dotfiles: leading dot with no other dot is part of the name, not an extension */
     if (dot_position == search_start) return gray_string_lit("");
     int32_t len = (int32_t)(path.len - dot_position);
-    char *buf = gray_arena_alloc(arena, (size_t)len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(buf, path.data + dot_position, (size_t)len);
     buf[len] = '\0';
     return (GrayString){ buf, len };
@@ -282,7 +286,7 @@ bool gray_io_is_absolute(GrayString path) {
 
 GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
     if (path.len == 0) return gray_string_lit(".");
-    char *buf = gray_arena_alloc(arena, (size_t)path.len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 1);
     /* Copy input, converting backslashes to forward slashes */
     for (int i = 0; i < path.len; i++) {
         buf[i] = (path.data[i] == '\\') ? '/' : path.data[i];
@@ -313,7 +317,7 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
     }
 
     /* Rebuild */
-    char *out = gray_arena_alloc(arena, (size_t)path.len + 2);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)path.len + 2);
     int pos = 0;
     if (absolute) out[pos++] = '/';
     for (int i = 0; i < seg_count; i++) {
@@ -332,18 +336,11 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
 
 /* ---- Existing file operations ---- */
 
-GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
-    validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
-        gray_panic_code("P0086", "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents");
-    FILE *f = fopen(path.data, "rb");
-    if (!f) return gray_string_lit("");
-
-    /* Try to size the buffer from the file. Falls back to streaming
-     * when the file isn't seekable (pipes, FIFOs, /dev/stdin, /proc,
-     * sockets). On those, ftell returns -1, which used to wrap to
-     * (size_t)-1 + 1 = 0 and let fread write past the arena slot. */
+/* Read an already-opened file into a GrayString. Tries seek-based sizing
+ * first, falls back to streaming for non-seekable inputs (pipes, /proc,
+ * /dev/stdin). Returns {NULL, -1} if the file exceeds INT32_MAX. Caller
+ * is responsible for fclose. */
+static GrayString io_read_file_impl(GrayArena *arena, FILE *f) {
     long size = -1;
     if (fseek(f, 0, SEEK_END) == 0) {
         size = ftell(f);
@@ -351,26 +348,27 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
     }
 
     if (size >= 0 && size <= INT32_MAX) {
-        char *buf = gray_arena_alloc(arena, (size_t)size + 1);
-        size_t read = fread(buf, 1, (size_t)size, f);
-        buf[read] = '\0';
-        fclose(f);
-        return (GrayString){ buf, (int32_t)read };
+        char *buf = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
+        size_t bytes = fread(buf, 1, (size_t)size, f);
+        buf[bytes] = '\0';
+        return (GrayString){ buf, (int32_t)bytes };
+    }
+    if (size > INT32_MAX) {
+        return (GrayString){ NULL, -1 };
     }
 
     /* Streaming fallback for non-seekable inputs. */
     clearerr(f);
-    size_t capacity = 4096;
+    size_t capacity = GRAY_IO_READ_BUF;
     size_t len = 0;
-    char *buf = gray_arena_alloc(arena, capacity);
+    char *buf = gray_arena_alloc_uninitialized(arena, capacity);
     for (;;) {
         if (len == capacity) {
             if (capacity > (size_t)INT32_MAX / 2) {
-                fclose(f);
-                gray_panic_code("P0053", "io.read_file: input exceeds maximum string length");
+                return (GrayString){ NULL, -1 };
             }
             size_t new_capacity = capacity * 2;
-            char *new_buffer = gray_arena_alloc(arena, new_capacity);
+            char *new_buffer = gray_arena_alloc_uninitialized(arena, new_capacity);
             memcpy(new_buffer, buf, len);
             buf = new_buffer;
             capacity = new_capacity;
@@ -380,13 +378,26 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
         len += got;
     }
     if (len == capacity) {
-        char *grow = gray_arena_alloc(arena, len + 1);
+        char *grow = gray_arena_alloc_uninitialized(arena, len + 1);
         memcpy(grow, buf, len);
         buf = grow;
     }
     buf[len] = '\0';
-    fclose(f);
     return (GrayString){ buf, (int32_t)len };
+}
+
+GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
+    validate_path(path);
+    struct stat _st;
+    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+        gray_panic_code("P0086", "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents");
+    FILE *f = fopen(path.data, "rb");
+    if (!f) return gray_string_lit("");
+    GrayString result = io_read_file_impl(arena, f);
+    fclose(f);
+    if (result.data == NULL)
+        gray_panic_code("P0053", "io.read_file: input exceeds maximum string length");
+    return result;
 }
 
 GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
@@ -397,7 +408,7 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     FILE *f = fopen(path.data, "rb");
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
     if (!f) return arr;
-    uint8_t buf[4096];
+    uint8_t buf[GRAY_IO_READ_BUF];
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         for (size_t i = 0; i < n; i++)
@@ -423,7 +434,7 @@ GrayArray gray_io_read_lines(GrayArena *arena, GrayString path) {
         int32_t len = (int32_t)(nl - p);
         /* Strip trailing \r for Windows line endings */
         if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc(arena, (size_t)len + 1);
+        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };
@@ -525,7 +536,7 @@ GrayString gray_io_temp_file(GrayArena *arena) {
     temp_registry_add(path);
     return gray_string_new(arena, path, (int32_t)strlen(path));
 #else
-    char tmpl[] = "/tmp/gray_XXXXXX";
+    char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     int fd = mkstemp(tmpl);
     if (fd < 0) return gray_string_lit("");
     close(fd);
@@ -546,7 +557,7 @@ GrayString gray_io_temp_dir(GrayArena *arena) {
     temp_registry_add(path);
     return gray_string_new(arena, path, (int32_t)strlen(path));
 #else
-    char tmpl[] = "/tmp/gray_XXXXXX";
+    char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     if (!mkdtemp(tmpl)) return gray_string_lit("");
     temp_registry_add(tmpl);
     return gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
@@ -603,17 +614,24 @@ bool gray_io_move_file(GrayString src, GrayString dst) {
 
 /* ---- Directory operations ---- */
 
-GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
-    validate_path(path);
+/* Read directory entries from an already-opened DIR handle.
+ * Caller is responsible for closedir. */
+static GrayArray io_list_dir_from(GrayArena *arena, DIR *d) {
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    DIR *d = opendir(path.data);
-    if (!d) return arr;
     struct dirent *ent;
     while ((ent = readdir(d)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         GrayString name = gray_string_format(arena, "%s", ent->d_name);
         GRAY_ARRAY_PUSH(arena, &arr, &name);
     }
+    return arr;
+}
+
+GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
+    validate_path(path);
+    DIR *d = opendir(path.data);
+    if (!d) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = io_list_dir_from(arena, d);
     closedir(d);
     return arr;
 }
@@ -740,55 +758,15 @@ GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read '%s'", path.data));
         return r;
     }
-    long size = -1;
-    if (fseek(f, 0, SEEK_END) == 0) {
-        size = ftell(f);
-        if (size >= 0) (void)fseek(f, 0, SEEK_SET);
-    }
-    if (size >= 0 && size <= INT32_MAX) {
-        char *buf = gray_arena_alloc(arena, (size_t)size + 1);
-        size_t bytes = fread(buf, 1, (size_t)size, f);
-        buf[bytes] = '\0';
-        fclose(f);
-        r.v0 = (GrayString){ buf, (int32_t)bytes };
-        r.v1 = NULL;
-        return r;
-    }
-    if (size > INT32_MAX) {
-        fclose(f);
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read '%s': file exceeds maximum string length", path.data));
-        return r;
-    }
-    /* Streaming fallback for non-seekable inputs (pipes, /dev/stdin, etc.) */
-    clearerr(f);
-    size_t capacity = 4096;
-    size_t len = 0;
-    char *buf = gray_arena_alloc(arena, capacity);
-    for (;;) {
-        if (len == capacity) {
-            if (capacity > (size_t)INT32_MAX / 2) {
-                fclose(f);
-                gray_panic_code("P0053", "io.read_file: input exceeds maximum string length");
-            }
-            size_t new_capacity = capacity * 2;
-            char *new_buffer = gray_arena_alloc(arena, new_capacity);
-            memcpy(new_buffer, buf, len);
-            buf = new_buffer;
-            capacity = new_capacity;
-        }
-        size_t got = fread(buf + len, 1, capacity - len, f);
-        if (got == 0) break;
-        len += got;
-    }
-    if (len == capacity) {
-        char *grow = gray_arena_alloc(arena, len + 1);
-        memcpy(grow, buf, len);
-        buf = grow;
-    }
-    buf[len] = '\0';
+    GrayString result = io_read_file_impl(arena, f);
     fclose(f);
-    r.v0 = (GrayString){ buf, (int32_t)len };
+    if (result.data == NULL) {
+        r.v0 = gray_string_lit("");
+        r.v1 = gray_error_new(arena, gray_string_format(arena,
+            "cannot read '%s': file exceeds maximum string length", path.data));
+        return r;
+    }
+    r.v0 = result;
     r.v1 = NULL;
     return r;
 }
@@ -856,15 +834,8 @@ GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, Gr
 }
 
 GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path, GrayString new_path) {
-    GrayResult_bool r;
-    if (gray_io_rename_file(old_path, new_path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot rename '%s' to '%s'", old_path.data, new_path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_rename_file(old_path, new_path),
+        gray_string_format(arena, "cannot rename '%s' to '%s'", old_path.data, new_path.data));
 }
 
 GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayString dst) {
@@ -887,15 +858,8 @@ GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayS
 }
 
 GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayString dst) {
-    GrayResult_bool r;
-    if (gray_io_move_file(src, dst)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot move '%s' to '%s'", src.data, dst.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_move_file(src, dst),
+        gray_string_format(arena, "cannot move '%s' to '%s'", src.data, dst.data));
 }
 
 GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
@@ -907,70 +871,41 @@ GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot list directory '%s'", path.data));
         return r;
     }
+    r.v0 = io_list_dir_from(arena, d);
     closedir(d);
-    r.v0 = gray_io_list_dir(arena, path);
     r.v1 = NULL;
     return r;
 }
 
 GrayResult_bool gray_io_make_dir_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_make_dir(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create directory '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_make_dir(path),
+        gray_string_format(arena, "cannot create directory '%s'", path.data));
 }
 
 GrayResult_bool gray_io_make_dir_all_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_make_dir_all(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create directories '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_make_dir_all(path),
+        gray_string_format(arena, "cannot create directories '%s'", path.data));
 }
 
 GrayResult_bool gray_io_remove_dir_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_remove_dir(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot remove directory '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_remove_dir(path),
+        gray_string_format(arena, "cannot remove directory '%s'", path.data));
 }
 
 GrayResult_bool gray_io_remove_dir_all_result(GrayArena *arena, GrayString path) {
-    GrayResult_bool r;
-    if (gray_io_remove_dir_all(path)) {
-        r.v0 = true;
-        r.v1 = NULL;
-    } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot recursively remove '%s'", path.data));
-    }
-    return r;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_remove_dir_all(path),
+        gray_string_format(arena, "cannot recursively remove '%s'", path.data));
 }
 
 GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array r;
-    DIR *d = opendir(path.data);
-    if (!d) {
+    struct stat st;
+    if (stat(path.data, &st) != 0 || !S_ISDIR(st.st_mode)) {
         r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot walk directory '%s'", path.data));
         return r;
     }
-    closedir(d);
     r.v0 = gray_io_walk(arena, path);
     r.v1 = NULL;
     return r;
@@ -993,7 +928,7 @@ GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
         return r;
     }
     r.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
-    uint8_t buf[4096];
+    uint8_t buf[GRAY_IO_READ_BUF];
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
         for (size_t i = 0; i < n; i++)
@@ -1029,7 +964,7 @@ GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path) {
         while (nl < end && *nl != '\n') nl++;
         int32_t len = (int32_t)(nl - p);
         if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc(arena, (size_t)len + 1);
+        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
         memcpy(linebuf, p, (size_t)len);
         linebuf[len] = '\0';
         GrayString line = { linebuf, len };
@@ -1122,7 +1057,7 @@ GrayResult_string gray_io_temp_file_result(GrayArena *arena) {
     temp_registry_add(path);
     r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
 #else
-    char tmpl[] = "/tmp/gray_XXXXXX";
+    char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     int fd = mkstemp(tmpl);
     if (fd < 0) {
         r.v0 = gray_string_lit("");
@@ -1161,7 +1096,7 @@ GrayResult_string gray_io_temp_dir_result(GrayArena *arena) {
     temp_registry_add(path);
     r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
 #else
-    char tmpl[] = "/tmp/gray_XXXXXX";
+    char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     if (!mkdtemp(tmpl)) {
         r.v0 = gray_string_lit("");
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot create temporary directory"));

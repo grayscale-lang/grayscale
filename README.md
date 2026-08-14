@@ -37,7 +37,7 @@
 - **Versatility through simplicity** — Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **A compiler that works **for** the programmer** — Clear error messages, a built-in formatter, live reloading, and built-in language and stdlib docs via `gray man`. When questions arise, Grayscale provides the answers.
 
-- **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly take them off with the `@mem` or `@threads` stdlib modules
+- **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
 ---
 
 ## The Standard Library
@@ -45,7 +45,7 @@
 <p align="center">
 
 `@arrays` · `@strings` · `@maps` · `@math` · `@time` · `@random` · `@json` · `@io` · `@os`
-`@http` · `@server` · `@crypto` · `@encoding` · `@uuid` · `@bytes` · `@binary` · `@sqlite`
+`@http` · `@server` · `@crypto` · `@encoding` · `@uuid` · `@binary` · `@sqlite`
 `@regex` · `@csv` · `@net` · `@threads` · `@sync` · `@channels` · `@mem` · `@atomic` · `@fmt` · `@strconv`
 
 </p>

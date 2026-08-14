@@ -11,7 +11,6 @@
 #include "arrays.h"
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 
 #define ARRAY_CHECK_ITER(arr) \
     do { if ((arr)->iterating > 0) \
@@ -34,12 +33,15 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, cons
 
     /* Grow if needed — same policy as gray_array_push */
     if (arr->len >= arr->cap) {
-        int32_t new_cap = arr->cap < GRAY_ARRAY_MIN_CAP ? GRAY_ARRAY_MIN_CAP : arr->cap * 2;
-        if (new_cap < arr->cap) {
-            fprintf(stderr, "Grayscale runtime: array capacity overflow\n");
-            exit(1);
+        int32_t new_cap;
+        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
+            new_cap = GRAY_ARRAY_MIN_CAP;
+        } else if (arr->cap > INT32_MAX / 2) {
+            gray_panic_code("P0035", "array capacity overflow");
+        } else {
+            new_cap = arr->cap * 2;
         }
-        void *new_data = gray_arena_alloc(arena, (size_t)new_cap * (size_t)arr->elem_size);
+        void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
         if (arr->data && arr->len > 0) {
             memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
         }
@@ -280,17 +282,47 @@ GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *a, GrayArray *b) {
 }
 
 GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
-    GrayArray result = gray_array_new(arena, arr->elem_size, arr->len);
-    char *data = (char *)arr->data;
+    if (arr->len <= 1) return gray_array_copy(arena, arr);
+
     size_t element_size = (size_t)arr->elem_size;
+    char *data = (char *)arr->data;
+
+    /* Hash set (open addressing, power-of-two capacity, ~50% load).
+     * Slots store source indices; -1 means empty. */
+    uint32_t cap = 16;
+    while (cap < (uint32_t)arr->len * 2) cap *= 2;
+    int32_t *table = gray_arena_alloc(arena, (size_t)cap * sizeof(int32_t));
+    memset(table, -1, (size_t)cap * sizeof(int32_t));
+    uint32_t mask = cap - 1;
+
+    GrayArray result = gray_array_new(arena, arr->elem_size, arr->len);
+
     for (int32_t i = 0; i < arr->len; i++) {
-        bool found = false;
-        char *rdata = (char *)result.data;
-        for (int32_t j = 0; j < result.len; j++) {
-            if (memcmp(data + i * element_size, rdata + j * element_size, element_size) == 0) { found = true; break; }
+        const char *elem = data + i * element_size;
+
+        /* FNV-1a hash over element bytes */
+        uint32_t h = 2166136261u;
+        for (size_t b = 0; b < element_size; b++) {
+            h ^= (uint8_t)elem[b];
+            h *= 16777619u;
         }
-        if (!found) GRAY_ARRAY_PUSH(arena, &result, data + i * element_size);
+
+        uint32_t slot = h & mask;
+        bool found = false;
+        while (table[slot] >= 0) {
+            if (memcmp(data + (size_t)table[slot] * element_size, elem, element_size) == 0) {
+                found = true;
+                break;
+            }
+            slot = (slot + 1) & mask;
+        }
+
+        if (!found) {
+            table[slot] = i;
+            GRAY_ARRAY_PUSH(arena, &result, elem);
+        }
     }
+
     return result;
 }
 

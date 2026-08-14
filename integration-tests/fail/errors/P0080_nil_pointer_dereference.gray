@@ -1,0 +1,11 @@
+/* Panic Test: P0080 - nil pointer dereference */
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p ^Point = nil
+    mut x int = p^.x
+    println(x)
+}

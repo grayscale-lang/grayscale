@@ -1,0 +1,7 @@
+/* Panic Test: P0013 - sized signed integer multiplication overflow */
+do main() {
+    mut x i8 = 100
+    mut y i8 = 2
+    mut z i8 = x * y
+    println(z)
+}

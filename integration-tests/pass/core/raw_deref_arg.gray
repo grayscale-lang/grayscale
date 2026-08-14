@@ -1,0 +1,28 @@
+// Test: raw(p^) and addr(p^) compile and produce correct results
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+    mut x int = 42
+
+    // addr(p^) should work — &(*p) = p
+    mut p ^int = addr(x)
+    mut q ^int = addr(p^)
+    if q^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] addr(p^) produced wrong value")
+        failed = failed + 1
+    }
+
+    // raw(p^) should work — &(*p) = p, no nil check
+    mut r ^int = raw(p^)
+    if r^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] raw(p^) produced wrong value")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

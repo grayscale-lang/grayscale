@@ -512,10 +512,7 @@ Token lexer_next_token(Lexer *lexer) {
     case '^': tok = make_token(TOK_CARET, "^", tok.line, tok.column); break;
 
     case '#':
-        if (check_upcoming_chars(lexer, "#suppress", 9)) {
-            tok = make_token(TOK_SUPPRESS, "#suppress", tok.line, tok.column);
-            for (int i = 0; i < 8; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#strict", 7)) {
+        if (check_upcoming_chars(lexer, "#strict", 7)) {
             tok = make_token(TOK_STRICT, "#strict", tok.line, tok.column);
             for (int i = 0; i < 6; i++) read_char(lexer);
         } else if (check_upcoming_chars(lexer, "#flags", 6)) {
@@ -527,9 +524,12 @@ Token lexer_next_token(Lexer *lexer) {
         } else if (check_upcoming_chars(lexer, "#json", 5)) {
             tok = make_token(TOK_JSON_ATTR, "#json", tok.line, tok.column);
             for (int i = 0; i < 4; i++) read_char(lexer);
+        } else if (check_upcoming_chars(lexer, "#discard", 8)) {
+            tok = make_token(TOK_DISCARD, "#discard", tok.line, tok.column);
+            for (int i = 0; i < 7; i++) read_char(lexer);
         } else {
             lexer->error_code = "E1019";
-            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc' for attributes";
+            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard' for attributes";
             tok = make_token(TOK_ILLEGAL, lexer->error_msg, tok.line, tok.column);
         }
         break;

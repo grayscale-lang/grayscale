@@ -1,0 +1,6 @@
+/* Panic Test: P0088 - io.append_file cannot append to a directory */
+import @io
+
+do main() {
+    io.append_file("/tmp", "test content")
+}

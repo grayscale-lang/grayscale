@@ -1,0 +1,6 @@
+/* Panic Test: P0014 - sized signed integer negation overflow */
+do main() {
+    mut x i8 = -128
+    mut y i8 = -x
+    println(y)
+}

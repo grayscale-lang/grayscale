@@ -1,0 +1,35 @@
+/*
+ * Test: #discard attribute on functions
+ * Verifies that #discard suppresses E5011 for unused return values
+ */
+
+#discard
+do getValue() -> int {
+    return 42
+}
+
+const Counter struct {
+    count int
+
+    #discard
+    do increment(self Counter) -> int {
+        return self.count + 1
+    }
+}
+
+do main() {
+    // Free function: call without capturing return value (no E5011)
+    getValue()
+
+    // Also works when capturing the return value
+    mut x int = getValue()
+    println("${x}")
+
+    // Struct function: call without capturing return value (no E5011)
+    mut c Counter = Counter{ count: 0 }
+    c.increment()
+
+    // Also works when capturing
+    mut y int = c.increment()
+    println("${y}")
+}

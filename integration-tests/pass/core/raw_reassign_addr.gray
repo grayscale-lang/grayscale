@@ -1,0 +1,37 @@
+// Test: reassigning raw pointer to addr restores nil checks
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut x int = 42
+    mut p ^int = raw(x)
+
+    // p is raw — should work with bare dereference
+    if p^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] raw p^ wrong value")
+        failed = failed + 1
+    }
+
+    // Reassign to addr — should restore nil checks
+    p = addr(x)
+    if p^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] p^ after addr reassign wrong value")
+        failed = failed + 1
+    }
+
+    // Reassign back to raw — should remove nil checks again
+    p = raw(x)
+    if p^ == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] p^ after raw reassign wrong value")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

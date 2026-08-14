@@ -1,0 +1,13 @@
+/*
+ * Warning Test: W2015 - file already imported as part of directory import
+ * Expected: warning about redundant import of file already included via directory
+ */
+
+import "./W2015_helpers"
+import "./W2015_helpers/helper_a"
+
+do main() {
+    mut a int = W2015_helpers.w2015_helper_a()
+    mut b int = W2015_helpers.w2015_helper_b()
+    println(a + b)
+}

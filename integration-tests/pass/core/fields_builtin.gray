@@ -1,0 +1,87 @@
+/*
+ * fields_builtin.gray
+ * Validates the fields() builtin returns field names of a struct
+ * as [string] in declaration order.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+const Player struct {
+    name string
+    health int
+    alive bool
+}
+
+const Empty struct {
+    _pad byte
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: basic struct fields
+    mut p = Point{x: 1, y: 2}
+    mut pf [string] = fields(p)
+    if len(pf) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: expected 2 fields for Point")
+    }
+    if pf[0] == "x" && pf[1] == "y" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: expected x, y for Point fields")
+    }
+
+    // Test 2: three-field struct
+    mut pl = Player{name: "Alice", health: 100, alive: true}
+    mut plf [string] = fields(pl)
+    if len(plf) == 3 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: expected 3 fields for Player")
+    }
+    if plf[0] == "name" && plf[1] == "health" && plf[2] == "alive" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: expected name, health, alive for Player fields")
+    }
+
+    // Test 3: pointer to struct
+    mut ptr ^Point = new(Point)
+    ptr.x = 10
+    ptr.y = 20
+    mut ptrf [string] = fields(ptr)
+    if len(ptrf) == 2 && ptrf[0] == "x" && ptrf[1] == "y" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: fields() on pointer to struct")
+    }
+
+    // Test 4: len(fields(s))
+    if len(fields(p)) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: len(fields(p)) should be 2")
+    }
+
+    // Test 5: type_of(fields(s)) should be [string]
+    if type_of(fields(p)) == "[string]" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: type_of(fields(p)) should be [string]")
+    }
+
+    println("fields_builtin: ${passed} passed, ${failed} failed")
+}

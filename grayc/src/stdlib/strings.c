@@ -14,7 +14,7 @@
 #include <string.h>
 
 GrayString gray_strings_to_upper(GrayArena *arena, GrayString s) {
-    char *buf = gray_arena_alloc(arena, (size_t)s.len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
     for (int32_t i = 0; i < s.len; i++) buf[i] = (char)toupper((unsigned char)s.data[i]);
     buf[s.len] = '\0';
     GrayString r = { buf, s.len };
@@ -22,7 +22,7 @@ GrayString gray_strings_to_upper(GrayArena *arena, GrayString s) {
 }
 
 GrayString gray_strings_to_lower(GrayArena *arena, GrayString s) {
-    char *buf = gray_arena_alloc(arena, (size_t)s.len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
     for (int32_t i = 0; i < s.len; i++) buf[i] = (char)tolower((unsigned char)s.data[i]);
     buf[s.len] = '\0';
     GrayString r = { buf, s.len };
@@ -123,7 +123,7 @@ GrayString gray_strings_replace(GrayArena *arena, GrayString s, GrayString old_s
         gray_panic_code("P0071", "strings.replace() result exceeds maximum string length");
     }
     int32_t new_len = (int32_t)new_len64;
-    char *buf = gray_arena_alloc(arena, (size_t)new_len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
     int32_t pos = 0;
     for (int32_t i = 0; i < s.len; ) {
         if (i <= s.len - old_s.len && memcmp(s.data + i, old_s.data, (size_t)old_s.len) == 0) {
@@ -147,7 +147,7 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString s, int64_t count) {
         gray_panic_code("P0073", "strings.repeat() result exceeds maximum string length");
     }
     int32_t new_len = (int32_t)new_len64;
-    char *buf = gray_arena_alloc(arena, (size_t)new_len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
     for (int64_t i = 0; i < count; i++) {
         memcpy(buf + i * s.len, s.data, (size_t)s.len);
     }
@@ -157,7 +157,7 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString s, int64_t count) {
 }
 
 GrayString gray_strings_reverse(GrayArena *arena, GrayString s) {
-    char *buf = gray_arena_alloc(arena, (size_t)s.len + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
     for (int32_t i = 0; i < s.len; i++) buf[i] = s.data[s.len - 1 - i];
     buf[s.len] = '\0';
     GrayString r = { buf, s.len };
@@ -200,7 +200,7 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep) {
         total += s->len;
         if (i > 0) total += sep.len;
     }
-    char *buf = gray_arena_alloc(arena, (size_t)total + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)total + 1);
     int32_t pos = 0;
     for (int32_t i = 0; i < arr.len; i++) {
         if (i > 0) { memcpy(buf + pos, sep.data, (size_t)sep.len); pos += sep.len; }
@@ -225,7 +225,7 @@ GrayArray gray_strings_to_chars(GrayArena *arena, GrayString s) {
 
 GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
     int32_t n = chars->len;
-    char *buf = gray_arena_alloc(arena, (size_t)n + 1);
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)n + 1);
     int32_t *data = (int32_t *)chars->data;
     for (int32_t i = 0; i < n; i++) {
         buf[i] = (char)data[i];

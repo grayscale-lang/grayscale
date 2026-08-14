@@ -213,6 +213,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@end
  */
 
+/*@man func
+ *@sig func(...) -> ReturnType
+ *@desc The function reference type. Holds a reference to a named function created with ()name or ref(name). Used as parameter types, struct fields, and in arrays/maps. References are const-only and not printable.
+ *@example
+ *   do double(n int) -> int { return n * 2 }
+ *   const f = ()double
+ *   f(5)   // 10
+ *@end
+ */
+
 /*@man cast
  *@sig cast(value, TargetType) -> TargetType
  *@desc Explicit type conversion. Required for sized integer types (i8, u32, etc). Truncates floats. Enforces range at runtime.
@@ -278,6 +288,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@end
  */
 
+/*@man fields
+ *@sig fields(instance) -> [string]
+ *@desc Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs.
+ *@example
+ *   const Point struct { x int; y int }
+ *   mut p = Point{x: 1, y: 2}
+ *   println(fields(p))
+ *@end
+ */
+
 /*@man size_of
  *@sig size_of(Type) -> int
  *@desc Returns the size in bytes of a type. int=8, float=8, bool=1, string=16.
@@ -314,6 +334,16 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@example
  *   mut x int = 10
  *   mut p ^int = addr(x)
+ *   println(p^)
+ *@end
+ */
+
+/*@man raw
+ *@sig raw(variable) -> ^T
+ *@desc Returns a raw pointer to a variable. Unlike addr(), raw pointers are unsafe: dereferences skip nil-check panics and the compiler does not enforce const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
+ *@example
+ *   mut x int = 10
+ *   mut p = raw(x)
  *   println(p^)
  *@end
  */
@@ -419,6 +449,17 @@ void gray_builtin_sleep_ns(int64_t ns);
  *   println("${err}")
  *@end
  */
+
+/*@man system
+ *@sig system(command string) -> int
+ *@desc Runs a shell command and returns its exit code. Mirrors C's system(). Returns -1 if the process was killed by a signal.
+ *@example
+ *   mut code int = system("ls -la")
+ *   println(code)
+ *   system("echo hello")
+ *@end
+ */
+int64_t gray_builtin_system(GrayString cmd);
 
 /* to_string — internal runtime overloads, not user-callable by name */
 GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t v);

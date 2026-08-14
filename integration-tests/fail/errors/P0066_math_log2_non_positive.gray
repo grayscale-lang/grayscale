@@ -1,0 +1,7 @@
+/* Panic Test: P0066 - math.log2 of non-positive number */
+import @math
+
+do main() {
+    mut x float = math.log2(-1.0)
+    println(x)
+}

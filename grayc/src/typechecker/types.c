@@ -393,6 +393,13 @@ static int builtin_type_compare(const void *a, const void *b) {
                   ((const BuiltinTypeEntry *)b)->name);
 }
 
+bool is_builtin_type_name(const char *name) {
+    if (!name) return false;
+    BuiltinTypeEntry key = { name, NULL, 0, NULL };
+    return bsearch(&key, builtin_types, BUILTIN_TYPES_COUNT,
+                   sizeof(BuiltinTypeEntry), builtin_type_compare) != NULL;
+}
+
 GrayType *type_from_name(const char *name) {
     if (!name) return &TYPE_UNKNOWN;
 

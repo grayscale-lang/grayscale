@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3012 - raw() rejects type names as arguments
+ * Expected: "raw() requires a variable"
+ */
+
+do main() {
+    mut p = raw(int)
+}

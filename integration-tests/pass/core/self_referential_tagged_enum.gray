@@ -1,0 +1,39 @@
+const Expr enum {
+    Literal(int)
+    Binary(^Expr, int, ^Expr)
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut a = Expr.Literal(1)
+    mut b = Expr.Literal(2)
+    mut c = Expr.Binary(addr(a), 0, addr(b))
+
+    when c {
+        is .Literal(n) {
+            failed = failed + 1
+        }
+        is .Binary(l, op, r) {
+            passed = passed + 1
+            when l^ {
+                is .Literal(n) {
+                    if n == 1 {
+                        passed = passed + 1
+                    } otherwise {
+                        failed = failed + 1
+                    }
+                }
+                default {
+                    failed = failed + 1
+                }
+            }
+        }
+        default {
+            failed = failed + 1
+        }
+    }
+
+    println("${passed} passed, ${failed} failed")
+}

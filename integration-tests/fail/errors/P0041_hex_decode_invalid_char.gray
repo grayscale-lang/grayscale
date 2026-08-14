@@ -1,0 +1,7 @@
+/* Panic Test: P0041 - hex decode invalid hex character */
+import @encoding
+
+do main() {
+    mut result string = encoding.hex_decode("zz")
+    println(result)
+}

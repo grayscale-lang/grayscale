@@ -48,31 +48,22 @@ bool gray_regex_match(GrayString pattern, GrayString text) {
     return result == 0;
 }
 
-GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text) {
-    regex_t re;
-    if (compile_pattern(pattern, &re, 0) != 0) {
-        return (GrayString){"", 0};
-    }
+/* Internal helpers that operate on a pre-compiled regex_t.
+ * Caller owns the regex_t lifetime (compile + regfree). */
 
+static GrayString regex_find_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     char txt_buf[GRAY_REGEX_TXT_BUF];
     gray_cstr(text, txt_buf, sizeof(txt_buf));
 
     regmatch_t match;
-    if (regexec(&re, txt_buf, 1, &match, 0) != 0) {
-        regfree(&re);
+    if (regexec(re, txt_buf, 1, &match, 0) != 0)
         return (GrayString){"", 0};
-    }
 
-    int32_t match_length = (int32_t)(match.rm_eo - match.rm_so);
-    GrayString result = gray_string_new(arena, txt_buf + match.rm_so, match_length);
-    regfree(&re);
-    return result;
+    return gray_string_new(arena, txt_buf + match.rm_so, (int32_t)(match.rm_eo - match.rm_so));
 }
 
-GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text) {
+static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 8);
-    regex_t re;
-    if (compile_pattern(pattern, &re, 0) != 0) return arr;
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
     gray_cstr(text, txt_buf, sizeof(txt_buf));
@@ -80,7 +71,7 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, 0) == 0) {
         int32_t match_length = (int32_t)(match.rm_eo - match.rm_so);
         GrayString s = gray_string_new(arena, cursor + match.rm_so, match_length);
         GRAY_ARRAY_PUSH(arena, &arr, &s);
@@ -92,16 +83,10 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
         }
     }
 
-    regfree(&re);
     return arr;
 }
 
-GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement) {
-    regex_t re;
-    if (compile_pattern(pattern, &re, 0) != 0) {
-        return text;
-    }
-
+static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayString text, GrayString replacement) {
     char txt_buf[GRAY_REGEX_TXT_BUF];
     gray_cstr(text, txt_buf, sizeof(txt_buf));
 
@@ -115,7 +100,7 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, 0) == 0) {
         out_size += (size_t)match.rm_so;
         out_size += (size_t)repl_len;
         cursor += match.rm_eo;
@@ -127,17 +112,14 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
     }
     out_size += strlen(cursor);
 
-    if (match_count == 0) {
-        regfree(&re);
-        return text;
-    }
+    if (match_count == 0) return text;
 
     /* Second pass: build result into arena-allocated buffer */
-    char *result = (char *)gray_arena_alloc(arena, out_size + 1);
+    char *result = (char *)gray_arena_alloc_uninitialized(arena, out_size + 1);
     int pos = 0;
     cursor = txt_buf;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, 0) == 0) {
         int pre_len = (int)match.rm_so;
         memcpy(result + pos, cursor, (size_t)pre_len);
         pos += pre_len;
@@ -157,18 +139,11 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
     pos += remaining;
     result[pos] = '\0';
 
-    regfree(&re);
     return (GrayString){ result, (int32_t)pos };
 }
 
-GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text) {
+static GrayArray regex_split_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 8);
-    regex_t re;
-    if (compile_pattern(pattern, &re, 0) != 0) {
-        /* On bad pattern, return array with original string */
-        GRAY_ARRAY_PUSH(arena, &arr, &text);
-        return arr;
-    }
 
     char txt_buf[GRAY_REGEX_TXT_BUF];
     gray_cstr(text, txt_buf, sizeof(txt_buf));
@@ -176,8 +151,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0) {
-        /* Piece before the match */
+    while (regexec(re, cursor, 1, &match, 0) == 0) {
         int32_t piece_length = (int32_t)match.rm_so;
         GrayString piece = gray_string_new(arena, cursor, piece_length);
         GRAY_ARRAY_PUSH(arena, &arr, &piece);
@@ -189,16 +163,55 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
         }
     }
 
-    /* Remaining text after last match */
     int32_t remaining = (int32_t)strlen(cursor);
     GrayString last = gray_string_new(arena, cursor, remaining);
     GRAY_ARRAY_PUSH(arena, &arr, &last);
 
-    regfree(&re);
     return arr;
 }
 
-/* _result variants */
+/* Public API — compile, delegate to _compiled helper, free. */
+
+GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0)
+        return (GrayString){"", 0};
+    GrayString result = regex_find_compiled(arena, &re, text);
+    regfree(&re);
+    return result;
+}
+
+GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0)
+        return gray_array_new(arena, sizeof(GrayString), 8);
+    GrayArray result = regex_find_all_compiled(arena, &re, text);
+    regfree(&re);
+    return result;
+}
+
+GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0)
+        return text;
+    GrayString result = regex_replace_compiled(arena, &re, text, replacement);
+    regfree(&re);
+    return result;
+}
+
+GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0) {
+        GrayArray arr = gray_array_new(arena, sizeof(GrayString), 8);
+        GRAY_ARRAY_PUSH(arena, &arr, &text);
+        return arr;
+    }
+    GrayArray result = regex_split_compiled(arena, &re, text);
+    regfree(&re);
+    return result;
+}
+
+/* _result variants — compile once, reuse for the actual work. */
 
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text) {
     GrayResult_string r;
@@ -209,8 +222,8 @@ GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, G
             pattern.len, pattern.data));
         return r;
     }
+    r.v0 = regex_find_compiled(arena, &re, text);
     regfree(&re);
-    r.v0 = gray_regex_find(arena, pattern, text);
     r.v1 = NULL;
     return r;
 }
@@ -224,8 +237,8 @@ GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern
             pattern.len, pattern.data));
         return r;
     }
+    r.v0 = regex_find_all_compiled(arena, &re, text);
     regfree(&re);
-    r.v0 = gray_regex_find_all(arena, pattern, text);
     r.v1 = NULL;
     return r;
 }
@@ -239,8 +252,8 @@ GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern
             pattern.len, pattern.data));
         return r;
     }
+    r.v0 = regex_replace_compiled(arena, &re, text, replacement);
     regfree(&re);
-    r.v0 = gray_regex_replace(arena, pattern, text, replacement);
     r.v1 = NULL;
     return r;
 }
@@ -254,8 +267,8 @@ GrayResult_array gray_regex_split_result(GrayArena *arena, GrayString pattern, G
             pattern.len, pattern.data));
         return r;
     }
+    r.v0 = regex_split_compiled(arena, &re, text);
     regfree(&re);
-    r.v0 = gray_regex_split(arena, pattern, text);
     r.v1 = NULL;
     return r;
 }

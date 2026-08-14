@@ -418,6 +418,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Requires exhaustive coverage of all enum variants in a 'when' block. Errors if any variant is missing without a 'default'.",
 		Example: "#strict\nwhen direction {\n    is Direction.NORTH { println(\"N\") }\n    is Direction.EAST  { println(\"E\") }\n    is Direction.SOUTH { println(\"S\") }\n    is Direction.WEST  { println(\"W\") }\n}",
 	},
+	"#discard": {
+		Kind:    "attribute",
+		Syntax:  "#discard",
+		Desc:    "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).",
+		Example: "#discard\ndo tryInsert(value int) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
+	},
 }
 
 // langGroup is one labeled group of names within a language category index.
@@ -447,7 +453,7 @@ var langCategories = map[string][]langGroup{
 		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#", "?", "<?>"}},
 	},
 	"attributes": {
-		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict"}},
+		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard"}},
 	},
 }
 
@@ -462,10 +468,11 @@ var langSymbolAliases = map[string]string{
 	"wildcard":  "?",
 	"question":  "?",
 	// Attribute aliases without # prefix (shell eats #)
-	"doc":    "#doc",
-	"json":   "#json",
-	"flags":  "#flags",
-	"strict": "#strict",
+	"doc":     "#doc",
+	"json":    "#json",
+	"flags":   "#flags",
+	"strict":  "#strict",
+	"discard": "#discard",
 }
 
 // langDisplayName strips the _type suffix used to avoid builtin key collisions.

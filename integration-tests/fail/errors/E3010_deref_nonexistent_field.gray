@@ -1,0 +1,9 @@
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p = new(Point)
+    p^.z = 42
+}

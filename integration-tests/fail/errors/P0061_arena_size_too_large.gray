@@ -1,0 +1,7 @@
+/* Panic Test: P0061 - arena size exceeds maximum */
+import @mem
+
+do main() {
+    mut a = mem.arena(9223372036854775807)
+    println("should not reach here")
+}

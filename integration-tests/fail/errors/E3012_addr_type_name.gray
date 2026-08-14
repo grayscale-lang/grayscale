@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3012 - addr() rejects type names as arguments
+ * Expected: "addr() requires a variable"
+ */
+
+do main() {
+    mut p = addr(string)
+}

@@ -1,0 +1,7 @@
+/* Panic Test: P0039 - base64 decode invalid character */
+import @encoding
+
+do main() {
+    mut result string = encoding.base64_decode("ab!d")
+    println(result)
+}

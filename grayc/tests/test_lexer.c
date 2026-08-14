@@ -186,8 +186,7 @@ static void test_line_tracking(void) {
 }
 
 static void test_hash_attributes(void) {
-    Lexer *lexer = create_test_lexer("#suppress #strict #flags #doc");
-    ASSERT_EQ(next_token(lexer).type, TOK_SUPPRESS);
+    Lexer *lexer = create_test_lexer("#strict #flags #doc");
     ASSERT_EQ(next_token(lexer).type, TOK_STRICT);
     ASSERT_EQ(next_token(lexer).type, TOK_FLAGS);
     ASSERT_EQ(next_token(lexer).type, TOK_DOC);

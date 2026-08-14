@@ -242,6 +242,7 @@ struct AstNode {
             AstNode *target;
             TokenType op;
             AstNode *value;
+            bool is_decl;  /* true when typechecker promotes to implicit declaration */
         } assign;
 
         /* NODE_RETURN_STMT */
@@ -306,6 +307,7 @@ struct AstNode {
             int return_type_count;
             AstNode *body;
             bool is_private;
+            bool is_discard;
             /* Wildcard generics concrete type bindings recorded
              * by the typechecker per call site. Codegen emits one
              * specialised C function for each entry. NULL/0 for

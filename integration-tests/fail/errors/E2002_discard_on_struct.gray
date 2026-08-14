@@ -1,0 +1,15 @@
+/*
+ * Error Test: E2002 - #discard on non-function declaration
+ * Expected: "discard" and "function"
+ */
+
+#discard
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p Point = Point{ x: 1, y: 2 }
+    println("${p.x}")
+}

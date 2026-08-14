@@ -12,6 +12,7 @@
 #define GRAY_MAP_H
 
 #include "runtime.h"
+#include "atomic.h"
 
 #define GRAY_MAP_MIN_CAP      8
 #define GRAY_MAP_LOAD_NUM     3
@@ -78,5 +79,8 @@ void *gray_map_value_at(GrayMap *m, int32_t internal_idx);
  * (keys, values, states, order) so mutations to the copy do not affect
  * the original. */
 GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src);
+
+/* Initialize the per-process hash seed (called by gray_runtime_init). */
+void gray_map_init_seed(void);
 
 #endif

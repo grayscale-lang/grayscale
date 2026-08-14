@@ -1,0 +1,7 @@
+/* Panic Test: P0070 - math.factorial of negative number */
+import @math
+
+do main() {
+    mut x int = math.factorial(-1)
+    println(x)
+}

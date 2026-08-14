@@ -1,0 +1,39 @@
+import "./builder.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut r = builder.build_report()
+
+    if r.title == "test" {
+        println("  [PASS] cross-module struct return: string field survived")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected title 'test', got '${r.title}'")
+        failed += 1
+    }
+
+    if r.counts[0] == 1 {
+        println("  [PASS] cross-module struct return: array field survived")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected counts[0] == 1, got ${r.counts[0]}")
+        failed += 1
+    }
+
+    if r.counts[2] == 3 {
+        println("  [PASS] cross-module struct return: array field[2] survived")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected counts[2] == 3, got ${r.counts[2]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

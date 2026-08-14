@@ -1,0 +1,9 @@
+/* Panic Test: P0032 - u256 multiplication overflow */
+do main() {
+    mut x = u256(9223372036854775807)
+    mut big = x * x
+    big = big * big
+    big = big * big
+    mut result = big * big
+    println(result)
+}

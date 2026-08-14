@@ -1,0 +1,8 @@
+/* Panic Test: P0063 - random.sample with negative count */
+import @random
+
+do main() {
+    mut arr [int] = {1, 2, 3}
+    mut result [int] = random.sample(arr, -1)
+    println(result)
+}

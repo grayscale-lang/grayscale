@@ -3,6 +3,15 @@
        test test-unit test-e2e test-integration test-go \
        test-ubsan test-asan
 
+# Reject unknown targets before running anything.
+KNOWN_TARGETS := build stubs install uninstall clean help leaks \
+                 test test-unit test-e2e test-integration test-go \
+                 test-ubsan test-asan
+UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
+ifneq ($(UNKNOWN_TARGETS),)
+  $(error Unknown target(s): $(UNKNOWN_TARGETS). Run 'make help' for valid targets)
+endif
+
 # Windows (MSYS2/Git Bash/MinGW make) needs an .exe suffix on every binary.
 # GNU make sets OS=Windows_NT there; everywhere else EXE is empty and every
 # rule below is byte-for-byte what it was.

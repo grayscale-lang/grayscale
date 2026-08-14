@@ -1,0 +1,9 @@
+const Foo struct {
+    #discard
+    x int
+}
+
+do main() {
+    mut f Foo = Foo{x: 1}
+    println(f.x)
+}

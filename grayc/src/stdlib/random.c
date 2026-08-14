@@ -20,7 +20,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#if !defined(_WIN32)
 #include <unistd.h>
+#endif
 
 /* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
 #if defined(__APPLE__) || defined(__FreeBSD__)
@@ -136,7 +138,7 @@ GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
     /* Scratch slot sized to the actual element width. The previous
      * fixed char tmp[64] overflowed the stack for any element type
      * larger than 64 bytes (struct arrays, nested arrays/maps). */
-    void *tmp = gray_arena_alloc(arena, element_size);
+    void *tmp = gray_arena_alloc_uninitialized(arena, element_size);
     for (int32_t i = result.len - 1; i > 0; i--) {
         int32_t j = rand() % (i + 1);
         memcpy(tmp, data + i * element_size, element_size);

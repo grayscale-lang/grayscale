@@ -17,6 +17,30 @@
 
 #define STRCONV_BUF_SIZE 64
 
+/* Format a double using the shortest representation that round-trips.
+ * Shared by builtins (to_string) and strconv (from_float). */
+int gray_fmt_shortest_float(char *buf, size_t buffer_size, double v) {
+    int n = 0;
+    for (int prec = 15; prec <= 17; prec++) {
+        n = snprintf(buf, buffer_size, "%.*g", prec, v);
+        double rt;
+        if (sscanf(buf, "%lf", &rt) == 1 && rt == v) break;
+    }
+    bool has_special = false;
+    for (int i = 0; buf[i]; i++) {
+        if (buf[i] == '.' || buf[i] == 'e' || buf[i] == 'i' || buf[i] == 'n') {
+            has_special = true;
+            break;
+        }
+    }
+    if (!has_special && n + 2 < (int)buffer_size) {
+        buf[n++] = '.';
+        buf[n++] = '0';
+        buf[n] = '\0';
+    }
+    return n;
+}
+
 /* Truncate a GrayString into a stack buffer and null-terminate it.
    Returns the (possibly clamped) length. */
 static int strconv_prepare(GrayString s, char *buf, size_t buf_size) {
@@ -180,7 +204,7 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString s) {
 GrayString gray_strconv_from_int(GrayArena *arena, int64_t n) {
     char buf[STRCONV_BUF_SIZE];
     int len = snprintf(buf, sizeof(buf), "%" PRId64, n);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
@@ -188,15 +212,15 @@ GrayString gray_strconv_from_int(GrayArena *arena, int64_t n) {
 GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t n) {
     char buf[STRCONV_BUF_SIZE];
     int len = snprintf(buf, sizeof(buf), "%" PRIu64, n);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
 
 GrayString gray_strconv_from_float(GrayArena *arena, double f) {
     char buf[STRCONV_BUF_SIZE];
-    int len = snprintf(buf, sizeof(buf), "%g", f);
-    char *data = (char *)gray_arena_alloc(arena, (size_t)len + 1);
+    int len = gray_fmt_shortest_float(buf, sizeof(buf), f);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }

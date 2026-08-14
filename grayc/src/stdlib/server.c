@@ -93,12 +93,12 @@ void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
 
     /* Null-terminate method and pattern */
     GrayArena *arena = get_server_arena();
-    char *method_copy = gray_arena_alloc(arena, method.len + 1);
+    char *method_copy = gray_arena_alloc_uninitialized(arena,method.len + 1);
     memcpy(method_copy, method.data, method.len);
     method_copy[method.len] = '\0';
     route->method = method_copy;
 
-    char *pattern_copy = gray_arena_alloc(arena, pattern.len + 1);
+    char *pattern_copy = gray_arena_alloc_uninitialized(arena,pattern.len + 1);
     memcpy(pattern_copy, pattern.data, pattern.len);
     pattern_copy[pattern.len] = '\0';
     route->pattern = pattern_copy;
@@ -113,7 +113,7 @@ void gray_server_cors(GrayRouter *r, GrayString origin) {
         }
     }
     GrayArena *arena = get_server_arena();
-    char *origin_copy = gray_arena_alloc(arena, origin.len + 1);
+    char *origin_copy = gray_arena_alloc_uninitialized(arena,origin.len + 1);
     memcpy(origin_copy, origin.data, origin.len);
     origin_copy[origin.len] = '\0';
     r->cors_origin = origin_copy;
@@ -243,6 +243,15 @@ typedef struct {
     GrayRouter *router;
 } ConnCtx;
 
+static void *cleanup_connection(ConnCtx *ctx, GrayArena *arena) {
+    gray_sock_close(ctx->client_fd);
+    free(ctx);
+    gray_arena_destroy(arena, __FILE__, __LINE__);
+    free(arena);
+    gray_atomic_sub32(&active_connections, 1);
+    return NULL;
+}
+
 static void *handle_connection(void *arg) {
     ConnCtx *ctx = (ConnCtx *)arg;
     GrayArena *arena = gray_arena_create(GRAY_SERVER_REQUEST_ARENA); /* 64KB per request */
@@ -256,12 +265,7 @@ static void *handle_connection(void *arg) {
     char buf[GRAY_SERVER_BUF_SIZE];
     int64_t n = (int64_t)recv(ctx->client_fd, buf, (int)sizeof(buf) - 1, 0);
     if (n <= 0) {
-        gray_sock_close(ctx->client_fd);
-        free(ctx);
-        gray_arena_destroy(arena, __FILE__, __LINE__);
-        free(arena);
-        gray_atomic_sub32(&active_connections, 1);
-        return NULL;
+        return cleanup_connection(ctx, arena);
     }
     buf[n] = '\0';
 
@@ -282,12 +286,7 @@ static void *handle_connection(void *arg) {
         if (req.method.len >= GRAY_HTTP_METHOD_BUF || req.path.len >= GRAY_HTTP_PATH_BUF_SERVER) {
             const char *err = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             send(ctx->client_fd, err, strlen(err), 0);
-            gray_sock_close(ctx->client_fd);
-            free(ctx);
-            gray_arena_destroy(arena, __FILE__, __LINE__);
-            free(arena);
-            gray_atomic_sub32(&active_connections, 1);
-            return NULL;
+            return cleanup_connection(ctx, arena);
         }
 
         /* Find matching route */
@@ -358,12 +357,7 @@ static void *handle_connection(void *arg) {
     size_t send_len = (response_length > 0 && (size_t)response_length < sizeof(response_buffer))
         ? (size_t)response_length : sizeof(response_buffer) - 1;
     send(ctx->client_fd, response_buffer, send_len, 0);
-    gray_sock_close(ctx->client_fd);
-    free(ctx);
-    gray_arena_destroy(arena, __FILE__, __LINE__);
-    free(arena);
-    gray_atomic_sub32(&active_connections, 1);
-    return NULL;
+    return cleanup_connection(ctx, arena);
 }
 
 void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
@@ -412,49 +406,7 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
 }
 
 void gray_server_listen(int64_t port, GrayRouter *r) {
-    GrayArena *arena = get_server_arena();
-    GraySocket listener = gray_net_listen(arena, port);
-    if (listener.fd < 0) {
-        fprintf(stderr, "server: failed to listen on port %d\n", (int)port);
-        return;
-    }
-
-    printf("Grayscale server listening on port %d\n", (int)port);
-    fflush(stdout);
-
-    while (1) {
-        GraySocket client = gray_net_accept(arena, listener);
-        if (client.fd < 0) continue;
-
-        /* Reject incoming connection if at the thread cap */
-        int32_t prev = gray_atomic_add32(&active_connections, 1);
-        if (prev >= GRAY_SERVER_MAX_CONNECTIONS) {
-            gray_atomic_sub32(&active_connections, 1);
-            const char *r503 = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            send(client.fd, r503, strlen(r503), 0);
-            gray_sock_close(client.fd);
-            continue;
-        }
-
-        ConnCtx *ctx = malloc(sizeof(ConnCtx));
-        if (!ctx) {
-            gray_atomic_sub32(&active_connections, 1);
-            gray_sock_close(client.fd);
-            continue;
-        }
-        ctx->client_fd = client.fd;
-        ctx->router = r;
-
-        pthread_t thread;
-        if (pthread_create(&thread, NULL, handle_connection, ctx) != 0) {
-            gray_atomic_sub32(&active_connections, 1);
-            fprintf(stderr, "server: failed to create thread\n");
-            free(ctx);
-            gray_sock_close(client.fd);
-            continue;
-        }
-        pthread_detach(thread);
-    }
+    gray_server_listen_host(port, gray_string_lit("0.0.0.0"), r);
 }
 
 /* Response builders */

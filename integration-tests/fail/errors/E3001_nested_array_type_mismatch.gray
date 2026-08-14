@@ -1,0 +1,5 @@
+do main() {
+    for_each arr in {{1, 2}, {"a", "b"}} {
+        println(arr)
+    }
+}

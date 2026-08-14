@@ -1,0 +1,21 @@
+/*
+ * cast_array.gray - Test array element-wise cast
+ *
+ * Verifies that cast(arr, [target]) converts each element
+ * to the target type with correct elem_size.
+ */
+
+do main() {
+    // int -> u8 (narrowing, values in range)
+    mut ints [int] = {1, 2, 3}
+    mut bytes [u8] = cast(ints, [u8])
+    println(bytes)
+
+    // int -> float (widening)
+    mut floats [float] = cast(ints, [float])
+    println(floats)
+
+    // u8 -> int (widening)
+    mut wide [int] = cast(bytes, [int])
+    println(wide)
+}

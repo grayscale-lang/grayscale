@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3001 - ref() calls validate argument types
+ * Expected: "expected int, got string"
+ */
+
+do add(a int, b int) -> int {
+    return a + b
+}
+
+do main() {
+    mut r = ref(add)
+    println(r("hello", 1))
+}

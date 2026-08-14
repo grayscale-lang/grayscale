@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 379 codes** (258 errors, 17 warnings, 104 panics)
+**Total: 382 codes** (261 errors, 17 warnings, 104 panics)
 
 ---
 
@@ -70,7 +70,6 @@
 | `E2074` | syntax | member access cannot have whitespace before the dot; write 'obj.field' or 'Enum.VARIANT' with no space or newline |
 | `E2075` | syntax | index expressions cannot have whitespace before the opening bracket; write 'arr[i]' with no space or newline |
 | `E2076` | syntax | postfix operators ('++', '--', '^') cannot have whitespace before them; write 'x++', 'x--', or 'p^' with no space or newline |
-| `E2078` | syntax | variable declarations must start with 'const' or 'mut'; did you mean 'const %s' or 'mut %s'? |
 | `E2079` | syntax | 'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause |
 | `E2080` | syntax | invalid character in C header path; only [A-Za-z0-9./_+-] are permitted |
 | `E2081` | syntax | '^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^' |
@@ -81,6 +80,7 @@
 | `E2086` | syntax | '%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range |
 | `E2087` | syntax | type parameters (<?>) cannot be mixed with value parameters in the same function |
 | `E2088` | syntax | mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d |
+| `E2089` | syntax | #discard attribute can only be applied to function declarations, not struct fields |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -91,12 +91,12 @@
 | `E3008` | types | type '%s' does not support indexing; only arrays, maps, and strings can be indexed |
 | `E3009` | types | cannot iterate over type '%s'; for_each requires an array, map, or string |
 | `E3010` | types | struct '%s' has no field '%s' |
-| `E3011` | types | '%s' is a type, not a value; did you mean to declare a type? (e.g., mut x %s = ...) |
-| `E3012` | types | addr() needs a variable, field, or array element; the address of a value like 42 cannot be taken |
+| `E3011` | types | '%s' is a type, not a value; did you mean to declare a type? (e.g., 'mut x %s = ...') |
+| `E3012` | types | 'addr()' needs a variable, field, or array element; the address of a value like 42 cannot be taken |
 | `E3013` | types | type does not support access via dot notation |
 | `E3015` | types | '%s' is a %s, not a function; it cannot be called |
 | `E3016` | types | cannot dereference non-pointer type '%s'; only ^T types can use ^ |
-| `E3017` | types | fmt.%s() cannot format value of type '%s'; use println() for composite types, or access individual fields |
+| `E3017` | types | 'fmt.%s()' cannot format value of type '%s'; use 'println()' for composite types, or access individual fields |
 | `E3018` | types | type mismatch in 'when'; comparing '%s' with '%s' |
 | `E3019` | types | cannot assign signed type '%s' to unsigned type '%s'; value may be negative |
 | `E3024` | types | function '%s' must return a value but has no return statement |
@@ -108,15 +108,15 @@
 | `E3035` | types | not all code paths in '%s' return a value |
 | `E3036` | types | value %lld is out of range for type '%s' (valid range: %lld to %lld) |
 | `E3038` | types | 'void' cannot be used as a variable type or in expressions like type_of() |
-| `E3039` | types | ensure expects a function call; for example: ensure close(file) |
-| `E3040` | types | '%s' returns %d values; use mut a, b = %s() to capture all of them |
+| `E3039` | types | 'ensure' expects a function call; for example: 'ensure close(file)' |
+| `E3040` | types | '%s' returns %d values; use 'mut a, b = %s()' to capture all of them |
 | `E3041` | types | cannot interpolate expression; interpolation supports primitives, strings, arrays, and maps |
 | `E3043` | types | cannot cast between incompatible types; only numeric, enum, and string conversions are allowed |
 | `E3044` | types | cannot access field '%s' on type '%s'; use an instance variable instead |
 | `E3045` | types | 'or_return' requires a function that returns (T, Error); '%s()' does not return an error |
 | `E3046` | types | integer too large for 64 bits; max is 9223372036854775807 |
 | `E3047` | types | enum '%s' has no member '%s' |
-| `E3048` | types | operator '+' is not defined for strings; use string interpolation or fmt.format() instead |
+| `E3048` | types | operator '+' is not defined for strings; use string interpolation or 'fmt.format()' instead |
 | `E3049` | types | cannot use '%s' on enum values; enums only support == and != comparisons |
 | `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3}) |
 | `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1}) |
@@ -130,31 +130,31 @@
 | `E3059` | types | maps cannot be declared const; use 'mut' for maps or a struct for fixed data |
 | `E3060` | types | wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type |
 | `E3061` | types | struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s' |
-| `E3062` | types | %s cannot be declared const; use 'mut' (every operation on a %s mutates its state) |
-| `E3063` | types | cannot return addr(%s); '%s' is a local variable whose memory is freed when this function returns |
-| `E3064` | types | %s(%s) called again; '%s' was already destroyed |
+| `E3062` | types | '%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state) |
+| `E3063` | types | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
+| `E3064` | types | '%s(%s)' called again; '%s' was already destroyed |
 | `E3066` | types | function reference signature mismatch; expected and actual function types differ |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
 | `E3070` | types | 'ensure' may only appear at the top level of a function body; lift it out of the enclosing block |
 | `E3071` | types | cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. int, string) |
 | `E3072` | types | cannot return 'nil' from a function that returns '%s'; nil is only valid for pointer and error types |
-| `E3073` | types | 'return' is not allowed in main(); main exits when control reaches the closing brace |
-| `E3074` | types | arrays cannot be compared with comparison operators; use arrays.is_equal(a, b) for equality, or compare elements individually for ordering |
+| `E3073` | types | 'return' is not allowed in 'main()'; 'main()' exits when control reaches the closing brace |
+| `E3074` | types | arrays cannot be compared with comparison operators; use 'arrays.is_equal(a, b)' for equality, or compare elements individually for ordering |
 | `E3075` | types | chained struct function calls are not supported; assign the intermediate result to a variable, then call the next struct function on it |
-| `E3076` | types | maps cannot be compared with comparison operators; use maps.is_equal(a, b) for equality (maps have no defined ordering) |
-| `E3077` | types | structs cannot be compared with comparison operators; compare individual fields instead (e.g., a.x == b.x, a.x < b.x) |
+| `E3076` | types | maps cannot be compared with comparison operators; use 'maps.is_equal(a, b)' for equality (maps have no defined ordering) |
+| `E3077` | types | structs cannot be compared with comparison operators; compare individual fields instead (e.g., 'a.x == b.x', 'a.x < b.x') |
 | `E3078` | types | pointer arithmetic is not supported; '^T' is the address of one value, not a buffer |
-| `E3079` | types | cannot take a mutable reference to a const variable; declare the reference as 'const', or copy() the value to get an independent mutable instance |
+| `E3079` | types | cannot take a mutable reference to a const variable; declare the reference as 'const', or 'copy()' the value to get an independent mutable instance |
 | `E3080` | types | function must return named variable '%s', not a different expression |
 | `E3081` | types | function '%s' used as a statement without being called; did you mean '%s()'? |
 | `E3082` | types | wildcard type '?' cannot be used in named return positions; use an unnamed return instead |
-| `E3083` | types | c_string() requires a raw C pointer; cannot convert a non-pointer type |
-| `E3084` | types | type_of() expects a value, not a type name; use type_of(instance) instead |
+| `E3083` | types | 'c_string()' requires a raw C pointer; cannot convert a non-pointer type |
+| `E3084` | types | 'type_of()' expects a value, not a type name; use 'type_of(instance)' instead |
 | `E3085` | types | 'in' operator type mismatch: cannot check if '%s' is in '%s' |
-| `E3086` | types | fmt.%s format string must be a string literal; use string interpolation for dynamic values |
-| `E3087` | types | %%n is not permitted in fmt format strings |
-| `E3088` | types | fmt.%s format directive '%%%s' expects %s but argument %d has type '%s' |
+| `E3086` | types | 'fmt.%s' format string must be a string literal; use string interpolation for dynamic values |
+| `E3087` | types | '%%n' is not permitted in fmt format strings |
+| `E3088` | types | 'fmt.%s' format directive '%%%s' expects %s but argument %d has type '%s' |
 | `E3089` | usage | '%s()' can fail; use 'mut val, err = %s()' to handle the error, or 'mut val, _ = %s()' to discard it |
 | `E3090` | types | '!' only works on bool; got '%s' |
 | `E3091` | types | '%s' cannot be used as a condition |
@@ -171,10 +171,10 @@
 | `E3102` | types | function '%s' returns a func type; func references cannot be assigned from function return values. Use '()func_name' or 'ref(func_name)' to create a func reference |
 | `E3103` | types | #json struct '%s' cannot have func-typed field '%s'; func references have no JSON representation |
 | `E3104` | types | #json struct '%s' cannot declare functions; #json structs are data-only — move '%s' to a standalone function |
-| `E3105` | types | fmt.%s: unknown format directive '%%%c' |
-| `E3106` | types | fmt.%s: dangling '%%' at end of format string |
-| `E3107` | types | fmt.%s: format string has %d directive(s) but %d argument(s) were passed (too few) |
-| `E3108` | types | fmt.%s: format string has %d directive(s) but %d argument(s) were passed (too many) |
+| `E3105` | types | 'fmt.%s': unknown format directive '%%%c' |
+| `E3106` | types | 'fmt.%s': dangling '%%' at end of format string |
+| `E3107` | types | 'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too few) |
+| `E3108` | types | 'fmt.%s': format string has %d directive(s) but %d argument(s) were passed (too many) |
 | `E3109` | types | #json struct '%s' cannot have default field values; field '%s' has a default |
 | `E3110` | types | implicit enum selector '.%s' requires type context; use the full form 'EnumName.%s' or add a type annotation |
 | `E3111` | types | payload types are not allowed on string enum variants |
@@ -183,13 +183,13 @@
 | `E3114` | types | variant '%s' of enum '%s' has no payload; remove the arguments |
 | `E3115` | types | enum '%s' is not a tagged enum; variant '%s' cannot be called |
 | `E3116` | types | wrong number of bindings for variant '%s'; expected %d, got %d |
-| `E3117` | types | cannot compare enum '%s' with %s; use an enum variant like '%s.VARIANT', or cast to int with cast(value, int) |
-| `E3118` | types | cannot assign %s to enum '%s'; use an enum variant like '%s.VARIANT' |
+| `E3117` | types | cannot compare enum '%s' with '%s'; use an enum variant like '%s.VARIANT', or cast to int with 'cast(value, int)' |
+| `E3118` | types | cannot assign '%s' to enum '%s'; use an enum variant like '%s.VARIANT' |
 | `E3119` | types | fixed-size arrays are not allowed in function parameters; use '[%s]' instead of '%s' for parameter '%s' |
 | `E3120` | types | pointer ordering comparisons are not supported; only == and != are allowed on pointers |
 | `E3121` | types | cannot use '%s' as a condition in a when statement; allowed types are int, uint, string, char, byte, bool, float, and enum |
 | `E3122` | safety | cannot modify value through pointer '%s'; the pointee is a const-declared variable |
-| `E3123` | iteration | for_each with both positions discarded accesses nothing; use 'for _ in range(0, len(collection))' to iterate by count |
+| `E3123` | iteration | 'for_each' with both positions discarded accesses nothing; use 'for _ in range(0, len(collection))' to iterate by count |
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
 | `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const int/uint value |
 | `E3126` | types | array size must be greater than zero; '%s' resolves to %d |
@@ -202,14 +202,15 @@
 | `E3133` | types | alias '%s' creates a circular reference |
 | `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
 | `E3135` | types | alias '%s' cannot target the wildcard type '?' |
+| `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
 | `E4004` | names | function '%s' already declared |
 | `E4005` | names | module '%s' has no function named '%s' |
-| `E4006` | names | name '%s' uses reserved prefix (gray_, _gray_, Gray); these are reserved for the compiler |
+| `E4006` | names | name '%s' uses reserved prefix ('gray_', '_gray_', 'Gray'); these are reserved for the compiler |
 | `E4007` | names | a type with this name already exists; each struct and enum must have a unique name |
-| `E4008` | names | main() cannot have parameters or a return type; it must be declared as do main() { } |
+| `E4008` | names | 'main()' cannot have parameters or a return type; it must be declared as 'do main() { }' |
 | `E4012` | names | variable '%s' shadows a type definition with the same name |
 | `E4013` | names | variable '%s' shadows a function with the same name |
 | `E4014` | names | variable '%s' shadows an imported module with the same name |
@@ -226,47 +227,49 @@
 | `E5011` | usage | return value of '%s' is not used; assign it to a variable or use '_' to discard |
 | `E5012` | usage | the throwaway '_' is only meaningful when discarding the result of a function call; the right-hand side has no return value to discard |
 | `E5013` | usage | function calls are not allowed in file-scope initializers; move this declaration into a function body |
-| `E5014` | usage | here() takes no arguments; the call site's file, line, and column are substituted at compile time |
-| `E5015` | usage | postfix ++ and -- require a variable, not a value or expression |
+| `E5014` | usage | 'here()' takes no arguments; the call site's file, line, and column are substituted at compile time |
+| `E5015` | usage | postfix '++' and '--' require a variable, not a value or expression |
 | `E5016` | naming | this name is reserved by a builtin function and cannot be redeclared |
-| `E5017` | usage | embed() argument must be a string literal file path, not an expression |
-| `E5018` | usage | embed() cannot open '%s': file not found or unreadable |
+| `E5017` | usage | 'embed()' argument must be a string literal file path, not an expression |
+| `E5018` | usage | 'embed()' cannot open '%s': file not found or unreadable |
 | `E5023` | usage | cannot use '%s' on type '%s'; only integer types support increment/decrement |
 | `E5024` | usage | return type mismatch: cannot return signed '%s' as unsigned '%s' |
 | `E5025` | usage | invalid assignment target; left side of '=' must be a variable, field, or index expression |
 | `E5026` | arguments | argument type mismatch; the function expects a different type than what was provided |
-| `E5027` | usage | embed() path must not escape the source file's directory tree |
+| `E5027` | usage | 'embed()' path must not escape the source file's directory tree |
 | `E5028` | usage | func references are not printable values; func references cannot be passed to print functions |
-| `E5029` | usage | copy() cannot be used on a func reference; func references are compile-time aliases, not copyable values |
+| `E5029` | usage | 'copy()' cannot be used on a func reference; func references are compile-time aliases, not copyable values |
 | `E5030` | usage | cannot call the return value of '%s' directly; func references must be created with '()func_name' or 'ref(func_name)' before calling |
 | `E5031` | usage | unknown parameter name '%s' in call to '%s' |
 | `E5032` | usage | parameter '%s' is already provided positionally (argument %d) in call to '%s' |
 | `E5033` | usage | positional argument after named argument in call to '%s' |
 | `E5034` | usage | named arguments are not supported for builtin function '%s' |
 | `E5035` | naming | this name is reserved by a standard library module and cannot be redeclared |
-| `E5036` | usage | '%s' is a type, not a function; use cast(value, %s) to convert |
-| `E5037` | usage | copy() cannot be applied to a pointer; dereference first with copy(p^) |
-| `E5038` | usage | tagged enum '%s' cannot be passed to %s(); use when/is to destructure the payload first |
+| `E5036` | usage | '%s' is a type, not a function; use 'cast(value, %s)' to convert |
+| `E5037` | usage | 'copy()' cannot be applied to a pointer; dereference first with 'copy(p^)' |
+| `E5038` | usage | tagged enum '%s' cannot be passed to '%s()'; use when/is to destructure the payload first |
 | `E5039` | usage | constant expression overflows type '%s' |
 | `E5040` | usage | constant requires a compile-time value; function calls are evaluated at runtime |
 | `E5041` | usage | tagged enum '%s' cannot be used as a map value type; use when/is to destructure before storing |
+| `E5042` | usage | '#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard' |
+| `E5043` | usage | 'fields()' requires a struct instance, got '%s' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
 | `E6004` | imports | cannot import own module directory |
 | `E6008` | imports | '%s.%s' is a module constant and cannot be assigned to |
 | `E7004` | stdlib | function argument must be an integer, not a float |
-| `E7006` | stdlib | threads.spawn() needs a function reference; use ()function_name to pass a function |
+| `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
-| `E7015` | stdlib | len() is not supported for type '%s'; len() works on string, array, and map types |
-| `E9002` | stdlib | arrays.%s() requires a numeric array, got array of %s |
-| `E9003` | stdlib | arrays.%s() requires a function reference; use ()func_name to pass a function |
-| `E9004` | stdlib | arrays.%s() callback signature mismatch; %s |
+| `E7015` | stdlib | 'len()' is not supported for type '%s'; 'len()' works on string, array, and map types |
+| `E9002` | stdlib | 'arrays.%s()' requires a numeric array, got array of '%s' |
+| `E9003` | stdlib | 'arrays.%s()' requires a function reference; use '()func_name' to pass a function |
+| `E9004` | stdlib | 'arrays.%s()' callback signature mismatch; %s |
 | `E9005` | stdlib | invalid range: start (%lld) must be less than end (%lld) |
-| `E9006` | stdlib | arrays.contains() does not support arrays of %s; only primitive and string element types are supported |
-| `E12001` | stdlib | maps.%s() requires a map argument, got an array |
+| `E9006` | stdlib | 'arrays.contains()' does not support arrays of '%s'; only primitive and string element types are supported |
+| `E12001` | stdlib | 'maps.%s()' requires a map argument, got an array |
 | `E12006` | stdlib | duplicate key in map literal |
-| `E12007` | stdlib | maps.contains_value() does not support maps with %s values; only primitive and string value types are supported |
+| `E12007` | stdlib | 'maps.contains_value()' does not support maps with '%s' values; only primitive and string value types are supported |
 | `E8001` | bitwise | '%s' can only be used with integers or #flags enums; got '%s' and '%s' |
 | `E8002` | bitwise | 'bit_not' can only be used with integers; got '%s' |
 
@@ -285,7 +288,7 @@
 | `W2007` | safety | this variable shadows a global constant or variable |
 | `W2008` | safety | parameter shadows an enum variant name |
 | `W2011` | safety | named return value is declared in the signature but no matching variable exists in the function body |
-| `W2012` | safety | when condition is a float; equality checks on floats are imprecise; prefer math.abs(x - y) < epsilon |
+| `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
 | `W2013` | imports | duplicate import of already-imported module |
 | `W2014` | imports | intra-directory import already included by directory import |
 | `W2015` | imports | file already imported as part of a directory import; redundant import |
@@ -430,4 +433,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-09 10:52:56 UTC*
+*Generated on 2026-08-14 11:17:04 UTC*

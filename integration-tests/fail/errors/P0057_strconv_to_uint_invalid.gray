@@ -1,0 +1,7 @@
+/* Panic Test: P0057 - strconv.to_uint cannot convert invalid string */
+import @strconv
+
+do main() {
+    mut val, mut err = strconv.to_uint("xyz", 10)
+    println(val)
+}

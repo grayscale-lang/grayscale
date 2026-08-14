@@ -1,43 +1,43 @@
-/* Stress test: @bytes — conversions
+/* Stress test: byte conversion functions in @encoding
  * Expected: all tests pass
  */
 
-import @bytes
+import @encoding
 
 do main() {
-    println("=== Stress: @bytes ===")
+    println("=== Stress: encoding byte conversions ===")
     mut passed int = 0
     mut failed int = 0
 
     // from_string / to_string round-trip
-    mut b [byte] = bytes.from_string("Hello")
-    mut s string = bytes.to_string(b)
+    mut b [byte] = encoding.from_string("Hello")
+    mut s string = encoding.to_string(b)
     if s == "Hello" {
         println("  [PASS] from_string/to_string round-trip")
         passed += 1
     } otherwise { println("  [FAIL] string round-trip — got '${s}'") failed += 1 }
 
     // from_hex / to_hex round-trip
-    mut hex string = bytes.to_hex(b)
-    mut b2 [byte] = bytes.from_hex(hex)
-    mut s2 string = bytes.to_string(b2)
+    mut hex string = encoding.to_hex(b)
+    mut b2 [byte] = encoding.from_hex(hex)
+    mut s2 string = encoding.to_string(b2)
     if s2 == "Hello" {
         println("  [PASS] to_hex/from_hex round-trip")
         passed += 1
     } otherwise { println("  [FAIL] hex round-trip — got '${s2}'") failed += 1 }
 
     // from_base64 / to_base64 round-trip
-    mut b64 string = bytes.to_base64(b)
-    mut b3 [byte] = bytes.from_base64(b64)
-    mut s3 string = bytes.to_string(b3)
+    mut b64 string = encoding.to_base64(b)
+    mut b3 [byte] = encoding.from_base64(b64)
+    mut s3 string = encoding.to_string(b3)
     if s3 == "Hello" {
         println("  [PASS] to_base64/from_base64 round-trip")
         passed += 1
     } otherwise { println("  [FAIL] base64 round-trip — got '${s3}'") failed += 1 }
 
     // Empty bytes
-    mut empty [byte] = bytes.from_string("")
-    if bytes.to_string(empty) == "" {
+    mut empty [byte] = encoding.from_string("")
+    if encoding.to_string(empty) == "" {
         println("  [PASS] empty byte array round-trip")
         passed += 1
     } otherwise { println("  [FAIL] empty bytes") failed += 1 }

@@ -1,0 +1,7 @@
+/* Panic Test: P0023 - i128 multiplication overflow */
+do main() {
+    mut x = i128(9223372036854775807)
+    mut y = x * i128(9223372036854775807)
+    mut z = y * y
+    println(z)
+}

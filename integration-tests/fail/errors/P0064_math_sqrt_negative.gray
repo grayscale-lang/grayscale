@@ -1,0 +1,7 @@
+/* Panic Test: P0064 - math.sqrt of negative number */
+import @math
+
+do main() {
+    mut x float = math.sqrt(-1.0)
+    println(x)
+}

@@ -1,0 +1,29 @@
+mut passed int = 0
+mut failed int = 0
+
+do main() {
+    dynamicArr [int] = {1, 2, 3, 4, 5}
+
+    if len(dynamicArr) == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: expected len 5")
+    }
+
+    if dynamicArr[0] == 1 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: expected dynamicArr[0] == 1")
+    }
+
+    if dynamicArr[4] == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: expected dynamicArr[4] == 5")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

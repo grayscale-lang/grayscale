@@ -1,0 +1,9 @@
+const Pair struct {
+    a int
+    b string
+}
+
+do main() {
+    mut p = new(Pair)
+    p^.a = "not an int"
+}

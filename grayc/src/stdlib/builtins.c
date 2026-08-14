@@ -9,6 +9,7 @@
  */
 
 #include "builtins.h"
+#include "strconv.h"
 #include "../runtime/platform_rt.h"
 #include "../util/constants.h"
 #include <stdio.h>
@@ -21,36 +22,13 @@
 #include "../runtime/win32.h"
 #else
 #include <unistd.h>
+#include <sys/wait.h>
 #endif
 
 #define GRAY_TOSTRING_BUF_SIZE    4096
 #define GRAY_TOSTRING_SAFE_LIMIT  (GRAY_TOSTRING_BUF_SIZE - 96)
-#define GRAY_INT_STR_BUF          32
 #define GRAY_FLOAT_STR_BUF        64
 #define GRAY_INPUT_BUF_SIZE       4096
-
-/* Format a double using the shortest representation that round-trips */
-static int fmt_shortest_float(char *buf, size_t buffer_size, double v) {
-    int n = 0;
-    for (int prec = 15; prec <= 17; prec++) {
-        n = snprintf(buf, buffer_size, "%.*g", prec, v);
-        double rt;
-        if (sscanf(buf, "%lf", &rt) == 1 && rt == v) break;
-    }
-    bool has_special = false;
-    for (int i = 0; buf[i]; i++) {
-        if (buf[i] == '.' || buf[i] == 'e' || buf[i] == 'i' || buf[i] == 'n') {
-            has_special = true;
-            break;
-        }
-    }
-    if (!has_special && n + 2 < (int)buffer_size) {
-        buf[n++] = '.';
-        buf[n++] = '0';
-        buf[n] = '\0';
-    }
-    return n;
-}
 
 /* Encode Unicode codepoint to UTF-8; returns byte count (1-4). */
 static int cp_to_utf8(int32_t cp, char *out) {
@@ -112,7 +90,7 @@ static void print_core_uint(uint64_t v, FILE *stream, bool newline) {
 
 static void print_core_float(double v, FILE *stream, bool newline) {
     char buf[GRAY_FLOAT_STR_BUF];
-    fmt_shortest_float(buf, sizeof(buf), v);
+    gray_fmt_shortest_float(buf, sizeof(buf), v);
     fprintf(stream, "%s", buf);
     if (newline) fputc('\n', stream);
 }
@@ -241,24 +219,35 @@ void gray_builtin_sleep_ns(int64_t ns) {
 #endif
 }
 
+/* --- system --- */
+
+int64_t gray_builtin_system(GrayString cmd) {
+    char *cstr = malloc((size_t)cmd.len + 1);
+    if (!cstr) return -1;
+    memcpy(cstr, cmd.data, (size_t)cmd.len);
+    cstr[cmd.len] = '\0';
+    int status = system(cstr);
+    free(cstr);
+#if GRAY_RT_WINDOWS
+    return (int64_t)status;
+#else
+    if (WIFEXITED(status)) return (int64_t)WEXITSTATUS(status);
+    return -1;
+#endif
+}
+
 /* --- to_string --- */
 
 GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t v) {
-    char buf[GRAY_INT_STR_BUF];
-    int len = snprintf(buf, sizeof(buf), "%" PRId64, v);
-    return gray_string_new(arena, buf, (int32_t)len);
+    return gray_strconv_from_int(arena, v);
 }
 
 GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t v) {
-    char buf[GRAY_INT_STR_BUF];
-    int len = snprintf(buf, sizeof(buf), "%" PRIu64, v);
-    return gray_string_new(arena, buf, (int32_t)len);
+    return gray_strconv_from_uint(arena, v);
 }
 
 GrayString gray_builtin_to_string_float(GrayArena *arena, double v) {
-    char buf[GRAY_FLOAT_STR_BUF];
-    int len = fmt_shortest_float(buf, sizeof(buf), v);
-    return gray_string_new(arena, buf, (int32_t)len);
+    return gray_strconv_from_float(arena, v);
 }
 
 GrayString gray_builtin_format_float(GrayArena *arena, double v) {
@@ -312,7 +301,7 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
             break;
         case 1: {
             char float_buffer[GRAY_FLOAT_STR_BUF];
-            fmt_shortest_float(float_buffer, sizeof(float_buffer), GRAY_ARRAY_GET(*arr, double, i));
+            gray_fmt_shortest_float(float_buffer, sizeof(float_buffer), GRAY_ARRAY_GET(*arr, double, i));
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
             break;
         }
@@ -416,7 +405,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind
         case 0: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64, *(int64_t *)vp); break;
         case 1: {
             char float_buffer[GRAY_FLOAT_STR_BUF];
-            fmt_shortest_float(float_buffer, sizeof(float_buffer), *(double *)vp);
+            gray_fmt_shortest_float(float_buffer, sizeof(float_buffer), *(double *)vp);
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
             break;
         }

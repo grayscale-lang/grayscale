@@ -1,0 +1,14 @@
+const Node struct {
+    val int
+    next ^Node
+}
+
+do main() {
+    mut a Node = Node{val: 1, next: nil}
+    mut cur ^Node = addr(a)
+
+    for cur {
+        println(cur.val)
+        cur = cur.next
+    }
+}

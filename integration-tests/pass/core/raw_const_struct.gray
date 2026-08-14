@@ -1,0 +1,27 @@
+/*
+ * Test: raw() bypasses const-source write protection on structs.
+ * raw() should allow writing through a pointer to a const struct.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const p Point = Point{x: 1, y: 2}
+    mut ptr = raw(p)
+    ptr^.x = 999
+
+    if ptr^.x == 999 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        eprintln("FAIL: raw() const struct write not visible through pointer")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+}

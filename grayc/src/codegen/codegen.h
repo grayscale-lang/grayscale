@@ -68,6 +68,13 @@ typedef struct {
     int ref_var_count;
     int ref_var_cap;
 
+    /* Raw pointer variables (from raw()) — dereference skips nil check.
+     * Stored as a stack: most recent entry for a name wins.  Entries
+     * with is_raw=false act as overrides (e.g. addr() shadowing raw()). */
+    struct { const char *name; bool is_raw; } *raw_vars;
+    int raw_var_count;
+    int raw_var_cap;
+
     /* Track declared bigint variable types (name → type_name) */
     const char **bigint_var_names;
     const char **bigint_var_types;

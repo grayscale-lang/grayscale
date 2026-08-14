@@ -1,0 +1,7 @@
+/* Panic Test: P0093 - cast from i128 to int overflows int64 range */
+do main() {
+    mut x = i128(9223372036854775807)
+    mut big = x + i128(1)
+    mut y int = cast(big, int)
+    println(y)
+}

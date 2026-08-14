@@ -1,0 +1,6 @@
+/* Panic Test: P0084 - cannot convert string to int at runtime */
+do main() {
+    mut s string = "not_a_number"
+    mut x int = cast(s, int)
+    println(x)
+}

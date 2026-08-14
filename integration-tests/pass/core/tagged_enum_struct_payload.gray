@@ -1,0 +1,47 @@
+const Point struct {
+    x int
+    y int
+}
+
+const Shape enum {
+    Located(Point)
+    Bare
+}
+
+do main() {
+    mut passed = 0
+    mut failed = 0
+
+    mut p = Point{x: 10, y: 20}
+    mut s Shape = Shape.Located(p)
+
+    when s {
+        is Shape.Located(pt) {
+            if pt.x == 10 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+            if pt.y == 20 {
+                passed = passed + 1
+            } otherwise {
+                failed = failed + 1
+            }
+        }
+        is .Bare {
+            failed = failed + 1
+        }
+    }
+
+    mut s2 Shape = Shape.Bare
+    when s2 {
+        is Shape.Located(pt) {
+            failed = failed + 1
+        }
+        is .Bare {
+            passed = passed + 1
+        }
+    }
+
+    println("${passed} passed, ${failed} failed")
+}

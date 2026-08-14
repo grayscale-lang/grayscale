@@ -1,0 +1,6 @@
+do main() {
+    for_each val in {} {
+        mut x string = val
+        println(x)
+    }
+}

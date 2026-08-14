@@ -441,6 +441,20 @@ p1^ = 99
 println(p2^)    // 99 — p1 and p2 point to the same variable
 ```
 
+**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
+
+```gray
+const x int = 42
+mut p = raw(x)
+p^ = 99           // allowed — raw() bypasses const-source protection
+println(p^)        // 99
+
+mut q ^int = raw(x)
+// q^ dereference has no nil-check — if q were nil, behavior is undefined
+```
+
+`raw()` is considered unsafe and is intended for performance-critical code where nil checks are a measurable overhead and the programmer guarantees pointer validity. Prefer `addr()` in all other cases.
+
 > 💡 **Tip:** You can dereference directly on a call result without storing the pointer first. `new(Foo)^` allocates a `Foo` and immediately gives you the value, handy when a function returns `^Type` and you want the value right at the call site: `return new(Foo)^` or `mut val = make_thing()^`.
 
 > 💡 **Tip:** The dot operator (`.`) automatically dereferences pointers to structs. If `p` is a `^MyStruct`, writing `p.field` is equivalent to `p^.field`. This auto-dereference applies to field access and struct function calls but does **not** apply in other contexts. For example, `println(p)` prints the address, and `return p` returns the pointer itself. Use explicit `p^` when you need the pointee value rather than field access.
@@ -756,6 +770,26 @@ when shape {
 
 The number of bindings in a pattern must match the variant's payload count. `#strict` exhaustiveness checking works with tagged enums.
 
+#### 3.2.5 Function References
+
+`func` is a type keyword that represents a reference to a named function. Function references are created with `()name` or `ref(name)` and are always `const`. The `func` type is used in parameter declarations, struct fields, arrays, and maps to accept or store callable references.
+
+```gray
+do double(n int) -> int { return n * 2 }
+const f = ()double
+f(5)   // 10
+```
+
+A typed `func` signature specifies parameter and return types:
+
+```gray
+do apply(x int, f func(int) -> int) -> int {
+    return f(x)
+}
+```
+
+See [§7.6 Function References](#76-function-references) for full documentation including calling conventions, parameter usage, and struct field storage.
+
 ### 3.3 Type Inference
 
 Grayscale is a statically-typed language with type inference. The type of every variable is known at compile time, and explicit type annotations are optional in most contexts when the compiler can determine the type from the initializer.
@@ -903,16 +937,16 @@ private alias InternalID = int
 
 ### 4.1 Variable Declarations
 
-Variables are declared using the `mut` keyword:
+Variables are mutable by default. The `mut` keyword is accepted but optional:
 
 ```gray
-mut count int = 0
-mut name string = "Alice"
-mut items [int] = {1, 2, 3}
+x int = 42              // mutable (default)
+mut x int = 42          // also mutable (explicit, accepted)
+name = "hello"          // mutable, type inferred
+result, err = func()    // mutable, multi-return inferred
 ```
 
-Variables declared with `mut`:
-- Must be initialized at declaration
+Variables declared this way:
 - Can be reassigned after declaration
 - Are scoped to their containing block
 
@@ -1826,6 +1860,7 @@ const Person struct {
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
+| `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -1878,6 +1913,41 @@ do main() {
 - Field names in the JSON must match the struct field names exactly.
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `int`, `uint`, `float`, `string`, `bool`. Nested `#json` structs and arrays of `#json` structs are also supported.
+
+#### 7.5.3 `#discard` Attribute
+
+The `#discard` attribute marks a function whose return value may safely be ignored by callers. Without `#discard`, calling a non-void function as a bare statement produces E5011 ("return value not used"). With `#discard`, callers may call the function without capturing the return value, and the compiler will not emit E5011.
+
+```gray
+#discard
+do tryInsert(value int) -> bool {
+    // ... returns true on success, but caller may not care
+    return true
+}
+
+do main() {
+    tryInsert(42)               // OK — no E5011
+    mut ok bool = tryInsert(7)  // also OK — capturing is still allowed
+}
+```
+
+`#discard` can also be applied to struct functions:
+
+```gray
+const List struct {
+    items [int]
+
+    #discard
+    do push(self List, value int) -> int {
+        return len(self.items) + 1
+    }
+}
+```
+
+**Rules:**
+
+- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
+- `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
 
 ### 7.6 Function References
 
@@ -2514,7 +2584,7 @@ import "./c.gray"         // Error: 'c' is reserved
 
 ## 9. Standard Library
 
-The Grayscale standard library consists of 27 modules plus built-in functions that require no import.
+The Grayscale standard library consists of 26 modules plus built-in functions that require no import.
 
 ### 9.1 Built-in Functions
 
@@ -2551,10 +2621,12 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `len` | `(collection) -> int` | Length of array, map, or string (byte length for strings, not character count) |
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> int` | Size of type in bytes |
+| `fields` | `(instance) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
 | `addr` | `(variable) -> ^T` | Get memory address of a variable |
+| `raw` | `(variable) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
 | `error` | `(message string) -> Error` | Create error value |
 | `assert` | `(condition bool [, message string])` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
@@ -2565,6 +2637,7 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
 | `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
+| `system` | `(command string) -> int` | Run a shell command and return its exit code. Returns -1 if killed by signal. |
 
 **Reference behavior with `ref()`:**
 
@@ -2596,7 +2669,7 @@ println(r2[4])        // Prints 6 - r2 sees the change
 | `const r = ref(x)`    | `const` | yes |
 | `mut r = ref(x)`      | `const` | **no**; you cannot get a mutable reference to a const source. Use `copy(x)` to obtain an independent mutable instance. |
 
-**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
+**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
 
 **`assert()` — runtime assertion**
 
@@ -3200,6 +3273,8 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 
 ### 9.13 Encoding Module (`@encoding`)
 
+#### String Encoding
+
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `base64_encode` | `(s string) -> string` | Encode to base64 |
@@ -3208,6 +3283,17 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 | `hex_decode` | `(s string) -> string` | Decode from hex |
 | `url_encode` | `(s string) -> string` | URL percent-encode |
 | `url_decode` | `(s string) -> string` | URL percent-decode |
+
+#### Byte Conversion
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `from_string` | `(s string) -> [byte]` | Create from UTF-8 string |
+| `from_hex` | `(hex string) -> [byte]` | Decode hex string |
+| `from_base64` | `(b64 string) -> [byte]` | Decode base64 string |
+| `to_string` | `(bytes [byte]) -> string` | Convert to UTF-8 string |
+| `to_hex` | `(bytes [byte]) -> string` | Encode to hex string |
+| `to_base64` | `(bytes [byte]) -> string` | Encode to base64 string |
 
 ### 9.14 UUID Module (`@uuid`)
 
@@ -3230,18 +3316,7 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 
 UUID randomness comes from `getentropy()` (macOS, BSDs, glibc 2.25+) with a fallback to `/dev/urandom`, suitable for security-sensitive identifiers.
 
-### 9.15 Bytes Module (`@bytes`)
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `from_string` | `(s string) -> [byte]` | Create from UTF-8 string |
-| `from_hex` | `(hex string) -> [byte]` | Decode hex string |
-| `from_base64` | `(b64 string) -> [byte]` | Decode base64 string |
-| `to_string` | `(bytes [byte]) -> string` | Convert to UTF-8 string |
-| `to_hex` | `(bytes [byte]) -> string` | Encode to hex string |
-| `to_base64` | `(bytes [byte]) -> string` | Encode to base64 string |
-
-### 9.16 Binary Module (`@binary`)
+### 9.15 Binary Module (`@binary`)
 
 Binary encoding/decoding for integers and floats in little-endian (le) and big-endian (be) formats.
 
@@ -3294,7 +3369,7 @@ Binary encoding/decoding for integers and floats in little-endian (le) and big-e
 | `encode_f32_le`, `encode_f32_be`, `decode_f32_le`, `decode_f32_be` | 32-bit float |
 | `encode_f64_le`, `encode_f64_be`, `decode_f64_le`, `decode_f64_be` | 64-bit float |
 
-### 9.17 SQLite Module (`@sqlite`)
+### 9.16 SQLite Module (`@sqlite`)
 
 SQLite database access for persistent storage.
 
@@ -3327,7 +3402,7 @@ for_each row in rows {
 sqlite.close(db)
 ```
 
-### 9.18 Server Module (`@server`)
+### 9.17 Server Module (`@server`)
 
 An HTTP server module with dynamic handlers and path parameters.
 
@@ -3386,7 +3461,7 @@ do main() {
 }
 ```
 
-### 9.19 Regex Module (`@regex`)
+### 9.18 Regex Module (`@regex`)
 
 Regular expression operations using POSIX extended regex syntax.
 
@@ -3401,7 +3476,7 @@ Regular expression operations using POSIX extended regex syntax.
 
 Error-returning variants: `find`, `find_all`, `replace`, `split`
 
-### 9.20 CSV Module (`@csv`)
+### 9.19 CSV Module (`@csv`)
 
 Reading and writing CSV (Comma-Separated Values) data.
 
@@ -3413,7 +3488,7 @@ Reading and writing CSV (Comma-Separated Values) data.
 | `write_file` | `(path string, data [[string]]) -> (bool, Error)` | Write 2D array to CSV file — always use destructuring |
 | `headers` | `(data [[string]]) -> [string]` | Extract header row from parsed CSV data |
 
-### 9.21 Net Module (`@net`)
+### 9.20 Net Module (`@net`)
 
 TCP sockets and DNS resolution.
 
@@ -3430,7 +3505,7 @@ TCP sockets and DNS resolution.
 
 Error-returning variants: `connect`, `listen`, `accept`, `send`, `receive`, `resolve`
 
-### 9.22 Threads Module (`@threads`)
+### 9.21 Threads Module (`@threads`)
 
 Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 
@@ -3447,7 +3522,7 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | `sleep` | `(ms int)` | Sleep the current thread for `ms` milliseconds |
 | `thread_count` | `() -> int` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
 
-### 9.23 Sync Module (`@sync`)
+### 9.22 Sync Module (`@sync`)
 
 Synchronization primitives for thread-safe access to shared data. Compiler-only feature; requires POSIX threads.
 
@@ -3459,7 +3534,7 @@ Synchronization primitives for thread-safe access to shared data. Compiler-only 
 | `try_lock` | `(m Mutex)` | Try to acquire a mutex (non-blocking) |
 | `destroy` | `(m Mutex)` | Destroy a mutex |
 
-### 9.24 Channels Module (`@channels`)
+### 9.23 Channels Module (`@channels`)
 
 Message passing between threads. Compiler-only feature; requires POSIX threads.
 
@@ -3474,7 +3549,7 @@ Message passing between threads. Compiler-only feature; requires POSIX threads.
 
 Channels are **int-only**. Sending non-int types (`string`, `float`, `bool`, etc.) is a compile-time error.
 
-### 9.25 Memory Module (`@mem`)
+### 9.24 Memory Module (`@mem`)
 
 Arena-based memory allocation. Compiler-only feature.
 
@@ -3493,7 +3568,7 @@ Arena-based memory allocation. Compiler-only feature.
 | `zero` | `(p ptr, n int)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value int, n int)` | Set `n` bytes at `p` to `value` |
 
-### 9.26 Atomic Module (`@atomic`)
+### 9.25 Atomic Module (`@atomic`)
 
 Lock-free atomic operations backed by hand-written assembly (ARM64 and x86_64). Compiler-only feature.
 
@@ -3528,7 +3603,7 @@ All pointer arguments must be `^int` (pointer to int).
 |----------|-----------|-------------|
 | `fence` | `()` | Full memory barrier (sequential consistency) |
 
-### 9.27 Fmt Module (`@fmt`)
+### 9.26 Fmt Module (`@fmt`)
 
 Formatted output and string formatting functions.
 
@@ -3595,7 +3670,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 
 Accepts `string`, `int`, `float`, and `bool` arguments for formatted output functions. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
-### 9.28 Strconv Module (`@strconv`)
+### 9.27 Strconv Module (`@strconv`)
 
 String-to-type and type-to-string conversion functions with proper error handling.
 
@@ -3856,7 +3931,9 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 |--------|-------------------|
 | Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
-| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
+| Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
+| Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
+| Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
 For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.

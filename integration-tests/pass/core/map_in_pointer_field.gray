@@ -1,0 +1,25 @@
+const Holder struct {
+    data map[string:int]
+}
+
+do check_map(h ^Holder) -> bool {
+    if "foo" in h.data { return true }
+    return false
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut h = new(Holder)
+    h.data = {"foo": 42}
+    if check_map(h) {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] map in check through pointer failed")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

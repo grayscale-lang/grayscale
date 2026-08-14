@@ -1,0 +1,7 @@
+/* Panic Test: P0012 - sized signed integer subtraction overflow */
+do main() {
+    mut x i8 = -120
+    mut y i8 = 10
+    mut z i8 = x - y
+    println(z)
+}

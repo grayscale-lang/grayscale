@@ -1,0 +1,4 @@
+/* Panic Test: P0076 - explicit panic call */
+do main() {
+    panic("this is a test panic")
+}

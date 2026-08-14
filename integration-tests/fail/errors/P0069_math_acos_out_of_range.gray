@@ -1,0 +1,7 @@
+/* Panic Test: P0069 - math.acos value outside [-1, 1] */
+import @math
+
+do main() {
+    mut x float = math.acos(-2.0)
+    println(x)
+}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5042 - #discard on void function
+ * Expected: "discard" and "void"
+ */
+
+#discard
+do doNothing() {
+    println("side effect only")
+}
+
+do main() {
+    doNothing()
+}

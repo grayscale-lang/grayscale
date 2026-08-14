@@ -1,17 +1,17 @@
 /*
- * bytes_c.gray - Integration test for @bytes (compiler)
+ * bytes_c.gray - Integration test for byte conversion functions in @encoding
  */
 
-import @bytes
+import @encoding
 
 do main() {
-    println("=== Bytes Module Test ===")
+    println("=== Encoding Byte Conversion Test ===")
     mut passed int = 0
     mut failed int = 0
 
     // from_string / to_string round-trip
-    mut data [byte] = bytes.from_string("hello")
-    mut back string = bytes.to_string(data)
+    mut data [byte] = encoding.from_string("hello")
+    mut back string = encoding.to_string(data)
     if back == "hello" {
         println("  [PASS] from_string/to_string round-trip")
         passed += 1
@@ -30,8 +30,8 @@ do main() {
     }
 
     // to_hex
-    mut hex_data [byte] = bytes.from_string("AB")
-    mut hex_str string = bytes.to_hex(hex_data)
+    mut hex_data [byte] = encoding.from_string("AB")
+    mut hex_str string = encoding.to_hex(hex_data)
     if hex_str == "4142" {
         println("  [PASS] to_hex")
         passed += 1
@@ -41,8 +41,8 @@ do main() {
     }
 
     // from_hex / to_hex round-trip
-    mut from_hex [byte] = bytes.from_hex("4142")
-    mut from_hex_str string = bytes.to_string(from_hex)
+    mut from_hex [byte] = encoding.from_hex("4142")
+    mut from_hex_str string = encoding.to_string(from_hex)
     if from_hex_str == "AB" {
         println("  [PASS] from_hex round-trip")
         passed += 1
@@ -52,7 +52,7 @@ do main() {
     }
 
     // from_string with empty string
-    mut empty [byte] = bytes.from_string("")
+    mut empty [byte] = encoding.from_string("")
     if len(empty) == 0 {
         println("  [PASS] from_string empty")
         passed += 1

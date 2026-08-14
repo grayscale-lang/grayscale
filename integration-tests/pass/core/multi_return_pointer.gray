@@ -1,0 +1,29 @@
+const Foo struct {
+    x int
+}
+
+do make_foo(n int) -> (^Foo, Error) {
+    mut f = new(Foo)
+    f.x = n
+    return f, nil
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut r, e = make_foo(42)
+    if e != nil {
+        println("error")
+        exit(1)
+    }
+    if r.x == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] multi-return pointer value wrong")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

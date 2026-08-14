@@ -1,0 +1,7 @@
+/* Panic Test: P0042 - url decode invalid percent escape */
+import @encoding
+
+do main() {
+    mut result string = encoding.url_decode("%zz")
+    println(result)
+}

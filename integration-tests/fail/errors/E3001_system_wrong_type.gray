@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3001 - system() with non-string argument
+ * Expected: E3001 "system() expects a string argument"
+ */
+
+do main() {
+    system(42)
+}

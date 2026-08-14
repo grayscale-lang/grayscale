@@ -1,0 +1,7 @@
+/* Panic Test: P0038 - base64 decode invalid padding */
+import @encoding
+
+do main() {
+    mut result string = encoding.base64_decode("====")
+    println(result)
+}

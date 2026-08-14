@@ -976,7 +976,7 @@ static AstNode *parse_prefix(Parser *parser) {
         if (type_string_has_wildcard(node->data.new_expr.type_name)) {
             diagnostic_error_message(parser->diag, "E2070",
                 arena_copy_string(parser->arena,
-                    "wildcard type '?' cannot be used with new(); new() requires a concrete type"),
+                    "wildcard type '?' cannot be used with 'new()'; 'new()' requires a concrete type"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         if (!expect_peek_token(parser, TOK_RPAREN)) return NULL;
@@ -1113,7 +1113,17 @@ static AstNode *parse_call_expression(Parser *parser, AstNode *function) {
                 next_token(parser); /* skip colon, now on value */
             }
 
-            args[count] = parse_expression(parser, PREC_LOWEST);
+            /* size_of(^T): parse pointer type as a type expression, not a general expression */
+            if (function->kind == NODE_LABEL &&
+                strcmp(function->data.label.value, "size_of") == 0 &&
+                current_token_is(parser, TOK_CARET)) {
+                const char *type_str = parse_complex_type(parser);
+                AstNode *label = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
+                label->data.label.value = type_str;
+                args[count] = label;
+            } else {
+                args[count] = parse_expression(parser, PREC_LOWEST);
+            }
             count++;
 
             if (!peek_token_is(parser, TOK_COMMA)) break;
@@ -1368,24 +1378,30 @@ static AstNode *parse_discard_statement(Parser *parser) {
     return node;
 }
 
-static AstNode *parse_var_declaration(Parser *parser) {
+static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
     AstNode *node = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
-    node->data.var_decl.mutable = (parser->cur_token.type == TOK_MUT);
 
-    if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_BLANK)) {
-        next_token(parser);
-    } else if (is_keyword_token(parser->peek_token.type)) {
-        char msg[MSG_BUF_SIZE];
-        snprintf(msg, sizeof(msg),
-            "'%s' is a reserved keyword and cannot be used as a variable name",
-            parser->peek_token.literal);
-        diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
-            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-        synchronize_parser(parser);
-        return NULL;
+    if (bare) {
+        node->data.var_decl.mutable = true;
+        /* cur_token is already the variable name — don't advance */
     } else {
-        expect_peek_token(parser, TOK_IDENT); /* will error */
-        return NULL;
+        node->data.var_decl.mutable = (parser->cur_token.type == TOK_MUT);
+
+        if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_BLANK)) {
+            next_token(parser);
+        } else if (is_keyword_token(parser->peek_token.type)) {
+            char msg[MSG_BUF_SIZE];
+            snprintf(msg, sizeof(msg),
+                "'%s' is a reserved keyword and cannot be used as a variable name",
+                parser->peek_token.literal);
+            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+                parser->file, parser->peek_token.line, parser->peek_token.column, 0);
+            synchronize_parser(parser);
+            return NULL;
+        } else {
+            expect_peek_token(parser, TOK_IDENT); /* will error */
+            return NULL;
+        }
     }
     node->data.var_decl.name = parser->cur_token.literal;
 
@@ -1534,6 +1550,10 @@ static AstNode *parse_var_declaration(Parser *parser) {
     }
 
     return node;
+}
+
+static AstNode *parse_var_declaration(Parser *parser) {
+    return parse_var_declaration_ex(parser, false);
 }
 
 static AstNode *parse_return_statement(Parser *parser) {
@@ -2018,13 +2038,13 @@ static AstNode *parse_import_statement(Parser *parser) {
             /* Reject 'c' as a module name; reserved for C interop */
             if (item->alias && strcmp(item->alias, "c") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., import myc\"./c.gray\")"),
+                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., 'import myc \"./c.gray\"')"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
         } else if (current_token_is(parser, TOK_IDENT)) {
             char buf[MSG_BUF_SIZE];
             snprintf(buf, sizeof(buf),
-                "expected @module or \"path\" after import, got '%s'",
+                "expected '@module' or '\"path\"' after 'import', got '%s'",
                 parser->cur_token.literal);
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
@@ -2111,6 +2131,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     node->data.struct_decl.func_count = 0;
     node->data.struct_decl.funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
 
+    bool pending_discard = false;
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
@@ -2124,10 +2145,21 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             next_token(parser);
             continue;
         }
+        /* #discard inside struct body: set pending flag, then the
+         * next iteration will attach it to the parsed function. */
+        if (current_token_is(parser, TOK_DISCARD)) {
+            pending_discard = true;
+            next_token(parser);
+            continue;
+        }
         /* Check for struct-namespaced function: do func() or private do func() */
         if (current_token_is(parser, TOK_DO)) {
             AstNode *fn = parse_func_declaration(parser);
             if (fn) {
+                if (pending_discard) {
+                    fn->data.func_decl.is_discard = true;
+                    pending_discard = false;
+                }
                 if (node->data.struct_decl.func_count >= func_cap) {
                     func_cap *= 2;
                     StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
@@ -2145,6 +2177,10 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             AstNode *fn = parse_func_declaration(parser);
             if (fn) {
                 fn->data.func_decl.is_private = true;
+                if (pending_discard) {
+                    fn->data.func_decl.is_discard = true;
+                    pending_discard = false;
+                }
                 if (node->data.struct_decl.func_count >= func_cap) {
                     func_cap *= 2;
                     StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
@@ -2203,6 +2239,13 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 next_token(parser);
             }
             continue;
+        }
+
+        /* E2089: #discard on a struct field instead of a function */
+        if (pending_discard) {
+            diagnostic_error_code(parser->diag, "E2089",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            pending_discard = false;
         }
 
         /* E2002: multiple fields on the same line */
@@ -2535,7 +2578,7 @@ static AstNode *parse_for_statement(Parser *parser) {
             if (!current_token_is(parser, TOK_RANGE)) {
                 char msg[MSG_BUF_SIZE];
                 snprintf(msg, sizeof(msg),
-                    "'for %s in ...' only supports range(); use 'for_each %s in ...' to iterate over a collection",
+                    "'for %s in ...' only supports 'range()'; use 'for_each %s in ...' to iterate over a collection",
                     var, var);
                 diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                     parser->file, for_tok.line, for_tok.column, 0);
@@ -3015,19 +3058,19 @@ static AstNode *parse_statement(Parser *parser) {
         }
         return stmt;
     }
-    case TOK_SUPPRESS:
-        diagnostic_error_message(parser->diag, "E2002",
-            arena_copy_string(parser->arena,"#suppress is no longer supported; use 'gray file.gray -q W1001' to suppress warnings from the command line"),
-            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-        /* Consume the attribute and its args to avoid cascading errors */
-        if (peek_token_is(parser, TOK_LPAREN)) {
-            next_token(parser);
-            while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                next_token(parser);
-            }
-        }
+    case TOK_DISCARD: {
+        /* #discard; applies to the next function declaration */
         next_token(parser);
-        return parse_statement(parser);
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_discard = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
     case TOK_DOC:
         /* Skip #doc attribute tokens; consume args if present */
         if (peek_token_is(parser, TOK_LPAREN)) {
@@ -3042,10 +3085,12 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_ensure_statement(parser);
     case TOK_BLANK:
         /* Bare throwaway: `_ = expr` discards the RHS without creating
-         * a symbol. Any other use of `_` at statement position (bare
-         * `_`, `_ +=`, `_, x = ...`) is invalid. */
+         * a symbol. `_, x = func()` is a bare multi-var declaration. */
         if (peek_token_is(parser, TOK_ASSIGN)) {
             return parse_discard_statement(parser);
+        }
+        if (peek_token_is(parser, TOK_COMMA)) {
+            return parse_var_declaration_ex(parser, true);
         }
         diagnostic_error_message(parser->diag, "E2002",
             arena_copy_string(parser->arena,"unexpected token '_'; the throwaway '_' is only valid as the entire left-hand side of an assignment"),
@@ -3053,17 +3098,13 @@ static AstNode *parse_statement(Parser *parser) {
         synchronize_parser(parser);
         return NULL;
     default: {
-        /* IDENT IDENT at statement position means the user tried to
-         * declare a variable but typed the wrong leading keyword
-         * (e.g. `cont myVar = 10`). No valid Grayscale statement has this
-         * shape, so we can confidently redirect them at 'const' or
-         * 'mut'. Consume the botched header and keep parsing. */
-        if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_IDENT)) {
-            diagnostic_error_code_formatted(parser->diag, "E2078",
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                parser->peek_token.literal, parser->peek_token.literal);
-            synchronize_parser(parser);
-            return NULL;
+        /* Bare variable declaration: x int = 5  or  x, err = func()
+         * Also handles array types: x [int] = {1,2,3}
+         * Whitespace before '[' disambiguates from index expressions (E2075). */
+        if (current_token_is(parser, TOK_IDENT) &&
+            (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA) ||
+             (peek_token_is(parser, TOK_LBRACKET) && parser->peek_token.preceded_by_ws))) {
+            return parse_var_declaration_ex(parser, true);
         }
         /* Could be assignment or expression statement */
         AstNode *expr = parse_expression(parser, PREC_LOWEST);

@@ -90,11 +90,11 @@ typedef enum {
     TOK_QUESTION,       /* ? */
 
     /* Hash attributes */
-    TOK_SUPPRESS,       /* #suppress */
     TOK_STRICT,         /* #strict */
     TOK_FLAGS,          /* #flags */
     TOK_DOC,            /* #doc */
     TOK_JSON_ATTR,      /* #json */
+    TOK_DISCARD,        /* #discard */
 
     /* Keywords */
     TOK_MUT,

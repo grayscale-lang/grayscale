@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5043 - fields() requires a struct instance
+ *
+ * fields() on a non-struct type should emit E5043.
+ */
+
+do main() {
+    mut x int = 42
+    println(fields(x))
+}

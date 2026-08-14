@@ -1,0 +1,7 @@
+/* Panic Test: P0079 - sized type result too large */
+do main() {
+    mut x i8 = -128
+    mut y i8 = -1
+    mut z i8 = x / y
+    println(z)
+}

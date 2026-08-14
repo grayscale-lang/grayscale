@@ -126,11 +126,11 @@ const char *token_type_name(TokenType type) {
     case TOK_CARET:          return "^";
     case TOK_AMPERSAND:      return "&";
     case TOK_QUESTION:       return "?";
-    case TOK_SUPPRESS:       return "#suppress";
     case TOK_STRICT:         return "#strict";
     case TOK_FLAGS:          return "#flags";
     case TOK_DOC:            return "#doc";
     case TOK_JSON_ATTR:      return "#json";
+    case TOK_DISCARD:        return "#discard";
     case TOK_MUT:            return "mut";
     case TOK_CONST:          return "const";
     case TOK_DO:             return "do";

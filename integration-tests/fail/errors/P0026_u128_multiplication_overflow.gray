@@ -1,0 +1,7 @@
+/* Panic Test: P0026 - u128 multiplication overflow */
+do main() {
+    mut x = u128(9223372036854775807)
+    mut y = x * u128(9223372036854775807)
+    mut z = y * y
+    println(z)
+}
