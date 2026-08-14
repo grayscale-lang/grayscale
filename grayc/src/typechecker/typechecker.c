@@ -1858,22 +1858,33 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
             return strcmp(dest->element_type, src->element_type) == 0;
         return true; /* unknown element type: allow */
     }
-    /* Struct types must match by name (Point != Size) */
+    /* Struct types must match by name (Point != Size).
+     * Use cross-module-aware comparison so "Item" matches "types_Item". */
     if (dest->kind == TK_STRUCT && src->kind == TK_STRUCT) {
         if (dest->name && src->name)
-            return strcmp(dest->name, src->name) == 0;
+            return typechecker_same_struct_type(checker, dest->name, src->name);
         return true;
     }
-    /* Enum types must match by name (Color != Dir) */
+    /* Enum types must match by name (Color != Dir).
+     * Use cross-module-aware comparison so "Status" matches "types_Status". */
     if (dest->kind == TK_ENUM && src->kind == TK_ENUM) {
         if (dest->name && src->name)
-            return strcmp(dest->name, src->name) == 0;
+            return typechecker_same_enum_type(checker, dest->name, src->name);
         return true;
     }
     /* Array types must match element types ([int] != [string]) */
     if (dest->kind == TK_ARRAY && src->kind == TK_ARRAY) {
-        if (dest->element_type && src->element_type)
-            return strcmp(dest->element_type, src->element_type) == 0;
+        if (dest->element_type && src->element_type) {
+            if (strcmp(dest->element_type, src->element_type) == 0) return true;
+            /* Cross-module struct/enum names (e.g. "Item" vs "types_Item") */
+            if (typechecker_same_array_element(checker, dest->element_type, src->element_type))
+                return true;
+            /* Resolve element types and compare recursively (e.g. int→i128, int→float) */
+            GrayType *dest_et = typechecker_type_from_name(checker, dest->element_type);
+            GrayType *src_et = typechecker_type_from_name(checker, src->element_type);
+            if (dest_et->kind != TK_UNKNOWN && src_et->kind != TK_UNKNOWN)
+                return types_assignable(checker, dest_et, src_et);
+        }
         return true; /* unknown element type: allow */
     }
     if (dest->kind == src->kind) return true;
@@ -6240,14 +6251,18 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             } else if (expected_t && val_t->kind != TK_UNKNOWN &&
                        expected_t->kind != TK_UNKNOWN &&
                        /* kinds differ, OR both are pointers to different types,
-                        * OR both are structs with different names */
+                        * OR both are structs with different names,
+                        * OR both are enums with different names */
                        (!types_assignable(checker, expected_t, val_t) ||
                         (expected_t->kind == TK_POINTER &&
                          expected_t->name && val_t->name &&
                          strcmp(expected_t->name, val_t->name) != 0) ||
                         (expected_t->kind == TK_STRUCT && val_t->kind == TK_STRUCT &&
                          expected_t->name && val_t->name &&
-                         strcmp(expected_t->name, val_t->name) != 0)) &&
+                         !typechecker_same_struct_type(checker, expected_t->name, val_t->name)) ||
+                        (expected_t->kind == TK_ENUM && val_t->kind == TK_ENUM &&
+                         expected_t->name && val_t->name &&
+                         !typechecker_same_enum_type(checker, expected_t->name, val_t->name))) &&
                        !(expected_t->kind == TK_ENUM && is_int_kind(val_t->kind)) &&
                        !(expected_t->kind == TK_STRUCT && is_int_kind(val_t->kind)) &&
                        !(is_int_kind(expected_t->kind) && val_t->kind == TK_STRUCT) &&
@@ -6899,10 +6914,6 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     break;
                 }
             }
-        } else if (!saved_arr_expected || !saved_arr_expected->element_type) {
-            /* Empty inline array with no type context — cannot infer element type */
-            diagnostic_error_code(checker->diag, "E3136", NODE_FILE(checker, node),
-                node->token.line, node->token.column, 0);
         }
         checker->expected_type = saved_arr_expected;
         break;
@@ -9965,6 +9976,14 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
 
     /* Resolve collection type to determine element type */
     GrayType *coll_t = resolve_expression(checker, node->data.for_each.collection);
+
+    /* E3136: empty inline array literal in for_each has no elements to
+     * infer a type from, causing the loop variable to default to unknown. */
+    if (node->data.for_each.collection->kind == NODE_ARRAY_VALUE &&
+        node->data.for_each.collection->data.array_value.count == 0) {
+        diagnostic_error_code(checker->diag, "E3136", NODE_FILE(checker, node->data.for_each.collection),
+            node->data.for_each.collection->token.line, node->data.for_each.collection->token.column, 0);
+    }
 
     /* Check that collection is iterable */
     if (coll_t->kind != TK_UNKNOWN && coll_t->kind != TK_ARRAY &&
