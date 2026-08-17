@@ -1166,7 +1166,7 @@ x--  // x is now 5
 
 #### 5.2.7 Bitwise Operators
 
-Grayscale uses keyword operators for bitwise operations. Symbol alternatives (`&`, `^`, `|`) are unavailable because `^` is the pointer type and dereference sigil and `&` is the address-of operator.
+Grayscale uses keyword operators for bitwise operations. Symbol alternatives (`&`, `^`, `|`) are unavailable because `^` is the pointer type and dereference sigil and `&` is used for mutable parameters in function signatures.
 
 | Operator | Syntax | Description | Operand Types |
 |----------|--------|-------------|---------------|
