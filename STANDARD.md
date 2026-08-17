@@ -34,9 +34,9 @@ This document defines the Grayscale programming language. It serves as the autho
 
 Grayscale is a compiled language where simplicity meets flexibility. Inspired by C, Odin, Rust, and Go. The language emphasizes:
 
-- **Simplicity**: A minimal set of orthogonal features
-- **Clarity**: Explicit syntax that reads naturally
-- **Safety**: Static type checking and runtime bounds checking
+- **Simplicity**: A small, focused feature set that stays out of your way
+- **Flexibility**: Readable syntax that bends to how you think
+- **Safety**: Static type checking with runtime bounds checking
 
 ---
 
@@ -141,6 +141,7 @@ Some keywords have shorter or more familiar aliases. Both forms are identical an
 |---------|----------------|----------------------|
 | `else`  | `otherwise`    | Default branch       |
 | `while` | `as_long_as`   | Condition loop       |
+| `!in`   | `not_in`       | Non-membership test  |
 
 > 💡 **Tip:** The `map` keyword is optional in type position — `[string:int]` and `map[string:int]` are identical. The parser normalizes both to the same canonical form.
 
@@ -158,11 +159,11 @@ Some keywords have shorter or more familiar aliases. Both forms are identical an
 ```
 
 - `^` — pointer type prefix and dereference postfix (`^Type`, `ptr^`)
-- `&` — address-of (used internally)
+- `&` — mutable parameter marker in function signatures
 - `@` — module prefix in imports (`import @math`)
 - `#` — attribute prefix (`#doc`, `#flags`, `#strict`)
 
-Bitwise operations use keyword syntax (`bit_and`, `bit_or`, etc.) because `^` and `&` are already used for pointer types and address-of. See [Section 5.2.7](#527-bitwise-operators).
+Bitwise operations use keyword syntax (`bit_and`, `bit_or`, etc.) because `^` and `&` are already used for pointer types and mutable parameters. See [Section 5.2.7](#527-bitwise-operators).
 
 ### 2.7 Literals
 
@@ -229,6 +230,8 @@ Examples: `'A'`, `'\n'`, `'\t'`
 Character literals must contain exactly one character (or escape sequence).
 
 #### 2.7.6 Boolean Literals
+
+`true` and `false` are the two boolean literals.
 
 #### 2.7.7 Nil Literal
 
@@ -396,7 +399,7 @@ mut s string = string(c)     // convert to string
 
 Wide integers use the same overflow-checked arithmetic as `int` and `uint`; overflow produces a runtime panic.
 
-#### 3.1.10 Pointer Type (`^Type`)
+#### 3.1.11 Pointer Type (`^Type`)
 
 The pointer type `^Type` represents a memory address pointing to a value of `Type`.
 
@@ -648,6 +651,17 @@ const Direction enum {
 }
 ```
 
+**Explicit values** can be assigned to enum variants. Subsequent variants without an explicit value auto-increment from the last:
+
+```gray
+const Foobar enum {
+    BAZ = 10    // 10
+    QUX         // 11
+    QUUX = 50   // 50
+    CORGE       // 51
+}
+```
+
 > 💡 **Tip:** Enum variants must be on separate lines. Inline declarations like `const Color enum { RED; GREEN; BLUE }` are not allowed. Semicolons are never used in enum declarations.
 
 > 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `int` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status int = Direction.NORTH` assigns `0`.
@@ -664,6 +678,7 @@ const Permissions enum {
     EXECUTE   // 4
     DELETE    // 8
 }
+```
 
 Enum values are accessed using dot notation:
 
@@ -1166,7 +1181,7 @@ x--  // x is now 5
 
 #### 5.2.7 Bitwise Operators
 
-Grayscale uses keyword operators for bitwise operations. Symbol alternatives (`&`, `^`, `|`) are unavailable because `^` is the pointer type and dereference sigil and `&` is the address-of operator.
+Grayscale uses keyword operators for bitwise operations. Symbol alternatives (`&`, `^`, `|`) are unavailable because `^` is the pointer type and dereference sigil and `&` is used for mutable parameters in function signatures.
 
 | Operator | Syntax | Description | Operand Types |
 |----------|--------|-------------|---------------|
@@ -1304,9 +1319,9 @@ if x < 0 {
 }
 ```
 
-The `or` keyword introduces additional conditions (similar to `else if` in other languages).
+The `or` keyword introduces additional conditions.
 
-The `otherwise` keyword introduces the default case (similar to `else`).
+The `otherwise` keyword introduces the default case.
 
 `else` is an alias for `otherwise`. Both are valid, user's choice.
 
@@ -2476,6 +2491,8 @@ sqrt(16.0)
 
 ### 8.6 C Interop
 
+> ⚠️ **Notice:** C interop will be redesigned before 1.0. Expect breaking changes to the syntax and semantics described in this section.
+
 Grayscale can import C headers and call C functions directly using the `c` prefix:
 
 #### Importing C Headers
@@ -2847,11 +2864,6 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `split` | `(s string, sep string) -> [string]` | Split into array |
 | `join` | `(arr [string], sep string) -> string` | Join array |
 | `slice` | `(s string, start int, end int) -> string` | Extract substring |
-
-#### Conversion Functions
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
 | `from_chars` | `(chars [char]) -> string` | Convert char array to string |
 
@@ -3988,7 +4000,7 @@ User-created arenas (via `mem.arena()`) are not subject to this limit.
 
 ### 12.1 Program Structure
 
-An Grayscale program consists of one or more source files that are compiled to a native binary by the Grayscale compiler. Each file may contain:
+A Grayscale program consists of one or more source files that are compiled to a native binary by the Grayscale compiler. Each file may contain:
 
 1. Import declarations
 2. Using declarations
