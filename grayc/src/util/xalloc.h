@@ -6,7 +6,8 @@
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
  *
- * Confucius40 was here!
+ * Contributors:
+ *  - @confucius40
  */
 
 #ifndef GRAYC_XALLOC_H
@@ -16,10 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define GROW_ARRAY_INIT_CAP 8
-
-static inline void *xmalloc(size_t size)
-{
+static inline void *xmalloc(size_t size) {
     void *ptr = malloc(size);
 
     if (!ptr) {
@@ -30,8 +28,7 @@ static inline void *xmalloc(size_t size)
     return ptr;
 }
 
-static inline void *xcalloc(size_t nmemb, size_t size)
-{
+static inline void *xcalloc(size_t nmemb, size_t size) {
     void *ptr = calloc(nmemb, size);
 
     if (!ptr) {
@@ -42,8 +39,7 @@ static inline void *xcalloc(size_t nmemb, size_t size)
     return ptr;
 }
 
-static inline void *xrealloc(void *ptr, size_t size)
-{
+static inline void *xrealloc(void *ptr, size_t size) {
     void *new_ptr = realloc(ptr, size);
 
     if (!new_ptr) {
@@ -54,8 +50,9 @@ static inline void *xrealloc(void *ptr, size_t size)
     return new_ptr;
 }
 
-static inline char *read_file_to_string(const char *path)
-{
+/* Read an entire seekable file into a malloc'd NUL-terminated string.
+ * Returns NULL on open failure or OOM. */
+static inline char *read_file_to_string(const char *path) {
     FILE *file = fopen(path, "rb");
     if (!file)
         return NULL;
@@ -77,15 +74,17 @@ static inline char *read_file_to_string(const char *path)
     return buffer;
 }
 
+/* Initial capacity for GROW_ARRAY — small enough to avoid waste,
+ * large enough to cover the common case without early resizes. */
+#define GROW_ARRAY_INIT_CAP 8
+
+/* Grow a dynamic array when count reaches capacity.
+ * Doubles capacity (starting from GROW_ARRAY_INIT_CAP), then xrealloc's. */
 #define GROW_ARRAY(arr, count, cap) \
     do { \
         if ((count) >= (cap)) { \
-            (cap) = (cap) \
-                ? (cap) * 2 \
-                : GROW_ARRAY_INIT_CAP; \
-            (arr) = xrealloc( \
-                (arr), \
-                sizeof(*(arr)) * (size_t)(cap)); \
+            (cap) = (cap) ? (cap) * 2 : GROW_ARRAY_INIT_CAP; \
+            (arr) = xrealloc((arr), sizeof(*(arr)) * (size_t)(cap)); \
         } \
     } while (0)
 
