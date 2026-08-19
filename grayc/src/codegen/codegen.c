@@ -1095,6 +1095,14 @@ static bool function_uses_caller_arena(CodeGen *codegen, AstNode *function_node)
     return false;
 }
 
+/* Same reasoning one level down: a caller-arena function must not open
+ * per-iteration or per-block arenas either. Anything it allocates can be
+ * stored through a pointer parameter and outlive the block that created it,
+ * so its allocations stay in the caller's arena for the whole call. */
+static bool current_function_uses_caller_arena(CodeGen *codegen) {
+    return function_uses_caller_arena(codegen, codegen->current_func);
+}
+
 static bool is_result_temporary(const char *name) {
     if (!name) return false;
     return strncmp(name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) == 0 ||
@@ -8977,20 +8985,23 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     /* : per-block arena for if/otherwise so temporaries are freed */
     int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
+    bool scoped = !current_function_uses_caller_arena(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
-    if (codegen->loop_scope_depth == 0) {
-        emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena; ");
-    }
-    emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
-    emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
-    emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
-    codegen->loop_scope_depth++;
-    {
+    if (scoped) {
+        if (codegen->loop_scope_depth == 0) {
+            emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena; ");
+        }
+        emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
+        emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
+        emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
+        codegen->loop_scope_depth++;
         char av[32], sv[32];
         snprintf(av, sizeof(av), "_if_arena_%d", isc);
         snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
         scope_arena_push(codegen, av, sv);
+    } else {
+        emit(codegen, "\n");
     }
 
     emit_indent(codegen);
@@ -9047,22 +9058,30 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "}\n");
     }
 
-    codegen->loop_scope_depth--;
     codegen->raw_var_count = prev_raw_var_count;
-    scope_arena_pop(codegen);
     emit_indent(codegen);
-    emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
-    emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); }\n", isc, isc);
+    if (scoped) {
+        codegen->loop_scope_depth--;
+        scope_arena_pop(codegen);
+        emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
+        emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); ", isc, isc);
+    }
+    emit(codegen, "}\n");
 }
 
 /* Emit per-iteration scratch arena setup, the loop body, and arena teardown.
  * Caller is responsible for indent++ before and indent--/closing brace after. */
 static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
+    int prev_raw_var_count = codegen->raw_var_count;
+    if (current_function_uses_caller_arena(codegen)) {
+        emit_block(codegen, body);
+        codegen->raw_var_count = prev_raw_var_count;
+        return;
+    }
     if (codegen->loop_scope_depth == 0) {
         emit_indent(codegen);
         emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena;\n");
     }
-    int prev_raw_var_count = codegen->raw_var_count;
     int depth = codegen->loop_scope_depth;
     emit_indent(codegen);
     emit_formatted(codegen, "GrayArena *_iter_arena_%d = gray_arena_create(%d);\n", depth, LOOP_ARENA_SIZE);
