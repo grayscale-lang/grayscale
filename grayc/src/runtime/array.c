@@ -53,14 +53,17 @@ void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char
            value, (size_t)arr->elem_size);
 }
 
-/* Grow into the arena the array was created in, not the caller's ambient
+/* Appending during a for_each is allowed: the loop captures its length up
+ * front, so new elements land past the last index it will visit and existing
+ * indices keep their elements. Destructive operations that shift or drop
+ * elements still panic with P0034.
+ *
+ * Grow into the arena the array was created in, not the caller's ambient
  * arena. An array reached through a mutable reference outlives the function
  * that appends to it; allocating the new backing store in a short-lived
  * scope arena leaves the array pointing at reclaimed memory once that scope
  * unwinds. */
 void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line) {
-    if (gray_atomic_load32(&arr->iterating) > 0)
-        gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (arr->arena) arena = arr->arena;
     if (arr->len >= arr->cap) {
         int32_t new_cap;

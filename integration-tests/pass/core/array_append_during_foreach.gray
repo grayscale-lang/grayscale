@@ -1,0 +1,84 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Appending during for_each is allowed: the loop length is captured up
+    // front, so appended elements are not visited by the running loop.
+    mut items [int] = {1, 2, 3}
+    mut visited [int] = {}
+    for_each item in items {
+        arrays.append(visited, item)
+        if item == 2 {
+            arrays.append(items, 99)
+        }
+    }
+
+    if len(visited) == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] loop visited ${len(visited)} elements, expected 3")
+        failed = failed + 1
+    }
+
+    if len(items) == 4 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] array holds ${len(items)} elements after the loop, expected 4")
+        failed = failed + 1
+    }
+
+    if items[3] == 99 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] appended element was ${items[3]}, expected 99")
+        failed = failed + 1
+    }
+
+    // Starting at the initial capacity of 4 forces a reallocation mid-loop;
+    // the elements already visited must survive the move.
+    mut grow [int] = {10, 20, 30, 40}
+    mut seen [int] = {}
+    for_each g in grow {
+        arrays.append(seen, g)
+        arrays.append(grow, g * 10)
+    }
+
+    if len(seen) == 4 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] growth loop visited ${len(seen)} elements, expected 4")
+        failed = failed + 1
+    }
+
+    expected_seen [int] = {10, 20, 30, 40}
+    for_each i, s in seen {
+        if s == expected_seen[i] {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] visited[${i}] was ${s}, expected ${expected_seen[i]}")
+            failed = failed + 1
+        }
+    }
+
+    if len(grow) == 8 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] grown array holds ${len(grow)} elements, expected 8")
+        failed = failed + 1
+    }
+
+    expected_grow [int] = {10, 20, 30, 40, 100, 200, 300, 400}
+    for_each i, g in grow {
+        if g == expected_grow[i] {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] grow[${i}] was ${g}, expected ${expected_grow[i]}")
+            failed = failed + 1
+        }
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

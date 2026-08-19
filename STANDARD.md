@@ -1408,7 +1408,7 @@ Map iteration order is undefined (maps are unordered).
 
 **Mutation during iteration:**
 
-- **Arrays:** The loop length is captured when `for_each` begins. Appending to the array during iteration is safe; new elements are added to the array but are not visited by the current loop. The full array (including appended elements) is available after the loop ends.
+- **Arrays:** The loop length is captured when `for_each` begins. Appending to the array during iteration is safe; new elements are added to the array but are not visited by the current loop. The full array (including appended elements) is available after the loop ends. Operations that shift or drop existing elements — `remove_at`, `insert_at`, `clear`, `sort`, and element assignment — are not allowed during iteration and will panic at runtime.
 - **Maps:** Modifying a map during `for_each` (inserting or deleting keys) is not allowed and will panic at runtime. Read the map freely, but do not mutate it until the loop completes.
 
 > 💡 **Tip:** You can iterate over an inline array literal directly — no variable needed:
