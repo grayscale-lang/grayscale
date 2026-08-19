@@ -138,6 +138,7 @@ static void *val_ptr(GrayMap *m, int32_t idx) {
 GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind) {
     if (initial_cap < GRAY_MAP_MIN_CAP) initial_cap = GRAY_MAP_MIN_CAP;
     GrayMap m;
+    m.arena = arena;
     m.key_size = key_size;
     m.value_size = value_size;
     m.count = 0;
@@ -172,7 +173,13 @@ static int32_t find_slot(GrayMap *m, const void *key) {
     return -1;
 }
 
+/* Grow into the arena the map was created in, not the caller's ambient
+ * arena. A map reached through a pointer or struct field outlives the
+ * function that mutates it; allocating the new tables in a short-lived
+ * scope arena leaves the map pointing at reclaimed memory once that
+ * scope unwinds. */
 static void rehash(GrayArena *arena, GrayMap *m) {
+    if (m->arena) arena = m->arena;
     int32_t old_cap = m->capacity;
     void *old_keys = m->keys;
     void *old_values = m->values;
@@ -301,6 +308,7 @@ void *gray_map_value_at(GrayMap *m, int32_t internal_idx) {
 
 GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
     GrayMap m;
+    m.arena = arena;
     m.key_size = src->key_size;
     m.value_size = src->value_size;
     m.count = src->count;

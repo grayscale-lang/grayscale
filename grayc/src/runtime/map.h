@@ -31,6 +31,7 @@ typedef struct {
     void *values;
     uint8_t *states;        /* 0=empty, 1=occupied, 2=tombstone */
     int32_t *order;         /* insertion-order slot indices */
+    GrayArena *arena;       /* arena owning keys/values/states/order */
     int32_t count;
     int32_t capacity;
     int32_t key_size;

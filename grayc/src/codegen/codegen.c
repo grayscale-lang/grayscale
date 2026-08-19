@@ -1074,18 +1074,23 @@ static bool is_mutable_parameter(CodeGen *codegen, const char *name) {
     return false;
 }
 
-/* True if the function takes any & (mutable reference) parameter.
- * Such a function can write freshly-allocated data — appended array
- * elements, assigned string/struct fields — into caller-owned memory
- * through that parameter, and that data must outlive the call. A private
- * _func_arena or scope_restore watermark would reclaim it on return,
- * leaving the caller with dangling pointers. So these functions run
- * directly in the caller's arena: no private arena, no scope-restore,
- * no return-value escape (the result is already in the caller's arena). */
-static bool function_uses_caller_arena(AstNode *function_node) {
+/* True if the function takes any & (mutable reference) or ^T (pointer)
+ * parameter. Such a function can write freshly-allocated data — appended
+ * array elements, grown map buckets, assigned string/struct fields — into
+ * caller-owned memory through that parameter, and that data must outlive
+ * the call. A private _func_arena or scope_restore watermark would reclaim
+ * it on return, leaving the caller with dangling pointers. So these
+ * functions run directly in the caller's arena: no private arena, no
+ * scope-restore, no return-value escape (the result is already in the
+ * caller's arena). */
+static bool function_uses_caller_arena(CodeGen *codegen, AstNode *function_node) {
     if (!function_node || function_node->kind != NODE_FUNC_DECL) return false;
     for (int i = 0; i < function_node->data.func_decl.param_count; i++) {
-        if (function_node->data.func_decl.params[i].mutable) return true;
+        Param *param = &function_node->data.func_decl.params[i];
+        if (param->mutable) return true;
+        if (!param->type_name) continue;
+        const char *tn = resolve_type_alias_codegen(codegen, param->type_name);
+        if (tn && tn[0] == '^') return true;
     }
     return false;
 }
@@ -8786,7 +8791,7 @@ static void emit_function_return_escape(CodeGen *codegen, const char *ret_type_n
     /* Caller-arena functions have no private _func_arena: the return value
      * is already allocated in the caller's arena, so there is nothing to
      * escape and nothing to destroy — just unwind any nested scratch. */
-    if (function_uses_caller_arena(codegen->current_func)) {
+    if (function_uses_caller_arena(codegen, codegen->current_func)) {
         emit_scratch_arena_unwind(codegen);
         return;
     }
@@ -8813,7 +8818,7 @@ static void emit_function_return_escape(CodeGen *codegen, const char *ret_type_n
  * to _func_saved, then unwind scratch arenas and destroy _func_arena.
  * Mirrors emit_function_return_escape but covers all fields of a multi-return. */
 static void emit_multi_function_return_escape(CodeGen *codegen) {
-    if (function_uses_caller_arena(codegen->current_func)) {
+    if (function_uses_caller_arena(codegen, codegen->current_func)) {
         emit_scratch_arena_unwind(codegen);
         return;
     }
@@ -8848,7 +8853,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
 
     /* Caller-arena functions have no _scope_mark to restore. */
     bool caller_arena = codegen->current_func &&
-                        function_uses_caller_arena(codegen->current_func);
+                        function_uses_caller_arena(codegen, codegen->current_func);
 
     /* Guard against malformed AST: count > 0 but NULL values array */
     if (node->data.return_stmt.count > 0 && !node->data.return_stmt.values) {
@@ -9312,7 +9317,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
      * Non-void functions: create a per-function arena so temporaries
      * are freed, and escape the return value to the caller's arena. */
     bool is_void_fn = (node->data.func_decl.return_type_count == 0);
-    bool caller_arena = function_uses_caller_arena(node);
+    bool caller_arena = function_uses_caller_arena(codegen, node);
     if (!is_main && !caller_arena) {
         if (is_void_fn) {
             emit_indent(codegen);

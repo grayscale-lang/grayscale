@@ -1,0 +1,87 @@
+import @maps
+
+const Entry struct {
+    name string
+}
+
+const Pool struct {
+    cache map[string:^Entry]
+}
+
+alias PoolPtr = ^Pool
+
+do pool_init(pool PoolPtr) {
+    pool^.cache = {:}
+}
+
+do pool_insert(pool ^Pool, key string, e ^Entry) {
+    mut c = pool^.cache
+    c[key] = e
+    pool^.cache = c
+}
+
+do pool_find(pool ^Pool, key string) -> ^Entry {
+    c = pool^.cache
+    if maps.has_key(c, key) {
+        return c[key]
+    }
+    return nil
+}
+
+do pool_add(pool ^Pool, name string) -> ^Entry {
+    found = pool_find(pool, name)
+    if found != nil { return found }
+    e = new(Entry)
+    e^.name = name
+    pool_insert(pool, name, e)
+    return e
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // 40 keys forces the map to rehash several times past its initial capacity
+    // while every mutation happens inside a pointer-parameter function.
+    keys [string] = {"k00", "k01", "k02", "k03", "k04", "k05", "k06",
+                     "k07", "k08", "k09", "k10", "k11", "k12", "k13",
+                     "k14", "k15", "k16", "k17", "k18", "k19", "k20",
+                     "k21", "k22", "k23", "k24", "k25", "k26", "k27",
+                     "k28", "k29", "k30", "k31", "k32", "k33", "k34",
+                     "k35", "k36", "k37", "k38", "k39"}
+
+    pool = new(Pool)
+    pool_init(pool)
+
+    for_each k in keys {
+        e = pool_add(pool, k)
+        if e^.name == k {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] pool_add returned wrong entry for ${k}")
+            failed = failed + 1
+        }
+    }
+
+    if len(pool^.cache) == 40 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] expected 40 cached entries, got ${len(pool^.cache)}")
+        failed = failed + 1
+    }
+
+    // Every key must still be reachable after the map outgrew its
+    // initial capacity inside a short-lived callee scope.
+    for_each k in keys {
+        found = pool_find(pool, k)
+        if found != nil {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] lost cached entry for ${k}")
+            failed = failed + 1
+        }
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}
