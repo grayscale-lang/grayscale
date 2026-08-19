@@ -31,7 +31,9 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, cons
             index, arr->len);
     }
 
-    /* Grow if needed — same policy as gray_array_push */
+    /* Grow if needed — same policy as gray_array_push, including growing
+     * into the array's owning arena rather than the ambient one */
+    if (arr->arena) arena = arr->arena;
     if (arr->len >= arr->cap) {
         int32_t new_cap;
         if (arr->cap < GRAY_ARRAY_MIN_CAP) {

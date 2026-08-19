@@ -19,6 +19,7 @@
 
 typedef struct {
     void *data;
+    GrayArena *arena;           /* arena owning data; NULL if unknown */
     int32_t len;
     int32_t cap;
     int32_t elem_size;
