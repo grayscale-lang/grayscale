@@ -3138,6 +3138,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->diag = diag;
     parser->depth = 0;
     parser->no_struct_literal = false;
+    parser->in_interp = false;
     parser->current_func = NULL;
 
     /* Read two tokens to fill cur and peek */

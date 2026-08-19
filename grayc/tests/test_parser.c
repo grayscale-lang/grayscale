@@ -788,6 +788,15 @@ static bool parser_has_code(DiagnosticList *diagnostics, const char *code) {
     return false;
 }
 
+/* Helper: find the message of the first diagnostic with a given code */
+static const char *parser_message_for(DiagnosticList *diagnostics, const char *code) {
+    for (int i = 0; i < diagnostics->count; i++) {
+        if (diagnostics->items[i].code && strcmp(diagnostics->items[i].code, code) == 0)
+            return diagnostics->items[i].message;
+    }
+    return NULL;
+}
+
 /* ===== Parser error code tests ===== */
 
 static void test_parse_error_E2025_non_int_array_size(void) {
@@ -831,6 +840,17 @@ static void test_parse_error_E2071_empty_interpolation(void) {
     AstNode *program = parse_test_input("do main() { println(\"${}\") }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2071"));
+}
+
+/* Source truncated in expression position: the parser hits EOF outside any
+ * ${...} sub-expression, so it must report the plain unexpected-token wording
+ * rather than the interpolation one. */
+static void test_parse_error_truncated_at_eof(void) {
+    AstNode *program = parse_test_input("do main() {\n    mut x int = ");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2002");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strstr(message, "interpolation") == NULL);
 }
 
 int main(void) {
@@ -935,6 +955,7 @@ int main(void) {
     RUN_TEST(test_parse_error_E2069_semicolon_in_struct);
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
+    RUN_TEST(test_parse_error_truncated_at_eof);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
