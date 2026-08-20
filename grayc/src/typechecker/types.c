@@ -297,25 +297,6 @@ bool type_is_integer(GrayType *type) {
            type->kind == TK_CHAR || type->kind == TK_BYTE;
 }
 
-bool type_equals(GrayType *left, GrayType *right) {
-    if (left->kind != right->kind) return false;
-    if (left->kind == TK_STRUCT || left->kind == TK_ENUM) {
-        return strcmp(left->name, right->name) == 0;
-    }
-    if (left->kind == TK_ARRAY) {
-        return strcmp(left->element_type, right->element_type) == 0;
-    }
-    if (left->kind == TK_POINTER) {
-        return left->name && right->name && strcmp(left->name, right->name) == 0;
-    }
-    if (left->kind == TK_FUNCTION) {
-        /* Canonical encoded form lives in name; signatures equal iff the
-         * encoded strings match (parser writes a canonical form). */
-        return left->name && right->name && strcmp(left->name, right->name) == 0;
-    }
-    return true;
-}
-
 const char *type_name(GrayType *type) {
     if (!type) return "unknown";
     /* Pointer types store the bare pointee in type->name (and type->element_type).

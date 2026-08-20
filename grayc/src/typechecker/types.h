@@ -79,7 +79,6 @@ GrayType *type_alloc(void);
 /* Type queries */
 bool type_is_numeric(GrayType *type);
 bool type_is_integer(GrayType *type);
-bool type_equals(GrayType *left, GrayType *right);
 const char *type_name(GrayType *type);
 
 /* Resolve a type name string to an GrayType */
