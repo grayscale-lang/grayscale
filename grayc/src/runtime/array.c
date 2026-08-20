@@ -53,34 +53,37 @@ void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char
            value, (size_t)arr->elem_size);
 }
 
-/* Appending during a for_each is allowed: the loop captures its length up
- * front, so new elements land past the last index it will visit and existing
- * indices keep their elements. Destructive operations that shift or drop
- * elements still panic with P0034.
- *
- * Grow into the arena the array was created in, not the caller's ambient
+/* Grow into the arena the array was created in, not the caller's ambient
  * arena. An array reached through a mutable reference outlives the function
  * that appends to it; allocating the new backing store in a short-lived
  * scope arena leaves the array pointing at reclaimed memory once that scope
  * unwinds. */
-void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line) {
+void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int line) {
     if (arr->arena) arena = arr->arena;
-    if (arr->len >= arr->cap) {
-        int32_t new_cap;
-        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
-            new_cap = GRAY_ARRAY_MIN_CAP;
-        } else if (arr->cap > INT32_MAX / 2) {
-            gray_panic_code_at(file, line, "P0035", "array capacity overflow");
-        } else {
-            new_cap = arr->cap * 2;
-        }
-        void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
-        if (arr->data && arr->len > 0) {
-            memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
-        }
-        arr->data = new_data;
-        arr->cap = new_cap;
+    if (arr->len < arr->cap) return;
+
+    int32_t new_cap;
+    if (arr->cap < GRAY_ARRAY_MIN_CAP) {
+        new_cap = GRAY_ARRAY_MIN_CAP;
+    } else if (arr->cap > INT32_MAX / 2) {
+        gray_panic_code_at(file, line, "P0035", "array capacity overflow");
+    } else {
+        new_cap = arr->cap * 2;
     }
+    void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
+    if (arr->data && arr->len > 0) {
+        memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
+    }
+    arr->data = new_data;
+    arr->cap = new_cap;
+}
+
+/* Appending during a for_each is allowed: the loop captures its length up
+ * front, so new elements land past the last index it will visit and existing
+ * indices keep their elements. Destructive operations that shift or drop
+ * elements still panic with P0034. */
+void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line) {
+    gray_array_grow(arena, arr, file, line);
     memcpy((char *)arr->data + (size_t)arr->len * (size_t)arr->elem_size,
            value, (size_t)arr->elem_size);
     arr->len++;

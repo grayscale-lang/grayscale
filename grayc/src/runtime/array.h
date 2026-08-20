@@ -38,6 +38,15 @@ void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int li
 /* Set element at index (with bounds checking) */
 void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line);
 
+/* Ensure room for one more element, growing the backing store if full.
+ * Growth is allocate-and-copy: the arena has no realloc, so the old store
+ * lives on until the arena is reset or destroyed. Grows into the array's
+ * owning arena when it has one, so an array reached through a mutable
+ * reference does not end up backed by a shorter-lived scope arena.
+ * file/line locate the P0035 panic on capacity overflow; pass NULL/0 for
+ * a panic without a source location. */
+void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int line);
+
 /* Append an element (may reallocate on the arena) */
 void gray_array_push(GrayArena *arena, GrayArray *arr, const void *value, const char *file, int line);
 
