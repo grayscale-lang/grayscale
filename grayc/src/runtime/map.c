@@ -135,6 +135,25 @@ static void *val_ptr(GrayMap *m, int32_t idx) {
     return (char *)m->values + (size_t)idx * (size_t)m->value_size;
 }
 
+/* Write a key into a slot, taking ownership of it. A GrayString key is only
+ * a header pointing at character data the caller owns, and that data can
+ * live in a shorter-lived arena than the map — a loop body's per-iteration
+ * arena, say — so the header alone would dangle once the caller's scope
+ * unwinds. Copy the characters into the map's own arena, the same way
+ * gray_map_copy does, so a key stays valid for the map's whole lifetime.
+ * Fall back to the caller's arena for maps built without an owning one. */
+static void store_key(GrayArena *arena, GrayMap *m, int32_t slot, const void *key) {
+    void *dst = key_ptr(m, slot);
+    memcpy(dst, key, (size_t)m->key_size);
+    if (m->key_kind == GRAY_MAP_KEY_STRING) {
+        GrayArena *owner = m->arena ? m->arena : arena;
+        if (owner) {
+            GrayString *ks = (GrayString *)dst;
+            *ks = gray_string_new(owner, ks->data, ks->len);
+        }
+    }
+}
+
 GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind) {
     if (initial_cap < GRAY_MAP_MIN_CAP) initial_cap = GRAY_MAP_MIN_CAP;
     GrayMap m;
@@ -245,7 +264,7 @@ void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *val
         if (m->states[probe] == 0) {
             /* Empty — key definitely not in map; insert at tombstone if seen, else here */
             int32_t slot = (first_tombstone >= 0) ? first_tombstone : probe;
-            memcpy(key_ptr(m, slot), key, (size_t)m->key_size);
+            store_key(arena, m, slot, key);
             memcpy(val_ptr(m, slot), value, (size_t)m->value_size);
             m->states[slot] = 1;
             if (m->order) { m->order_pos[slot] = m->order_len; m->order[m->order_len++] = slot; }
@@ -260,7 +279,7 @@ void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *val
     }
     /* Probe chain full of tombstones and the key was not found — use first tombstone */
     if (first_tombstone >= 0) {
-        memcpy(key_ptr(m, first_tombstone), key, (size_t)m->key_size);
+        store_key(arena, m, first_tombstone, key);
         memcpy(val_ptr(m, first_tombstone), value, (size_t)m->value_size);
         m->states[first_tombstone] = 1;
         if (m->order) { m->order_pos[first_tombstone] = m->order_len; m->order[m->order_len++] = first_tombstone; }
