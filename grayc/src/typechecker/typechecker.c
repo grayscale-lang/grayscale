@@ -5,6 +5,9 @@
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
+ *
+ * Contributors:
+ *  - @mvanhorn
  */
 
 #include "typechecker.h"
