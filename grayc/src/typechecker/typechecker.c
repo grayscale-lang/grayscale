@@ -9357,9 +9357,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(%s, %s) to convert explicitly",
+            "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
             value_t->name, target_t->name, target->data.label.value,
-            target->data.label.value, target_t->name);
+            target_t->name);
         diagnostic_error_message(checker->diag, "E3001", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
