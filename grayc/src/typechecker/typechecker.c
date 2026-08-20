@@ -4044,6 +4044,16 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = type_from_name("Error");
             return result;
         }
+        /* E5044: the message is stored as a GrayString, so anything else
+         * reaches the C compiler as a type mismatch rather than a
+         * diagnostic. */
+        AstNode *earg = node->data.call.args[0];
+        GrayType *eat = resolve_expression(checker, earg);
+        if (eat && eat->kind != TK_STRING && eat->kind != TK_UNKNOWN) {
+            diagnostic_error_code_formatted(checker->diag, "E5044",
+                NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
+                type_display_name(checker, eat));
+        }
         result = type_from_name("Error");
     } else if (strcmp(function_name, "println") == 0 || strcmp(function_name, "eprintln") == 0) {
         /* println/eprintln accept 0 or 1 arguments */
@@ -10598,6 +10608,30 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
 }
 
 static void check_when_stmt(TypeChecker *checker, AstNode *node) {
+    /* E3100: a bare struct or enum name is a type, not a value. Without
+     * this the subject resolves to the type itself and codegen emits a
+     * reference to a name that does not exist in the generated C. */
+    AstNode *subject = node->data.when_stmt.value;
+    if (subject && subject->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, subject->data.label.value)) {
+        const char *tn = subject->data.label.value;
+        if (is_struct_name(checker, tn)) {
+            char *msg = typechecker_format(checker,
+                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                tn, tn, tn);
+            diagnostic_error_message(checker->diag, "E3100", msg,
+                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0);
+            return;
+        }
+        if (is_enum_name(checker, tn)) {
+            char *msg = typechecker_format(checker,
+                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                tn, tn);
+            diagnostic_error_message(checker->diag, "E3100", msg,
+                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0);
+            return;
+        }
+    }
     GrayType *when_t = resolve_expression(checker, node->data.when_stmt.value);
     /* W2012: float subjects use bit-equality, which is rarely what the
      * user wants given 0.1 + 0.2 != 0.3. */
