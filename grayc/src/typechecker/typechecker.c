@@ -7132,12 +7132,13 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 }
 
 /* Check if a name uses a reserved prefix that would collide with generated C.
- * Skip names starting with _gray_ as those are compiler-generated temporaries. */
+ * Compiler-generated temporaries also start with _gray_, so callers must skip
+ * the names they synthesize rather than exempting the prefix here. */
 static void check_reserved_name(TypeChecker *checker, const char *name, const char *file, int line, int col) {
     if (!name) return;
-    /* Skip compiler-generated temps (_gray_tmp, _gray_or, _gray_idx, etc.) */
-    if (strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0) return;
-    if (strncmp(name, "gray_", 5) == 0 || strncmp(name, "Gray", 4) == 0) {
+    if (strncmp(name, "gray_", 5) == 0 ||
+        strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0 ||
+        strncmp(name, "Gray", 4) == 0) {
         diagnostic_error_code_formatted(checker->diag, "E4006", file, line, col, 0, name);
     }
 }
@@ -8462,9 +8463,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     }
 
     if (strcmp(node->data.var_decl.name, "_") != 0) {
-        /* Check for reserved prefix */
-        check_reserved_name(checker, node->data.var_decl.name,
-            NODE_FILE(checker, node), node->token.line, node->token.column);
+        /* Check for reserved prefix (the parser's own temps are exempt) */
+        if (!node->data.var_decl.synthetic) {
+            check_reserved_name(checker, node->data.var_decl.name,
+                NODE_FILE(checker, node), node->token.line, node->token.column);
+        }
         /* Check for redeclaration in same scope */
         Symbol *existing = scope_lookup_local(checker->current_scope,
             node->data.var_decl.name);

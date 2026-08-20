@@ -1509,6 +1509,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
             tmp_decl->data.var_decl.mutable = true;
             tmp_decl->data.var_decl.name = tmp_name;
+            tmp_decl->data.var_decl.synthetic = true;
             tmp_decl->data.var_decl.type_name = NULL;
             tmp_decl->data.var_decl.value = value;
             block->data.block.stmts[block->data.block.count++] = tmp_decl;
