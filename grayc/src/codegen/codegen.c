@@ -1663,6 +1663,14 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
     emit_formatted(codegen, "_ml%d; })", my_counter);
 }
 
+/* Did the literal give this field an explicit value? */
+static bool struct_literal_specifies_field(AstNode *node, const char *field_name) {
+    for (int i = 0; i < node->data.struct_value.count; i++) {
+        if (strcmp(node->data.struct_value.field_names[i], field_name) == 0) return true;
+    }
+    return false;
+}
+
 static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Struct literal: (GrayStruct_Name){.field = value, ...} */
     /* Resolve ? → concrete binding for type params */
@@ -1721,22 +1729,48 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.struct_value.field_values[i]);
         }
     }
+    /* Track whether an initialiser has been emitted so the separating comma
+     * follows what was actually written, not the field's position. */
+    bool emitted_field = (node->data.struct_value.count > 0);
     /* Emit default values for fields not specified in the literal */
     if (sdecl_for_fields) {
         for (int field_index = 0; field_index < sdecl_for_fields->data.struct_decl.field_count; field_index++) {
             StructField *sf = &sdecl_for_fields->data.struct_decl.fields[field_index];
             if (!sf->default_value) continue;
-            bool specified = false;
-            for (int si = 0; si < node->data.struct_value.count; si++) {
-                if (strcmp(node->data.struct_value.field_names[si], sf->name) == 0) {
-                    specified = true;
-                    break;
-                }
-            }
-            if (!specified) {
-                if (node->data.struct_value.count > 0 || field_index > 0) emit(codegen, ", ");
-                emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
-                emit_expression(codegen, sf->default_value);
+            if (struct_literal_specifies_field(node, sf->name)) continue;
+            if (emitted_field) emit(codegen, ", ");
+            emitted_field = true;
+            emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+            emit_expression(codegen, sf->default_value);
+        }
+        /* Map and array fields the literal leaves out still need a real
+         * table. C zero-fills them, and a zero-filled GrayMap/GrayArray has
+         * capacity and element sizes of 0, so inserts are silently dropped.
+         * new(Type) initialises these for the same reason — see
+         * emit_new_expr. */
+        for (int field_index = 0; field_index < sdecl_for_fields->data.struct_decl.field_count; field_index++) {
+            StructField *sf = &sdecl_for_fields->data.struct_decl.fields[field_index];
+            const char *ftn = sf->type_name;
+            if (!ftn || sf->default_value) continue;
+            bool field_is_map = strncmp(ftn, "map[", 4) == 0;
+            bool field_is_array = (ftn[0] == '[');
+            if (!field_is_map && !field_is_array) continue;
+            if (struct_literal_specifies_field(node, sf->name)) continue;
+            if (emitted_field) emit(codegen, ", ");
+            emitted_field = true;
+            emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+            GrayType *ft = type_from_name(ftn);
+            if (field_is_map) {
+                const char *c_kt = "GrayString";
+                const char *c_vt = "int64_t";
+                if (ft && ft->key_type) c_kt = gray_map_element_c_type(codegen, ft->key_type);
+                if (ft && ft->value_type) c_vt = gray_map_element_c_type(codegen, ft->value_type);
+                emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
+                    c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+            } else {
+                const char *c_elem = "int64_t";
+                if (ft && ft->element_type) c_elem = gray_map_element_c_type(codegen, ft->element_type);
+                emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
             }
         }
     }
