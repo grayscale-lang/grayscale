@@ -1,0 +1,73 @@
+/*
+ * main.gray - struct fields referencing cross-module types
+ *
+ * Struct field declarations were the one place a named type did not resolve
+ * across modules (E4016), and they still did not count as a use of the
+ * module afterwards: an import referenced only from field types drew a false
+ * W1002 "imported but never used".
+ *
+ * Nothing below names Color or Item in an expression -- the field
+ * declarations of Bag are the only reference to the module, which is exactly
+ * the shape that warned.  The fields are still exercised at runtime through
+ * Bag, so this covers resolution and usage tracking together.
+ */
+
+import and use "./types.gray"
+import @arrays
+
+const Bag struct {
+    color   Color
+    lead    Item
+    items   [Item]
+    lookup  map[string:Item]
+    favored ^Item
+}
+
+do main() {
+    println("=== Cross-Module Struct Field Types Test ===")
+
+    mut bag Bag = Bag{}
+
+    bag.lead.name = "one"
+    bag.lead.val = 1
+    if bag.lead.name == "one" && bag.lead.val == 1 {
+        println("  [PASS] imported struct field")
+    } otherwise {
+        println("  [FAIL] imported struct field")
+    }
+
+    if bag.color == Color.RED {
+        println("  [PASS] imported enum field defaults to first variant")
+    } otherwise {
+        println("  [FAIL] imported enum field defaults to first variant")
+    }
+
+    arrays.append(bag.items, bag.lead)
+    arrays.append(bag.items, bag.lead)
+    if len(bag.items) == 2 && bag.items[1].val == 1 {
+        println("  [PASS] array of imported struct")
+    } otherwise {
+        println("  [FAIL] array of imported struct")
+    }
+
+    bag.lookup = {:}
+    bag.lookup["one"] = bag.lead
+    mut found = bag.lookup["one"]
+    if len(bag.lookup) == 1 && found.name == "one" {
+        println("  [PASS] map with imported struct values")
+    } otherwise {
+        println("  [FAIL] map with imported struct values")
+    }
+
+    if bag.favored == nil {
+        bag.favored = addr(bag.lead)
+    }
+    if bag.favored^.val == 1 {
+        println("  [PASS] pointer to imported struct")
+    } otherwise {
+        println("  [FAIL] pointer to imported struct")
+    }
+
+    println("")
+    println("ALL TESTS PASSED")
+}

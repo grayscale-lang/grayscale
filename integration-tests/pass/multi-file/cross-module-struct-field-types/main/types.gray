@@ -1,0 +1,14 @@
+/*
+ * types.gray - types used only from another module's struct field declarations
+ */
+
+const Color enum {
+    RED,
+    GREEN,
+    BLUE
+}
+
+const Item struct {
+    name string
+    val int
+}

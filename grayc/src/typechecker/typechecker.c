@@ -11129,6 +11129,14 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
     /* Leaf: must be a known primitive, enum, struct, or wildcard '?' */
     if (type_name_has_wildcard(type_name)) return;
 
+    /* Naming a type is a use of the module that defines it. Function
+     * parameters and return types already mark it; without this a struct
+     * field was the one reference that did not, so an import used only for
+     * field types warned as unused (W1002). The recursion above has already
+     * peeled off arrays, maps and pointers, so this leaf is the bare name
+     * the prefix match expects. */
+    typechecker_mark_type_module_used(checker, type_name);
+
     /* Bare func: reject with guidance toward typed signature */
     if (strcmp(type_name, "func") == 0) {
         diagnostic_error_code_help(checker->diag, "E3130",
