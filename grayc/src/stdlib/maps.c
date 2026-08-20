@@ -16,7 +16,7 @@ GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *m) {
     /* Iterate in insertion order */
     for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
         int32_t slot = m->order[order_index];
-        if (m->states[slot] == 1) {
+        if (slot >= 0 && m->states[slot] == 1) {
             void *key = (char *)m->keys + (size_t)slot * (size_t)m->key_size;
             GRAY_ARRAY_PUSH(arena, &arr, key);
         }
@@ -29,7 +29,7 @@ GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *m) {
     /* Iterate in insertion order */
     for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
         int32_t slot = m->order[order_index];
-        if (m->states[slot] == 1) {
+        if (slot >= 0 && m->states[slot] == 1) {
             void *val = (char *)m->values + (size_t)slot * (size_t)m->value_size;
             GRAY_ARRAY_PUSH(arena, &arr, val);
         }
@@ -52,7 +52,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *m1, GrayMap *m2) {
     /* Copy all entries from m1 */
     for (int32_t order_index = 0; order_index < m1->order_len; order_index++) {
         int32_t slot = m1->order[order_index];
-        if (m1->states[slot] == 1) {
+        if (slot >= 0 && m1->states[slot] == 1) {
             void *key = (char *)m1->keys + (size_t)slot * (size_t)m1->key_size;
             void *val = (char *)m1->values + (size_t)slot * (size_t)m1->value_size;
             GRAY_MAP_SET(arena, &result, key, val);
@@ -61,7 +61,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *m1, GrayMap *m2) {
     /* Copy all entries from m2 (overwrites m1 on conflict) */
     for (int32_t order_index = 0; order_index < m2->order_len; order_index++) {
         int32_t slot = m2->order[order_index];
-        if (m2->states[slot] == 1) {
+        if (slot >= 0 && m2->states[slot] == 1) {
             void *key = (char *)m2->keys + (size_t)slot * (size_t)m2->key_size;
             void *val = (char *)m2->values + (size_t)slot * (size_t)m2->value_size;
             GRAY_MAP_SET(arena, &result, key, val);
@@ -73,7 +73,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *m1, GrayMap *m2) {
 bool gray_maps_contains_value(GrayMap *m, const void *value) {
     for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
         int32_t slot = m->order[order_index];
-        if (m->states[slot] == 1) {
+        if (slot >= 0 && m->states[slot] == 1) {
             void *val = (char *)m->values + (size_t)slot * (size_t)m->value_size;
             if (memcmp(val, value, (size_t)m->value_size) == 0) return true;
         }
@@ -87,7 +87,7 @@ bool gray_maps_is_equal(GrayMap *a, GrayMap *b, bool str_keys, bool str_values) 
     if (a->value_size != b->value_size) return false;
     for (int32_t order_index = 0; order_index < a->order_len; order_index++) {
         int32_t slot = a->order[order_index];
-        if (a->states[slot] != 1) continue;
+        if (slot < 0 || a->states[slot] != 1) continue;
         void *ka = (char *)a->keys + (size_t)slot * (size_t)a->key_size;
         void *va = (char *)a->values + (size_t)slot * (size_t)a->value_size;
         void *vb = str_keys

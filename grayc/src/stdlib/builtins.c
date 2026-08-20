@@ -393,10 +393,12 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind
     char buf[GRAY_TOSTRING_BUF_SIZE];
     int pos = 0;
     buf[pos++] = '{';
+    bool first_entry = true;
     for (int32_t order_index = 0; order_index < m->order_len && pos < GRAY_TOSTRING_SAFE_LIMIT; order_index++) {
         int32_t i = m->order[order_index];
-        if (m->states[i] != 1) continue;
-        if (order_index > 0) { buf[pos++] = ','; buf[pos++] = ' '; }
+        if (i < 0 || m->states[i] != 1) continue;
+        if (!first_entry) { buf[pos++] = ','; buf[pos++] = ' '; }
+        first_entry = false;
         GrayString *kp = (GrayString *)((char *)m->keys + (size_t)i * m->key_size);
         pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\": ",
             (int)kp->len, kp->data ? kp->data : "");
@@ -432,7 +434,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind
         case 7: pos += snprintf(buf + pos, sizeof(buf) - pos, "%d", *(int *)vp); break;
         }
     }
-    if (m->order_len == 0) { buf[pos++] = ':'; }
+    if (m->count == 0) { buf[pos++] = ':'; }
     buf[pos++] = '}';
     buf[pos] = '\0';
     return gray_string_new(arena, buf, (int32_t)pos);

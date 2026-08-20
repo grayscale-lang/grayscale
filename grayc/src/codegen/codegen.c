@@ -757,14 +757,14 @@ static void emit_map_deep_copy(CodeGen *codegen, const char *gray_tn, const char
         "GrayMap _md%d = gray_map_new_kind(gray_default_arena, _ms%d.key_size, _ms%d.value_size, "
         "_ms%d.order_len > 4 ? _ms%d.order_len * 2 : 8, _ms%d.key_kind); "
         "for (int32_t _mi%d = 0; _mi%d < _ms%d.order_len; _mi%d++) { "
-        "int32_t _mslot%d = _ms%d.order[_mi%d]; "
+        "int32_t _mslot%d = _ms%d.order[_mi%d]; if (_mslot%d < 0) continue; "
         "%s _mk%d = *(%s *)gray_map_key_at(&_ms%d, _mslot%d); "
         "%s _mvs%d = *(%s *)gray_map_value_at(&_ms%d, _mslot%d); "
         "%s _mvd%d = ",
         tag, src_var,
         tag, tag, tag, tag, tag, tag,
         tag, tag, tag, tag,
-        tag, tag, tag,
+        tag, tag, tag, tag,
         c_key, tag, c_key, tag, tag,
         c_val, tag, c_val, tag, tag,
         c_val, tag);
@@ -3663,14 +3663,17 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         strncpy(c_val, gray_type_to_c_codegen(codegen, val_tn), sizeof(c_val) - 1);
         c_val[sizeof(c_val) - 1] = '\0';
 
-        char mi[SHORT_VAR_BUF], sl[SHORT_VAR_BUF];
+        char mi[SHORT_VAR_BUF], sl[SHORT_VAR_BUF], fst[SHORT_VAR_BUF];
         snprintf(mi, sizeof(mi), "_gray_mi%d", uid);
         snprintf(sl, sizeof(sl), "_gray_sl%d", uid);
+        snprintf(fst, sizeof(fst), "_gray_fst%d", uid);
 
         emit_indent(codegen);
         emit_formatted(codegen, "fprintf(%s, \"{\");\n", stream);
         emit_indent(codegen);
-        emit_formatted(codegen, "if ((%s).order_len == 0) fprintf(%s, \":\");\n", c_expr, stream);
+        emit_formatted(codegen, "if ((%s).count == 0) fprintf(%s, \":\");\n", c_expr, stream);
+        emit_indent(codegen);
+        emit_formatted(codegen, "bool %s = true;\n", fst);
         emit_indent(codegen);
         emit_formatted(codegen, "for (int32_t %s = 0; %s < (%s).order_len; %s++) {\n",
                mi, mi, c_expr, mi);
@@ -3678,7 +3681,11 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_indent(codegen);
         emit_formatted(codegen, "int32_t %s = (%s).order[%s];\n", sl, c_expr, mi);
         emit_indent(codegen);
-        emit_formatted(codegen, "if (%s > 0) fprintf(%s, \", \");\n", mi, stream);
+        emit_formatted(codegen, "if (%s < 0) continue;\n", sl);
+        emit_indent(codegen);
+        emit_formatted(codegen, "if (!%s) fprintf(%s, \", \");\n", fst, stream);
+        emit_indent(codegen);
+        emit_formatted(codegen, "%s = false;\n", fst);
 
         /* Print key */
         char key_expr[MSG_BUF_SIZE];
@@ -9544,6 +9551,8 @@ static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
     if (*out_map_needs_tmp) emit_formatted(codegen, "%s", map_tmp_name);
     else emit_expression(codegen, coll);
     emit_formatted(codegen, ".order[%s];\n", mi_name);
+    emit_indent(codegen);
+    emit_formatted(codegen, "if (%s < 0) continue;\n", slot_name);
 
     if (node->data.for_each.index_name) {
         if (strcmp(node->data.for_each.index_name, "_") != 0) {

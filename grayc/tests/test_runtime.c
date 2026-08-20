@@ -323,6 +323,85 @@ static void test_gray_map_insertion_order(void) {
     }
 }
 
+/* gray_map_remove punches a hole in the order array rather than shifting
+ * it down. Readers skip the holes, so insertion order must survive a
+ * removal from the front and the middle. */
+static void test_gray_map_order_after_remove(void) {
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 0, GRAY_MAP_KEY_BYTES);
+    int64_t keys[] = {50, 40, 30, 20, 10};
+    for (int i = 0; i < 5; i++) {
+        int64_t v = keys[i] * 10;
+        GRAY_MAP_SET(arena, &m, &keys[i], &v);
+    }
+    /* Drop the first and middle entries — the worst case for the old
+     * linear-scan-and-memmove removal. */
+    GRAY_MAP_REMOVE(&m, &keys[0]);
+    GRAY_MAP_REMOVE(&m, &keys[2]);
+    ASSERT_EQ(m.count, 3);
+
+    int64_t expected[] = {40, 20, 10};
+    int live = 0;
+    for (int32_t i = 0; i < m.order_len; i++) {
+        int32_t slot = m.order[i];
+        if (slot < 0) continue;
+        ASSERT_EQ(*(int64_t *)gray_map_key_at(&m, slot), expected[live]);
+        live++;
+    }
+    ASSERT_EQ(live, 3);
+
+    /* Re-inserting a removed key appends it at the end, not its old spot. */
+    int64_t re = 500;
+    GRAY_MAP_SET(arena, &m, &keys[0], &re);
+    int32_t last = -1;
+    for (int32_t i = 0; i < m.order_len; i++) if (m.order[i] >= 0) last = m.order[i];
+    ASSERT_EQ(*(int64_t *)gray_map_key_at(&m, last), 50);
+}
+
+/* A stale by-value copy of a GrayMap must never observe an entry twice.
+ * Reclaiming holes by rebuilding (rather than compacting the shared order
+ * array in place) is what keeps the copy's order_len consistent with the
+ * array it still points at. */
+static void test_gray_map_copy_sees_no_duplicates(void) {
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
+    for (int64_t i = 0; i < 6; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
+    int64_t drop = 0;
+    GRAY_MAP_REMOVE(&m, &drop);
+    drop = 3;
+    GRAY_MAP_REMOVE(&m, &drop);
+
+    /* Iterate through a struct copy, the way generated code passes maps to
+     * gray_builtin_map_to_string, then iterate the original again. */
+    GrayMap view = m;
+    int seen_via_copy = 0;
+    for (int32_t i = 0; i < view.order_len; i++) if (view.order[i] >= 0) seen_via_copy++;
+    ASSERT_EQ(seen_via_copy, 4);
+
+    int seen_via_original = 0;
+    for (int32_t i = 0; i < m.order_len; i++) if (m.order[i] >= 0) seen_via_original++;
+    ASSERT_EQ(seen_via_original, 4);
+}
+
+/* Sustained remove+set churn must not grow order_len past capacity: the
+ * insert path rebuilds once the order array fills, which is what keeps
+ * O(1) removal from overflowing the allocation. */
+static void test_gray_map_order_churn_bounded(void) {
+    GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
+    for (int64_t i = 0; i < 32; i++) { int64_t v = i; GRAY_MAP_SET(arena, &m, &i, &v); }
+    for (int round = 0; round < 500; round++) {
+        int64_t key = round % 32;
+        GRAY_MAP_REMOVE(&m, &key);
+        int64_t v = key * 2;
+        GRAY_MAP_SET(arena, &m, &key, &v);
+        ASSERT(m.order_len <= m.capacity);
+    }
+    ASSERT_EQ(m.count, 32);
+    int live = 0;
+    for (int32_t i = 0; i < m.order_len; i++) if (m.order[i] >= 0) live++;
+    ASSERT_EQ(live, 32);
+    int64_t probe = 7;
+    ASSERT_EQ(*(int64_t *)gray_map_get(&m, &probe), 14);
+}
+
 static void test_gray_map_rehash(void) {
     GrayMap m = gray_map_new_kind(arena, sizeof(int64_t), sizeof(int64_t), 8, GRAY_MAP_KEY_BYTES);
     for (int i = 0; i < 7; i++) {
@@ -414,6 +493,9 @@ int main(void) {
     RUN_TEST(test_gray_map_overwrite);
     RUN_TEST(test_gray_map_clear);
     RUN_TEST(test_gray_map_insertion_order);
+    RUN_TEST(test_gray_map_order_after_remove);
+    RUN_TEST(test_gray_map_copy_sees_no_duplicates);
+    RUN_TEST(test_gray_map_order_churn_bounded);
     RUN_TEST(test_gray_map_rehash);
     RUN_TEST(test_gray_map_copy);
     RUN_TEST(test_gray_map_float_normalization);
