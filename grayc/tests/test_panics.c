@@ -23,6 +23,7 @@
 #include "../src/stdlib/io.h"
 #include "../src/stdlib/math.h"
 
+#include <errno.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -52,10 +53,24 @@ static int _assert_panics(const char *expected_code, void (*fn)(void)) {
         _exit(0); /* should not reach here */
     }
     close(pipefd[1]);
+    /* Read to EOF rather than once: gray_panic_impl writes the panic line
+     * in several unbuffered fprintf calls, and a single read can return
+     * with just the leading "panic" before the [Pxxxx] chunk arrives. The
+     * child always exits, so EOF is reached. */
     char buf[4096];
-    ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
+    size_t len = 0;
+    for (;;) {
+        ssize_t n = read(pipefd[0], buf + len, sizeof(buf) - 1 - len);
+        if (n > 0) {
+            len += (size_t)n;
+            if (len >= sizeof(buf) - 1) break;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        break;
+    }
+    buf[len] = '\0';
     close(pipefd[0]);
-    if (n > 0) buf[n] = '\0'; else buf[0] = '\0';
     int status;
     waitpid(pid, &status, 0);
     /* Accept non-zero exit OR signal death (e.g. SIGPIPE) as "panicked" */
