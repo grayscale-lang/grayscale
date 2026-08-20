@@ -4605,6 +4605,55 @@ static bool expression_is_assignable(AstNode *expr) {
  * `tmp` is the temp variable name (must be unique within the enclosing expr). */
 static void emit_address_of(CodeGen *codegen, AstNode *expr, const char *tmp) {
     (void)tmp;
+    /* Anything reached through a pointer is emitted as a nil-checked GCC
+     * statement expression, whose result is an rvalue — `&` on one of those
+     * is invalid C, and materialising a copy instead would silently drop the
+     * callee's mutations. Hoist the nil check and take the address off the
+     * pointer itself, which is already an assignable target.
+     * Covers `p.field` (auto-deref), `p^.field`, and a bare `p^`. */
+    AstNode *ptr_expr = NULL;      /* pointer to nil-check */
+    const char *ptr_field = NULL;  /* field to address, NULL for a bare deref */
+    if (expr->kind == NODE_MEMBER_EXPR) {
+        AstNode *obj = expr->data.member.object;
+        bool obj_is_ref = (obj->kind == NODE_LABEL &&
+            is_reference_variable(codegen, obj->data.label.value));
+        GrayType *obj_t = codegen->type_table
+            ? typetable_get(codegen->type_table, obj) : NULL;
+        if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
+            ptr_expr = obj;
+            ptr_field = expr->data.member.member;
+        } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
+            /* p^.field: strip the deref, use the underlying pointer */
+            ptr_expr = obj->data.postfix.left;
+            ptr_field = expr->data.member.member;
+        }
+    } else if (expr->kind == NODE_POSTFIX_EXPR && expr->data.postfix.op == TOK_CARET) {
+        /* p^: the pointer already has the type the callee wants */
+        ptr_expr = expr->data.postfix.left;
+    }
+    if (ptr_expr) {
+        bool raw = (ptr_expr->kind == NODE_LABEL &&
+            is_raw_variable(codegen, ptr_expr->data.label.value));
+        if (raw && !ptr_field) {
+            emit_expression(codegen, ptr_expr);
+            return;
+        }
+        int id = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ __auto_type _ap%d = ", id);
+        emit_expression(codegen, ptr_expr);
+        if (raw) {
+            emit(codegen, "; ");
+        } else {
+            emit_formatted(codegen, "; if (!_ap%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
+                id, codegen->file, expr->token.line);
+        }
+        if (ptr_field) {
+            emit_formatted(codegen, "&_ap%d->%s; })", id, sanitize_name(ptr_field));
+        } else {
+            emit_formatted(codegen, "_ap%d; })", id);
+        }
+        return;
+    }
     if (expression_is_assignable(expr)) {
         emit(codegen, "&");
         emit_expression(codegen, expr);
@@ -5469,62 +5518,12 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
 
 /* --- @arrays module --- */
 
-/* Emit &arr for arrays.append/prepend/insert_at. When the array argument is
- * a pointer field access (e.g. Q.Parameters where Q is ^Struct), the normal
- * emit_expression produces a GNU statement expression rvalue that cannot have
- * its address taken. In that case, emit the nil-check separately and use
- * &_dp->field directly. */
+/* Emit &arr for arrays.append/prepend/insert_at. Identical to
+ * emit_address_of — kept as a name that reads at the call sites. Keeping a
+ * second implementation is what let the two drift apart, leaving pointer
+ * shapes handled for arrays but not for maps. */
 static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
-    if (arg->kind == NODE_MEMBER_EXPR && arg->data.member.object->kind == NODE_LABEL) {
-        const char *obj_name = arg->data.member.object->data.label.value;
-        bool obj_is_ref = is_reference_variable(codegen, obj_name);
-        GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, arg->data.member.object) : NULL;
-        if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
-            if (is_raw_variable(codegen, obj_name)) {
-                /* Raw pointer: take address of field, no nil check */
-                emit(codegen, "&(");
-                emit_expression(codegen, arg->data.member.object);
-                emit_formatted(codegen, ")->%s", sanitize_name(arg->data.member.member));
-            } else {
-                /* Pointer field: nil-check then take address of the field */
-                emit(codegen, "({ __auto_type _dp = ");
-                emit_expression(codegen, arg->data.member.object);
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } &_dp->%s; })",
-                    codegen->file, arg->token.line, sanitize_name(arg->data.member.member));
-            }
-            return;
-        }
-    }
-    /* p^: direct dereference of container pointer — the pointer itself
-     * is already a GrayArray*, so nil-check and return it directly. */
-    if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
-        AstNode *_dp_inner = arg->data.postfix.left;
-        bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
-        if (_dp_raw) {
-            emit_expression(codegen, _dp_inner);
-        } else {
-            emit(codegen, "({ __auto_type _dp = ");
-            emit_expression(codegen, _dp_inner);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp; })",
-                codegen->file, arg->token.line);
-        }
-        return;
-    }
-    /* Default: take address of the expression directly.
-     * If the expression is an rvalue (e.g. a function call), materialise it
-     * as a one-element array compound literal that decays to the pointer —
-     * its lifetime is the enclosing block, unlike a statement-expression
-     * local whose storage ends at the closing brace (see emit_address_of). */
-    if (arg->kind == NODE_LABEL || arg->kind == NODE_MEMBER_EXPR || arg->kind == NODE_INDEX_EXPR) {
-        emit(codegen, "&");
-        emit_expression(codegen, arg);
-    } else {
-        emit(codegen, "(__typeof__(");
-        emit_expression(codegen, arg);
-        emit(codegen, ")[]){");
-        emit_expression(codegen, arg);
-        emit(codegen, "}");
-    }
+    emit_address_of(codegen, arg, "_aa");
 }
 
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {

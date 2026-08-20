@@ -1,0 +1,119 @@
+/*
+ * pointer_deref_field_stdlib_args.gray - container args reached through a pointer
+ *
+ * Passing `p^.field` to a stdlib function that takes the container by
+ * reference emitted `&({ ...nil check...; *_dp; }).field` -- the address of a
+ * statement-expression rvalue, which is invalid C, so the user saw a C
+ * compiler error.  The maps helpers additionally missed the auto-deref form
+ * `p.field`, which the arrays helper already handled.
+ *
+ * Fix: emit_address_of hoists the nil check and takes the address off the
+ * pointer itself (`&_ap->field`), covering `p.field`, `p^.field` and a bare
+ * `p^`; emit_array_argument_address now delegates to it so the two cannot
+ * drift apart again.
+ */
+
+import @maps
+import @arrays
+
+const Pool struct {
+    cache map[string:int]
+    items [int]
+}
+
+do has_caret(p ^Pool, k string) -> bool { return maps.has_key(p^.cache, k) }
+do has_auto(p ^Pool, k string) -> bool { return maps.has_key(p.cache, k) }
+do keys_caret(p ^Pool) -> [string] { return maps.get_keys(p^.cache) }
+do drop_caret(p ^Pool, k string) { maps.remove_key(p^.cache, k) }
+do wipe_caret(p ^Pool) { maps.clear(p^.cache) }
+do push_caret(p ^Pool, v int) { arrays.append(p^.items, v) }
+do push_auto(p ^Pool, v int) { arrays.append(p.items, v) }
+
+do has_deref(m ^map[string:int], k string) -> bool { return maps.has_key(m^, k) }
+do push_deref(a ^[int], v int) { arrays.append(a^, v) }
+
+do main() {
+    println("=== Pointer Deref Field Stdlib Args Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    p = new(Pool)
+    p^.cache = {:}
+    p^.items = {}
+
+    mut c map[string:int] = p^.cache
+    c["a"] = 1
+    c["b"] = 2
+    p^.cache = c
+
+    if has_caret(p, "a") && has_auto(p, "b") && !has_caret(p, "z") {
+        println("  [PASS] maps.has_key through p^.field and p.field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] maps.has_key gave the wrong answer")
+        failed += 1
+    }
+
+    if len(keys_caret(p)) == 2 {
+        println("  [PASS] maps.get_keys through p^.field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 2 keys, got ${len(keys_caret(p))}")
+        failed += 1
+    }
+
+    /* Mutating calls prove the callee got the real field, not a copy. */
+    drop_caret(p, "a")
+    if len(p^.cache) == 1 && !has_caret(p, "a") {
+        println("  [PASS] maps.remove_key mutates through p^.field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 1 entry with 'a' gone, got ${len(p^.cache)}")
+        failed += 1
+    }
+
+    push_caret(p, 10)
+    push_auto(p, 20)
+    if len(p^.items) == 2 {
+        println("  [PASS] arrays.append mutates through p^.field and p.field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 2 items, got ${len(p^.items)}")
+        failed += 1
+    }
+
+    wipe_caret(p)
+    if len(p^.cache) == 0 {
+        println("  [PASS] maps.clear mutates through p^.field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected an empty map, got ${len(p^.cache)}")
+        failed += 1
+    }
+
+    /* A bare p^ where the pointer is already the container. */
+    mut m ^map[string:int] = new(map[string:int])
+    mut mc map[string:int] = m^
+    mc["x"] = 1
+    m^ = mc
+
+    mut arr ^[int] = new([int])
+    push_deref(arr, 7)
+    push_deref(arr, 8)
+
+    if has_deref(m, "x") && len(arr^) == 2 {
+        println("  [PASS] bare p^ container arguments")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare p^ arguments lost their mutations")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
