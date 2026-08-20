@@ -4842,6 +4842,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
         } else if (!typechecker_is_builtin(function_name)) {
             /* Check if it's a function from a 'using' module */
             bool found_in_using = false;
+            /* Set when the bare name resolves to a stdlib function, so the
+             * same signature checks the qualified form gets can run below. */
+            const char *using_stdlib_mod = NULL;
             /* Check for math functions whose return type depends on argument */
             if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0 ||
                 strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
@@ -4851,6 +4854,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "math") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
                             result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
@@ -4869,6 +4873,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "random") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                             if (strcmp(function_name, "choice") == 0) {
@@ -4890,6 +4895,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "maps") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
                             if (strcmp(function_name, "get_keys") == 0)
@@ -4912,6 +4918,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 const StdlibFuncMeta *umeta = find_stdlib_meta(real_mod, function_name);
                 if (umeta) {
                     found_in_using = true;
+                    using_stdlib_mod = real_mod;
                     result = umeta->return_type ? resolve_return_type(umeta->return_type) : &TYPE_UNKNOWN;
                 }
                 /* 2) Try user-defined module: look up <module>_<func> */
@@ -4941,7 +4948,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             if (found_in_using) {
-                /* Type already set above */
+                /* Type already set above. A bare name reaching a stdlib
+                 * function is the same call as the qualified form, so it
+                 * gets the same signature checks — otherwise a wrong
+                 * argument count or type here reaches the C compiler. */
+                if (using_stdlib_mod) {
+                    typechecker_check_stdlib_arg_count(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_stdlib_arg_types(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_strconv_base(checker, using_stdlib_mod, function_name, node);
+                }
             } else {
                 /* Check if it's a variable holding a function reference */
                 Symbol *fn_sym = scope_lookup(checker->current_scope, function_name);

@@ -1,0 +1,16 @@
+/*
+ * Error Test: E5026 - wrong argument type on a stdlib call made by bare
+ * name through 'using'
+ * Expected: "'fmt.center()' expects char as argument 3, got 'string'"
+ *
+ * Same gap as E5008_using_bare_name_wrong_arg_count: qualified calls were
+ * checked, bare ones were not, and codegen emitted a cast of a GrayString
+ * to char that only the C compiler rejected.
+ */
+
+import @fmt
+using fmt
+
+do main() {
+    println(center("x", 5, "."))  // ERROR: pad must be a char, not a string
+}
