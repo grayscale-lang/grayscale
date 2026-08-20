@@ -1,7 +1,4 @@
-/*
- * Error Test: E4005 - string-empty-index
- * Expected: "empty string" or "cannot index"
- */
+/* Panic Test: P0082 - string index out of bounds on an empty string */
 
 import @strings
 

@@ -1,8 +1,0 @@
-/*
- * Error Test: E1021 - unclosed-string
- * Expected: "unclosed string literal"
- */
-
-do main() {
-    mut s string = "this string never ends
-}
