@@ -1447,6 +1447,10 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
                 next_token(parser); /* name (IDENT or _) */
+                if (var_count >= MAX_MULTI_VARS) {
+                    diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
+                    return NULL;
+                }
                 names[var_count] = parser->cur_token.literal;
                 if (current_token_is(parser, TOK_BLANK)) names[var_count] = "_";
                 if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_CARET) ||
@@ -1459,10 +1463,6 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
                     types[var_count] = NULL;
                 }
                 var_count++;
-                if (var_count > MAX_MULTI_VARS) {
-                    diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
-                    return NULL;
-                }
             }
 
             /* Expect = expr */
