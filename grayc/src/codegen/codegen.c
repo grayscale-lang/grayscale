@@ -8733,6 +8733,13 @@ static void iter_guard_push(CodeGen *codegen, const char *expr) {
     codegen->iter_guards[codegen->iter_guard_count++] = strdup(expr);
 }
 
+/* The guard expression for the innermost live for_each, so the decrement
+ * targets exactly what the increment did. */
+static const char *iter_guard_top(CodeGen *codegen) {
+    if (codegen->iter_guard_count == 0) return NULL;
+    return codegen->iter_guards[codegen->iter_guard_count - 1];
+}
+
 static void iter_guard_pop(CodeGen *codegen) {
     if (codegen->iter_guard_count > 0) {
         free(codegen->iter_guards[--codegen->iter_guard_count]);
@@ -8743,6 +8750,16 @@ static void emit_iter_guard_unwind(CodeGen *codegen) {
     for (int i = codegen->iter_guard_count - 1; i >= 0; i--) {
         emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1); ", codegen->iter_guards[i]);
     }
+}
+
+/* True for a field path like b.items or a.b.items — an lvalue naming the
+ * caller's array, with no calls or indexing to re-evaluate. Iterating one of
+ * these can guard the real array instead of the by-value snapshot. */
+static bool is_stable_field_path(AstNode *node) {
+    while (node && node->kind == NODE_MEMBER_EXPR) {
+        node = node->data.member.object;
+    }
+    return node && node->kind == NODE_LABEL;
 }
 
 /* Build the C expression string for a for_each collection. For tmp
@@ -9525,24 +9542,44 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     char len_name[SHORT_VAR_BUF];
     snprintf(len_name, sizeof(len_name), "_gray_alen%d", alen_id);
     *out_coll_needs_tmp = (coll->kind != NODE_LABEL);
+    /* A field path names an array the caller can still reach, so the guard
+     * has to sit on that array — putting it on the snapshot below would let
+     * destructive mutations through unnoticed. */
+    bool guard_real = *out_coll_needs_tmp && is_stable_field_path(coll);
+    char guard_ptr[SHORT_VAR_BUF];
+    guard_ptr[0] = '\0';
     if (*out_coll_needs_tmp) {
         snprintf(arr_tmp_name, arr_tmp_size, "_gray_arr%d", alen_id);
-        emit_formatted(codegen, "{ GrayArray %s = ", arr_tmp_name);
-        emit_expression(codegen, coll);
-        emit(codegen, ";\n");
+        emit(codegen, "{ ");
+        if (guard_real) {
+            snprintf(guard_ptr, sizeof(guard_ptr), "_gray_arrp%d", alen_id);
+            emit_formatted(codegen, "GrayArray *%s = &(", guard_ptr);
+            emit_expression(codegen, coll);
+            emit_formatted(codegen, "); GrayArray %s = *%s;\n", arr_tmp_name, guard_ptr);
+        } else {
+            emit_formatted(codegen, "GrayArray %s = ", arr_tmp_name);
+            emit_expression(codegen, coll);
+            emit(codegen, ";\n");
+        }
         emit_indent(codegen);
     }
     emit_formatted(codegen, "{ int32_t %s = ", len_name);
     if (*out_coll_needs_tmp) emit_formatted(codegen, "%s.len;\n", arr_tmp_name);
     else { emit_expression(codegen, coll); emit(codegen, ".len;\n"); }
     {
-        char *ge = iter_guard_expr(codegen, *out_coll_needs_tmp, arr_tmp_name, coll);
+        char *ge;
+        if (guard_real) {
+            char buf[SHORT_VAR_BUF + 4];
+            snprintf(buf, sizeof(buf), "(*%s)", guard_ptr);
+            ge = strdup(buf);
+        } else {
+            ge = iter_guard_expr(codegen, *out_coll_needs_tmp, arr_tmp_name, coll);
+        }
         iter_guard_push(codegen, ge);
         free(ge);
     }
     emit_indent(codegen);
-    if (*out_coll_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", arr_tmp_name);
-    else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
+    emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", iter_guard_top(codegen));
     emit_indent(codegen);
     emit_formatted(codegen, "for (int32_t %s = 0; %s < %s; %s++) {\n", idx_name, idx_name, len_name, idx_name);
     codegen->indent++;
@@ -9621,10 +9658,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         }
         /* Decrement array iteration guard, then close the snapshot block */
         if (coll_t && coll_t->kind != TK_MAP && coll_t->kind != TK_STRING) {
-            iter_guard_pop(codegen);
             emit_indent(codegen);
-            if (coll_needs_tmp) emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", arr_tmp_name);
-            else { emit(codegen, "gray_atomic_sub32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
+            emit_formatted(codegen, "gray_atomic_sub32(&%s.iterating, 1);\n", iter_guard_top(codegen));
+            iter_guard_pop(codegen);
             emit_indent(codegen);
             emit(codegen, "}\n");
             if (coll_needs_tmp) {

@@ -1,0 +1,90 @@
+import @arrays
+
+const Inner struct {
+    items [int]
+}
+
+const Outer struct {
+    inner Inner
+}
+
+do first_even(&o Outer) -> int {
+    for_each x in o.inner.items {
+        if x % 2 == 0 {
+            return x
+        }
+    }
+    return -1
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut o Outer = Outer{inner: Inner{items: {1, 2, 3, 4}}}
+
+    // Appending to a field array during iteration stays legal, and the loop
+    // only visits the elements present when it started.
+    mut seen int = 0
+    for_each x in o.inner.items {
+        seen = seen + 1
+        arrays.append(o.inner.items, x * 10)
+    }
+
+    if seen == 4 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] loop visited ${seen} elements, expected 4")
+        failed = failed + 1
+    }
+
+    if len(o.inner.items) == 8 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] field array holds ${len(o.inner.items)} elements, expected 8")
+        failed = failed + 1
+    }
+
+    // Returning out of the loop must release the guard, so a later
+    // destructive mutation is allowed.
+    if first_even(o) == 2 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] first_even returned ${first_even(o)}, expected 2")
+        failed = failed + 1
+    }
+
+    arrays.remove_at(o.inner.items, 0)
+
+    if len(o.inner.items) == 7 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] after remove_at the array holds ${len(o.inner.items)}, expected 7")
+        failed = failed + 1
+    }
+
+    if o.inner.items[0] == 2 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] first element is ${o.inner.items[0]}, expected 2")
+        failed = failed + 1
+    }
+
+    // Nested loops over the same field array
+    mut pairs int = 0
+    for_each a in o.inner.items {
+        for_each b in o.inner.items {
+            pairs = pairs + 1
+        }
+    }
+
+    if pairs == 49 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] nested loops ran ${pairs} times, expected 49")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}
