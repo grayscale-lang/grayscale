@@ -685,8 +685,8 @@ static char *bind_wildcard_string(const char *param_tn, const char *arg_tn) {
     if (param_tn[0] == '[' && arg_tn[0] == '[') {
         if (plen < 3 || alen < 3) return NULL;
         if (param_tn[plen - 1] != ']' || arg_tn[alen - 1] != ']') return NULL;
-        char *p_inner = strndup(param_tn + 1, plen - 2);
-        char *a_inner = strndup(arg_tn + 1, alen - 2);
+        char *p_inner = gray_strndup(param_tn + 1, plen - 2);
+        char *a_inner = gray_strndup(arg_tn + 1, alen - 2);
         char *result = bind_wildcard_string(p_inner, a_inner);
         free(p_inner);
         free(a_inner);
@@ -718,13 +718,13 @@ static char *bind_wildcard_string(const char *param_tn, const char *arg_tn) {
 
         char *result;
         if (param_key_has_wildcard) {
-            char *p = strndup(param_key, param_key_len);
-            char *a = strndup(arg_key, arg_key_len);
+            char *p = gray_strndup(param_key, param_key_len);
+            char *a = gray_strndup(arg_key, arg_key_len);
             result = bind_wildcard_string(p, a);
             free(p); free(a);
         } else {
-            char *p = strndup(param_val, param_val_len);
-            char *a = strndup(arg_val, arg_val_len);
+            char *p = gray_strndup(param_val, param_val_len);
+            char *a = gray_strndup(arg_val, arg_val_len);
             result = bind_wildcard_string(p, a);
             free(p); free(a);
         }

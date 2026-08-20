@@ -9,6 +9,7 @@
 
 #include "codegen.h"
 #include "../util/constants.h"
+#include "../util/platform.h"
 #include "../util/xalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -351,8 +352,8 @@ static char *codegen_bind_wildcard(const char *ptn, const char *atn) {
     /* Array layer: strip matching outer [...] brackets */
     if (plen >= 3 && ptn[0] == '[' && ptn[plen - 1] == ']') {
         if (alen < 3 || atn[0] != '[' || atn[alen - 1] != ']') return NULL;
-        char *ip = strndup(ptn + 1, plen - 2);
-        char *ia = strndup(atn + 1, alen - 2);
+        char *ip = gray_strndup(ptn + 1, plen - 2);
+        char *ia = gray_strndup(atn + 1, alen - 2);
         char *result = codegen_bind_wildcard(ip, ia);
         free(ip); free(ia);
         return result;
@@ -373,10 +374,10 @@ static char *codegen_bind_wildcard(const char *ptn, const char *atn) {
             else if (ai[i] == ':' && depth == 0) { ac = ai + i; break; }
         }
         if (!pc || !ac) return NULL;
-        char *pk = strndup(pi, (size_t)(pc - pi));
-        char *pv = strndup(pc + 1, pil - (size_t)(pc - pi) - 1);
-        char *ak = strndup(ai, (size_t)(ac - ai));
-        char *av = strndup(ac + 1, ail - (size_t)(ac - ai) - 1);
+        char *pk = gray_strndup(pi, (size_t)(pc - pi));
+        char *pv = gray_strndup(pc + 1, pil - (size_t)(pc - pi) - 1);
+        char *ak = gray_strndup(ai, (size_t)(ac - ai));
+        char *av = gray_strndup(ac + 1, ail - (size_t)(ac - ai) - 1);
         char *result = NULL;
         if (strchr(pk, '?')) result = codegen_bind_wildcard(pk, ak);
         if (!result && strchr(pv, '?')) result = codegen_bind_wildcard(pv, av);
