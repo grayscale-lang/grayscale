@@ -1274,6 +1274,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
     tmp_decl->data.var_decl.mutable = true;
     tmp_decl->data.var_decl.name = tmp_name;
+    tmp_decl->data.var_decl.synthetic = true;
     tmp_decl->data.var_decl.type_name = NULL;
     tmp_decl->data.var_decl.value = var_decl->data.var_decl.value;
     block->data.block.stmts[block->data.block.count++] = tmp_decl;
