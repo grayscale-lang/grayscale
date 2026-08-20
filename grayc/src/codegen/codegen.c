@@ -8222,17 +8222,27 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             bool ms_str_val = left_t->value_type && strcmp(left_t->value_type, "string") == 0;
 
             /* Detect pointer-to-struct field access: left is a MEMBER_EXPR
-             * whose object is a pointer type. In that case the GCC statement
+             * whose object is a pointer type (`p.field`) or an explicit
+             * dereference of one (`p^.field`). In that case the GCC statement
              * expression for nil-checked deref yields an rvalue and &(rvalue)
-             * is illegal. Instead, nil-check then use -> to get an assignable target. */
+             * is illegal. Instead, nil-check then use -> to get an assignable
+             * target. map_ptr_obj is the pointer to check and arrow through,
+             * which for the `p^.field` spelling is the operand of the `^`. */
             bool map_via_ptr = false;
             bool map_raw = false;
+            AstNode *map_ptr_obj = NULL;
             if (left->kind == NODE_MEMBER_EXPR) {
-                GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, left->data.member.object) : NULL;
+                AstNode *obj = left->data.member.object;
+                GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
                 if (obj_t && obj_t->kind == TK_POINTER) {
+                    map_ptr_obj = obj;
+                } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
+                    map_ptr_obj = obj->data.postfix.left;
+                }
+                if (map_ptr_obj) {
                     map_via_ptr = true;
-                    map_raw = (left->data.member.object->kind == NODE_LABEL &&
-                        is_raw_variable(codegen, left->data.member.object->data.label.value));
+                    map_raw = (map_ptr_obj->kind == NODE_LABEL &&
+                        is_raw_variable(codegen, map_ptr_obj->data.label.value));
                 }
             }
             /* p^["key"] = v: direct dereference of map pointer. The pointer
@@ -8276,7 +8286,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (map_via_ptr) {
                     /* Capture _mp early so _cur can reference the map field. */
                     emit_formatted(codegen, "__auto_type _mp = ");
-                    emit_expression(codegen, left->data.member.object);
+                    emit_expression(codegen, map_ptr_obj);
                     if (map_raw) {
                         emit_formatted(codegen, "; void *_cur = gray_map_get(&_mp->%s, &_mk); "
                               "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
@@ -8335,7 +8345,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 } else {
                     /* Nil-check the pointer, then use -> to yield an assignable target. */
                     emit_formatted(codegen, "{ __auto_type _mp = ");
-                    emit_expression(codegen, left->data.member.object);
+                    emit_expression(codegen, map_ptr_obj);
                     if (map_raw) {
                         emit_formatted(codegen, "; gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
                             ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);

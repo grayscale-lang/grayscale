@@ -1,0 +1,85 @@
+/*
+ * map_assign_through_deref_field.gray - map key assignment through p^.field
+ *
+ * `p^.cache[key] = value` emitted `&({ ...nil check...; *_dp; }).cache` --
+ * the address of a statement-expression rvalue, which is invalid C, so the
+ * user saw a C compiler error.  The auto-deref spelling `p.cache[key]`
+ * worked, because map_via_ptr only matched a member whose object was
+ * pointer-typed, never one whose object was a `^` postfix expression.
+ *
+ * Fix: map_via_ptr now also matches `p^.field`, arrowing through the `^`
+ * operand -- the same "strip the deref" case emit_index_expr already had,
+ * which is why the array equivalent always compiled.
+ */
+
+const Pool struct {
+    cache map[string:int]
+    names map[string:string]
+}
+
+do main() {
+    println("=== Map Assign Through Deref Field Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* new() initialises both map fields with the right element sizes */
+    p = new(Pool)
+
+    /* Plain assignment through an explicit dereference */
+    p^.cache["a"] = 1
+    p^.cache["b"] = 2
+    if len(p^.cache) == 2 && p^.cache["a"] == 1 && p^.cache["b"] == 2 {
+        println("  [PASS] p^.field[key] = value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 2 entries a=1 b=2, got ${len(p^.cache)}")
+        failed += 1
+    }
+
+    /* Compound assignment through an explicit dereference */
+    p^.cache["a"] += 5
+    p^.cache["b"] *= 3
+    if p^.cache["a"] == 6 && p^.cache["b"] == 6 {
+        println("  [PASS] p^.field[key] compound assignment")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected a=6 b=6, got a=${p^.cache["a"]} b=${p^.cache["b"]}")
+        failed += 1
+    }
+
+    /* The auto-deref spelling must still reach the same map */
+    p.cache["c"] = 3
+    if len(p^.cache) == 3 && p^.cache["c"] == 3 {
+        println("  [PASS] p.field[key] still writes through")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 3 entries with c=3, got ${len(p^.cache)}")
+        failed += 1
+    }
+
+    /* Inside a loop body, where keys and values escape to the outer arena */
+    for i in range(0, 40) {
+        p^.cache["k${i}"] = i
+        p^.names["k${i}"] = "n${i}"
+    }
+    mut lost int = 0
+    for i in range(0, 40) {
+        if p^.cache["k${i}"] != i { lost = lost + 1 }
+        if p^.names["k${i}"] != "n${i}" { lost = lost + 1 }
+    }
+    if len(p^.cache) == 43 && len(p^.names) == 40 && lost == 0 {
+        println("  [PASS] assignment through p^.field inside a loop body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 43/40 entries and 0 lost, got ${len(p^.cache)}/${len(p^.names)} and ${lost}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
