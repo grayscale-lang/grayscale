@@ -1934,7 +1934,7 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
     }
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
         node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
-        *out = -node->data.prefix.right->data.int_value.value;
+        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
     /* Simple constant folding for literal +, -, * */
