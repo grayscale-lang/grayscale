@@ -33,7 +33,6 @@
 #define GRAY_VERSION "unknown"
 #endif
 #define PATH_BUF_SIZE 2048
-#define MAX_IMPORTS 256
 #define COMPILER_ARENA_SIZE (1024 * 1024)
 #define GRAY_EXT      ".gray"
 #define GRAY_EXT_LEN  5
@@ -489,8 +488,10 @@ static void rewrite_labels(AstNode *node, const char **orig, const char **prefix
 /* Import cache: track already-imported files to avoid duplicates and cycles.
  * Open-addressing hash set keyed on canonical file path. */
 
-/* Must be a power of 2 and >= 2*MAX_IMPORTS for safe linear probing. */
-#define IMPORT_HASH_BUCKETS (MAX_IMPORTS * 2)
+/* Bucket count is always a power of two, and the table grows to keep the
+ * load factor at or below one half. Linear probing needs a free slot to
+ * terminate on, so the table must never fill. */
+#define IMPORT_HASH_INIT_BUCKETS 512
 
 #define FNV1A_OFFSET_BASIS 2166136261u
 #define FNV1A_PRIME        16777619u
@@ -500,7 +501,8 @@ typedef struct {
     const char *mod;
 } ImportHashEntry;
 
-static ImportHashEntry import_hash[IMPORT_HASH_BUCKETS];
+static ImportHashEntry *import_hash = NULL;
+static uint32_t import_hash_buckets = 0;
 static int imported_file_count = 0;
 
 static uint32_t import_path_hash(const char *s) {
@@ -509,26 +511,60 @@ static uint32_t import_path_hash(const char *s) {
     return h;
 }
 
+/* Place an entry during a rehash, where the key is known to be unique. */
+static void import_hash_place(ImportHashEntry *table, uint32_t buckets,
+                              const char *path, const char *mod) {
+    uint32_t slot = import_path_hash(path) & (buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (buckets - 1)) {
+        if (!table[i].path) {
+            table[i].path = path;
+            table[i].mod = mod;
+            return;
+        }
+    }
+}
+
+/* Ensure room for one more entry at a load factor of one half or less. */
+static void import_hash_reserve(void) {
+    if (import_hash &&
+        (uint32_t)(imported_file_count + 1) * 2 <= import_hash_buckets)
+        return;
+
+    uint32_t new_buckets = import_hash_buckets
+        ? import_hash_buckets * 2 : IMPORT_HASH_INIT_BUCKETS;
+    ImportHashEntry *new_table = xcalloc(new_buckets, sizeof(ImportHashEntry));
+    for (uint32_t i = 0; i < import_hash_buckets; i++) {
+        if (import_hash[i].path)
+            import_hash_place(new_table, new_buckets,
+                import_hash[i].path, import_hash[i].mod);
+    }
+    free(import_hash);
+    import_hash = new_table;
+    import_hash_buckets = new_buckets;
+}
+
 static bool already_imported(const char *path) {
-    uint32_t slot = import_path_hash(path) & (IMPORT_HASH_BUCKETS - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (IMPORT_HASH_BUCKETS - 1)) {
+    if (!import_hash) return false;
+    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) return false;
         if (strcmp(import_hash[i].path, path) == 0) return true;
     }
 }
 
 static const char *imported_by_module(const char *path) {
-    uint32_t slot = import_path_hash(path) & (IMPORT_HASH_BUCKETS - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (IMPORT_HASH_BUCKETS - 1)) {
+    if (!import_hash) return NULL;
+    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) return NULL;
         if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].mod;
     }
 }
 
 static void mark_imported_with_module(const char *path, const char *mod) {
-    if (imported_file_count >= MAX_IMPORTS) return;
-    uint32_t slot = import_path_hash(path) & (IMPORT_HASH_BUCKETS - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (IMPORT_HASH_BUCKETS - 1)) {
+    import_hash_reserve();
+    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) {
             import_hash[i].path = path;
             import_hash[i].mod = mod;
@@ -545,16 +581,16 @@ static void mark_imported(const char *path) {
 
 /* Scan a directory for .gray files. Returns count of files found.
  * Fills paths[] with full file paths (dir_path + "/" + filename). */
-#define MAX_DIR_FILES 256
 static int gray_path_cmp(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
 struct scan_ctx {
     const char *dir_path;
+    Arena *arena;
     char (*paths)[PATH_BUF_SIZE];
     int count;
-    int max;
+    int cap;
 };
 
 static bool scan_visitor(const char *name, void *arg) {
@@ -563,18 +599,22 @@ static bool scan_visitor(const char *name, void *arg) {
     size_t nlen = strlen(name);
     if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0)
         return true;
-    if (ctx->count >= ctx->max) return false;
+    ARENA_GROW(ctx->arena, ctx->paths, ctx->count, ctx->cap);
     gray_path_join(ctx->paths[ctx->count], PATH_BUF_SIZE, ctx->dir_path, name);
     ctx->count++;
     return true;
 }
 
-static int scan_gray_files(const char *dir_path, char paths[][PATH_BUF_SIZE], int max_files) {
-    struct scan_ctx ctx = { dir_path, paths, 0, max_files };
+/* Returns the number of .gray files found, or -1 if the directory cannot be
+ * read. *out_paths receives an arena-allocated array of that many paths. */
+static int scan_gray_files(Arena *arena, const char *dir_path,
+                           char (**out_paths)[PATH_BUF_SIZE]) {
+    struct scan_ctx ctx = { dir_path, arena, NULL, 0, 0 };
     if (!gray_scandir(dir_path, scan_visitor, &ctx)) return -1;
 
     /* Sort alphabetically for deterministic import order */
-    qsort(paths, (size_t)ctx.count, PATH_BUF_SIZE, gray_path_cmp);
+    qsort(ctx.paths, (size_t)ctx.count, PATH_BUF_SIZE, gray_path_cmp);
+    *out_paths = ctx.paths;
     return ctx.count;
 }
 
@@ -929,17 +969,19 @@ int main(int argc, char **argv) {
         /* Seed import queue once from the initial program stmts — O(N), done once.
          * Transitive imports push onto the tail as they are discovered, so the
          * queue drains naturally without re-scanning the growing program AST. */
-        AstNode *import_queue[MAX_IMPORTS];
+        AstNode **import_queue = NULL;
+        int import_queue_cap = 0;
         int iq_head = 0, iq_tail = 0;
         for (int si = 0; si < program->data.program.stmt_count; si++) {
-            if (program->data.program.stmts[si]->kind == NODE_IMPORT_STMT &&
-                iq_tail < MAX_IMPORTS) {
+            if (program->data.program.stmts[si]->kind == NODE_IMPORT_STMT) {
+                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
                 import_queue[iq_tail++] = program->data.program.stmts[si];
             }
         }
 
-        const char *seen_modules[MAX_IMPORTS];
-        const char *seen_paths[MAX_IMPORTS];
+        const char **seen_modules = NULL;
+        const char **seen_paths = NULL;
+        int seen_cap = 0;
         int seen_count = 0;
 
         while (iq_head < iq_tail) {
@@ -1005,8 +1047,7 @@ int main(int argc, char **argv) {
                             free(norm_src);
                         }
 
-                        file_list = arena_alloc(arena, sizeof(char[PATH_BUF_SIZE]) * MAX_DIR_FILES);
-                        file_count = scan_gray_files(import_path, file_list, MAX_DIR_FILES);
+                        file_count = scan_gray_files(arena, import_path, &file_list);
                         if (file_count == 0) {
                             char msg[MSG_BUF_LARGE];
                             snprintf(msg, sizeof(msg), "directory '%s' contains no .gray files", item->path);
@@ -1101,11 +1142,14 @@ int main(int argc, char **argv) {
                     }
                 }
                 if (collision) continue;
-                if (seen_count < MAX_IMPORTS) {
-                    seen_modules[seen_count] = mod_name;
-                    seen_paths[seen_count] = arena_copy_string(arena, norm_import);
-                    seen_count++;
+                if (seen_count >= seen_cap) {
+                    seen_cap = GROW_NEXT_CAP(seen_cap);
+                    ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
+                    ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
                 }
+                seen_modules[seen_count] = mod_name;
+                seen_paths[seen_count] = arena_copy_string(arena, norm_import);
+                seen_count++;
 
                 /* Set the alias if not already set */
                 if (!item->alias) item->alias = mod_name;
@@ -1119,19 +1163,23 @@ int main(int argc, char **argv) {
                  * structs) get properly rewritten to their prefixed names. */
 
                 /* Storage for parsed programs in the directory */
-                AstNode *parsed_programs[MAX_DIR_FILES];
-                const char *parsed_paths[MAX_DIR_FILES];
+                AstNode **parsed_programs = arena_alloc(arena,
+                    sizeof(AstNode *) * (size_t)(file_count > 0 ? file_count : 1));
+                const char **parsed_paths = arena_alloc(arena,
+                    sizeof(const char *) * (size_t)(file_count > 0 ? file_count : 1));
                 int parsed_count = 0;
 
                 /* Sibling import aliases collected during parse pass.
                  * After all names are known, compound mappings (alias_Name → mod_Name)
                  * are generated for each alias × declaration name. */
-                const char *sibling_aliases[MAX_IMPORTS];
+                const char **sibling_aliases = NULL;
+                int sibling_alias_cap = 0;
                 int sibling_alias_count = 0;
 
                 /* Combined name mapping across all files in this import */
-                const char *orig_names[MAX_IMPORTS];
-                const char *new_names[MAX_IMPORTS];
+                const char **orig_names = NULL;
+                const char **new_names = NULL;
+                int name_cap = 0;
                 int name_count = 0;
 
                 /* Parse pass: parse each file, collect names, inject transitive imports */
@@ -1283,7 +1331,9 @@ int main(int argc, char **argv) {
                                             break;
                                         }
                                     }
-                                    if (!already_tracked && sibling_alias_count < MAX_IMPORTS) {
+                                    if (!already_tracked) {
+                                        ARENA_GROW(arena, sibling_aliases,
+                                            sibling_alias_count, sibling_alias_cap);
                                         sibling_aliases[sibling_alias_count++] = sib_alias;
                                     }
                                     /* Null out the sibling import path so it's not injected */
@@ -1300,7 +1350,8 @@ int main(int argc, char **argv) {
                             if (!all_sibling) {
                                 ARENA_GROW(arena, program->data.program.stmts,
                                     program->data.program.stmt_count, program->data.program.stmt_cap);
-                                if (iq_tail < MAX_IMPORTS) import_queue[iq_tail++] = ts;
+                                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
+                                import_queue[iq_tail++] = ts;
                                 program->data.program.stmts[program->data.program.stmt_count++] = ts;
                             }
                         }
@@ -1315,7 +1366,12 @@ int main(int argc, char **argv) {
                         else if (s->kind == NODE_VAR_DECL) oname = s->data.var_decl.name;
                         else if (s->kind == NODE_STRUCT_DECL) oname = s->data.struct_decl.name;
                         else if (s->kind == NODE_ENUM_DECL) oname = s->data.enum_decl.name;
-                        if (oname && name_count < MAX_IMPORTS) {
+                        if (oname) {
+                            if (name_count >= name_cap) {
+                                name_cap = GROW_NEXT_CAP(name_cap);
+                                ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
+                                ARENA_GROW_TO(arena, new_names, name_count, name_cap);
+                            }
                             orig_names[name_count] = oname;
                             char *pn = arena_alloc(arena, MSG_BUF_SIZE);
                             snprintf(pn, MSG_BUF_SIZE, "%s_%s", mod_name, oname);
@@ -1338,7 +1394,6 @@ int main(int argc, char **argv) {
                     for (int sa = 0; sa < sibling_alias_count; sa++) {
                         const char *alias = sibling_aliases[sa];
                         for (int ni = 0; ni < base_name_count; ni++) {
-                            if (name_count >= MAX_IMPORTS) break;
                             /* Build "alias_OrigName" and map to "mod_OrigName" */
                             char *compound = arena_alloc(arena, MSG_BUF_SIZE);
                             snprintf(compound, MSG_BUF_SIZE, "%s_%s", alias, orig_names[ni]);
@@ -1348,17 +1403,27 @@ int main(int argc, char **argv) {
                                 if (strcmp(orig_names[ci], compound) == 0) { dup = true; break; }
                             }
                             if (dup) continue;
+                            if (name_count >= name_cap) {
+                                name_cap = GROW_NEXT_CAP(name_cap);
+                                ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
+                                ARENA_GROW_TO(arena, new_names, name_count, name_cap);
+                            }
                             orig_names[name_count] = compound;
                             new_names[name_count] = new_names[ni]; /* same as mod_OrigName */
                             name_count++;
                         }
                         /* Also add bare alias → mod_name for label references */
-                        if (name_count < MAX_IMPORTS) {
+                        {
                             bool dup = false;
                             for (int ci = 0; ci < name_count; ci++) {
                                 if (strcmp(orig_names[ci], alias) == 0) { dup = true; break; }
                             }
                             if (!dup) {
+                                if (name_count >= name_cap) {
+                                    name_cap = GROW_NEXT_CAP(name_cap);
+                                    ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
+                                    ARENA_GROW_TO(arena, new_names, name_count, name_cap);
+                                }
                                 orig_names[name_count] = alias;
                                 new_names[name_count] = mod_name;
                                 name_count++;
