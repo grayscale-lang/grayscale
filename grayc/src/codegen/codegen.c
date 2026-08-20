@@ -6441,7 +6441,7 @@ static bool emit_channels_call(CodeGen *codegen, AstNode *node, const char *func
 
 /* --- Main call dispatcher --- */
 
-static void emit_call_expression(CodeGen *codegen, AstNode *node) {
+static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     const char *module = NULL;
     const char *func = NULL;
 
@@ -7327,6 +7327,65 @@ static void emit_call_expression(CodeGen *codegen, AstNode *node) {
         }
     }
     emit(codegen, ")");
+}
+
+/* Resolve a call to the declaration it names, for the two shapes that can
+ * reach a user function: a bare name and a member call (struct functions and
+ * imported functions are registered under a qualified name, so those match on
+ * the trailing component). Returns NULL when the match is ambiguous or the
+ * callees disagree, which leaves the caller on the conservative path. */
+static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    const char *name = NULL;
+    if (fn->kind == NODE_LABEL) name = fn->data.label.value;
+    else if (fn->kind == NODE_MEMBER_EXPR) name = fn->data.member.member;
+    if (!name) return NULL;
+
+    AstNode *exact = find_function(codegen, name);
+    if (exact) return exact;
+
+    size_t nlen = strlen(name);
+    AstNode *match = NULL;
+    for (int i = 0; i < codegen->func_count; i++) {
+        AstNode *cand = codegen->all_funcs[i];
+        const char *reg = cand->data.func_decl.name;
+        size_t rlen = strlen(reg);
+        if (rlen <= nlen + 1) continue;
+        if (reg[rlen - nlen - 1] != '_' || strcmp(reg + rlen - nlen, name) != 0) continue;
+        if (!match) { match = cand; continue; }
+        /* Several candidates: usable only while they agree on what matters. */
+        if (function_uses_caller_arena(codegen, match) != function_uses_caller_arena(codegen, cand) ||
+            (match->data.func_decl.return_type_count == 0) !=
+            (cand->data.func_decl.return_type_count == 0))
+            return NULL;
+    }
+    return match;
+}
+
+/* A function that runs in the caller's arena writes through its pointer
+ * parameters into data the caller owns, and so does anything it calls. Inside
+ * a scope arena that ambient arena is the block's, which dies at the end of
+ * the block while the mutated data lives on — so run the call in the
+ * function-level arena instead. */
+static void emit_call_expression(CodeGen *codegen, AstNode *node) {
+    AstNode *callee = codegen->loop_scope_depth > 0
+        ? resolve_called_function(codegen, node) : NULL;
+    if (!callee || !function_uses_caller_arena(codegen, callee)) {
+        emit_call_expression_body(codegen, node);
+        return;
+    }
+
+    int id = codegen_next_id(codegen);
+    emit_formatted(codegen, "({ GrayArena *_gray_csave%d = gray_default_arena; "
+                            "gray_default_arena = _gray_outer_arena; ", id);
+    if (callee->data.func_decl.return_type_count == 0) {
+        emit_call_expression_body(codegen, node);
+        emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; })", id);
+    } else {
+        emit_formatted(codegen, "__auto_type _gray_cval%d = ", id);
+        emit_call_expression_body(codegen, node);
+        emit_formatted(codegen, "; gray_default_arena = _gray_csave%d; _gray_cval%d; })", id, id);
+    }
 }
 
 /* --- Statement Emission --- */
