@@ -457,6 +457,21 @@ static void rewrite_labels(AstNode *node, const char **orig, const char **prefix
         }
         rewrite_labels(node->data.func_decl.body, orig, prefixed, count, arena);
         break;
+    case NODE_STRUCT_DECL:
+        /* Field types and struct-function signatures reference imported types
+         * by their bare name (Color), but the merged program registers them
+         * prefixed (types_Color). Without this the two never unify and every
+         * use reports "expected Color, got Color". */
+        for (int i = 0; i < node->data.struct_decl.field_count; i++) {
+            if (!node->data.struct_decl.fields[i].type_name) continue;
+            node->data.struct_decl.fields[i].type_name = rewrite_type_name(
+                node->data.struct_decl.fields[i].type_name, orig, prefixed, count, arena);
+        }
+        /* Struct functions are NODE_FUNC_DECLs; that case already rewrites
+         * return types, parameter types, and the body. */
+        for (int i = 0; i < node->data.struct_decl.func_count; i++)
+            rewrite_labels(node->data.struct_decl.funcs[i].func_decl, orig, prefixed, count, arena);
+        break;
     case NODE_ARRAY_VALUE:
         for (int i = 0; i < node->data.array_value.count; i++)
             rewrite_labels(node->data.array_value.elements[i], orig, prefixed, count, arena);
