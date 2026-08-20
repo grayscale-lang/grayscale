@@ -8666,7 +8666,10 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, ";\n");
             return;
         }
-        /* Map copy-by-default: map2 = map1 deep-copies the map. */
+        /* Map copy-by-default: map2 = map1 deep-copies the map.
+         * Inside a scoped arena (if-block / loop body), allocate the copy on
+         * the outer arena: the target variable outlives the block, so a copy
+         * made in the block's arena dangles once that arena is destroyed. */
         if (tgt_t && tgt_t->kind == TK_MAP) {
             int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
@@ -8675,10 +8678,17 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "%s = ", src_var);
             emit_expression(codegen, node->data.assign.value);
             emit(codegen, "; ");
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "GrayArena *_esc_m = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
+            }
             emit_expression(codegen, node->data.assign.target);
             emit(codegen, " = ");
             emit_value_deep_copy(codegen, tgt_t->name, src_var);
-            emit(codegen, "; }\n");
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "; gray_default_arena = _esc_m; }\n");
+            } else {
+                emit(codegen, "; }\n");
+            }
             return;
         }
         /* Struct copy-by-default: deep copy structs with container fields.
