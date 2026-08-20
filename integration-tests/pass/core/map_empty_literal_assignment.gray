@@ -1,0 +1,114 @@
+/*
+ * map_empty_literal_assignment.gray - `{:}` in an assignment keeps its type
+ *
+ * An empty map literal on the right of an assignment ignored the target's
+ * declared type and built the table with sizeof(GrayString) keys,
+ * sizeof(int64_t) values and GRAY_MAP_KEY_STRING.  Non-8-byte value types
+ * were truncated on insert and read back as garbage; non-string keys were
+ * hashed as a GrayString, dereferencing the key bytes as a char * and
+ * segfaulting.  Declaration initialisers and struct literal fields were
+ * fine, because those set current_var_type.
+ *
+ * Fix: check_assign_stmt sets expected_type from the assignment target, the
+ * empty literal adopts those element types, and emit_map_value falls back to
+ * the type recorded on the literal node.
+ */
+
+const Pool struct {
+    names map[string:string]
+}
+
+do main() {
+    println("=== Map Empty Literal Assignment Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* String values are 16 bytes; an 8-byte slot truncated them */
+    mut a map[string:string] = {"seed": "s"}
+    a = {:}
+    a["k"] = "v"
+    if len(a) == 1 && a["k"] == "v" {
+        println("  [PASS] map[string:string] reassigned to {:}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 1 entry k=v, got ${len(a)} and '${a["k"]}'")
+        failed += 1
+    }
+
+    /* Non-string keys took the string hash path and crashed */
+    mut b map[int:int] = {1: 1}
+    b = {:}
+    b[7] = 42
+    b[9] = 99
+    if len(b) == 2 && b[7] == 42 && b[9] == 99 {
+        println("  [PASS] map[int:int] reassigned to {:}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 7=42 and 9=99, got ${b[7]} and ${b[9]}")
+        failed += 1
+    }
+
+    /* Array values carry a header wider than 8 bytes */
+    mut c map[string:[int]] = {"seed": {1}}
+    c = {:}
+    c["k"] = {1, 2, 3}
+    mut got [int] = c["k"]
+    if len(c) == 1 && len(got) == 3 && got[2] == 3 {
+        println("  [PASS] map[string:[int]] reassigned to {:}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected a 3-element array, got ${len(got)}")
+        failed += 1
+    }
+
+    /* Struct fields, by value and through a pointer */
+    mut v Pool = Pool{ names: {:} }
+    v.names = {:}
+    v.names["k"] = "value-struct"
+
+    p = new(Pool)
+    p^.names = {:}
+    p^.names["k"] = "pointer-struct"
+
+    if v.names["k"] == "value-struct" && p^.names["k"] == "pointer-struct" {
+        println("  [PASS] struct map fields reassigned to {:}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got '${v.names["k"]}' and '${p^.names["k"]}'")
+        failed += 1
+    }
+
+    /* An inner {:} written into a map whose values are maps */
+    mut outer map[string:map[string:string]] = {:}
+    outer["a"] = {:}
+    mut inner map[string:string] = outer["a"]
+    inner["x"] = "deep"
+    outer["a"] = inner
+    mut back map[string:string] = outer["a"]
+    if len(outer) == 1 && back["x"] == "deep" {
+        println("  [PASS] nested map value assigned {:}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected nested x=deep, got '${back["x"]}'")
+        failed += 1
+    }
+
+    /* A non-empty literal in an assignment still infers from its first pair */
+    mut d map[string:string] = {"seed": "s"}
+    d = {"k": "v"}
+    if len(d) == 1 && d["k"] == "v" {
+        println("  [PASS] non-empty literal assignment unchanged")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 1 entry k=v, got ${len(d)} and '${d["k"]}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

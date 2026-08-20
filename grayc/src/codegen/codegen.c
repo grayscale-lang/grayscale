@@ -1602,6 +1602,15 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
     GrayType *decl_mt = (codegen->current_var_type &&
                        strncmp(codegen->current_var_type, "map[", 4) == 0)
         ? type_from_name(codegen->current_var_type) : NULL;
+    /* An empty literal has neither a pair to infer from nor, in an
+     * assignment, an enclosing declared type. The typechecker records the
+     * element types of the context on the node itself, so use those rather
+     * than defaulting to string keys and 8-byte values. */
+    if (!decl_mt && count == 0 && codegen->type_table) {
+        GrayType *node_mt = typetable_get(codegen->type_table, node);
+        if (node_mt && node_mt->kind == TK_MAP && node_mt->key_type && node_mt->value_type)
+            decl_mt = node_mt;
+    }
     if (decl_mt && decl_mt->key_type)
         c_key_type = gray_map_element_c_type(codegen, decl_mt->key_type);
     if (decl_mt && decl_mt->value_type)

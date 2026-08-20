@@ -6991,6 +6991,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
             t->key_type = strdup(kt ? type_name(kt) : "unknown");
             t->value_type = strdup(vt ? type_name(vt) : "unknown");
+        } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
+                   saved_map_expected->key_type && saved_map_expected->value_type) {
+            /* `{:}` carries no pair to infer from — adopt the element types
+             * of the context it is written into, so codegen sizes the table
+             * from the declared type instead of falling back to string keys
+             * and 8-byte values. */
+            t->key_type = strdup(saved_map_expected->key_type);
+            t->value_type = strdup(saved_map_expected->value_type);
         }
         result = t;
         checker->expected_type = saved_map_expected;
@@ -8923,9 +8931,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     GrayType *target_t = resolve_expression(checker, node->data.assign.target);
-    /* Set expected_type for implicit enum resolution (.VARIANT) */
+    /* Set expected_type so the value can be resolved against the target:
+     * implicit enum selectors (.VARIANT) need the enum, and an empty map
+     * literal needs the element types it is being assigned into. */
     GrayType *saved_expected = checker->expected_type;
-    if (target_t && target_t->kind == TK_ENUM && target_t->name)
+    if (target_t && ((target_t->kind == TK_ENUM && target_t->name) ||
+                     (target_t->kind == TK_MAP && target_t->key_type)))
         checker->expected_type = target_t;
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
