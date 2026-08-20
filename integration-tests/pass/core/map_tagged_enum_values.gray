@@ -1,0 +1,121 @@
+import @maps
+
+const Value enum {
+    IntVal(int)
+    StrVal(string)
+    NilVal
+}
+
+const Store struct {
+    entries map[string:Value]
+}
+
+do describe(v Value) -> string {
+    when v {
+        is .IntVal(n) { return "int ${n}" }
+        is .StrVal(s) { return "str ${s}" }
+        default { return "nil" }
+    }
+    return "unreachable"
+}
+
+do check(&passed int, &failed int, got string, want string) {
+    if got == want {
+        passed++
+    } otherwise {
+        println("[FAIL] got '${got}', expected '${want}'")
+        failed++
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut m map[string:Value] = {"x": Value.IntVal(42), "y": Value.StrVal("hi")}
+    m["z"] = Value.NilVal
+
+    if len(m) == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] map holds ${len(m)} entries, expected 3")
+        failed = failed + 1
+    }
+
+    check(passed, failed, describe(m["x"]), "int 42")
+    check(passed, failed, describe(m["y"]), "str hi")
+    check(passed, failed, describe(m["z"]), "nil")
+
+    m["x"] = Value.StrVal("changed")
+    check(passed, failed, describe(m["x"]), "str changed")
+
+    maps.remove_key(m, "y")
+    if len(m) == 2 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] after remove_key the map holds ${len(m)}, expected 2")
+        failed = failed + 1
+    }
+
+    if maps.has_key(m, "y") == false {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] removed key is still present")
+        failed = failed + 1
+    }
+
+    // Growing well past the initial capacity rehashes the value table; the
+    // stored variants must survive the move intact.
+    mut i int = 0
+    for i < 40 {
+        m["k${i}"] = Value.IntVal(i)
+        i++
+    }
+
+    if len(m) == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] grown map holds ${len(m)} entries, expected 42")
+        failed = failed + 1
+    }
+
+    check(passed, failed, describe(m["k39"]), "int 39")
+    check(passed, failed, describe(m["z"]), "nil")
+    check(passed, failed, describe(m["x"]), "str changed")
+
+    mut seen int = 0
+    for_each k, v in m {
+        seen = seen + 1
+    }
+    if seen == 42 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] for_each visited ${seen} entries, expected 42")
+        failed = failed + 1
+    }
+
+    // Same type as a struct field, and through the maps module
+    mut s Store = Store{entries: {"a": Value.IntVal(1)}}
+    s.entries["b"] = Value.IntVal(2)
+
+    vals [Value] = maps.get_values(s.entries)
+    mut total int = 0
+    for_each v in vals {
+        when v {
+            is .IntVal(n) { total = total + n }
+            default { println("[FAIL] unexpected variant in get_values") }
+        }
+    }
+    if total == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] get_values payloads summed to ${total}, expected 3")
+        failed = failed + 1
+    }
+
+    d Value = maps.get_or_default(s.entries, "missing", Value.NilVal)
+    check(passed, failed, describe(d), "nil")
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

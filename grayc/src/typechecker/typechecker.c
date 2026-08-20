@@ -7714,19 +7714,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         diagnostic_error_code_help(checker->diag, "E3059", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             "change 'const' to 'mut'; use a struct for fixed key-value data");
     }
-    /* E5041: tagged enums cannot be map value types */
-    if (node->data.var_decl.type_name &&
-        strncmp(node->data.var_decl.type_name, "map[", 4) == 0) {
-        GrayType *map_t = typechecker_type_from_name(checker, node->data.var_decl.type_name);
-        if (map_t && map_t->value_type) {
-            GrayType *vt = typechecker_type_from_name(checker, map_t->value_type);
-            if (vt && vt->kind == TK_ENUM && vt->name && typechecker_enum_is_tagged(checker, vt->name)) {
-                diagnostic_error_code_formatted(checker->diag, "E5041",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    enum_display_name(checker, vt->name));
-            }
-        }
-    }
     /* const must have a value */
     if (!node->data.var_decl.mutable && !node->data.var_decl.value) {
         diagnostic_error_code_formatted(checker->diag, "E2011", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));

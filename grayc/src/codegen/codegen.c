@@ -567,6 +567,11 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_tn
     /* Func references (bare or typed) are stored as void * in maps, same as
      * in arrays and all other composite types. */
     if (strcmp(gray_tn, "func") == 0 || strncmp(gray_tn, "func(", 5) == 0) return "void *";
+    /* A tagged enum is a C struct, not an integer; storing one in a map has
+     * to use its real type so the element size and the casts on read match. */
+    if (codegen && codegen_is_enum(codegen, gray_tn) &&
+        codegen_enum_is_tagged(codegen, gray_tn))
+        return gray_type_to_c_codegen(codegen, gray_tn);
     GrayType *type = type_from_name(gray_tn);
     if (!type) return "int64_t";
     switch (type->kind) {
