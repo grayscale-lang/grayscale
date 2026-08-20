@@ -4667,10 +4667,9 @@ static bool expression_is_assignable(AstNode *expr) {
            expr->kind == NODE_INDEX_EXPR;
 }
 
-/* Emit &expr, materialising rvalues into a statement-expression temporary.
- * `tmp` is the temp variable name (must be unique within the enclosing expr). */
-static void emit_address_of(CodeGen *codegen, AstNode *expr, const char *tmp) {
-    (void)tmp;
+/* Emit &expr, materialising rvalues into a statement-expression temporary
+ * whose name is generated internally via codegen_next_id(). */
+static void emit_address_of(CodeGen *codegen, AstNode *expr) {
     /* Anything reached through a pointer is emitted as a nil-checked GCC
      * statement expression, whose result is an rvalue — `&` on one of those
      * is invalid C, and materialising a copy instead would silently drop the
@@ -4744,13 +4743,13 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr, const char *tmp) {
 static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "get_keys") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_maps_get_keys(gray_default_arena, ");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(func, "get_values") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_maps_get_values(gray_default_arena, ");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
@@ -4767,7 +4766,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_formatted(codegen, "({ %s _hk = ", c_key);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; gray_maps_has_key(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_hk); })");
         return true;
     }
@@ -4780,27 +4779,27 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_formatted(codegen, "({ %s _rk = ", c_key);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; gray_map_remove(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", &_rk, \"%s\", %d); })", codegen->file, node->token.line);
         return true;
     }
     if (strcmp(func, "clear") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_map_clear(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
         return true;
     }
     if (strcmp(func, "is_empty") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_maps_is_empty(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(func, "merge") == 0 && node->data.call.arg_count == 2) {
         emit(codegen, "gray_maps_merge(gray_default_arena, ");
-        emit_address_of(codegen, node->data.call.args[0], "_m0");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
-        emit_address_of(codegen, node->data.call.args[1], "_m1");
+        emit_address_of(codegen, node->data.call.args[1]);
         emit(codegen, ")");
         return true;
     }
@@ -4809,9 +4808,9 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         bool str_keys = map_t && map_t->key_type && strcmp(map_t->key_type, "string") == 0;
         bool str_values = map_t && map_t->value_type && strcmp(map_t->value_type, "string") == 0;
         emit(codegen, "gray_maps_is_equal(");
-        emit_address_of(codegen, node->data.call.args[0], "_m0");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
-        emit_address_of(codegen, node->data.call.args[1], "_m1");
+        emit_address_of(codegen, node->data.call.args[1]);
         emit_formatted(codegen, ", %s, %s)", str_keys ? "true" : "false", str_values ? "true" : "false");
         return true;
     }
@@ -4828,7 +4827,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_formatted(codegen, "({ %s _cv = ", c_val_type);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; gray_maps_contains_value(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_cv); })");
         return true;
     }
@@ -4837,7 +4836,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, "({ __auto_type _gk = ");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; void *_gv = gray_map_get(");
-        emit_address_of(codegen, node->data.call.args[0], "_ma");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_gk); _gv ? *(__typeof__(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, ") *)_gv : ");
@@ -4965,7 +4964,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "add_route") == 0 && node->data.call.arg_count == 4) {
         emit(codegen, "gray_server_route(");
-        emit_address_of(codegen, node->data.call.args[0], "_sa");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ", ");
@@ -4980,7 +4979,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, "gray_server_listen(");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ", ");
-        emit_address_of(codegen, node->data.call.args[0], "_sa");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
@@ -4991,7 +4990,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, ", ");
-        emit_address_of(codegen, node->data.call.args[0], "_sa");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
@@ -5029,7 +5028,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "cors") == 0 && node->data.call.arg_count == 2) {
         emit(codegen, "gray_server_cors(");
-        emit_address_of(codegen, node->data.call.args[0], "_sa");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ")");
@@ -5037,7 +5036,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "use") == 0 && node->data.call.arg_count == 2) {
         emit(codegen, "gray_server_use(");
-        emit_address_of(codegen, node->data.call.args[0], "_sa");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", (GrayMiddleware)");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ")");
@@ -5192,7 +5191,7 @@ static bool emit_encoding_call(CodeGen *codegen, AstNode *node, const char *func
         strcmp(func, "to_base64") == 0);
     emit_formatted(codegen, "gray_encoding_%s(gray_default_arena, ", func);
     if (is_byte_to) {
-        emit_address_of(codegen, node->data.call.args[0], "_ba");
+        emit_address_of(codegen, node->data.call.args[0]);
     } else {
         emit_expression(codegen, node->data.call.args[0]);
     }
@@ -5226,7 +5225,7 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (is_encode) emit(codegen, "gray_default_arena, ");
     if (is_decode) {
-        emit_address_of(codegen, node->data.call.args[0], "_ba");
+        emit_address_of(codegen, node->data.call.args[0]);
     } else {
         emit_expression(codegen, node->data.call.args[0]);
     }
@@ -5530,13 +5529,13 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "shuffle") == 0) {
         emit(codegen, "gray_random_shuffle(gray_default_arena, ");
-        emit_address_of(codegen, node->data.call.args[0], "_ra");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
     if (strcmp(func, "sample") == 0) {
         emit(codegen, "gray_random_sample(gray_default_arena, ");
-        emit_address_of(codegen, node->data.call.args[0], "_ra");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ")");
@@ -5589,7 +5588,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
  * second implementation is what let the two drift apart, leaving pointer
  * shapes handled for arrays but not for maps. */
 static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
-    emit_address_of(codegen, arg, "_aa");
+    emit_address_of(codegen, arg);
 }
 
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {
@@ -6163,7 +6162,7 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         emit(codegen, "gray_default_arena, ");
     }
     if (strcmp(func, "from_chars") == 0) {
-        emit_address_of(codegen, node->data.call.args[0], "_ca");
+        emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
