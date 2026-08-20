@@ -4738,6 +4738,60 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
     }
 }
 
+/* Emit one call argument for a user-defined function, taking &arg when the
+ * parameter is mutable. This is the logic that was duplicated (and had
+ * drifted) across five call-emission paths: module-qualified calls,
+ * namespaced struct-function calls, instance dispatch, and general direct
+ * calls. Only the direct-call copy handled array/map elements, and only
+ * the instance-dispatch copy had the &(p^) cancellation; this consolidates
+ * both into every caller. */
+static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_param) {
+    if (!mut_param) {
+        emit_expression(codegen, arg);
+        return;
+    }
+    if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
+        /* &(p^) cancels out — emit the inner pointer directly */
+        emit_expression(codegen, arg->data.postfix.left);
+        return;
+    }
+    if (arg->kind == NODE_LABEL) {
+        const char *vn = arg->data.label.value;
+        if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
+        else emit_formatted(codegen, "&%s", vn);
+        return;
+    }
+    if (arg->kind == NODE_INDEX_EXPR) {
+        /* Array/map indexing always codegens as a GNU statement-expression
+         * whose result is a dereferenced value, not an lvalue — `&` on that
+         * is invalid C. Build a statement-expression that resolves to the
+         * pointer itself instead, mirroring gray_array_get_ptr/gray_map_get. */
+        GrayType *left_t = codegen->type_table
+            ? typetable_get(codegen->type_table, arg->data.index_expr.left) : NULL;
+        if (left_t && left_t->kind == TK_MAP) {
+            const char *c_key = "GrayString";
+            if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
+            emit_formatted(codegen, "({ %s _mk = ", c_key);
+            emit_expression(codegen, arg->data.index_expr.index);
+            emit(codegen, "; void *_mv = gray_map_get(&");
+            emit_expression(codegen, arg->data.index_expr.left);
+            emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                codegen->file, arg->token.line);
+            emit(codegen, "(int64_t *)_mv; })");
+        } else {
+            emit(codegen, "(int64_t *)gray_array_get_ptr(&");
+            emit_expression(codegen, arg->data.index_expr.left);
+            emit(codegen, ", ");
+            emit_expression(codegen, arg->data.index_expr.index);
+            emit_formatted(codegen, ", \"%s\", %d)", codegen->file, arg->token.line);
+        }
+        return;
+    }
+    /* NODE_MEMBER_EXPR (struct field) goes through emit_address_of, which
+     * already knows how to take its address correctly. */
+    emit_address_of(codegen, arg);
+}
+
 /* --- @maps module --- */
 
 static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
@@ -6611,15 +6665,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                             if (i > 0) emit(codegen, ", ");
                             if (i < ac) {
                                 bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
-                                if (mut_param && node->data.call.args[i]->kind == NODE_LABEL) {
-                                    const char *vn = node->data.call.args[i]->data.label.value;
-                                    if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-                                    else emit_formatted(codegen, "&%s", vn);
-                                } else if (mut_param && node->data.call.args[i]->kind == NODE_MEMBER_EXPR) {
-                                    emit(codegen, "&"); emit_expression(codegen, node->data.call.args[i]);
-                                } else {
-                                    emit_expression(codegen, node->data.call.args[i]);
-                                }
+                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                             } else if (i < pc && uf->data.func_decl.params[i].default_value) {
                                 emit_expression(codegen, uf->data.func_decl.params[i].default_value);
                             }
@@ -6709,15 +6755,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     if (i > 0) emit(codegen, ", ");
                     bool mut_param = i < ns_func->data.func_decl.param_count &&
                         ns_func->data.func_decl.params[i].mutable;
-                    if (mut_param && node->data.call.args[i]->kind == NODE_LABEL) {
-                        const char *vn = node->data.call.args[i]->data.label.value;
-                        if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-                        else emit_formatted(codegen, "&%s", vn);
-                    } else if (mut_param && node->data.call.args[i]->kind == NODE_MEMBER_EXPR) {
-                        emit(codegen, "&"); emit_expression(codegen, node->data.call.args[i]);
-                    } else {
-                        emit_expression(codegen, node->data.call.args[i]);
-                    }
+                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                 }
                 emit(codegen, ")");
                 return;
@@ -6896,15 +6934,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         if (i > 0) emit(codegen, ", ");
                         bool mut_param = i < ns_func->data.func_decl.param_count &&
                             ns_func->data.func_decl.params[i].mutable;
-                        if (mut_param && node->data.call.args[i]->kind == NODE_LABEL) {
-                            const char *vn = node->data.call.args[i]->data.label.value;
-                            if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-                            else emit_formatted(codegen, "&%s", vn);
-                        } else if (mut_param && node->data.call.args[i]->kind == NODE_MEMBER_EXPR) {
-                            emit(codegen, "&"); emit_expression(codegen, node->data.call.args[i]);
-                        } else {
-                            emit_expression(codegen, node->data.call.args[i]);
-                        }
+                        emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                     }
                     emit(codegen, ")");
                     return;
@@ -6966,19 +6996,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     int pi = self_injected ? i + 1 : i;
                     bool mut_param = pi < ns_func->data.func_decl.param_count &&
                         ns_func->data.func_decl.params[pi].mutable;
-                    if (mut_param && node->data.call.args[i]->kind == NODE_POSTFIX_EXPR &&
-                        node->data.call.args[i]->data.postfix.op == TOK_CARET) {
-                        /* &(p^) cancels out — emit the inner pointer directly */
-                        emit_expression(codegen, node->data.call.args[i]->data.postfix.left);
-                    } else if (mut_param && node->data.call.args[i]->kind == NODE_LABEL) {
-                        const char *vn = node->data.call.args[i]->data.label.value;
-                        if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-                        else emit_formatted(codegen, "&%s", vn);
-                    } else if (mut_param && node->data.call.args[i]->kind == NODE_MEMBER_EXPR) {
-                        emit(codegen, "&"); emit_expression(codegen, node->data.call.args[i]);
-                    } else {
-                        emit_expression(codegen, node->data.call.args[i]);
-                    }
+                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                 }
                 /* Inject default values for omitted trailing parameters */
                 {
@@ -7355,41 +7373,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             } else if (call_typed_sig && i < call_typed_sig->param_count) {
                 needs_addr = call_typed_sig->param_mutable[i];
             }
-            if (needs_addr && node->data.call.args[i]->kind == NODE_LABEL) {
-                const char *var_name = node->data.call.args[i]->data.label.value;
-                if (is_mutable_parameter(codegen, var_name)) {
-                    /* Already a pointer; pass through */
-                    emit(codegen, var_name);
-                } else {
-                    emit_formatted(codegen, "&%s", var_name);
-                }
-            } else if (needs_addr && node->data.call.args[i]->kind == NODE_INDEX_EXPR) {
-                /* Mutable param on indexed element: array or map */
-                AstNode *idx_node = node->data.call.args[i];
-                GrayType *left_t = codegen->type_table
-                    ? typetable_get(codegen->type_table, idx_node->data.index_expr.left) : NULL;
-                if (left_t && left_t->kind == TK_MAP) {
-                    /* Map: get pointer to value via gray_map_get */
-                    const char *c_key = "GrayString";
-                    if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
-                    emit_formatted(codegen, "({ %s _mk = ", c_key);
-                    emit_expression(codegen, idx_node->data.index_expr.index);
-                    emit(codegen, "; void *_mv = gray_map_get(&");
-                    emit_expression(codegen, idx_node->data.index_expr.left);
-                    emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
-                    emit(codegen, "(int64_t *)_mv; })");
-                } else {
-                    /* Array: pass pointer to element */
-                    emit(codegen, "(int64_t *)gray_array_get_ptr(&");
-                    emit_expression(codegen, idx_node->data.index_expr.left);
-                    emit(codegen, ", ");
-                    emit_expression(codegen, idx_node->data.index_expr.index);
-                    emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-                }
-            } else if (needs_addr && node->data.call.args[i]->kind == NODE_MEMBER_EXPR) {
-                /* Mutable param on struct field: pass address of field */
-                emit(codegen, "&");
-                emit_expression(codegen, node->data.call.args[i]);
+            if (needs_addr) {
+                emit_mutable_call_argument(codegen, node->data.call.args[i], true);
             } else {
                 const char *param_tn = NULL;
                 if (target_func && i < target_func->data.func_decl.param_count)

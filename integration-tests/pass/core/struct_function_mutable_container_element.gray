@@ -1,0 +1,46 @@
+/*
+ * struct_function_mutable_container_element.gray - Regression test for #2403.
+ *
+ * Passing an array element or map value to a mutable (&) parameter must
+ * work through every call path, not just a bare call: struct-function
+ * dispatch here, module-qualified dispatch in the sibling multi-file test
+ * mutable-container-element-through-module.
+ */
+
+const Box struct {
+    tag int
+    do bump(self Box, &n int) { n = n + 100 }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    b = new(Box)
+
+    mut xs [int] = {1, 2, 3}
+    b.bump(xs[0])
+    if xs[0] == 101 && xs[1] == 2 && xs[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] struct function, array element: got ${xs[0]}")
+        failed += 1
+    }
+
+    mut m map[string:int] = {"a": 1}
+    b.bump(m["a"])
+    mut mval int = m["a"]
+    if mval == 101 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] struct function, map value: got ${mval}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
