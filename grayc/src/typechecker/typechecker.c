@@ -6611,6 +6611,20 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     enum_display_name(checker, pt->name));
                 diagnostic_error_message(checker->diag, "E3041", msg,
                     NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_ARRAY && pt->element_type &&
+                       typechecker_enum_is_tagged(checker, pt->element_type)) {
+                char *msg = typechecker_format(checker,
+                    "cannot interpolate array of tagged enum '%s'; use when/is to destructure the payload first",
+                    enum_display_name(checker, pt->element_type));
+                diagnostic_error_message(checker->diag, "E3041", msg,
+                    NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_MAP && pt->value_type &&
+                       typechecker_enum_is_tagged(checker, pt->value_type)) {
+                char *msg = typechecker_format(checker,
+                    "cannot interpolate map of tagged enum '%s'; use when/is to destructure the payload first",
+                    enum_display_name(checker, pt->value_type));
+                diagnostic_error_message(checker->diag, "E3041", msg,
+                    NODE_FILE(checker, node), line, col, 0);
             } else if (pt->kind == TK_STRUCT ||
                        pt->kind == TK_POINTER ||
                        is_func_type) {
