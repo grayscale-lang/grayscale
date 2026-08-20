@@ -4972,8 +4972,32 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+/* Collapse mod.Enum.Variant(...) to the Enum.Variant(...) shape, with the
+ * enum under its module-prefixed key. Tagged enum construction is recognized
+ * from a bare enum name, and the imported form is the same construction
+ * written with the module in front. */
+static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return;
+    AstNode *obj = fn->data.member.object;
+    if (!obj || obj->kind != NODE_MEMBER_EXPR) return;
+    if (!obj->data.member.object || obj->data.member.object->kind != NODE_LABEL) return;
+
+    const char *mod_raw = obj->data.member.object->data.label.value;
+    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+    char prefixed[MSG_BUF_SIZE];
+    snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, obj->data.member.member);
+    if (!is_enum_name(checker, prefixed)) return;
+
+    mark_import_used(checker, mod_raw);
+    mark_import_used(checker, mod);
+    obj->kind = NODE_LABEL;
+    obj->data.label.value = arena_copy_string(checker->arena, prefixed);
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
+    normalize_qualified_enum_call(checker, node);
     /* Resolve argument types first. Skip the argument of ref()
      * when it's a bare function name; the ref() builtin handler
      * below resolves it specially, and the general resolve_expression

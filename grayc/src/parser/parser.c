@@ -2778,6 +2778,7 @@ static AstNode *parse_when_statement(Parser *parser) {
                 bool try_pattern = false;
                 bool is_implicit_pat = false;
                 bool is_explicit_enum = false;
+                bool is_qualified_enum = false;
                 Token pat_tok = parser->cur_token;
 
                 if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
@@ -2787,15 +2788,22 @@ static AstNode *parse_when_statement(Parser *parser) {
                     try_pattern = scan_paren_bindings(parser);
                     parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
-                    /* IDENT.IDENT(IDENT,...) explicit enum pattern form */
+                    /* IDENT.IDENT(IDENT,...) explicit enum pattern form, or
+                     * mod.IDENT.IDENT(IDENT,...) for an imported enum */
                     ParserSnapshot snap;
                     parser_snapshot_save(parser, &snap);
                     next_token(parser); /* skip enum name */
                     next_token(parser); /* skip DOT */
+                    if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
+                        next_token(parser); /* skip enum name */
+                        next_token(parser); /* skip DOT */
+                        is_qualified_enum = true;
+                    }
                     if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
                         try_pattern = scan_paren_bindings(parser);
                         if (try_pattern) is_explicit_enum = true;
                     }
+                    if (!try_pattern) is_qualified_enum = false;
                     parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_DOT) && peek_token_is(parser, TOK_IDENT)) {
                     /* .IDENT(IDENT,...) implicit pattern form */
@@ -2816,8 +2824,16 @@ static AstNode *parse_when_statement(Parser *parser) {
 
                     if (is_explicit_enum) {
                         pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, parser->cur_token.literal);
-                        next_token(parser); /* skip enum name */
+                        next_token(parser); /* skip enum name (or module) */
                         next_token(parser); /* skip dot */
+                        if (is_qualified_enum) {
+                            char qualified[MSG_BUF_SIZE];
+                            snprintf(qualified, sizeof(qualified), "%s_%s",
+                                pat->data.when_pattern.enum_name, parser->cur_token.literal);
+                            pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, qualified);
+                            next_token(parser); /* skip enum name */
+                            next_token(parser); /* skip dot */
+                        }
                     } else {
                         pat->data.when_pattern.enum_name = NULL;
                         if (is_implicit_pat) {

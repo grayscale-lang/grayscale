@@ -2566,7 +2566,12 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 char prefixed[MSG_BUF_SIZE];
                 snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, type_name);
                 if (codegen_is_enum(codegen, prefixed)) {
-                    emit_formatted(codegen, "GrayEnum_%s_%s_%s", mod, type_name, value);
+                    if (codegen_enum_is_tagged(codegen, prefixed)) {
+                        emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
+                            prefixed, prefixed, value);
+                    } else {
+                        emit_formatted(codegen, "GrayEnum_%s_%s_%s", mod, type_name, value);
+                    }
                     return;
                 }
             }
