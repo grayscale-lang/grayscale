@@ -1001,33 +1001,77 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     return NULL;
 }
 
+/* Emit a scalar expression converted to a wide integer type.
+ *
+ * The constructor is chosen from the SOURCE operand's signedness, never the
+ * destination's. i128 and i256 represent every uint exactly, so widening a
+ * uint is value-preserving — but routing it through from_i64 reinterprets
+ * any value above INT64_MAX as negative. Only when the source type cannot
+ * be resolved does the destination's signedness stand in.
+ *
+ * value_t may be NULL; the type table is consulted when it is. */
+static void emit_scalar_to_bigint(CodeGen *codegen, const char *target_type,
+                                  AstNode *value, GrayType *value_t) {
+    const char *pfx = bigint_prefix(target_type);
+
+    /* Integer literals carry their own width. One above INT64_MAX cannot go
+     * through from_i64 at all, so it is parsed from its decimal text
+     * directly into the wide type. */
+    if (value->kind == NODE_INT_VALUE) {
+        if (value->data.int_value.overflow) {
+            emit_formatted(codegen, "%s_from_decimal(\"%s\")", pfx,
+                value->data.int_value.literal);
+        } else {
+            const char *sfx = (target_type[0] == 'u') ? "u64" : "i64";
+            emit_formatted(codegen, "%s_from_%s(%lldLL)", pfx, sfx,
+                (long long)value->data.int_value.value);
+        }
+        return;
+    }
+    if (value->kind == NODE_PREFIX_EXPR && value->data.prefix.op == TOK_MINUS &&
+        value->data.prefix.right && value->data.prefix.right->kind == NODE_INT_VALUE) {
+        if (value->data.prefix.right->data.int_value.overflow) {
+            emit_formatted(codegen, "%s_from_decimal(\"-%s\")", pfx,
+                value->data.prefix.right->data.int_value.literal);
+        } else {
+            emit_formatted(codegen, "%s_from_i64(%lldLL)", pfx,
+                -(long long)value->data.prefix.right->data.int_value.value);
+        }
+        return;
+    }
+
+    if (!value_t && codegen->type_table)
+        value_t = typetable_get(codegen->type_table, value);
+
+    bool src_unsigned = value_t
+        ? (value_t->kind == TK_UINT || value_t->kind == TK_BYTE)
+        : false;
+
+    /* An unsigned destination has only from_u64 to offer, so it takes that
+     * path whatever the source is; a signed one follows the source. */
+    bool use_u64 = (target_type[0] == 'u') || src_unsigned;
+
+    if (use_u64) {
+        emit_formatted(codegen, "%s_from_u64((uint64_t)(", pfx);
+    } else {
+        emit_formatted(codegen, "%s_from_i64((int64_t)(", pfx);
+    }
+    emit_expression(codegen, value);
+    emit(codegen, "))");
+}
+
 /* Emit a bigint operand, widening smaller integer or bigint operands so
  * mixed-width expressions like i128+i64 or i256+i128 pass correctly typed
  * values to the bigint arithmetic helpers. */
 static void emit_bigint_operand(CodeGen *codegen, AstNode *operand,
                                 const char *pfx, const char *bi_type,
                                 GrayType *operand_t) {
-    /* Integer literal */
-    if (operand->kind == NODE_INT_VALUE) {
-        if (operand->data.int_value.overflow) {
-            emit_formatted(codegen, "%s_from_decimal(\"%s\")", pfx, operand->data.int_value.literal);
-        } else {
-            const char *sfx = (strcmp(bi_type, "u128") == 0 || strcmp(bi_type, "u256") == 0) ? "u64" : "i64";
-            emit_formatted(codegen, "%s_from_%s(%lldLL)", pfx, sfx, (long long)operand->data.int_value.value);
-        }
-        return;
-    }
-    /* Negative integer literal */
-    if (operand->kind == NODE_PREFIX_EXPR &&
-        operand->data.prefix.op == TOK_MINUS &&
-        operand->data.prefix.right->kind == NODE_INT_VALUE) {
-        if (operand->data.prefix.right->data.int_value.overflow) {
-            emit_formatted(codegen, "%s_from_decimal(\"-%s\")", pfx,
-                  operand->data.prefix.right->data.int_value.literal);
-        } else {
-            emit_formatted(codegen, "%s_from_i64(%lldLL)", pfx,
-                  -(long long)operand->data.prefix.right->data.int_value.value);
-        }
+    /* Integer literal, negative or not */
+    if (operand->kind == NODE_INT_VALUE ||
+        (operand->kind == NODE_PREFIX_EXPR &&
+         operand->data.prefix.op == TOK_MINUS &&
+         operand->data.prefix.right->kind == NODE_INT_VALUE)) {
+        emit_scalar_to_bigint(codegen, bi_type, operand, operand_t);
         return;
     }
     /* Check if operand is a bigint label and if it needs widening to a larger bigint */
@@ -1052,19 +1096,8 @@ static void emit_bigint_operand(CodeGen *codegen, AstNode *operand,
             }
             return;
         }
-        /* Non-bigint label: widen to the target bigint type.
-         * Use operand_t kind when available; fall back to target signedness. */
-        bool target_unsigned = (strcmp(bi_type, "u128") == 0 || strcmp(bi_type, "u256") == 0);
-        bool src_unsigned = operand_t
-            ? (operand_t->kind == TK_UINT || operand_t->kind == TK_BYTE)
-            : target_unsigned;
-        if (src_unsigned) {
-            emit_formatted(codegen, "%s_from_u64((uint64_t)(", pfx);
-        } else {
-            emit_formatted(codegen, "%s_from_i64((int64_t)(", pfx);
-        }
-        emit_expression(codegen, operand);
-        emit(codegen, "))");
+        /* Non-bigint label: widen to the target bigint type. */
+        emit_scalar_to_bigint(codegen, bi_type, operand, operand_t);
         return;
     }
     /* Non-label expression — emit directly */
@@ -2981,14 +3014,7 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         if (target_is_bi || src_bi) {
             if (target_is_bi && !src_bi) {
                 /* scalar → wide: use from_i64 / from_u64 */
-                bool dst_unsigned = (target[0] == 'u');
-                if (dst_unsigned) {
-                    emit_formatted(codegen, "%s_from_u64((uint64_t)(", bigint_prefix(target));
-                } else {
-                    emit_formatted(codegen, "%s_from_i64((int64_t)(", bigint_prefix(target));
-                }
-                emit_expression(codegen, val);
-                emit(codegen, "))");
+                emit_scalar_to_bigint(codegen, target, val, val_t);
             } else if (!target_is_bi && src_bi) {
                 /* wide → scalar: range-checked extraction to int64/uint64,
                  * with additional narrow-range check for sub-64-bit targets */
@@ -4341,10 +4367,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             emit(codegen, ")");
         } else {
             /* Scalar→bigint: e.g., gray_i128_from_i64(x) */
-            const char *from_suffix = (strcmp(func, "u128") == 0 || strcmp(func, "u256") == 0) ? "u64" : "i64";
-            emit_formatted(codegen, "%s_from_%s(", pfx, from_suffix);
-            emit_expression(codegen, carg);
-            emit(codegen, ")");
+            emit_scalar_to_bigint(codegen, func, carg, NULL);
         }
         return true;
     }
@@ -7857,19 +7880,7 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
             /* Scalar variable/expression assigned to a wide integer type.
              * Wrap with from_i64/from_u64 so the C assignment is valid.
              * Covers: mut big i128 = some_int_var */
-            const char *pfx = bigint_prefix(type_name);
-            bool dst_unsigned = (type_name[0] == 'u');
-            GrayType *val_t = codegen->type_table
-                ? typetable_get(codegen->type_table, node->data.var_decl.value) : NULL;
-            bool src_unsigned = (val_t && val_t->kind == TK_UINT);
-            if (dst_unsigned) {
-                emit_formatted(codegen, "%s_from_u64((uint64_t)(", pfx);
-            } else {
-                emit_formatted(codegen, "%s_from_i64((int64_t)(", pfx);
-            }
-            (void)src_unsigned;
-            emit_expression(codegen, node->data.var_decl.value);
-            emit(codegen, "))");
+            emit_scalar_to_bigint(codegen, type_name, node->data.var_decl.value, NULL);
         } else if (!emit_narrowing_cast(codegen, type_name, node->data.var_decl.value, node->token.line)) {
             emit_expression(codegen, node->data.var_decl.value);
         }

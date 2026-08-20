@@ -1,0 +1,135 @@
+/*
+ * bigint_from_unsigned.gray - Test uint -> signed wide integer conversion
+ *
+ * i128 and i256 represent every uint exactly, so widening a uint to one of
+ * them is value preserving. Routing it through from_i64 sign-extends
+ * instead, turning any value above INT64_MAX negative.
+ *
+ * Covers all four conversion positions: declaration initialiser, the
+ * i128()/i256() constructor, cast(), and binary widening.
+ */
+
+do main() {
+    println("=== uint to Wide Integer Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut u uint = 18446744073709551615
+    mut expected i128 = 18446744073709551615
+
+    // Test 1: declaration initialiser
+    mut a i128 = u
+    if a == expected {
+        println("  [PASS] mut a i128 = uint_var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut a i128 = uint_var: got ${a}")
+        failed += 1
+    }
+
+    // Test 2: i128() constructor
+    mut b i128 = i128(u)
+    if b == expected {
+        println("  [PASS] i128(uint_var)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128(uint_var): got ${b}")
+        failed += 1
+    }
+
+    // Test 3: cast()
+    mut c i128 = cast(u, i128)
+    if c == expected {
+        println("  [PASS] cast(uint_var, i128)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(uint_var, i128): got ${c}")
+        failed += 1
+    }
+
+    // Test 4: binary widening
+    mut d i128 = i128(0) + u
+    if d == expected {
+        println("  [PASS] i128(0) + uint_var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128(0) + uint_var: got ${d}")
+        failed += 1
+    }
+
+    // Test 5: i256 declaration initialiser.
+    // The reference is a decimal literal, which reaches the wide type
+    // without passing through from_i64 at all.
+    mut e_expected i256 = 18446744073709551615
+    mut e i256 = u
+    if e == e_expected {
+        println("  [PASS] mut e i256 = uint_var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut e i256 = uint_var: got ${e}")
+        failed += 1
+    }
+
+    // Test 6: INT64_MAX + 1, the smallest value that misconverts
+    mut h uint = 9223372036854775808
+    mut i i128 = h
+    if i > i128(0) {
+        println("  [PASS] uint above INT64_MAX stays positive")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] uint above INT64_MAX stays positive: got ${i}")
+        failed += 1
+    }
+
+    // Test 7: sized unsigned sources widen without sign extension
+    mut s64 u64 = 18446744073709551615
+    mut j i128 = s64
+    if j == expected {
+        println("  [PASS] u64 var to i128")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 var to i128: got ${j}")
+        failed += 1
+    }
+
+    // Test 8: byte source widens unsigned
+    mut by byte = 200
+    mut k i128 = by
+    if k == i128(200) {
+        println("  [PASS] byte var to i128")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] byte var to i128: got ${k}")
+        failed += 1
+    }
+
+    // Test 9: signed sources must still sign-extend
+    mut n int = -42
+    mut m i128 = n
+    if m == i128(-42) {
+        println("  [PASS] negative int to i128 still sign-extends")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative int to i128 still sign-extends: got ${m}")
+        failed += 1
+    }
+
+    // Test 10: unsigned destinations unchanged
+    mut p u128 = u
+    if p == u128(18446744073709551615) {
+        println("  [PASS] uint to u128 unchanged")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] uint to u128 unchanged: got ${p}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
