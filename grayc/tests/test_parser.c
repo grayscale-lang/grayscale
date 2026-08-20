@@ -818,6 +818,17 @@ static void test_parse_error_E2060_too_many_returns(void) {
     ASSERT(parser_has_code(diagnostics, "E2060"));
 }
 
+/* Regression test for #2413: the bound was checked after writing to
+ * names[var_count]/types[var_count], so the 17th variable wrote one element
+ * past the 16-element arrays before the check could fire. Seventeen names
+ * (one initial + sixteen in the comma loop) is what triggers the write. */
+static void test_parse_error_E2062_too_many_multi_vars(void) {
+    AstNode *program = parse_test_input(
+        "do main() { mut a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q = foo() }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2062"));
+}
+
 static void test_parse_error_E2068_mut_struct(void) {
     AstNode *program = parse_test_input("mut S struct { x int }");
     (void)program;
@@ -951,6 +962,7 @@ int main(void) {
     RUN_TEST(test_parse_error_E2025_non_int_array_size);
     RUN_TEST(test_parse_error_E2059_empty_when);
     RUN_TEST(test_parse_error_E2060_too_many_returns);
+    RUN_TEST(test_parse_error_E2062_too_many_multi_vars);
     RUN_TEST(test_parse_error_E2068_mut_struct);
     RUN_TEST(test_parse_error_E2069_semicolon_in_struct);
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
