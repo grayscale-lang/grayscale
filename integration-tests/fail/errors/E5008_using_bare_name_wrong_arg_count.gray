@@ -9,6 +9,8 @@
  * checks that go with it.
  */
 
+// expect-error: E5008
+
 import @time
 using time
 

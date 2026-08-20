@@ -8,6 +8,8 @@
  * to char that only the C compiler rejected.
  */
 
+// expect-error: E5026
+
 import @fmt
 using fmt
 
