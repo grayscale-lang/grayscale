@@ -1298,14 +1298,8 @@ int main(int argc, char **argv) {
 
                             /* Only inject import stmt if it has non-sibling items */
                             if (!all_sibling) {
-                                if (program->data.program.stmt_count >= program->data.program.stmt_cap) {
-                                    int nc = program->data.program.stmt_cap * 2;
-                                    AstNode **ns = arena_alloc(arena, sizeof(AstNode *) * nc);
-                                    memcpy(ns, program->data.program.stmts,
-                                           sizeof(AstNode *) * program->data.program.stmt_count);
-                                    program->data.program.stmts = ns;
-                                    program->data.program.stmt_cap = nc;
-                                }
+                                ARENA_GROW(arena, program->data.program.stmts,
+                                    program->data.program.stmt_count, program->data.program.stmt_cap);
                                 if (iq_tail < MAX_IMPORTS) import_queue[iq_tail++] = ts;
                                 program->data.program.stmts[program->data.program.stmt_count++] = ts;
                             }
@@ -1407,14 +1401,8 @@ int main(int argc, char **argv) {
                     rewrite_labels(imp_stmt->data.var_decl.value, orig_names, new_names, name_count, arena);
 
                     /* Insert at beginning */
-                    if (program->data.program.stmt_count >= program->data.program.stmt_cap) {
-                        int new_cap = program->data.program.stmt_cap * 2;
-                        AstNode **new_stmts = arena_alloc(arena, sizeof(AstNode *) * new_cap);
-                        memcpy(new_stmts, program->data.program.stmts,
-                               sizeof(AstNode *) * program->data.program.stmt_count);
-                        program->data.program.stmts = new_stmts;
-                        program->data.program.stmt_cap = new_cap;
-                    }
+                    ARENA_GROW(arena, program->data.program.stmts,
+                        program->data.program.stmt_count, program->data.program.stmt_cap);
                     int insert_at = 0;
                     for (int k = 0; k < program->data.program.stmt_count; k++) {
                         if (program->data.program.stmts[k]->kind == NODE_IMPORT_STMT ||
@@ -1507,14 +1495,8 @@ int main(int argc, char **argv) {
 
                     /* Insert into main program BEFORE existing declarations.
                      * This ensures imported constants/functions are visible to all code. */
-                    if (program->data.program.stmt_count >= program->data.program.stmt_cap) {
-                        int new_cap = program->data.program.stmt_cap * 2;
-                        AstNode **new_stmts = arena_alloc(arena, sizeof(AstNode *) * new_cap);
-                        memcpy(new_stmts, program->data.program.stmts,
-                               sizeof(AstNode *) * program->data.program.stmt_count);
-                        program->data.program.stmts = new_stmts;
-                        program->data.program.stmt_cap = new_cap;
-                    }
+                    ARENA_GROW(arena, program->data.program.stmts,
+                        program->data.program.stmt_count, program->data.program.stmt_cap);
                     /* Find insertion point: after imports/using/var_decls */
                     int insert_at = 0;
                     for (int k = 0; k < program->data.program.stmt_count; k++) {
