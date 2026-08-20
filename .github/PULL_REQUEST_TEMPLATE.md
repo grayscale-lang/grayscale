@@ -28,6 +28,7 @@ None.
 - [ ] `make build` compiles with zero warnings
 - [ ] Tests added/updated (unit, integration, or both as appropriate)
 - [ ] No `@` before module names in any text (it tags GitHub users)
+- [ ] Added yourself to the `Contributors:` section of the header of each source file you changed
 
 ### If adding user-facing stdlib/builtin/type
 
