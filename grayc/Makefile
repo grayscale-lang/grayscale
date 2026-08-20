@@ -200,8 +200,11 @@ TEST_DEPS = src/util/arena.o src/util/buf.o src/util/error.o src/util/error_code
             src/parser/ast.o src/parser/parser.o \
             src/typechecker/types.o src/typechecker/scope.o src/typechecker/typechecker.o
 
-# Runtime objects needed by the runtime test binary
-RT_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o $(ATOMIC_OBJ)
+# Runtime sources needed by the runtime test binary. The sanitizer targets
+# compile these directly rather than linking objects, so both forms are
+# derived from one list — a source added here reaches every target.
+RT_TEST_SRC = src/runtime/runtime.c src/runtime/array.c src/runtime/map.c
+RT_TEST_DEPS = $(RT_TEST_SRC:.c=.o) $(ATOMIC_OBJ)
 
 # Objects needed by the panic test binary (runtime + stdlib modules that emit panics)
 PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
@@ -313,7 +316,7 @@ test-ubsan:
 	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
 	@./tests/test_util_san$(EXE)
 	@echo "=== UBSan Runtime Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
+	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS)
 	@./tests/test_runtime_san$(EXE)
 	@rm -f tests/test_lexer_san$(EXE) tests/test_parser_san$(EXE) tests/test_typechecker_san$(EXE) tests/test_util_san$(EXE) tests/test_runtime_san$(EXE)
 	@rm -rf tests/*.dSYM
@@ -333,7 +336,7 @@ test-asan:
 	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
 	@./tests/test_util_san$(EXE)
 	@echo "=== ASan+UBSan Runtime Tests ==="
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c src/runtime/runtime.c src/runtime/array.c src/runtime/map.c $(LDFLAGS)
+	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS)
 	@./tests/test_runtime_san$(EXE)
 	@rm -f tests/test_lexer_san$(EXE) tests/test_parser_san$(EXE) tests/test_typechecker_san$(EXE) tests/test_util_san$(EXE) tests/test_runtime_san$(EXE)
 	@rm -rf tests/*.dSYM
