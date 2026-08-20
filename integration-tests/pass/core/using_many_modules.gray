@@ -1,0 +1,122 @@
+/*
+ * using_many_modules.gray - Test 'using' with many modules in one statement
+ *
+ * The modules named in a single 'using' went into a fixed four-element
+ * array with no bounds check, so a fifth wrote past the end and the module
+ * names came back as garbage. Ten here is well clear of that.
+ *
+ * Each module is exercised through a bare (unqualified) name, which only
+ * resolves if that module was actually recorded by the using statement.
+ */
+
+import @strings, @math, @arrays, @maps, @fmt, @strconv, @encoding, @os, @time, @random
+using strings, math, arrays, maps, fmt, strconv, encoding, os, time, random
+
+do main() {
+    println("=== using With Many Modules Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // 1: strings
+    if to_upper("ok") == "OK" {
+        println("  [PASS] strings")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strings")
+        failed += 1
+    }
+
+    // 2: math — the 5th module onward is where the old array overflowed
+    if abs(-7) == 7 {
+        println("  [PASS] math")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] math")
+        failed += 1
+    }
+
+    // 3: arrays
+    mut nums [int] = {3, 1, 2}
+    if get_max(nums) == 3 {
+        println("  [PASS] arrays")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arrays")
+        failed += 1
+    }
+
+    // 4: maps
+    mut m map[string:int] = {"a": 1}
+    if has_key(m, "a") {
+        println("  [PASS] maps")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] maps")
+        failed += 1
+    }
+
+    // 5: fmt
+    if center("x", 5, '.') == "..x.." {
+        println("  [PASS] fmt")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] fmt")
+        failed += 1
+    }
+
+    // 6: strconv
+    if from_int(42) == "42" {
+        println("  [PASS] strconv")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strconv")
+        failed += 1
+    }
+
+    // 7: encoding
+    mut bytes [byte] = from_string("A")
+    if to_hex(bytes) == "41" {
+        println("  [PASS] encoding")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] encoding")
+        failed += 1
+    }
+
+    // 8: os
+    if arch() != "" {
+        println("  [PASS] os")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] os")
+        failed += 1
+    }
+
+    // 9: time
+    if year(now()) > 2000 {
+        println("  [PASS] time")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] time")
+        failed += 1
+    }
+
+    // 10: random
+    mut r int = rand_int(1, 3)
+    if r >= 1 && r <= 3 {
+        println("  [PASS] random")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] random")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

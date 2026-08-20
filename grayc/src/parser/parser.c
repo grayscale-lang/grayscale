@@ -2027,12 +2027,14 @@ static AstNode *parse_import_statement(Parser *parser) {
 static AstNode *parse_using_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_USING_STMT, parser->cur_token);
 
-    int cap = 4;
+    int cap = GROW_ARRAY_INIT_CAP;
     node->data.using_stmt.count = 0;
     node->data.using_stmt.modules = arena_alloc(parser->arena, sizeof(const char *) * cap);
 
     do {
         next_token(parser);
+        ARENA_GROW(parser->arena, node->data.using_stmt.modules,
+            node->data.using_stmt.count, cap);
         node->data.using_stmt.modules[node->data.using_stmt.count++] = parser->cur_token.literal;
     } while (peek_token_is(parser, TOK_COMMA) && (next_token(parser), 1));
 
