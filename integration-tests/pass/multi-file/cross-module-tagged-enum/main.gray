@@ -1,0 +1,64 @@
+import "./shapes"
+
+do describe(s shapes.Shape) -> string {
+    when s {
+        is .Circle(r) { return "circle ${r}" }
+        is shapes.Shape.Rect(w, h) { return "rect ${w}x${h}" }
+        default { return "empty" }
+    }
+    return "unreachable"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Construction of an imported tagged variant, inferred type
+    mut c = shapes.Shape.Circle(7)
+    when c {
+        is .Circle(r) {
+            if r == 7 {
+                passed = passed + 1
+            } otherwise {
+                println("  [FAIL] circle payload was ${r}, expected 7")
+                failed = failed + 1
+            }
+        }
+        default {
+            println("  [FAIL] inferred value did not match .Circle")
+            failed = failed + 1
+        }
+    }
+
+    // Annotated declaration and a multi-payload variant
+    mut r shapes.Shape = shapes.Shape.Rect(2, 5)
+    if describe(r) == "rect 2x5" {
+        passed = passed + 1
+    } otherwise {
+        println("  [FAIL] describe(rect) returned '${describe(r)}'")
+        failed = failed + 1
+    }
+
+    if describe(c) == "circle 7" {
+        passed = passed + 1
+    } otherwise {
+        println("  [FAIL] describe(circle) returned '${describe(c)}'")
+        failed = failed + 1
+    }
+
+    // Payload-free variant of a tagged enum
+    mut e shapes.Shape = shapes.Shape.Empty
+    if describe(e) == "empty" {
+        passed = passed + 1
+    } otherwise {
+        println("  [FAIL] describe(empty) returned '${describe(e)}'")
+        failed = failed + 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

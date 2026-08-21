@@ -23,7 +23,7 @@
 
 #include "colors.h"
 
-static const char *col(DiagnosticList *diagnostics, const char *code) {
+static const char *color_code(DiagnosticList *diagnostics, const char *code) {
     return diagnostics->use_color ? code : "";
 }
 
@@ -204,11 +204,11 @@ int diagnostic_warning_count(DiagnosticList *diagnostics) {
 
 /* --- Rendering --- */
 
-static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *d) {
+static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic_entry) {
     const char *sev_str;
     const char *sev_color;
 
-    switch (d->severity) {
+    switch (diagnostic_entry->severity) {
     case SEV_ERROR:
         sev_str = "error";
         sev_color = COL_RED;
@@ -220,90 +220,90 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *d) {
     }
 
     /* Line 1: severity[code]: message */
-    fprintf(stderr, "%s%s%s%s", col(diagnostics, COL_BOLD), col(diagnostics, sev_color), sev_str, col(diagnostics, COL_RESET));
-    if (d->code) {
-        fprintf(stderr, "%s%s[%s]%s", col(diagnostics, COL_BOLD), col(diagnostics, sev_color), d->code, col(diagnostics, COL_RESET));
+    fprintf(stderr, "%s%s%s%s", color_code(diagnostics, COL_BOLD), color_code(diagnostics, sev_color), sev_str, color_code(diagnostics, COL_RESET));
+    if (diagnostic_entry->code) {
+        fprintf(stderr, "%s%s[%s]%s", color_code(diagnostics, COL_BOLD), color_code(diagnostics, sev_color), diagnostic_entry->code, color_code(diagnostics, COL_RESET));
     }
-    fprintf(stderr, "%s: %s%s\n", col(diagnostics, COL_BOLD), d->message, col(diagnostics, COL_RESET));
+    fprintf(stderr, "%s: %s%s\n", color_code(diagnostics, COL_BOLD), diagnostic_entry->message, color_code(diagnostics, COL_RESET));
 
     /* Line 2: --> file:line:column */
-    if (d->file && d->line > 0) {
-        fprintf(stderr, "  %s-->%s %s:%d:%d\n",
-            col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET),
-            d->file, d->line, d->column);
+    if (diagnostic_entry->file && diagnostic_entry->line > 0) {
+        fprintf(stderr, "  %s-->%s %s:%diagnostic_entry:%diagnostic_entry\n",
+            color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET),
+            diagnostic_entry->file, diagnostic_entry->line, diagnostic_entry->column);
     }
 
     /* Lines 3-4: source context with underline */
-    const char *src_line = d->source_line;
-    if (!src_line && d->file) {
+    const char *src_line = diagnostic_entry->source_line;
+    if (!src_line && diagnostic_entry->file) {
         /* Search cache slots for this file */
         DiagSourceSlot *slot = NULL;
         for (int ci = 0; ci < DIAG_FILE_CACHE_SIZE; ci++) {
-            DiagSourceSlot *s = &diagnostics->file_cache[ci];
-            if (s->source && s->path && strcmp(s->path, d->file) == 0) {
-                slot = s;
+            DiagSourceSlot *candidate = &diagnostics->file_cache[ci];
+            if (candidate->source && candidate->path && strcmp(candidate->path, diagnostic_entry->file) == 0) {
+                slot = candidate;
                 break;
             }
         }
         if (!slot) {
             /* Cache miss: read from disk and store in the LRU secondary slot */
-            const char *content = read_file_to_string(d->file);
+            const char *content = read_file_to_string(diagnostic_entry->file);
             if (content) {
                 int evict = 1;
                 for (int ci = 2; ci < DIAG_FILE_CACHE_SIZE; ci++) {
                     if (diagnostics->file_cache[ci].last_use < diagnostics->file_cache[evict].last_use)
                         evict = ci;
                 }
-                DiagSourceSlot *s = &diagnostics->file_cache[evict];
-                if (s->owned) free((void *)s->source);
-                free(s->line_offsets);
-                s->path = d->file;
-                s->source = content;
-                s->owned = true;
-                s->line_offsets = NULL;
-                s->line_count = 0;
-                build_line_index(s);
-                slot = s;
+                DiagSourceSlot *candidate = &diagnostics->file_cache[evict];
+                if (candidate->owned) free((void *)candidate->source);
+                free(candidate->line_offsets);
+                candidate->path = diagnostic_entry->file;
+                candidate->source = content;
+                candidate->owned = true;
+                candidate->line_offsets = NULL;
+                candidate->line_count = 0;
+                build_line_index(candidate);
+                slot = candidate;
             }
         }
         if (slot) {
             slot->last_use = ++diagnostics->cache_clock;
-            src_line = read_source_line_indexed(slot->line_offsets, slot->line_count, d->line);
+            src_line = read_source_line_indexed(slot->line_offsets, slot->line_count, diagnostic_entry->line);
         }
     }
 
-    if (src_line && d->line > 0) {
+    if (src_line && diagnostic_entry->line > 0) {
         /* Line number gutter */
-        fprintf(stderr, "   %s|%s\n", col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET));
+        fprintf(stderr, "   %s|%s\n", color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET));
         fprintf(stderr, "%s%3d%s %s|%s %s\n",
-            col(diagnostics, COL_BLUE), d->line, col(diagnostics, COL_RESET),
-            col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET),
+            color_code(diagnostics, COL_BLUE), diagnostic_entry->line, color_code(diagnostics, COL_RESET),
+            color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET),
             src_line);
 
         /* Underline */
-        int start = d->column > 0 ? d->column : 1;
-        int end = d->end_column > 0 ? d->end_column : start;
+        int start = diagnostic_entry->column > 0 ? diagnostic_entry->column : 1;
+        int end = diagnostic_entry->end_column > 0 ? diagnostic_entry->end_column : start;
         int span_len = end - start + 1;
         if (span_len < 1) span_len = 1;
 
-        fprintf(stderr, "   %s|%s ", col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET));
+        fprintf(stderr, "   %s|%s ", color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET));
         for (int i = 1; i < start; i++) {
             fputc(' ', stderr);
         }
-        fprintf(stderr, "%s%s", col(diagnostics, COL_BOLD), col(diagnostics, sev_color));
+        fprintf(stderr, "%s%s", color_code(diagnostics, COL_BOLD), color_code(diagnostics, sev_color));
         for (int i = 0; i < span_len; i++) {
             fputc('^', stderr);
         }
-        fprintf(stderr, "%s\n", col(diagnostics, COL_RESET));
+        fprintf(stderr, "%s\n", color_code(diagnostics, COL_RESET));
     }
 
     /* Help text */
-    if (d->help) {
-        fprintf(stderr, "   %s|%s\n", col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET));
+    if (diagnostic_entry->help) {
+        fprintf(stderr, "   %s|%s\n", color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET));
         fprintf(stderr, "   %s=%s %shelp%s: %s\n",
-            col(diagnostics, COL_BLUE), col(diagnostics, COL_RESET),
-            col(diagnostics, COL_CYAN), col(diagnostics, COL_RESET),
-            d->help);
+            color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET),
+            color_code(diagnostics, COL_CYAN), color_code(diagnostics, COL_RESET),
+            diagnostic_entry->help);
     }
 
     fprintf(stderr, "\n");
@@ -340,22 +340,22 @@ void diagnostic_print_summary(DiagnosticList *diagnostics) {
 
     if (errors == 0 && warnings == 0) return;
 
-    fprintf(stderr, "%sgrayscale:%s ", col(diagnostics, COL_BOLD), col(diagnostics, COL_RESET));
+    fprintf(stderr, "%sgrayscale:%s ", color_code(diagnostics, COL_BOLD), color_code(diagnostics, COL_RESET));
 
     if (errors > 0) {
         fprintf(stderr, "%s%s%d error%s%s",
-            col(diagnostics, COL_BOLD), col(diagnostics, COL_RED),
+            color_code(diagnostics, COL_BOLD), color_code(diagnostics, COL_RED),
             errors, errors == 1 ? "" : "s",
-            col(diagnostics, COL_RESET));
+            color_code(diagnostics, COL_RESET));
     }
     if (errors > 0 && warnings > 0) {
         fprintf(stderr, ", ");
     }
     if (warnings > 0) {
         fprintf(stderr, "%s%s%d warning%s%s",
-            col(diagnostics, COL_BOLD), col(diagnostics, COL_YELLOW),
+            color_code(diagnostics, COL_BOLD), color_code(diagnostics, COL_YELLOW),
             warnings, warnings == 1 ? "" : "s",
-            col(diagnostics, COL_RESET));
+            color_code(diagnostics, COL_RESET));
     }
 
     if (errors > 0) {
@@ -366,6 +366,6 @@ void diagnostic_print_summary(DiagnosticList *diagnostics) {
 
     if (warnings > 0 && !diagnostics->suppress_all_warnings && diagnostics->suppressed_count == 0) {
         fprintf(stderr, "%shint:%s suppress warnings with -q <W1001,W1002,...> or -q 'all'\n",
-            col(diagnostics, COL_BOLD), col(diagnostics, COL_RESET));
+            color_code(diagnostics, COL_BOLD), color_code(diagnostics, COL_RESET));
     }
 }

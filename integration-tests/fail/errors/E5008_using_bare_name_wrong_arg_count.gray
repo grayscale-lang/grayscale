@@ -1,0 +1,19 @@
+/*
+ * Error Test: E5008 - wrong argument count on a stdlib call made by bare
+ * name through 'using'
+ * Expected: "function 'time.year' expects 1 argument(s), got 0"
+ *
+ * The qualified form time.year() was always caught. The bare name reached
+ * the C compiler instead, because the using resolution path took the
+ * return type from the stdlib metadata without running the signature
+ * checks that go with it.
+ */
+
+// expect-error: E5008
+
+import @time
+using time
+
+do main() {
+    println(year())  // ERROR: time.year takes a timestamp
+}

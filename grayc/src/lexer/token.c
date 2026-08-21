@@ -65,17 +65,35 @@ static const KeywordEntry keywords[] = {
 
 #define KEYWORD_COUNT (sizeof(keywords) / sizeof(keywords[0]))
 
-TokenType token_lookup_identifier(const char *ident) {
+/* Compares a length-bounded source span against a NUL-terminated keyword, in
+ * the same lexical order strcmp would give if the span were NUL-terminated
+ * at span_len. Lets the binary search below run before the span has been
+ * copied anywhere. */
+static int keyword_span_cmp(const char *span, int span_len, const char *keyword) {
+    for (int i = 0; i < span_len; i++) {
+        unsigned char span_ch = (unsigned char)span[i];
+        unsigned char kw_ch = (unsigned char)keyword[i];
+        if (kw_ch == '\0') return 1;
+        if (span_ch != kw_ch) return (int)span_ch - (int)kw_ch;
+    }
+    return keyword[span_len] == '\0' ? 0 : -1;
+}
+
+bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword) {
     int lo = 0;
-    int hi = KEYWORD_COUNT - 1;
+    int hi = (int)KEYWORD_COUNT - 1;
     while (lo <= hi) {
         int mid = (lo + hi) / 2;
-        int cmp = strcmp(ident, keywords[mid].keyword);
-        if (cmp == 0) return keywords[mid].type;
+        int cmp = keyword_span_cmp(ident, len, keywords[mid].keyword);
+        if (cmp == 0) {
+            *out_type = keywords[mid].type;
+            *out_keyword = keywords[mid].keyword;
+            return true;
+        }
         if (cmp < 0) hi = mid - 1;
         else lo = mid + 1;
     }
-    return TOK_IDENT;
+    return false;
 }
 
 const char *token_type_name(TokenType type) {

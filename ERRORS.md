@@ -250,9 +250,9 @@
 | `E5038` | usage | tagged enum '%s' cannot be passed to '%s()'; use when/is to destructure the payload first |
 | `E5039` | usage | constant expression overflows type '%s' |
 | `E5040` | usage | constant requires a compile-time value; function calls are evaluated at runtime |
-| `E5041` | usage | tagged enum '%s' cannot be used as a map value type; use when/is to destructure before storing |
 | `E5042` | usage | '#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard' |
 | `E5043` | usage | 'fields()' requires a struct instance, got '%s' |
+| `E5044` | usage | 'error()' argument must be a string, got '%s' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -433,4 +433,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-14 11:17:04 UTC*
+*Generated on 2026-08-21 02:06:07 UTC*

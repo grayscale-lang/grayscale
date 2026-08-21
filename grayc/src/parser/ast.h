@@ -235,6 +235,7 @@ struct AstNode {
             AstNode *value;
             bool mutable;
             bool is_private;
+            bool synthetic;            /* parser-generated temp, not user-written */
         } var_decl;
 
         /* NODE_ASSIGN_STMT */

@@ -43,6 +43,17 @@ static inline gray_i128 gray_i128_from_i64(int64_t v) {
     return r;
 }
 
+/* Widen an unsigned 64-bit value into a signed wide integer. i128 and i256
+ * represent every uint64_t exactly, so the high words stay zero. from_i64
+ * cannot serve here: it sign-extends, turning any value above INT64_MAX
+ * negative. */
+static inline gray_i128 gray_i128_from_u64(uint64_t v) {
+    gray_i128 r;
+    r.lo = v;
+    r.hi = 0;
+    return r;
+}
+
 static inline gray_u128 gray_u128_from_u64(uint64_t v) {
     gray_u128 r;
     r.lo = v;
@@ -57,6 +68,15 @@ static inline gray_i256 gray_i256_from_i64(int64_t v) {
     r.w[1] = (uint64_t)sign;
     r.w[2] = (uint64_t)sign;
     r.w[3] = (uint64_t)sign;
+    return r;
+}
+
+static inline gray_i256 gray_i256_from_u64(uint64_t v) {
+    gray_i256 r;
+    r.w[0] = v;
+    r.w[1] = 0;
+    r.w[2] = 0;
+    r.w[3] = 0;
     return r;
 }
 

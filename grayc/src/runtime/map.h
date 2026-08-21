@@ -30,12 +30,18 @@ typedef struct {
     void *keys;
     void *values;
     uint8_t *states;        /* 0=empty, 1=occupied, 2=tombstone */
-    int32_t *order;         /* insertion-order slot indices */
+    /* order[] is append-only: gray_map_remove writes -1 over an entry
+     * instead of shifting the tail down, so every reader must skip
+     * negative slots. Holes are reclaimed by a rebuild, never by an
+     * in-place compaction, so copies of this struct stay consistent. */
+    int32_t *order;         /* insertion-order slot indices; -1 marks a hole */
+    int32_t *order_pos;     /* slot -> its index in order (occupied slots only) */
+    GrayArena *arena;       /* arena owning keys/values/states/order */
     int32_t count;
     int32_t capacity;
     int32_t key_size;
     int32_t value_size;
-    int32_t order_len;      /* number of entries in order array */
+    int32_t order_len;      /* entries in order array, holes included */
     int32_t iterating;      /* >0 while a for_each is active */
     int8_t  key_kind;       /* GRAY_MAP_KEY_* */
 } GrayMap;

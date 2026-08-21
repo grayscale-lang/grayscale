@@ -1408,7 +1408,7 @@ Map iteration order is undefined (maps are unordered).
 
 **Mutation during iteration:**
 
-- **Arrays:** The loop length is captured when `for_each` begins. Appending to the array during iteration is safe; new elements are added to the array but are not visited by the current loop. The full array (including appended elements) is available after the loop ends.
+- **Arrays:** The loop length is captured when `for_each` begins. Appending to the array during iteration is safe; new elements are added to the array but are not visited by the current loop. The full array (including appended elements) is available after the loop ends. Operations that shift or drop existing elements — `remove_at`, `insert_at`, `clear`, `sort`, and element assignment — are not allowed during iteration and will panic at runtime.
 - **Maps:** Modifying a map during `for_each` (inserting or deleting keys) is not allowed and will panic at runtime. Read the map freely, but do not mutate it until the loop completes.
 
 > 💡 **Tip:** You can iterate over an inline array literal directly — no variable needed:
@@ -3905,14 +3905,14 @@ Most users never import the `@mem` module. ASBAM handles their allocations.
 
 ### 11.7 Memory Safety
 
-Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module or unsynchronized threading introduces hazards that the programmer is responsible for. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
+Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, or unsynchronized threading introduces hazards that the programmer is responsible for, and the pointer escape checks below have a known gap. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
 
 **Compile-time checked:**
 
 | Hazard | Grayscale Behavior |
 |--------|-------------|
-| Returning address of local variable | `addr()` of a local cannot appear in a return statement |
-| Cross-scope pointer assignment | Warning when a pointer in an outer scope is assigned from `addr()` of a value in an inner scope |
+| Returning address of local variable | `return addr(local)` is rejected. Only the direct form is detected; see the pointer escape limitation below |
+| Cross-scope pointer assignment | Assigning `addr()` of an inner-scope value directly to an outer-scope pointer is rejected. Only the direct form is detected; see the pointer escape limitation below |
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
 
@@ -3946,6 +3946,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
 | Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
+| Pointer escape through an intermediate variable | The escape checks above match the address expression directly. Assigning `addr()` to a variable first and then returning that variable, or assigning it to an outer-scope pointer, is not currently detected and produces a dangling pointer. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
 For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.

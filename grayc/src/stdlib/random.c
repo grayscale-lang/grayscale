@@ -20,7 +20,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include <process.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -38,7 +40,7 @@ static void ensure_seed(void) {
         arc4random_buf(&seed, sizeof(seed));
 #elif defined(_WIN32)
         /* rand_s is RtlGenRandom under the hood: CSPRNG, no extra link lib. */
-        if (rand_s(&seed) != 0) seed = (unsigned)time(NULL) ^ (unsigned)getpid();
+        if (rand_s(&seed) != 0) seed = (unsigned)time(NULL) ^ (unsigned)_getpid();
 #else
         FILE *f = fopen("/dev/urandom", "rb");
         if (f) { fread(&seed, sizeof(seed), 1, f); fclose(f); }

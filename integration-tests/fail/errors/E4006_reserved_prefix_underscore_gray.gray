@@ -1,0 +1,9 @@
+/*
+ * Error Test: E4006 - reserved-prefix
+ * Expected: "name '_gray_thing' uses reserved prefix ('gray_', '_gray_', 'Gray')"
+ */
+
+do main() {
+    mut _gray_thing int = 1
+    println("${_gray_thing}")
+}

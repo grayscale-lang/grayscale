@@ -12,6 +12,7 @@
 #include "../typechecker/types.h"
 #include "../util/constants.h"
 #include "../util/reserved.h"
+#include "../util/xalloc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -532,7 +533,7 @@ static bool string_has_interpolation(const char *str) {
 static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
     AstNode *node = ast_alloc(parser->arena, NODE_INTERPOLATED_STRING, parser->cur_token);
 
-    int cap = 8;
+    int cap = GROW_ARRAY_INIT_CAP;
     int count = 0;
     AstNode **parts = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
 
@@ -547,12 +548,7 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
         if (*s == '$' && *(s + 1) == '{') {
             /* Emit the text segment before ${ */
             if (s > seg_start) {
-                if (count >= cap) {
-                    cap *= 2;
-                    AstNode **new_parts = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                    memcpy(new_parts, parts, sizeof(AstNode *) * count);
-                    parts = new_parts;
-                }
+                ARENA_GROW(parser->arena, parts, count, cap);
                 AstNode *text = ast_alloc(parser->arena, NODE_STRING_VALUE, parser->cur_token);
                 text->data.string_value.value = arena_copy_string_with_length(parser->arena, seg_start, s - seg_start);
                 parts[count++] = text;
@@ -589,12 +585,7 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
             }
 
             /* Parse the expression text */
-            if (count >= cap) {
-                cap *= 2;
-                AstNode **new_parts = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                memcpy(new_parts, parts, sizeof(AstNode *) * count);
-                parts = new_parts;
-            }
+            ARENA_GROW(parser->arena, parts, count, cap);
 
             char *expr_text = arena_copy_string_with_length(parser->arena, expr_start, s - expr_start);
             /* reject '${}' (and whitespace-only '${ }') before
@@ -648,12 +639,7 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
 
     /* Remaining text segment */
     if (s > seg_start) {
-        if (count >= cap) {
-            cap *= 2;
-            AstNode **new_parts = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-            memcpy(new_parts, parts, sizeof(AstNode *) * count);
-            parts = new_parts;
-        }
+        ARENA_GROW(parser->arena, parts, count, cap);
         AstNode *text = ast_alloc(parser->arena, NODE_STRING_VALUE, parser->cur_token);
         text->data.string_value.value = arena_copy_string_with_length(parser->arena, seg_start, s - seg_start);
         parts[count++] = text;
@@ -875,7 +861,7 @@ static AstNode *parse_prefix(Parser *parser) {
         if (peek_token_is(parser, TOK_COLON)) {
             /* Map literal: {"key": value, ...} */
             AstNode *node = ast_alloc(parser->arena, NODE_MAP_VALUE, brace_tok);
-            int cap = 8;
+            int cap = GROW_ARRAY_INIT_CAP;
             node->data.map_value.count = 0;
             node->data.map_value.keys = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
             node->data.map_value.values = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
@@ -892,13 +878,11 @@ static AstNode *parse_prefix(Parser *parser) {
                 next_token(parser);
                 if (current_token_is(parser, TOK_RBRACE)) break;
                 if (node->data.map_value.count >= cap) {
-                    cap *= 2;
-                    AstNode **nk = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                    AstNode **nv = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                    memcpy(nk, node->data.map_value.keys, sizeof(AstNode *) * node->data.map_value.count);
-                    memcpy(nv, node->data.map_value.values, sizeof(AstNode *) * node->data.map_value.count);
-                    node->data.map_value.keys = nk;
-                    node->data.map_value.values = nv;
+                    cap = GROW_NEXT_CAP(cap);
+                    ARENA_GROW_TO(parser->arena, node->data.map_value.keys,
+                        node->data.map_value.count, cap);
+                    ARENA_GROW_TO(parser->arena, node->data.map_value.values,
+                        node->data.map_value.count, cap);
                 }
                 node->data.map_value.keys[node->data.map_value.count] =
                     parse_expression(parser, PREC_LOWEST);
@@ -914,7 +898,7 @@ static AstNode *parse_prefix(Parser *parser) {
 
         /* Array literal: {expr, expr, ...} */
         AstNode *node = ast_alloc(parser->arena, NODE_ARRAY_VALUE, brace_tok);
-        int cap = 8;
+        int cap = GROW_ARRAY_INIT_CAP;
         node->data.array_value.count = 0;
         node->data.array_value.elements = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
         node->data.array_value.elements[node->data.array_value.count++] = first;
@@ -927,13 +911,8 @@ static AstNode *parse_prefix(Parser *parser) {
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 break;
             }
-            if (node->data.array_value.count >= cap) {
-                cap *= 2;
-                AstNode **new_elems = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                memcpy(new_elems, node->data.array_value.elements,
-                    sizeof(AstNode *) * node->data.array_value.count);
-                node->data.array_value.elements = new_elems;
-            }
+            ARENA_GROW(parser->arena, node->data.array_value.elements,
+                node->data.array_value.count, cap);
             node->data.array_value.elements[node->data.array_value.count++] =
                 parse_expression(parser, PREC_LOWEST);
         }
@@ -1082,7 +1061,7 @@ static AstNode *parse_call_expression(Parser *parser, AstNode *function) {
      * Named args use the syntax  name: value  at the call site.
      * Detection: current token is TOK_IDENT and peek is TOK_COLON. */
     int count = 0;
-    int cap = 4;
+    int cap = GROW_ARRAY_INIT_CAP;
     AstNode **args = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
     const char **names = arena_alloc(parser->arena, sizeof(const char *) * cap);
     memset(names, 0, sizeof(const char *) * cap);
@@ -1094,15 +1073,11 @@ static AstNode *parse_call_expression(Parser *parser, AstNode *function) {
         for (;;) {
             next_token(parser);
             if (count >= cap) {
-                int old_cap = cap;
-                cap *= 2;
-                AstNode **new_args = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                memcpy(new_args, args, sizeof(AstNode *) * count);
-                args = new_args;
-                const char **new_names = arena_alloc(parser->arena, sizeof(const char *) * cap);
-                memset(new_names, 0, sizeof(const char *) * cap);
-                memcpy(new_names, names, sizeof(const char *) * old_cap);
-                names = new_names;
+                cap = GROW_NEXT_CAP(cap);
+                ARENA_GROW_TO(parser->arena, args, count, cap);
+                ARENA_GROW_TO(parser->arena, names, count, cap);
+                /* Unset names must read back as NULL, and the arena does not zero. */
+                memset(names + count, 0, sizeof(const char *) * (size_t)(cap - count));
             }
 
             /* Check for named arg: ident followed by colon */
@@ -1274,6 +1249,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
     tmp_decl->data.var_decl.mutable = true;
     tmp_decl->data.var_decl.name = tmp_name;
+    tmp_decl->data.var_decl.synthetic = true;
     tmp_decl->data.var_decl.type_name = NULL;
     tmp_decl->data.var_decl.value = var_decl->data.var_decl.value;
     block->data.block.stmts[block->data.block.count++] = tmp_decl;
@@ -1471,6 +1447,10 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
                 next_token(parser); /* name (IDENT or _) */
+                if (var_count >= MAX_MULTI_VARS) {
+                    diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
+                    return NULL;
+                }
                 names[var_count] = parser->cur_token.literal;
                 if (current_token_is(parser, TOK_BLANK)) names[var_count] = "_";
                 if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_CARET) ||
@@ -1483,10 +1463,6 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
                     types[var_count] = NULL;
                 }
                 var_count++;
-                if (var_count > MAX_MULTI_VARS) {
-                    diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
-                    return NULL;
-                }
             }
 
             /* Expect = expr */
@@ -1509,6 +1485,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
             tmp_decl->data.var_decl.mutable = true;
             tmp_decl->data.var_decl.name = tmp_name;
+            tmp_decl->data.var_decl.synthetic = true;
             tmp_decl->data.var_decl.type_name = NULL;
             tmp_decl->data.var_decl.value = value;
             block->data.block.stmts[block->data.block.count++] = tmp_decl;
@@ -1559,7 +1536,7 @@ static AstNode *parse_var_declaration(Parser *parser) {
 static AstNode *parse_return_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_RETURN_STMT, parser->cur_token);
 
-    int cap = 4;
+    int cap = GROW_ARRAY_INIT_CAP;
     int count = 0;
     AstNode **values = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
 
@@ -1571,12 +1548,7 @@ static AstNode *parse_return_statement(Parser *parser) {
         while (peek_token_is(parser, TOK_COMMA)) {
             next_token(parser); /* skip comma */
             next_token(parser);
-            if (count >= cap) {
-                cap *= 2;
-                AstNode **new_vals = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-                memcpy(new_vals, values, sizeof(AstNode *) * count);
-                values = new_vals;
-            }
+            ARENA_GROW(parser->arena, values, count, cap);
             values[count++] = parse_expression(parser, PREC_LOWEST);
         }
     }
@@ -1598,7 +1570,7 @@ static AstNode *parse_block_statement(Parser *parser) {
 
     AstNode *node = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
     node->data.block.count = 0;
-    node->data.block.cap = 8;
+    node->data.block.cap = GROW_ARRAY_INIT_CAP;
     node->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * node->data.block.cap);
 
     next_token(parser); /* skip { */
@@ -1606,12 +1578,8 @@ static AstNode *parse_block_statement(Parser *parser) {
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         AstNode *stmt = parse_statement(parser);
         if (stmt) {
-            if (node->data.block.count >= node->data.block.cap) {
-                node->data.block.cap *= 2;
-                AstNode **new_stmts = arena_alloc(parser->arena, sizeof(AstNode *) * node->data.block.cap);
-                memcpy(new_stmts, node->data.block.stmts, sizeof(AstNode *) * node->data.block.count);
-                node->data.block.stmts = new_stmts;
-            }
+            ARENA_GROW(parser->arena, node->data.block.stmts,
+                node->data.block.count, node->data.block.cap);
             node->data.block.stmts[node->data.block.count++] = stmt;
         } else {
             /* Error recovery: skip to next statement boundary */
@@ -1645,20 +1613,15 @@ static AstNode *parse_func_declaration(Parser *parser) {
     /* Parameters */
     if (!expect_peek_token(parser, TOK_LPAREN)) return NULL;
 
-    int param_cap = 4;
+    int param_cap = GROW_ARRAY_INIT_CAP;
     node->data.func_decl.param_count = 0;
     node->data.func_decl.params = arena_alloc(parser->arena, sizeof(Param) * param_cap);
 
     if (!peek_token_is(parser, TOK_RPAREN)) {
         next_token(parser);
         do {
-            if (node->data.func_decl.param_count >= param_cap) {
-                param_cap *= 2;
-                Param *new_params = arena_alloc(parser->arena, sizeof(Param) * param_cap);
-                memcpy(new_params, node->data.func_decl.params,
-                    sizeof(Param) * node->data.func_decl.param_count);
-                node->data.func_decl.params = new_params;
-            }
+            ARENA_GROW(parser->arena, node->data.func_decl.params,
+                node->data.func_decl.param_count, param_cap);
 
             Param *param = &node->data.func_decl.params[node->data.func_decl.param_count];
             memset(param, 0, sizeof(Param));
@@ -1949,7 +1912,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
 static AstNode *parse_import_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_IMPORT_STMT, parser->cur_token);
 
-    int cap = 4;
+    int cap = GROW_ARRAY_INIT_CAP;
     node->data.import_stmt.count = 0;
     node->data.import_stmt.items = arena_alloc(parser->arena, sizeof(ImportItem) * cap);
     node->data.import_stmt.auto_use = false;
@@ -2054,13 +2017,8 @@ static AstNode *parse_import_statement(Parser *parser) {
         import_item_done:
         node->data.import_stmt.count++;
 
-        if (node->data.import_stmt.count >= cap) {
-            cap *= 2;
-            ImportItem *new_items = arena_alloc(parser->arena, sizeof(ImportItem) * cap);
-            memcpy(new_items, node->data.import_stmt.items,
-                sizeof(ImportItem) * node->data.import_stmt.count);
-            node->data.import_stmt.items = new_items;
-        }
+        ARENA_GROW(parser->arena, node->data.import_stmt.items,
+            node->data.import_stmt.count, cap);
     } while (peek_token_is(parser, TOK_COMMA) && (next_token(parser), 1));
 
     return node;
@@ -2069,12 +2027,14 @@ static AstNode *parse_import_statement(Parser *parser) {
 static AstNode *parse_using_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_USING_STMT, parser->cur_token);
 
-    int cap = 4;
+    int cap = GROW_ARRAY_INIT_CAP;
     node->data.using_stmt.count = 0;
     node->data.using_stmt.modules = arena_alloc(parser->arena, sizeof(const char *) * cap);
 
     do {
         next_token(parser);
+        ARENA_GROW(parser->arena, node->data.using_stmt.modules,
+            node->data.using_stmt.count, cap);
         node->data.using_stmt.modules[node->data.using_stmt.count++] = parser->cur_token.literal;
     } while (peek_token_is(parser, TOK_COMMA) && (next_token(parser), 1));
 
@@ -2124,8 +2084,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     }
 
     int prev_field_line = -1;
-    int field_cap = 8;
-    int func_cap = 4;
+    int field_cap = GROW_ARRAY_INIT_CAP;
+    int func_cap = GROW_ARRAY_INIT_CAP;
     node->data.struct_decl.field_count = 0;
     node->data.struct_decl.fields = arena_alloc(parser->arena, sizeof(StructField) * field_cap);
     node->data.struct_decl.func_count = 0;
@@ -2160,13 +2120,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
                 }
-                if (node->data.struct_decl.func_count >= func_cap) {
-                    func_cap *= 2;
-                    StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
-                    memcpy(new_funcs, node->data.struct_decl.funcs,
-                        sizeof(StructFunc) * node->data.struct_decl.func_count);
-                    node->data.struct_decl.funcs = new_funcs;
-                }
+                ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
+                    node->data.struct_decl.func_count, func_cap);
                 node->data.struct_decl.funcs[node->data.struct_decl.func_count++].func_decl = fn;
             }
             next_token(parser);
@@ -2181,13 +2136,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
                 }
-                if (node->data.struct_decl.func_count >= func_cap) {
-                    func_cap *= 2;
-                    StructFunc *new_funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
-                    memcpy(new_funcs, node->data.struct_decl.funcs,
-                        sizeof(StructFunc) * node->data.struct_decl.func_count);
-                    node->data.struct_decl.funcs = new_funcs;
-                }
+                ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
+                    node->data.struct_decl.func_count, func_cap);
                 int idx = node->data.struct_decl.func_count++;
                 node->data.struct_decl.funcs[idx].func_decl = fn;
                 node->data.struct_decl.funcs[idx].is_private = true;
@@ -2214,13 +2164,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             continue;
         }
 
-        if (node->data.struct_decl.field_count >= field_cap) {
-            field_cap *= 2;
-            StructField *new_fields = arena_alloc(parser->arena, sizeof(StructField) * field_cap);
-            memcpy(new_fields, node->data.struct_decl.fields,
-                sizeof(StructField) * node->data.struct_decl.field_count);
-            node->data.struct_decl.fields = new_fields;
-        }
+        ARENA_GROW(parser->arena, node->data.struct_decl.fields,
+            node->data.struct_decl.field_count, field_cap);
 
         /* E2070 ( follow-up): wildcard `?` in field-name position
          * used to slip past the struct-field guard; the existing check
@@ -2261,13 +2206,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * Example: `x, y, z float` → three fields, all typed float.       */
         int group_start = node->data.struct_decl.field_count;
         for (;;) {
-            if (node->data.struct_decl.field_count >= field_cap) {
-                field_cap *= 2;
-                StructField *new_f = arena_alloc(parser->arena, sizeof(StructField) * field_cap);
-                memcpy(new_f, node->data.struct_decl.fields,
-                    sizeof(StructField) * node->data.struct_decl.field_count);
-                node->data.struct_decl.fields = new_f;
-            }
+            ARENA_GROW(parser->arena, node->data.struct_decl.fields,
+                node->data.struct_decl.field_count, field_cap);
             /* Reject reserved keywords and type names as struct field names */
             if (is_keyword_token(parser->cur_token.type)) {
                 char msg[MSG_BUF_SIZE];
@@ -2362,18 +2302,13 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     }
 
     int prev_variant_line = -1;
-    int val_cap = 8;
+    int val_cap = GROW_ARRAY_INIT_CAP;
     node->data.enum_decl.value_count = 0;
     node->data.enum_decl.values = arena_alloc(parser->arena, sizeof(EnumVal) * val_cap);
 
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
-        if (node->data.enum_decl.value_count >= val_cap) {
-            val_cap *= 2;
-            EnumVal *new_vals = arena_alloc(parser->arena, sizeof(EnumVal) * val_cap);
-            memcpy(new_vals, node->data.enum_decl.values,
-                sizeof(EnumVal) * node->data.enum_decl.value_count);
-            node->data.enum_decl.values = new_vals;
-        }
+        ARENA_GROW(parser->arena, node->data.enum_decl.values,
+            node->data.enum_decl.value_count, val_cap);
 
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOK_CONST)) {
@@ -2439,28 +2374,23 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         }
         prev_variant_line = parser->cur_token.line;
 
-        EnumVal *ev = &node->data.enum_decl.values[node->data.enum_decl.value_count];
-        ev->name = parser->cur_token.literal;
-        ev->value = NULL;
-        ev->payload_types = NULL;
-        ev->payload_count = 0;
+        EnumVal *variant = &node->data.enum_decl.values[node->data.enum_decl.value_count];
+        variant->name = parser->cur_token.literal;
+        variant->value = NULL;
+        variant->payload_types = NULL;
+        variant->payload_count = 0;
 
         /* Check for payload types: VARIANT(type1, type2, ...) */
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser); /* consume ( */
             next_token(parser); /* first token of first type */
-            int pt_cap = 4;
-            ev->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
+            int pt_cap = GROW_ARRAY_INIT_CAP;
+            variant->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                if (ev->payload_count >= pt_cap) {
-                    pt_cap *= 2;
-                    const char **new_pt = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
-                    memcpy(new_pt, ev->payload_types, sizeof(const char *) * ev->payload_count);
-                    ev->payload_types = new_pt;
-                }
+                ARENA_GROW(parser->arena, variant->payload_types, variant->payload_count, pt_cap);
                 const char *type_str = parse_complex_type(parser);
                 if (!type_str) return NULL;
-                ev->payload_types[ev->payload_count++] = type_str;
+                variant->payload_types[variant->payload_count++] = type_str;
                 next_token(parser); /* advance past last token of type */
                 if (current_token_is(parser, TOK_COMMA)) next_token(parser);
             }
@@ -2470,14 +2400,14 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Check for explicit value: VALUE = expr */
         if (peek_token_is(parser, TOK_ASSIGN)) {
             /* E2083: payload and explicit value are mutually exclusive */
-            if (ev->payload_count > 0) {
+            if (variant->payload_count > 0) {
                 diagnostic_error_code_formatted(parser->diag, "E2083",
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                    ev->name);
+                    variant->name);
             }
             next_token(parser); /* skip = */
             next_token(parser);
-            ev->value = parse_expression(parser, PREC_LOWEST);
+            variant->value = parse_expression(parser, PREC_LOWEST);
         }
 
         node->data.enum_decl.value_count++;
@@ -2512,7 +2442,7 @@ static AstNode *parse_struct_literal(Parser *parser, const char *name) {
     AstNode *node = ast_alloc(parser->arena, NODE_STRUCT_VALUE, parser->cur_token);
     node->data.struct_value.name = name;
 
-    int cap = 8;
+    int cap = GROW_ARRAY_INIT_CAP;
     node->data.struct_value.count = 0;
     node->data.struct_value.field_names = arena_alloc(parser->arena, sizeof(const char *) * cap);
     node->data.struct_value.field_values = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
@@ -2521,15 +2451,11 @@ static AstNode *parse_struct_literal(Parser *parser, const char *name) {
 
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         if (node->data.struct_value.count >= cap) {
-            cap *= 2;
-            const char **new_names = arena_alloc(parser->arena, sizeof(const char *) * cap);
-            AstNode **new_vals = arena_alloc(parser->arena, sizeof(AstNode *) * cap);
-            memcpy(new_names, node->data.struct_value.field_names,
-                sizeof(const char *) * node->data.struct_value.count);
-            memcpy(new_vals, node->data.struct_value.field_values,
-                sizeof(AstNode *) * node->data.struct_value.count);
-            node->data.struct_value.field_names = new_names;
-            node->data.struct_value.field_values = new_vals;
+            cap = GROW_NEXT_CAP(cap);
+            ARENA_GROW_TO(parser->arena, node->data.struct_value.field_names,
+                node->data.struct_value.count, cap);
+            ARENA_GROW_TO(parser->arena, node->data.struct_value.field_values,
+                node->data.struct_value.count, cap);
         }
 
         node->data.struct_value.field_names[node->data.struct_value.count] = parser->cur_token.literal;
@@ -2746,27 +2672,22 @@ static AstNode *parse_when_statement(Parser *parser) {
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     next_token(parser); /* skip { */
 
-    int case_cap = 8;
+    int case_cap = GROW_ARRAY_INIT_CAP;
     node->data.when_stmt.case_count = 0;
     node->data.when_stmt.cases = arena_alloc(parser->arena, sizeof(WhenCase) * case_cap);
 
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         if (current_token_is(parser, TOK_IS)) {
-            if (node->data.when_stmt.case_count >= case_cap) {
-                case_cap *= 2;
-                WhenCase *new_cases = arena_alloc(parser->arena, sizeof(WhenCase) * case_cap);
-                memcpy(new_cases, node->data.when_stmt.cases,
-                    sizeof(WhenCase) * node->data.when_stmt.case_count);
-                node->data.when_stmt.cases = new_cases;
-            }
+            ARENA_GROW(parser->arena, node->data.when_stmt.cases,
+                node->data.when_stmt.case_count, case_cap);
 
-            WhenCase *wc = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
-            memset(wc, 0, sizeof(WhenCase));
+            WhenCase *when_case = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
+            memset(when_case, 0, sizeof(WhenCase));
 
-            int val_cap = 4;
-            wc->value_count = 0;
-            wc->values = arena_alloc(parser->arena, sizeof(AstNode *) * val_cap);
-            wc->is_range = false;
+            int val_cap = GROW_ARRAY_INIT_CAP;
+            when_case->value_count = 0;
+            when_case->values = arena_alloc(parser->arena, sizeof(AstNode *) * val_cap);
+            when_case->is_range = false;
 
             /* Parse case values: is 1, 2, 3 { } */
             next_token(parser);
@@ -2777,6 +2698,7 @@ static AstNode *parse_when_statement(Parser *parser) {
                 bool try_pattern = false;
                 bool is_implicit_pat = false;
                 bool is_explicit_enum = false;
+                bool is_qualified_enum = false;
                 Token pat_tok = parser->cur_token;
 
                 if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
@@ -2786,15 +2708,22 @@ static AstNode *parse_when_statement(Parser *parser) {
                     try_pattern = scan_paren_bindings(parser);
                     parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
-                    /* IDENT.IDENT(IDENT,...) explicit enum pattern form */
+                    /* IDENT.IDENT(IDENT,...) explicit enum pattern form, or
+                     * mod.IDENT.IDENT(IDENT,...) for an imported enum */
                     ParserSnapshot snap;
                     parser_snapshot_save(parser, &snap);
                     next_token(parser); /* skip enum name */
                     next_token(parser); /* skip DOT */
+                    if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_DOT)) {
+                        next_token(parser); /* skip enum name */
+                        next_token(parser); /* skip DOT */
+                        is_qualified_enum = true;
+                    }
                     if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_LPAREN)) {
                         try_pattern = scan_paren_bindings(parser);
                         if (try_pattern) is_explicit_enum = true;
                     }
+                    if (!try_pattern) is_qualified_enum = false;
                     parser_snapshot_restore(parser, &snap);
                 } else if (current_token_is(parser, TOK_DOT) && peek_token_is(parser, TOK_IDENT)) {
                     /* .IDENT(IDENT,...) implicit pattern form */
@@ -2815,8 +2744,16 @@ static AstNode *parse_when_statement(Parser *parser) {
 
                     if (is_explicit_enum) {
                         pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, parser->cur_token.literal);
-                        next_token(parser); /* skip enum name */
+                        next_token(parser); /* skip enum name (or module) */
                         next_token(parser); /* skip dot */
+                        if (is_qualified_enum) {
+                            char qualified[MSG_BUF_SIZE];
+                            snprintf(qualified, sizeof(qualified), "%s_%s",
+                                pat->data.when_pattern.enum_name, parser->cur_token.literal);
+                            pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, qualified);
+                            next_token(parser); /* skip enum name */
+                            next_token(parser); /* skip dot */
+                        }
                     } else {
                         pat->data.when_pattern.enum_name = NULL;
                         if (is_implicit_pat) {
@@ -2827,15 +2764,10 @@ static AstNode *parse_when_statement(Parser *parser) {
                     next_token(parser); /* skip IDENT (variant) */
                     next_token(parser); /* skip ( */
 
-                    int bc = 0, bc_cap = 4;
-                    pat->data.when_pattern.bindings = arena_alloc(parser->arena, sizeof(const char *) * bc_cap);
+                    int binding_count = 0, binding_cap = GROW_ARRAY_INIT_CAP;
+                    pat->data.when_pattern.bindings = arena_alloc(parser->arena, sizeof(const char *) * binding_cap);
                     while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                        if (bc >= bc_cap) {
-                            bc_cap *= 2;
-                            const char **nb = arena_alloc(parser->arena, sizeof(const char *) * bc_cap);
-                            memcpy(nb, pat->data.when_pattern.bindings, sizeof(const char *) * bc);
-                            pat->data.when_pattern.bindings = nb;
-                        }
+                        ARENA_GROW(parser->arena, pat->data.when_pattern.bindings, binding_count, binding_cap);
                         /* Reject reserved names as binding names */
                         if (is_reserved_name(parser->cur_token.literal)) {
                             char msg[MSG_BUF_SIZE];
@@ -2845,44 +2777,39 @@ static AstNode *parse_when_statement(Parser *parser) {
                             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                         }
-                        pat->data.when_pattern.bindings[bc++] = arena_copy_string(parser->arena, parser->cur_token.literal);
+                        pat->data.when_pattern.bindings[binding_count++] = arena_copy_string(parser->arena, parser->cur_token.literal);
                         next_token(parser);
                         if (current_token_is(parser, TOK_COMMA)) next_token(parser);
                     }
-                    pat->data.when_pattern.binding_count = bc;
+                    pat->data.when_pattern.binding_count = binding_count;
                     /* cur_token is RPAREN, peek should be LBRACE */
 
-                    wc->values[wc->value_count++] = pat;
+                    when_case->values[when_case->value_count++] = pat;
                     goto when_case_body;
                 }
             }
 
             if (current_token_is(parser, TOK_RANGE)) {
-                wc->is_range = true;
+                when_case->is_range = true;
             }
             parser->no_struct_literal = true;
-            if (wc->value_count < val_cap) {
-                wc->values[wc->value_count++] = parse_expression(parser, PREC_LOWEST);
+            if (when_case->value_count < val_cap) {
+                when_case->values[when_case->value_count++] = parse_expression(parser, PREC_LOWEST);
             }
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
                 next_token(parser); /* next value */
-                if (wc->value_count >= val_cap) {
-                    val_cap *= 2;
-                    AstNode **new_vals = arena_alloc(parser->arena, sizeof(AstNode *) * val_cap);
-                    memcpy(new_vals, wc->values, sizeof(AstNode *) * wc->value_count);
-                    wc->values = new_vals;
-                }
+                ARENA_GROW(parser->arena, when_case->values, when_case->value_count, val_cap);
                 if (current_token_is(parser, TOK_RANGE)) {
-                    wc->is_range = true;
+                    when_case->is_range = true;
                 }
-                wc->values[wc->value_count++] = parse_expression(parser, PREC_LOWEST);
+                when_case->values[when_case->value_count++] = parse_expression(parser, PREC_LOWEST);
             }
 
             when_case_body:
             parser->no_struct_literal = false;
             if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
-            wc->body = parse_block_statement(parser);
+            when_case->body = parse_block_statement(parser);
             node->data.when_stmt.case_count++;
 
         } else if (current_token_is(parser, TOK_DEFAULT)) {
@@ -3138,6 +3065,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->diag = diag;
     parser->depth = 0;
     parser->no_struct_literal = false;
+    parser->in_interp = false;
     parser->current_func = NULL;
 
     /* Read two tokens to fill cur and peek */
@@ -3154,21 +3082,15 @@ AstNode *parser_parse_program(Parser *parser) {
     program->data.program.using_stmts = NULL;
     program->data.program.using_count = 0;
     program->data.program.stmt_count = 0;
-    program->data.program.stmt_cap = 16;
+    program->data.program.stmt_cap = GROW_ARRAY_INIT_CAP;
     program->data.program.stmts = arena_alloc(parser->arena,
         sizeof(AstNode *) * program->data.program.stmt_cap);
 
     while (!current_token_is(parser, TOK_EOF)) {
         AstNode *stmt = parse_statement(parser);
         if (stmt) {
-            if (program->data.program.stmt_count >= program->data.program.stmt_cap) {
-                program->data.program.stmt_cap *= 2;
-                AstNode **new_stmts = arena_alloc(parser->arena,
-                    sizeof(AstNode *) * program->data.program.stmt_cap);
-                memcpy(new_stmts, program->data.program.stmts,
-                    sizeof(AstNode *) * program->data.program.stmt_count);
-                program->data.program.stmts = new_stmts;
-            }
+            ARENA_GROW(parser->arena, program->data.program.stmts,
+                program->data.program.stmt_count, program->data.program.stmt_cap);
             program->data.program.stmts[program->data.program.stmt_count++] = stmt;
         } else {
             /* Error recovery: skip to next statement boundary */

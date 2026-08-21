@@ -135,9 +135,29 @@ static void *val_ptr(GrayMap *m, int32_t idx) {
     return (char *)m->values + (size_t)idx * (size_t)m->value_size;
 }
 
+/* Write a key into a slot, taking ownership of it. A GrayString key is only
+ * a header pointing at character data the caller owns, and that data can
+ * live in a shorter-lived arena than the map — a loop body's per-iteration
+ * arena, say — so the header alone would dangle once the caller's scope
+ * unwinds. Copy the characters into the map's own arena, the same way
+ * gray_map_copy does, so a key stays valid for the map's whole lifetime.
+ * Fall back to the caller's arena for maps built without an owning one. */
+static void store_key(GrayArena *arena, GrayMap *m, int32_t slot, const void *key) {
+    void *dst = key_ptr(m, slot);
+    memcpy(dst, key, (size_t)m->key_size);
+    if (m->key_kind == GRAY_MAP_KEY_STRING) {
+        GrayArena *owner = m->arena ? m->arena : arena;
+        if (owner) {
+            GrayString *ks = (GrayString *)dst;
+            *ks = gray_string_new(owner, ks->data, ks->len);
+        }
+    }
+}
+
 GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind) {
     if (initial_cap < GRAY_MAP_MIN_CAP) initial_cap = GRAY_MAP_MIN_CAP;
     GrayMap m;
+    m.arena = arena;
     m.key_size = key_size;
     m.value_size = value_size;
     m.count = 0;
@@ -149,6 +169,7 @@ GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size
     m.values = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * (size_t)value_size);
     m.states = gray_arena_alloc(arena, (size_t)initial_cap);
     m.order = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * sizeof(int32_t));
+    m.order_pos = gray_arena_alloc_uninitialized(arena, (size_t)initial_cap * sizeof(int32_t));
     return m;
 }
 
@@ -172,26 +193,32 @@ static int32_t find_slot(GrayMap *m, const void *key) {
     return -1;
 }
 
-static void rehash(GrayArena *arena, GrayMap *m) {
-    int32_t old_cap = m->capacity;
+/* Grow into the arena the map was created in, not the caller's ambient
+ * arena. A map reached through a pointer or struct field outlives the
+ * function that mutates it; allocating the new tables in a short-lived
+ * scope arena leaves the map pointing at reclaimed memory once that
+ * scope unwinds. */
+static void map_rebuild(GrayArena *arena, GrayMap *m, int32_t new_cap) {
+    if (m->arena) arena = m->arena;
     void *old_keys = m->keys;
     void *old_values = m->values;
     uint8_t *old_states = m->states;
     int32_t *old_order = m->order;
     int32_t old_order_len = m->order_len;
 
-    m->capacity = old_cap * 2;
+    m->capacity = new_cap;
     m->keys = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * (size_t)m->key_size);
     m->values = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * (size_t)m->value_size);
     m->states = gray_arena_alloc(arena, (size_t)m->capacity);
     m->order = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * sizeof(int32_t));
+    m->order_pos = gray_arena_alloc_uninitialized(arena, (size_t)m->capacity * sizeof(int32_t));
     m->count = 0;
     m->order_len = 0;
 
     /* Re-insert in original insertion order to preserve it */
     for (int32_t i = 0; i < old_order_len; i++) {
         int32_t slot = old_order[i];
-        if (old_states[slot] == 1) {
+        if (slot >= 0 && old_states[slot] == 1) {
             gray_map_set(arena, m,
                 (char *)old_keys + (size_t)slot * (size_t)m->key_size,
                 (char *)old_values + (size_t)slot * (size_t)m->value_size,
@@ -211,7 +238,17 @@ void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *val
         gray_panic_code_at(file, line, "P0035", "cannot modify map during for_each iteration");
     /* Check load factor */
     if (m->count * GRAY_MAP_LOAD_DEN >= m->capacity * GRAY_MAP_LOAD_NUM) {
-        rehash(arena, m);
+        map_rebuild(arena, m, m->capacity * 2);
+    }
+    /* gray_map_remove leaves holes rather than shifting the tail down, so
+     * order_len creeps toward capacity independently of count. Rebuild at
+     * the same capacity to squeeze them out; the load factor above caps
+     * count at 3/4 capacity, so this frees at least a quarter of the array
+     * and the append stays amortized O(1). Rebuilding (rather than
+     * compacting in place) keeps stale GrayMap copies pointing at the old,
+     * still-consistent arrays instead of a half-rewritten shared one. */
+    if (m->order && m->order_len >= m->capacity) {
+        map_rebuild(arena, m, m->capacity);
     }
 
     uint64_t h = hash_key(key, m->key_size, m->key_kind);
@@ -227,10 +264,10 @@ void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *val
         if (m->states[probe] == 0) {
             /* Empty — key definitely not in map; insert at tombstone if seen, else here */
             int32_t slot = (first_tombstone >= 0) ? first_tombstone : probe;
-            memcpy(key_ptr(m, slot), key, (size_t)m->key_size);
+            store_key(arena, m, slot, key);
             memcpy(val_ptr(m, slot), value, (size_t)m->value_size);
             m->states[slot] = 1;
-            if (m->order) m->order[m->order_len++] = slot;
+            if (m->order) { m->order_pos[slot] = m->order_len; m->order[m->order_len++] = slot; }
             m->count++;
             return;
         }
@@ -242,10 +279,10 @@ void gray_map_set(GrayArena *arena, GrayMap *m, const void *key, const void *val
     }
     /* Probe chain full of tombstones and the key was not found — use first tombstone */
     if (first_tombstone >= 0) {
-        memcpy(key_ptr(m, first_tombstone), key, (size_t)m->key_size);
+        store_key(arena, m, first_tombstone, key);
         memcpy(val_ptr(m, first_tombstone), value, (size_t)m->value_size);
         m->states[first_tombstone] = 1;
-        if (m->order) m->order[m->order_len++] = first_tombstone;
+        if (m->order) { m->order_pos[first_tombstone] = m->order_len; m->order[m->order_len++] = first_tombstone; }
         m->count++;
     }
 }
@@ -261,16 +298,13 @@ bool gray_map_remove(GrayMap *m, const void *key, const char *file, int line) {
     if (idx < 0) return false;
     m->states[idx] = 2; /* tombstone */
     m->count--;
-    /* Remove from order array */
+    /* Punch a hole instead of shifting the tail down: order_pos gives the
+     * entry's index directly, so this is O(1) where the old linear scan
+     * plus memmove was O(n). Readers skip the -1; gray_map_set reclaims
+     * the space when the array fills. */
     if (m->order) {
-        for (int32_t i = 0; i < m->order_len; i++) {
-            if (m->order[i] == idx) {
-                memmove(&m->order[i], &m->order[i+1],
-                    (size_t)(m->order_len - i - 1) * sizeof(int32_t));
-                m->order_len--;
-                break;
-            }
-        }
+        int32_t pos = m->order_pos[idx];
+        if (pos >= 0 && pos < m->order_len && m->order[pos] == idx) m->order[pos] = -1;
     }
     return true;
 }
@@ -301,6 +335,7 @@ void *gray_map_value_at(GrayMap *m, int32_t internal_idx) {
 
 GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
     GrayMap m;
+    m.arena = arena;
     m.key_size = src->key_size;
     m.value_size = src->value_size;
     m.count = src->count;
@@ -317,11 +352,13 @@ GrayMap gray_map_copy(GrayArena *arena, const GrayMap *src) {
     m.values = gray_arena_alloc_uninitialized(arena, vals_bytes);
     m.states = gray_arena_alloc_uninitialized(arena, (size_t)src->capacity);
     m.order = gray_arena_alloc_uninitialized(arena, order_bytes);
+    m.order_pos = gray_arena_alloc_uninitialized(arena, order_bytes);
 
     if (keys_bytes)  memcpy(m.keys,   src->keys,   keys_bytes);
     if (vals_bytes)  memcpy(m.values, src->values, vals_bytes);
     memcpy(m.states, src->states, (size_t)src->capacity);
     if (order_bytes) memcpy(m.order,  src->order,  order_bytes);
+    if (order_bytes) memcpy(m.order_pos, src->order_pos, order_bytes);
 
     /* String keys store a pointer into the source arena — deep-copy the
      * character data so the returned map owns its key strings. */

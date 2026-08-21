@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2002 - missing symbol; 'here' is rejected by the parser
+ */
+
+// expect-error: E2002
+
+do f(here int) {
+    println("${here}")
+}
+
+do main() {
+    f(1)
+}

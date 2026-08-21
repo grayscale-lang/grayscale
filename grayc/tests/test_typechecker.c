@@ -450,6 +450,18 @@ static void test_error_E3036_out_of_range(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* Regression test for #2414: the literal constant folder negated INT64_MIN
+ * directly, which is undefined behavior in signed arithmetic even though
+ * two's-complement hardware happens to print the right value. This is the
+ * exact literal (-9223372036854775808) that reaches the folder through the
+ * E3036 range check below, so it must typecheck clean, not report overflow. */
+static void test_valid_int64_min_literal(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut x i64 = -9223372036854775808 }");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3024_missing_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do foo() -> int { }\n"
@@ -2149,6 +2161,7 @@ int main(void) {
     RUN_TEST(test_error_E3015_call_non_function);
     RUN_TEST(test_error_E3016_deref_non_pointer);
     RUN_TEST(test_error_E3036_out_of_range);
+    RUN_TEST(test_valid_int64_min_literal);
     RUN_TEST(test_error_E3024_missing_return);
     RUN_TEST(test_error_E3027_const_to_mut_param);
     RUN_TEST(test_error_E3034_any_type);

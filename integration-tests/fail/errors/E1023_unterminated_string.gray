@@ -1,0 +1,9 @@
+/*
+ * Error Test: E1023 - string literal spans multiple lines
+ */
+
+// expect-error: E1023
+
+do main() {
+    mut s string = "this string is never closed
+}

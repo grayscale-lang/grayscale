@@ -211,10 +211,27 @@ echo ""
 printf "${BOLD}FAIL tests (expecting errors):${NC}\n"
 
 # Error tests (should fail)
+#
+# A test may pin the exact diagnostic with a marker comment:
+#
+#     // expect-error: E5008
+#
+# Those run through 'check' and must produce that code. Without it a test
+# only has to fail somehow, which cannot tell a typechecker rejection apart
+# from the C compiler choking on what the typechecker let through.
 for test_file in "$TEST_DIR"/fail/errors/*.gray; do
     if [ -f "$test_file" ]; then
         test_name=$(basename "$test_file" .gray)
-        if run_timeout $TIMEOUT "$GRAY_BIN" "$test_file" >/dev/null 2>&1; then
+        expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$test_file" \
+            | grep -oE '[EPW][0-9]+' | head -1)
+        if [ -n "$expected_error" ]; then
+            output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$test_file" 2>&1) || true
+            if echo "$output" | grep -q "error\[$expected_error\]"; then
+                pass "errors/$test_name"
+            else
+                fail "errors/$test_name" "(expected $expected_error)"
+            fi
+        elif run_timeout $TIMEOUT "$GRAY_BIN" "$test_file" >/dev/null 2>&1; then
             fail "errors/$test_name" "(expected error, got success)"
         else
             pass "errors/$test_name"

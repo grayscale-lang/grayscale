@@ -1,0 +1,94 @@
+import @arrays
+import @strings
+
+const Entry struct {
+    label string
+}
+
+const Box struct {
+    src string
+    pos int
+    items [Entry]
+
+    do make(s string) -> Box {
+        return Box{src: s, pos: 0, items: {}}
+    }
+
+    do add(&b Box, s string) {
+        arrays.append(b.items, Entry{label: s})
+    }
+
+    // Two levels deep: run() calls grab(), which builds strings and stores
+    // them through the mutable receiver. The built strings must outlive
+    // every block inside run() and grab().
+    do run(&b Box) {
+        for b.pos < len(b.src) {
+            b.grab()
+        }
+    }
+
+    do grab(&b Box) {
+        mut result string = ""
+        for b.pos < len(b.src) {
+            ch char = strings.char_at(b.src, b.pos)
+            b.pos++
+            if ch == ' ' {
+                b.add(result)
+                return
+            }
+            result = "${result}${string(ch)}"
+        }
+        b.add(result)
+    }
+}
+
+do check(&passed int, &failed int, got string, want string) {
+    if got == want {
+        passed++
+    } otherwise {
+        println("[FAIL] got '${got}', expected '${want}'")
+        failed++
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    expected [string] = {"aa", "bb", "cc"}
+
+    // Direct calls from main
+    mut a Box = Box.make("aa bb cc")
+    a.grab()
+    a.grab()
+    a.grab()
+
+    if len(a.items) == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] direct calls produced ${len(a.items)} items, expected 3")
+        failed = failed + 1
+    }
+
+    for_each i, item in a.items {
+        check(passed, failed, item.label, expected[i])
+    }
+
+    // Same work driven through an intermediate struct function
+    mut b Box = Box.make("aa bb cc")
+    b.run()
+
+    if len(b.items) == 3 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] run() produced ${len(b.items)} items, expected 3")
+        failed = failed + 1
+    }
+
+    for_each i, item in b.items {
+        check(passed, failed, item.label, expected[i])
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}

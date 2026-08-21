@@ -86,7 +86,7 @@ typedef struct {
 /* --- Parser --- */
 
 typedef struct {
-    const char *p;
+    const char *cursor;
     bool failed;
 } GrxParser;
 
@@ -139,23 +139,23 @@ static void grx_parse_bracket(GrxParser *ps, GrxNode *node) {
     memset(node->set, 0, sizeof(node->set));
     node->negated = false;
 
-    if (*ps->p == '^') {
+    if (*ps->cursor == '^') {
         node->negated = true;
-        ps->p++;
+        ps->cursor++;
     }
     /* A ']' first is a literal, per POSIX. */
     bool first = true;
 
-    while (*ps->p && (*ps->p != ']' || first)) {
+    while (*ps->cursor && (*ps->cursor != ']' || first)) {
         first = false;
 
         /* [:alpha:] and friends */
-        if (ps->p[0] == '[' && ps->p[1] == ':') {
-            const char *close = strstr(ps->p + 2, ":]");
+        if (ps->cursor[0] == '[' && ps->cursor[1] == ':') {
+            const char *close = strstr(ps->cursor + 2, ":]");
             if (close) {
-                size_t n = (size_t)(close - (ps->p + 2));
+                size_t n = (size_t)(close - (ps->cursor + 2));
                 char name[16] = {0};
-                if (n < sizeof(name)) memcpy(name, ps->p + 2, n);
+                if (n < sizeof(name)) memcpy(name, ps->cursor + 2, n);
                 for (int c = 0; c < 256; c++) {
                     bool in = false;
                     if (!strcmp(name, "alpha")) in = isalpha(c);
@@ -168,27 +168,27 @@ static void grx_parse_bracket(GrxParser *ps, GrxNode *node) {
                     else if (!strcmp(name, "xdigit")) in = isxdigit(c);
                     if (in) grx_set_add(node->set, (unsigned char)c);
                 }
-                ps->p = close + 2;
+                ps->cursor = close + 2;
                 continue;
             }
         }
 
         char lo;
-        if (*ps->p == '\\' && ps->p[1]) {
-            ps->p++;
-            if (grx_escape_class(*ps->p, node->set)) {
-                ps->p++;
+        if (*ps->cursor == '\\' && ps->cursor[1]) {
+            ps->cursor++;
+            if (grx_escape_class(*ps->cursor, node->set)) {
+                ps->cursor++;
                 continue;
             }
-            lo = grx_escape_char(*ps->p++);
+            lo = grx_escape_char(*ps->cursor++);
         } else {
-            lo = *ps->p++;
+            lo = *ps->cursor++;
         }
 
         /* range: a-z, but a trailing '-' before ']' is literal */
-        if (*ps->p == '-' && ps->p[1] && ps->p[1] != ']') {
-            ps->p++;
-            char hi = (*ps->p == '\\' && ps->p[1]) ? (ps->p++, grx_escape_char(*ps->p++)) : *ps->p++;
+        if (*ps->cursor == '-' && ps->cursor[1] && ps->cursor[1] != ']') {
+            ps->cursor++;
+            char hi = (*ps->cursor == '\\' && ps->cursor[1]) ? (ps->cursor++, grx_escape_char(*ps->cursor++)) : *ps->cursor++;
             for (int c = (unsigned char)lo; c <= (unsigned char)hi; c++) {
                 grx_set_add(node->set, (unsigned char)c);
             }
@@ -197,7 +197,7 @@ static void grx_parse_bracket(GrxParser *ps, GrxNode *node) {
         }
     }
 
-    if (*ps->p == ']') ps->p++;
+    if (*ps->cursor == ']') ps->cursor++;
     else ps->failed = true;
 }
 
@@ -207,68 +207,68 @@ static bool grx_parse_atom(GrxParser *ps, GrxNode *node) {
     node->min = 1;
     node->max = 1;
 
-    char c = *ps->p;
+    char c = *ps->cursor;
     if (c == '\0' || c == '|' || c == ')') return false;
 
     if (c == '(') {
-        ps->p++;
+        ps->cursor++;
         node->kind = GRX_GROUP;
         node->group = grx_parse_alt(ps);
-        if (*ps->p == ')') ps->p++;
+        if (*ps->cursor == ')') ps->cursor++;
         else ps->failed = true;
     } else if (c == '[') {
-        ps->p++;
+        ps->cursor++;
         grx_parse_bracket(ps, node);
     } else if (c == '.') {
-        ps->p++;
+        ps->cursor++;
         node->kind = GRX_ANY;
     } else if (c == '^') {
-        ps->p++;
+        ps->cursor++;
         node->kind = GRX_BOL;
         return true; /* anchors take no quantifier */
     } else if (c == '$') {
-        ps->p++;
+        ps->cursor++;
         node->kind = GRX_EOL;
         return true;
-    } else if (c == '\\' && ps->p[1]) {
-        ps->p++;
+    } else if (c == '\\' && ps->cursor[1]) {
+        ps->cursor++;
         unsigned char set[32] = {0};
-        if (grx_escape_class(*ps->p, set)) {
+        if (grx_escape_class(*ps->cursor, set)) {
             node->kind = GRX_CLASS;
             node->negated = false;
             memcpy(node->set, set, sizeof(set));
-            ps->p++;
+            ps->cursor++;
         } else {
             node->kind = GRX_CHAR;
-            node->ch = grx_escape_char(*ps->p++);
+            node->ch = grx_escape_char(*ps->cursor++);
         }
     } else {
         node->kind = GRX_CHAR;
-        node->ch = *ps->p++;
+        node->ch = *ps->cursor++;
     }
 
-    switch (*ps->p) {
-    case '*': ps->p++; node->min = 0; node->max = -1; break;
-    case '+': ps->p++; node->min = 1; node->max = -1; break;
-    case '?': ps->p++; node->min = 0; node->max = 1;  break;
+    switch (*ps->cursor) {
+    case '*': ps->cursor++; node->min = 0; node->max = -1; break;
+    case '+': ps->cursor++; node->min = 1; node->max = -1; break;
+    case '?': ps->cursor++; node->min = 0; node->max = 1;  break;
     case '{': {
-        const char *save = ps->p;
-        ps->p++;
-        if (!isdigit((unsigned char)*ps->p)) { ps->p = save; break; }
+        const char *save = ps->cursor;
+        ps->cursor++;
+        if (!isdigit((unsigned char)*ps->cursor)) { ps->cursor = save; break; }
         int lo = 0;
-        while (isdigit((unsigned char)*ps->p)) lo = lo * 10 + (*ps->p++ - '0');
+        while (isdigit((unsigned char)*ps->cursor)) lo = lo * 10 + (*ps->cursor++ - '0');
         int hi = lo;
-        if (*ps->p == ',') {
-            ps->p++;
-            if (isdigit((unsigned char)*ps->p)) {
+        if (*ps->cursor == ',') {
+            ps->cursor++;
+            if (isdigit((unsigned char)*ps->cursor)) {
                 hi = 0;
-                while (isdigit((unsigned char)*ps->p)) hi = hi * 10 + (*ps->p++ - '0');
+                while (isdigit((unsigned char)*ps->cursor)) hi = hi * 10 + (*ps->cursor++ - '0');
             } else {
                 hi = -1;
             }
         }
-        if (*ps->p == '}') { ps->p++; node->min = lo; node->max = hi; }
-        else ps->p = save;
+        if (*ps->cursor == '}') { ps->cursor++; node->min = lo; node->max = hi; }
+        else ps->cursor = save;
         break;
     }
     default: break;
@@ -305,7 +305,7 @@ static GrxAlt *grx_parse_alt(GrxParser *ps) {
             alt->seqs = grown;
         }
         alt->seqs[alt->count++] = seq;
-        if (*ps->p == '|') { ps->p++; continue; }
+        if (*ps->cursor == '|') { ps->cursor++; continue; }
         break;
     }
     return alt;
@@ -333,36 +333,36 @@ typedef struct {
     const char *begin; /* start of subject, for '^' */
 } GrxCtx;
 
-static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *s);
-static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *s);
+static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *scan_position);
+static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *scan_position);
 
-/* Does one atom match at s, ignoring its quantifier? Returns the position
+/* Does one atom match at scan_position, ignoring its quantifier? Returns the position
  * after it, or NULL. */
-static const char *grx_match_one(GrxCtx *ctx, GrxNode *n, const char *s) {
-    switch (n->kind) {
-    case GRX_BOL: return (s == ctx->begin) ? s : NULL;
-    case GRX_EOL: return (*s == '\0') ? s : NULL;
-    case GRX_ANY: return *s ? s + 1 : NULL;
-    case GRX_CHAR: return (*s == n->ch && *s) ? s + 1 : NULL;
+static const char *grx_match_one(GrxCtx *ctx, GrxNode *node, const char *scan_position) {
+    switch (node->kind) {
+    case GRX_BOL: return (scan_position == ctx->begin) ? scan_position : NULL;
+    case GRX_EOL: return (*scan_position == '\0') ? scan_position : NULL;
+    case GRX_ANY: return *scan_position ? scan_position + 1 : NULL;
+    case GRX_CHAR: return (*scan_position == node->ch && *scan_position) ? scan_position + 1 : NULL;
     case GRX_CLASS: {
-        if (!*s) return NULL;
-        bool in = grx_set_has(n->set, (unsigned char)*s);
-        return (in != n->negated) ? s + 1 : NULL;
+        if (!*scan_position) return NULL;
+        bool in = grx_set_has(node->set, (unsigned char)*scan_position);
+        return (in != node->negated) ? scan_position + 1 : NULL;
     }
-    case GRX_GROUP: return grx_match_alt(ctx, n->group, s);
+    case GRX_GROUP: return grx_match_alt(ctx, node->group, scan_position);
     }
     return NULL;
 }
 
-/* Match seq->nodes[idx..] at s. Greedy, with backtracking on the quantifier. */
-static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *s) {
-    if (idx == seq->count) return s;
+/* Match seq->nodes[idx..] at scan_position. Greedy, with backtracking on the quantifier. */
+static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *scan_position) {
+    if (idx == seq->count) return scan_position;
 
-    GrxNode *n = &seq->nodes[idx];
+    GrxNode *node = &seq->nodes[idx];
 
     /* Fixed single occurrence: the common case, kept allocation-free. */
-    if (n->min == 1 && n->max == 1) {
-        const char *next = grx_match_one(ctx, n, s);
+    if (node->min == 1 && node->max == 1) {
+        const char *next = grx_match_one(ctx, node, scan_position);
         if (!next) return NULL;
         return grx_match_seq(ctx, seq, idx + 1, next);
     }
@@ -372,26 +372,26 @@ static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *
     enum { GRX_MAX_REPEAT = 8192 };
     const char *stack[GRX_MAX_REPEAT + 1];
     int depth = 0;
-    stack[0] = s;
-    const char *cur = s;
-    while ((n->max < 0 || depth < n->max) && depth < GRX_MAX_REPEAT) {
-        const char *next = grx_match_one(ctx, n, cur);
+    stack[0] = scan_position;
+    const char *cur = scan_position;
+    while ((node->max < 0 || depth < node->max) && depth < GRX_MAX_REPEAT) {
+        const char *next = grx_match_one(ctx, node, cur);
         if (!next || next == cur) break; /* no progress: stop, or '*' spins */
         cur = next;
         stack[++depth] = cur;
     }
 
-    for (int take = depth; take >= n->min; take--) {
+    for (int take = depth; take >= node->min; take--) {
         const char *rest = grx_match_seq(ctx, seq, idx + 1, stack[take]);
         if (rest) return rest;
     }
     return NULL;
 }
 
-static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *s) {
+static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *scan_position) {
     if (!alt) return NULL;
     for (int i = 0; i < alt->count; i++) {
-        const char *end = grx_match_seq(ctx, &alt->seqs[i], 0, s);
+        const char *end = grx_match_seq(ctx, &alt->seqs[i], 0, scan_position);
         if (end) return end;
     }
     return NULL;
@@ -401,11 +401,11 @@ static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *s) {
 
 static int regcomp(regex_t *re, const char *pattern, int flags) {
     GrxParser ps;
-    ps.p = pattern;
+    ps.cursor = pattern;
     ps.failed = false;
     re->root = grx_parse_alt(&ps);
     re->nosub = (flags & REG_NOSUB) != 0;
-    if (ps.failed || *ps.p != '\0') {
+    if (ps.failed || *ps.cursor != '\0') {
         grx_free_alt(re->root);
         re->root = NULL;
         return REG_BADPAT;

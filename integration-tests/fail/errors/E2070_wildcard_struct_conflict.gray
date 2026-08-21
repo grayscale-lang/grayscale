@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2070 - wildcard '?' is not allowed in struct fields
+ */
+
+// expect-error: E2070
+
+const Pair struct {
+    first ?
+    second ?
+}
+
+do main() {
+    mut p = Pair{first: 1, second: "x"}
+}

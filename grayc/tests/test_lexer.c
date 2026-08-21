@@ -10,6 +10,7 @@
 #include "test.h"
 #include "../src/util/arena.h"
 #include "../src/lexer/lexer.h"
+#include <stdint.h>
 
 static Arena *arena;
 
@@ -155,6 +156,62 @@ static void test_identifiers(void) {
     Token token3 = next_token(lexer);
     ASSERT_EQ(token3.type, TOK_IDENT);
     ASSERT_STR_EQ(token3.literal, "count123");
+}
+
+/* Repeated identifiers must resolve to the same arena-owned pointer
+ * (deduplicated via arena_intern_string), while distinct identifiers must
+ * still get distinct pointers. */
+static void test_identifier_interning(void) {
+    Lexer *lexer = create_test_lexer("count count count total count");
+    Token first = next_token(lexer);
+    ASSERT_EQ(first.type, TOK_IDENT);
+    ASSERT_STR_EQ(first.literal, "count");
+
+    Token second = next_token(lexer);
+    ASSERT_EQ(second.type, TOK_IDENT);
+    ASSERT_EQ((long long)(intptr_t)second.literal, (long long)(intptr_t)first.literal);
+
+    Token third = next_token(lexer);
+    ASSERT_EQ((long long)(intptr_t)third.literal, (long long)(intptr_t)first.literal);
+
+    Token distinct = next_token(lexer);
+    ASSERT_EQ(distinct.type, TOK_IDENT);
+    ASSERT_STR_EQ(distinct.literal, "total");
+    ASSERT_NE((long long)(intptr_t)distinct.literal, (long long)(intptr_t)first.literal);
+
+    Token fifth = next_token(lexer);
+    ASSERT_EQ((long long)(intptr_t)fifth.literal, (long long)(intptr_t)first.literal);
+}
+
+/* Interning is arena-scoped, not lexer-scoped: two separate lexers sharing
+ * one arena (mirroring how main.gray and its imports are lexed) must still
+ * share the same pointer for the same identifier text. */
+static void test_identifier_interning_across_lexers(void) {
+    Lexer *lexer_a = create_test_lexer("shared_name");
+    Lexer *lexer_b = create_test_lexer("shared_name");
+    Token from_a = next_token(lexer_a);
+    Token from_b = next_token(lexer_b);
+    ASSERT_EQ(from_a.type, TOK_IDENT);
+    ASSERT_EQ(from_b.type, TOK_IDENT);
+    ASSERT_EQ((long long)(intptr_t)from_b.literal, (long long)(intptr_t)from_a.literal);
+}
+
+/* Keywords must resolve to the keyword table's own static string (never an
+ * arena copy), and every occurrence of the same keyword must share that
+ * one static pointer. */
+static void test_keyword_bypasses_arena(void) {
+    Lexer *lexer = create_test_lexer("return return if");
+    Token first_return = next_token(lexer);
+    ASSERT_EQ(first_return.type, TOK_RETURN);
+    ASSERT_STR_EQ(first_return.literal, "return");
+
+    Token second_return = next_token(lexer);
+    ASSERT_EQ(second_return.type, TOK_RETURN);
+    ASSERT_EQ((long long)(intptr_t)second_return.literal, (long long)(intptr_t)first_return.literal);
+
+    Token if_tok = next_token(lexer);
+    ASSERT_EQ(if_tok.type, TOK_IF);
+    ASSERT_STR_EQ(if_tok.literal, "if");
 }
 
 static void test_skip_comments(void) {
@@ -618,6 +675,9 @@ int main(void) {
     RUN_TEST(test_keywords);
     RUN_TEST(test_more_keywords);
     RUN_TEST(test_identifiers);
+    RUN_TEST(test_identifier_interning);
+    RUN_TEST(test_identifier_interning_across_lexers);
+    RUN_TEST(test_keyword_bypasses_arena);
     RUN_TEST(test_skip_comments);
     RUN_TEST(test_skip_block_comments);
     RUN_TEST(test_line_tracking);

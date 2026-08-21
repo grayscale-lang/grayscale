@@ -1,0 +1,76 @@
+/*
+ * map_string_key_arena_scope.gray - map string keys survive their builder's arena
+ *
+ * gray_map_set stored a GrayString key by copying the struct header only, so
+ * the map held a pointer to character data it did not own.  A map allocated
+ * with new() lives in the heap arena, but keys built inside a value-returning
+ * function live in that function's scratch arena, which is freed on return.
+ * A later call reused that memory and every key hashed against another
+ * function's leftovers.
+ *
+ * Fix: gray_map_set copies string key data into the map's own arena on
+ * insert, matching what gray_map_copy already did.
+ */
+
+do build(prefix string) -> ^map[string:int] {
+    mut p ^map[string:int] = new(map[string:int])
+    for i in range(0, 40) {
+        p^["${prefix}${i}"] = i
+    }
+    return p
+}
+
+do main() {
+    println("=== Map String Key Arena Scope Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut first ^map[string:int] = build("key")
+
+    /* A second call reuses the freed arena block and overwrites the key
+     * characters the first map would be pointing at. */
+    mut second ^map[string:int] = build("QQQQQQQQQQQQQQQQ")
+
+    if len(first^) == 40 && len(second^) == 40 {
+        println("  [PASS] both maps hold 40 entries")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 40 and 40, got ${len(first^)} and ${len(second^)}")
+        failed += 1
+    }
+
+    mut lost int = 0
+    mut wrong int = 0
+    for i in range(0, 40) {
+        mut k string = "key${i}"
+        if k in first^ {
+            if first^[k] != i { wrong = wrong + 1 }
+        } otherwise {
+            lost = lost + 1
+        }
+    }
+
+    if lost == 0 {
+        println("  [PASS] every key still reachable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${lost} keys lost after the builder arena was freed")
+        failed += 1
+    }
+
+    if wrong == 0 {
+        println("  [PASS] every value intact")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${wrong} values wrong")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

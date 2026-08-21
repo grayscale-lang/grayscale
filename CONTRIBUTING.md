@@ -465,6 +465,7 @@ For more details, see `TESTING.md`.
 ### General
 
 - Add comments only for non-obvious logic — don't explain what the code already says
+- Add yourself to the `Contributors:` section of the header of any source file you change; add the section if it isn't there. GitHub handle at minimum, first and last name if you choose — one line.
 - When adding error codes, register them in `grayc/src/util/error_codes.h` (the canonical source). After adding or changing codes, run `scripts/generate_errors.sh` to regenerate `ERRORS.md` for the docs site.
 - When adding any user-facing stdlib function, builtin, constant, or type: add `@man` blocks to the header, update `STANDARD.md`, and run the appropriate generation script (`scripts/generate_stdlib_man.sh` or `scripts/generate_builtins_man.sh`). See [Adding a Stdlib Function, Builtin, Constant, or Type](#adding-a-stdlib-function-builtin-constant-or-type) for the full checklist.
 

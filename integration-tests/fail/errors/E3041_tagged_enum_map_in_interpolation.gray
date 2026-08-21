@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3041 - map of tagged enum in string interpolation
+ *
+ * "${m}" where m is map[string:Value] and Value is a tagged enum used to
+ * print each value's tag as a bare integer, silently dropping the payload.
+ * The typechecker now rejects at the interpolation site, matching the
+ * scalar rule (see E3041_tagged_enum_in_interpolation.gray).
+ */
+
+const Value enum {
+    IntVal(int)
+    NilVal
+}
+
+do main() {
+    mut m map[string:Value] = {"a": Value.IntVal(1)}
+    println("${m}")
+}

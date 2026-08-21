@@ -1,0 +1,120 @@
+/*
+ * struct_literal_container_fields.gray - omitted map/array fields still work
+ *
+ * A struct literal that left out a map field zero-filled it, giving the map
+ * capacity, key_size, value_size and key_kind of 0.  gray_map_set then
+ * rebuilt to capacity 0, probed an empty table and returned having stored
+ * nothing -- inserts vanished with no panic and no diagnostic.  new(Type)
+ * initialises container fields for exactly this reason; struct literals did
+ * not.
+ *
+ * Fix: emit_struct_value now emits a gray_map_new_kind / gray_array_new
+ * initialiser for every map or array field the literal omits.
+ */
+
+import @arrays
+
+const Item struct {
+    name string
+    val int
+}
+
+const Bag struct {
+    nums   map[string:int]
+    names  map[string:string]
+    keyed  map[int:int]
+    items  [int]
+    things [Item]
+    tag    string
+}
+
+const Defaulted struct {
+    plain   int
+    labeled string = "fallback"
+    lookup  map[string:int]
+}
+
+do main() {
+    println("=== Struct Literal Container Fields Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Fully empty literal */
+    mut a Bag = Bag{}
+    a.nums["k"] = 1
+    a.names["k"] = "v"
+    a.keyed[7] = 42
+    if len(a.nums) == 1 && a.nums["k"] == 1 &&
+       len(a.names) == 1 && a.names["k"] == "v" &&
+       len(a.keyed) == 1 && a.keyed[7] == 42 {
+        println("  [PASS] map fields usable after Bag{}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map fields dead after Bag{}: ${len(a.nums)}/${len(a.names)}/${len(a.keyed)}")
+        failed += 1
+    }
+
+    arrays.append(a.items, 5)
+    mut one Item = Item{name: "one", val: 1}
+    arrays.append(a.things, one)
+    if len(a.items) == 1 && a.items[0] == 5 &&
+       len(a.things) == 1 && a.things[0].name == "one" {
+        println("  [PASS] array fields usable after Bag{}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array fields dead after Bag{}")
+        failed += 1
+    }
+
+    /* Partial literal: the omitted containers must still be initialised */
+    mut b Bag = Bag{tag: "x"}
+    b.nums["k"] = 2
+    arrays.append(b.items, 9)
+    if b.tag == "x" && len(b.nums) == 1 && b.nums["k"] == 2 && len(b.items) == 1 {
+        println("  [PASS] partial literal initialises omitted containers")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] partial literal left containers dead")
+        failed += 1
+    }
+
+    /* Explicitly supplied containers keep the value the literal gives */
+    mut c Bag = Bag{nums: {"seed": 7}, items: {1, 2, 3}, tag: "y"}
+    c.nums["k"] = 3
+    if len(c.nums) == 2 && c.nums["seed"] == 7 && c.nums["k"] == 3 && len(c.items) == 3 {
+        println("  [PASS] explicit container values preserved")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit container values lost: ${len(c.nums)}/${len(c.items)}")
+        failed += 1
+    }
+
+    /* A default-valued field after a plain one must not emit a stray comma */
+    mut d Defaulted = Defaulted{}
+    d.lookup["k"] = 4
+    if d.plain == 0 && d.labeled == "fallback" && d.lookup["k"] == 4 {
+        println("  [PASS] field defaults alongside omitted containers")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got plain=${d.plain} labeled='${d.labeled}'")
+        failed += 1
+    }
+
+    mut e Defaulted = Defaulted{labeled: "given"}
+    e.lookup["k"] = 5
+    if e.labeled == "given" && e.lookup["k"] == 5 {
+        println("  [PASS] overridden default alongside omitted container")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got labeled='${e.labeled}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

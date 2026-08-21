@@ -97,7 +97,10 @@ jobs:
             goos: linux
             goarch: amd64
             grayc_arch: linux-amd64
-          - os: ubuntu-latest
+          # Native arm64 runner: grayc is built with the host toolchain, and
+          # grayc/Makefile picks its atomics from uname -m, so building this
+          # entry on an x86-64 runner ships a compiler for the wrong CPU.
+          - os: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             grayc_arch: linux-arm64
@@ -105,7 +108,9 @@ jobs:
             goos: darwin
             goarch: arm64
             grayc_arch: darwin-arm64
-          - os: macos-latest
+          # macos-latest is arm64; macos-13 is the Intel image, needed here
+          # for the same reason as the linux-arm64 entry above.
+          - os: macos-13
             goos: darwin
             goarch: amd64
             grayc_arch: darwin-amd64
@@ -161,6 +166,27 @@ jobs:
           # runtime.c and builtins.c include util/ headers; without them the
           # compile-from-source fallback cannot build (mirrors Makefile staging).
           cp grayc/src/util/*.h internal/driver/runtime/src/util/
+
+      # The embedded compiler is what every gray build/run/check executes, and
+      # a wrong-architecture copy still stages and packages cleanly — the
+      # failure only shows up as an exec-format error on a user's machine.
+      - name: Verify embedded compiler architecture
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          case "${{ matrix.grayc_arch }}" in
+            linux-amd64)  want="x86-64" ;;
+            linux-arm64)  want="aarch64" ;;
+            darwin-amd64) want="x86_64" ;;
+            darwin-arm64) want="arm64" ;;
+            *) echo "no architecture check for ${{ matrix.grayc_arch }}"; exit 0 ;;
+          esac
+          got=$(file -b internal/driver/runtime/grayc)
+          echo "embedded grayc: $got"
+          case "$got" in
+            *"$want"*) echo "matches expected architecture ($want)" ;;
+            *) echo "::error::embedded grayc is not $want: $got"; exit 1 ;;
+          esac
 
       - name: Build Grayscale CLI (with embedded runtime)
         env:

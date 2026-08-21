@@ -1,0 +1,5 @@
+const Shape enum {
+    Circle(int)
+    Rect(int, int)
+    Empty
+}

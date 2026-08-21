@@ -788,6 +788,15 @@ static bool parser_has_code(DiagnosticList *diagnostics, const char *code) {
     return false;
 }
 
+/* Helper: find the message of the first diagnostic with a given code */
+static const char *parser_message_for(DiagnosticList *diagnostics, const char *code) {
+    for (int i = 0; i < diagnostics->count; i++) {
+        if (diagnostics->items[i].code && strcmp(diagnostics->items[i].code, code) == 0)
+            return diagnostics->items[i].message;
+    }
+    return NULL;
+}
+
 /* ===== Parser error code tests ===== */
 
 static void test_parse_error_E2025_non_int_array_size(void) {
@@ -807,6 +816,17 @@ static void test_parse_error_E2060_too_many_returns(void) {
         "do bad() -> (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) { }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2060"));
+}
+
+/* Regression test for #2413: the bound was checked after writing to
+ * names[var_count]/types[var_count], so the 17th variable wrote one element
+ * past the 16-element arrays before the check could fire. Seventeen names
+ * (one initial + sixteen in the comma loop) is what triggers the write. */
+static void test_parse_error_E2062_too_many_multi_vars(void) {
+    AstNode *program = parse_test_input(
+        "do main() { mut a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q = foo() }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2062"));
 }
 
 static void test_parse_error_E2068_mut_struct(void) {
@@ -831,6 +851,17 @@ static void test_parse_error_E2071_empty_interpolation(void) {
     AstNode *program = parse_test_input("do main() { println(\"${}\") }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2071"));
+}
+
+/* Source truncated in expression position: the parser hits EOF outside any
+ * ${...} sub-expression, so it must report the plain unexpected-token wording
+ * rather than the interpolation one. */
+static void test_parse_error_truncated_at_eof(void) {
+    AstNode *program = parse_test_input("do main() {\n    mut x int = ");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2002");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strstr(message, "interpolation") == NULL);
 }
 
 int main(void) {
@@ -931,10 +962,12 @@ int main(void) {
     RUN_TEST(test_parse_error_E2025_non_int_array_size);
     RUN_TEST(test_parse_error_E2059_empty_when);
     RUN_TEST(test_parse_error_E2060_too_many_returns);
+    RUN_TEST(test_parse_error_E2062_too_many_multi_vars);
     RUN_TEST(test_parse_error_E2068_mut_struct);
     RUN_TEST(test_parse_error_E2069_semicolon_in_struct);
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
+    RUN_TEST(test_parse_error_truncated_at_eof);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

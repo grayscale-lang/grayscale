@@ -1,0 +1,73 @@
+/*
+ * Test: cross-module enum types in struct declarations
+ * Struct field types and struct function signatures reference imported
+ * types by their bare name, while the merged program registers them
+ * module-prefixed. Without rewriting the struct declaration, every use
+ * reports "expected Color, got Color".
+ */
+
+import and use "./defs.gray"
+
+const Painter struct {
+    name string
+    favorite Color
+
+    do describe(&p Painter, c Color) -> string {
+        when c {
+            is Color.RED { return "red" }
+            is Color.GREEN { return "green" }
+            is Color.BLUE { return "blue" }
+            default { return "unknown" }
+        }
+    }
+
+    do preferred(&p Painter) -> Color {
+        return p.favorite
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    p Painter = Painter{name: "bob", favorite: Color.BLUE}
+
+    // Test 1: struct function parameter of a cross-module enum type
+    mut got string = p.describe(Color.RED)
+    if got == "red" {
+        println("  [PASS] struct function param of imported enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected red, got ${got}")
+        failed += 1
+    }
+
+    // Test 2: struct field of a cross-module enum type
+    mut fav Color = p.favorite
+    got = p.describe(fav)
+    if got == "blue" {
+        println("  [PASS] struct field of imported enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected blue, got ${got}")
+        failed += 1
+    }
+
+    // Test 3: struct function return type of a cross-module enum type
+    mut ret Color = p.preferred()
+    got = p.describe(ret)
+    if got == "blue" {
+        println("  [PASS] struct function return of imported enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected blue, got ${got}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

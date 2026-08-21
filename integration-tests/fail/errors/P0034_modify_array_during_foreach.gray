@@ -4,7 +4,7 @@ import @arrays
 do main() {
     mut arr [int] = {1, 2, 3, 4, 5}
     for_each item in arr {
-        arrays.append(&arr, item * 2)
+        arrays.remove_at(arr, 0)
     }
     println(arr)
 }

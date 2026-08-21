@@ -1,0 +1,5 @@
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}

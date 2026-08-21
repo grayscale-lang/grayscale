@@ -37,6 +37,17 @@
 #define GRAY_NULL_DEVICE  "/dev/null"
 #endif
 
+/* --- Strings --- */
+
+/* strndup, which MinGW-w64 declares only under a POSIX or GNU feature-test
+ * macro that the Windows branch of the Makefile deliberately does not set
+ * (see the -std=gnu11 comment there). Without a declaration GCC assumes an
+ * int return and truncates the pointer on Win64. Implemented portably rather
+ * than #ifdef'd, so both platforms run the same code. Copies at most `n`
+ * bytes, stopping early at a NUL, and always NUL-terminates. Returns NULL on
+ * allocation failure. Caller owns the result and must free() it. */
+char *gray_strndup(const char *s, size_t n);
+
 /* --- Console --- */
 
 /* Opt the console into interpreting ANSI escape sequences. No-op off Windows,

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5044 - error() requires a string argument
+ */
+
+// expect-error: E5044
+
+
+do main() {
+    mut err = error(42)  // ERROR: must be a string
+    println(err.message)
+}

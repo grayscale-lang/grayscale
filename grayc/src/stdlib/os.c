@@ -27,6 +27,21 @@
 #define GRAY_HOSTNAME_BUF 256
 #define GRAY_EXEC_OUTPUT_MAX (64 * 1024 * 1024) /* 64 MiB per stream */
 
+/* Grow an arena-backed byte buffer so it can take `add` more bytes on top of
+ * `total`. The arena has no realloc, so growth is allocate-and-copy; the
+ * `* 2 + add` step keeps the doubling from being defeated by a chunk larger
+ * than the current capacity. */
+#define EXEC_BUF_GROW(arena, buf, total, cap, add) \
+    do { \
+        if ((total) + (size_t)(add) > (cap)) { \
+            size_t exec_buf_cap_ = (cap) * 2 + (size_t)(add); \
+            char *exec_buf_grown_ = gray_arena_alloc_uninitialized((arena), exec_buf_cap_); \
+            memcpy(exec_buf_grown_, (buf), (total)); \
+            (buf) = exec_buf_grown_; \
+            (cap) = exec_buf_cap_; \
+        } \
+    } while (0)
+
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -194,13 +209,7 @@ static DWORD WINAPI drain_pipe(LPVOID param) {
             r->overflow = true;
             break;
         }
-        if (r->total + got > r->cap) {
-            size_t new_cap = r->cap * 2 + got;
-            char *grown = gray_arena_alloc_uninitialized(r->arena, new_cap);
-            memcpy(grown, r->buf, r->total);
-            r->buf = grown;
-            r->cap = new_cap;
-        }
+        EXEC_BUF_GROW(r->arena, r->buf, r->total, r->cap, got);
         memcpy(r->buf + r->total, chunk, got);
         r->total += got;
     }
@@ -363,13 +372,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
                 err_done = true;
                 truncated = true;
             } else {
-                if (out_total + (size_t)n > out_cap) {
-                    size_t new_cap = out_cap * 2 + (size_t)n;
-                    char *grown = gray_arena_alloc_uninitialized(arena, new_cap);
-                    memcpy(grown, out_buf, out_total);
-                    out_buf = grown;
-                    out_cap = new_cap;
-                }
+                EXEC_BUF_GROW(arena, out_buf, out_total, out_cap, n);
                 memcpy(out_buf + out_total, buf, (size_t)n);
                 out_total += (size_t)n;
             }
@@ -385,13 +388,7 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
                 err_done = true;
                 truncated = true;
             } else {
-                if (err_total + (size_t)n > err_cap) {
-                    size_t new_cap = err_cap * 2 + (size_t)n;
-                    char *grown = gray_arena_alloc_uninitialized(arena, new_cap);
-                    memcpy(grown, err_buf, err_total);
-                    err_buf = grown;
-                    err_cap = new_cap;
-                }
+                EXEC_BUF_GROW(arena, err_buf, err_total, err_cap, n);
                 memcpy(err_buf + err_total, buf, (size_t)n);
                 err_total += (size_t)n;
             }

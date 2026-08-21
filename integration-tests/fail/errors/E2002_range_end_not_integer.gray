@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2002 - missing symbol in range end
+ */
+
+// expect-error: E2002
+
+do main() {
+    for i in 1..10.5 {  // range end must be integer
+        println(i)
+    }
+}

@@ -17,29 +17,29 @@
 #include <errno.h>
 
 typedef struct {
-    pthread_t pt;
+    pthread_t posix_thread;
     _Atomic int alive;       /* 1 between entry and exit, 0 otherwise */
     _Atomic int detached;    /* 1 once detach() has been called */
 } GrayThreadInternal;
 
 static _Atomic int64_t gray_threads_live_count = 0;
 
-/* Unified thread wrapper: fn0 is set for no-arg spawns, fn1 for one-arg. */
+/* Unified thread wrapper: entry_no_arg is set for no-arg spawns, entry_with_arg for one-arg. */
 typedef struct {
-    void (*fn0)(void);
-    void (*fn1)(int64_t);
+    void (*entry_no_arg)(void);
+    void (*entry_with_arg)(int64_t);
     int64_t arg;
     GrayThreadInternal *state;
 } ThreadArg;
 
 static void *thread_entry(void *raw) {
-    ThreadArg *ta = (ThreadArg *)raw;
-    GrayThreadInternal *state = ta->state;
+    ThreadArg *thread_arg = (ThreadArg *)raw;
+    GrayThreadInternal *state = thread_arg->state;
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
-    if (ta->fn1)
-        ta->fn1(ta->arg);
+    if (thread_arg->entry_with_arg)
+        thread_arg->entry_with_arg(thread_arg->arg);
     else
-        ta->fn0();
+        thread_arg->entry_no_arg();
     gray_arena_destroy(gray_default_arena, __FILE__, __LINE__);
     free(gray_default_arena);
     gray_default_arena = NULL;
@@ -50,53 +50,53 @@ static void *thread_entry(void *raw) {
      * owns the free.  If join() is used instead, the increment is
      * harmless — join() frees after pthread_join returns. */
     if (atomic_fetch_add(&state->detached, 1) == 1) free(state);
-    free(ta);
+    free(thread_arg);
     return NULL;
 }
 
-static GrayThread spawn_thread(ThreadArg *ta) {
-    GrayThreadInternal *state = ta->state;
+static GrayThread spawn_thread(ThreadArg *thread_arg) {
+    GrayThreadInternal *state = thread_arg->state;
     /* alive=1 set before pthread_create so is_alive() is true immediately
      * after spawn() returns; otherwise callers race the scheduler. The
      * thread wrapper clears it on exit. */
     atomic_store(&state->alive, 1);
     atomic_store(&state->detached, 0);
     atomic_fetch_add(&gray_threads_live_count, 1);
-    pthread_create(&state->pt, NULL, thread_entry, ta);
+    pthread_create(&state->posix_thread, NULL, thread_entry, thread_arg);
     GrayThread t;
     t._internal = state;
     return t;
 }
 
 GrayThread gray_threads_spawn(void (*fn)(void)) {
-    ThreadArg *ta = malloc(sizeof(ThreadArg));
-    ta->fn0 = fn;
-    ta->fn1 = NULL;
-    ta->arg = 0;
-    ta->state = malloc(sizeof(GrayThreadInternal));
-    return spawn_thread(ta);
+    ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
+    thread_arg->entry_no_arg = fn;
+    thread_arg->entry_with_arg = NULL;
+    thread_arg->arg = 0;
+    thread_arg->state = malloc(sizeof(GrayThreadInternal));
+    return spawn_thread(thread_arg);
 }
 
 GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg) {
-    ThreadArg *ta = malloc(sizeof(ThreadArg));
-    ta->fn0 = NULL;
-    ta->fn1 = fn;
-    ta->arg = arg;
-    ta->state = malloc(sizeof(GrayThreadInternal));
-    return spawn_thread(ta);
+    ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
+    thread_arg->entry_no_arg = NULL;
+    thread_arg->entry_with_arg = fn;
+    thread_arg->arg = arg;
+    thread_arg->state = malloc(sizeof(GrayThreadInternal));
+    return spawn_thread(thread_arg);
 }
 
 void gray_threads_join(GrayThread t) {
     if (!t._internal) return;
     GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
-    pthread_join(state->pt, NULL);
+    pthread_join(state->posix_thread, NULL);
     free(state);
 }
 
 void gray_threads_detach(GrayThread t) {
     if (!t._internal) return;
     GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
-    pthread_detach(state->pt);
+    pthread_detach(state->posix_thread);
     /* Rendezvous with thread exit: both sides increment detached, and
      * whichever sees the old value as 1 is last to arrive and frees. */
     if (atomic_fetch_add(&state->detached, 1) == 1) free(state);

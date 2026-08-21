@@ -1,7 +1,8 @@
 /*
- * Error Test: E2001 - when condition must be a value, not a type name
- * Expected: compiler should reject this with E2001
+ * Error Test: E3100 - a type name cannot be a when subject
  */
+
+// expect-error: E3100
 
 const COLOR enum {
     RED

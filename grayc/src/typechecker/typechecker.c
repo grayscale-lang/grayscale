@@ -5,6 +5,9 @@
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
+ *
+ * Contributors:
+ *  - @mvanhorn
  */
 
 #include "typechecker.h"
@@ -323,10 +326,10 @@ static void enum_ensure_sorted(TypeChecker *checker) {
     qsort(checker->enum_names_sorted, (size_t)checker->enum_count,
           sizeof(const char *), enum_name_string_compare);
     /* Build reverse mapping from sorted position to original index */
-    for (int s = 0; s < checker->enum_count; s++) {
+    for (int sorted_index = 0; sorted_index < checker->enum_count; sorted_index++) {
         for (int i = 0; i < checker->enum_count; i++) {
-            if (checker->enum_names[i] == checker->enum_names_sorted[s]) {
-                checker->enum_names_sorted_indices[s] = i;
+            if (checker->enum_names[i] == checker->enum_names_sorted[sorted_index]) {
+                checker->enum_names_sorted_indices[sorted_index] = i;
                 break;
             }
         }
@@ -682,8 +685,8 @@ static char *bind_wildcard_string(const char *param_tn, const char *arg_tn) {
     if (param_tn[0] == '[' && arg_tn[0] == '[') {
         if (plen < 3 || alen < 3) return NULL;
         if (param_tn[plen - 1] != ']' || arg_tn[alen - 1] != ']') return NULL;
-        char *p_inner = strndup(param_tn + 1, plen - 2);
-        char *a_inner = strndup(arg_tn + 1, alen - 2);
+        char *p_inner = gray_strndup(param_tn + 1, plen - 2);
+        char *a_inner = gray_strndup(arg_tn + 1, alen - 2);
         char *result = bind_wildcard_string(p_inner, a_inner);
         free(p_inner);
         free(a_inner);
@@ -715,13 +718,13 @@ static char *bind_wildcard_string(const char *param_tn, const char *arg_tn) {
 
         char *result;
         if (param_key_has_wildcard) {
-            char *p = strndup(param_key, param_key_len);
-            char *a = strndup(arg_key, arg_key_len);
+            char *p = gray_strndup(param_key, param_key_len);
+            char *a = gray_strndup(arg_key, arg_key_len);
             result = bind_wildcard_string(p, a);
             free(p); free(a);
         } else {
-            char *p = strndup(param_val, param_val_len);
-            char *a = strndup(arg_val, arg_val_len);
+            char *p = gray_strndup(param_val, param_val_len);
+            char *a = gray_strndup(arg_val, arg_val_len);
             result = bind_wildcard_string(p, a);
             free(p); free(a);
         }
@@ -1785,11 +1788,11 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
         name = resolve_type_alias(checker, name);
     }
     if (name && is_enum_name(checker, name)) return type_enum(name);
-    GrayType *t = type_from_name(name);
+    GrayType *resolved_type = type_from_name(name);
     /* : try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
      * type_from_name returns TK_STRUCT for any capitalized name
-     * even if the struct isn't registered, so check is_struct_name
+     * even if the struct isn'resolved_type registered, so check is_struct_name
      * to see if the bare name actually exists before giving up. */
     if (name && name[0] >= 'A' && name[0] <= 'Z' &&
         !is_struct_name(checker, name) && !is_enum_name(checker, name)) {
@@ -1802,7 +1805,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             if (is_struct_name(checker, prefixed)) return type_struct(prefixed);
         }
         /* : after registration completes, reject uppercase names that
-         * aren't registered as structs or enums. During registration we must
+         * aren'resolved_type registered as structs or enums. During registration we must
          * allow forward references, so only enforce this in later passes.
          * Exempt built-in types that are mapped directly in codegen without
          * struct registration (e.g. Error → GrayError*). */
@@ -1837,7 +1840,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             }
         }
     }
-    return t;
+    return resolved_type;
 }
 
 /* --- Type signedness helpers --- */
@@ -1931,7 +1934,7 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
     }
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
         node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
-        *out = -node->data.prefix.right->data.int_value.value;
+        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
     /* Simple constant folding for literal +, -, * */
@@ -3206,11 +3209,11 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     AstNode *arg = node->data.call.args[argument_index];
                     AstNode *found_declaration = NULL;
                     for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                        AstNode *s = checker->program->data.program.stmts[field_index];
-                        if (s->kind == NODE_STRUCT_DECL &&
-                            strcmp(s->data.struct_decl.name, mod) == 0) {
-                            for (int sfi = 0; sfi < s->data.struct_decl.func_count; sfi++) {
-                                AstNode *sf = s->data.struct_decl.funcs[sfi].func_decl;
+                        AstNode *stmt = checker->program->data.program.stmts[field_index];
+                        if (stmt->kind == NODE_STRUCT_DECL &&
+                            strcmp(stmt->data.struct_decl.name, mod) == 0) {
+                            for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
+                                AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
                                 if (sf && sf->kind == NODE_FUNC_DECL &&
                                     strcmp(sf->data.func_decl.name, mfn) == 0 &&
                                     argument_index < sf->data.func_decl.param_count &&
@@ -4041,6 +4044,16 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = type_from_name("Error");
             return result;
         }
+        /* E5044: the message is stored as a GrayString, so anything else
+         * reaches the C compiler as a type mismatch rather than a
+         * diagnostic. */
+        AstNode *earg = node->data.call.args[0];
+        GrayType *eat = resolve_expression(checker, earg);
+        if (eat && eat->kind != TK_STRING && eat->kind != TK_UNKNOWN) {
+            diagnostic_error_code_formatted(checker->diag, "E5044",
+                NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
+                type_display_name(checker, eat));
+        }
         result = type_from_name("Error");
     } else if (strcmp(function_name, "println") == 0 || strcmp(function_name, "eprintln") == 0) {
         /* println/eprintln accept 0 or 1 arguments */
@@ -4671,15 +4684,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             {
                 AstNode *arg = node->data.call.args[argument_index];
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                    AstNode *s = checker->program->data.program.stmts[field_index];
-                    if (s->kind != NODE_FUNC_DECL ||
-                        strcmp(s->data.func_decl.name, function_name) != 0 ||
-                        argument_index >= s->data.func_decl.param_count ||
-                        !s->data.func_decl.params[argument_index].mutable)
+                    AstNode *stmt = checker->program->data.program.stmts[field_index];
+                    if (stmt->kind != NODE_FUNC_DECL ||
+                        strcmp(stmt->data.func_decl.name, function_name) != 0 ||
+                        argument_index >= stmt->data.func_decl.param_count ||
+                        !stmt->data.func_decl.params[argument_index].mutable)
                         continue;
                     char param_desc[MSG_BUF_SIZE];
-                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                        s->data.func_decl.params[argument_index].name);
+                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                        stmt->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, arg, param_desc, function_name);
                     break;
                 }
@@ -4772,15 +4785,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                             AstNode *arg = node->data.call.args[argument_index];
                             const char *ref_name = fn_sym->func_ref_name;
                             for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                                AstNode *s = checker->program->data.program.stmts[field_index];
-                                if (s->kind != NODE_FUNC_DECL ||
-                                    strcmp(s->data.func_decl.name, ref_name) != 0 ||
-                                    argument_index >= s->data.func_decl.param_count ||
-                                    !s->data.func_decl.params[argument_index].mutable)
+                                AstNode *stmt = checker->program->data.program.stmts[field_index];
+                                if (stmt->kind != NODE_FUNC_DECL ||
+                                    strcmp(stmt->data.func_decl.name, ref_name) != 0 ||
+                                    argument_index >= stmt->data.func_decl.param_count ||
+                                    !stmt->data.func_decl.params[argument_index].mutable)
                                     continue;
                                 char param_desc[MSG_BUF_SIZE];
-                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                                    s->data.func_decl.params[argument_index].name);
+                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                                    stmt->data.func_decl.params[argument_index].name);
                                 check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
                                 break;
                             }
@@ -4839,6 +4852,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
         } else if (!typechecker_is_builtin(function_name)) {
             /* Check if it's a function from a 'using' module */
             bool found_in_using = false;
+            /* Set when the bare name resolves to a stdlib function, so the
+             * same signature checks the qualified form gets can run below. */
+            const char *using_stdlib_mod = NULL;
             /* Check for math functions whose return type depends on argument */
             if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0 ||
                 strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
@@ -4848,6 +4864,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "math") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
                             result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
@@ -4866,6 +4883,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "random") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                             if (strcmp(function_name, "choice") == 0) {
@@ -4887,6 +4905,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                     if (strcmp(real_mod, "maps") == 0) {
                         found_in_using = true;
+                        using_stdlib_mod = real_mod;
                         if (node->data.call.arg_count > 0) {
                             GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
                             if (strcmp(function_name, "get_keys") == 0)
@@ -4909,6 +4928,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 const StdlibFuncMeta *umeta = find_stdlib_meta(real_mod, function_name);
                 if (umeta) {
                     found_in_using = true;
+                    using_stdlib_mod = real_mod;
                     result = umeta->return_type ? resolve_return_type(umeta->return_type) : &TYPE_UNKNOWN;
                 }
                 /* 2) Try user-defined module: look up <module>_<func> */
@@ -4938,7 +4958,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             if (found_in_using) {
-                /* Type already set above */
+                /* Type already set above. A bare name reaching a stdlib
+                 * function is the same call as the qualified form, so it
+                 * gets the same signature checks — otherwise a wrong
+                 * argument count or type here reaches the C compiler. */
+                if (using_stdlib_mod) {
+                    typechecker_check_stdlib_arg_count(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_stdlib_arg_types(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_strconv_base(checker, using_stdlib_mod, function_name, node);
+                }
             } else {
                 /* Check if it's a variable holding a function reference */
                 Symbol *fn_sym = scope_lookup(checker->current_scope, function_name);
@@ -4972,8 +5000,32 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+/* Collapse mod.Enum.Variant(...) to the Enum.Variant(...) shape, with the
+ * enum under its module-prefixed key. Tagged enum construction is recognized
+ * from a bare enum name, and the imported form is the same construction
+ * written with the module in front. */
+static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return;
+    AstNode *obj = fn->data.member.object;
+    if (!obj || obj->kind != NODE_MEMBER_EXPR) return;
+    if (!obj->data.member.object || obj->data.member.object->kind != NODE_LABEL) return;
+
+    const char *mod_raw = obj->data.member.object->data.label.value;
+    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+    char prefixed[MSG_BUF_SIZE];
+    snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, obj->data.member.member);
+    if (!is_enum_name(checker, prefixed)) return;
+
+    mark_import_used(checker, mod_raw);
+    mark_import_used(checker, mod);
+    obj->kind = NODE_LABEL;
+    obj->data.label.value = arena_copy_string(checker->arena, prefixed);
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
+    normalize_qualified_enum_call(checker, node);
     /* Resolve argument types first. Skip the argument of ref()
      * when it's a bare function name; the ref() builtin handler
      * below resolves it specially, and the general resolve_expression
@@ -5232,11 +5284,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                    AstNode *s = checker->program->data.program.stmts[field_index];
-                    if (s->kind == NODE_STRUCT_DECL &&
-                        strcmp(s->data.struct_decl.name, struct_name) == 0) {
-                        for (int sfi = 0; sfi < s->data.struct_decl.func_count; sfi++) {
-                            AstNode *sf = s->data.struct_decl.funcs[sfi].func_decl;
+                    AstNode *stmt = checker->program->data.program.stmts[field_index];
+                    if (stmt->kind == NODE_STRUCT_DECL &&
+                        strcmp(stmt->data.struct_decl.name, struct_name) == 0) {
+                        for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
+                            AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
                             if (sf && sf->kind == NODE_FUNC_DECL &&
                                 strcmp(sf->data.func_decl.name, func_name) == 0 &&
                                 argument_index < sf->data.func_decl.param_count &&
@@ -6438,48 +6490,48 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     if (ref_sig) {
         char buffer[512];
         size_t buffer_size = sizeof(buffer);
-        int n = snprintf(buffer, buffer_size, "func(");
-        if ((size_t)n >= buffer_size) n = (int)buffer_size - 1;
-        for (int i = 0; i < ref_sig->param_count && (size_t)n < buffer_size - 1; i++) {
+        int buf_len = snprintf(buffer, buffer_size, "func(");
+        if ((size_t)buf_len >= buffer_size) buf_len = (int)buffer_size - 1;
+        for (int i = 0; i < ref_sig->param_count && (size_t)buf_len < buffer_size - 1; i++) {
             bool mut_p = (ref_sig->decl && ref_sig->decl->kind == NODE_FUNC_DECL &&
                           i < ref_sig->decl->data.func_decl.param_count &&
                           ref_sig->decl->data.func_decl.params[i].mutable);
-            const char *ptn = (ref_sig->param_types[i] && ref_sig->param_types[i]->name)
+            const char *param_type_name = (ref_sig->param_types[i] && ref_sig->param_types[i]->name)
                 ? ref_sig->param_types[i]->name : "int";
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "%s%s%s",
-                i ? "," : "", mut_p ? "&" : "", ptn);
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else { n = (int)buffer_size - 1; break; }
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s%s",
+                i ? "," : "", mut_p ? "&" : "", param_type_name);
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else { buf_len = (int)buffer_size - 1; break; }
         }
-        if ((size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, ")");
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
+        if ((size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, ")");
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
         }
         if (ref_sig->return_count == 1 && ref_sig->return_types[0] &&
             ref_sig->return_types[0]->name &&
             strcmp(ref_sig->return_types[0]->name, "void") != 0 &&
-            (size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "->%s",
+            (size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "->%s",
                 ref_sig->return_types[0]->name);
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
-        } else if (ref_sig->return_count > 1 && (size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "->(");
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
-            for (int i = 0; i < ref_sig->return_count && (size_t)n < buffer_size - 1; i++) {
-                const char *rn = (ref_sig->return_types[i] && ref_sig->return_types[i]->name)
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
+        } else if (ref_sig->return_count > 1 && (size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "->(");
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
+            for (int i = 0; i < ref_sig->return_count && (size_t)buf_len < buffer_size - 1; i++) {
+                const char *return_type_name = (ref_sig->return_types[i] && ref_sig->return_types[i]->name)
                     ? ref_sig->return_types[i]->name : "int";
-                w = snprintf(buffer + n, buffer_size - (size_t)n, "%s%s",
-                    i ? "," : "", rn);
-                if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-                else { n = (int)buffer_size - 1; break; }
+                written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s",
+                    i ? "," : "", return_type_name);
+                if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+                else { buf_len = (int)buffer_size - 1; break; }
             }
-            if ((size_t)n < buffer_size - 1) {
-                w = snprintf(buffer + n, buffer_size - (size_t)n, ")");
-                if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-                else n = (int)buffer_size - 1;
+            if ((size_t)buf_len < buffer_size - 1) {
+                written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, ")");
+                if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+                else buf_len = (int)buffer_size - 1;
             }
         }
         char *encoded = strdup(buffer);
@@ -6557,6 +6609,20 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 char *msg = typechecker_format(checker,
                     "cannot interpolate tagged enum '%s'; use when/is to destructure the payload first",
                     enum_display_name(checker, pt->name));
+                diagnostic_error_message(checker->diag, "E3041", msg,
+                    NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_ARRAY && pt->element_type &&
+                       typechecker_enum_is_tagged(checker, pt->element_type)) {
+                char *msg = typechecker_format(checker,
+                    "cannot interpolate array of tagged enum '%s'; use when/is to destructure the payload first",
+                    enum_display_name(checker, pt->element_type));
+                diagnostic_error_message(checker->diag, "E3041", msg,
+                    NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_MAP && pt->value_type &&
+                       typechecker_enum_is_tagged(checker, pt->value_type)) {
+                char *msg = typechecker_format(checker,
+                    "cannot interpolate map of tagged enum '%s'; use when/is to destructure the payload first",
+                    enum_display_name(checker, pt->value_type));
                 diagnostic_error_message(checker->diag, "E3041", msg,
                     NODE_FILE(checker, node), line, col, 0);
             } else if (pt->kind == TK_STRUCT ||
@@ -6956,16 +7022,24 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        GrayType *t = type_alloc();
-        t->kind = TK_MAP;
-        t->name = strdup("map");
+        GrayType *resolved_type = type_alloc();
+        resolved_type->kind = TK_MAP;
+        resolved_type->name = strdup("map");
         if (node->data.map_value.count > 0) {
             GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            t->key_type = strdup(kt ? type_name(kt) : "unknown");
-            t->value_type = strdup(vt ? type_name(vt) : "unknown");
+            resolved_type->key_type = strdup(kt ? type_name(kt) : "unknown");
+            resolved_type->value_type = strdup(vt ? type_name(vt) : "unknown");
+        } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
+                   saved_map_expected->key_type && saved_map_expected->value_type) {
+            /* `{:}` carries no pair to infer from — adopt the element types
+             * of the context it is written into, so codegen sizes the table
+             * from the declared type instead of falling back to string keys
+             * and 8-byte values. */
+            resolved_type->key_type = strdup(saved_map_expected->key_type);
+            resolved_type->value_type = strdup(saved_map_expected->value_type);
         }
-        result = t;
+        result = resolved_type;
         checker->expected_type = saved_map_expected;
         break;
     }
@@ -7132,12 +7206,13 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 }
 
 /* Check if a name uses a reserved prefix that would collide with generated C.
- * Skip names starting with _gray_ as those are compiler-generated temporaries. */
+ * Compiler-generated temporaries also start with _gray_, so callers must skip
+ * the names they synthesize rather than exempting the prefix here. */
 static void check_reserved_name(TypeChecker *checker, const char *name, const char *file, int line, int col) {
     if (!name) return;
-    /* Skip compiler-generated temps (_gray_tmp, _gray_or, _gray_idx, etc.) */
-    if (strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0) return;
-    if (strncmp(name, "gray_", 5) == 0 || strncmp(name, "Gray", 4) == 0) {
+    if (strncmp(name, "gray_", 5) == 0 ||
+        strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0 ||
+        strncmp(name, "Gray", 4) == 0) {
         diagnostic_error_code_formatted(checker->diag, "E4006", file, line, col, 0, name);
     }
 }
@@ -7561,14 +7636,14 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * E5039: constant expression overflows the declared integer type. */
     if (!node->data.var_decl.mutable &&
         node->data.var_decl.type_name && node->data.var_decl.value) {
-        const char *tn = node->data.var_decl.type_name;
+        const char *type_name_str = node->data.var_decl.type_name;
         /* Track integer types (signed and unsigned) in the const table.
          * Unsigned values that fit in int64_t are stored as-is; this
          * covers practical array-size use cases.  Full uint64 overflow
          * detection is left to a separate check; for now we just ensure
          * the codegen fix applies (in_const_decl suppresses the runtime
          * wrapper). */
-        bool is_int_type = is_any_int_type(tn);
+        bool is_int_type = is_any_int_type(type_name_str);
         if (is_int_type) {
             int64_t folded = 0;
             bool overflowed = false;
@@ -7580,7 +7655,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             } else if (overflowed) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "constant expression overflows type '%s'", tn);
+                    "constant expression overflows type '%s'", type_name_str);
                 diagnostic_error_message(checker->diag, "E5039",
                     msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -7597,10 +7672,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * "void" is legal as a typed-func return type (encoded as
      * "func(...)->void"), so skip the strstr check for those. */
     if (node->data.var_decl.type_name) {
-        const char *tn = node->data.var_decl.type_name;
-        bool is_typed_func = strncmp(tn, "func(", 5) == 0 ||
-                             strncmp(tn, "[func(", 6) == 0;
-        if (!is_typed_func && strstr(tn, "void") != NULL && strcmp(tn, "void") != 0) {
+        const char *type_name_str = node->data.var_decl.type_name;
+        bool is_typed_func = strncmp(type_name_str, "func(", 5) == 0 ||
+                             strncmp(type_name_str, "[func(", 6) == 0;
+        if (!is_typed_func && strstr(type_name_str, "void") != NULL && strcmp(type_name_str, "void") != 0) {
             diagnostic_error_message(checker->diag, "E3038",
                 "'void' cannot be used as an element type in arrays or maps",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -7689,19 +7764,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         diagnostic_error_code_help(checker->diag, "E3059", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             "change 'const' to 'mut'; use a struct for fixed key-value data");
     }
-    /* E5041: tagged enums cannot be map value types */
-    if (node->data.var_decl.type_name &&
-        strncmp(node->data.var_decl.type_name, "map[", 4) == 0) {
-        GrayType *map_t = typechecker_type_from_name(checker, node->data.var_decl.type_name);
-        if (map_t && map_t->value_type) {
-            GrayType *vt = typechecker_type_from_name(checker, map_t->value_type);
-            if (vt && vt->kind == TK_ENUM && vt->name && typechecker_enum_is_tagged(checker, vt->name)) {
-                diagnostic_error_code_formatted(checker->diag, "E5041",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    enum_display_name(checker, vt->name));
-            }
-        }
-    }
     /* const must have a value */
     if (!node->data.var_decl.mutable && !node->data.var_decl.value) {
         diagnostic_error_code_formatted(checker->diag, "E2011", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
@@ -7761,12 +7823,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* E3054: mutable array with fixed size */
     /* E3055: const array without fixed size */
     if (node->data.var_decl.type_name && node->data.var_decl.type_name[0] == '[') {
-        const char *tn = node->data.var_decl.type_name;
+        const char *type_name_str = node->data.var_decl.type_name;
         /* Top-level comma only; commas inside (), [], or func sigs are
          * part of the element type, not the [T,N] size separator. */
         const char *size_comma = NULL;
         int depth = 0;
-        for (const char *c = tn; *c; c++) {
+        for (const char *c = type_name_str; *c; c++) {
             if (*c == '(' || *c == '[') depth++;
             else if (*c == ')' || *c == ']') depth--;
             else if (*c == ',' && depth == 1) { size_comma = c; break; }
@@ -7778,17 +7840,17 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (has_size) {
             typechecker_resolve_array_size(checker, node);
             /* Re-read type_name — typechecker_resolve_array_size may have rewritten it. */
-            tn = node->data.var_decl.type_name;
+            type_name_str = node->data.var_decl.type_name;
         }
         if (node->data.var_decl.mutable && has_size) {
             char *msg = typechecker_format(checker, "mutable array '%s' cannot have a fixed size '%.*s'",
-                VAR_DISPLAY_NAME(node), (int)(size_comma - tn), tn);
+                VAR_DISPLAY_NAME(node), (int)(size_comma - type_name_str), type_name_str);
             diagnostic_error_help(checker->diag, "E3054", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "use 'const' for fixed-size arrays, or remove the size for a dynamic 'mut' array");
         } else if (!node->data.var_decl.mutable && !has_size) {
             char *msg = typechecker_format(checker, "const array '%s' of type [%.*s] must have a fixed size",
-                VAR_DISPLAY_NAME(node), (int)(strlen(tn) - 2), tn + 1);
+                VAR_DISPLAY_NAME(node), (int)(strlen(type_name_str) - 2), type_name_str + 1);
             diagnostic_error_help(checker->diag, "E3055", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "add a size: const name [type, N] = {...}, or use 'mut' for a dynamic array");
@@ -7822,16 +7884,16 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * tripping "no field 'y'"). Enums are allowed; they're int-backed
      * and hash fine. */
     if (declared->kind == TK_MAP && declared->key_type) {
-        const char *kt = resolve_type_alias(checker, declared->key_type);
-        GrayType *key_resolved = type_from_name(kt);
+        const char *key_type_name = resolve_type_alias(checker, declared->key_type);
+        GrayType *key_resolved = type_from_name(key_type_name);
         const char *bad = NULL;
-        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, kt))
+        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, key_type_name))
             bad = "struct";
         else if (key_resolved->kind == TK_ARRAY) bad = "array";
         else if (key_resolved->kind == TK_MAP) bad = "map";
         else if (key_resolved->kind == TK_POINTER) bad = "pointer";
         if (bad) {
-            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, kt);
+            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, key_type_name);
         }
     }
 
@@ -8038,9 +8100,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
          * them through.  Catch it here by comparing named ranks. */
         if (declared && value_type &&
             declared->name && value_type->name) {
-            int dr = int_type_name_rank(declared->name);
-            int vr = int_type_name_rank(value_type->name);
-            if (dr > 0 && vr >= 5 && dr < vr) {
+            int declared_rank = int_type_name_rank(declared->name);
+            int value_rank = int_type_name_rank(value_type->name);
+            if (declared_rank > 0 && value_rank >= 5 && declared_rank < value_rank) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
@@ -8055,12 +8117,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         bool struct_alias_match = false;
         if (declared->kind == TK_STRUCT && value_type->kind == TK_STRUCT &&
             declared->name && value_type->name) {
-            const char *d = declared->name;
-            const char *v = value_type->name;
-            const char *d_us = strrchr(d, '_');
-            const char *v_us = strrchr(v, '_');
-            if (d_us && strcmp(d_us + 1, v) == 0) struct_alias_match = true;
-            if (v_us && strcmp(v_us + 1, d) == 0) struct_alias_match = true;
+            const char *declared_name = declared->name;
+            const char *value_name = value_type->name;
+            const char *d_us = strrchr(declared_name, '_');
+            const char *v_us = strrchr(value_name, '_');
+            if (d_us && strcmp(d_us + 1, value_name) == 0) struct_alias_match = true;
+            if (v_us && strcmp(v_us + 1, declared_name) == 0) struct_alias_match = true;
         }
         if (declared->kind == TK_STRUCT && value_type->kind == TK_STRUCT &&
             declared->name && value_type->name &&
@@ -8148,10 +8210,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (node->data.var_decl.value &&
             node->data.var_decl.value->kind == NODE_INT_VALUE &&
             node->data.var_decl.value->data.int_value.overflow) {
-            const char *tn = node->data.var_decl.type_name;
-            bool is_bigint = tn && (strcmp(tn, "i128") == 0 || strcmp(tn, "u128") == 0 ||
-                                    strcmp(tn, "i256") == 0 || strcmp(tn, "u256") == 0);
-            bool is_u64_like = tn && (strcmp(tn, "u64") == 0 || strcmp(tn, "uint") == 0);
+            const char *type_name_str = node->data.var_decl.type_name;
+            bool is_bigint = type_name_str && (strcmp(type_name_str, "i128") == 0 || strcmp(type_name_str, "u128") == 0 ||
+                                    strcmp(type_name_str, "i256") == 0 || strcmp(type_name_str, "u256") == 0);
+            bool is_u64_like = type_name_str && (strcmp(type_name_str, "u64") == 0 || strcmp(type_name_str, "uint") == 0);
             bool exceeds_u64 = node->data.var_decl.value->data.int_value.overflow_u64;
             if (exceeds_u64 && !is_bigint) {
                 diagnostic_error_message(checker->diag, "E3046",
@@ -8181,18 +8243,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * from, and codegen then emits gray_array_new which the C
              * compiler rejects. Point the user at the empty-map form
              * `{:}` before the rest of the var_decl check runs. */
-            const char *tn = node->data.var_decl.type_name;
-            if (strncmp(tn, "map[", 4) == 0 &&
+            const char *type_name_str = node->data.var_decl.type_name;
+            if (strncmp(type_name_str, "map[", 4) == 0 &&
                 node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 char *msg = NULL;
                 if (node->data.var_decl.value->data.array_value.count == 0) {
                     msg = typechecker_format(checker,
                         "cannot assign array literal '{}' to '%s'; use '{:}' for an empty map",
-                        tn);
+                        type_name_str);
                 } else {
                     msg = typechecker_format(checker,
                         "cannot assign array literal to '%s'; map literals use '{key: value, ...}' syntax",
-                        tn);
+                        type_name_str);
                 }
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node->data.var_decl.value),
@@ -8200,10 +8262,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     node->data.var_decl.value->token.column, 0);
             }
             /* E3026/E3036: Check array literal elements fit in sized element type */
-            if (tn[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
+            if (type_name_str[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 /* Extract element type name from "[byte]", "[i8]", "[u8, 3]", etc. */
                 char elem_type[TYPE_NAME_MAX] = {0};
-                const char *start = tn + 1;
+                const char *start = type_name_str + 1;
                 /* Find the matching ']' for the outermost array bracket,
                  * skipping nested brackets (e.g. map[K:V], [T]). */
                 const char *end = NULL;
@@ -8339,11 +8401,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * already caught in NODE_MAP_VALUE's
              * reject_void_in_context path (); this block
              * covers the non-void-but-wrong-type leak. */
-            if (strncmp(tn, "map[", 4) == 0 &&
+            if (strncmp(type_name_str, "map[", 4) == 0 &&
                 node->data.var_decl.value->kind == NODE_MAP_VALUE) {
-                const char *mstart = tn + 4;
+                const char *mstart = type_name_str + 4;
                 const char *mcolon = strchr(mstart, ':');
-                const char *mend = strrchr(tn, ']');
+                const char *mend = strrchr(type_name_str, ']');
                 if (mcolon && mend && mend > mcolon) {
                     char key_tn[TYPE_NAME_MAX] = {0};
                     char val_tn[TYPE_NAME_MAX] = {0};
@@ -8446,11 +8508,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * them mutates internal state, so const is a semantic lie.
      * Same class as the E3059 map check above. */
     if (!node->data.var_decl.mutable && declared->kind == TK_STRUCT && declared->name) {
-        const char *dn = declared->name;
+        const char *declared_name = declared->name;
         const char *handle_label = NULL;
-        if (strcmp(dn, "Channel") == 0) handle_label = "channel";
-        else if (strcmp(dn, "Mutex") == 0) handle_label = "mutex";
-        else if (strcmp(dn, "Thread") == 0) handle_label = "thread handle";
+        if (strcmp(declared_name, "Channel") == 0) handle_label = "channel";
+        else if (strcmp(declared_name, "Mutex") == 0) handle_label = "mutex";
+        else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
         if (handle_label) {
             diagnostic_error_code_formatted(checker->diag, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
         }
@@ -8462,9 +8524,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     }
 
     if (strcmp(node->data.var_decl.name, "_") != 0) {
-        /* Check for reserved prefix */
-        check_reserved_name(checker, node->data.var_decl.name,
-            NODE_FILE(checker, node), node->token.line, node->token.column);
+        /* Check for reserved prefix (the parser's own temps are exempt) */
+        if (!node->data.var_decl.synthetic) {
+            check_reserved_name(checker, node->data.var_decl.name,
+                NODE_FILE(checker, node), node->token.line, node->token.column);
+        }
         /* Check for redeclaration in same scope */
         Symbol *existing = scope_lookup_local(checker->current_scope,
             node->data.var_decl.name);
@@ -8906,9 +8970,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     GrayType *target_t = resolve_expression(checker, node->data.assign.target);
-    /* Set expected_type for implicit enum resolution (.VARIANT) */
+    /* Set expected_type so the value can be resolved against the target:
+     * implicit enum selectors (.VARIANT) need the enum, and an empty map
+     * literal needs the element types it is being assigned into. */
     GrayType *saved_expected = checker->expected_type;
-    if (target_t && target_t->kind == TK_ENUM && target_t->name)
+    if (target_t && ((target_t->kind == TK_ENUM && target_t->name) ||
+                     (target_t->kind == TK_MAP && target_t->key_type)))
         checker->expected_type = target_t;
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
@@ -9296,9 +9363,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL &&
         target_t && value_t &&
         target_t->name && value_t->name) {
-        int dr = int_type_name_rank(target_t->name);
-        int vr = int_type_name_rank(value_t->name);
-        if (dr > 0 && vr > 0 && dr < vr) {
+        int declared_rank = int_type_name_rank(target_t->name);
+        int value_rank = int_type_name_rank(value_t->name);
+        if (declared_rank > 0 && value_rank > 0 && declared_rank < value_rank) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
@@ -9329,9 +9396,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(%s, %s) to convert explicitly",
+            "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
             value_t->name, target_t->name, target->data.label.value,
-            target->data.label.value, target_t->name);
+            target_t->name);
         diagnostic_error_message(checker->diag, "E3001", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
@@ -9487,9 +9554,9 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         for (int i = 0; i < slots; i++) {
             AstNode *return_val = node->data.return_stmt.values[i];
             if (return_val->kind != NODE_NIL_VALUE) continue;
-            const char *tn = (i == 0 && checker->current_return_type_names)
+            const char *type_name_str = (i == 0 && checker->current_return_type_names)
                 ? checker->current_return_type_names[i] : NULL;
-            if (tn && type_name_has_wildcard(tn)) {
+            if (type_name_str && type_name_has_wildcard(type_name_str)) {
                 diagnostic_error_code(checker->diag, "E3071", NODE_FILE(checker, return_val), return_val->token.line, return_val->token.column, 0);
             }
         }
@@ -10555,6 +10622,30 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
 }
 
 static void check_when_stmt(TypeChecker *checker, AstNode *node) {
+    /* E3100: a bare struct or enum name is a type, not a value. Without
+     * this the subject resolves to the type itself and codegen emits a
+     * reference to a name that does not exist in the generated C. */
+    AstNode *subject = node->data.when_stmt.value;
+    if (subject && subject->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, subject->data.label.value)) {
+        const char *tn = subject->data.label.value;
+        if (is_struct_name(checker, tn)) {
+            char *msg = typechecker_format(checker,
+                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                tn, tn, tn);
+            diagnostic_error_message(checker->diag, "E3100", msg,
+                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0);
+            return;
+        }
+        if (is_enum_name(checker, tn)) {
+            char *msg = typechecker_format(checker,
+                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                tn, tn);
+            diagnostic_error_message(checker->diag, "E3100", msg,
+                NODE_FILE(checker, subject), subject->token.line, subject->token.column, 0);
+            return;
+        }
+    }
     GrayType *when_t = resolve_expression(checker, node->data.when_stmt.value);
     /* W2012: float subjects use bit-equality, which is rarely what the
      * user wants given 0.1 + 0.2 != 0.3. */
@@ -10975,9 +11066,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 static bool struct_name_declared(AstNode *program, const char *name) {
     if (!program || !name) return false;
     for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *s = program->data.program.stmts[i];
-        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name &&
-            strcmp(s->data.struct_decl.name, name) == 0)
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
+            strcmp(stmt->data.struct_decl.name, name) == 0)
             return true;
     }
     return false;
@@ -10989,10 +11080,10 @@ static bool struct_name_declared(AstNode *program, const char *name) {
 static AstNode *find_struct_in_program(AstNode *program, const char *name) {
     if (!program || !name) return NULL;
     for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *s = program->data.program.stmts[i];
-        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name &&
-            strcmp(s->data.struct_decl.name, name) == 0) {
-            return s;
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
+            strcmp(stmt->data.struct_decl.name, name) == 0) {
+            return stmt;
         }
     }
     return NULL;
@@ -11101,6 +11192,14 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
     /* Leaf: must be a known primitive, enum, struct, or wildcard '?' */
     if (type_name_has_wildcard(type_name)) return;
 
+    /* Naming a type is a use of the module that defines it. Function
+     * parameters and return types already mark it; without this a struct
+     * field was the one reference that did not, so an import used only for
+     * field types warned as unused (W1002). The recursion above has already
+     * peeled off arrays, maps and pointers, so this leaf is the bare name
+     * the prefix match expects. */
+    typechecker_mark_type_module_used(checker, type_name);
+
     /* Bare func: reject with guidance toward typed signature */
     if (strcmp(type_name, "func") == 0) {
         diagnostic_error_code_help(checker->diag, "E3130",
@@ -11109,8 +11208,8 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         return;
     }
 
-    GrayType *t = typechecker_type_from_name(checker, type_name);
-    if (t && t->kind != TK_STRUCT && t->kind != TK_UNKNOWN) return;
+    GrayType *resolved_type = typechecker_type_from_name(checker, type_name);
+    if (resolved_type && resolved_type->kind != TK_STRUCT && resolved_type->kind != TK_UNKNOWN) return;
     if (is_enum_name(checker, type_name)) return;
     if (is_struct_name(checker, type_name)) return;
     if (struct_name_declared(program, type_name)) return;
@@ -11693,8 +11792,8 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < checker->type_alias_count; i++) {
         const char *resolved = resolve_type_alias(checker, checker->type_alias_targets[i]);
         /* Check if the resolved name is a known type */
-        GrayType *t = type_from_name(resolved);
-        if (t->kind == TK_STRUCT) {
+        GrayType *resolved_type = type_from_name(resolved);
+        if (resolved_type->kind == TK_STRUCT) {
             /* Uppercase name — must be a registered struct or enum */
             if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
                 strcmp(resolved, "Error") != 0) {

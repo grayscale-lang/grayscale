@@ -272,9 +272,9 @@
     GRAY_ERROR("E5038", "usage", "tagged enum '%s' cannot be passed to '%s()'; use when/is to destructure the payload first") \
     GRAY_ERROR("E5039", "usage", "constant expression overflows type '%s'") \
     GRAY_ERROR("E5040", "usage", "constant requires a compile-time value; function calls are evaluated at runtime") \
-    GRAY_ERROR("E5041", "usage", "tagged enum '%s' cannot be used as a map value type; use when/is to destructure before storing") \
     GRAY_ERROR("E5042", "usage", "'#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard'") \
-    GRAY_ERROR("E5043", "usage", "'fields()' requires a struct instance, got '%s'")
+    GRAY_ERROR("E5043", "usage", "'fields()' requires a struct instance, got '%s'") \
+    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \

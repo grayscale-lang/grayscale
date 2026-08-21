@@ -6,6 +6,9 @@
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
+ *
+ * Contributors:
+ *  - @SAY-5
  */
 
 #include "arrays.h"
@@ -31,23 +34,8 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, cons
             index, arr->len);
     }
 
-    /* Grow if needed — same policy as gray_array_push */
-    if (arr->len >= arr->cap) {
-        int32_t new_cap;
-        if (arr->cap < GRAY_ARRAY_MIN_CAP) {
-            new_cap = GRAY_ARRAY_MIN_CAP;
-        } else if (arr->cap > INT32_MAX / 2) {
-            gray_panic_code("P0035", "array capacity overflow");
-        } else {
-            new_cap = arr->cap * 2;
-        }
-        void *new_data = gray_arena_alloc_uninitialized(arena, (size_t)new_cap * (size_t)arr->elem_size);
-        if (arr->data && arr->len > 0) {
-            memcpy(new_data, arr->data, (size_t)arr->len * (size_t)arr->elem_size);
-        }
-        arr->data = new_data;
-        arr->cap = new_cap;
-    }
+    /* NULL/0 keeps the P0035 panic locationless, as it has always been here. */
+    gray_array_grow(arena, arr, NULL, 0);
 
     size_t element_size = (size_t)arr->elem_size;
     char *data = (char *)arr->data;

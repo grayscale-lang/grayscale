@@ -1,0 +1,14 @@
+/* Panic Test: P0034 - cannot modify a struct field array during for_each */
+import @arrays
+
+const Bag struct {
+    items [int]
+}
+
+do main() {
+    mut b Bag = Bag{items: {1, 2, 3, 4}}
+    for_each x in b.items {
+        arrays.remove_at(b.items, 0)
+    }
+    println(b.items)
+}

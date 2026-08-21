@@ -1,7 +1,4 @@
-/*
- * Error Test: E4005 - string-index-out-of-bounds
- * Expected: "string index" or "out of bounds"
- */
+/* Panic Test: P0082 - string index out of bounds via strings.char_at */
 
 import @strings
 

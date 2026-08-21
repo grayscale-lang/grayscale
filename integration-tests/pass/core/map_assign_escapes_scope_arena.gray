@@ -1,0 +1,126 @@
+/*
+ * map_assign_escapes_scope_arena.gray - map assignment survives its block's arena
+ *
+ * `map2 = map1` deep-copies the map, but the copy was always allocated in
+ * gray_default_arena.  Inside an if-body or a loop body that is the block's
+ * own scratch arena, which is destroyed when the block ends -- so a variable
+ * declared outside the block was left holding freed bucket tables and entries
+ * went missing.
+ *
+ * Fix: the map branch of emit_assignment now swaps in _gray_outer_arena
+ * around the copy when inside a scoped block, the same way the struct branch
+ * already did.
+ */
+
+import @maps
+
+do main() {
+    println("=== Map Assign Escapes Scope Arena Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Loop body: the merged map is built in the iteration arena. */
+    mut acc map[string:int] = {:}
+    for i in range(0, 40) {
+        mut tmp map[string:int] = {:}
+        tmp["k${i}"] = i
+        acc = maps.merge(acc, tmp)
+    }
+
+    mut lost int = 0
+    for i in range(0, 40) {
+        if !("k${i}" in acc) { lost = lost + 1 }
+    }
+    if len(acc) == 40 && lost == 0 {
+        println("  [PASS] merge result assigned out of a loop body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 40 entries and 0 lost, got ${len(acc)} and ${lost}")
+        failed += 1
+    }
+
+    /* if-body: plain map-to-map assignment, no stdlib involved. */
+    mut a map[string:int] = {:}
+    mut i int = 0
+    loop {
+        if i >= 40 { break }
+        if true {
+            mut t map[string:int] = a
+            t["k${i}"] = i
+            a = t
+        }
+        i += 1
+    }
+    if len(a) == 40 {
+        println("  [PASS] plain assignment out of an if-body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 40 entries, got ${len(a)}")
+        failed += 1
+    }
+
+    /* String values take the full deep-copy path rather than gray_map_copy. */
+    mut b map[string:string] = {:}
+    for n in range(0, 40) {
+        mut t map[string:string] = b
+        t["k${n}"] = "v${n}"
+        b = t
+    }
+    mut bad int = 0
+    for n in range(0, 40) {
+        if b["k${n}"] != "v${n}" { bad = bad + 1 }
+    }
+    if len(b) == 40 && bad == 0 {
+        println("  [PASS] map[string:string] values intact")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 40 entries and 0 bad, got ${len(b)} and ${bad}")
+        failed += 1
+    }
+
+    /* Array values recurse through the per-entry copy path. */
+    mut c map[string:[int]] = {:}
+    for n in range(0, 20) {
+        mut t map[string:[int]] = c
+        t["k${n}"] = {n, n + 1}
+        c = t
+    }
+    mut cbad int = 0
+    for n in range(0, 20) {
+        e = c["k${n}"]
+        if len(e) != 2 || e[0] != n || e[1] != n + 1 { cbad = cbad + 1 }
+    }
+    if len(c) == 20 && cbad == 0 {
+        println("  [PASS] map[string:[int]] values intact")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 20 entries and 0 bad, got ${len(c)} and ${cbad}")
+        failed += 1
+    }
+
+    /* Nested loops: the copy must reach the function's arena, not the
+     * outer loop's iteration arena. */
+    mut d map[string:int] = {:}
+    for x in range(0, 6) {
+        for y in range(0, 6) {
+            mut t map[string:int] = d
+            t["${x}_${y}"] = x * 6 + y
+            d = t
+        }
+    }
+    if len(d) == 36 {
+        println("  [PASS] assignment out of nested loop bodies")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 36 entries, got ${len(d)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

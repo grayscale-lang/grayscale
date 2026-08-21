@@ -1,0 +1,39 @@
+/*
+ * Regression test for #2403: array elements and map values passed to a
+ * mutable (&) parameter must mutate correctly through a module-qualified
+ * call, not just a bare call. See the sibling pass/core test
+ * struct_function_mutable_container_element.gray for the struct-function
+ * form of the same bug.
+ */
+import "./helper"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut xs [int] = {1, 2, 3}
+    helper.bumpi(xs[0])
+    if xs[0] == 101 && xs[1] == 2 && xs[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] module-qualified call, array element: got ${xs[0]}")
+        failed += 1
+    }
+
+    mut m map[string:int] = {"a": 1}
+    helper.bumpi(m["a"])
+    mut mval int = m["a"]
+    if mval == 101 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] module-qualified call, map value: got ${mval}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

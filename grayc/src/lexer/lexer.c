@@ -82,7 +82,11 @@ static void skip_whitespace_and_comments(Lexer *lexer) {
     }
 }
 
-static const char *read_identifier(Lexer *lexer) {
+/* Scans an identifier's extent without copying it anywhere yet, so the
+ * caller can check the keyword table against the raw source bytes first
+ * and only pay for an arena copy (deduplicated via arena_intern_string)
+ * when it turns out to be a real identifier, not a keyword. */
+static void scan_identifier_span(Lexer *lexer, int *out_start, int *out_len) {
     int start = lexer->position;
     while (isalpha((unsigned char)lexer->ch) || lexer->ch == '_' || isdigit((unsigned char)lexer->ch)) {
         read_char(lexer);
@@ -92,7 +96,8 @@ static const char *read_identifier(Lexer *lexer) {
         lexer->error_code = "E1024";
         lexer->error_msg = "identifier exceeds the maximum length of 255 characters";
     }
-    return arena_copy_string_with_length(lexer->arena, lexer->input + start, len);
+    *out_start = start;
+    *out_len = len;
 }
 
 static const char *read_number(Lexer *lexer, TokenType *type) {
@@ -565,12 +570,21 @@ Token lexer_next_token(Lexer *lexer) {
 
     default:
         if (isalpha((unsigned char)lexer->ch) || lexer->ch == '_') {
-            tok.literal = read_identifier(lexer);
+            int start, len;
+            scan_identifier_span(lexer, &start, &len);
             if (lexer->error_code) {
                 tok.type = TOK_ILLEGAL;
                 tok.literal = lexer->error_msg;
             } else {
-                tok.type = token_lookup_identifier(tok.literal);
+                TokenType kw_type;
+                const char *kw_str;
+                if (token_lookup_keyword_n(lexer->input + start, len, &kw_type, &kw_str)) {
+                    tok.type = kw_type;
+                    tok.literal = kw_str;
+                } else {
+                    tok.type = TOK_IDENT;
+                    tok.literal = arena_intern_string(lexer->arena, lexer->input + start, (size_t)len);
+                }
             }
             goto done;
         } else if (isdigit((unsigned char)lexer->ch)) {

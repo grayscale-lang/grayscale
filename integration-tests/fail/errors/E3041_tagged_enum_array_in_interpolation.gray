@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3041 - array of tagged enum in string interpolation
+ *
+ * "${a}" where a is [Value] and Value is a tagged enum used to print each
+ * element's tag as a bare integer, silently dropping the payload. The
+ * typechecker now rejects at the interpolation site, matching the scalar
+ * rule (see E3041_tagged_enum_in_interpolation.gray).
+ */
+
+const Value enum {
+    IntVal(int)
+    NilVal
+}
+
+do main() {
+    mut a [Value] = {Value.IntVal(7), Value.NilVal}
+    println("${a}")
+}

@@ -1,7 +1,8 @@
 /*
- * Error Test: E4001 - undefined-variable (use before declaration)
- * Expected: "undefined variable"
+ * Error Test: E4003 - variable already declared in this scope
  */
+
+// expect-error: E4003
 
 
 do main() {

@@ -1,7 +1,8 @@
 /*
- * Error Test: E3009 - undefined-type-in-struct
- * Expected: "undefined type"
+ * Error Test: E2001 - unexpected symbol from an undefined type in a struct
  */
+
+// expect-error: E2001
 
 def Person struct {
     name string

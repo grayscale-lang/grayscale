@@ -248,23 +248,23 @@ void gray_runtime_shutdown(void) {
 static _Noreturn void gray_panic_impl(const char *code, const char *file,
     int line, const char *fmt, va_list args) {
     fflush(stdout);
-    int c = panic_use_color();
+    int use_color = panic_use_color();
 
     /* Label: "panic" or "panic[CODE]" in bold red */
-    fprintf(stderr, "%s%spanic", c ? COL_BOLD : "", c ? COL_RED : "");
+    fprintf(stderr, "%s%spanic", use_color ? COL_BOLD : "", use_color ? COL_RED : "");
     if (code) {
         fprintf(stderr, "[%s]", code);
         if (!file) fputc(':', stderr);
     }
-    fprintf(stderr, "%s", c ? COL_RESET : "");
+    fprintf(stderr, "%s", use_color ? COL_RESET : "");
 
     /* Location (uncolored) */
     if (file) fprintf(stderr, " at %s:%d:", file, line);
 
     /* Message in bold */
-    fprintf(stderr, " %s", c ? COL_BOLD : "");
+    fprintf(stderr, " %s", use_color ? COL_BOLD : "");
     vfprintf(stderr, fmt, args);
-    fprintf(stderr, "%s\n", c ? COL_RESET : "");
+    fprintf(stderr, "%s\n", use_color ? COL_RESET : "");
     exit(1);
 }
 
