@@ -2374,23 +2374,23 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         }
         prev_variant_line = parser->cur_token.line;
 
-        EnumVal *ev = &node->data.enum_decl.values[node->data.enum_decl.value_count];
-        ev->name = parser->cur_token.literal;
-        ev->value = NULL;
-        ev->payload_types = NULL;
-        ev->payload_count = 0;
+        EnumVal *variant = &node->data.enum_decl.values[node->data.enum_decl.value_count];
+        variant->name = parser->cur_token.literal;
+        variant->value = NULL;
+        variant->payload_types = NULL;
+        variant->payload_count = 0;
 
         /* Check for payload types: VARIANT(type1, type2, ...) */
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser); /* consume ( */
             next_token(parser); /* first token of first type */
             int pt_cap = GROW_ARRAY_INIT_CAP;
-            ev->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
+            variant->payload_types = arena_alloc(parser->arena, sizeof(const char *) * pt_cap);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                ARENA_GROW(parser->arena, ev->payload_types, ev->payload_count, pt_cap);
+                ARENA_GROW(parser->arena, variant->payload_types, variant->payload_count, pt_cap);
                 const char *type_str = parse_complex_type(parser);
                 if (!type_str) return NULL;
-                ev->payload_types[ev->payload_count++] = type_str;
+                variant->payload_types[variant->payload_count++] = type_str;
                 next_token(parser); /* advance past last token of type */
                 if (current_token_is(parser, TOK_COMMA)) next_token(parser);
             }
@@ -2400,14 +2400,14 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         /* Check for explicit value: VALUE = expr */
         if (peek_token_is(parser, TOK_ASSIGN)) {
             /* E2083: payload and explicit value are mutually exclusive */
-            if (ev->payload_count > 0) {
+            if (variant->payload_count > 0) {
                 diagnostic_error_code_formatted(parser->diag, "E2083",
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0,
-                    ev->name);
+                    variant->name);
             }
             next_token(parser); /* skip = */
             next_token(parser);
-            ev->value = parse_expression(parser, PREC_LOWEST);
+            variant->value = parse_expression(parser, PREC_LOWEST);
         }
 
         node->data.enum_decl.value_count++;
@@ -2681,13 +2681,13 @@ static AstNode *parse_when_statement(Parser *parser) {
             ARENA_GROW(parser->arena, node->data.when_stmt.cases,
                 node->data.when_stmt.case_count, case_cap);
 
-            WhenCase *wc = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
-            memset(wc, 0, sizeof(WhenCase));
+            WhenCase *when_case = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
+            memset(when_case, 0, sizeof(WhenCase));
 
             int val_cap = GROW_ARRAY_INIT_CAP;
-            wc->value_count = 0;
-            wc->values = arena_alloc(parser->arena, sizeof(AstNode *) * val_cap);
-            wc->is_range = false;
+            when_case->value_count = 0;
+            when_case->values = arena_alloc(parser->arena, sizeof(AstNode *) * val_cap);
+            when_case->is_range = false;
 
             /* Parse case values: is 1, 2, 3 { } */
             next_token(parser);
@@ -2764,10 +2764,10 @@ static AstNode *parse_when_statement(Parser *parser) {
                     next_token(parser); /* skip IDENT (variant) */
                     next_token(parser); /* skip ( */
 
-                    int bc = 0, bc_cap = GROW_ARRAY_INIT_CAP;
-                    pat->data.when_pattern.bindings = arena_alloc(parser->arena, sizeof(const char *) * bc_cap);
+                    int binding_count = 0, binding_cap = GROW_ARRAY_INIT_CAP;
+                    pat->data.when_pattern.bindings = arena_alloc(parser->arena, sizeof(const char *) * binding_cap);
                     while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                        ARENA_GROW(parser->arena, pat->data.when_pattern.bindings, bc, bc_cap);
+                        ARENA_GROW(parser->arena, pat->data.when_pattern.bindings, binding_count, binding_cap);
                         /* Reject reserved names as binding names */
                         if (is_reserved_name(parser->cur_token.literal)) {
                             char msg[MSG_BUF_SIZE];
@@ -2777,39 +2777,39 @@ static AstNode *parse_when_statement(Parser *parser) {
                             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
                                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                         }
-                        pat->data.when_pattern.bindings[bc++] = arena_copy_string(parser->arena, parser->cur_token.literal);
+                        pat->data.when_pattern.bindings[binding_count++] = arena_copy_string(parser->arena, parser->cur_token.literal);
                         next_token(parser);
                         if (current_token_is(parser, TOK_COMMA)) next_token(parser);
                     }
-                    pat->data.when_pattern.binding_count = bc;
+                    pat->data.when_pattern.binding_count = binding_count;
                     /* cur_token is RPAREN, peek should be LBRACE */
 
-                    wc->values[wc->value_count++] = pat;
+                    when_case->values[when_case->value_count++] = pat;
                     goto when_case_body;
                 }
             }
 
             if (current_token_is(parser, TOK_RANGE)) {
-                wc->is_range = true;
+                when_case->is_range = true;
             }
             parser->no_struct_literal = true;
-            if (wc->value_count < val_cap) {
-                wc->values[wc->value_count++] = parse_expression(parser, PREC_LOWEST);
+            if (when_case->value_count < val_cap) {
+                when_case->values[when_case->value_count++] = parse_expression(parser, PREC_LOWEST);
             }
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
                 next_token(parser); /* next value */
-                ARENA_GROW(parser->arena, wc->values, wc->value_count, val_cap);
+                ARENA_GROW(parser->arena, when_case->values, when_case->value_count, val_cap);
                 if (current_token_is(parser, TOK_RANGE)) {
-                    wc->is_range = true;
+                    when_case->is_range = true;
                 }
-                wc->values[wc->value_count++] = parse_expression(parser, PREC_LOWEST);
+                when_case->values[when_case->value_count++] = parse_expression(parser, PREC_LOWEST);
             }
 
             when_case_body:
             parser->no_struct_literal = false;
             if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
-            wc->body = parse_block_statement(parser);
+            when_case->body = parse_block_statement(parser);
             node->data.when_stmt.case_count++;
 
         } else if (current_token_is(parser, TOK_DEFAULT)) {

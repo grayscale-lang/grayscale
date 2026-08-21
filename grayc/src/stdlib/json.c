@@ -61,8 +61,8 @@ static size_t json_map_val_len(GrayString *val) {
 GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
     /* Pass 1: size the buffer (one comma of slack for the last entry) */
     size_t need = 2; /* { } */
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         need += 1; /* comma */
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
@@ -74,8 +74,8 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
     int pos = 0;
     buf[pos++] = '{';
     bool json_first = true;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         if (!json_first) { buf[pos++] = ','; }
         json_first = false;
@@ -179,8 +179,8 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr) {
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
     /* Pass 1: size — key (escaped) + colon + int (max 21), one comma slack */
     size_t need = 2;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         need += 1;
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
@@ -191,8 +191,8 @@ GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
     int pos = 0;
     buf[pos++] = '{';
     bool json_first = true;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         if (!json_first) { buf[pos++] = ','; }
         json_first = false;
@@ -212,8 +212,8 @@ GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
 GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
     /* Pass 1: size — key (escaped) + colon + float (max 24), one comma slack */
     size_t need = 2;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         need += 1;
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
@@ -224,8 +224,8 @@ GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
     int pos = 0;
     buf[pos++] = '{';
     bool json_first = true;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         if (!json_first) { buf[pos++] = ','; }
         json_first = false;
@@ -245,8 +245,8 @@ GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
 GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m) {
     /* Pass 1: size the buffer (one comma of slack for the last entry) */
     size_t need = 2;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         need += 1;
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
@@ -258,8 +258,8 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m) {
     int pos = 0;
     buf[pos++] = '{';
     bool json_first = true;
-    for (int32_t oi = 0; oi < m->order_len; oi++) {
-        int32_t i = m->order[oi];
+    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
+        int32_t i = m->order[order_index];
         if (i < 0) continue;
         if (!json_first) { buf[pos++] = ','; }
         json_first = false;
@@ -277,57 +277,57 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m) {
 
 /* --- Decoder --- */
 
-static void skip_ws(const char **s, const char *end) {
-    while (*s < end && isspace((unsigned char)**s)) (*s)++;
+static void skip_ws(const char **cursor, const char *end) {
+    while (*cursor < end && isspace((unsigned char)**cursor)) (*cursor)++;
 }
 
-static GrayString parse_json_string(GrayArena *arena, const char **s, const char *end) {
-    if (**s != '"') return gray_string_lit("");
-    (*s)++;
-    const char *start = *s;
-    while (*s < end && **s != '"') {
-        if (**s == '\\') (*s)++;
-        (*s)++;
+static GrayString parse_json_string(GrayArena *arena, const char **cursor, const char *end) {
+    if (**cursor != '"') return gray_string_lit("");
+    (*cursor)++;
+    const char *start = *cursor;
+    while (*cursor < end && **cursor != '"') {
+        if (**cursor == '\\') (*cursor)++;
+        (*cursor)++;
     }
-    GrayString r = gray_string_new(arena, start, (int32_t)(*s - start));
-    if (*s < end) (*s)++; /* skip closing quote */
+    GrayString r = gray_string_new(arena, start, (int32_t)(*cursor - start));
+    if (*cursor < end) (*cursor)++; /* skip closing quote */
     return r;
 }
 
-static GrayString parse_json_value_as_string(GrayArena *arena, const char **s, const char *end) {
-    skip_ws(s, end);
-    if (*s >= end) return gray_string_lit("");
+static GrayString parse_json_value_as_string(GrayArena *arena, const char **cursor, const char *end) {
+    skip_ws(cursor, end);
+    if (*cursor >= end) return gray_string_lit("");
 
-    if (**s == '"') {
-        return parse_json_string(arena, s, end);
+    if (**cursor == '"') {
+        return parse_json_string(arena, cursor, end);
     }
 
     /* Number, bool, null — read until delimiter */
-    const char *start = *s;
-    while (*s < end && **s != ',' && **s != '}' && **s != ']' && !isspace((unsigned char)**s)) (*s)++;
-    return gray_string_new(arena, start, (int32_t)(*s - start));
+    const char *start = *cursor;
+    while (*cursor < end && **cursor != ',' && **cursor != '}' && **cursor != ']' && !isspace((unsigned char)**cursor)) (*cursor)++;
+    return gray_string_new(arena, start, (int32_t)(*cursor - start));
 }
 
 GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
     GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 8);
-    const char *s = text.data;
-    const char *end = s + text.len;
-    skip_ws(&s, end);
-    if (s >= end || *s != '{') return m;
-    s++; /* skip { */
+    const char *cursor = text.data;
+    const char *end = cursor + text.len;
+    skip_ws(&cursor, end);
+    if (cursor >= end || *cursor != '{') return m;
+    cursor++; /* skip { */
 
-    while (s < end) {
-        skip_ws(&s, end);
-        if (s >= end || *s == '}') break;
+    while (cursor < end) {
+        skip_ws(&cursor, end);
+        if (cursor >= end || *cursor == '}') break;
 
-        GrayString key = parse_json_string(arena, &s, end);
-        skip_ws(&s, end);
-        if (s < end && *s == ':') s++;
-        GrayString val = parse_json_value_as_string(arena, &s, end);
+        GrayString key = parse_json_string(arena, &cursor, end);
+        skip_ws(&cursor, end);
+        if (cursor < end && *cursor == ':') cursor++;
+        GrayString val = parse_json_value_as_string(arena, &cursor, end);
         GRAY_MAP_SET(arena, &m, &key, &val);
 
-        skip_ws(&s, end);
-        if (s < end && *s == ',') s++;
+        skip_ws(&cursor, end);
+        if (cursor < end && *cursor == ',') cursor++;
     }
     return m;
 }
@@ -341,32 +341,32 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
  * The new one walks the full grammar and requires the consumed
  * region to end at text.len with only trailing whitespace.
  *
- * Mutually recursive with v_array / v_object because a JSON value
- * can be an object or array of values. Parameters are (const char **s,
- * const char *end) so each helper advances `*s` on success and leaves
+ * Mutually recursive with validate_json_array / validate_json_object because a JSON value
+ * can be an object or array of values. Parameters are (const char **cursor,
+ * const char *end) so each helper advances `*cursor` on success and leaves
  * it unspecified on failure. */
 
 #define GRAY_JSON_MAX_DEPTH 512
 
-static bool v_value(const char **s, const char *end, int depth);
+static bool validate_json_value(const char **cursor, const char *end, int depth);
 
-static bool v_string_lit(const char **s, const char *end) {
-    if (*s >= end || **s != '"') return false;
-    (*s)++;
-    while (*s < end && **s != '"') {
-        unsigned char c = (unsigned char)**s;
+static bool validate_json_string_lit(const char **cursor, const char *end) {
+    if (*cursor >= end || **cursor != '"') return false;
+    (*cursor)++;
+    while (*cursor < end && **cursor != '"') {
+        unsigned char c = (unsigned char)**cursor;
         if (c == '\\') {
-            (*s)++;
-            if (*s >= end) return false;
-            char esc = **s;
+            (*cursor)++;
+            if (*cursor >= end) return false;
+            char esc = **cursor;
             if (esc == '"' || esc == '\\' || esc == '/' || esc == 'b' ||
                 esc == 'f' || esc == 'n' || esc == 'r' || esc == 't') {
-                (*s)++;
+                (*cursor)++;
             } else if (esc == 'u') {
-                (*s)++;
+                (*cursor)++;
                 for (int i = 0; i < 4; i++) {
-                    if (*s >= end || !isxdigit((unsigned char)**s)) return false;
-                    (*s)++;
+                    if (*cursor >= end || !isxdigit((unsigned char)**cursor)) return false;
+                    (*cursor)++;
                 }
             } else {
                 return false;
@@ -375,110 +375,110 @@ static bool v_string_lit(const char **s, const char *end) {
             /* Control characters must be escaped per RFC 8259. */
             return false;
         } else {
-            (*s)++;
+            (*cursor)++;
         }
     }
-    if (*s >= end) return false;
-    (*s)++; /* skip closing " */
+    if (*cursor >= end) return false;
+    (*cursor)++; /* skip closing " */
     return true;
 }
 
-static bool v_number(const char **s, const char *end) {
-    if (*s >= end) return false;
-    if (**s == '-') (*s)++;
-    if (*s >= end) return false;
-    if (**s == '0') {
-        (*s)++;
-    } else if (**s >= '1' && **s <= '9') {
-        while (*s < end && isdigit((unsigned char)**s)) (*s)++;
+static bool validate_json_number(const char **cursor, const char *end) {
+    if (*cursor >= end) return false;
+    if (**cursor == '-') (*cursor)++;
+    if (*cursor >= end) return false;
+    if (**cursor == '0') {
+        (*cursor)++;
+    } else if (**cursor >= '1' && **cursor <= '9') {
+        while (*cursor < end && isdigit((unsigned char)**cursor)) (*cursor)++;
     } else {
         return false;
     }
     /* Fractional part */
-    if (*s < end && **s == '.') {
-        (*s)++;
-        if (*s >= end || !isdigit((unsigned char)**s)) return false;
-        while (*s < end && isdigit((unsigned char)**s)) (*s)++;
+    if (*cursor < end && **cursor == '.') {
+        (*cursor)++;
+        if (*cursor >= end || !isdigit((unsigned char)**cursor)) return false;
+        while (*cursor < end && isdigit((unsigned char)**cursor)) (*cursor)++;
     }
     /* Exponent */
-    if (*s < end && (**s == 'e' || **s == 'E')) {
-        (*s)++;
-        if (*s < end && (**s == '+' || **s == '-')) (*s)++;
-        if (*s >= end || !isdigit((unsigned char)**s)) return false;
-        while (*s < end && isdigit((unsigned char)**s)) (*s)++;
+    if (*cursor < end && (**cursor == 'e' || **cursor == 'E')) {
+        (*cursor)++;
+        if (*cursor < end && (**cursor == '+' || **cursor == '-')) (*cursor)++;
+        if (*cursor >= end || !isdigit((unsigned char)**cursor)) return false;
+        while (*cursor < end && isdigit((unsigned char)**cursor)) (*cursor)++;
     }
     return true;
 }
 
-static bool v_literal(const char **s, const char *end, const char *lit) {
+static bool validate_json_literal(const char **cursor, const char *end, const char *lit) {
     size_t n = strlen(lit);
-    if ((size_t)(end - *s) < n) return false;
-    if (memcmp(*s, lit, n) != 0) return false;
-    *s += n;
+    if ((size_t)(end - *cursor) < n) return false;
+    if (memcmp(*cursor, lit, n) != 0) return false;
+    *cursor += n;
     return true;
 }
 
-static bool v_array(const char **s, const char *end, int depth) {
-    if (*s >= end || **s != '[') return false;
-    (*s)++;
-    skip_ws(s, end);
-    if (*s < end && **s == ']') { (*s)++; return true; }
+static bool validate_json_array(const char **cursor, const char *end, int depth) {
+    if (*cursor >= end || **cursor != '[') return false;
+    (*cursor)++;
+    skip_ws(cursor, end);
+    if (*cursor < end && **cursor == ']') { (*cursor)++; return true; }
     for (;;) {
-        skip_ws(s, end);
-        if (!v_value(s, end, depth + 1)) return false;
-        skip_ws(s, end);
-        if (*s >= end) return false;
-        if (**s == ',') { (*s)++; continue; }
-        if (**s == ']') { (*s)++; return true; }
+        skip_ws(cursor, end);
+        if (!validate_json_value(cursor, end, depth + 1)) return false;
+        skip_ws(cursor, end);
+        if (*cursor >= end) return false;
+        if (**cursor == ',') { (*cursor)++; continue; }
+        if (**cursor == ']') { (*cursor)++; return true; }
         return false;
     }
 }
 
-static bool v_object(const char **s, const char *end, int depth) {
-    if (*s >= end || **s != '{') return false;
-    (*s)++;
-    skip_ws(s, end);
-    if (*s < end && **s == '}') { (*s)++; return true; }
+static bool validate_json_object(const char **cursor, const char *end, int depth) {
+    if (*cursor >= end || **cursor != '{') return false;
+    (*cursor)++;
+    skip_ws(cursor, end);
+    if (*cursor < end && **cursor == '}') { (*cursor)++; return true; }
     for (;;) {
-        skip_ws(s, end);
-        if (!v_string_lit(s, end)) return false;
-        skip_ws(s, end);
-        if (*s >= end || **s != ':') return false;
-        (*s)++;
-        skip_ws(s, end);
-        if (!v_value(s, end, depth + 1)) return false;
-        skip_ws(s, end);
-        if (*s >= end) return false;
-        if (**s == ',') { (*s)++; continue; }
-        if (**s == '}') { (*s)++; return true; }
+        skip_ws(cursor, end);
+        if (!validate_json_string_lit(cursor, end)) return false;
+        skip_ws(cursor, end);
+        if (*cursor >= end || **cursor != ':') return false;
+        (*cursor)++;
+        skip_ws(cursor, end);
+        if (!validate_json_value(cursor, end, depth + 1)) return false;
+        skip_ws(cursor, end);
+        if (*cursor >= end) return false;
+        if (**cursor == ',') { (*cursor)++; continue; }
+        if (**cursor == '}') { (*cursor)++; return true; }
         return false;
     }
 }
 
-static bool v_value(const char **s, const char *end, int depth) {
+static bool validate_json_value(const char **cursor, const char *end, int depth) {
     if (depth > GRAY_JSON_MAX_DEPTH) return false;
-    skip_ws(s, end);
-    if (*s >= end) return false;
-    char c = **s;
-    if (c == '{') return v_object(s, end, depth);
-    if (c == '[') return v_array(s, end, depth);
-    if (c == '"') return v_string_lit(s, end);
-    if (c == '-' || (c >= '0' && c <= '9')) return v_number(s, end);
-    if (c == 't') return v_literal(s, end, "true");
-    if (c == 'f') return v_literal(s, end, "false");
-    if (c == 'n') return v_literal(s, end, "null");
+    skip_ws(cursor, end);
+    if (*cursor >= end) return false;
+    char c = **cursor;
+    if (c == '{') return validate_json_object(cursor, end, depth);
+    if (c == '[') return validate_json_array(cursor, end, depth);
+    if (c == '"') return validate_json_string_lit(cursor, end);
+    if (c == '-' || (c >= '0' && c <= '9')) return validate_json_number(cursor, end);
+    if (c == 't') return validate_json_literal(cursor, end, "true");
+    if (c == 'f') return validate_json_literal(cursor, end, "false");
+    if (c == 'n') return validate_json_literal(cursor, end, "null");
     return false;
 }
 
 bool gray_json_is_valid(GrayString text) {
     if (text.len <= 0 || !text.data) return false;
-    const char *s = text.data;
-    const char *end = s + text.len;
-    skip_ws(&s, end);
-    if (s >= end) return false;
-    if (!v_value(&s, end, 0)) return false;
-    skip_ws(&s, end);
-    return s == end;
+    const char *cursor = text.data;
+    const char *end = cursor + text.len;
+    skip_ws(&cursor, end);
+    if (cursor >= end) return false;
+    if (!validate_json_value(&cursor, end, 0)) return false;
+    skip_ws(&cursor, end);
+    return cursor == end;
 }
 
 GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *m, int64_t indent_size) {
@@ -526,52 +526,52 @@ GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *m, int64_t indent_siz
 
 GrayArray gray_json_split_array(GrayArena *arena, GrayString text) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
-    const char *s = text.data;
-    const char *end = s + text.len;
-    skip_ws(&s, end);
-    if (s >= end || *s != '[') return arr;
-    s++; /* skip [ */
+    const char *cursor = text.data;
+    const char *end = cursor + text.len;
+    skip_ws(&cursor, end);
+    if (cursor >= end || *cursor != '[') return arr;
+    cursor++; /* skip [ */
 
-    while (s < end) {
-        skip_ws(&s, end);
-        if (s >= end || *s == ']') break;
+    while (cursor < end) {
+        skip_ws(&cursor, end);
+        if (cursor >= end || *cursor == ']') break;
 
         /* Mark start of this element */
-        const char *elem_start = s;
+        const char *elem_start = cursor;
         int depth_brace = 0, depth_bracket = 0;
         bool in_string = false;
 
         /* Scan to end of element (respecting nesting and strings) */
-        while (s < end) {
-            char c = *s;
+        while (cursor < end) {
+            char c = *cursor;
             if (in_string) {
-                if (c == '\\') { s++; if (s < end) s++; continue; }
+                if (c == '\\') { cursor++; if (cursor < end) cursor++; continue; }
                 if (c == '"') in_string = false;
-                s++;
+                cursor++;
                 continue;
             }
-            if (c == '"') { in_string = true; s++; continue; }
-            if (c == '{') { depth_brace++; s++; continue; }
-            if (c == '}') { depth_brace--; s++; continue; }
-            if (c == '[') { depth_bracket++; s++; continue; }
+            if (c == '"') { in_string = true; cursor++; continue; }
+            if (c == '{') { depth_brace++; cursor++; continue; }
+            if (c == '}') { depth_brace--; cursor++; continue; }
+            if (c == '[') { depth_bracket++; cursor++; continue; }
             if (c == ']') {
                 if (depth_bracket == 0) break; /* end of outer array */
                 depth_bracket--;
-                s++;
+                cursor++;
                 continue;
             }
             if (c == ',' && depth_brace == 0 && depth_bracket == 0) break;
-            s++;
+            cursor++;
         }
 
-        int32_t elem_len = (int32_t)(s - elem_start);
+        int32_t elem_len = (int32_t)(cursor - elem_start);
         if (elem_len > 0) {
             GrayString elem = gray_string_new(arena, elem_start, elem_len);
             GRAY_ARRAY_PUSH(arena, &arr, &elem);
         }
 
-        skip_ws(&s, end);
-        if (s < end && *s == ',') s++;
+        skip_ws(&cursor, end);
+        if (cursor < end && *cursor == ',') cursor++;
     }
     return arr;
 }

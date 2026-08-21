@@ -16,8 +16,8 @@
 GraySqlite *gray_sqlite_open(GrayArena *arena, GrayString path) {
     GraySqlite *db = (GraySqlite *)gray_arena_alloc(arena, sizeof(GraySqlite));
     sqlite3 *handle = NULL;
-    int return_code =sqlite3_open(path.data, &handle);
-    if (return_code !=SQLITE_OK) {
+    int rc =sqlite3_open(path.data, &handle);
+    if (rc !=SQLITE_OK) {
         if (handle) sqlite3_close(handle);
         db->handle = NULL;
         return db;
@@ -36,9 +36,9 @@ void gray_sqlite_close(GraySqlite *db) {
 bool gray_sqlite_exec(GraySqlite *db, GrayString sql) {
     if (!db || !db->handle) return false;
     char *err = NULL;
-    int return_code =sqlite3_exec((sqlite3 *)db->handle, sql.data, NULL, NULL, &err);
+    int rc =sqlite3_exec((sqlite3 *)db->handle, sql.data, NULL, NULL, &err);
     if (err) sqlite3_free(err);
-    return return_code == SQLITE_OK;
+    return rc == SQLITE_OK;
 }
 
 /* Bind all parameters from a [string] array to a prepared statement. */
@@ -140,10 +140,10 @@ GrayResult_bool gray_sqlite_exec_result(GrayArena *arena, GraySqlite *db, GraySt
         return r;
     }
     char *err = NULL;
-    int return_code =sqlite3_exec((sqlite3 *)db->handle, sql.data, NULL, NULL, &err);
-    if (return_code !=SQLITE_OK) {
+    int rc =sqlite3_exec((sqlite3 *)db->handle, sql.data, NULL, NULL, &err);
+    if (rc !=SQLITE_OK) {
         GrayString msg = err ? gray_string_format(arena, "exec failed: %s", err)
-                           : gray_string_format(arena, "exec failed (code %d)", return_code);
+                           : gray_string_format(arena, "exec failed (code %d)", rc);
         if (err) sqlite3_free(err);
         r.v0 = false;
         r.v1 = gray_error_new(arena, msg);

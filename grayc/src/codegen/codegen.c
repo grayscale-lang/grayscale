@@ -81,14 +81,14 @@ static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
     if (!codegen || !name) return name;
     for (int i = 0; i < codegen->struct_decl_count; i++) {
-        const char *dn = codegen->struct_decls[i]->data.struct_decl.name;
-        const char *us = strrchr(dn, '_');
-        if (us && strcmp(us + 1, name) == 0) return dn;
+        const char *struct_decl_name = codegen->struct_decls[i]->data.struct_decl.name;
+        const char *underscore = strrchr(struct_decl_name, '_');
+        if (underscore && strcmp(underscore + 1, name) == 0) return struct_decl_name;
     }
     for (int i = 0; i < codegen->enum_count; i++) {
-        const char *en = codegen->enum_names[i];
-        const char *us = strrchr(en, '_');
-        if (us && strcmp(us + 1, name) == 0) return en;
+        const char *enum_decl_name = codegen->enum_names[i];
+        const char *underscore = strrchr(enum_decl_name, '_');
+        if (underscore && strcmp(underscore + 1, name) == 0) return enum_decl_name;
     }
     return name;
 }
@@ -108,19 +108,19 @@ static void emit_formatted(CodeGen *codegen, const char *format, ...) {
     char stack_buf[256];
     va_list args;
     va_start(args, format);
-    int n = vsnprintf(stack_buf, sizeof(stack_buf), format, args);
+    int formatted_len = vsnprintf(stack_buf, sizeof(stack_buf), format, args);
     va_end(args);
 
-    if (n < 0) return;
+    if (formatted_len < 0) return;
 
-    if (n < (int)sizeof(stack_buf)) {
-        append_bytes_to_buffer(&codegen->output, stack_buf, (size_t)n);
+    if (formatted_len < (int)sizeof(stack_buf)) {
+        append_bytes_to_buffer(&codegen->output, stack_buf, (size_t)formatted_len);
         return;
     }
 
     /* Slow path: formatted string exceeds stack buffer.
-     * n is already the exact required length — no second measure needed. */
-    size_t req = codegen->output.len + (size_t)n + 1;
+     * formatted_len is already the exact required length — no second measure needed. */
+    size_t req = codegen->output.len + (size_t)formatted_len + 1;
     if (req > codegen->output.cap) {
         size_t new_cap = codegen->output.cap * 2;
         if (new_cap < req) new_cap = req;
@@ -129,9 +129,9 @@ static void emit_formatted(CodeGen *codegen, const char *format, ...) {
     }
 
     va_start(args, format);
-    vsnprintf(codegen->output.data + codegen->output.len, (size_t)n + 1, format, args);
+    vsnprintf(codegen->output.data + codegen->output.len, (size_t)formatted_len + 1, format, args);
     va_end(args);
-    codegen->output.len += (size_t)n;
+    codegen->output.len += (size_t)formatted_len;
 }
 
 static void emit_indent(CodeGen *codegen) {
@@ -231,23 +231,23 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
     if (!tgt_t) return false;
 
-    const char *sn = tgt_t->name;
+    const char *type_name_str = tgt_t->name;
 
     /* Sized integers (i8/i16/i32/u8/u16/u32): gray_(u)sized_*_check */
     const char *smin = NULL, *smax = NULL;
-    bool su = false;
-    if (sn) sized_int_bounds(sn, &smin, &smax, &su);
+    bool is_unsigned = false;
+    if (type_name_str) sized_int_bounds(type_name_str, &smin, &smax, &is_unsigned);
     if (smax) {
-        const char *fn = sized_check_func(aop, su);
-        if (!fn) return false;
-        emit_formatted(codegen, "%s = %s(%s, ", ref_str, fn, ref_str);
+        const char *check_func_name = sized_check_func(aop, is_unsigned);
+        if (!check_func_name) return false;
+        emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
         emit_expression(codegen, node->data.assign.value);
-        if (su)
+        if (is_unsigned)
             emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d)",
-                           smax, sn, codegen->file, node->token.line);
+                           smax, type_name_str, codegen->file, node->token.line);
         else
             emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)",
-                           smin, smax, sn, codegen->file, node->token.line);
+                           smin, smax, type_name_str, codegen->file, node->token.line);
         return true;
     }
 
@@ -257,19 +257,19 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
     if (!tgt_is_int) return false;
 
     bool unsigned_op = (tgt_t->kind == TK_UINT || tgt_t->kind == TK_BYTE);
-    const char *fn = NULL;
+    const char *check_func_name = NULL;
     if (unsigned_op) {
-        if (aop == TOK_PLUS_ASSIGN) fn = "gray_uadd_check";
-        else if (aop == TOK_MINUS_ASSIGN) fn = "gray_usub_check";
-        else if (aop == TOK_ASTERISK_ASSIGN) fn = "gray_umul_check";
+        if (aop == TOK_PLUS_ASSIGN) check_func_name = "gray_uadd_check";
+        else if (aop == TOK_MINUS_ASSIGN) check_func_name = "gray_usub_check";
+        else if (aop == TOK_ASTERISK_ASSIGN) check_func_name = "gray_umul_check";
     } else {
-        if (aop == TOK_PLUS_ASSIGN) fn = "gray_add_check";
-        else if (aop == TOK_MINUS_ASSIGN) fn = "gray_sub_check";
-        else if (aop == TOK_ASTERISK_ASSIGN) fn = "gray_mul_check";
+        if (aop == TOK_PLUS_ASSIGN) check_func_name = "gray_add_check";
+        else if (aop == TOK_MINUS_ASSIGN) check_func_name = "gray_sub_check";
+        else if (aop == TOK_ASTERISK_ASSIGN) check_func_name = "gray_mul_check";
     }
-    if (!fn) return false;
+    if (!check_func_name) return false;
 
-    emit_formatted(codegen, "%s = %s(%s, ", ref_str, fn, ref_str);
+    emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
     emit_expression(codegen, node->data.assign.value);
     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
     return true;
@@ -352,36 +352,36 @@ static char *codegen_bind_wildcard(const char *ptn, const char *atn) {
     /* Array layer: strip matching outer [...] brackets */
     if (plen >= 3 && ptn[0] == '[' && ptn[plen - 1] == ']') {
         if (alen < 3 || atn[0] != '[' || atn[alen - 1] != ']') return NULL;
-        char *ip = gray_strndup(ptn + 1, plen - 2);
-        char *ia = gray_strndup(atn + 1, alen - 2);
-        char *result = codegen_bind_wildcard(ip, ia);
-        free(ip); free(ia);
+        char *array_pattern_inner = gray_strndup(ptn + 1, plen - 2);
+        char *array_arg_inner = gray_strndup(atn + 1, alen - 2);
+        char *result = codegen_bind_wildcard(array_pattern_inner, array_arg_inner);
+        free(array_pattern_inner); free(array_arg_inner);
         return result;
     }
     /* Map layer: find top-level ':' in both sides and recurse into wildcard slot */
     if (plen > 4 && strncmp(ptn, "map[", 4) == 0 && ptn[plen - 1] == ']') {
         if (alen <= 4 || strncmp(atn, "map[", 4) != 0 || atn[alen - 1] != ']') return NULL;
-        const char *pi = ptn + 4; size_t pil = plen - 5;
-        const char *ai = atn + 4; size_t ail = alen - 5;
-        int depth = 0; const char *pc = NULL, *ac = NULL;
-        for (size_t i = 0; i < pil; i++) {
-            if (pi[i] == '[') depth++; else if (pi[i] == ']') depth--;
-            else if (pi[i] == ':' && depth == 0) { pc = pi + i; break; }
+        const char *map_pattern_content = ptn + 4; size_t map_pattern_content_len = plen - 5;
+        const char *map_arg_content = atn + 4; size_t map_arg_content_len = alen - 5;
+        int depth = 0; const char *map_pattern_colon = NULL, *map_arg_colon = NULL;
+        for (size_t i = 0; i < map_pattern_content_len; i++) {
+            if (map_pattern_content[i] == '[') depth++; else if (map_pattern_content[i] == ']') depth--;
+            else if (map_pattern_content[i] == ':' && depth == 0) { map_pattern_colon = map_pattern_content + i; break; }
         }
         depth = 0;
-        for (size_t i = 0; i < ail; i++) {
-            if (ai[i] == '[') depth++; else if (ai[i] == ']') depth--;
-            else if (ai[i] == ':' && depth == 0) { ac = ai + i; break; }
+        for (size_t i = 0; i < map_arg_content_len; i++) {
+            if (map_arg_content[i] == '[') depth++; else if (map_arg_content[i] == ']') depth--;
+            else if (map_arg_content[i] == ':' && depth == 0) { map_arg_colon = map_arg_content + i; break; }
         }
-        if (!pc || !ac) return NULL;
-        char *pk = gray_strndup(pi, (size_t)(pc - pi));
-        char *pv = gray_strndup(pc + 1, pil - (size_t)(pc - pi) - 1);
-        char *ak = gray_strndup(ai, (size_t)(ac - ai));
-        char *av = gray_strndup(ac + 1, ail - (size_t)(ac - ai) - 1);
+        if (!map_pattern_colon || !map_arg_colon) return NULL;
+        char *map_pattern_key = gray_strndup(map_pattern_content, (size_t)(map_pattern_colon - map_pattern_content));
+        char *map_pattern_value = gray_strndup(map_pattern_colon + 1, map_pattern_content_len - (size_t)(map_pattern_colon - map_pattern_content) - 1);
+        char *map_arg_key = gray_strndup(map_arg_content, (size_t)(map_arg_colon - map_arg_content));
+        char *map_arg_value = gray_strndup(map_arg_colon + 1, map_arg_content_len - (size_t)(map_arg_colon - map_arg_content) - 1);
         char *result = NULL;
-        if (strchr(pk, '?')) result = codegen_bind_wildcard(pk, ak);
-        if (!result && strchr(pv, '?')) result = codegen_bind_wildcard(pv, av);
-        free(pk); free(pv); free(ak); free(av);
+        if (strchr(map_pattern_key, '?')) result = codegen_bind_wildcard(map_pattern_key, map_arg_key);
+        if (!result && strchr(map_pattern_value, '?')) result = codegen_bind_wildcard(map_pattern_value, map_arg_value);
+        free(map_pattern_key); free(map_pattern_value); free(map_arg_key); free(map_arg_value);
         return result;
     }
     return NULL;
@@ -1247,12 +1247,12 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
 static void emit_string_value(CodeGen *codegen, AstNode *node) {
     /* Emit string literal, breaking hex escapes to prevent C's greedy \x parsing.
      * "A\x42C" → "A\x42" "C" (C string concatenation) */
-    const char *s = node->data.string_value.value;
+    const char *cursor = node->data.string_value.value;
     /* Check for null bytes; if present, use gray_string_lit_len with explicit length
      * since strlen() would truncate at the null */
     bool has_null = false;
     int str_len = 0;
-    for (const char *scan = s; *scan; scan++) {
+    for (const char *scan = cursor; *scan; scan++) {
         if (scan[0] == '\\' && scan[1] == 'x' && scan[2] == '0' && scan[3] == '0') {
             has_null = true;
             str_len++; /* \x00 = 1 byte */
@@ -1276,50 +1276,50 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
     }
     if (node->data.string_value.is_raw) {
         /* Raw string; escape special characters for C output */
-        while (*s) {
-            if (*s == '\\') {
+        while (*cursor) {
+            if (*cursor == '\\') {
                 emit(codegen, "\\\\");
-            } else if (*s == '"') {
+            } else if (*cursor == '"') {
                 emit(codegen, "\\\"");
-            } else if (*s == '\n') {
+            } else if (*cursor == '\n') {
                 emit(codegen, "\\n");
-            } else if (*s == '\r') {
+            } else if (*cursor == '\r') {
                 emit(codegen, "\\r");
-            } else if (*s == '\t') {
+            } else if (*cursor == '\t') {
                 emit(codegen, "\\t");
             } else {
-                append_char_to_buffer(&codegen->output, *s);
+                append_char_to_buffer(&codegen->output, *cursor);
             }
-            s++;
+            cursor++;
         }
     } else {
-        while (*s) {
-            if (s[0] == '\\' && s[1] == 'x' && isxdigit((unsigned char)s[2])) {
+        while (*cursor) {
+            if (cursor[0] == '\\' && cursor[1] == 'x' && isxdigit((unsigned char)cursor[2])) {
                 /* Emit \xNN then break the string if followed by a hex digit */
-                append_char_to_buffer(&codegen->output, s[0]); /* \ */
-                append_char_to_buffer(&codegen->output, s[1]); /* x */
-                append_char_to_buffer(&codegen->output, s[2]); /* first hex */
-                s += 3;
-                if (isxdigit((unsigned char)*s)) {
-                    append_char_to_buffer(&codegen->output, *s); /* second hex */
-                    s++;
+                append_char_to_buffer(&codegen->output, cursor[0]); /* \ */
+                append_char_to_buffer(&codegen->output, cursor[1]); /* x */
+                append_char_to_buffer(&codegen->output, cursor[2]); /* first hex */
+                cursor += 3;
+                if (isxdigit((unsigned char)*cursor)) {
+                    append_char_to_buffer(&codegen->output, *cursor); /* second hex */
+                    cursor++;
                 }
-                if (isxdigit((unsigned char)*s)) {
+                if (isxdigit((unsigned char)*cursor)) {
                     /* Next char is also hex; break the string */
                     emit(codegen, "\" \"");
                 }
-            } else if (s[0] == '\\' && s[1] == '$') {
+            } else if (cursor[0] == '\\' && cursor[1] == '$') {
                 append_char_to_buffer(&codegen->output, '$');
-                s += 2;
-            } else if (*s == '\n') {
+                cursor += 2;
+            } else if (*cursor == '\n') {
                 emit(codegen, "\\n");
-                s++;
-            } else if (*s == '\r') {
+                cursor++;
+            } else if (*cursor == '\r') {
                 emit(codegen, "\\r");
-                s++;
+                cursor++;
             } else {
-                append_char_to_buffer(&codegen->output, *s);
-                s++;
+                append_char_to_buffer(&codegen->output, *cursor);
+                cursor++;
             }
         }
     }
@@ -1393,41 +1393,41 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ")");
                 break;
             case TK_ARRAY: {
-                int ek = 0;
+                int elem_kind_tag = 0;
                 if (part_type && part_type->element_type) {
                     GrayType *et = type_from_name(part_type->element_type);
-                    if (et->kind == TK_FLOAT) ek = 1;
-                    else if (et->kind == TK_STRING) ek = 2;
-                    else if (et->kind == TK_BOOL) ek = 3;
-                    else if (et->kind == TK_UINT) ek = 4;
-                    else if (et->kind == TK_BYTE) ek = 5;
-                    else if (et->kind == TK_CHAR) ek = 6;
+                    if (et->kind == TK_FLOAT) elem_kind_tag = 1;
+                    else if (et->kind == TK_STRING) elem_kind_tag = 2;
+                    else if (et->kind == TK_BOOL) elem_kind_tag = 3;
+                    else if (et->kind == TK_UINT) elem_kind_tag = 4;
+                    else if (et->kind == TK_BYTE) elem_kind_tag = 5;
+                    else if (et->kind == TK_CHAR) elem_kind_tag = 6;
                     else if (et->kind == TK_ENUM) {
-                        ek = (part_type->element_type && codegen_enum_is_string(codegen, part_type->element_type)) ? 2 : 7;
+                        elem_kind_tag = (part_type->element_type && codegen_enum_is_string(codegen, part_type->element_type)) ? 2 : 7;
                     }
                 }
                 emit_formatted(codegen, "({ GrayArray _interp_arr = ");
                 emit_expression(codegen, part);
-                emit_formatted(codegen, "; gray_builtin_array_to_string(gray_default_arena, &_interp_arr, %d); })", ek);
+                emit_formatted(codegen, "; gray_builtin_array_to_string(gray_default_arena, &_interp_arr, %d); })", elem_kind_tag);
                 break;
             }
             case TK_MAP: {
-                int vk = 0;
+                int value_kind_tag = 0;
                 if (part_type && part_type->value_type) {
                     GrayType *vt = type_from_name(part_type->value_type);
-                    if (vt->kind == TK_FLOAT) vk = 1;
-                    else if (vt->kind == TK_STRING) vk = 2;
-                    else if (vt->kind == TK_BOOL) vk = 3;
-                    else if (vt->kind == TK_UINT) vk = 4;
-                    else if (vt->kind == TK_BYTE) vk = 5;
-                    else if (vt->kind == TK_CHAR) vk = 6;
+                    if (vt->kind == TK_FLOAT) value_kind_tag = 1;
+                    else if (vt->kind == TK_STRING) value_kind_tag = 2;
+                    else if (vt->kind == TK_BOOL) value_kind_tag = 3;
+                    else if (vt->kind == TK_UINT) value_kind_tag = 4;
+                    else if (vt->kind == TK_BYTE) value_kind_tag = 5;
+                    else if (vt->kind == TK_CHAR) value_kind_tag = 6;
                     else if (vt->kind == TK_ENUM) {
-                        vk = (part_type->value_type && codegen_enum_is_string(codegen, part_type->value_type)) ? 2 : 7;
+                        value_kind_tag = (part_type->value_type && codegen_enum_is_string(codegen, part_type->value_type)) ? 2 : 7;
                     }
                 }
                 emit_formatted(codegen, "({ GrayMap _interp_map = ");
                 emit_expression(codegen, part);
-                emit_formatted(codegen, "; gray_builtin_map_to_string(gray_default_arena, &_interp_map, %d); })", vk);
+                emit_formatted(codegen, "; gray_builtin_map_to_string(gray_default_arena, &_interp_map, %d); })", value_kind_tag);
                 break;
             }
             case TK_ERROR:
@@ -9377,14 +9377,14 @@ static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
  * static buffers so a few concurrent uses stay alive. */
 static const char *multi_return_base_name(const char *fn_name) {
     static char bufs[4][MSG_BUF_SIZE];
-    static int bi = 0;
-    char *out = bufs[bi]; bi = (bi + 1) & 3;
+    static int buf_slot = 0;
+    char *out = bufs[buf_slot]; buf_slot = (buf_slot + 1) & 3;
     const char *dunder = strstr(fn_name, "__");
     if (dunder) {
-        size_t n = (size_t)(dunder - fn_name);
-        if (n >= sizeof(bufs[0])) n = sizeof(bufs[0]) - 1;
-        memcpy(out, fn_name, n);
-        out[n] = '\0';
+        size_t prefix_len = (size_t)(dunder - fn_name);
+        if (prefix_len >= sizeof(bufs[0])) prefix_len = sizeof(bufs[0]) - 1;
+        memcpy(out, fn_name, prefix_len);
+        out[prefix_len] = '\0';
     } else {
         strncpy(out, fn_name, sizeof(bufs[0]) - 1);
         out[sizeof(bufs[0]) - 1] = '\0';
@@ -9592,9 +9592,9 @@ static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
     char slot_name[SHORT_VAR_BUF];
     snprintf(slot_name, sizeof(slot_name), "_gray_sl%d", mi_id);
     {
-        char *ge = iter_guard_expr(codegen, *out_map_needs_tmp, map_tmp_name, coll);
-        iter_guard_push(codegen, ge);
-        free(ge);
+        char *guard_expr = iter_guard_expr(codegen, *out_map_needs_tmp, map_tmp_name, coll);
+        iter_guard_push(codegen, guard_expr);
+        free(guard_expr);
     }
     if (*out_map_needs_tmp) emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", map_tmp_name);
     else { emit(codegen, "gray_atomic_add32(&"); emit_expression(codegen, coll); emit(codegen, ".iterating, 1);\n"); }
@@ -9703,16 +9703,16 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     if (*out_coll_needs_tmp) emit_formatted(codegen, "%s.len;\n", arr_tmp_name);
     else { emit_expression(codegen, coll); emit(codegen, ".len;\n"); }
     {
-        char *ge;
+        char *guard_expr;
         if (guard_real) {
             char buf[SHORT_VAR_BUF + 4];
             snprintf(buf, sizeof(buf), "(*%s)", guard_ptr);
-            ge = strdup(buf);
+            guard_expr = strdup(buf);
         } else {
-            ge = iter_guard_expr(codegen, *out_coll_needs_tmp, arr_tmp_name, coll);
+            guard_expr = iter_guard_expr(codegen, *out_coll_needs_tmp, arr_tmp_name, coll);
         }
-        iter_guard_push(codegen, ge);
-        free(ge);
+        iter_guard_push(codegen, guard_expr);
+        free(guard_expr);
     }
     emit_indent(codegen);
     emit_formatted(codegen, "gray_atomic_add32(&%s.iterating, 1);\n", iter_guard_top(codegen));

@@ -326,10 +326,10 @@ static void enum_ensure_sorted(TypeChecker *checker) {
     qsort(checker->enum_names_sorted, (size_t)checker->enum_count,
           sizeof(const char *), enum_name_string_compare);
     /* Build reverse mapping from sorted position to original index */
-    for (int s = 0; s < checker->enum_count; s++) {
+    for (int sorted_index = 0; sorted_index < checker->enum_count; sorted_index++) {
         for (int i = 0; i < checker->enum_count; i++) {
-            if (checker->enum_names[i] == checker->enum_names_sorted[s]) {
-                checker->enum_names_sorted_indices[s] = i;
+            if (checker->enum_names[i] == checker->enum_names_sorted[sorted_index]) {
+                checker->enum_names_sorted_indices[sorted_index] = i;
                 break;
             }
         }
@@ -1788,11 +1788,11 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
         name = resolve_type_alias(checker, name);
     }
     if (name && is_enum_name(checker, name)) return type_enum(name);
-    GrayType *t = type_from_name(name);
+    GrayType *resolved_type = type_from_name(name);
     /* : try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
      * type_from_name returns TK_STRUCT for any capitalized name
-     * even if the struct isn't registered, so check is_struct_name
+     * even if the struct isn'resolved_type registered, so check is_struct_name
      * to see if the bare name actually exists before giving up. */
     if (name && name[0] >= 'A' && name[0] <= 'Z' &&
         !is_struct_name(checker, name) && !is_enum_name(checker, name)) {
@@ -1805,7 +1805,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             if (is_struct_name(checker, prefixed)) return type_struct(prefixed);
         }
         /* : after registration completes, reject uppercase names that
-         * aren't registered as structs or enums. During registration we must
+         * aren'resolved_type registered as structs or enums. During registration we must
          * allow forward references, so only enforce this in later passes.
          * Exempt built-in types that are mapped directly in codegen without
          * struct registration (e.g. Error → GrayError*). */
@@ -1840,7 +1840,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             }
         }
     }
-    return t;
+    return resolved_type;
 }
 
 /* --- Type signedness helpers --- */
@@ -3209,11 +3209,11 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     AstNode *arg = node->data.call.args[argument_index];
                     AstNode *found_declaration = NULL;
                     for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                        AstNode *s = checker->program->data.program.stmts[field_index];
-                        if (s->kind == NODE_STRUCT_DECL &&
-                            strcmp(s->data.struct_decl.name, mod) == 0) {
-                            for (int sfi = 0; sfi < s->data.struct_decl.func_count; sfi++) {
-                                AstNode *sf = s->data.struct_decl.funcs[sfi].func_decl;
+                        AstNode *stmt = checker->program->data.program.stmts[field_index];
+                        if (stmt->kind == NODE_STRUCT_DECL &&
+                            strcmp(stmt->data.struct_decl.name, mod) == 0) {
+                            for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
+                                AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
                                 if (sf && sf->kind == NODE_FUNC_DECL &&
                                     strcmp(sf->data.func_decl.name, mfn) == 0 &&
                                     argument_index < sf->data.func_decl.param_count &&
@@ -4684,15 +4684,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             {
                 AstNode *arg = node->data.call.args[argument_index];
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                    AstNode *s = checker->program->data.program.stmts[field_index];
-                    if (s->kind != NODE_FUNC_DECL ||
-                        strcmp(s->data.func_decl.name, function_name) != 0 ||
-                        argument_index >= s->data.func_decl.param_count ||
-                        !s->data.func_decl.params[argument_index].mutable)
+                    AstNode *stmt = checker->program->data.program.stmts[field_index];
+                    if (stmt->kind != NODE_FUNC_DECL ||
+                        strcmp(stmt->data.func_decl.name, function_name) != 0 ||
+                        argument_index >= stmt->data.func_decl.param_count ||
+                        !stmt->data.func_decl.params[argument_index].mutable)
                         continue;
                     char param_desc[MSG_BUF_SIZE];
-                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                        s->data.func_decl.params[argument_index].name);
+                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                        stmt->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, arg, param_desc, function_name);
                     break;
                 }
@@ -4785,15 +4785,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                             AstNode *arg = node->data.call.args[argument_index];
                             const char *ref_name = fn_sym->func_ref_name;
                             for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                                AstNode *s = checker->program->data.program.stmts[field_index];
-                                if (s->kind != NODE_FUNC_DECL ||
-                                    strcmp(s->data.func_decl.name, ref_name) != 0 ||
-                                    argument_index >= s->data.func_decl.param_count ||
-                                    !s->data.func_decl.params[argument_index].mutable)
+                                AstNode *stmt = checker->program->data.program.stmts[field_index];
+                                if (stmt->kind != NODE_FUNC_DECL ||
+                                    strcmp(stmt->data.func_decl.name, ref_name) != 0 ||
+                                    argument_index >= stmt->data.func_decl.param_count ||
+                                    !stmt->data.func_decl.params[argument_index].mutable)
                                     continue;
                                 char param_desc[MSG_BUF_SIZE];
-                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                                    s->data.func_decl.params[argument_index].name);
+                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                                    stmt->data.func_decl.params[argument_index].name);
                                 check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
                                 break;
                             }
@@ -5284,11 +5284,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                    AstNode *s = checker->program->data.program.stmts[field_index];
-                    if (s->kind == NODE_STRUCT_DECL &&
-                        strcmp(s->data.struct_decl.name, struct_name) == 0) {
-                        for (int sfi = 0; sfi < s->data.struct_decl.func_count; sfi++) {
-                            AstNode *sf = s->data.struct_decl.funcs[sfi].func_decl;
+                    AstNode *stmt = checker->program->data.program.stmts[field_index];
+                    if (stmt->kind == NODE_STRUCT_DECL &&
+                        strcmp(stmt->data.struct_decl.name, struct_name) == 0) {
+                        for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
+                            AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
                             if (sf && sf->kind == NODE_FUNC_DECL &&
                                 strcmp(sf->data.func_decl.name, func_name) == 0 &&
                                 argument_index < sf->data.func_decl.param_count &&
@@ -6490,48 +6490,48 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     if (ref_sig) {
         char buffer[512];
         size_t buffer_size = sizeof(buffer);
-        int n = snprintf(buffer, buffer_size, "func(");
-        if ((size_t)n >= buffer_size) n = (int)buffer_size - 1;
-        for (int i = 0; i < ref_sig->param_count && (size_t)n < buffer_size - 1; i++) {
+        int buf_len = snprintf(buffer, buffer_size, "func(");
+        if ((size_t)buf_len >= buffer_size) buf_len = (int)buffer_size - 1;
+        for (int i = 0; i < ref_sig->param_count && (size_t)buf_len < buffer_size - 1; i++) {
             bool mut_p = (ref_sig->decl && ref_sig->decl->kind == NODE_FUNC_DECL &&
                           i < ref_sig->decl->data.func_decl.param_count &&
                           ref_sig->decl->data.func_decl.params[i].mutable);
-            const char *ptn = (ref_sig->param_types[i] && ref_sig->param_types[i]->name)
+            const char *param_type_name = (ref_sig->param_types[i] && ref_sig->param_types[i]->name)
                 ? ref_sig->param_types[i]->name : "int";
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "%s%s%s",
-                i ? "," : "", mut_p ? "&" : "", ptn);
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else { n = (int)buffer_size - 1; break; }
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s%s",
+                i ? "," : "", mut_p ? "&" : "", param_type_name);
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else { buf_len = (int)buffer_size - 1; break; }
         }
-        if ((size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, ")");
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
+        if ((size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, ")");
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
         }
         if (ref_sig->return_count == 1 && ref_sig->return_types[0] &&
             ref_sig->return_types[0]->name &&
             strcmp(ref_sig->return_types[0]->name, "void") != 0 &&
-            (size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "->%s",
+            (size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "->%s",
                 ref_sig->return_types[0]->name);
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
-        } else if (ref_sig->return_count > 1 && (size_t)n < buffer_size - 1) {
-            int w = snprintf(buffer + n, buffer_size - (size_t)n, "->(");
-            if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-            else n = (int)buffer_size - 1;
-            for (int i = 0; i < ref_sig->return_count && (size_t)n < buffer_size - 1; i++) {
-                const char *rn = (ref_sig->return_types[i] && ref_sig->return_types[i]->name)
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
+        } else if (ref_sig->return_count > 1 && (size_t)buf_len < buffer_size - 1) {
+            int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "->(");
+            if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+            else buf_len = (int)buffer_size - 1;
+            for (int i = 0; i < ref_sig->return_count && (size_t)buf_len < buffer_size - 1; i++) {
+                const char *return_type_name = (ref_sig->return_types[i] && ref_sig->return_types[i]->name)
                     ? ref_sig->return_types[i]->name : "int";
-                w = snprintf(buffer + n, buffer_size - (size_t)n, "%s%s",
-                    i ? "," : "", rn);
-                if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-                else { n = (int)buffer_size - 1; break; }
+                written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s",
+                    i ? "," : "", return_type_name);
+                if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+                else { buf_len = (int)buffer_size - 1; break; }
             }
-            if ((size_t)n < buffer_size - 1) {
-                w = snprintf(buffer + n, buffer_size - (size_t)n, ")");
-                if (w > 0 && (size_t)w < buffer_size - (size_t)n) n += w;
-                else n = (int)buffer_size - 1;
+            if ((size_t)buf_len < buffer_size - 1) {
+                written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, ")");
+                if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
+                else buf_len = (int)buffer_size - 1;
             }
         }
         char *encoded = strdup(buffer);
@@ -7022,24 +7022,24 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        GrayType *t = type_alloc();
-        t->kind = TK_MAP;
-        t->name = strdup("map");
+        GrayType *resolved_type = type_alloc();
+        resolved_type->kind = TK_MAP;
+        resolved_type->name = strdup("map");
         if (node->data.map_value.count > 0) {
             GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            t->key_type = strdup(kt ? type_name(kt) : "unknown");
-            t->value_type = strdup(vt ? type_name(vt) : "unknown");
+            resolved_type->key_type = strdup(kt ? type_name(kt) : "unknown");
+            resolved_type->value_type = strdup(vt ? type_name(vt) : "unknown");
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types
              * of the context it is written into, so codegen sizes the table
              * from the declared type instead of falling back to string keys
              * and 8-byte values. */
-            t->key_type = strdup(saved_map_expected->key_type);
-            t->value_type = strdup(saved_map_expected->value_type);
+            resolved_type->key_type = strdup(saved_map_expected->key_type);
+            resolved_type->value_type = strdup(saved_map_expected->value_type);
         }
-        result = t;
+        result = resolved_type;
         checker->expected_type = saved_map_expected;
         break;
     }
@@ -7636,14 +7636,14 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * E5039: constant expression overflows the declared integer type. */
     if (!node->data.var_decl.mutable &&
         node->data.var_decl.type_name && node->data.var_decl.value) {
-        const char *tn = node->data.var_decl.type_name;
+        const char *type_name_str = node->data.var_decl.type_name;
         /* Track integer types (signed and unsigned) in the const table.
          * Unsigned values that fit in int64_t are stored as-is; this
          * covers practical array-size use cases.  Full uint64 overflow
          * detection is left to a separate check; for now we just ensure
          * the codegen fix applies (in_const_decl suppresses the runtime
          * wrapper). */
-        bool is_int_type = is_any_int_type(tn);
+        bool is_int_type = is_any_int_type(type_name_str);
         if (is_int_type) {
             int64_t folded = 0;
             bool overflowed = false;
@@ -7655,7 +7655,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             } else if (overflowed) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "constant expression overflows type '%s'", tn);
+                    "constant expression overflows type '%s'", type_name_str);
                 diagnostic_error_message(checker->diag, "E5039",
                     msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -7672,10 +7672,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * "void" is legal as a typed-func return type (encoded as
      * "func(...)->void"), so skip the strstr check for those. */
     if (node->data.var_decl.type_name) {
-        const char *tn = node->data.var_decl.type_name;
-        bool is_typed_func = strncmp(tn, "func(", 5) == 0 ||
-                             strncmp(tn, "[func(", 6) == 0;
-        if (!is_typed_func && strstr(tn, "void") != NULL && strcmp(tn, "void") != 0) {
+        const char *type_name_str = node->data.var_decl.type_name;
+        bool is_typed_func = strncmp(type_name_str, "func(", 5) == 0 ||
+                             strncmp(type_name_str, "[func(", 6) == 0;
+        if (!is_typed_func && strstr(type_name_str, "void") != NULL && strcmp(type_name_str, "void") != 0) {
             diagnostic_error_message(checker->diag, "E3038",
                 "'void' cannot be used as an element type in arrays or maps",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -7823,12 +7823,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* E3054: mutable array with fixed size */
     /* E3055: const array without fixed size */
     if (node->data.var_decl.type_name && node->data.var_decl.type_name[0] == '[') {
-        const char *tn = node->data.var_decl.type_name;
+        const char *type_name_str = node->data.var_decl.type_name;
         /* Top-level comma only; commas inside (), [], or func sigs are
          * part of the element type, not the [T,N] size separator. */
         const char *size_comma = NULL;
         int depth = 0;
-        for (const char *c = tn; *c; c++) {
+        for (const char *c = type_name_str; *c; c++) {
             if (*c == '(' || *c == '[') depth++;
             else if (*c == ')' || *c == ']') depth--;
             else if (*c == ',' && depth == 1) { size_comma = c; break; }
@@ -7840,17 +7840,17 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (has_size) {
             typechecker_resolve_array_size(checker, node);
             /* Re-read type_name — typechecker_resolve_array_size may have rewritten it. */
-            tn = node->data.var_decl.type_name;
+            type_name_str = node->data.var_decl.type_name;
         }
         if (node->data.var_decl.mutable && has_size) {
             char *msg = typechecker_format(checker, "mutable array '%s' cannot have a fixed size '%.*s'",
-                VAR_DISPLAY_NAME(node), (int)(size_comma - tn), tn);
+                VAR_DISPLAY_NAME(node), (int)(size_comma - type_name_str), type_name_str);
             diagnostic_error_help(checker->diag, "E3054", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "use 'const' for fixed-size arrays, or remove the size for a dynamic 'mut' array");
         } else if (!node->data.var_decl.mutable && !has_size) {
             char *msg = typechecker_format(checker, "const array '%s' of type [%.*s] must have a fixed size",
-                VAR_DISPLAY_NAME(node), (int)(strlen(tn) - 2), tn + 1);
+                VAR_DISPLAY_NAME(node), (int)(strlen(type_name_str) - 2), type_name_str + 1);
             diagnostic_error_help(checker->diag, "E3055", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "add a size: const name [type, N] = {...}, or use 'mut' for a dynamic array");
@@ -7884,16 +7884,16 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * tripping "no field 'y'"). Enums are allowed; they're int-backed
      * and hash fine. */
     if (declared->kind == TK_MAP && declared->key_type) {
-        const char *kt = resolve_type_alias(checker, declared->key_type);
-        GrayType *key_resolved = type_from_name(kt);
+        const char *key_type_name = resolve_type_alias(checker, declared->key_type);
+        GrayType *key_resolved = type_from_name(key_type_name);
         const char *bad = NULL;
-        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, kt))
+        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, key_type_name))
             bad = "struct";
         else if (key_resolved->kind == TK_ARRAY) bad = "array";
         else if (key_resolved->kind == TK_MAP) bad = "map";
         else if (key_resolved->kind == TK_POINTER) bad = "pointer";
         if (bad) {
-            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, kt);
+            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, key_type_name);
         }
     }
 
@@ -8100,9 +8100,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
          * them through.  Catch it here by comparing named ranks. */
         if (declared && value_type &&
             declared->name && value_type->name) {
-            int dr = int_type_name_rank(declared->name);
-            int vr = int_type_name_rank(value_type->name);
-            if (dr > 0 && vr >= 5 && dr < vr) {
+            int declared_rank = int_type_name_rank(declared->name);
+            int value_rank = int_type_name_rank(value_type->name);
+            if (declared_rank > 0 && value_rank >= 5 && declared_rank < value_rank) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
@@ -8117,12 +8117,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         bool struct_alias_match = false;
         if (declared->kind == TK_STRUCT && value_type->kind == TK_STRUCT &&
             declared->name && value_type->name) {
-            const char *d = declared->name;
-            const char *v = value_type->name;
-            const char *d_us = strrchr(d, '_');
-            const char *v_us = strrchr(v, '_');
-            if (d_us && strcmp(d_us + 1, v) == 0) struct_alias_match = true;
-            if (v_us && strcmp(v_us + 1, d) == 0) struct_alias_match = true;
+            const char *declared_name = declared->name;
+            const char *value_name = value_type->name;
+            const char *d_us = strrchr(declared_name, '_');
+            const char *v_us = strrchr(value_name, '_');
+            if (d_us && strcmp(d_us + 1, value_name) == 0) struct_alias_match = true;
+            if (v_us && strcmp(v_us + 1, declared_name) == 0) struct_alias_match = true;
         }
         if (declared->kind == TK_STRUCT && value_type->kind == TK_STRUCT &&
             declared->name && value_type->name &&
@@ -8210,10 +8210,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (node->data.var_decl.value &&
             node->data.var_decl.value->kind == NODE_INT_VALUE &&
             node->data.var_decl.value->data.int_value.overflow) {
-            const char *tn = node->data.var_decl.type_name;
-            bool is_bigint = tn && (strcmp(tn, "i128") == 0 || strcmp(tn, "u128") == 0 ||
-                                    strcmp(tn, "i256") == 0 || strcmp(tn, "u256") == 0);
-            bool is_u64_like = tn && (strcmp(tn, "u64") == 0 || strcmp(tn, "uint") == 0);
+            const char *type_name_str = node->data.var_decl.type_name;
+            bool is_bigint = type_name_str && (strcmp(type_name_str, "i128") == 0 || strcmp(type_name_str, "u128") == 0 ||
+                                    strcmp(type_name_str, "i256") == 0 || strcmp(type_name_str, "u256") == 0);
+            bool is_u64_like = type_name_str && (strcmp(type_name_str, "u64") == 0 || strcmp(type_name_str, "uint") == 0);
             bool exceeds_u64 = node->data.var_decl.value->data.int_value.overflow_u64;
             if (exceeds_u64 && !is_bigint) {
                 diagnostic_error_message(checker->diag, "E3046",
@@ -8243,18 +8243,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * from, and codegen then emits gray_array_new which the C
              * compiler rejects. Point the user at the empty-map form
              * `{:}` before the rest of the var_decl check runs. */
-            const char *tn = node->data.var_decl.type_name;
-            if (strncmp(tn, "map[", 4) == 0 &&
+            const char *type_name_str = node->data.var_decl.type_name;
+            if (strncmp(type_name_str, "map[", 4) == 0 &&
                 node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 char *msg = NULL;
                 if (node->data.var_decl.value->data.array_value.count == 0) {
                     msg = typechecker_format(checker,
                         "cannot assign array literal '{}' to '%s'; use '{:}' for an empty map",
-                        tn);
+                        type_name_str);
                 } else {
                     msg = typechecker_format(checker,
                         "cannot assign array literal to '%s'; map literals use '{key: value, ...}' syntax",
-                        tn);
+                        type_name_str);
                 }
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node->data.var_decl.value),
@@ -8262,10 +8262,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     node->data.var_decl.value->token.column, 0);
             }
             /* E3026/E3036: Check array literal elements fit in sized element type */
-            if (tn[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
+            if (type_name_str[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
                 /* Extract element type name from "[byte]", "[i8]", "[u8, 3]", etc. */
                 char elem_type[TYPE_NAME_MAX] = {0};
-                const char *start = tn + 1;
+                const char *start = type_name_str + 1;
                 /* Find the matching ']' for the outermost array bracket,
                  * skipping nested brackets (e.g. map[K:V], [T]). */
                 const char *end = NULL;
@@ -8401,11 +8401,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * already caught in NODE_MAP_VALUE's
              * reject_void_in_context path (); this block
              * covers the non-void-but-wrong-type leak. */
-            if (strncmp(tn, "map[", 4) == 0 &&
+            if (strncmp(type_name_str, "map[", 4) == 0 &&
                 node->data.var_decl.value->kind == NODE_MAP_VALUE) {
-                const char *mstart = tn + 4;
+                const char *mstart = type_name_str + 4;
                 const char *mcolon = strchr(mstart, ':');
-                const char *mend = strrchr(tn, ']');
+                const char *mend = strrchr(type_name_str, ']');
                 if (mcolon && mend && mend > mcolon) {
                     char key_tn[TYPE_NAME_MAX] = {0};
                     char val_tn[TYPE_NAME_MAX] = {0};
@@ -8508,11 +8508,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
      * them mutates internal state, so const is a semantic lie.
      * Same class as the E3059 map check above. */
     if (!node->data.var_decl.mutable && declared->kind == TK_STRUCT && declared->name) {
-        const char *dn = declared->name;
+        const char *declared_name = declared->name;
         const char *handle_label = NULL;
-        if (strcmp(dn, "Channel") == 0) handle_label = "channel";
-        else if (strcmp(dn, "Mutex") == 0) handle_label = "mutex";
-        else if (strcmp(dn, "Thread") == 0) handle_label = "thread handle";
+        if (strcmp(declared_name, "Channel") == 0) handle_label = "channel";
+        else if (strcmp(declared_name, "Mutex") == 0) handle_label = "mutex";
+        else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
         if (handle_label) {
             diagnostic_error_code_formatted(checker->diag, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
         }
@@ -9363,9 +9363,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL &&
         target_t && value_t &&
         target_t->name && value_t->name) {
-        int dr = int_type_name_rank(target_t->name);
-        int vr = int_type_name_rank(value_t->name);
-        if (dr > 0 && vr > 0 && dr < vr) {
+        int declared_rank = int_type_name_rank(target_t->name);
+        int value_rank = int_type_name_rank(value_t->name);
+        if (declared_rank > 0 && value_rank > 0 && declared_rank < value_rank) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
@@ -9554,9 +9554,9 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         for (int i = 0; i < slots; i++) {
             AstNode *return_val = node->data.return_stmt.values[i];
             if (return_val->kind != NODE_NIL_VALUE) continue;
-            const char *tn = (i == 0 && checker->current_return_type_names)
+            const char *type_name_str = (i == 0 && checker->current_return_type_names)
                 ? checker->current_return_type_names[i] : NULL;
-            if (tn && type_name_has_wildcard(tn)) {
+            if (type_name_str && type_name_has_wildcard(type_name_str)) {
                 diagnostic_error_code(checker->diag, "E3071", NODE_FILE(checker, return_val), return_val->token.line, return_val->token.column, 0);
             }
         }
@@ -11066,9 +11066,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 static bool struct_name_declared(AstNode *program, const char *name) {
     if (!program || !name) return false;
     for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *s = program->data.program.stmts[i];
-        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name &&
-            strcmp(s->data.struct_decl.name, name) == 0)
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
+            strcmp(stmt->data.struct_decl.name, name) == 0)
             return true;
     }
     return false;
@@ -11080,10 +11080,10 @@ static bool struct_name_declared(AstNode *program, const char *name) {
 static AstNode *find_struct_in_program(AstNode *program, const char *name) {
     if (!program || !name) return NULL;
     for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *s = program->data.program.stmts[i];
-        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name &&
-            strcmp(s->data.struct_decl.name, name) == 0) {
-            return s;
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
+            strcmp(stmt->data.struct_decl.name, name) == 0) {
+            return stmt;
         }
     }
     return NULL;
@@ -11208,8 +11208,8 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         return;
     }
 
-    GrayType *t = typechecker_type_from_name(checker, type_name);
-    if (t && t->kind != TK_STRUCT && t->kind != TK_UNKNOWN) return;
+    GrayType *resolved_type = typechecker_type_from_name(checker, type_name);
+    if (resolved_type && resolved_type->kind != TK_STRUCT && resolved_type->kind != TK_UNKNOWN) return;
     if (is_enum_name(checker, type_name)) return;
     if (is_struct_name(checker, type_name)) return;
     if (struct_name_declared(program, type_name)) return;
@@ -11792,8 +11792,8 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < checker->type_alias_count; i++) {
         const char *resolved = resolve_type_alias(checker, checker->type_alias_targets[i]);
         /* Check if the resolved name is a known type */
-        GrayType *t = type_from_name(resolved);
-        if (t->kind == TK_STRUCT) {
+        GrayType *resolved_type = type_from_name(resolved);
+        if (resolved_type->kind == TK_STRUCT) {
             /* Uppercase name — must be a registered struct or enum */
             if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
                 strcmp(resolved, "Error") != 0) {
