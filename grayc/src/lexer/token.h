@@ -161,8 +161,13 @@ typedef struct {
     bool preceded_by_ws;    /* True if whitespace/comments were skipped before this token */
 } Token;
 
-/* Look up an identifier - returns keyword token type or TOK_IDENT */
-TokenType token_lookup_identifier(const char *ident);
+/* Look up a source-text span of the given length against the keyword table,
+ * without requiring a NUL terminator - lets the lexer check for a keyword
+ * before copying the identifier text anywhere. Returns true and fills
+ * out_type / out_keyword with the keyword's token type and canonical static
+ * string on a match; returns false (leaving both untouched) for a plain
+ * identifier. */
+bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword);
 
 /* Return human-readable name for a token type */
 const char *token_type_name(TokenType type);
