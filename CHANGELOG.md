@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.4.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.4.0...grayscale-v0.4.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **build:** derive sanitizer runtime test sources from one list ([#2389](https://github.com/grayscale-lang/grayscale/issues/2389)) ([873ccb9](https://github.com/grayscale-lang/grayscale/commit/873ccb988a71f814365754eb13ca36d0b22cd7a6))
+* **build:** route strndup through the platform layer for MinGW ([#2391](https://github.com/grayscale-lang/grayscale/issues/2391)) ([fb166bc](https://github.com/grayscale-lang/grayscale/commit/fb166bc347f9fed58236e59d6f6d83d41fbf043a))
+* **ci:** build release artifacts on runners matching the target arch ([#2393](https://github.com/grayscale-lang/grayscale/issues/2393)) ([80bc527](https://github.com/grayscale-lang/grayscale/commit/80bc52748a5afed2eb3a0b705ddb6b5d08bc913f))
+* **codegen:** arrow through p^.field on map key assignment ([#2400](https://github.com/grayscale-lang/grayscale/issues/2400)) ([732445b](https://github.com/grayscale-lang/grayscale/commit/732445b10ab399de45ccd9212cc70e3b17dc66aa))
+* **codegen:** choose the wide-integer constructor from the source type ([#2408](https://github.com/grayscale-lang/grayscale/issues/2408)) ([acb29f1](https://github.com/grayscale-lang/grayscale/commit/acb29f1bb0a2745ad203fa6372d13fd9ffb9e863))
+* **codegen:** escape map assignment copies to the outer arena ([#2399](https://github.com/grayscale-lang/grayscale/issues/2399)) ([ea0955f](https://github.com/grayscale-lang/grayscale/commit/ea0955f4a73f5aef6071909b4ad12179753f446d))
+* **codegen:** give tagged enums their real C type as map values ([#2320](https://github.com/grayscale-lang/grayscale/issues/2320)) ([9f4293c](https://github.com/grayscale-lang/grayscale/commit/9f4293c30b638b6ce5e8a1e1ea1f8636bf4ff979))
+* **codegen:** guard the real array when for_each iterates a field path ([#2397](https://github.com/grayscale-lang/grayscale/issues/2397)) ([c8f8371](https://github.com/grayscale-lang/grayscale/commit/c8f8371df5fab3716ab00194254dba50bd6b851a))
+* **codegen:** initialise container fields a struct literal omits ([#2402](https://github.com/grayscale-lang/grayscale/issues/2402)) ([15c3ff9](https://github.com/grayscale-lang/grayscale/commit/15c3ff99ab2b31d4f212d0d153f998be612cc128))
+* **codegen:** keep block temporaries alive in caller-arena functions ([#2377](https://github.com/grayscale-lang/grayscale/issues/2377)) ([11b1231](https://github.com/grayscale-lang/grayscale/commit/11b123161b73d3317f0357f01d7a39ed4dd15292))
+* **codegen:** keep maps mutated through pointers in a live arena ([#2380](https://github.com/grayscale-lang/grayscale/issues/2380)) ([008c29e](https://github.com/grayscale-lang/grayscale/commit/008c29e43bf9c5bb982615b595b110a95047c297))
+* **codegen:** route mutable call arguments through one shared helper ([#2403](https://github.com/grayscale-lang/grayscale/issues/2403)) ([7e7346c](https://github.com/grayscale-lang/grayscale/commit/7e7346ccaeded5fb89255fa61557f3106a8c1017))
+* **codegen:** run mutable-reference calls in the function arena ([#2295](https://github.com/grayscale-lang/grayscale/issues/2295)) ([4150314](https://github.com/grayscale-lang/grayscale/commit/4150314fdb5f234da643162cfc5e32e8230d16fc))
+* **codegen:** take container argument addresses off the pointer ([#2379](https://github.com/grayscale-lang/grayscale/issues/2379)) ([d13751f](https://github.com/grayscale-lang/grayscale/commit/d13751ffbaf793fbf8f49897960d5b51ca30c418))
+* **codegen:** type an empty map literal from its assignment target ([#2401](https://github.com/grayscale-lang/grayscale/issues/2401)) ([e36f03e](https://github.com/grayscale-lang/grayscale/commit/e36f03e5d2f3e0293bc9ab33582f9cc587c71f5c))
+* **imports:** count struct field types as a use of their module ([#2375](https://github.com/grayscale-lang/grayscale/issues/2375)) ([e9c8943](https://github.com/grayscale-lang/grayscale/commit/e9c8943f62d40ee9ac9d90cf436ab928df62e288))
+* **imports:** remove the fixed caps on import and directory-file counts ([#2416](https://github.com/grayscale-lang/grayscale/issues/2416)) ([30e7c04](https://github.com/grayscale-lang/grayscale/commit/30e7c04c6f08829cb9a0eb89100a2e8a4df93350))
+* **imports:** rewrite imported type names in struct declarations ([#2376](https://github.com/grayscale-lang/grayscale/issues/2376)) ([f7a2cb5](https://github.com/grayscale-lang/grayscale/commit/f7a2cb5d85dc690a2d785bf1ba969375af933e5b))
+* **parser:** check multi-var bounds before writing to names/types ([#2413](https://github.com/grayscale-lang/grayscale/issues/2413)) ([11db2f5](https://github.com/grayscale-lang/grayscale/commit/11db2f575a7ec6bc27cb16b2adece975dba3bb18))
+* **parser:** grow the using statement's module list ([#2412](https://github.com/grayscale-lang/grayscale/issues/2412)) ([cb39f5b](https://github.com/grayscale-lang/grayscale/commit/cb39f5bbabe396f383f034c13e3efde5e5051174))
+* **parser:** initialize in_interp in parser_create ([#2394](https://github.com/grayscale-lang/grayscale/issues/2394)) ([46239a6](https://github.com/grayscale-lang/grayscale/commit/46239a60d2825cf97281d92eaa3fb3cd57491c97))
+* **parser:** mark the or_return temp synthetic ([#2386](https://github.com/grayscale-lang/grayscale/issues/2386)) ([e48f671](https://github.com/grayscale-lang/grayscale/commit/e48f671a2c8c2655e8f7796986c3e68e4a4a011d))
+* **runtime:** allow arrays.append during for_each iteration ([#2387](https://github.com/grayscale-lang/grayscale/issues/2387)) ([4a2f150](https://github.com/grayscale-lang/grayscale/commit/4a2f1507a50fd78e678a6e2ead6daea97600031f))
+* **runtime:** deep-copy map string keys into the map's arena ([#2395](https://github.com/grayscale-lang/grayscale/issues/2395)) ([ddc9a0a](https://github.com/grayscale-lang/grayscale/commit/ddc9a0a31f1084f1960de354b3323bc10767a5dc))
+* **runtime:** grow arrays in their owning arena ([#2378](https://github.com/grayscale-lang/grayscale/issues/2378)) ([f4e2b43](https://github.com/grayscale-lang/grayscale/commit/f4e2b436cd509205960e87420ee359e1314c0f84))
+* **stdlib:** use _getpid on MinGW instead of unavailable getpid ([677e2fd](https://github.com/grayscale-lang/grayscale/commit/677e2fd041d35b39d0cc7a2b9060faf7b52a0a32))
+* support tagged union enums across module boundaries ([#2318](https://github.com/grayscale-lang/grayscale/issues/2318)) ([a9a6f4e](https://github.com/grayscale-lang/grayscale/commit/a9a6f4edfa48e631a4d837ff3dc178dff6bae3b5))
+* **typechecker:** check signatures on stdlib calls made by bare name ([#2417](https://github.com/grayscale-lang/grayscale/issues/2417)) ([0412f8c](https://github.com/grayscale-lang/grayscale/commit/0412f8c8d251bcedac837b3342da9c72c973795f))
+* **typechecker:** E3001 should name the value to cast, not the target ([#2408](https://github.com/grayscale-lang/grayscale/issues/2408)) ([e950c97](https://github.com/grayscale-lang/grayscale/commit/e950c9765bf35b72af854a83349353f5c5255fa8))
+* **typechecker:** enforce reserved '_gray_' prefix ([#2386](https://github.com/grayscale-lang/grayscale/issues/2386)) ([705ea61](https://github.com/grayscale-lang/grayscale/commit/705ea61a47dde1ff46596dd646dede31d6aa65e2))
+* **typechecker:** negate literal INT64_MIN through unsigned arithmetic ([#2414](https://github.com/grayscale-lang/grayscale/issues/2414)) ([b286e36](https://github.com/grayscale-lang/grayscale/commit/b286e362199cb2ec83b104b50d2682032aa5698e))
+* **typechecker:** reject interpolating arrays/maps of tagged enums ([#2398](https://github.com/grayscale-lang/grayscale/issues/2398)) ([726c72a](https://github.com/grayscale-lang/grayscale/commit/726c72aee68c70bd339db4879d51ec7434264d7b))
+* **typechecker:** reject type names as when subjects and non-string error() args ([#2419](https://github.com/grayscale-lang/grayscale/issues/2419)) ([888d1ea](https://github.com/grayscale-lang/grayscale/commit/888d1ea35a4823edae5a2b8fc83d3b6d8fe0dd12))
+
+
+### Performance Improvements
+
+* **lexer:** intern identifiers and bypass arena copies for keywords ([#2144](https://github.com/grayscale-lang/grayscale/issues/2144)) ([6e07382](https://github.com/grayscale-lang/grayscale/commit/6e073827ec0455037025bad424cb638e48266180))
+* **runtime:** make map removal O(1) instead of O(n) ([#2147](https://github.com/grayscale-lang/grayscale/issues/2147)) ([a62ed3c](https://github.com/grayscale-lang/grayscale/commit/a62ed3c2fa60c379f29088d8ecbb3965150577f2))
+
 ## [0.4.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.3.0...grayscale-v0.4.0) (2026-08-14)
 
 
