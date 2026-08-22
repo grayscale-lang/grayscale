@@ -198,7 +198,8 @@ if [ -d "$TEST_DIR/pass/warnings" ]; then
             test_name=$(basename "$test_file" .gray)
             expected_warning=$(echo "$test_name" | grep -oE '^W[0-9]+')
             output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$test_file" 2>&1) || true
-            if echo "$output" | grep -q "warning\[$expected_warning\]"; then
+            if echo "$output" | grep -q "warning\[$expected_warning\]" \
+                && echo "$output" | grep -qE -- '--> .+:[0-9]+:[0-9]+$'; then
                 pass "warnings/$test_name"
             else
                 fail "warnings/$test_name" "(expected $expected_warning)"
