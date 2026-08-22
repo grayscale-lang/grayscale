@@ -118,6 +118,7 @@ static const char *const gray_stdlib_module_names[] = {
     "os",
     "random",
     "regex",
+    "runtime",
     "server",
     "sqlite",
     "strconv",

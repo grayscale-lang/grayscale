@@ -88,6 +88,7 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/json.c \
          src/stdlib/sqlite.c \
          src/stdlib/threads.c \
+         src/stdlib/runtime_mod.c \
          src/stdlib/sync.c \
          src/stdlib/atomic.c \
          src/stdlib/channels.c \

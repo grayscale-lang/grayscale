@@ -46,7 +46,7 @@
 
 `@arrays` · `@strings` · `@maps` · `@math` · `@time` · `@random` · `@json` · `@io` · `@os`
 `@http` · `@server` · `@crypto` · `@encoding` · `@uuid` · `@binary` · `@sqlite`
-`@regex` · `@csv` · `@net` · `@threads` · `@sync` · `@channels` · `@mem` · `@atomic` · `@fmt` · `@strconv`
+`@regex` · `@csv` · `@net` · `@threads` · `@sync` · `@channels` · `@mem` · `@atomic` · `@fmt` · `@strconv` · `@runtime`
 
 </p>
 

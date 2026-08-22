@@ -17,6 +17,10 @@
 #include <string.h>
 #include <ctype.h>
 
+#ifndef GRAY_VERSION
+#define GRAY_VERSION "unknown"
+#endif
+
 #define IF_ARENA_SIZE        4096
 #define LOOP_ARENA_SIZE      16384
 #define FUNC_ARENA_SIZE      65536
@@ -4945,6 +4949,18 @@ static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
     return true;
 }
 
+/* --- @runtime module --- */
+
+static bool emit_runtime_call(CodeGen *codegen, AstNode *node, const char *func) {
+    (void)node;
+    if (strcmp(func, "version") == 0) {
+        emit_formatted(codegen, "gray_string_lit(\"%s\")", GRAY_VERSION);
+        return true;
+    }
+    emit_formatted(codegen, "gray_runtime_%s()", func);
+    return true;
+}
+
 /* --- @uuid module --- */
 
 static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
@@ -6640,6 +6656,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             {"os",       emit_os_call},
             {"random",   emit_random_call},
             {"regex",    emit_regex_call},
+            {"runtime",  emit_runtime_call},
             {"server",   emit_server_call},
             {"sqlite",   emit_sqlite_call},
             {"strconv",  emit_strconv_call},
@@ -10451,6 +10468,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"net",      "net.h"},
         {"http",     "http.h"},
         {"server",   "server.h"},
+        {"runtime",  "runtime_mod.h"},
     };
     for (int i = 0; i < (int)(sizeof(stdlib_headers) / sizeof(stdlib_headers[0])); i++) {
         if (has_stdlib_module(stdlib_imports, stdlib_import_count, stdlib_headers[i].module))
