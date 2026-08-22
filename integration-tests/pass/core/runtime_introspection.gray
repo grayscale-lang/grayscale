@@ -1,0 +1,37 @@
+/*
+ * Test: @runtime module — read-only introspection into compiler-managed
+ * arenas and execution state. Verifies each function returns a sane
+ * value and the combined-usage/peak/depth invariants hold.
+ */
+
+import @runtime
+
+do inner_depth() -> int {
+    return runtime.call_depth()
+}
+
+do main() {
+    assert(runtime.version() != "", "version is non-empty")
+
+    mut a int = runtime.arena_usage()
+    mut h int = runtime.heap_usage()
+    mut t int = runtime.total_usage()
+    assert(a >= 0, "arena_usage is non-negative")
+    assert(h >= 0, "heap_usage is non-negative")
+    assert(t == a + h, "total_usage is the sum of arena_usage and heap_usage")
+
+    assert(runtime.peak_usage() >= t, "peak_usage is at least the current total_usage")
+    assert(runtime.alloc_count() >= 0, "alloc_count is non-negative")
+    assert(runtime.arena_blocks() >= 1, "arena_blocks has at least the initial block")
+    assert(runtime.heap_blocks() >= 1, "heap_blocks has at least the initial block")
+    assert(runtime.arena_limit() > 0, "arena_limit is positive")
+
+    mut outer_depth int = runtime.call_depth()
+    assert(outer_depth >= 1, "call_depth is at least 1 inside main()")
+    assert(inner_depth() > outer_depth, "call_depth increases inside a nested call")
+    assert(runtime.call_limit() == 10000, "call_limit matches the documented recursion cap")
+
+    assert(runtime.uptime() >= 0.0, "uptime is non-negative")
+
+    println("passed: all @runtime introspection checks")
+}

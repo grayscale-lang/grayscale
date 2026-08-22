@@ -3765,6 +3765,25 @@ These functions never fail.
 
 Constants can be used qualified (`strconv.BASE_16`) or bare after `import and use @strconv`. Any integer value between 2 and 36 is also accepted directly as the base argument.
 
+### 9.28 Runtime Module (`@runtime`)
+
+Read-only introspection into the compiler-managed arenas (default + heap), execution state, and build info. Answers "what is the Grayscale runtime doing right now?" — it does not offer any control or mutation; manual memory management stays in `@mem`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `arena_usage` | `() -> int` | Bytes currently used in the default (scope) arena |
+| `heap_usage` | `() -> int` | Bytes currently used in the heap arena (backs `new()`) |
+| `total_usage` | `() -> int` | Combined default + heap arena bytes currently used |
+| `peak_usage` | `() -> int` | High-water mark of combined default + heap arena bytes committed at any point during execution |
+| `alloc_count` | `() -> int` | Total number of arena allocations across the default and heap arenas since program start |
+| `arena_blocks` | `() -> int` | Number of blocks chained in the default arena |
+| `heap_blocks` | `() -> int` | Number of blocks chained in the heap arena |
+| `arena_limit` | `() -> int` | Current arena growth limit in bytes (from `--arena-limit`, or the 1 GB default) |
+| `version` | `() -> string` | Grayscale version that compiled this binary |
+| `call_depth` | `() -> int` | Current call stack depth |
+| `call_limit` | `() -> int` | Maximum allowed call stack depth (10,000) |
+| `uptime` | `() -> float` | Seconds elapsed since the program started |
+
 ---
 
 ## 10. Error Handling

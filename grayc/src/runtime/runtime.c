@@ -14,6 +14,7 @@
 #include "util/colors.h"
 #include <stdarg.h>
 #include <stdlib.h>
+#include <time.h>
 
 static inline int panic_use_color(void) {
     return gray_rt_isatty(gray_rt_stderr_fileno()) && !getenv("NO_COLOR");
@@ -54,6 +55,8 @@ GrayArena *gray_arena_create(size_t initial_size) {
     arena->current = arena->first;
     arena->max_bytes = 0;
     arena->total_allocated = initial_size;
+    arena->peak_bytes = initial_size;
+    arena->alloc_count = 0;
     arena->destroyed = false;
     return arena;
 }
@@ -61,6 +64,7 @@ GrayArena *gray_arena_create(size_t initial_size) {
 void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
     if (arena->destroyed)
         gray_panic_code("P0001", "cannot allocate from a destroyed arena; mem.destroy() was already called on this arena");
+    arena->alloc_count++;
     size = ALIGN_UP(size, 8);
     if (size > arena->current->size - arena->current->used) {
         size_t block_size = arena->default_block_size;
@@ -75,6 +79,8 @@ void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size) {
         arena->current->next = block;
         arena->current = block;
         arena->total_allocated += block_size;
+        if (arena->total_allocated > arena->peak_bytes)
+            arena->peak_bytes = arena->total_allocated;
     }
     void *ptr = arena->current->data + arena->current->used;
     arena->current->used += size;
@@ -124,6 +130,16 @@ size_t gray_arena_usage(GrayArena *arena) {
         block = block->next;
     }
     return total;
+}
+
+size_t gray_arena_block_count(GrayArena *arena) {
+    size_t count = 0;
+    GrayArenaBlock *block = arena->first;
+    while (block) {
+        count++;
+        block = block->next;
+    }
+    return count;
 }
 
 /* --- Error --- */
@@ -222,6 +238,8 @@ int gray_call_depth = 0;
 
 /* --- Runtime Init/Shutdown --- */
 
+static struct timespec gray_rt_start_time;
+
 void gray_runtime_init(size_t arena_limit) {
     gray_map_init_seed();
     gray_default_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
@@ -230,6 +248,14 @@ void gray_runtime_init(size_t arena_limit) {
         gray_default_arena->max_bytes = arena_limit;
         gray_heap_arena->max_bytes = arena_limit;
     }
+    clock_gettime(CLOCK_MONOTONIC, &gray_rt_start_time);
+}
+
+double gray_runtime_uptime(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)(now.tv_sec - gray_rt_start_time.tv_sec) +
+           (double)(now.tv_nsec - gray_rt_start_time.tv_nsec) / 1e9;
 }
 
 void gray_runtime_shutdown(void) {

@@ -1845,7 +1845,7 @@ int main(int argc, char **argv) {
             "stdlib/net.c",      "stdlib/os.c",       "stdlib/random.c",
             "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
             "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
-            "stdlib/threads.c",
+            "stdlib/threads.c",  "stdlib/runtime_mod.c",
             "stdlib/time.c",     "stdlib/uuid.c", "stdlib/strconv.c"
         };
         for (size_t i = 0; i < sizeof(runtime_srcs) / sizeof(runtime_srcs[0]); i++) {
