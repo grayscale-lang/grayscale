@@ -915,6 +915,30 @@ static void unregister_raw_variable(CodeGen *codegen, const char *name) {
     codegen->raw_var_count++;
 }
 
+/* Was this variable last assigned the result of new()? Its pointee lives in
+ * gray_heap_arena, so replacing a container field through it must also
+ * target gray_heap_arena rather than the current function's scoped arena. */
+static bool is_heap_variable(CodeGen *codegen, const char *name) {
+    for (int i = codegen->heap_var_count - 1; i >= 0; i--) {
+        if (strcmp(codegen->heap_vars[i].name, name) == 0)
+            return codegen->heap_vars[i].is_heap;
+    }
+    return false;
+}
+
+static void register_heap_variable(CodeGen *codegen, const char *name, bool is_heap) {
+    GROW_ARRAY(codegen->heap_vars, codegen->heap_var_count, codegen->heap_var_cap);
+    codegen->heap_vars[codegen->heap_var_count].name = name;
+    codegen->heap_vars[codegen->heap_var_count].is_heap = is_heap;
+    codegen->heap_var_count++;
+}
+
+/* True when value is a direct new(...) expression — the only construct
+ * that hands back a pointer into gray_heap_arena. */
+static bool is_new_call(AstNode *value) {
+    return value && value->kind == NODE_NEW_EXPR;
+}
+
 /* Returns true if the named enum is string-backed.
  * enum_names is sorted after the init pass, so we use bsearch. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
@@ -8039,6 +8063,16 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         unregister_raw_variable(codegen, node->data.var_decl.name);
     }
 
+    /* Detect new() assignment; register as heap-tracked pointer so later
+     * field container reassignment through it targets gray_heap_arena.
+     * Any other declaration clears a shadowed outer-scope heap variable
+     * of the same name. */
+    if (is_new_call(node->data.var_decl.value)) {
+        register_heap_variable(codegen, node->data.var_decl.name, true);
+    } else if (is_heap_variable(codegen, node->data.var_decl.name)) {
+        register_heap_variable(codegen, node->data.var_decl.name, false);
+    }
+
     if (!node->data.var_decl.mutable) {
         if (type_name && type_name[0] == '^') {
             /* const pointer: T * const p — the pointer is immutable, not the
@@ -8057,6 +8091,25 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
     emit_vardecl_init(codegen, node, c_type, type_name);
 }
 
+/* True when field_t owns arena-backed memory that must be re-homed to
+ * gray_heap_arena rather than the enclosing function's own scoped arena
+ * when reassigned through a pointer known to point into gray_heap_arena. */
+static bool field_type_needs_arena_escape(GrayType *field_t) {
+    return field_t && (field_t->kind == TK_MAP || field_t->kind == TK_ARRAY ||
+                        field_t->kind == TK_STRING || field_t->kind == TK_STRUCT);
+}
+
+/* Emit `ref = value;` with gray_default_arena swapped to gray_heap_arena for
+ * the duration of evaluating value, so any container the value allocates
+ * (map/array/string/struct literal) lives as long as the heap-allocated
+ * struct it's being attached to, rather than the current function's own
+ * scoped arena that gets destroyed when the function returns. */
+static void emit_heap_escaped_field_assign(CodeGen *codegen, AstNode *node, const char *ref) {
+    emit_formatted(codegen, "{ GrayArena *_esc_h = gray_default_arena; gray_default_arena = gray_heap_arena; %s = ", ref);
+    emit_expression(codegen, node->data.assign.value);
+    emit(codegen, "; gray_default_arena = _esc_h; }");
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_decl &&
@@ -8066,8 +8119,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             ? typetable_get(codegen->type_table, node->data.assign.target)
             : NULL;
         const char *c_type = t ? gray_type_to_c_codegen(codegen, type_name(t)) : "__auto_type";
-        emit_formatted(codegen, "%s %s = ", c_type,
-            sanitize_name(node->data.assign.target->data.label.value));
+        const char *decl_name = node->data.assign.target->data.label.value;
+        if (is_new_call(node->data.assign.value)) {
+            register_heap_variable(codegen, decl_name, true);
+        }
+        emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(decl_name));
         emit_expression(codegen, node->data.assign.value);
         emit(codegen, ";\n");
         return;
@@ -8086,6 +8142,16 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                        is_raw_variable(codegen, var)) {
                 unregister_raw_variable(codegen, var);
             }
+        }
+    }
+    /* Track heap-pointer reassignment: p = new(T) makes p heap-tracked;
+     * any other reassignment of a previously heap-tracked p clears it. */
+    if (node->data.assign.target->kind == NODE_LABEL) {
+        const char *var = node->data.assign.target->data.label.value;
+        if (is_new_call(node->data.assign.value)) {
+            register_heap_variable(codegen, var, true);
+        } else if (is_heap_variable(codegen, var)) {
+            register_heap_variable(codegen, var, false);
         }
     }
 
@@ -8470,6 +8536,15 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, "; }\n");
             return;
         }
+        if (node->data.assign.op == TOK_ASSIGN && ptr->kind == NODE_LABEL &&
+            is_heap_variable(codegen, ptr->data.label.value)) {
+            GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+            if (field_type_needs_arena_escape(field_t)) {
+                emit_heap_escaped_field_assign(codegen, node, _ref2);
+                emit(codegen, "; }\n");
+                return;
+            }
+        }
         emit(codegen, _ref2);
         emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.op));
         emit_expression(codegen, node->data.assign.value);
@@ -8529,6 +8604,27 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         bool _pf_raw = (obj->kind == NODE_LABEL && is_raw_variable(codegen, obj->data.label.value));
         if (!is_ref && obj_t && obj_t->kind == TK_POINTER) {
             const char *field = node->data.assign.target->data.member.member;
+            /* p was assigned from new(): its pointee lives in gray_heap_arena,
+             * so a container field written through it must be allocated there
+             * too, not in the current function's own scoped arena. */
+            if (node->data.assign.op == TOK_ASSIGN && obj->kind == NODE_LABEL &&
+                is_heap_variable(codegen, obj->data.label.value)) {
+                GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+                if (field_type_needs_arena_escape(field_t)) {
+                    emit(codegen, "{ __auto_type _dp = ");
+                    emit_expression(codegen, obj);
+                    if (_pf_raw) {
+                        emit(codegen, "; ");
+                    } else {
+                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    }
+                    char _ref_h[MSG_BUF_SIZE];
+                    snprintf(_ref_h, sizeof(_ref_h), "_dp->%s", sanitize_name(field));
+                    emit_heap_escaped_field_assign(codegen, node, _ref_h);
+                    emit(codegen, "; }\n");
+                    return;
+                }
+            }
             /* When assigning an array/string to a struct field inside a
              * scoped block (if/loop), deep-copy to the outer arena so the
              * data survives the block's arena destruction. */

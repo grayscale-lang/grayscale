@@ -75,6 +75,14 @@ typedef struct {
     int raw_var_count;
     int raw_var_cap;
 
+    /* Heap-allocated pointer variables (from new()) — field container
+     * (map/array/string/struct) reassignment through these pointers must
+     * escape to gray_heap_arena so the value outlives the current
+     * function's own scoped arena. Same shadow-stack shape as raw_vars. */
+    struct { const char *name; bool is_heap; } *heap_vars;
+    int heap_var_count;
+    int heap_var_cap;
+
     /* Track declared bigint variable types (name → type_name) */
     const char **bigint_var_names;
     const char **bigint_var_types;
