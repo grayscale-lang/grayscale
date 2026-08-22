@@ -347,11 +347,14 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"time.minute":             {Module: "time", Group: "Components", Kind: "func", Sig: "minute(timestamp int) -> int", Fields: "", Desc: "Returns the minute (0–59) from a Unix timestamp.", Example: ""},
 	"time.second":             {Module: "time", Group: "Components", Kind: "func", Sig: "second(timestamp int) -> int", Fields: "", Desc: "Returns the second (0–59) from a Unix timestamp.", Example: ""},
 	"time.weekday":            {Module: "time", Group: "Components", Kind: "func", Sig: "weekday(timestamp int) -> int", Fields: "", Desc: "Returns the day of the week from a Unix timestamp. 0 = Sunday, 1 = Monday, ..., 6 = Saturday.", Example: ""},
+	"time.is_leap_year":       {Module: "time", Group: "Components", Kind: "func", Sig: "is_leap_year(year int) -> bool", Fields: "", Desc: "Returns true if year is a leap year (divisible by 4, except centuries not divisible by 400).", Example: ""},
 	"time.format":             {Module: "time", Group: "Formatting", Kind: "func", Sig: "format(fmt string, timestamp int) -> string", Fields: "", Desc: "Formats a Unix timestamp using a format string. Uses strftime-style directives: %Y (year), %m (month), %d (day), %H (hour), %M (minute), %S (second).", Example: ""},
 	"time.to_iso":             {Module: "time", Group: "Formatting", Kind: "func", Sig: "to_iso(timestamp int) -> string", Fields: "", Desc: "Returns the timestamp as an ISO 8601 string (e.g. \"2025-06-01T14:30:00Z\").", Example: ""},
 	"time.date":               {Module: "time", Group: "Formatting", Kind: "func", Sig: "date(timestamp int) -> string", Fields: "", Desc: "Returns the date portion of a Unix timestamp as \"YYYY-MM-DD\".", Example: ""},
 	"time.to_clock":           {Module: "time", Group: "Formatting", Kind: "func", Sig: "to_clock(timestamp int) -> string", Fields: "", Desc: "Returns the time portion of a Unix timestamp as \"HH:MM:SS\".", Example: ""},
+	"time.parse":              {Module: "time", Group: "Parsing", Kind: "func", Sig: "parse(s string, layout string) -> (int, Error)", Fields: "", Desc: "Parses a time string into a Unix timestamp using a layout string with strftime-style directives (%Y, %m, %d, %H, %M, %S). Panics if s does not match layout unless the result is destructured, in which case an Error is returned instead.", Example: ""},
 	"time.diff":               {Module: "time", Group: "Arithmetic", Kind: "func", Sig: "diff(t1 int, t2 int) -> int", Fields: "", Desc: "Returns the difference between two Unix timestamps in seconds as t2 - t1. The result is negative if t1 is after t2.", Example: ""},
+	"time.since":              {Module: "time", Group: "Arithmetic", Kind: "func", Sig: "since(t int) -> int", Fields: "", Desc: "Returns the number of seconds elapsed from t to now. Equivalent to time.diff(t, time.now()).", Example: ""},
 	"time.tick":               {Module: "time", Group: "Performance", Kind: "func", Sig: "tick() -> int", Fields: "", Desc: "Returns a high-resolution timestamp in nanoseconds for performance measurement. Use with elapsed_ms() to measure durations.", Example: ""},
 	"time.elapsed_ms":         {Module: "time", Group: "Performance", Kind: "func", Sig: "elapsed_ms(start_tick int) -> int", Fields: "", Desc: "Returns the number of milliseconds elapsed since the tick value returned by tick().", Example: ""},
 }
@@ -381,7 +384,7 @@ var stdlibModules = map[string][]string{
 	"strings":  {"to_upper", "to_lower", "trim", "trim_left", "trim_right", "contains", "starts_with", "ends_with", "index_of", "last_index_of", "count", "is_empty", "remove_prefix", "remove_suffix", "replace", "repeat", "reverse", "slice", "split", "join", "char_at", "to_chars", "from_chars", "is_alpha", "is_digit", "is_alnum", "is_whitespace", "is_upper", "is_lower"},
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
 	"threads":  {"spawn", "join", "detach", "is_alive", "get_id", "current", "yield", "sleep", "thread_count"},
-	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "format", "to_iso", "date", "to_clock", "diff", "tick", "elapsed_ms"},
+	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms"},
 }
 
 // stdlibGroup is one labeled group of names within a module index.
@@ -523,9 +526,10 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 	},
 	"time": {
 		{Label: "Current Time  ", Names: []string{"now", "now_ms", "now_ns"}},
-		{Label: "Components    ", Names: []string{"year", "month", "day", "hour", "minute", "second", "weekday"}},
+		{Label: "Components    ", Names: []string{"year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year"}},
 		{Label: "Formatting    ", Names: []string{"format", "to_iso", "date", "to_clock"}},
-		{Label: "Arithmetic    ", Names: []string{"diff"}},
+		{Label: "Parsing       ", Names: []string{"parse"}},
+		{Label: "Arithmetic    ", Names: []string{"diff", "since"}},
 		{Label: "Performance   ", Names: []string{"tick", "elapsed_ms"}},
 	},
 }

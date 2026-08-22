@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 384 codes** (262 errors, 18 warnings, 104 panics)
+**Total: 385 codes** (262 errors, 18 warnings, 105 panics)
 
 ---
 
@@ -411,6 +411,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0102` | arithmetic | invalid digit in integer literal |
 | `P0103` | io | file path contains an embedded null byte |
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
+| `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 
 ---
 
@@ -435,4 +436,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-22 08:31:56 UTC*
+*Generated on 2026-08-22 09:05:53 UTC*

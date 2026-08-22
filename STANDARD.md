@@ -3077,6 +3077,7 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `minute` | `(timestamp int) -> int` | Get minute |
 | `second` | `(timestamp int) -> int` | Get second |
 | `weekday` | `(timestamp int) -> int` | Get day of week (0=Sunday) |
+| `is_leap_year` | `(year int) -> bool` | Check if year is a leap year |
 
 #### Formatting
 
@@ -3087,11 +3088,23 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `date` | `(timestamp int) -> string` | Date (YYYY-MM-DD) |
 | `to_clock` | `(timestamp int) -> string` | Time (HH:MM:SS) |
 
+#### Parsing
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `parse` | `(s string, layout string) -> (int, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
+
+**Behavior:**
+- Panics on invalid input, unless the result is destructured (`mut ts, err = time.parse(...)` or `mut ts, _ = time.parse(...)`), in which case an Error is returned instead.
+
+Error-returning variant: `parse`
+
 #### Arithmetic
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `diff` | `(t1 int, t2 int) -> int` | Difference in seconds (t2 - t1); negative if t1 is after t2 |
+| `since` | `(t int) -> int` | Seconds elapsed from t to now; equivalent to `diff(t, now())` |
 
 #### Performance Timing
 

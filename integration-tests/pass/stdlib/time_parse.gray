@@ -1,0 +1,106 @@
+/*
+ * time_parse.gray - Integration test for time.parse, time.is_leap_year, time.since
+ */
+
+import @time
+
+do main() {
+    println("=== Time Parse/Calendar/Since Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // time.parse (error discarded) round-trips a formatted date
+    mut ts, _ = time.parse("2025-06-01", "%Y-%m-%d")
+    if time.year(ts) == 2025 && time.month(ts) == 6 && time.day(ts) == 1 {
+        println("  [PASS] parse date")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse date: got ${ts}")
+        failed += 1
+    }
+
+    // time.parse with time components
+    mut ts2, _ = time.parse("2025-06-01T14:30:00", "%Y-%m-%dT%H:%M:%S")
+    if time.hour(ts2) == 14 && time.minute(ts2) == 30 && time.second(ts2) == 0 {
+        println("  [PASS] parse datetime")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse datetime: got ${ts2}")
+        failed += 1
+    }
+
+    // time.parse destructured success path
+    mut val, err = time.parse("2025-01-01", "%Y-%m-%d")
+    if err == nil && time.year(val) == 2025 {
+        println("  [PASS] parse destructure success")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse destructure success")
+        failed += 1
+    }
+
+    // time.parse destructured error path (layout mismatch)
+    mut val2, err2 = time.parse("not a date", "%Y-%m-%d")
+    if err2 != nil {
+        println("  [PASS] parse destructure error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse destructure error: got val=${val2}")
+        failed += 1
+    }
+
+    // time.is_leap_year: divisible by 4, not by 100
+    if time.is_leap_year(2024) == true {
+        println("  [PASS] is_leap_year(2024)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_leap_year(2024)")
+        failed += 1
+    }
+
+    // time.is_leap_year: divisible by 100, not by 400
+    if time.is_leap_year(1900) == false {
+        println("  [PASS] is_leap_year(1900)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_leap_year(1900)")
+        failed += 1
+    }
+
+    // time.is_leap_year: divisible by 400
+    if time.is_leap_year(2000) == true {
+        println("  [PASS] is_leap_year(2000)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_leap_year(2000)")
+        failed += 1
+    }
+
+    // time.is_leap_year: not divisible by 4
+    if time.is_leap_year(2023) == false {
+        println("  [PASS] is_leap_year(2023)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_leap_year(2023)")
+        failed += 1
+    }
+
+    // time.since matches diff(t, now())
+    mut past int = time.now() - 100
+    mut elapsed int = time.since(past)
+    mut expected int = time.diff(past, time.now())
+    if elapsed >= 100 && elapsed - expected >= -1 && elapsed - expected <= 1 {
+        println("  [PASS] since (${elapsed})")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] since: got ${elapsed}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("Some tests failed!")
+    }
+    println("ALL TESTS PASSED")
+}

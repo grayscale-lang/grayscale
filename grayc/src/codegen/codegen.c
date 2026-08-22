@@ -4939,6 +4939,19 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
 static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool needs_arena = (strcmp(func, "format") == 0 || strcmp(func, "to_iso") == 0 ||
         strcmp(func, "date") == 0 || strcmp(func, "to_clock") == 0);
+    bool is_fallible = (strcmp(func, "parse") == 0);
+
+    if (is_fallible) {
+        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        emit_formatted(codegen, is_multi_var ? "gray_time_%s_result(" : "gray_time_%s(", func);
+        for (int i = 0; i < node->data.call.arg_count; i++) {
+            if (i > 0) emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[i]);
+        }
+        emit(codegen, ")");
+        return true;
+    }
+
     emit_formatted(codegen, "gray_time_%s(", func);
     if (needs_arena) emit(codegen, "gray_default_arena, ");
     for (int i = 0; i < node->data.call.arg_count; i++) {
