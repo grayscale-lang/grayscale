@@ -1950,15 +1950,23 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
         *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
-    /* Simple constant folding for literal +, -, * */
+    /* Simple constant folding for literal +, -, *, /. Every operation is
+     * guarded against int64 overflow/UB (signed overflow, and the one
+     * division that traps: INT64_MIN / -1) — on overflow the expression
+     * is simply treated as non-foldable rather than invoking undefined
+     * behavior in the compiler's own arithmetic. */
     if (node->kind == NODE_INFIX_EXPR) {
-        int64_t left_value, right_value;
+        int64_t left_value, right_value, result;
         if (try_get_literal_int(node->data.infix.left, &left_value) &&
             try_get_literal_int(node->data.infix.right, &right_value)) {
-            if (node->data.infix.op == TOK_PLUS) { *out = left_value + right_value; return true; }
-            if (node->data.infix.op == TOK_MINUS) { *out = left_value - right_value; return true; }
-            if (node->data.infix.op == TOK_ASTERISK) { *out = left_value * right_value; return true; }
-            if (node->data.infix.op == TOK_SLASH && right_value != 0) { *out = left_value / right_value; return true; }
+            if (node->data.infix.op == TOK_PLUS &&
+                !__builtin_add_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_MINUS &&
+                !__builtin_sub_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_ASTERISK &&
+                !__builtin_mul_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_SLASH && right_value != 0 &&
+                !(left_value == INT64_MIN && right_value == -1)) { *out = left_value / right_value; return true; }
         }
     }
     return false;
@@ -2082,7 +2090,7 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
         node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
         if (node->data.prefix.right->data.int_value.overflow_u64) { *overflowed = true; return false; }
-        *out = -node->data.prefix.right->data.int_value.value;
+        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
     if (node->kind == NODE_LABEL) {
@@ -2118,8 +2126,18 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
             if (__builtin_mul_overflow(left_value, right_value, &result)) { *overflowed = true; return false; }
             *out = result; return true;
         }
-        if (op == TOK_SLASH && right_value != 0) { *out = left_value / right_value; return true; }
-        if (op == TOK_PERCENT && right_value != 0) { *out = left_value % right_value; return true; }
+        /* INT64_MIN / -1 (and the equivalent %) is the one division C
+         * leaves undefined at the int64 boundary — it traps (SIGFPE) on
+         * x86-64. Treat it as overflow rather than performing it. */
+        bool div_by_min_neg_one = left_value == INT64_MIN && right_value == -1;
+        if (op == TOK_SLASH && right_value != 0) {
+            if (div_by_min_neg_one) { *overflowed = true; return false; }
+            *out = left_value / right_value; return true;
+        }
+        if (op == TOK_PERCENT && right_value != 0) {
+            if (div_by_min_neg_one) { *overflowed = true; return false; }
+            *out = left_value % right_value; return true;
+        }
     }
     return false;
 }
@@ -5564,7 +5582,8 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         AstNode *r = node->data.infix.right;
         bool is_zero = false;
         int64_t iv;
-        if (try_get_literal_int(r, &iv) && iv == 0) {
+        bool r_is_int_literal = try_get_literal_int(r, &iv);
+        if (r_is_int_literal && iv == 0) {
             is_zero = true;
         } else if (r && r->kind == NODE_FLOAT_VALUE &&
                    r->data.float_value.value == 0.0) {
@@ -5584,6 +5603,20 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3002", msg,
                 NODE_FILE(checker, r), r->token.line, r->token.column, 0);
             infix_errored = true;
+        } else if (op == TOK_SLASH) {
+            /* E3137: INT64_MIN / -1 is the one division C leaves undefined
+             * at the int64 boundary — it traps (SIGFPE) on x86-64. Check
+             * both literal operands directly rather than relying on
+             * try_get_literal_int() to fold the whole division, since that
+             * folder now refuses (by design) to perform this division. */
+            int64_t lv;
+            if (r_is_int_literal && iv == -1 &&
+                try_get_literal_int(node->data.infix.left, &lv) && lv == INT64_MIN) {
+                diagnostic_error_code_formatted(checker->diag, "E3137",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    (long long)lv, (long long)iv, type_display_name(checker, left));
+                infix_errored = true;
+            }
         }
     }
 

@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 382 codes** (261 errors, 17 warnings, 104 panics)
+**Total: 383 codes** (262 errors, 17 warnings, 104 panics)
 
 ---
 
@@ -203,6 +203,7 @@
 | `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
 | `E3135` | types | alias '%s' cannot target the wildcard type '?' |
 | `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
+| `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -433,4 +434,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-21 02:06:07 UTC*
+*Generated on 2026-08-22 00:41:09 UTC*

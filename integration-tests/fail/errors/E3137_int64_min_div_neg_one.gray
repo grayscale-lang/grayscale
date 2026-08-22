@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3137 - constant division overflow
+ * Expected: "constant division overflows; -9223372036854775808 / -1 cannot be represented in type 'int'"
+ * Covers: INT64_MIN / -1 is undefined in C and traps (SIGFPE) on x86-64
+ * if the compiler's own constant folder performs it unguarded.
+ */
+
+// expect-error: E3137
+
+do main() {
+    mut x int = -9223372036854775808 / -1
+    println(x)
+}
