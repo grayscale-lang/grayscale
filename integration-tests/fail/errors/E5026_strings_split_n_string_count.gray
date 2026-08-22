@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5026 - strings.split_n third argument must be an int count
+ */
+// expect-error: E5026
+
+import @strings
+
+do main() {
+    mut parts [string] = strings.split_n("a=b=c", "=", "2")
+    println(len(parts))
+}

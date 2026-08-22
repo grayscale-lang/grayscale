@@ -38,6 +38,42 @@ GrayString gray_strings_to_upper(GrayArena *arena, GrayString s);
  */
 GrayString gray_strings_to_lower(GrayArena *arena, GrayString s);
 
+/*@man to_title
+ *@module strings
+ *@group Case
+ *@sig to_title(s string) -> string
+ *@desc Returns a copy of s with the first letter of each whitespace-separated word uppercased and the rest of each word lowercased.
+ *@example
+ *   import @strings
+ *   println(strings.to_title("hello WORLD"))
+ *@end
+ */
+GrayString gray_strings_to_title(GrayArena *arena, GrayString s);
+
+/*@man to_snake_case
+ *@module strings
+ *@group Case
+ *@sig to_snake_case(s string) -> string
+ *@desc Converts camelCase, PascalCase, spaces, and hyphens to snake_case. Acronym runs are kept together, so "HTTPServer" becomes "http_server".
+ *@example
+ *   import @strings
+ *   println(strings.to_snake_case("userIDValue"))
+ *@end
+ */
+GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s);
+
+/*@man to_camel_case
+ *@module strings
+ *@group Case
+ *@sig to_camel_case(s string) -> string
+ *@desc Converts snake_case, spaces, and hyphens to camelCase. The first word is lowercased; each following word is capitalized.
+ *@example
+ *   import @strings
+ *   println(strings.to_camel_case("user_id_value"))
+ *@end
+ */
+GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s);
+
 /*@man trim
  *@module strings
  *@group Trim
@@ -162,6 +198,42 @@ int64_t gray_strings_count(GrayString s, GrayString sub);
  */
 bool gray_strings_is_empty(GrayString s);
 
+/*@man contains_any
+ *@module strings
+ *@group Query
+ *@sig contains_any(s string, chars string) -> bool
+ *@desc Returns true if any single character from chars appears in s. Returns false when chars is empty.
+ *@example
+ *   import @strings
+ *   println(strings.contains_any("hello", "xyz!l"))
+ *@end
+ */
+bool gray_strings_contains_any(GrayString s, GrayString chars);
+
+/*@man equal_fold
+ *@module strings
+ *@group Query
+ *@sig equal_fold(a string, b string) -> bool
+ *@desc Returns true if a and b are equal ignoring ASCII letter case.
+ *@example
+ *   import @strings
+ *   println(strings.equal_fold("Hello", "HELLO"))
+ *@end
+ */
+bool gray_strings_equal_fold(GrayString a, GrayString b);
+
+/*@man compare
+ *@module strings
+ *@group Query
+ *@sig compare(a string, b string) -> int
+ *@desc Compares a and b bytewise and returns -1 if a sorts before b, 1 if it sorts after, and 0 if they are equal.
+ *@example
+ *   import @strings
+ *   println(strings.compare("apple", "banana"))
+ *@end
+ */
+int64_t gray_strings_compare(GrayString a, GrayString b);
+
 /*@man remove_prefix
  *@module strings
  *@group Transformation
@@ -248,6 +320,30 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString s, int64_t start, int
  *@end
  */
 GrayArray gray_strings_split(GrayArena *arena, GrayString s, GrayString sep);
+
+/*@man split_whitespace
+ *@module strings
+ *@group Split/Join
+ *@sig split_whitespace(s string) -> [string]
+ *@desc Splits s on runs of whitespace, discarding empty pieces. Leading and trailing whitespace is ignored, so a blank string yields an empty array.
+ *@example
+ *   import @strings
+ *   println(strings.split_whitespace("  one   two \n three "))
+ *@end
+ */
+GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString s);
+
+/*@man split_n
+ *@module strings
+ *@group Split/Join
+ *@sig split_n(s string, sep string, n int) -> [string]
+ *@desc Splits s on sep into at most n pieces; the final piece holds the unsplit remainder. Returns an empty array when n is zero or negative.
+ *@example
+ *   import @strings
+ *   println(strings.split_n("a=b=c", "=", 2))
+ *@end
+ */
+GrayArray gray_strings_split_n(GrayArena *arena, GrayString s, GrayString sep, int64_t n);
 
 /*@man join
  *@module strings

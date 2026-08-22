@@ -1,0 +1,104 @@
+/*
+ * strings_new_functions.gray - Integration test for the strings module
+ * functions added in #2433: split_whitespace, split_n, contains_any,
+ * equal_fold, compare, to_title, to_snake_case, to_camel_case.
+ */
+
+import @strings
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== Strings New Functions Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- split_whitespace --
+    mut w [string] = strings.split_whitespace("  one   two \n three ")
+    check("split_whitespace joined", strings.join(w, "|"), "one|two|three", passed, failed)
+    if len(w) == 3 {
+        println("  [PASS] split_whitespace count")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] split_whitespace count: expected 3, got ${len(w)}")
+        failed += 1
+    }
+    mut blank [string] = strings.split_whitespace("   ")
+    if len(blank) == 0 {
+        println("  [PASS] split_whitespace all-whitespace is empty")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] split_whitespace all-whitespace: got ${len(blank)}")
+        failed += 1
+    }
+
+    // -- split_n --
+    mut two [string] = strings.split_n("a=b=c", "=", 2)
+    check("split_n caps at 2", strings.join(two, "|"), "a|b=c", passed, failed)
+    mut one [string] = strings.split_n("a=b=c", "=", 1)
+    check("split_n of 1 is whole string", strings.join(one, "|"), "a=b=c", passed, failed)
+    mut many [string] = strings.split_n("a=b=c", "=", 9)
+    check("split_n above part count", strings.join(many, "|"), "a|b|c", passed, failed)
+    mut none [string] = strings.split_n("a=b=c", "=", 0)
+    if len(none) == 0 {
+        println("  [PASS] split_n with n = 0 is empty")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] split_n with n = 0: got ${len(none)}")
+        failed += 1
+    }
+
+    // -- contains_any --
+    if strings.contains_any("hello", "xyzl") && !strings.contains_any("hello", "xyz") && !strings.contains_any("hello", "") {
+        println("  [PASS] contains_any")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] contains_any")
+        failed += 1
+    }
+
+    // -- equal_fold --
+    if strings.equal_fold("Hello", "HELLO") && !strings.equal_fold("Hello", "HELL") {
+        println("  [PASS] equal_fold")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] equal_fold")
+        failed += 1
+    }
+
+    // -- compare --
+    if strings.compare("apple", "banana") == -1 && strings.compare("banana", "apple") == 1 && strings.compare("same", "same") == 0 && strings.compare("ab", "abc") == -1 {
+        println("  [PASS] compare")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] compare")
+        failed += 1
+    }
+
+    // -- case converters --
+    check("to_title", strings.to_title("hello WORLD"), "Hello World", passed, failed)
+    check("to_snake_case camelCase", strings.to_snake_case("camelCase"), "camel_case", passed, failed)
+    check("to_snake_case acronym run", strings.to_snake_case("HTTPServer"), "http_server", passed, failed)
+    check("to_snake_case already snake", strings.to_snake_case("already_snake"), "already_snake", passed, failed)
+    check("to_snake_case spaces and hyphens", strings.to_snake_case("Some Words-Here"), "some_words_here", passed, failed)
+    check("to_camel_case", strings.to_camel_case("user_id_value"), "userIdValue", passed, failed)
+    check("to_camel_case leading separator", strings.to_camel_case("_leading"), "leading", passed, failed)
+    check("to_camel_case spaces and hyphens", strings.to_camel_case("Some-Words Here"), "someWordsHere", passed, failed)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

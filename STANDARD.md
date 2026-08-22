@@ -2947,6 +2947,9 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 |----------|-----------|-------------|
 | `to_upper` | `(s string) -> string` | Convert to uppercase |
 | `to_lower` | `(s string) -> string` | Convert to lowercase |
+| `to_title` | `(s string) -> string` | Capitalize the first letter of each whitespace-separated word, lowercase the rest |
+| `to_snake_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and hyphens to snake_case; acronym runs stay together (`HTTPServer` → `http_server`) |
+| `to_camel_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to camelCase |
 
 #### Access Functions
 
@@ -2965,6 +2968,9 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `index_of` | `(s string, sub string) -> int` | First index of substring |
 | `last_index_of` | `(s string, sub string) -> int` | Last index of substring (-1 if not found) |
 | `count` | `(s string, sub string) -> int` | Count occurrences |
+| `contains_any` | `(s string, chars string) -> bool` | True if any single character from `chars` appears in `s`; false when `chars` is empty |
+| `equal_fold` | `(a string, b string) -> bool` | Case-insensitive equality (ASCII) |
+| `compare` | `(a string, b string) -> int` | Bytewise comparison; -1 if `a` sorts first, 1 if `b` does, 0 if equal |
 
 #### Classification Functions
 
@@ -2995,6 +3001,8 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `split` | `(s string, sep string) -> [string]` | Split into array |
+| `split_whitespace` | `(s string) -> [string]` | Split on runs of whitespace, discarding empty pieces |
+| `split_n` | `(s string, sep string, n int) -> [string]` | Split into at most `n` pieces; the last holds the unsplit remainder. Empty array when `n <= 0` |
 | `join` | `(arr [string], sep string) -> string` | Join array |
 | `slice` | `(s string, start int, end int) -> string` | Extract substring |
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
