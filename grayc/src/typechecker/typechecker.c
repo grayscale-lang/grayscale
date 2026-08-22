@@ -7334,21 +7334,101 @@ typedef struct {
 
 static void check_alias_walk(TypeChecker *checker, AstNode *node,
                              AliasFirst *while_first, AliasFirst *else_first,
-                             const char *file);
+                             AliasFirst *not_in_first, const char *file);
 
 static void check_alias_block(TypeChecker *checker, AstNode *block,
                               AliasFirst *while_first, AliasFirst *else_first,
-                              const char *file) {
+                              AliasFirst *not_in_first, const char *file) {
     if (!block || block->kind != NODE_BLOCK_STMT) return;
     for (int i = 0; i < block->data.block.count; i++) {
         check_alias_walk(checker, block->data.block.stmts[i],
-                         while_first, else_first, file);
+                         while_first, else_first, not_in_first, file);
+    }
+}
+
+/* Recursively scan an expression tree for the !in/not_in membership operator. */
+static void check_alias_expr(TypeChecker *checker, AstNode *expr,
+                             AliasFirst *not_in_first, const char *file) {
+    if (!expr) return;
+
+    switch (expr->kind) {
+    case NODE_INFIX_EXPR: {
+        if (expr->data.infix.op == TOK_NOT_IN) {
+            const char *form = expr->token.literal;
+            if (form && (strcmp(form, "!in") == 0 || strcmp(form, "not_in") == 0)) {
+                if (!not_in_first->form) {
+                    not_in_first->form = form;
+                    not_in_first->line = expr->token.line;
+                    not_in_first->column = expr->token.column;
+                } else if (strcmp(not_in_first->form, form) != 0) {
+                    char *msg = typechecker_format(checker,
+                        "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
+                        form, not_in_first->form, not_in_first->line);
+                    diagnostic_error_message(checker->diag, "E2088", msg,
+                        file, expr->token.line, expr->token.column, 0);
+                }
+            }
+        }
+        check_alias_expr(checker, expr->data.infix.left, not_in_first, file);
+        check_alias_expr(checker, expr->data.infix.right, not_in_first, file);
+        break;
+    }
+    case NODE_PREFIX_EXPR:
+        check_alias_expr(checker, expr->data.prefix.right, not_in_first, file);
+        break;
+    case NODE_POSTFIX_EXPR:
+        check_alias_expr(checker, expr->data.postfix.left, not_in_first, file);
+        break;
+    case NODE_CALL_EXPR:
+        check_alias_expr(checker, expr->data.call.function, not_in_first, file);
+        for (int i = 0; i < expr->data.call.arg_count; i++) {
+            check_alias_expr(checker, expr->data.call.args[i], not_in_first, file);
+        }
+        break;
+    case NODE_INDEX_EXPR:
+        check_alias_expr(checker, expr->data.index_expr.left, not_in_first, file);
+        check_alias_expr(checker, expr->data.index_expr.index, not_in_first, file);
+        break;
+    case NODE_MEMBER_EXPR:
+        check_alias_expr(checker, expr->data.member.object, not_in_first, file);
+        break;
+    case NODE_CAST_EXPR:
+        check_alias_expr(checker, expr->data.cast.value, not_in_first, file);
+        break;
+    case NODE_RANGE_EXPR:
+        check_alias_expr(checker, expr->data.range_expr.start, not_in_first, file);
+        check_alias_expr(checker, expr->data.range_expr.end, not_in_first, file);
+        check_alias_expr(checker, expr->data.range_expr.step, not_in_first, file);
+        break;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < expr->data.array_value.count; i++) {
+            check_alias_expr(checker, expr->data.array_value.elements[i], not_in_first, file);
+        }
+        break;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < expr->data.map_value.count; i++) {
+            check_alias_expr(checker, expr->data.map_value.keys[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.map_value.values[i], not_in_first, file);
+        }
+        break;
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < expr->data.struct_value.count; i++) {
+            check_alias_expr(checker, expr->data.struct_value.field_values[i], not_in_first, file);
+        }
+        break;
+    case NODE_INTERPOLATED_STRING:
+        for (int i = 0; i < expr->data.interpolated_string.part_count; i++) {
+            check_alias_expr(checker, expr->data.interpolated_string.parts[i], not_in_first, file);
+        }
+        break;
+    default:
+        break;
     }
 }
 
 static void check_alias_walk(TypeChecker *checker, AstNode *node,
                              AliasFirst *while_first, AliasFirst *else_first,
-                             const char *file) {
+                             AliasFirst *not_in_first, const char *file) {
     if (!node) return;
 
     switch (node->kind) {
@@ -7367,8 +7447,9 @@ static void check_alias_walk(TypeChecker *checker, AstNode *node,
                     file, node->token.line, node->token.column, 0);
             }
         }
+        check_alias_expr(checker, node->data.while_stmt.condition, not_in_first, file);
         check_alias_block(checker, node->data.while_stmt.body,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         break;
     }
     case NODE_IF_STMT: {
@@ -7390,42 +7471,63 @@ static void check_alias_walk(TypeChecker *checker, AstNode *node,
                 }
             }
         }
+        check_alias_expr(checker, node->data.if_stmt.condition, not_in_first, file);
         check_alias_block(checker, node->data.if_stmt.consequence,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         if (node->data.if_stmt.alternative) {
             check_alias_walk(checker, node->data.if_stmt.alternative,
-                             while_first, else_first, file);
+                             while_first, else_first, not_in_first, file);
         }
         break;
     }
     case NODE_BLOCK_STMT:
-        check_alias_block(checker, node, while_first, else_first, file);
+        check_alias_block(checker, node, while_first, else_first, not_in_first, file);
         break;
     case NODE_FOR_STMT:
+        check_alias_expr(checker, node->data.for_stmt.iterable, not_in_first, file);
         check_alias_block(checker, node->data.for_stmt.body,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         break;
     case NODE_FOR_EACH_STMT:
+        check_alias_expr(checker, node->data.for_each.collection, not_in_first, file);
         check_alias_block(checker, node->data.for_each.body,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         break;
     case NODE_LOOP_STMT:
         check_alias_block(checker, node->data.loop_stmt.body,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         break;
     case NODE_FUNC_DECL:
         check_alias_block(checker, node->data.func_decl.body,
-                          while_first, else_first, file);
+                          while_first, else_first, not_in_first, file);
         break;
     case NODE_WHEN_STMT:
+        check_alias_expr(checker, node->data.when_stmt.value, not_in_first, file);
         for (int i = 0; i < node->data.when_stmt.case_count; i++) {
             check_alias_block(checker, node->data.when_stmt.cases[i].body,
-                              while_first, else_first, file);
+                              while_first, else_first, not_in_first, file);
         }
         if (node->data.when_stmt.default_body) {
             check_alias_block(checker, node->data.when_stmt.default_body,
-                              while_first, else_first, file);
+                              while_first, else_first, not_in_first, file);
         }
+        break;
+    case NODE_VAR_DECL:
+        check_alias_expr(checker, node->data.var_decl.value, not_in_first, file);
+        break;
+    case NODE_ASSIGN_STMT:
+        check_alias_expr(checker, node->data.assign.value, not_in_first, file);
+        break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++) {
+            check_alias_expr(checker, node->data.return_stmt.values[i], not_in_first, file);
+        }
+        break;
+    case NODE_ENSURE_STMT:
+        check_alias_expr(checker, node->data.ensure_stmt.expr, not_in_first, file);
+        break;
+    case NODE_EXPR_STMT:
+        check_alias_expr(checker, node->data.expr_stmt.expr, not_in_first, file);
         break;
     default:
         break;
@@ -7439,6 +7541,7 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
     const char *current_file = NULL;
     AliasFirst while_first = {0};
     AliasFirst else_first = {0};
+    AliasFirst not_in_first = {0};
 
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -7454,9 +7557,10 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
             current_file = stmt_file;
             while_first = (AliasFirst){0};
             else_first = (AliasFirst){0};
+            not_in_first = (AliasFirst){0};
         }
 
-        check_alias_walk(checker, stmt, &while_first, &else_first,
+        check_alias_walk(checker, stmt, &while_first, &else_first, &not_in_first,
                          stmt_file ? stmt_file : checker->file);
     }
 }
