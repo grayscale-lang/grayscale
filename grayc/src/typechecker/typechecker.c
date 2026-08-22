@@ -282,6 +282,8 @@ static void register_struct(TypeChecker *checker, const char *name,
     si->field_names = field_names;
     si->field_types = field_types;
     si->field_count = field_count;
+    si->is_deprecated = false;
+    si->deprecated_message = NULL;
 }
 
 static int struct_info_name_compare(const void *a, const void *b) {
@@ -850,6 +852,78 @@ static const char *func_display_name(const FuncSig *fs) {
         return fs->decl->data.func_decl.original_name;
     }
     return fs ? fs->name : "";
+}
+
+/* --- #deprecated warning helpers ---
+ * Fire W3007 at every genuine reference site (not internal lookup/diagnostic
+ * helper calls). Each caller is responsible for only calling these from a
+ * spot that represents a real user reference — see call sites. */
+
+static void warn_deprecated(TypeChecker *checker, AstNode *node, const char *kind,
+    const char *display_name, const char *message) {
+    char *msg = message
+        ? typechecker_format(checker, "%s '%s' is deprecated: %s", kind, display_name, message)
+        : typechecker_format(checker, "%s '%s' is deprecated", kind, display_name);
+    diagnostic_warning_message(checker->diag, "W3007", msg,
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+}
+
+/* Exempt a deprecated function's own recursive calls to itself (pointer
+ * identity on FuncSig.decl, not name — struct functions are registered
+ * under a prefixed lookup key that never matches the plain AST name). */
+static void warn_if_func_deprecated(TypeChecker *checker, AstNode *node, FuncSig *sig) {
+    if (!sig || !sig->is_deprecated) return;
+    if (checker->current_func_decl && sig->decl == checker->current_func_decl) return;
+    /* func_display_name() only strips module-import prefixes via
+     * original_name; struct-scoped functions are registered under a
+     * "StructName_func" key with no original_name set, so it would
+     * leak the prefixed key. FUNC_DISPLAY_NAME reads the AST node's
+     * own (never-prefixed) .name field instead. */
+    const char *display = sig->decl ? FUNC_DISPLAY_NAME(sig->decl) : func_display_name(sig);
+    warn_deprecated(checker, node, "function", display, sig->deprecated_message);
+}
+
+/* Exempt references to a deprecated struct's own type from within its own
+ * struct-functions (same mechanism as the existing private-field-access
+ * check: checker->current_struct_name, set/restored around struct-function
+ * body typechecking). Does NOT cascade to that struct's struct-function
+ * calls — those are independent and only warn if separately deprecated. */
+static void warn_if_struct_deprecated(TypeChecker *checker, AstNode *node, StructInfo *si) {
+    if (!si || !si->is_deprecated) return;
+    if (checker->current_struct_name && strcmp(checker->current_struct_name, si->struct_name) == 0) return;
+    warn_deprecated(checker, node, "struct", si->display_name, si->deprecated_message);
+}
+
+/* Enums have no executable body that could reference themselves, so no
+ * self-reference exemption is needed here. */
+static void warn_if_enum_deprecated(TypeChecker *checker, AstNode *node, int enum_index) {
+    if (enum_index < 0 || !checker->enum_is_deprecated[enum_index]) return;
+    warn_deprecated(checker, node, "enum", checker->enum_display_names[enum_index],
+        checker->enum_deprecated_messages[enum_index]);
+}
+
+/* Check a declared type-name string (var-decl / param / return / field
+ * annotation) against the struct and enum registries and warn if it
+ * names a deprecated one. Bare names only — [Old]/^Old wrappers are not
+ * unwrapped, matching the scope of this pass.
+ *
+ * self_struct_name: pass the enclosing struct's own name when checking a
+ * struct-scoped function's param/return types, so a deprecated struct's
+ * own `self StructName` parameter is exempt the same way its body is
+ * (checker->current_struct_name isn't set yet at signature-registration
+ * time, so warn_if_struct_deprecated's own self-check can't catch this —
+ * it only guards references from inside an already-typechecked body). */
+static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, const char *type_name,
+    const char *self_struct_name) {
+    if (!type_name) return;
+    if (self_struct_name && strcmp(type_name, self_struct_name) == 0) return;
+    StructInfo *tn_si = find_struct(checker, type_name);
+    if (tn_si) {
+        warn_if_struct_deprecated(checker, node, tn_si);
+        return;
+    }
+    int tn_ei = find_enum_index(checker, type_name);
+    if (tn_ei >= 0) warn_if_enum_deprecated(checker, node, tn_ei);
 }
 
 /* --- Stdlib argument kind validation --- */
@@ -1791,7 +1865,7 @@ static void register_enum(TypeChecker *checker, const char *name,
     const char *display_name, bool is_string,
     const char **values, int value_count,
     const char ***payload_types, int *payload_counts, bool is_tagged,
-    bool is_flags) {
+    bool is_flags, bool is_deprecated, const char *deprecated_message) {
     if (checker->enum_count >= checker->enum_cap) {
         checker->enum_cap = checker->enum_cap ? checker->enum_cap * 2 : 8;
         checker->enum_names = xrealloc(checker->enum_names, sizeof(const char *) * checker->enum_cap);
@@ -1803,6 +1877,8 @@ static void register_enum(TypeChecker *checker, const char *name,
         checker->enum_payload_counts = xrealloc(checker->enum_payload_counts, sizeof(int *) * checker->enum_cap);
         checker->enum_is_tagged = xrealloc(checker->enum_is_tagged, sizeof(bool) * checker->enum_cap);
         checker->enum_is_flags = xrealloc(checker->enum_is_flags, sizeof(bool) * checker->enum_cap);
+        checker->enum_is_deprecated = xrealloc(checker->enum_is_deprecated, sizeof(bool) * checker->enum_cap);
+        checker->enum_deprecated_messages = xrealloc(checker->enum_deprecated_messages, sizeof(const char *) * checker->enum_cap);
     }
     checker->enum_names_sorted_built = false;
     checker->enum_names[checker->enum_count] = name;
@@ -1814,6 +1890,8 @@ static void register_enum(TypeChecker *checker, const char *name,
     checker->enum_payload_counts[checker->enum_count] = payload_counts;
     checker->enum_is_tagged[checker->enum_count] = is_tagged;
     checker->enum_is_flags[checker->enum_count] = is_flags;
+    checker->enum_is_deprecated[checker->enum_count] = is_deprecated;
+    checker->enum_deprecated_messages[checker->enum_count] = deprecated_message;
     checker->enum_count++;
 }
 
@@ -3118,6 +3196,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
         FuncSig *sig = find_func(checker, prefixed);
         if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             /* Resolve named arguments for struct static calls */
             if (sig->decl) {
                 char display[MSG_BUF_SIZE];
@@ -3322,6 +3401,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, mfn);
         } else if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             /* Resolve named arguments for user-module function calls */
             if (sig->decl) {
                 char display[MSG_BUF_SIZE];
@@ -3461,6 +3541,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     /* Mark the function used and resolve return type */
                     ssig->used = true;
                     sym->used = true;
+                    warn_if_func_deprecated(checker, node, ssig);
                     if (ssig->is_generic && ssig->decl &&
                         ssig->decl->kind == NODE_FUNC_DECL) {
                         char *binding = NULL;
@@ -3644,6 +3725,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                     ssig->used = true;
                     sym->used = true;
+                    warn_if_func_deprecated(checker, node, ssig);
                     result = ssig->return_count > 0 ? ssig->return_types[0] : &TYPE_VOID;
                     /* Validate argument count */
                     {
@@ -3795,6 +3877,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             find_func(checker, arg->data.label.value)) {
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
+            warn_if_func_deprecated(checker, node, rfs);
             /* Build typed function reference: "func(int,string)->int" */
             char sig[MSG_BUF_SIZE];
             int pos = 0;
@@ -4410,6 +4493,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     FuncSig *sig = find_func(checker, function_name);
     if (sig) {
         sig->used = true;
+        warn_if_func_deprecated(checker, node, sig);
         /* Use the user-facing name in error messages, never
          * the module-prefixed internal key. */
         function_name = func_display_name(sig);
@@ -5032,6 +5116,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 result = &TYPE_VOID;
                             }
                             sig->used = true;
+                            warn_if_func_deprecated(checker, node, sig);
                         }
                     }
                 }
@@ -5347,6 +5432,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         FuncSig *sig = find_func(checker, prefixed);
         if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             result = sig->return_count > 0 ? sig->return_types[0] : &TYPE_VOID;
             /* Check argument count */
             if (node->data.call.arg_count != sig->param_count) {
@@ -6127,6 +6213,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (is_enum_name(checker, resolved_obj)) {
             /* Rewrite the label to the resolved enum name for codegen */
             obj->data.label.value = resolved_obj;
+            warn_if_enum_deprecated(checker, node, find_enum_index(checker, resolved_obj));
             /* Validate member exists */
             bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
@@ -6345,6 +6432,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     }
     typechecker_mark_type_module_used(checker, struct_name);
     StructInfo *si = find_struct(checker, struct_name);
+    warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
     if (!si && !is_struct_name(checker, struct_name)) {
         char *msg = NULL;
@@ -6543,6 +6631,7 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     FuncSig *ref_sig = ref_name ? find_func(checker, ref_name) : NULL;
     if (ref_sig) {
         ref_sig->used = true;
+        warn_if_func_deprecated(checker, node, ref_sig);
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
@@ -7819,6 +7908,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     if (node->data.var_decl.type_name) {
         node->data.var_decl.type_name = resolve_type_alias(checker, node->data.var_decl.type_name);
     }
+    /* #deprecated: warn when a variable is explicitly annotated with a
+     * deprecated struct or enum type. */
+    warn_if_type_name_deprecated(checker, node, node->data.var_decl.type_name, NULL);
     /* E5013: file-scope initializers cannot contain function calls.
      * A runtime call as an initializer would either need a module-init
      * function (which Grayscale does not generate) or produce invalid C
@@ -10689,6 +10781,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     bool saved_is_main = checker->current_func_is_main;
     checker->current_func_is_main =
         (strcmp(node->data.func_decl.name, "main") == 0);
+    AstNode *saved_func_decl = checker->current_func_decl;
+    checker->current_func_decl = node;
 
     check_block(checker, node->data.func_decl.body);
 
@@ -10773,6 +10867,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     checker->current_return_names = prev_return_names;
     checker->current_main_return_suppressed = saved_main_suppressed;
     checker->current_func_is_main = saved_is_main;
+    checker->current_func_decl = saved_func_decl;
     checker->using_module_count = prev_using_count;
     checker->type_param_name = NULL;
     checker->type_param_binding = NULL;
@@ -11717,7 +11812,7 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags);
+        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
     }
 }
 
@@ -11737,6 +11832,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < field_count; j++) {
             fnames[j] = stmt->data.struct_decl.fields[j].name;
             ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.struct_decl.fields[j].type_name, NULL);
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
@@ -11851,6 +11947,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
+        checker->structs[checker->struct_count - 1].is_deprecated = stmt->data.struct_decl.is_deprecated;
+        checker->structs[checker->struct_count - 1].deprecated_message = stmt->data.struct_decl.deprecated_message;
 
         /* Detect generic structs (any field with ? in type) */
         stmt->data.struct_decl.is_generic = false;
@@ -11894,11 +11992,15 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             GrayType **ptypes = arena_alloc(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
             for (int k = 0; k < parameter_count; k++) {
                 ptypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.params[k].type_name);
+                warn_if_type_name_deprecated(checker, fn, fn->data.func_decl.params[k].type_name,
+                    stmt->data.struct_decl.name);
             }
             int return_count = fn->data.func_decl.return_type_count;
             GrayType **rtypes = arena_alloc(checker->arena, sizeof(GrayType *) * (return_count ? return_count : 1));
             for (int k = 0; k < return_count; k++) {
                 rtypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.return_types[k]);
+                warn_if_type_name_deprecated(checker, fn, fn->data.func_decl.return_types[k],
+                    stmt->data.struct_decl.name);
             }
             /* Register with prefixed name: StructName_funcName */
             char buffer[MSG_BUF_SIZE];
@@ -11907,6 +12009,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
             checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
+            checker->funcs[checker->func_count - 1].is_deprecated = fn->data.func_decl.is_deprecated;
+            checker->funcs[checker->func_count - 1].deprecated_message = fn->data.func_decl.deprecated_message;
             if (fn->data.func_decl.is_discard && return_count == 0) {
                 diagnostic_error_code_formatted(checker->diag, "E5042",
                     NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
@@ -11928,6 +12032,7 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < parameter_count; j++) {
             ptypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.params[j].type_name);
             typechecker_mark_type_module_used(checker, stmt->data.func_decl.params[j].type_name);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.func_decl.params[j].type_name, NULL);
         }
 
         int return_count = stmt->data.func_decl.return_type_count;
@@ -11935,6 +12040,7 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < return_count; j++) {
             rtypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.return_types[j]);
             typechecker_mark_type_module_used(checker, stmt->data.func_decl.return_types[j]);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.func_decl.return_types[j], NULL);
         }
 
         /* E4008: main() cannot have parameters or return types */
@@ -11970,6 +12076,8 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+        checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
+        checker->funcs[checker->func_count - 1].deprecated_message = stmt->data.func_decl.deprecated_message;
         /* E5042: #discard on a void function is an error */
         if (stmt->data.func_decl.is_discard && return_count == 0) {
             diagnostic_error_code_formatted(checker->diag, "E5042",
@@ -11993,6 +12101,8 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
                         register_func(checker, unprefixed, ptypes, parameter_count, rtypes, return_count);
                         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
                         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+                        checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
+                        checker->funcs[checker->func_count - 1].deprecated_message = stmt->data.func_decl.deprecated_message;
                         checker->funcs[checker->func_count - 1].def_line = 0; /* suppress unused warning */
                         finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
                         break;
@@ -12060,6 +12170,8 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->enum_payload_counts);
     free(checker->enum_is_tagged);
     free(checker->enum_is_flags);
+    free(checker->enum_is_deprecated);
+    free(checker->enum_deprecated_messages);
     free(checker->enum_names_sorted);
     free(checker->enum_names_sorted_indices);
 
@@ -12253,6 +12365,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     memcpy(fn, checker->structs[struct_index].field_names, sizeof(const char *) * field_count);
                     memcpy(ft, checker->structs[struct_index].field_types, sizeof(GrayType *) * field_count);
                     register_struct(checker, unprefixed, unprefixed, fn, ft, field_count);
+                    checker->structs[checker->struct_count - 1].is_deprecated = checker->structs[struct_index].is_deprecated;
+                    checker->structs[checker->struct_count - 1].deprecated_message = checker->structs[struct_index].deprecated_message;
                 }
             }
         }
@@ -12265,7 +12379,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     register_enum(checker, unprefixed, unprefixed, checker->enum_is_string[enum_index],
                         checker->enum_values[enum_index], checker->enum_value_counts[enum_index],
                         checker->enum_payload_types[enum_index], checker->enum_payload_counts[enum_index],
-                        checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index]);
+                        checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index],
+                        checker->enum_is_deprecated[enum_index], checker->enum_deprecated_messages[enum_index]);
                 }
             }
         }
@@ -12287,6 +12402,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                         checker->funcs[field_index].return_types,
                         checker->funcs[field_index].return_count);
                     checker->funcs[checker->func_count - 1].is_discard = checker->funcs[field_index].is_discard;
+                    checker->funcs[checker->func_count - 1].is_deprecated = checker->funcs[field_index].is_deprecated;
+                    checker->funcs[checker->func_count - 1].deprecated_message = checker->funcs[field_index].deprecated_message;
                     checker->funcs[checker->func_count - 1].def_line = 0;
                 }
             }

@@ -95,6 +95,7 @@ typedef enum {
     TOK_DOC,            /* #doc */
     TOK_JSON_ATTR,      /* #json */
     TOK_DISCARD,        /* #discard */
+    TOK_DEPRECATED,     /* #deprecated */
 
     /* Keywords */
     TOK_MUT,

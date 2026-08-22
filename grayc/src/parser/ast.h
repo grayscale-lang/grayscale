@@ -309,6 +309,8 @@ struct AstNode {
             AstNode *body;
             bool is_private;
             bool is_discard;
+            bool is_deprecated;              /* #deprecated attribute */
+            const char *deprecated_message;  /* NULL if bare #deprecated */
             /* Wildcard generics concrete type bindings recorded
              * by the typechecker per call site. Codegen emits one
              * specialised C function for each entry. NULL/0 for
@@ -342,6 +344,8 @@ struct AstNode {
             bool is_generic; /* has ? in at least one field type */
             const char **instantiations; /* concrete bindings */
             int instantiation_count;
+            bool is_deprecated;              /* #deprecated attribute */
+            const char *deprecated_message;  /* NULL if bare #deprecated */
         } struct_decl;
 
         /* NODE_ENUM_DECL */
@@ -352,6 +356,8 @@ struct AstNode {
             int value_count;
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
+            bool is_deprecated;              /* #deprecated attribute */
+            const char *deprecated_message;  /* NULL if bare #deprecated */
         } enum_decl;
 
         /* NODE_ALIAS_DECL */

@@ -1,0 +1,28 @@
+/*
+ * Warning Test: W3007 - deprecated-stacks-with-discard
+ * Expected: #deprecated and #discard stack independently on the same
+ * struct-scoped function - the ignored return value produces no E5011,
+ * and the deprecated call still produces a W3007 warning. Also covers
+ * bare #deprecated (no message) producing a generic fallback warning.
+ */
+
+#deprecated
+do bare_deprecated() {
+}
+
+const Container struct {
+    id int
+
+    #discard
+    #deprecated("ignore me and don't call me")
+    do legacy() -> int {
+        return 1
+    }
+}
+
+do main() {
+    bare_deprecated() // warning: bare_deprecated is deprecated (no message)
+
+    mut c Container = Container{id: 1}
+    c.legacy() // warning: legacy is deprecated; no E5011 despite the ignored return value
+}

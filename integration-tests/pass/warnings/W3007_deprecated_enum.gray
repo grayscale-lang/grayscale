@@ -1,0 +1,16 @@
+/*
+ * Warning Test: W3007 - deprecated-enum
+ * Expected: warning when a #deprecated enum's type or a variant of it
+ * is referenced (var-decl annotation, EnumName.VARIANT access).
+ */
+
+#deprecated("use Status2 instead")
+const Status enum {
+    ACTIVE
+    INACTIVE
+}
+
+do main() {
+    mut s Status = Status.ACTIVE // warning: Status is deprecated (both the annotation and the variant access)
+    println("${s}")
+}

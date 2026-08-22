@@ -1887,6 +1887,7 @@ const Person struct {
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
+| `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -1974,6 +1975,59 @@ const List struct {
 
 - `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
 - `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
+
+#### 7.5.4 `#deprecated` Attribute
+
+The `#deprecated` attribute marks a function, struct, or enum as deprecated. The compiler emits a `W3007` warning at every reference to the marked item — every call, every struct-literal construction, every `EnumName.VARIANT` access, and every place its name appears as a declared type (variable, parameter, return type, or struct field). A replacement message is optional:
+
+```gray
+#deprecated("use new_format() instead")
+do old_format(s string) -> string {
+    return new_format(s)
+}
+
+#deprecated
+do untouched() {
+    // no message — warning falls back to a generic "is deprecated" text
+}
+
+do main() {
+    old_format("hello") // warning: old_format is deprecated: use new_format() instead
+    untouched()          // warning: untouched is deprecated
+}
+```
+
+It applies the same way to struct and enum declarations, and to individual struct functions:
+
+```gray
+#deprecated("Point is old, use Point3D")
+const Point struct {
+    x int
+    y int
+}
+
+const Container struct {
+    id int
+
+    #deprecated("use current() instead")
+    do legacy(self Container) -> int {
+        return 1
+    }
+
+    do current(self Container) -> int {
+        return 2
+    }
+}
+```
+
+**Rules:**
+
+- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2002).
+- The message argument, when present, must be a string literal: `#deprecated("...")`.
+- A deprecated function's own recursive calls to itself do not trigger the warning, and code inside a deprecated struct's own struct-functions can reference that struct's type without warning. A struct-function calling a *different* deprecated struct-function or referencing a *different* deprecated type still warns normally.
+- Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
+- `#deprecated` can be stacked with other attributes (including `#discard`) on the same declaration, in any order.
+- Like all warnings, `W3007` can be suppressed with `-q W3007` or `-q all`.
 
 ### 7.6 Function References
 
