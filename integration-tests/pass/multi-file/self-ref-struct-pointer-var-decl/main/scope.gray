@@ -1,0 +1,59 @@
+/*
+ * scope.gray - a self-referential struct pointer field, used only by a
+ * module that another file imports.
+ *
+ * rewrite_labels() renames imported types to their module-prefixed form
+ * across the merged program, but its NODE_VAR_DECL case matched a local
+ * variable's type annotation with a bare strcmp instead of the
+ * pointer/array/map-aware rewrite_type_name(). A wrapped annotation like
+ * `mut cur ^Scope = scope` was therefore left unprefixed while the
+ * function parameter `scope ^Scope` it was compared against was correctly
+ * rewritten, so the two never unified even though both printed as ^Scope.
+ */
+
+const Symbol struct {
+    name string
+}
+
+const Scope struct {
+    parent ^Scope
+    symbols map[string:^Symbol]
+}
+
+do scope_lookup_local(scope ^Scope, name string) -> ^Symbol {
+    c = scope^.symbols
+    if name in c {
+        return c[name]
+    }
+    return nil
+}
+
+do scope_lookup(scope ^Scope, name string) -> ^Symbol {
+    mut cur ^Scope = scope
+    as_long_as cur != nil {
+        found = scope_lookup_local(cur, name)
+        if found != nil { return found }
+        cur = cur^.parent
+    }
+    return nil
+}
+
+do make_symbol(name string) -> ^Symbol {
+    s = new(Symbol)
+    s.name = name
+    return s
+}
+
+do make_root() -> ^Scope {
+    root = new(Scope)
+    root.symbols = {:}
+    root.symbols["x"] = make_symbol("root-x")
+    return root
+}
+
+do make_child(parent ^Scope) -> ^Scope {
+    child = new(Scope)
+    child.parent = parent
+    child.symbols = {:}
+    return child
+}

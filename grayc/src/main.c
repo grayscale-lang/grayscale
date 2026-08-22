@@ -329,14 +329,12 @@ static void rewrite_labels(AstNode *node, const char **orig, const char **prefix
             rewrite_labels(node->data.return_stmt.values[i], orig, prefixed, count, arena);
         break;
     case NODE_VAR_DECL:
-        /* Rewrite type annotation: mut req Request → mut req mod_Request */
+        /* Rewrite type annotation: mut req Request → mut req mod_Request.
+         * Use rewrite_type_name so wrapped forms (^Request, [Request],
+         * map[string:Request]) are rewritten too, not just bare names. */
         if (node->data.var_decl.type_name) {
-            for (int i = 0; i < count; i++) {
-                if (strcmp(node->data.var_decl.type_name, orig[i]) == 0) {
-                    node->data.var_decl.type_name = prefixed[i];
-                    break;
-                }
-            }
+            node->data.var_decl.type_name = rewrite_type_name(
+                node->data.var_decl.type_name, orig, prefixed, count, arena);
         }
         rewrite_labels(node->data.var_decl.value, orig, prefixed, count, arena);
         break;
