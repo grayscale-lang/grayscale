@@ -3006,6 +3006,10 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                             expected = "char";
                             ok = dt->kind == TK_CHAR || dt->kind == TK_INT;
                             break;
+                        case 'b':
+                            expected = "bool";
+                            ok = dt->kind == TK_BOOL;
+                            break;
                         default:
                             ok = true;
                             break;

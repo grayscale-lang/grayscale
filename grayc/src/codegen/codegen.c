@@ -3582,7 +3582,12 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
                 append_char_to_buffer(&codegen->output, 'l');
             }
         }
-        append_char_to_buffer(&codegen->output, spec);
+        /* %b isn't a real C conversion; emit_format_arguments() already
+         * stringifies bool args to "true"/"false", so %s reads them back
+         * correctly. Passing %b through verbatim hits vsnprintf as a literal
+         * 'b' and never consumes the argument, desyncing every directive
+         * after it. */
+        append_char_to_buffer(&codegen->output, spec == 'b' ? 's' : spec);
         directive_index++;
     }
     if (append_newline) { append_char_to_buffer(&codegen->output, '\\'); append_char_to_buffer(&codegen->output, 'n'); }
