@@ -1532,13 +1532,50 @@ static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name)
     return false;
 }
 
+/* Owning module for a stdlib opaque type's bare name (Thread, Mutex, ...),
+ * or NULL if bare_name isn't one. Shared by is_stdlib_opaque_type_available()
+ * and typechecker_mark_type_module_used() so both agree on the mapping. */
+static const char *stdlib_opaque_module(const char *bare_name) {
+    static const struct { const char *type; const char *mod; } opaque_map[] = {
+        {"Arena",        "mem"},
+        {"Thread",       "threads"},
+        {"Mutex",        "sync"},
+        {"SpinLock",     "atomic"},
+        {"Channel",      "channels"},
+        {"Socket",       "net"},
+        {"Listener",     "net"},
+        {"Database",     "sqlite"},
+        {"Router",       "server"},
+        {"HttpRequest",  "server"},
+        {"HttpResponse", "http"},
+        {"UUID",         "uuid"},
+        {NULL, NULL}
+    };
+    for (int i = 0; opaque_map[i].type; i++) {
+        if (strcmp(bare_name, opaque_map[i].type) == 0) return opaque_map[i].mod;
+    }
+    return NULL;
+}
+
 /* If type_name is module-prefixed (e.g. "T_Query"), mark that module used.
  * The parser rewrites "T.Query" to "T_Query", so we split on the first
- * underscore and check whether the prefix is a known import. */
+ * underscore and check whether the prefix is a known import. A bare stdlib
+ * opaque type name (Thread, Mutex, ...) reached via `using`/`import and use`
+ * has no prefix to split on, so it's checked against the opaque map instead. */
 static void typechecker_mark_type_module_used(TypeChecker *checker, const char *type_name) {
     if (!type_name) return;
     const char *us = strchr(type_name, '_');
-    if (!us || us == type_name) return;
+    if (!us || us == type_name) {
+        const char *mod = stdlib_opaque_module(type_name);
+        if (!mod) return;
+        for (int mi = 0; mi < checker->import_count; mi++) {
+            if (strcmp(checker->imported_modules[mi], mod) == 0) {
+                checker->import_used[mi] = true;
+                return;
+            }
+        }
+        return;
+    }
     size_t prefix_len = (size_t)(us - type_name);
     for (int mi = 0; mi < checker->import_count; mi++) {
         if (strlen(checker->imported_modules[mi]) == prefix_len &&
@@ -1767,6 +1804,14 @@ static void register_enum(TypeChecker *checker, const char *name,
     checker->enum_count++;
 }
 
+/* Stdlib opaque types (Thread, Mutex, ...) are only valid when their owning
+ * module is imported. bare_name must already have any module prefix
+ * stripped (e.g. "Thread", not "threads_Thread"). */
+static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *bare_name) {
+    const char *mod = stdlib_opaque_module(bare_name);
+    return mod && typechecker_is_imported_module(checker, mod);
+}
+
 /* Resolve a type name, returning TK_ENUM for known enum names instead of
  * the default TK_STRUCT that type_from_name() produces for uppercase names. */
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
@@ -1826,30 +1871,8 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             /* Error is always available (no import needed). */
             if (strcmp(name, "Error") == 0) { /* allow */ }
             /* Stdlib opaque types are valid only when their module is imported. */
-            else {
-                static const struct { const char *type; const char *mod; } opaque_map[] = {
-                    {"Arena",        "mem"},
-                    {"Thread",       "threads"},
-                    {"Mutex",        "sync"},
-                    {"SpinLock",     "atomic"},
-                    {"Channel",      "channels"},
-                    {"Socket",       "net"},
-                    {"Listener",     "net"},
-                    {"Database",     "sqlite"},
-                    {"Router",       "server"},
-                    {"HttpRequest",  "server"},
-                    {"HttpResponse", "http"},
-                    {"UUID",         "uuid"},
-                    {NULL, NULL}
-                };
-                bool found = false;
-                for (int i = 0; opaque_map[i].type; i++) {
-                    if (strcmp(name, opaque_map[i].type) == 0) {
-                        found = typechecker_is_imported_module(checker, opaque_map[i].mod);
-                        break;
-                    }
-                }
-                if (!found) return &TYPE_UNKNOWN;
+            else if (!is_stdlib_opaque_type_available(checker, name)) {
+                return &TYPE_UNKNOWN;
             }
         }
     }
@@ -7240,7 +7263,15 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             GrayType *nt = type_from_name(new_type);
             bool known = is_struct_name(checker, new_type) ||
                          is_enum_name(checker, new_type) ||
-                         (nt->kind != TK_UNKNOWN && nt->kind != TK_STRUCT);
+                         (nt->kind != TK_UNKNOWN && nt->kind != TK_STRUCT) ||
+                         /* Stdlib opaque types (Thread, Mutex, ...): type_from_name()
+                          * normalizes the mangled mod_Type to a bare-name TK_STRUCT,
+                          * which the disjunct above deliberately excludes since
+                          * type_from_name() also returns TK_STRUCT for any
+                          * unregistered capitalized name. Check the opaque
+                          * allowlist explicitly instead, same as
+                          * typechecker_type_from_name() does elsewhere. */
+                         is_stdlib_opaque_type_available(checker, unqualified_display_name(new_type));
             if (!known) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,

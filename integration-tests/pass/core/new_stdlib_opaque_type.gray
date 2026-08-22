@@ -1,0 +1,78 @@
+/*
+ * new_stdlib_opaque_type.gray - new() on stdlib opaque types
+ * (Thread, Mutex, SpinLock, Channel, ...) across every import form.
+ *
+ * new()'s "is this a known type" check re-derived struct/enum identity from
+ * the still-mangled type name (e.g. "threads_Thread") instead of resolving
+ * it the same way a plain type annotation does, so it rejected every stdlib
+ * opaque type as undefined regardless of import form: qualified
+ * (threads.Thread), `using` at file or function scope, and
+ * `import and use`.
+ */
+
+import @threads
+import @sync
+import @atomic
+
+using sync
+
+import and use @channels
+
+do main() {
+    println("=== new() on Stdlib Opaque Types Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Module-qualified: new(mod.Type) */
+    mut a ^threads.Thread = new(threads.Thread)
+    if a != nil {
+        println("  [PASS] new(threads.Thread) with plain import")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(threads.Thread) with plain import")
+        failed += 1
+    }
+
+    /* File-scope `using`: bare type name */
+    mut b ^Mutex = new(Mutex)
+    if b != nil {
+        println("  [PASS] new(Mutex) with file-scope using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Mutex) with file-scope using")
+        failed += 1
+    }
+
+    /* Function-scope `using`: bare type name, only inside this function */
+    if func_scope_using_works() {
+        println("  [PASS] new(SpinLock) with function-scope using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(SpinLock) with function-scope using")
+        failed += 1
+    }
+
+    /* import and use: bare type name */
+    mut d ^Channel = new(Channel)
+    if d != nil {
+        println("  [PASS] new(Channel) with import and use")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Channel) with import and use")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
+
+do func_scope_using_works() -> bool {
+    using atomic
+    mut c ^SpinLock = new(SpinLock)
+    return c != nil
+}
