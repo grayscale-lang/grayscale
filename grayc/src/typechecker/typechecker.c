@@ -354,17 +354,30 @@ static bool is_enum_name(TypeChecker *checker, const char *name) {
                    sizeof(const char *), enum_name_string_compare) != NULL;
 }
 
+/* Best-effort unqualified form of a type name that has no registry entry
+ * to recover a proper display name from — e.g. an undefined type, where
+ * read_type_name() mangled a written "mod.Type" into "mod_Type" and
+ * there's no struct/enum to look the original spelling up on. Mirrors the
+ * module-prefix heuristic already used to resolve module-prefixed lookups
+ * in typechecker_type_from_name(). */
+static const char *unqualified_display_name(const char *name) {
+    if (!name) return name;
+    const char *us = strchr(name, '_');
+    if (us && us[1] >= 'A' && us[1] <= 'Z') return us + 1;
+    return name;
+}
+
 /* The name the programmer wrote for a struct, never the module-prefixed
  * lookup key. Diagnostics and namespace-collision checks must use this. */
 static const char *struct_display_name(TypeChecker *checker, const char *name) {
     StructInfo *si = find_struct(checker, name);
-    return si ? si->display_name : name;
+    return si ? si->display_name : unqualified_display_name(name);
 }
 
 /* As struct_display_name, for enums. */
 static const char *enum_display_name(TypeChecker *checker, const char *name) {
     int i = find_enum_index(checker, name);
-    if (i < 0) return name;
+    if (i < 0) return unqualified_display_name(name);
     return checker->enum_display_names[i] ? checker->enum_display_names[i] : checker->enum_names[i];
 }
 
@@ -6251,7 +6264,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "undefined type '%s'; check the spelling or import the module that defines it",
-            struct_name);
+            unqualified_display_name(struct_name));
         diagnostic_error_message(checker->diag, "E4016", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         result = &TYPE_UNKNOWN;
@@ -7182,7 +7195,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'new()' requires a known type, but '%s' is not defined",
-                    new_type);
+                    unqualified_display_name(new_type));
                 diagnostic_error_message(checker->diag, "E3041", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -7873,7 +7886,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "undefined type '%s'; check the spelling or import the module that defines it",
-            node->data.var_decl.type_name);
+            unqualified_display_name(node->data.var_decl.type_name));
         diagnostic_error_message(checker->diag, "E4016", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
@@ -10278,7 +10291,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "undefined type '%s'; check the spelling or import the module that defines it",
-                p->type_name);
+                unqualified_display_name(p->type_name));
             diagnostic_error_message(checker->diag, "E4016", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -10429,7 +10442,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "undefined type '%s'; check the spelling or import the module that defines it",
-                    rtn);
+                    unqualified_display_name(rtn));
                 diagnostic_error_message(checker->diag, "E4016", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }

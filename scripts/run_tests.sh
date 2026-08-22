@@ -227,7 +227,8 @@ for test_file in "$TEST_DIR"/fail/errors/*.gray; do
             | grep -oE '[EPW][0-9]+' | head -1)
         if [ -n "$expected_error" ]; then
             output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$test_file" 2>&1) || true
-            if echo "$output" | grep -q "error\[$expected_error\]"; then
+            if echo "$output" | grep -q "error\[$expected_error\]" \
+                && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
                 pass "errors/$test_name"
             else
                 fail "errors/$test_name" "(expected $expected_error)"
