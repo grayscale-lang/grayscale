@@ -3188,7 +3188,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     !types_assignable(checker, param_t, arg_t) &&
                     !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                     !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                    !(arg_t->kind == TK_NIL &&
+                      (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected %s, got %s",
@@ -3495,7 +3497,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                                !(arg_t->kind == TK_NIL &&
+                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -3639,7 +3643,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                                !(arg_t->kind == TK_NIL &&
+                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -4608,7 +4614,10 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 !types_assignable(checker, param_t, arg_t) &&
                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                /* nil is a valid value for pointer and Error parameters */
+                !(arg_t->kind == TK_NIL &&
+                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
@@ -4787,7 +4796,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *pt = ref_sig->param_types[argument_index];
                         if (at && pt && at->kind != TK_UNKNOWN &&
                             pt->kind != TK_UNKNOWN &&
-                            !types_assignable(checker, pt, at)) {
+                            !types_assignable(checker, pt, at) &&
+                            !(at->kind == TK_NIL &&
+                              (pt->kind == TK_POINTER || pt->kind == TK_ERROR))) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",
@@ -4854,7 +4865,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *at = resolve_expression(checker, arg);
                         GrayType *pt = sig->param_types[argument_index] ? type_from_name(sig->param_types[argument_index]) : NULL;
                         if (at && pt && at->kind != TK_UNKNOWN && pt->kind != TK_UNKNOWN &&
-                            !types_assignable(checker, pt, at)) {
+                            !types_assignable(checker, pt, at) &&
+                            !(at->kind == TK_NIL &&
+                              (pt->kind == TK_POINTER || pt->kind == TK_ERROR))) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",

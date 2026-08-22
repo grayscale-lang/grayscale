@@ -423,6 +423,17 @@ Printing a pointer value (`println(p)`, `print(p)`, etc.) outputs the address in
 
 Dereferencing a `nil` pointer causes a runtime panic.
 
+`nil` is assignable anywhere a pointer type is expected — variable initialization, assignment, struct fields, and function call arguments (including struct function calls and default parameter values):
+
+```gray
+do make_node(parent ^Node) -> ^Node {
+    n = new(Node)
+    return n
+}
+
+root = make_node(nil)  // OK: nil satisfies the ^Node parameter
+```
+
 **Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
 
 ```gray

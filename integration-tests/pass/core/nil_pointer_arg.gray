@@ -1,0 +1,59 @@
+const Node struct {
+    val int
+
+    do set_parent(self Node, parent ^Node) -> int {
+        if parent == nil {
+            return -1
+        }
+        return parent^.val
+    }
+}
+
+do take_ptr(p ^Node) -> bool {
+    return p == nil
+}
+
+do make_node(parent ^Node) -> ^Node {
+    n = new(Node)
+    n.val = 1
+    return n
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if take_ptr(nil) {
+        println("  [PASS] plain function accepts nil for pointer param")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] plain function should accept nil for pointer param")
+        failed += 1
+    }
+
+    mut n = new(Node)
+    n.val = 5
+    if n.set_parent(nil) == -1 {
+        println("  [PASS] struct function accepts nil for pointer param")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct function should accept nil for pointer param")
+        failed += 1
+    }
+
+    root = make_node(nil)
+    if root^.val == 1 {
+        println("  [PASS] function returning pointer accepts nil argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] function returning pointer should accept nil argument")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
