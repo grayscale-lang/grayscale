@@ -101,6 +101,7 @@ static bool is_keyword_token(TokenType type) {
     case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
     case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
     case TOK_MODULE: case TOK_PRIVATE: case TOK_ALIAS:
+    case TOK_IS: case TOK_DEFAULT:
         return true;
     default:
         return false;
