@@ -1,0 +1,99 @@
+/*
+ * array_assign_escapes_scope_arena.gray - array assignment survives its
+ * for_each block's arena
+ *
+ * `arr2 = arr1` deep-copies the array, but the copy was always allocated
+ * in gray_default_arena. Inside a for_each body that is the iteration's
+ * own scratch arena, which is destroyed at the end of that same
+ * iteration -- so a variable declared outside the loop was left holding
+ * a dangling pointer to freed backing storage.
+ *
+ * Fix: the array branch of emit_assignment now swaps in _gray_outer_arena
+ * around the copy when inside a loop scope, the same way the map and
+ * struct branches already did.
+ */
+
+const Item struct {
+    tag int
+}
+
+const Inner struct {
+    items [^Item]
+}
+
+const Middle struct {
+    items [^Item]
+}
+
+const Outer struct {
+    middle ^Middle
+}
+
+do main() {
+    println("=== Array Assign Escapes Scope Arena Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Unconditional assignment inside a for_each body. */
+    a = new(Item)
+    a^.tag = 111
+    b = new(Item)
+    b^.tag = 222
+    inner = new(Inner)
+    inner^.items = {a, b}
+
+    mut found [^Item]
+    mut inners [^Inner] = {inner}
+    for_each x in inners {
+        found = x^.items
+    }
+    if len(found) == 2 && found[0]^.tag == 111 && found[1]^.tag == 222 {
+        println("  [PASS] unconditional assignment out of a for_each body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected len 2 with tags 111,222, got len ${len(found)}")
+        failed += 1
+    }
+
+    /* Same, but the assignment is wrapped in an if condition. */
+    mut found2 [^Item]
+    for_each x in inners {
+        if len(x^.items) > 0 {
+            found2 = x^.items
+        }
+    }
+    if len(found2) == 2 && found2[0]^.tag == 111 && found2[1]^.tag == 222 {
+        println("  [PASS] conditional assignment out of a for_each body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected len 2 with tags 111,222, got len ${len(found2)}")
+        failed += 1
+    }
+
+    /* Two levels of pointer dereference on the RHS. */
+    mid = new(Middle)
+    mid^.items = {a, b}
+    outer = new(Outer)
+    outer^.middle = mid
+
+    mut found3 [^Item]
+    mut outers [^Outer] = {outer}
+    for_each o in outers {
+        found3 = o^.middle^.items
+    }
+    if len(found3) == 2 && found3[0]^.tag == 111 && found3[1]^.tag == 222 {
+        println("  [PASS] assignment through two pointer derefs out of a for_each body")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected len 2 with tags 111,222, got len ${len(found3)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

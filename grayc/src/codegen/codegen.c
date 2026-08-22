@@ -8699,18 +8699,36 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
-    /* Array copy-by-default: arr2 = arr1 deep-copies the array.
-     * Routes through emit_deep_array_copy so nested inner arrays get
-     * independent backing storage ). Applies to any RHS expression
-     * (variables, call results, etc.) to prevent use-after-free when the
-     * source array lives on a function-local arena. */
+    /* Array copy-by-default: arr2 = arr1 deep-copies the array so nested
+     * inner arrays get independent backing storage. Applies to any RHS
+     * expression (variables, call results, etc.) to prevent use-after-free
+     * when the source array lives on a function-local arena.
+     * Inside a scoped arena (if-block / for_each), allocate the copy on
+     * the outer arena: the target variable outlives the block, so a copy
+     * made in the block's arena dangles once that arena is destroyed. */
     if (node->data.assign.op == TOK_ASSIGN) {
         GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
         if (tgt_t && tgt_t->kind == TK_ARRAY) {
+            int tag = codegen_next_id(codegen);
+            char src_var[VAR_NAME_BUF];
+            snprintf(src_var, sizeof(src_var), "_dtop%d", tag);
+            char full_tn[MSG_BUF_SIZE];
+            snprintf(full_tn, sizeof(full_tn), "[%s]", tgt_t->element_type ? tgt_t->element_type : "");
+            emit(codegen, "{ GrayArray ");
+            emit_formatted(codegen, "%s = ", src_var);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, "; ");
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
+            }
             emit_expression(codegen, node->data.assign.target);
             emit(codegen, " = ");
-            emit_deep_array_copy(codegen, node->data.assign.value, tgt_t->element_type);
-            emit(codegen, ";\n");
+            emit_value_deep_copy(codegen, full_tn, src_var);
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "; gray_default_arena = _esc_a; }\n");
+            } else {
+                emit(codegen, "; }\n");
+            }
             return;
         }
         /* Map copy-by-default: map2 = map1 deep-copies the map.
