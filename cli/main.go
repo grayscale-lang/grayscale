@@ -33,7 +33,7 @@ const asciiBanner = "" +
 	" | |_| | | | (_| | |_| \\__ \\ (_| (_| | |  __/\n" +
 	"  \\____|_|  \\__,_|\\__, |___/\\___\\__,_|_|\\___|\n" +
 	"                  |___/\n" +
-	" Programming On Your Terms\n"
+	" Simple to write. Safe to run.\n"
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {

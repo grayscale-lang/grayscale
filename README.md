@@ -3,8 +3,7 @@
 
 <p align="center">
   <h1 align="center">The Grayscale Programming Language</h1>
-  <!-- <h2 align="center">Programming On Your Terms</h2> -->
-  <p align="center"><em>A compiled language where simplicity meets flexibility.</em>
+  <p align="center"><em>Grayscale is a programming language for software that's simple to write and safe to run.</em>
 </p>
 
 
@@ -33,11 +32,10 @@
 
 ## Why Grayscale?
 
-- **Readable syntax** — `for_each`, `as_long_as`(alias is `while`), `if`/`or`/`otherwise`(alias is `else`), `when`/`is`, `in`/`not_in`(alias is `!in`), `or_return`, `ensure`, `bit_and`/`bit_or`/`bit_xor`, etc.
-- **Versatility through simplicity** — Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
-- **A compiler that works **for** the programmer** — Clear error messages, a built-in formatter, live reloading, and built-in language and stdlib docs via `gray man`. When questions arise, Grayscale provides the answers.
-
-- **Safe by default** — Automatic Scope-Based Arena Management for memory, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
+- **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
+- **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
+- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
 ---
 
 ## The Standard Library

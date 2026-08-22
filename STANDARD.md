@@ -32,11 +32,12 @@ This document defines the Grayscale programming language. It serves as the autho
 
 ### 1.2 Overview
 
-Grayscale is a compiled language where simplicity meets flexibility. Inspired by C, Odin, Rust, and Go. The language emphasizes:
+Grayscale is a programming language for software that's simple to write and safe to run. Inspired by C, Odin, Rust, and Go. The language emphasizes:
 
-- **Simplicity**: A small, focused feature set that stays out of your way
-- **Flexibility**: Readable syntax that bends to how you think
-- **Safety**: Static type checking with runtime bounds checking
+- **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
+- **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
+- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
 
 ---
 

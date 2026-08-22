@@ -38,7 +38,7 @@
 #define GRAY_EXT_LEN  5
 
 static void print_usage(void) {
-    fprintf(stderr, "Grayscale v%s — Programming On Your Terms\n", GRAY_VERSION);
+    fprintf(stderr, "Grayscale v%s — Simple to write. Safe to run.\n", GRAY_VERSION);
     fprintf(stderr, "\nUsage:\n");
     fprintf(stderr, "  gray <file.gray> [options]         Compile and run\n");
     fprintf(stderr, "  gray build <file.gray> [options]   Compile to binary\n");
