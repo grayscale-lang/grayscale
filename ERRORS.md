@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 383 codes** (262 errors, 17 warnings, 104 panics)
+**Total: 384 codes** (262 errors, 18 warnings, 104 panics)
 
 ---
 
@@ -297,6 +297,7 @@
 | `W3004` | safety | pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
 | `W3006` | safety | empty default branch in when statement; unmatched values are silently ignored |
+| `W3007` | deprecation | reference to a function, struct, or enum marked #deprecated |
 
 ---
 
@@ -434,4 +435,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-22 00:41:09 UTC*
+*Generated on 2026-08-22 08:31:56 UTC*

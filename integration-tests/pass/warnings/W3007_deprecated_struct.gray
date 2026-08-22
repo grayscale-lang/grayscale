@@ -1,0 +1,22 @@
+/*
+ * Warning Test: W3007 - deprecated-struct
+ * Expected: warning when a #deprecated struct's type is referenced
+ * (var-decl annotation, struct-literal construction). Deprecating a
+ * struct does NOT cascade to its own (non-deprecated) struct-functions.
+ */
+
+#deprecated("Point is old, use Point3D")
+const Point struct {
+    x int
+    y int
+
+    do sum(self Point) -> int {
+        return self.x + self.y
+    }
+}
+
+do main() {
+    mut p Point = Point{x: 1, y: 2} // warning: Point is deprecated (both the annotation and the literal)
+    mut total int = p.sum()         // no warning: struct deprecation does not cascade to struct-functions
+    println("${total}")
+}

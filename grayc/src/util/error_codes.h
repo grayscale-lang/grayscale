@@ -430,7 +430,8 @@
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3004", "safety", "pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \
-    GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored")
+    GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored") \
+    GRAY_WARNING("W3007", "deprecation", "reference to a function, struct, or enum marked #deprecated")
 
 /* Look up the canonical message for a code like "E3050" or "W2001".
  * Returns NULL if the code is unknown. The returned pointer is a

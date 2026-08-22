@@ -35,6 +35,8 @@ typedef struct {
     const char **field_names;
     GrayType **field_types;
     int field_count;
+    bool is_deprecated;          /* true if declared with #deprecated attribute */
+    const char *deprecated_message; /* NULL if bare #deprecated */
 } StructInfo;
 
 typedef struct {
@@ -48,6 +50,8 @@ typedef struct {
     int def_line;       /* line where function was declared */
     bool is_private;    /* true if declared with 'private' keyword */
     bool is_discard;    /* true if declared with #discard attribute */
+    bool is_deprecated;    /* true if declared with #deprecated attribute */
+    const char *deprecated_message; /* NULL if bare #deprecated */
 
     /* Wildcard type support .
      * A function is "generic" if any of its param or return type strings
@@ -102,6 +106,8 @@ typedef struct {
     int **enum_payload_counts;         /* [enum_idx][variant_idx] → count */
     bool *enum_is_tagged;              /* parallel to enum_names */
     bool *enum_is_flags;               /* parallel to enum_names */
+    bool *enum_is_deprecated;          /* parallel to enum_names: #deprecated attribute */
+    const char **enum_deprecated_messages; /* parallel to enum_names: NULL if bare #deprecated */
     int enum_count;
     int enum_cap;
 
@@ -127,6 +133,14 @@ typedef struct {
                                            * main(); used to reject `return` —
                                            * main exits when control reaches
                                            * the closing brace */
+    AstNode *current_func_decl;           /* NODE_FUNC_DECL of the function whose
+                                           * body is currently being checked, or
+                                           * NULL. Compared against FuncSig.decl
+                                           * (pointer identity, not name — struct
+                                           * functions are registered under a
+                                           * prefixed lookup key) to exempt a
+                                           * #deprecated function's own recursive
+                                           * calls from warning on itself. */
     const char **current_return_names; /* named return variable names (NULL entries for unnamed) */
 
     /* Pass 3 / slice 4: when true, resolve_expr must not write

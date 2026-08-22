@@ -2092,6 +2092,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     node->data.struct_decl.funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
 
     bool pending_discard = false;
+    bool pending_deprecated = false;
+    const char *pending_deprecated_message = NULL;
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
@@ -2112,6 +2114,33 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             next_token(parser);
             continue;
         }
+        /* #deprecated inside struct body: same pending-flag treatment,
+         * independent of pending_discard so both can stack on one function. */
+        if (current_token_is(parser, TOK_DEPRECATED)) {
+            next_token(parser); /* consume #deprecated */
+            pending_deprecated = true;
+            pending_deprecated_message = NULL;
+            if (current_token_is(parser, TOK_LPAREN)) {
+                next_token(parser); /* consume ( */
+                if (current_token_is(parser, TOK_STRING)) {
+                    pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
+                    next_token(parser); /* consume string */
+                } else {
+                    diagnostic_error_message(parser->diag, "E2002",
+                        arena_copy_string(parser->arena,
+                            "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                }
+                if (current_token_is(parser, TOK_RPAREN)) {
+                    next_token(parser); /* consume ) */
+                } else {
+                    diagnostic_error_message(parser->diag, "E2002",
+                        arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                }
+            }
+            continue;
+        }
         /* Check for struct-namespaced function: do func() or private do func() */
         if (current_token_is(parser, TOK_DO)) {
             AstNode *fn = parse_func_declaration(parser);
@@ -2119,6 +2148,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 if (pending_discard) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
+                }
+                if (pending_deprecated) {
+                    fn->data.func_decl.is_deprecated = true;
+                    fn->data.func_decl.deprecated_message = pending_deprecated_message;
+                    pending_deprecated = false;
+                    pending_deprecated_message = NULL;
                 }
                 ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
                     node->data.struct_decl.func_count, func_cap);
@@ -2135,6 +2170,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 if (pending_discard) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
+                }
+                if (pending_deprecated) {
+                    fn->data.func_decl.is_deprecated = true;
+                    fn->data.func_decl.deprecated_message = pending_deprecated_message;
+                    pending_deprecated = false;
+                    pending_deprecated_message = NULL;
                 }
                 ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
                     node->data.struct_decl.func_count, func_cap);
@@ -2994,6 +3035,48 @@ static AstNode *parse_statement(Parser *parser) {
         } else {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
+    case TOK_DEPRECATED: {
+        /* #deprecated or #deprecated("message"); applies to the next
+         * function, struct, or enum declaration. */
+        next_token(parser); /* consume #deprecated */
+        const char *message = NULL;
+        if (current_token_is(parser, TOK_LPAREN)) {
+            next_token(parser); /* consume ( */
+            if (current_token_is(parser, TOK_STRING)) {
+                message = arena_copy_string(parser->arena, parser->cur_token.literal);
+                next_token(parser); /* consume string */
+            } else {
+                diagnostic_error_message(parser->diag, "E2002",
+                    arena_copy_string(parser->arena,
+                        "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            }
+            if (current_token_is(parser, TOK_RPAREN)) {
+                next_token(parser); /* consume ) */
+            } else {
+                diagnostic_error_message(parser->diag, "E2002",
+                    arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            }
+        }
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_deprecated = true;
+            stmt->data.func_decl.deprecated_message = message;
+        } else if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_deprecated = true;
+            stmt->data.struct_decl.deprecated_message = message;
+        } else if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_deprecated = true;
+            stmt->data.enum_decl.deprecated_message = message;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;
