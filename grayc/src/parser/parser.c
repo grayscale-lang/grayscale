@@ -2724,6 +2724,7 @@ static AstNode *parse_when_statement(Parser *parser) {
 
             WhenCase *when_case = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
             memset(when_case, 0, sizeof(WhenCase));
+            when_case->kw_token = parser->cur_token;
 
             int val_cap = GROW_ARRAY_INIT_CAP;
             when_case->value_count = 0;

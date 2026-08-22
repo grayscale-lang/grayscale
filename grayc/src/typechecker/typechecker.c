@@ -7418,99 +7418,129 @@ static void check_reserved_name(TypeChecker *checker, const char *name, const ch
 
 /* --- Keyword alias consistency (E2088) --- */
 
+/* One alias family: the spelling that first established the file's dialect.
+ * `dialect` is 0 for the canonical spelling and 1 for the alias; the two words
+ * of a joint pair (when/is vs switch/case, or/otherwise vs elif/else) share a
+ * single tracker and pass the same dialect id, so crossing them is a mix. */
 typedef struct {
     const char *form;   /* first keyword form seen (e.g. "while" or "as_long_as") */
+    int dialect;
     int line;
     int column;
 } AliasFirst;
 
+typedef struct {
+    AliasFirst loop;    /* while / as_long_as                     */
+    AliasFirst branch;  /* or + otherwise / elif + else   (joint) */
+    AliasFirst not_in;  /* !in / not_in                           */
+    AliasFirst func;    /* do / fn                                */
+    AliasFirst match;   /* when + is / switch + case      (joint) */
+    AliasFirst ensure;  /* ensure / defer                         */
+} AliasState;
+
+/* Record the spelling that establishes this file's dialect for one alias
+ * family, or report E2088 when a later spelling belongs to the other side. */
+static void note_alias(TypeChecker *checker, AliasFirst *slot, const char *form,
+                       int dialect, int line, int column, const char *file) {
+    if (!slot->form) {
+        slot->form = form;
+        slot->dialect = dialect;
+        slot->line = line;
+        slot->column = column;
+    } else if (slot->dialect != dialect) {
+        char *msg = typechecker_format(checker,
+            "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
+            form, slot->form, slot->line);
+        diagnostic_error_message(checker->diag, "E2088", msg, file, line, column, 0);
+    }
+}
+
+/* Match a token spelling against one alias family and record it. Spellings that
+ * belong to no pair (a leading 'if', a when case with no keyword) are ignored. */
+static void note_alias_form(TypeChecker *checker, AliasFirst *slot,
+                            const char *form, const char *canonical, const char *alias,
+                            int line, int column, const char *file) {
+    if (!form) return;
+    if (strcmp(form, canonical) == 0) {
+        note_alias(checker, slot, form, 0, line, column, file);
+    } else if (strcmp(form, alias) == 0) {
+        note_alias(checker, slot, form, 1, line, column, file);
+    }
+}
+
 static void check_alias_walk(TypeChecker *checker, AstNode *node,
-                             AliasFirst *while_first, AliasFirst *else_first,
-                             AliasFirst *not_in_first, const char *file);
+                             AliasState *state, const char *file);
 
 static void check_alias_block(TypeChecker *checker, AstNode *block,
-                              AliasFirst *while_first, AliasFirst *else_first,
-                              AliasFirst *not_in_first, const char *file) {
+                              AliasState *state, const char *file) {
     if (!block || block->kind != NODE_BLOCK_STMT) return;
     for (int i = 0; i < block->data.block.count; i++) {
-        check_alias_walk(checker, block->data.block.stmts[i],
-                         while_first, else_first, not_in_first, file);
+        check_alias_walk(checker, block->data.block.stmts[i], state, file);
     }
 }
 
 /* Recursively scan an expression tree for the !in/not_in membership operator. */
 static void check_alias_expr(TypeChecker *checker, AstNode *expr,
-                             AliasFirst *not_in_first, const char *file) {
+                             AliasState *state, const char *file) {
     if (!expr) return;
 
     switch (expr->kind) {
     case NODE_INFIX_EXPR: {
         if (expr->data.infix.op == TOK_NOT_IN) {
-            const char *form = expr->token.literal;
-            if (form && (strcmp(form, "!in") == 0 || strcmp(form, "not_in") == 0)) {
-                if (!not_in_first->form) {
-                    not_in_first->form = form;
-                    not_in_first->line = expr->token.line;
-                    not_in_first->column = expr->token.column;
-                } else if (strcmp(not_in_first->form, form) != 0) {
-                    char *msg = typechecker_format(checker,
-                        "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
-                        form, not_in_first->form, not_in_first->line);
-                    diagnostic_error_message(checker->diag, "E2088", msg,
-                        file, expr->token.line, expr->token.column, 0);
-                }
-            }
+            note_alias_form(checker, &state->not_in, expr->token.literal,
+                            "not_in", "!in",
+                            expr->token.line, expr->token.column, file);
         }
-        check_alias_expr(checker, expr->data.infix.left, not_in_first, file);
-        check_alias_expr(checker, expr->data.infix.right, not_in_first, file);
+        check_alias_expr(checker, expr->data.infix.left, state, file);
+        check_alias_expr(checker, expr->data.infix.right, state, file);
         break;
     }
     case NODE_PREFIX_EXPR:
-        check_alias_expr(checker, expr->data.prefix.right, not_in_first, file);
+        check_alias_expr(checker, expr->data.prefix.right, state, file);
         break;
     case NODE_POSTFIX_EXPR:
-        check_alias_expr(checker, expr->data.postfix.left, not_in_first, file);
+        check_alias_expr(checker, expr->data.postfix.left, state, file);
         break;
     case NODE_CALL_EXPR:
-        check_alias_expr(checker, expr->data.call.function, not_in_first, file);
+        check_alias_expr(checker, expr->data.call.function, state, file);
         for (int i = 0; i < expr->data.call.arg_count; i++) {
-            check_alias_expr(checker, expr->data.call.args[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.call.args[i], state, file);
         }
         break;
     case NODE_INDEX_EXPR:
-        check_alias_expr(checker, expr->data.index_expr.left, not_in_first, file);
-        check_alias_expr(checker, expr->data.index_expr.index, not_in_first, file);
+        check_alias_expr(checker, expr->data.index_expr.left, state, file);
+        check_alias_expr(checker, expr->data.index_expr.index, state, file);
         break;
     case NODE_MEMBER_EXPR:
-        check_alias_expr(checker, expr->data.member.object, not_in_first, file);
+        check_alias_expr(checker, expr->data.member.object, state, file);
         break;
     case NODE_CAST_EXPR:
-        check_alias_expr(checker, expr->data.cast.value, not_in_first, file);
+        check_alias_expr(checker, expr->data.cast.value, state, file);
         break;
     case NODE_RANGE_EXPR:
-        check_alias_expr(checker, expr->data.range_expr.start, not_in_first, file);
-        check_alias_expr(checker, expr->data.range_expr.end, not_in_first, file);
-        check_alias_expr(checker, expr->data.range_expr.step, not_in_first, file);
+        check_alias_expr(checker, expr->data.range_expr.start, state, file);
+        check_alias_expr(checker, expr->data.range_expr.end, state, file);
+        check_alias_expr(checker, expr->data.range_expr.step, state, file);
         break;
     case NODE_ARRAY_VALUE:
         for (int i = 0; i < expr->data.array_value.count; i++) {
-            check_alias_expr(checker, expr->data.array_value.elements[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.array_value.elements[i], state, file);
         }
         break;
     case NODE_MAP_VALUE:
         for (int i = 0; i < expr->data.map_value.count; i++) {
-            check_alias_expr(checker, expr->data.map_value.keys[i], not_in_first, file);
-            check_alias_expr(checker, expr->data.map_value.values[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.map_value.keys[i], state, file);
+            check_alias_expr(checker, expr->data.map_value.values[i], state, file);
         }
         break;
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < expr->data.struct_value.count; i++) {
-            check_alias_expr(checker, expr->data.struct_value.field_values[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.struct_value.field_values[i], state, file);
         }
         break;
     case NODE_INTERPOLATED_STRING:
         for (int i = 0; i < expr->data.interpolated_string.part_count; i++) {
-            check_alias_expr(checker, expr->data.interpolated_string.parts[i], not_in_first, file);
+            check_alias_expr(checker, expr->data.interpolated_string.parts[i], state, file);
         }
         break;
     default:
@@ -7519,107 +7549,102 @@ static void check_alias_expr(TypeChecker *checker, AstNode *expr,
 }
 
 static void check_alias_walk(TypeChecker *checker, AstNode *node,
-                             AliasFirst *while_first, AliasFirst *else_first,
-                             AliasFirst *not_in_first, const char *file) {
+                             AliasState *state, const char *file) {
     if (!node) return;
 
     switch (node->kind) {
     case NODE_WHILE_STMT: {
-        const char *form = node->token.literal;
-        if (form && (strcmp(form, "while") == 0 || strcmp(form, "as_long_as") == 0)) {
-            if (!while_first->form) {
-                while_first->form = form;
-                while_first->line = node->token.line;
-                while_first->column = node->token.column;
-            } else if (strcmp(while_first->form, form) != 0) {
-                char *msg = typechecker_format(checker,
-                    "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
-                    form, while_first->form, while_first->line);
-                diagnostic_error_message(checker->diag, "E2088", msg,
-                    file, node->token.line, node->token.column, 0);
-            }
-        }
-        check_alias_expr(checker, node->data.while_stmt.condition, not_in_first, file);
-        check_alias_block(checker, node->data.while_stmt.body,
-                          while_first, else_first, not_in_first, file);
+        note_alias_form(checker, &state->loop, node->token.literal,
+                        "as_long_as", "while",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.while_stmt.condition, state, file);
+        check_alias_block(checker, node->data.while_stmt.body, state, file);
         break;
     }
     case NODE_IF_STMT: {
-        /* Check else/otherwise alias if this node has an alternative with a stored else_token */
+        /* 'or'/'elif' arrives as a nested if node whose own token is the
+         * branch keyword; a leading 'if' matches neither and is skipped. */
+        note_alias_form(checker, &state->branch, node->token.literal,
+                        "or", "elif",
+                        node->token.line, node->token.column, file);
+        /* The final branch shares the same tracker: a file that writes 'elif'
+         * must close with 'else', and one that writes 'or' must close with
+         * 'otherwise'. */
         if (node->data.if_stmt.alternative && node->data.if_stmt.else_token.line > 0) {
-            const char *form = node->data.if_stmt.else_token.literal;
-            if (form && (strcmp(form, "else") == 0 || strcmp(form, "otherwise") == 0)) {
-                if (!else_first->form) {
-                    else_first->form = form;
-                    else_first->line = node->data.if_stmt.else_token.line;
-                    else_first->column = node->data.if_stmt.else_token.column;
-                } else if (strcmp(else_first->form, form) != 0) {
-                    char *msg = typechecker_format(checker,
-                        "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
-                        form, else_first->form, else_first->line);
-                    diagnostic_error_message(checker->diag, "E2088", msg,
-                        file, node->data.if_stmt.else_token.line,
-                        node->data.if_stmt.else_token.column, 0);
-                }
-            }
+            note_alias_form(checker, &state->branch, node->data.if_stmt.else_token.literal,
+                            "otherwise", "else",
+                            node->data.if_stmt.else_token.line,
+                            node->data.if_stmt.else_token.column, file);
         }
-        check_alias_expr(checker, node->data.if_stmt.condition, not_in_first, file);
-        check_alias_block(checker, node->data.if_stmt.consequence,
-                          while_first, else_first, not_in_first, file);
+        check_alias_expr(checker, node->data.if_stmt.condition, state, file);
+        check_alias_block(checker, node->data.if_stmt.consequence, state, file);
         if (node->data.if_stmt.alternative) {
-            check_alias_walk(checker, node->data.if_stmt.alternative,
-                             while_first, else_first, not_in_first, file);
+            check_alias_walk(checker, node->data.if_stmt.alternative, state, file);
         }
         break;
     }
     case NODE_BLOCK_STMT:
-        check_alias_block(checker, node, while_first, else_first, not_in_first, file);
+        check_alias_block(checker, node, state, file);
         break;
     case NODE_FOR_STMT:
-        check_alias_expr(checker, node->data.for_stmt.iterable, not_in_first, file);
-        check_alias_block(checker, node->data.for_stmt.body,
-                          while_first, else_first, not_in_first, file);
+        check_alias_expr(checker, node->data.for_stmt.iterable, state, file);
+        check_alias_block(checker, node->data.for_stmt.body, state, file);
         break;
     case NODE_FOR_EACH_STMT:
-        check_alias_expr(checker, node->data.for_each.collection, not_in_first, file);
-        check_alias_block(checker, node->data.for_each.body,
-                          while_first, else_first, not_in_first, file);
+        check_alias_expr(checker, node->data.for_each.collection, state, file);
+        check_alias_block(checker, node->data.for_each.body, state, file);
         break;
     case NODE_LOOP_STMT:
-        check_alias_block(checker, node->data.loop_stmt.body,
-                          while_first, else_first, not_in_first, file);
+        check_alias_block(checker, node->data.loop_stmt.body, state, file);
         break;
     case NODE_FUNC_DECL:
-        check_alias_block(checker, node->data.func_decl.body,
-                          while_first, else_first, not_in_first, file);
+        note_alias_form(checker, &state->func, node->token.literal,
+                        "do", "fn",
+                        node->token.line, node->token.column, file);
+        check_alias_block(checker, node->data.func_decl.body, state, file);
+        break;
+    case NODE_STRUCT_DECL:
+        /* Struct functions are declared with 'do'/'fn' too. */
+        for (int i = 0; i < node->data.struct_decl.func_count; i++) {
+            check_alias_walk(checker, node->data.struct_decl.funcs[i].func_decl, state, file);
+        }
         break;
     case NODE_WHEN_STMT:
-        check_alias_expr(checker, node->data.when_stmt.value, not_in_first, file);
+        note_alias_form(checker, &state->match, node->token.literal,
+                        "when", "switch",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.when_stmt.value, state, file);
         for (int i = 0; i < node->data.when_stmt.case_count; i++) {
-            check_alias_block(checker, node->data.when_stmt.cases[i].body,
-                              while_first, else_first, not_in_first, file);
+            /* Case keywords share the tracker: 'switch' pairs with 'case',
+             * 'when' with 'is'. */
+            Token kw = node->data.when_stmt.cases[i].kw_token;
+            note_alias_form(checker, &state->match, kw.literal,
+                            "is", "case", kw.line, kw.column, file);
+            check_alias_block(checker, node->data.when_stmt.cases[i].body, state, file);
         }
         if (node->data.when_stmt.default_body) {
-            check_alias_block(checker, node->data.when_stmt.default_body,
-                              while_first, else_first, not_in_first, file);
+            check_alias_block(checker, node->data.when_stmt.default_body, state, file);
         }
         break;
     case NODE_VAR_DECL:
-        check_alias_expr(checker, node->data.var_decl.value, not_in_first, file);
+        check_alias_expr(checker, node->data.var_decl.value, state, file);
         break;
     case NODE_ASSIGN_STMT:
-        check_alias_expr(checker, node->data.assign.value, not_in_first, file);
+        check_alias_expr(checker, node->data.assign.value, state, file);
         break;
     case NODE_RETURN_STMT:
         for (int i = 0; i < node->data.return_stmt.count; i++) {
-            check_alias_expr(checker, node->data.return_stmt.values[i], not_in_first, file);
+            check_alias_expr(checker, node->data.return_stmt.values[i], state, file);
         }
         break;
     case NODE_ENSURE_STMT:
-        check_alias_expr(checker, node->data.ensure_stmt.expr, not_in_first, file);
+        note_alias_form(checker, &state->ensure, node->token.literal,
+                        "ensure", "defer",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.ensure_stmt.expr, state, file);
         break;
     case NODE_EXPR_STMT:
-        check_alias_expr(checker, node->data.expr_stmt.expr, not_in_first, file);
+        check_alias_expr(checker, node->data.expr_stmt.expr, state, file);
         break;
     default:
         break;
@@ -7631,9 +7656,7 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
 
     /* Track per-file state: group statements by source file */
     const char *current_file = NULL;
-    AliasFirst while_first = {0};
-    AliasFirst else_first = {0};
-    AliasFirst not_in_first = {0};
+    AliasState state = {0};
 
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -7647,13 +7670,10 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
             (current_file && stmt_file && strcmp(current_file, stmt_file) == 0);
         if (!same_file) {
             current_file = stmt_file;
-            while_first = (AliasFirst){0};
-            else_first = (AliasFirst){0};
-            not_in_first = (AliasFirst){0};
+            state = (AliasState){0};
         }
 
-        check_alias_walk(checker, stmt, &while_first, &else_first, &not_in_first,
-                         stmt_file ? stmt_file : checker->file);
+        check_alias_walk(checker, stmt, &state, stmt_file ? stmt_file : checker->file);
     }
 }
 
@@ -12413,7 +12433,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         }
     }
 
-    /* E2088: keyword alias consistency (while vs as_long_as, else vs otherwise) */
+    /* E2088: keyword alias consistency (while/as_long_as, do/fn, when+is/switch+case, etc.) */
     check_keyword_alias_consistency(checker, program);
 
     /* Pass 2: check all statements */

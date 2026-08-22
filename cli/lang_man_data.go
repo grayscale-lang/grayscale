@@ -34,8 +34,14 @@ var langManDocs = map[string]LangManEntry{
 	"or": {
 		Kind:    "keyword",
 		Syntax:  "} or <condition> {",
-		Desc:    "Else-if branch following an 'if'; introduces another condition. Equivalent to 'else if' in other languages.",
+		Desc:    "Else-if branch following an 'if'; introduces another condition. Equivalent to 'else if' in other languages. Alias: 'elif'.",
 		Example: "if x < 0 {\n    println(\"neg\")\n} or x == 0 {\n    println(\"zero\")\n}",
+	},
+	"elif": {
+		Kind:    "keyword",
+		Syntax:  "} elif <condition> {",
+		Desc:    "Alias for 'or'. Else-if branch following an 'if'. Pairs with 'else': an 'elif' chain must close with 'else', not 'otherwise'.",
+		Example: "if x < 0 {\n    println(\"neg\")\n} elif x == 0 {\n    println(\"zero\")\n} else {\n    println(\"pos\")\n}",
 	},
 	"for": {
 		Kind:    "keyword",
@@ -70,14 +76,26 @@ var langManDocs = map[string]LangManEntry{
 	"when": {
 		Kind:    "keyword",
 		Syntax:  "when <expr> { is <val> { ... } default { ... } }",
-		Desc:    "Pattern-matching statement. Matches the expression against literal values, ranges, or enum variants.",
+		Desc:    "Pattern-matching statement. Matches the expression against literal values, ranges, or enum variants. Alias: 'switch'.",
 		Example: "when x {\n    is 1 { println(\"one\") }\n    is 2, 3 { println(\"two or three\") }\n    default { println(\"other\") }\n}",
 	},
 	"is": {
 		Kind:    "keyword",
 		Syntax:  "is <value> { ... }",
-		Desc:    "A branch inside a 'when' block that matches a specific value, list of values, range, or enum variant.",
+		Desc:    "A branch inside a 'when' block that matches a specific value, list of values, range, or enum variant. Alias: 'case'.",
 		Example: "when dir {\n    is Direction.NORTH { println(\"north\") }\n    default { println(\"other\") }\n}",
+	},
+	"switch": {
+		Kind:    "keyword",
+		Syntax:  "switch <expr> { case <val> { ... } default { ... } }",
+		Desc:    "Alias for 'when'. Pattern-matching statement. Pairs with 'case': a 'switch' must use 'case' branches, not 'is'.",
+		Example: "switch x {\n    case 1 { println(\"one\") }\n    case 2, 3 { println(\"two or three\") }\n    default { println(\"other\") }\n}",
+	},
+	"case": {
+		Kind:    "keyword",
+		Syntax:  "case <value> { ... }",
+		Desc:    "Alias for 'is'. A branch inside a 'switch' block that matches a specific value, list of values, range, or enum variant.",
+		Example: "switch dir {\n    case Direction.NORTH { println(\"north\") }\n    default { println(\"other\") }\n}",
 	},
 	"break": {
 		Kind:    "keyword",
@@ -108,8 +126,14 @@ var langManDocs = map[string]LangManEntry{
 	"ensure": {
 		Kind:    "keyword",
 		Syntax:  "ensure <function_call>()",
-		Desc:    "Registers a function to be called when the enclosing function exits, whether via normal return or early return.",
+		Desc:    "Registers a function to be called when the enclosing function exits, whether via normal return or early return. Alias: 'defer'.",
 		Example: "do process() {\n    ensure cleanup()\n    // ... do work ...\n}",
+	},
+	"defer": {
+		Kind:    "keyword",
+		Syntax:  "defer <function_call>()",
+		Desc:    "Alias for 'ensure'. Registers a function to be called when the enclosing function exits, whether via normal return or early return.",
+		Example: "do process() {\n    defer cleanup()\n    // ... do work ...\n}",
 	},
 	"or_return": {
 		Kind:    "keyword",
@@ -134,8 +158,14 @@ var langManDocs = map[string]LangManEntry{
 	"do": {
 		Kind:    "keyword",
 		Syntax:  "do <name>(<params>) [-> <ReturnType>] { ... }",
-		Desc:    "Declares a function. Introduces both top-level functions and struct-namespaced methods.",
+		Desc:    "Declares a function. Introduces both top-level functions and struct-namespaced functions. Alias: 'fn'.",
 		Example: "do add(a int, b int) -> int {\n    return a + b\n}",
+	},
+	"fn": {
+		Kind:    "keyword",
+		Syntax:  "fn <name>(<params>) [-> <ReturnType>] { ... }",
+		Desc:    "Alias for 'do'. Declares a function, at the top level or inside a struct body.",
+		Example: "fn add(a int, b int) -> int {\n    return a + b\n}",
 	},
 	"struct": {
 		Kind:    "keyword",
@@ -435,9 +465,9 @@ type langGroup struct {
 // langCategories maps category names to their display groups.
 var langCategories = map[string][]langGroup{
 	"keywords": {
-		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "for", "for_each", "while", "as_long_as", "loop", "when", "is", "break", "continue", "default", "return"}},
-		{Label: "Error handling", Names: []string{"ensure", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "struct", "enum", "alias", "import", "using", "new", "private"}},
+		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
+		{Label: "Error handling", Names: []string{"ensure", "defer", "or_return"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "new", "private"}},
 		{Label: "Operators     ", Names: []string{"in", "not_in"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},

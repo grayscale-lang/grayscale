@@ -1,0 +1,16 @@
+/* Error Test: E2088 - 'or' crossed with 'else'
+ *
+ * The branch keywords are tracked jointly: a chain using 'or' must
+ * close with 'otherwise', not 'else'.
+ */
+// expect-error: E2088
+do main() {
+    mut x int = 10
+    if x < 0 {
+        println("neg")
+    } or x == 0 {
+        println("zero")
+    } else {
+        println("pos")
+    }
+}

@@ -1,0 +1,13 @@
+/* Error Test: E2088 - 'switch' crossed with 'is'
+ *
+ * when/is and switch/case are tracked jointly: both words of the pair
+ * must come from the same dialect.
+ */
+// expect-error: E2088
+do main() {
+    mut x int = 1
+    switch x {
+        is 1 { println("one") }
+        default { println("other") }
+    }
+}

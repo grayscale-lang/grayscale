@@ -1,0 +1,46 @@
+/*
+ * keyword_alias_defer.gray - defer as alias for ensure
+ *
+ * `defer` is a syntax alias for `ensure`. Both keywords produce the same
+ * token, so they are interchangeable, but a single file must pick one.
+ */
+
+mut cleanups int = 0
+
+do cleanup() {
+    cleanups += 1
+}
+
+do work(early bool) {
+    defer cleanup()
+    if early {
+        return
+    }
+    println("  work completed")
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    work(false)
+    if cleanups == 1 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    work(true)
+    if cleanups == 2 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("keyword_alias_defer: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("FAIL")
+    } otherwise {
+        println("PASS")
+    }
+}

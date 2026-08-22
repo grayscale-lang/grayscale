@@ -10,6 +10,6 @@ const MyStruct struct {
 }
 
 do main() {
-    mut fn = ()MyStruct.fake_func
-    println(fn(5))
+    mut f = ()MyStruct.fake_func
+    println(f(5))
 }

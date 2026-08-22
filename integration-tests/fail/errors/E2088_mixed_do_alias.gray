@@ -1,0 +1,9 @@
+/* Error Test: E2088 - mixed do/fn aliases in same file */
+// expect-error: E2088
+do helper() -> int {
+    return 1
+}
+
+fn main() {
+    println(helper())
+}

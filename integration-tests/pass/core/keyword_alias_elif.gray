@@ -1,0 +1,55 @@
+/*
+ * keyword_alias_elif.gray - elif as alias for or
+ *
+ * `elif` is a syntax alias for `or`. The branch keywords are tracked
+ * jointly: a file that writes `elif` must close the chain with `else`,
+ * and a file that writes `or` must close it with `otherwise`.
+ */
+
+do classify(n int) -> string {
+    if n < 0 {
+        return "negative"
+    } elif n == 0 {
+        return "zero"
+    } elif n < 10 {
+        return "small"
+    } else {
+        return "large"
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if classify(-3) == "negative" {
+        passed += 1
+    } else {
+        failed += 1
+    }
+
+    if classify(0) == "zero" {
+        passed += 1
+    } else {
+        failed += 1
+    }
+
+    if classify(4) == "small" {
+        passed += 1
+    } else {
+        failed += 1
+    }
+
+    if classify(99) == "large" {
+        passed += 1
+    } else {
+        failed += 1
+    }
+
+    println("keyword_alias_elif: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("FAIL")
+    } else {
+        println("PASS")
+    }
+}

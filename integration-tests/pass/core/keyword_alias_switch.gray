@@ -1,0 +1,60 @@
+/*
+ * keyword_alias_switch.gray - switch/case as aliases for when/is
+ *
+ * `switch` and `case` are syntax aliases for `when` and `is`. The two
+ * words move together: a file using `switch` must use `case`, and a file
+ * using `when` must use `is`. `default` is spelled the same either way.
+ */
+
+const Direction enum {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST
+}
+
+do name_of(d Direction) -> string {
+    switch d {
+        case Direction.NORTH { return "north" }
+        case Direction.SOUTH { return "south" }
+        case Direction.EAST  { return "east" }
+        default { return "west" }
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if name_of(Direction.NORTH) == "north" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    if name_of(Direction.WEST) == "west" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    mut n int = 2
+    mut label string = ""
+    switch n {
+        case 1 { label = "one" }
+        case 2, 3 { label = "two-or-three" }
+        default { label = "other" }
+    }
+    if label == "two-or-three" {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("keyword_alias_switch: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("FAIL")
+    } otherwise {
+        println("PASS")
+    }
+}

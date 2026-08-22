@@ -122,6 +122,7 @@ typedef struct {
     int value_count;
     AstNode *body;
     bool is_range;
+    Token kw_token;              /* preserves is/case keyword */
 } WhenCase;
 
 /* AST Node - tagged union */

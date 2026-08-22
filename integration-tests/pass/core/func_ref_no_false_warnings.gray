@@ -19,8 +19,8 @@ const Helpers struct {
     }
 }
 
-do apply(n int, fn func(int) -> int) -> int {
-    return fn(n)
+do apply(n int, f func(int) -> int) -> int {
+    return f(n)
 }
 
 do main() {
@@ -49,8 +49,8 @@ do main() {
     }
 
     // Test 3: variable holding func ref that is only called — no W1001
-    const fn = ()square
-    mut result3 int = fn(7)
+    const f = ()square
+    mut result3 int = f(7)
     if result3 == 49 {
         println("  [PASS] func ref variable called — no false unused warning")
         passed += 1

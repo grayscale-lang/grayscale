@@ -4,6 +4,6 @@
 
 
 do main() {
-    mut fn = ()nonexistent_function
-    println(fn(5))
+    mut f = ()nonexistent_function
+    println(f(5))
 }

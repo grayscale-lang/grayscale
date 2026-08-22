@@ -37,10 +37,10 @@ do filter(arr [int], test func(int) -> bool) -> [int] {
     return result
 }
 
-do apply(arr [int], fn func(int) -> int) -> [int] {
+do apply(arr [int], f func(int) -> int) -> [int] {
     mut result [int] = {}
     for_each item in arr {
-        arrays.append(result, fn(item))
+        arrays.append(result, f(item))
     }
     return result
 }

@@ -3,6 +3,9 @@
  *
  * `else` is a syntax alias for `otherwise`.
  * Both keywords produce the same token, so they are interchangeable.
+ *
+ * The branch keywords are tracked jointly: a file that closes a chain
+ * with `else` must spell its middle branches `elif`, not `or`.
  */
 
 do main() {
@@ -17,20 +20,20 @@ do main() {
         passed += 1
     }
 
-    // -- else in if/or/else chain --
+    // -- else in if/elif/else chain --
     if x > 100 {
         failed += 1
-    } or x == 5 {
+    } elif x == 5 {
         failed += 1
     } else {
         passed += 1
     }
 
-    // -- mixing else with or (else acts as otherwise) --
+    // -- else after a multi-branch elif chain --
     mut name string = "Grayscale"
     if name == "Go" {
         failed += 1
-    } or name == "Rust" {
+    } elif name == "Rust" {
         failed += 1
     } else {
         passed += 1

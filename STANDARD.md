@@ -99,16 +99,17 @@ The following words are reserved and may not be used as identifiers:
 
 **Control flow:**
 ```
-as_long_as   break       continue    default
-else         ensure      for         for_each    if
-is           loop        or          or_return   otherwise
-return       when        while
+as_long_as   break       case        continue    default
+defer        elif        else        ensure      for
+for_each     if          is          loop        or
+or_return    otherwise   return      switch      when
+while
 ```
 
 **Declarations:**
 ```
-alias        const       do          enum        import      mut
-new          private     struct      use*        using
+alias        const       do          enum        fn          import
+mut          new         private     struct      use*        using
 ```
 
 > 💡 **Tip:** `use*` is reserved exclusively for the `import and use` statement. It has no other syntactic role.
@@ -138,11 +139,39 @@ true
 
 Some keywords have shorter or more familiar aliases. Both forms are identical and produce the same token:
 
-| Alias   | Canonical      | Purpose              |
-|---------|----------------|----------------------|
-| `else`  | `otherwise`    | Default branch       |
-| `while` | `as_long_as`   | Condition loop       |
-| `!in`   | `not_in`       | Non-membership test  |
+| Alias    | Canonical      | Purpose               |
+|----------|----------------|-----------------------|
+| `else`   | `otherwise`    | Default branch        |
+| `elif`   | `or`           | Else-if branch        |
+| `while`  | `as_long_as`   | Condition loop        |
+| `fn`     | `do`           | Function declaration  |
+| `switch` | `when`         | Pattern match         |
+| `case`   | `is`           | Pattern match branch  |
+| `defer`  | `ensure`       | Deferred call         |
+| `!in`    | `not_in`       | Non-membership test   |
+
+Each pair is tracked independently, so one file may write `while` and `fn` while another writes
+`as_long_as` and `do`. Mixing the two spellings of a single pair within one file is an `E2088` error.
+
+**Joint pairs.** Two of the pairs span two keywords each, and both words move together — a file must
+take both from the same side or neither:
+
+| Dialect     | Pattern match      | Branch chain        |
+|-------------|--------------------|---------------------|
+| Canonical   | `when` … `is`      | `or` … `otherwise`  |
+| Alias       | `switch` … `case`  | `elif` … `else`     |
+
+```gray
+switch x { case 1 { } default { } }    // ok
+when x   { is 1 { } default { } }      // ok
+switch x { is 1 { } default { } }      // E2088 — crossed dialects
+
+if a { } elif b { } else { }           // ok
+if a { } or b { } otherwise { }        // ok
+if a { } elif b { } otherwise { }      // E2088 — crossed dialects
+```
+
+`if` and `default` are spelled the same in both dialects and never vary.
 
 > 💡 **Tip:** The `map` keyword is optional in type position — `[string:int]` and `map[string:int]` are identical. The parser normalizes both to the same canonical form.
 
@@ -1335,9 +1364,21 @@ The `or` keyword introduces additional conditions.
 
 The `otherwise` keyword introduces the default case.
 
-`else` is an alias for `otherwise`. Both are valid, user's choice.
+`elif` is an alias for `or`, and `else` is an alias for `otherwise`. Both dialects are valid, user's
+choice — but the two branch keywords move together, so an `elif` chain must close with `else` and an
+`or` chain must close with `otherwise`. See [Section 2.5](#25-keywords).
 
-> 💡 **Tip:** `else` and `otherwise` are identical. Pick whichever reads more naturally to you and stick with it.
+```gray
+if x < 0 {
+    println("negative")
+} elif x == 0 {
+    println("zero")
+} else {
+    println("positive")
+}
+```
+
+> 💡 **Tip:** `or`/`otherwise` and `elif`/`else` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 6.3 Loop Statements
 
@@ -1516,6 +1557,18 @@ when x {
 }
 ```
 
+`switch` is an alias for `when` and `case` is an alias for `is`. The two words move together: a
+`switch` must use `case` branches and a `when` must use `is` branches. `default` is spelled the same
+either way. See [Section 2.5](#25-keywords).
+
+```gray
+switch x {
+    case 1 { println("one") }
+    case 2, 3 { println("two or three") }
+    default { println("other") }
+}
+```
+
 **Allowed condition types:** `int`, `uint`, `string`, `char`, `byte`, `bool`, `float`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
 
 **Strict mode** requires all possible values to be handled:
@@ -1548,6 +1601,10 @@ do process_file() {
     // cleanup() will be called when function ends
 }
 ```
+
+`defer` is an alias for `ensure`. Both are valid, user's choice.
+
+> 💡 **Tip:** `defer` and `ensure` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 6.7 Or-Return Statement
 
@@ -1586,6 +1643,16 @@ do process() {
     // Void function (no return type)
 }
 ```
+
+`fn` is an alias for `do`. Both are valid, user's choice.
+
+```gray
+fn add(a int, b int) -> int {
+    return a + b
+}
+```
+
+> 💡 **Tip:** `fn` and `do` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 7.2 Parameters
 
