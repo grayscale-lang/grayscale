@@ -1,0 +1,29 @@
+/*
+ * main.gray - imports both "types" and "other". other.gray never imports
+ * "types" itself, so its local variable named "types" must not be flagged
+ * by E4014 just because this file happens to import a module of that name.
+ */
+
+import "./types"
+import "./other"
+
+do main() {
+    println("=== E4014 Per-File Import Scope Test ===")
+
+    f = types.Foo{x: 1}
+    if f.x == 1 {
+        println("  [PASS] unrelated 'types' module is usable here")
+    } otherwise {
+        println("  [FAIL] unrelated 'types' module is usable here")
+    }
+
+    r = other.use_local()
+    if r == "a" {
+        println("  [PASS] other.gray's local 'types' variable does not shadow a module it never imported")
+    } otherwise {
+        println("  [FAIL] other.gray's local 'types' variable does not shadow a module it never imported")
+    }
+
+    println("")
+    println("ALL TESTS PASSED")
+}

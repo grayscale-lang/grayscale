@@ -8659,11 +8659,23 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E4013", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
             }
         }
-        /* E4014: shadows an imported module */
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], node->data.var_decl.name) == 0) {
-                diagnostic_error_code_formatted(checker->diag, "E4014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
-                break;
+        /* E4014: shadows an imported module. imported_modules[] is a single
+         * whole-program list covering every file's imports, so it must be
+         * filtered to the imports visible in this variable's own file —
+         * otherwise a local named after some unrelated file's import gets
+         * flagged. token.file is NULL for main-file nodes, matching
+         * import_files[]'s own NULL-means-main-file convention. */
+        {
+            const char *var_file = node->token.file;
+            for (int mi = 0; mi < checker->import_count; mi++) {
+                const char *imp_file = checker->import_files[mi];
+                bool same_file = (!var_file && !imp_file) ||
+                    (var_file && imp_file && strcmp(var_file, imp_file) == 0);
+                if (!same_file) continue;
+                if (strcmp(checker->imported_modules[mi], node->data.var_decl.name) == 0) {
+                    diagnostic_error_code_formatted(checker->diag, "E4014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
+                    break;
+                }
             }
         }
         if (declared->kind == TK_UNKNOWN &&
