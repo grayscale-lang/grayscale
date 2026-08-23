@@ -1845,6 +1845,80 @@ static const UsingConst _using_consts[] = {
     {NULL,NULL,TK_UNKNOWN}
 };
 
+/* Stdlib functions that return more than one value without being fallible.
+ * Fallible functions carry their (T, Error) shape through stdlib_func_meta
+ * instead, so they are deliberately absent here. */
+#define STDLIB_MAX_RETURN_SLOTS 4
+typedef struct {
+    const char *mod;
+    const char *fn;
+    int count;
+    GrayType *slots[STDLIB_MAX_RETURN_SLOTS];
+} StdlibMultiReturn;
+
+static const StdlibMultiReturn _stdlib_multi_returns[] = {
+    {"channels", "try_receive", 2, {&TYPE_INT, &TYPE_BOOL}},
+    {"math",     "modf",        2, {&TYPE_FLOAT, &TYPE_FLOAT}},
+    {"os",       "exec",        4, {&TYPE_INT, &TYPE_STRING, &TYPE_STRING, &TYPE_BOOL}},
+    {NULL, NULL, 0, {NULL}}
+};
+
+static const StdlibMultiReturn *find_stdlib_multi_return(const char *mod, const char *fn) {
+    if (!mod || !fn) return NULL;
+    for (int i = 0; _stdlib_multi_returns[i].mod; i++) {
+        if (strcmp(_stdlib_multi_returns[i].mod, mod) == 0 &&
+            strcmp(_stdlib_multi_returns[i].fn, fn) == 0)
+            return &_stdlib_multi_returns[i];
+    }
+    return NULL;
+}
+
+/* Resolve a bare call name to the stdlib module supplying it through
+ * `import and use` / `using`, or NULL when no using-module provides it. */
+static const char *find_using_stdlib_module(TypeChecker *checker, const char *fn) {
+    if (!fn) return NULL;
+    for (int i = 0; i < checker->using_module_count; i++) {
+        if (!using_module_accessible(checker, i)) continue;
+        const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[i]);
+        if (find_stdlib_meta(real_mod, fn)) return real_mod;
+    }
+    return NULL;
+}
+
+static void set_temp_return_slots(TypeChecker *checker, const char *tmp_name,
+                                  GrayType **slots, int count) {
+    Symbol *sym = scope_lookup_local(checker->current_scope, tmp_name);
+    if (!sym) { free(slots); return; }
+    sym->ret_types = slots;
+    sym->ret_count = count;
+    sym->ret_types_owned = true;
+}
+
+/* Give a destructuring temp its slot types for a stdlib call, covering both
+ * the fallible (T, Error) shape and the non-fallible multi-value functions.
+ * Returns true when slots were applied. */
+static bool apply_stdlib_call_returns(TypeChecker *checker, const char *tmp_name,
+                                      const char *mod, const char *fn) {
+    const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, fn);
+    if (mr) {
+        GrayType **rt = xmalloc(sizeof(GrayType *) * (size_t)mr->count);
+        for (int i = 0; i < mr->count; i++) rt[i] = mr->slots[i];
+        set_temp_return_slots(checker, tmp_name, rt, mr->count);
+        return true;
+    }
+    if (typechecker_is_fallible_stdlib(mod, fn)) {
+        GrayType *primary = typechecker_get_fallible_stdlib_type(mod, fn);
+        if (primary) {
+            GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
+            rt[0] = primary;
+            rt[1] = type_from_name("Error");
+            set_temp_return_slots(checker, tmp_name, rt, 2);
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Find the index of a module name in checker->imported_modules[], or -1. */
 static int typechecker_find_import_index(TypeChecker *checker, const char *mod) {
     const char *real = typechecker_resolve_alias(checker, mod);
@@ -8314,6 +8388,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (call_fn->kind == NODE_LABEL) {
                 call_name = call_fn->data.label.value;
                 sig = find_func(checker, call_name);
+                /* A bare call carries no module qualifier; resolve it through
+                 * the using-modules so the checks below consult the module
+                 * that actually supplies it rather than matching the name
+                 * against every stdlib module. */
+                if (!sig) call_mod = find_using_stdlib_module(checker, call_name);
             } else if (call_fn->kind == NODE_MEMBER_EXPR &&
                        call_fn->data.member.object->kind == NODE_LABEL) {
                 const char *mod_raw = call_fn->data.member.object->data.label.value;
@@ -8332,16 +8411,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     diagnostic_error_code_formatted(checker->diag, "E3089", NODE_FILE(checker, node),
                         node->token.line, node->token.column, 0,
                         call_name, call_name, call_name);
-                } else if (call_mod &&
-                           ((strcmp(call_mod, "channels") == 0 &&
-                             strcmp(call_name, "try_receive") == 0) ||
-                            (strcmp(call_mod, "math") == 0 &&
-                             strcmp(call_name, "modf") == 0))) {
-                    /* Non-fallible stdlib functions that return a pair;
-                     * capturing one slot silently drops the other. */
-                    diagnostic_error_code_formatted(checker->diag, "E3040", NODE_FILE(checker, node),
-                        node->token.line, node->token.column, 0,
-                        call_name, 2, call_name);
+                } else if (call_name) {
+                    /* Non-fallible stdlib functions returning several values;
+                     * capturing one slot silently drops the rest. Bare calls
+                     * have no module qualifier, so fall back to the
+                     * using-modules for those. */
+                    const StdlibMultiReturn *mr =
+                        find_stdlib_multi_return(call_mod, call_name);
+                    if (mr) {
+                        diagnostic_error_code_formatted(checker->diag, "E3040",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            call_name, mr->count, call_name);
+                    }
                 }
             }
         }
@@ -9069,6 +9150,15 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * subsequent uses error as undefined. */
             if (fn->kind == NODE_LABEL) {
                 FuncSig *sig = find_func(checker, fn->data.label.value);
+                if (!sig) {
+                    /* A bare stdlib call reaching its module through
+                     * `import and use` / `using` has no FuncSig to consult. */
+                    const char *umod = find_using_stdlib_module(checker, fn->data.label.value);
+                    if (umod) {
+                        apply_stdlib_call_returns(checker, node->data.var_decl.name,
+                                                  umod, fn->data.label.value);
+                    }
+                }
                 if (sig && sig->return_count > 1) {
                     Symbol *sym = scope_lookup_local(checker->current_scope,
                         node->data.var_decl.name);
@@ -9118,60 +9208,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 fn->data.member.object->kind == NODE_LABEL) {
                 const char *mod = fn->data.member.object->data.label.value;
                 const char *mfn = fn->data.member.member;
-                if (typechecker_is_fallible_stdlib(mod, mfn)) {
-                    GrayType *primary = typechecker_get_fallible_stdlib_type(mod, mfn);
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym && primary) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
-                        rt[0] = primary;
-                        rt[1] = type_from_name("Error");
-                        sym->ret_types = rt;
-                        sym->ret_count = 2;
-                        sym->ret_types_owned = true;
-                    }
-                }
-                /* os.exec returns (int, string, string, bool) — synthesize 4-type slots */
-                if (strcmp(mod, "os") == 0 && strcmp(mfn, "exec") == 0) {
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 4);
-                        rt[0] = &TYPE_INT;
-                        rt[1] = &TYPE_STRING;
-                        rt[2] = &TYPE_STRING;
-                        rt[3] = &TYPE_BOOL;
-                        sym->ret_types = rt;
-                        sym->ret_count = 4;
-                        sym->ret_types_owned = true;
-                    }
-                }
-                /* math.modf returns (float, float) */
-                if (strcmp(mod, "math") == 0 && strcmp(mfn, "modf") == 0) {
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
-                        rt[0] = &TYPE_FLOAT;
-                        rt[1] = &TYPE_FLOAT;
-                        sym->ret_types = rt;
-                        sym->ret_count = 2;
-                        sym->ret_types_owned = true;
-                    }
-                }
-                /* channels.try_receive returns (int, bool) */
-                if (strcmp(mod, "channels") == 0 && strcmp(mfn, "try_receive") == 0) {
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
-                        rt[0] = &TYPE_INT;
-                        rt[1] = &TYPE_BOOL;
-                        sym->ret_types = rt;
-                        sym->ret_count = 2;
-                        sym->ret_types_owned = true;
-                    }
-                }
+                apply_stdlib_call_returns(checker, node->data.var_decl.name, mod, mfn);
             }
             /* User-defined module calls (mod.func); look up the prefixed
              * function signature and propagate multi-return types so
