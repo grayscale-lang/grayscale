@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3139 - a function that returns the caller's type argument
+ * cannot declare a concrete return type. No call site is present; the
+ * declaration alone is the error.
+ * Expected: "returns an instance of the type argument 't', but declares the
+ * concrete return type 'Foo'"
+ */
+
+const Foo struct {
+    name string
+}
+
+do new_T(t <?>) -> Foo {
+    return new(t)^
+}
+
+do main() {
+    println("unreached")
+}

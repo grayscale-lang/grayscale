@@ -2486,6 +2486,25 @@ mut x = make(int)      // Error E3127 — int is not a struct
 mut y = make(1 + 2)    // Error E3128 — not a type name
 ```
 
+**Returning the type argument requires a wildcard return type (E3139):**
+
+A concrete return type is a promise that has to hold for every caller. Returning the type argument breaks it for all but the caller that happens to pass a matching type, so the declaration is rejected on its own — no call site required:
+
+```gray
+do new_T(t <?>) -> Foo {
+    return new(t)^      // Error E3139 — returns whatever the caller passed
+}
+```
+
+Write the return type as `?` or `^?` instead. The same applies to returning a wildcard-typed parameter (`do id(v ?) -> Foo { return v }`).
+
+A concrete return type stays legal whenever the body returns a value of that type:
+
+```gray
+do new_foo(t <?>) -> Foo { return new(Foo)^ }   // OK — returns an actual Foo
+do size_T(t <?>) -> int  { return size_of(t) }  // OK — size_of is always int
+```
+
 ---
 
 ## 8. Modules

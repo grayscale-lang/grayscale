@@ -9984,6 +9984,47 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 }
 
+/* A returned value whose type is the caller's type argument, or a
+ * wildcard-typed parameter. Such a value has no fixed type — it is a Foo only
+ * for the one caller that passes Foo — so it cannot satisfy a concrete
+ * declared return type. Reports the offending name and what it is; returns
+ * NULL when the value's type is fixed. Derefs are transparent: `new(t)^` is
+ * the type argument just as `new(t)` is. */
+static const char *return_value_is_type_argument(TypeChecker *checker,
+    AstNode *value, const char **what, AstNode **at) {
+    if (!value) return NULL;
+    if (value->kind == NODE_POSTFIX_EXPR && value->data.postfix.op == TOK_CARET)
+        return return_value_is_type_argument(checker, value->data.postfix.left, what, at);
+    *at = value;
+    /* The parser normalises a type-parameter name in a type position to "?",
+     * so match either form and report the name the user wrote. */
+    const char *tp = checker->type_param_name;
+    const char *built = NULL;
+    if (value->kind == NODE_NEW_EXPR) built = value->data.new_expr.type_name;
+    else if (value->kind == NODE_STRUCT_VALUE) built = value->data.struct_value.name;
+    if (built && (type_name_has_wildcard(built) || (tp && strcmp(built, tp) == 0))) {
+        *what = "an instance of the type argument";
+        return tp ? tp : built;
+    }
+    /* A parameter declared with a wildcard type (e.g. `v ?`) carries the same
+     * contradiction: its type is the argument's, not the declared one. */
+    if (value->kind == NODE_LABEL && checker->current_func_decl) {
+        AstNode *fd = checker->current_func_decl;
+        for (int i = 0; i < fd->data.func_decl.param_count; i++) {
+            Param *p = &fd->data.func_decl.params[i];
+            if (p->is_type_param || !p->name ||
+                strcmp(p->name, value->data.label.value) != 0)
+                continue;
+            if (type_name_has_wildcard(p->type_name)) {
+                *what = "a wildcard-typed value";
+                return p->name;
+            }
+            break;
+        }
+    }
+    return NULL;
+}
+
 static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         /* E3040: multi-return call in single-value return position */
@@ -10041,6 +10082,30 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             if (type_name_str && type_name_has_wildcard(type_name_str)) {
                 diagnostic_error_code(checker->diag, "E3071", NODE_FILE(checker, return_val), return_val->token.line, return_val->token.column, 0);
             }
+        }
+    }
+
+    /* E3139: a concrete declared return type is a promise that has to hold for
+     * every caller. Returning the caller's type argument breaks it for all but
+     * the one caller that happens to pass a matching type. Checked here rather
+     * than during monomorphisation so it fires on the declaration alone, even
+     * when the function is never called. */
+    if (!checker->suppress_typetable_writes &&
+        checker->current_return_count > 0 && node->data.return_stmt.count > 0) {
+        int n = node->data.return_stmt.count;
+        int slots = n < checker->current_return_count ? n : checker->current_return_count;
+        for (int i = 0; i < slots; i++) {
+            const char *declared = checker->current_return_type_names
+                ? checker->current_return_type_names[i] : NULL;
+            if (!declared || type_name_has_wildcard(declared)) continue;
+            const char *what = NULL;
+            AstNode *return_val = node->data.return_stmt.values[i];
+            AstNode *at = return_val;
+            const char *offender = return_value_is_type_argument(checker, return_val, &what, &at);
+            if (!offender) continue;
+            diagnostic_error_code_formatted(checker->diag, "E3139",
+                NODE_FILE(checker, at), at->token.line,
+                at->token.column, 0, what, offender, declared, declared);
         }
     }
 

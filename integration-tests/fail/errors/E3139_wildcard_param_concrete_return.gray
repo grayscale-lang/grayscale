@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3139 - returning a wildcard-typed parameter from a function
+ * that declares a concrete return type
+ * Expected: "returns a wildcard-typed value 'v', but declares the concrete
+ * return type 'Foo'"
+ */
+
+const Foo struct {
+    name string
+}
+
+do id(v ?) -> Foo {
+    return v
+}
+
+do main() {
+    println("unreached")
+}

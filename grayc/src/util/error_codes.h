@@ -220,7 +220,8 @@
     GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
     GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
-    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308")
+    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308") \
+    GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
