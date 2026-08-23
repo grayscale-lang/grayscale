@@ -10179,39 +10179,40 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             typetable_set(checker->type_table, node->data.return_stmt.values[0], expected);
             ret_t = expected;
         }
+        /* One report per mismatch. A struct or enum pair is checked both by
+         * types_assignable() and by a display-name comparison — the latter so
+         * cross-module aliases (e.g. types_Item vs Item) unify correctly — and
+         * either failing is a mismatch. Reporting them separately meant one
+         * mistake surfaced twice under the same code with two wordings.
+         * The message names the kind for struct and enum types, matching how
+         * argument mismatches are worded elsewhere in the checker. */
         if (ret_t->kind != TK_UNKNOWN && expected->kind != TK_UNKNOWN &&
-            ret_t->kind != TK_NIL &&
-            !types_assignable(checker, expected, ret_t)) {
-            char *msg = NULL;
-            msg = typechecker_format(checker,
-                "return type mismatch: expected %s, got %s",
-                type_display_name(checker, expected), type_display_name(checker, ret_t));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        /* Struct-to-struct return name mismatch.
-         * Use display-name comparison so cross-module aliases
-         * (e.g. types_Item vs Item) unify correctly. */
-        if (ret_t->kind == TK_STRUCT && expected->kind == TK_STRUCT &&
-            ret_t->name && expected->name &&
-            !typechecker_same_struct_type(checker, ret_t->name, expected->name)) {
-            char *msg = NULL;
-            msg = typechecker_format(checker,
-                "return type mismatch: expected '%s', got '%s'",
-                type_display_name(checker, expected), type_display_name(checker, ret_t));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        /* Enum-to-enum return name mismatch */
-        if (ret_t->kind == TK_ENUM && expected->kind == TK_ENUM &&
-            ret_t->name && expected->name &&
-            !typechecker_same_enum_type(checker, ret_t->name, expected->name)) {
-            char *msg = NULL;
-            msg = typechecker_format(checker,
-                "return type mismatch: expected enum '%s', got enum '%s'",
-                type_display_name(checker, expected), type_display_name(checker, ret_t));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            ret_t->kind != TK_NIL) {
+            bool assignable = types_assignable(checker, expected, ret_t);
+            bool named_pair = ret_t->name && expected->name &&
+                ret_t->kind == expected->kind &&
+                (ret_t->kind == TK_STRUCT || ret_t->kind == TK_ENUM);
+            bool same_named = true;
+            if (named_pair) {
+                same_named = ret_t->kind == TK_STRUCT
+                    ? typechecker_same_struct_type(checker, ret_t->name, expected->name)
+                    : typechecker_same_enum_type(checker, ret_t->name, expected->name);
+            }
+            if (!assignable || !same_named) {
+                const char *kind = "";
+                if (named_pair) kind = ret_t->kind == TK_STRUCT ? "struct " : "enum ";
+                char *msg = NULL;
+                msg = named_pair
+                    ? typechecker_format(checker,
+                        "return type mismatch: expected %s'%s', got %s'%s'",
+                        kind, type_display_name(checker, expected),
+                        kind, type_display_name(checker, ret_t))
+                    : typechecker_format(checker,
+                        "return type mismatch: expected %s, got %s",
+                        type_display_name(checker, expected), type_display_name(checker, ret_t));
+                diagnostic_error_message(checker->diag, "E3001", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
         }
         /* E3066: func signature mismatch in return */
         if (ret_t->kind == TK_FUNCTION && expected->kind == TK_FUNCTION &&

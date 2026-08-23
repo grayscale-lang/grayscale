@@ -3,6 +3,8 @@
  * function shadows it for bare calls inside the struct
  * Expected: "struct function 'Actor.rename' conflicts with the top-level function 'rename'"
  */
+// expect-error: E4022
+// expect-error-count: 1
 
 do rename(n string) -> string {
     return n

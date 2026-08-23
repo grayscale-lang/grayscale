@@ -1,0 +1,24 @@
+/*
+ * Error Test: E3001 - a struct-to-struct return mismatch is one mistake and
+ * must be reported exactly once
+ * Expected: "return type mismatch: expected struct 'Play', got struct 'Actor'"
+ */
+// expect-error: E3001
+// expect-error-count: 1
+
+const Play struct {
+    name string
+}
+
+const Actor struct {
+    id int
+}
+
+do make_play(a Actor) -> Play {
+    return a
+}
+
+do main() {
+    mut x = make_play(Actor{id: 1})
+    println(x.name)
+}

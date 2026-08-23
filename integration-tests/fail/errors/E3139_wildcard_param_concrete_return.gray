@@ -4,6 +4,8 @@
  * Expected: "returns a wildcard-typed value 'v', but declares the concrete
  * return type 'Foo'"
  */
+// expect-error: E3139
+// expect-error-count: 1
 
 const Foo struct {
     name string

@@ -1,6 +1,6 @@
 /*
  * Error Test: E3001 - returning wrong struct type
- * Expected: "return type mismatch: expected 'Cat', got 'Dog'" error
+ * Expected: "return type mismatch: expected struct 'Cat', got struct 'Dog'" error
  */
 
 const Cat struct {

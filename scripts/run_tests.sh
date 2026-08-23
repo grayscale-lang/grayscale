@@ -220,14 +220,26 @@ printf "${BOLD}FAIL tests (expecting errors):${NC}\n"
 # Those run through 'check' and must produce that code. Without it a test
 # only has to fail somehow, which cannot tell a typechecker rejection apart
 # from the C compiler choking on what the typechecker let through.
+#
+# A test may also pin how many errors the file produces:
+#
+#     // expect-error-count: 1
+#
+# One mistake should be reported once; without this a duplicate diagnostic
+# still satisfies the code check above and goes unnoticed.
 for test_file in "$TEST_DIR"/fail/errors/*.gray; do
     if [ -f "$test_file" ]; then
         test_name=$(basename "$test_file" .gray)
         expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$test_file" \
             | grep -oE '[EPW][0-9]+' | head -1)
+        expected_count=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error-count:[[:space:]]*[0-9]+' "$test_file" \
+            | grep -oE '[0-9]+' | head -1)
         if [ -n "$expected_error" ]; then
             output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$test_file" 2>&1) || true
-            if echo "$output" | grep -q "error\[$expected_error\]" \
+            actual_count=$(echo "$output" | grep -cE '^error\[' || true)
+            if [ -n "$expected_count" ] && [ "$actual_count" != "$expected_count" ]; then
+                fail "errors/$test_name" "(expected $expected_count error(s), got $actual_count)"
+            elif echo "$output" | grep -q "error\[$expected_error\]" \
                 && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
                 pass "errors/$test_name"
             else
