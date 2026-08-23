@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 389 codes** (265 errors, 18 warnings, 106 panics)
+**Total: 391 codes** (267 errors, 18 warnings, 106 panics)
 
 ---
 
@@ -225,6 +225,7 @@
 | `E4020` | names | type alias '%s' is already declared |
 | `E4021` | names | type alias '%s' is private and cannot be accessed from outside its file |
 | `E4022` | names | struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them |
+| `E4023` | names | module '%s' has no function named '%s' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -262,6 +263,7 @@
 | `E6003` | imports | directory '%s' contains no .gray files |
 | `E6004` | imports | cannot import own module directory |
 | `E6008` | imports | '%s.%s' is a module constant and cannot be assigned to |
+| `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -440,4 +442,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-23 20:56:42 UTC*
+*Generated on 2026-08-23 21:22:52 UTC*

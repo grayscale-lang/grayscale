@@ -1665,6 +1665,42 @@ static bool typechecker_is_imported_module(TypeChecker *checker, const char *nam
     return false;
 }
 
+/* Nearest imported module name to `name`, or NULL. Kept separate from
+ * suggest_similar_name() so a variable typo is never answered with a module. */
+static const char *suggest_similar_module(TypeChecker *checker, const char *name) {
+    const char *best = NULL;
+    int best_dist = 3;
+    for (int i = 0; i < checker->import_count; i++) {
+        int d = levenshtein(name, checker->imported_modules[i]);
+        if (d > 0 && d < best_dist) {
+            best_dist = d;
+            best = checker->imported_modules[i];
+        }
+    }
+    return best;
+}
+
+/* Nearest function within `mod`, or NULL. Module functions are registered
+ * under <mod>_<func>, so the comparison is against the suffix — matching the
+ * mangled key would put every candidate out of Levenshtein range. */
+static const char *suggest_similar_module_func(TypeChecker *checker,
+    const char *mod, const char *fname) {
+    const char *best = NULL;
+    int best_dist = 3;
+    size_t mod_len = strlen(mod);
+    for (int i = 0; i < checker->func_count; i++) {
+        const char *reg = checker->funcs[i].name;
+        if (strncmp(reg, mod, mod_len) != 0 || reg[mod_len] != '_') continue;
+        const char *bare = reg + mod_len + 1;
+        int d = levenshtein(fname, bare);
+        if (d > 0 && d < best_dist) {
+            best_dist = d;
+            best = bare;
+        }
+    }
+    return best;
+}
+
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->import_count; i++) {
         if (strcmp(checker->imported_modules[i], name) == 0)
@@ -3942,8 +3978,49 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 diagnostic_error_message(checker->diag, "E3013", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 result = &TYPE_UNKNOWN;
+            } else if (sym) {
+                /* A variable whose type never resolved; whatever went wrong
+                 * with it was already reported. Stay quiet so this call does
+                 * not add a second, less useful error on top. */
+                result = &TYPE_UNKNOWN;
             } else {
-                result = &TYPE_VOID;
+                /* Nothing in the chain matched. Resolving to void here made a
+                 * typo indistinguishable from a genuine void call: the result
+                 * being used drew a false E3038 blaming the callee, and the
+                 * result being discarded reached the C compiler as a call to
+                 * an undeclared function. Name the real problem instead. */
+                if (typechecker_is_imported_module(checker, mod)) {
+                    const char *near = suggest_similar_module_func(checker, mod, mfn);
+                    if (near) {
+                        char help[MSG_BUF_SIZE];
+                        snprintf(help, sizeof(help), "did you mean '%s.%s'?", mod_raw, near);
+                        diagnostic_error_code_formatted_help(checker->diag, "E4023",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            arena_copy_string(checker->arena, help), mod_raw, mfn);
+                    } else {
+                        diagnostic_error_code_formatted(checker->diag, "E4023",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            mod_raw, mfn);
+                    }
+                } else {
+                    /* The module name is the mistake, so point at it rather
+                     * than at the call's parenthesis. */
+                    AstNode *at = (fn && fn->kind == NODE_MEMBER_EXPR &&
+                                   fn->data.member.object) ? fn->data.member.object : node;
+                    const char *near = suggest_similar_module(checker, mod_raw);
+                    if (near) {
+                        char help[MSG_BUF_SIZE];
+                        snprintf(help, sizeof(help), "did you mean '%s'?", near);
+                        diagnostic_error_code_formatted_help(checker->diag, "E6010",
+                            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+                            arena_copy_string(checker->arena, help), mod_raw);
+                    } else {
+                        diagnostic_error_code_formatted(checker->diag, "E6010",
+                            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+                            mod_raw);
+                    }
+                }
+                result = &TYPE_UNKNOWN;
             }
         }
     }

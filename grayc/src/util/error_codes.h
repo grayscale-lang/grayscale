@@ -243,7 +243,8 @@
     GRAY_ERROR("E4019", "names", "cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values") \
     GRAY_ERROR("E4020", "names", "type alias '%s' is already declared") \
     GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file") \
-    GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them")
+    GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them") \
+    GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -286,7 +287,8 @@
     GRAY_ERROR("E6002", "imports", "cannot find file or directory '%s'") \
     GRAY_ERROR("E6003", "imports", "directory '%s' contains no .gray files") \
     GRAY_ERROR("E6004", "imports", "cannot import own module directory") \
-    GRAY_ERROR("E6008", "imports", "'%s.%s' is a module constant and cannot be assigned to")
+    GRAY_ERROR("E6008", "imports", "'%s.%s' is a module constant and cannot be assigned to") \
+    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \

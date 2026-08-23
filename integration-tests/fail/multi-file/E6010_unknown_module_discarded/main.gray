@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6010 - a misspelled module name in a call whose result is
+ * discarded. This reported nothing at all and reached the C compiler as a
+ * call to an undeclared function.
+ * Expected: "unknown module 'util'"
+ */
+// expect-error: E6010
+// expect-error-count: 1
+
+import "./utils.gray"
+
+do main() {
+    util.get_user_in()
+}

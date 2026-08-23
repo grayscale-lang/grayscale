@@ -161,12 +161,17 @@ void diagnostic_warning_message(DiagnosticList *diagnostics, const char *code, c
 /* strdup is used so the formatted buffer outlives this stack frame;
  * the diagnostic list stores the pointer by reference. The tiny leak
  * per error is acceptable for a short-lived compiler invocation. */
-static void emit_code_formatted(DiagnosticList *diagnostics, Severity sev, const char *code,
-    const char *file, int line, int col_start, int end_col, va_list ap) {
+static void emit_code_formatted_help(DiagnosticList *diagnostics, Severity sev, const char *code,
+    const char *file, int line, int col_start, int end_col, const char *help, va_list ap) {
     const char *tmpl = lookup_or_placeholder(code);
     char buf[DIAG_FORMAT_BUF];
     vsnprintf(buf, sizeof(buf), tmpl, ap);
-    diagnostic_add(diagnostics, sev, code, strdup(buf), file, line, col_start, end_col, NULL);
+    diagnostic_add(diagnostics, sev, code, strdup(buf), file, line, col_start, end_col, help);
+}
+
+static void emit_code_formatted(DiagnosticList *diagnostics, Severity sev, const char *code,
+    const char *file, int line, int col_start, int end_col, va_list ap) {
+    emit_code_formatted_help(diagnostics, sev, code, file, line, col_start, end_col, NULL, ap);
 }
 
 void diagnostic_error_code_formatted(DiagnosticList *diagnostics, const char *code,
@@ -174,6 +179,14 @@ void diagnostic_error_code_formatted(DiagnosticList *diagnostics, const char *co
     va_list ap;
     va_start(ap, end_col);
     emit_code_formatted(diagnostics, SEV_ERROR, code, file, line, col_start, end_col, ap);
+    va_end(ap);
+}
+
+void diagnostic_error_code_formatted_help(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int col_start, int end_col, const char *help, ...) {
+    va_list ap;
+    va_start(ap, help);
+    emit_code_formatted_help(diagnostics, SEV_ERROR, code, file, line, col_start, end_col, help, ap);
     va_end(ap);
 }
 
