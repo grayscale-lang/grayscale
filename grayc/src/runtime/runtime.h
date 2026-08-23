@@ -57,6 +57,14 @@ extern _Thread_local GrayArena *gray_default_arena;
  * Used by new() so returned pointers are never dangling. */
 extern _Thread_local GrayArena *gray_heap_arena;
 
+/* Cumulative count of allocations made against whichever arena is installed
+ * as the default or heap arena. Tracked separately from GrayArena::alloc_count
+ * because a loop body swaps in a fresh per-iteration arena and destroys it
+ * every pass: reading the installed arena's own counter makes the total drop
+ * to zero on loop entry and discards everything the body allocated.
+ * Thread-local to match the arena globals it follows. */
+extern _Thread_local size_t gray_total_alloc_count;
+
 /* --- String --- */
 
 typedef struct {

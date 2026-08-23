@@ -22,6 +22,32 @@ do main() {
 
     assert(runtime.peak_usage() >= t, "peak_usage is at least the current total_usage")
     assert(runtime.alloc_count() >= 0, "alloc_count is non-negative")
+
+    /* alloc_count is cumulative since program start, so it must never drop.
+     * A loop body runs against a fresh per-iteration arena that is destroyed
+     * each pass, which used to reset the reported total to zero on loop entry
+     * and discard everything the body allocated. */
+    mut before int = runtime.alloc_count()
+    mut prev int = before
+    mut monotonic bool = true
+    for i in range(0, 20) {
+        mut inside int = runtime.alloc_count()
+        if inside < prev { monotonic = false }
+        prev = inside
+    }
+    assert(monotonic, "alloc_count never decreases inside a loop body")
+    assert(prev >= before, "alloc_count inside a loop is at least the pre-loop total")
+    assert(runtime.alloc_count() >= prev, "alloc_count after a loop is at least the in-loop total")
+
+    /* Allocations made in a loop body must reach the total. */
+    mut b2 int = runtime.alloc_count()
+    mut sink int = 0
+    for i in range(0, 30) {
+        mut s string = "value ${i}"
+        sink += len(s)
+    }
+    assert(sink > 0, "loop body results are consumed, not elided")
+    assert(runtime.alloc_count() > b2, "loop body allocations are counted")
     assert(runtime.arena_blocks() >= 1, "arena_blocks has at least the initial block")
     assert(runtime.heap_blocks() >= 1, "heap_blocks has at least the initial block")
     assert(runtime.arena_limit() > 0, "arena_limit is positive")

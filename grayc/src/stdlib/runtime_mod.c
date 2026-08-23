@@ -27,7 +27,7 @@ int64_t gray_runtime_peak_usage(void) {
 }
 
 int64_t gray_runtime_alloc_count(void) {
-    return (int64_t)(gray_default_arena->alloc_count + gray_heap_arena->alloc_count);
+    return (int64_t)gray_total_alloc_count;
 }
 
 int64_t gray_runtime_arena_blocks(void) {
