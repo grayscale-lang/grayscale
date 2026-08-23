@@ -1447,6 +1447,24 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
 
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
+                /* The binding name must be an identifier or '_'. Without
+                 * this check a keyword is taken as the name and the token
+                 * after it consumed as a type annotation. */
+                if (!peek_token_is(parser, TOK_IDENT) && !peek_token_is(parser, TOK_BLANK)) {
+                    if (is_keyword_token(parser->peek_token.type)) {
+                        char msg[MSG_BUF_SIZE];
+                        snprintf(msg, sizeof(msg),
+                            "'%s' is a reserved keyword and cannot be used as a variable name",
+                            parser->peek_token.literal);
+                        diagnostic_error_message(parser->diag, "E2002",
+                            arena_copy_string(parser->arena, msg),
+                            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
+                        synchronize_parser(parser);
+                        return NULL;
+                    }
+                    expect_peek_token(parser, TOK_IDENT); /* will error */
+                    return NULL;
+                }
                 next_token(parser); /* name (IDENT or _) */
                 if (var_count >= MAX_MULTI_VARS) {
                     diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
