@@ -249,6 +249,43 @@ static const char *assignment_target_root_name(AstNode *e) {
     }
 }
 
+/* Depth of the scope declaring `name`, biased by +1 so 0 means "not found".
+ * Deeper means shorter-lived: a pointer may only hold an address whose
+ * origin depth is at most the pointer's own. */
+static int symbol_scope_depth(Scope *scope, const char *name) {
+    for (Scope *cur = scope; cur; cur = cur->parent)
+        if (scope_lookup_local(cur, name)) return cur->depth + 1;
+    return 0;
+}
+
+/* If `value` produces a pointer with a known lifetime origin, report that
+ * origin's scope depth and name. Covers both the direct form addr(x)/raw(x)
+ * and a pointer variable that already carries an origin, so an address that
+ * is laundered through any number of intermediates stays tracked. */
+static int pointer_origin_of(TypeChecker *checker, AstNode *value,
+                             const char **out_name) {
+    if (!value) return 0;
+    if (value->kind == NODE_CALL_EXPR &&
+        value->data.call.function->kind == NODE_LABEL &&
+        value->data.call.arg_count == 1 &&
+        (strcmp(value->data.call.function->data.label.value, "addr") == 0 ||
+         strcmp(value->data.call.function->data.label.value, "raw") == 0)) {
+        const char *root = assignment_target_root_name(value->data.call.args[0]);
+        if (!root) return 0;
+        int depth = symbol_scope_depth(checker->current_scope, root);
+        if (depth) *out_name = root;
+        return depth;
+    }
+    if (value->kind == NODE_LABEL) {
+        Symbol *src = scope_lookup(checker->current_scope, value->data.label.value);
+        if (src && src->origin_depth) {
+            *out_name = src->origin_name;
+            return src->origin_depth;
+        }
+    }
+    return 0;
+}
+
 /* True if the access path contains a map index, e.g. ref(m["k"]) or
  * ref(m["k"].field) or ref(rows[i].cells["k"]). Map values relocate on
  * rehash so a pointer to one is unsafe. */
@@ -9265,6 +9302,20 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 if (dst_sym) dst_sym->const_source = true;
             }
         }
+        /* Record the lifetime origin of a pointer declared from addr()/raw()
+         * or copied from another tracked pointer. A declaration is always
+         * legal — the pointer cannot outlive its own scope — but the origin
+         * travels with it so later escapes (E3063, E3097) are still caught. */
+        {
+            Symbol *dst_sym = scope_lookup_local(checker->current_scope,
+                node->data.var_decl.name);
+            if (dst_sym) {
+                const char *origin_name = NULL;
+                dst_sym->origin_depth = pointer_origin_of(checker,
+                    node->data.var_decl.value, &origin_name);
+                dst_sym->origin_name = origin_name;
+            }
+        }
         /* Track referenced function for func-typed vars so calls through
          * them can be arity/type-checked at compile time. */
         if (node->data.var_decl.value &&
@@ -9893,24 +9944,24 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* : reject addr() of local assigned to outer-scope variable,
-     * and warn on cross-scope pointer assignments. */
-    if (target->kind == NODE_LABEL && node->data.assign.value &&
-        node->data.assign.value->kind == NODE_CALL_EXPR &&
-        node->data.assign.value->data.call.function->kind == NODE_LABEL &&
-        (strcmp(node->data.assign.value->data.call.function->data.label.value, "addr") == 0 ||
-         strcmp(node->data.assign.value->data.call.function->data.label.value, "raw") == 0) &&
-        node->data.assign.value->data.call.arg_count == 1 &&
-        node->data.assign.value->data.call.args[0]->kind == NODE_LABEL) {
+    /* E3097: reject storing an address into a pointer that outlives it.
+     * The origin travels through intermediate pointers, so laundering the
+     * address (p = tmp where tmp = addr(local)) is caught too. */
+    if (target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
-        const char *addr_var = node->data.assign.value->data.call.args[0]->data.label.value;
-        Symbol *ptr_sym_local = scope_lookup_local(checker->current_scope, ptr_name);
-        Symbol *addr_sym_local = scope_lookup_local(checker->current_scope, addr_var);
-        if (!ptr_sym_local && scope_lookup(checker->current_scope, ptr_name) &&
-            addr_sym_local) {
+        const char *origin_name = NULL;
+        int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+                                             &origin_name);
+        if (origin_depth > symbol_scope_depth(checker->current_scope, ptr_name)) {
             diagnostic_error_code_formatted(checker->diag, "E3097",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                ptr_name, addr_var);
+                ptr_name, origin_name);
+        } else {
+            Symbol *ptr_sym = scope_lookup(checker->current_scope, ptr_name);
+            if (ptr_sym) {
+                ptr_sym->origin_depth = origin_depth;
+                ptr_sym->origin_name = origin_name;
+            }
         }
     }
 }
@@ -9940,20 +9991,18 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             "use exit(code) to terminate with a status code");
         return;
     }
-    /* : reject addr() of local variable in return; the
-     * local's memory is freed when the function returns. */
+    /* E3063: reject returning the address of a local; its memory is freed
+     * when the function returns. The origin travels through intermediate
+     * pointers, so `mut p = addr(local); return p` is caught as well. */
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         AstNode *return_val = node->data.return_stmt.values[i];
-        if (return_val->kind == NODE_CALL_EXPR &&
-            return_val->data.call.function->kind == NODE_LABEL &&
-            strcmp(return_val->data.call.function->data.label.value, "addr") == 0 &&
-            return_val->data.call.arg_count == 1 &&
-            return_val->data.call.args[0]->kind == NODE_LABEL) {
-            const char *var_name = return_val->data.call.args[0]->data.label.value;
-            Symbol *sym = scope_lookup(checker->current_scope, var_name);
-            if (sym) {
-                diagnostic_error_code_formatted(checker->diag, "E3063", NODE_FILE(checker, node), return_val->token.line, return_val->token.column, 0, var_name, var_name);
-            }
+        const char *origin_name = NULL;
+        int origin_depth = pointer_origin_of(checker, return_val, &origin_name);
+        if (origin_depth > 0 &&
+            origin_depth >= checker->current_func_scope_depth) {
+            diagnostic_error_code_formatted(checker->diag, "E3063",
+                NODE_FILE(checker, node), return_val->token.line,
+                return_val->token.column, 0, origin_name, origin_name);
         }
     }
     /* E3071: `return nil` from a function whose return type contains
@@ -10584,6 +10633,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     Scope *func_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
     checker->current_scope = func_scope;
+    int saved_func_scope_depth = checker->current_func_scope_depth;
+    checker->current_func_scope_depth = func_scope->depth + 1;
     checker->func_depth++;
     checker->destroyed_arena_count = 0;
 
@@ -10967,6 +11018,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     checker->current_return_names = prev_return_names;
     checker->current_main_return_suppressed = saved_main_suppressed;
     checker->current_func_is_main = saved_is_main;
+    checker->current_func_scope_depth = saved_func_scope_depth;
     checker->current_func_decl = saved_func_decl;
     checker->using_module_count = prev_using_count;
     checker->type_param_name = NULL;

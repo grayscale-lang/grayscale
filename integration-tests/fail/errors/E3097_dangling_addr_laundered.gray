@@ -1,0 +1,17 @@
+// expect-error: E3097
+/*
+ * Error Test: E3097 - inner-scope address laundered through an intermediate
+ * pointer before escaping to an outer-scope pointer
+ *
+ * 's' lives in the if-block's arena; 'p' outlives it.
+ */
+
+do main() {
+    mut p ^int = nil
+    if true {
+        mut s int = 42
+        mut tmp ^int = addr(s)
+        p = tmp
+    }
+    println(p^)
+}

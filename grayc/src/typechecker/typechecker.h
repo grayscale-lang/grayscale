@@ -129,6 +129,11 @@ typedef struct {
                                           * current_return_count so downstream
                                           * "must return" / "return from void"
                                           * checks should also stay quiet */
+    int current_func_scope_depth;         /* Scope.depth of the body scope of the
+                                           * function being checked, biased by +1
+                                           * to match Symbol.origin_depth. A
+                                           * pointer origin at or below this depth
+                                           * dies when the function returns. */
     bool current_func_is_main;            /* true while typechecking the body of
                                            * main(); used to reject `return` —
                                            * main exits when control reaches

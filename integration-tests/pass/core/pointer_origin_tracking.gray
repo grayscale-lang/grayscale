@@ -1,0 +1,70 @@
+/*
+ * pointer_origin_tracking.gray - pointer lifetime tracking accepts pointers
+ * that do not outlive what they point at
+ *
+ * The escape checks (E3063, E3097) follow an address through intermediate
+ * pointers. This verifies they stay quiet for legal flows: same-scope
+ * copies, inner pointers to outer variables, pass-through parameters, and
+ * pointers whose tracked origin is overwritten before they escape.
+ */
+
+do passthru(p ^int) -> ^int {
+    return p
+}
+
+do reassigned() -> ^int {
+    mut local int = 1
+    mut p ^int = addr(local)
+    p = nil
+    return p
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Copying an address between pointers in the same scope is fine.
+    mut x int = 5
+    mut p ^int = addr(x)
+    mut q ^int = p
+    q^ = 9
+    if x == 9 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] write through laundered same-scope pointer")
+        failed = failed + 1
+    }
+
+    // An inner-scope pointer to an outer variable outlives nothing.
+    if true {
+        mut inner ^int = addr(x)
+        mut inner2 ^int = inner
+        if inner2^ == 9 {
+            passed = passed + 1
+        } otherwise {
+            println("[FAIL] inner pointer to outer variable")
+            failed = failed + 1
+        }
+    }
+
+    // A parameter carries no local origin, so returning it is legal.
+    mut r ^int = passthru(p)
+    if r^ == 9 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] returned pass-through pointer")
+        failed = failed + 1
+    }
+
+    // Overwriting a pointer clears the origin it used to carry.
+    mut n ^int = reassigned()
+    if n == nil {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] reassigned pointer origin not cleared")
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+}
