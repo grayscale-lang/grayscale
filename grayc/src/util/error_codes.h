@@ -241,7 +241,8 @@
     GRAY_ERROR("E4018", "names", "struct '%s' has no function named '%s'") \
     GRAY_ERROR("E4019", "names", "cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values") \
     GRAY_ERROR("E4020", "names", "type alias '%s' is already declared") \
-    GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file")
+    GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file") \
+    GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

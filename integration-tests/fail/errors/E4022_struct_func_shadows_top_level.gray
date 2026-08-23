@@ -1,0 +1,23 @@
+/*
+ * Error Test: E4022 - a struct function sharing a name with a top-level
+ * function shadows it for bare calls inside the struct
+ * Expected: "struct function 'Actor.rename' conflicts with the top-level function 'rename'"
+ */
+
+do rename(n string) -> string {
+    return n
+}
+
+const Actor struct {
+    id int
+    name string
+
+    do rename(a Actor, n string) -> Actor {
+        return Actor{id: a.id, name: n}
+    }
+}
+
+do main() {
+    mut a Actor = Actor{id: 1, name: "alice"}
+    println(rename(a.name))
+}

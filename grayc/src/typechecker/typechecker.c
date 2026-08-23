@@ -4621,6 +4621,24 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
 static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     FuncSig *sig = find_func(checker, function_name);
+    /* A bare name inside a struct function body falls back to the enclosing
+     * struct's namespace, where struct functions are registered as
+     * <Struct>_<func>. Top-level functions still win (E4022 rejects a struct
+     * function that shares a name with one), so this only fills in where the
+     * lookup would otherwise fail. Rewriting the label to the registered name
+     * lets codegen resolve it exactly, without guessing at the owning struct. */
+    if (!sig && checker->current_struct_name) {
+        AstNode *fn = node->data.call.function;
+        if (fn && fn->kind == NODE_LABEL) {
+            char mangled[MSG_BUF_SIZE];
+            snprintf(mangled, sizeof(mangled), "%s_%s", checker->current_struct_name, function_name);
+            sig = find_func(checker, mangled);
+            if (sig) {
+                fn->data.label.value = arena_copy_string(checker->arena, mangled);
+                function_name = fn->data.label.value;
+            }
+        }
+    }
     if (sig) {
         sig->used = true;
         warn_if_func_deprecated(checker, node, sig);
@@ -12131,6 +12149,20 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                         NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0);
                     break;
                 }
+            }
+            /* E4022: function name conflicts with a top-level function.
+             * A bare call inside the struct resolves to the top-level one,
+             * leaving the struct function reachable only as Struct.func —
+             * a silent shadow, so reject it at the declaration. */
+            for (int k = 0; k < program->data.program.stmt_count; k++) {
+                AstNode *top = program->data.program.stmts[k];
+                if (top->kind != NODE_FUNC_DECL ||
+                    strcmp(top->data.func_decl.name, fn->data.func_decl.name) != 0)
+                    continue;
+                diagnostic_error_code_formatted(checker->diag, "E4022",
+                    NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
+                    STRUCT_DISPLAY_NAME(stmt), FUNC_DISPLAY_NAME(fn), FUNC_DISPLAY_NAME(top));
+                break;
             }
             /* E2064: function name conflicts with field name */
             for (int k = 0; k < field_count; k++) {

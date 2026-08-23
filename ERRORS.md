@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 387 codes** (263 errors, 18 warnings, 106 panics)
+**Total: 388 codes** (264 errors, 18 warnings, 106 panics)
 
 ---
 
@@ -223,6 +223,7 @@
 | `E4019` | names | cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values |
 | `E4020` | names | type alias '%s' is already declared |
 | `E4021` | names | type alias '%s' is private and cannot be accessed from outside its file |
+| `E4022` | names | struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -438,4 +439,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-23 04:47:37 UTC*
+*Generated on 2026-08-23 20:33:50 UTC*

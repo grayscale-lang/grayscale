@@ -2286,6 +2286,32 @@ Rules:
 - Cross-module: `module.StructName.func_name(args...)`
 - Module-qualified types can be used in variable declarations, parameters, and return types: `mut p module.Point`
 
+#### Calling a Sibling Function
+
+Inside a struct function body, a sibling function in the same struct can be called by its bare name, without the type prefix. `private` siblings are reachable this way too, since the caller is inside the struct:
+
+```gray
+const Calculator struct {
+    value int
+
+    private do internal_add(a int, b int) -> int {
+        return a + b
+    }
+
+    do add(a int, b int) -> int {
+        return internal_add(a, b)        // bare sibling call
+    }
+}
+```
+
+A bare call inside a struct function body resolves in this order:
+
+1. A top-level function of that name, if one exists.
+2. Otherwise, the enclosing struct's namespace.
+3. Otherwise, `E4002: undefined function`.
+
+A struct function may not share a name with a top-level function — that is a compile-time error (`E4022`), because the bare name would silently resolve to the top-level function and leave the struct's own function reachable only as `StructName.func_name(...)`. With that rejected, the order above is never ambiguous in a program that compiles.
+
 #### Instance Dispatch
 
 When a struct function takes the struct (or a pointer to it) as its first parameter, callers can use the instance form `instance.func(...)` instead of writing the type name. The compiler rewrites the call as `Type.func(instance, ...)`:
