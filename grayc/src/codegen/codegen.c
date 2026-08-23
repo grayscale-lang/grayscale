@@ -17,6 +17,10 @@
 #include <string.h>
 #include <ctype.h>
 
+#ifndef GRAY_VERSION
+#define GRAY_VERSION "unknown"
+#endif
+
 #define IF_ARENA_SIZE        4096
 #define LOOP_ARENA_SIZE      16384
 #define FUNC_ARENA_SIZE      65536
@@ -915,6 +919,30 @@ static void unregister_raw_variable(CodeGen *codegen, const char *name) {
     codegen->raw_var_count++;
 }
 
+/* Was this variable last assigned the result of new()? Its pointee lives in
+ * gray_heap_arena, so replacing a container field through it must also
+ * target gray_heap_arena rather than the current function's scoped arena. */
+static bool is_heap_variable(CodeGen *codegen, const char *name) {
+    for (int i = codegen->heap_var_count - 1; i >= 0; i--) {
+        if (strcmp(codegen->heap_vars[i].name, name) == 0)
+            return codegen->heap_vars[i].is_heap;
+    }
+    return false;
+}
+
+static void register_heap_variable(CodeGen *codegen, const char *name, bool is_heap) {
+    GROW_ARRAY(codegen->heap_vars, codegen->heap_var_count, codegen->heap_var_cap);
+    codegen->heap_vars[codegen->heap_var_count].name = name;
+    codegen->heap_vars[codegen->heap_var_count].is_heap = is_heap;
+    codegen->heap_var_count++;
+}
+
+/* True when value is a direct new(...) expression — the only construct
+ * that hands back a pointer into gray_heap_arena. */
+static bool is_new_call(AstNode *value) {
+    return value && value->kind == NODE_NEW_EXPR;
+}
+
 /* Returns true if the named enum is string-backed.
  * enum_names is sorted after the init pass, so we use bsearch. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
@@ -1215,6 +1243,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         {"SQRT2","math","1.41421356237309504880"},{"LN2","math","0.69314718055994530942"},
         {"LN10","math","2.30258509299404568402"},{"INF","math","(1.0/0.0)"},
         {"NEG_INF","math","(-1.0/0.0)"},{"EPSILON","math","2.2204460492503131e-16"},
+        {"MAX_INT","math","9223372036854775807LL"},{"MIN_INT","math","(-9223372036854775807LL - 1)"},
+        {"MAX_FLOAT","math","1.7976931348623157e308"},{"MIN_FLOAT","math","-1.7976931348623157e308"},
         {"MAC_OS","os","0"},{"LINUX","os","1"},{"WINDOWS","os","2"},{"OTHER","os","3"},
         {"O_RDONLY","io","0"},{"O_WRONLY","io","1"},{"O_RDWR","io","2"},
         {"BASE_2","strconv","2"},{"BASE_8","strconv","8"},{"BASE_10","strconv","10"},
@@ -2515,6 +2545,10 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             if (strcmp(mem, "INF") == 0)     { emit(codegen, "(1.0/0.0)"); return; }
             if (strcmp(mem, "NEG_INF") == 0) { emit(codegen, "(-1.0/0.0)"); return; }
             if (strcmp(mem, "EPSILON") == 0) { emit(codegen, "2.2204460492503131e-16"); return; }
+            if (strcmp(mem, "MAX_INT") == 0) { emit(codegen, "9223372036854775807LL"); return; }
+            if (strcmp(mem, "MIN_INT") == 0) { emit(codegen, "(-9223372036854775807LL - 1)"); return; }
+            if (strcmp(mem, "MAX_FLOAT") == 0) { emit(codegen, "1.7976931348623157e308"); return; }
+            if (strcmp(mem, "MIN_FLOAT") == 0) { emit(codegen, "-1.7976931348623157e308"); return; }
         }
 
         /* @io constants */
@@ -3558,7 +3592,12 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
                 append_char_to_buffer(&codegen->output, 'l');
             }
         }
-        append_char_to_buffer(&codegen->output, spec);
+        /* %b isn't a real C conversion; emit_format_arguments() already
+         * stringifies bool args to "true"/"false", so %s reads them back
+         * correctly. Passing %b through verbatim hits vsnprintf as a literal
+         * 'b' and never consumes the argument, desyncing every directive
+         * after it. */
+        append_char_to_buffer(&codegen->output, spec == 'b' ? 's' : spec);
         directive_index++;
     }
     if (append_newline) { append_char_to_buffer(&codegen->output, '\\'); append_char_to_buffer(&codegen->output, 'n'); }
@@ -4906,6 +4945,19 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
 static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool needs_arena = (strcmp(func, "format") == 0 || strcmp(func, "to_iso") == 0 ||
         strcmp(func, "date") == 0 || strcmp(func, "to_clock") == 0);
+    bool is_fallible = (strcmp(func, "parse") == 0);
+
+    if (is_fallible) {
+        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        emit_formatted(codegen, is_multi_var ? "gray_time_%s_result(" : "gray_time_%s(", func);
+        for (int i = 0; i < node->data.call.arg_count; i++) {
+            if (i > 0) emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[i]);
+        }
+        emit(codegen, ")");
+        return true;
+    }
+
     emit_formatted(codegen, "gray_time_%s(", func);
     if (needs_arena) emit(codegen, "gray_default_arena, ");
     for (int i = 0; i < node->data.call.arg_count; i++) {
@@ -4913,6 +4965,18 @@ static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_expression(codegen, node->data.call.args[i]);
     }
     emit(codegen, ")");
+    return true;
+}
+
+/* --- @runtime module --- */
+
+static bool emit_runtime_call(CodeGen *codegen, AstNode *node, const char *func) {
+    (void)node;
+    if (strcmp(func, "version") == 0) {
+        emit_formatted(codegen, "gray_string_lit(\"%s\")", GRAY_VERSION);
+        return true;
+    }
+    emit_formatted(codegen, "gray_runtime_%s()", func);
     return true;
 }
 
@@ -6208,6 +6272,9 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "replace") == 0 ||
         strcmp(func, "repeat") == 0 || strcmp(func, "reverse") == 0 ||
         strcmp(func, "slice") == 0 || strcmp(func, "split") == 0 ||
+        strcmp(func, "split_whitespace") == 0 || strcmp(func, "split_n") == 0 ||
+        strcmp(func, "to_title") == 0 || strcmp(func, "to_snake_case") == 0 ||
+        strcmp(func, "to_camel_case") == 0 ||
         strcmp(func, "join") == 0 ||
         strcmp(func, "to_chars") == 0 || strcmp(func, "from_chars") == 0);
 
@@ -6611,6 +6678,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             {"os",       emit_os_call},
             {"random",   emit_random_call},
             {"regex",    emit_regex_call},
+            {"runtime",  emit_runtime_call},
             {"server",   emit_server_call},
             {"sqlite",   emit_sqlite_call},
             {"strconv",  emit_strconv_call},
@@ -8039,6 +8107,16 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         unregister_raw_variable(codegen, node->data.var_decl.name);
     }
 
+    /* Detect new() assignment; register as heap-tracked pointer so later
+     * field container reassignment through it targets gray_heap_arena.
+     * Any other declaration clears a shadowed outer-scope heap variable
+     * of the same name. */
+    if (is_new_call(node->data.var_decl.value)) {
+        register_heap_variable(codegen, node->data.var_decl.name, true);
+    } else if (is_heap_variable(codegen, node->data.var_decl.name)) {
+        register_heap_variable(codegen, node->data.var_decl.name, false);
+    }
+
     if (!node->data.var_decl.mutable) {
         if (type_name && type_name[0] == '^') {
             /* const pointer: T * const p — the pointer is immutable, not the
@@ -8057,6 +8135,25 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
     emit_vardecl_init(codegen, node, c_type, type_name);
 }
 
+/* True when field_t owns arena-backed memory that must be re-homed to
+ * gray_heap_arena rather than the enclosing function's own scoped arena
+ * when reassigned through a pointer known to point into gray_heap_arena. */
+static bool field_type_needs_arena_escape(GrayType *field_t) {
+    return field_t && (field_t->kind == TK_MAP || field_t->kind == TK_ARRAY ||
+                        field_t->kind == TK_STRING || field_t->kind == TK_STRUCT);
+}
+
+/* Emit `ref = value;` with gray_default_arena swapped to gray_heap_arena for
+ * the duration of evaluating value, so any container the value allocates
+ * (map/array/string/struct literal) lives as long as the heap-allocated
+ * struct it's being attached to, rather than the current function's own
+ * scoped arena that gets destroyed when the function returns. */
+static void emit_heap_escaped_field_assign(CodeGen *codegen, AstNode *node, const char *ref) {
+    emit_formatted(codegen, "{ GrayArena *_esc_h = gray_default_arena; gray_default_arena = gray_heap_arena; %s = ", ref);
+    emit_expression(codegen, node->data.assign.value);
+    emit(codegen, "; gray_default_arena = _esc_h; }");
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_decl &&
@@ -8066,8 +8163,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             ? typetable_get(codegen->type_table, node->data.assign.target)
             : NULL;
         const char *c_type = t ? gray_type_to_c_codegen(codegen, type_name(t)) : "__auto_type";
-        emit_formatted(codegen, "%s %s = ", c_type,
-            sanitize_name(node->data.assign.target->data.label.value));
+        const char *decl_name = node->data.assign.target->data.label.value;
+        if (is_new_call(node->data.assign.value)) {
+            register_heap_variable(codegen, decl_name, true);
+        }
+        emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(decl_name));
         emit_expression(codegen, node->data.assign.value);
         emit(codegen, ";\n");
         return;
@@ -8086,6 +8186,16 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                        is_raw_variable(codegen, var)) {
                 unregister_raw_variable(codegen, var);
             }
+        }
+    }
+    /* Track heap-pointer reassignment: p = new(T) makes p heap-tracked;
+     * any other reassignment of a previously heap-tracked p clears it. */
+    if (node->data.assign.target->kind == NODE_LABEL) {
+        const char *var = node->data.assign.target->data.label.value;
+        if (is_new_call(node->data.assign.value)) {
+            register_heap_variable(codegen, var, true);
+        } else if (is_heap_variable(codegen, var)) {
+            register_heap_variable(codegen, var, false);
         }
     }
 
@@ -8470,6 +8580,15 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, "; }\n");
             return;
         }
+        if (node->data.assign.op == TOK_ASSIGN && ptr->kind == NODE_LABEL &&
+            is_heap_variable(codegen, ptr->data.label.value)) {
+            GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+            if (field_type_needs_arena_escape(field_t)) {
+                emit_heap_escaped_field_assign(codegen, node, _ref2);
+                emit(codegen, "; }\n");
+                return;
+            }
+        }
         emit(codegen, _ref2);
         emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.op));
         emit_expression(codegen, node->data.assign.value);
@@ -8529,6 +8648,27 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         bool _pf_raw = (obj->kind == NODE_LABEL && is_raw_variable(codegen, obj->data.label.value));
         if (!is_ref && obj_t && obj_t->kind == TK_POINTER) {
             const char *field = node->data.assign.target->data.member.member;
+            /* p was assigned from new(): its pointee lives in gray_heap_arena,
+             * so a container field written through it must be allocated there
+             * too, not in the current function's own scoped arena. */
+            if (node->data.assign.op == TOK_ASSIGN && obj->kind == NODE_LABEL &&
+                is_heap_variable(codegen, obj->data.label.value)) {
+                GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+                if (field_type_needs_arena_escape(field_t)) {
+                    emit(codegen, "{ __auto_type _dp = ");
+                    emit_expression(codegen, obj);
+                    if (_pf_raw) {
+                        emit(codegen, "; ");
+                    } else {
+                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                    }
+                    char _ref_h[MSG_BUF_SIZE];
+                    snprintf(_ref_h, sizeof(_ref_h), "_dp->%s", sanitize_name(field));
+                    emit_heap_escaped_field_assign(codegen, node, _ref_h);
+                    emit(codegen, "; }\n");
+                    return;
+                }
+            }
             /* When assigning an array/string to a struct field inside a
              * scoped block (if/loop), deep-copy to the outer arena so the
              * data survives the block's arena destruction. */
@@ -8699,18 +8839,36 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
-    /* Array copy-by-default: arr2 = arr1 deep-copies the array.
-     * Routes through emit_deep_array_copy so nested inner arrays get
-     * independent backing storage ). Applies to any RHS expression
-     * (variables, call results, etc.) to prevent use-after-free when the
-     * source array lives on a function-local arena. */
+    /* Array copy-by-default: arr2 = arr1 deep-copies the array so nested
+     * inner arrays get independent backing storage. Applies to any RHS
+     * expression (variables, call results, etc.) to prevent use-after-free
+     * when the source array lives on a function-local arena.
+     * Inside a scoped arena (if-block / for_each), allocate the copy on
+     * the outer arena: the target variable outlives the block, so a copy
+     * made in the block's arena dangles once that arena is destroyed. */
     if (node->data.assign.op == TOK_ASSIGN) {
         GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
         if (tgt_t && tgt_t->kind == TK_ARRAY) {
+            int tag = codegen_next_id(codegen);
+            char src_var[VAR_NAME_BUF];
+            snprintf(src_var, sizeof(src_var), "_dtop%d", tag);
+            char full_tn[MSG_BUF_SIZE];
+            snprintf(full_tn, sizeof(full_tn), "[%s]", tgt_t->element_type ? tgt_t->element_type : "");
+            emit(codegen, "{ GrayArray ");
+            emit_formatted(codegen, "%s = ", src_var);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, "; ");
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "GrayArena *_esc_a = gray_default_arena; gray_default_arena = _gray_outer_arena; ");
+            }
             emit_expression(codegen, node->data.assign.target);
             emit(codegen, " = ");
-            emit_deep_array_copy(codegen, node->data.assign.value, tgt_t->element_type);
-            emit(codegen, ";\n");
+            emit_value_deep_copy(codegen, full_tn, src_var);
+            if (codegen->loop_scope_depth > 0) {
+                emit(codegen, "; gray_default_arena = _esc_a; }\n");
+            } else {
+                emit(codegen, "; }\n");
+            }
             return;
         }
         /* Map copy-by-default: map2 = map1 deep-copies the map.
@@ -10332,6 +10490,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"net",      "net.h"},
         {"http",     "http.h"},
         {"server",   "server.h"},
+        {"runtime",  "runtime_mod.h"},
     };
     for (int i = 0; i < (int)(sizeof(stdlib_headers) / sizeof(stdlib_headers[0])); i++) {
         if (has_stdlib_module(stdlib_imports, stdlib_import_count, stdlib_headers[i].module))

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2002 - reserved keyword as a destructuring binding name
+ * Expected: "reserved keyword and cannot be used as a variable name"
+ */
+// expect-error: E2002
+
+do two() -> (int, int) {
+    return 1, 2
+}
+
+do main() {
+    mut a, mut b = two()
+    println(a)
+}

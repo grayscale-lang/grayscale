@@ -228,7 +228,7 @@ static void print_diagnostic(DiagnosticList *diagnostics, Diagnostic *diagnostic
 
     /* Line 2: --> file:line:column */
     if (diagnostic_entry->file && diagnostic_entry->line > 0) {
-        fprintf(stderr, "  %s-->%s %s:%diagnostic_entry:%diagnostic_entry\n",
+        fprintf(stderr, "  %s-->%s %s:%d:%d\n",
             color_code(diagnostics, COL_BLUE), color_code(diagnostics, COL_RESET),
             diagnostic_entry->file, diagnostic_entry->line, diagnostic_entry->column);
     }

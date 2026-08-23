@@ -165,7 +165,7 @@ endif
 	@echo '| |_| | | | (_| | |_| \__ \ (_| (_| | |  __/'
 	@echo ' \____|_|  \__,_|\__, |___/\___\__,_|_|\___|'
 	@echo '                 |___/'
-	@echo 'Programming On Your Terms'
+	@echo 'Simple to write. Safe to run.'
 	@echo ""
 	@echo "Grayscale installed successfully!"
 ifdef WINDOWS

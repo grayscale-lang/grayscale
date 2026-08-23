@@ -9,6 +9,7 @@
  */
 
 #include "token.h"
+#include <limits.h>
 #include <string.h>
 
 typedef struct {
@@ -28,15 +29,19 @@ static const KeywordEntry keywords[] = {
     {"bit_shift_right", TOK_BIT_SHIFT_RIGHT},
     {"bit_xor",         TOK_BIT_XOR},
     {"break",           TOK_BREAK},
+    {"case",        TOK_IS},
     {"cast",        TOK_CAST},
     {"const",       TOK_CONST},
     {"continue",    TOK_CONTINUE},
     {"default",     TOK_DEFAULT},
+    {"defer",       TOK_ENSURE},
     {"do",          TOK_DO},
+    {"elif",        TOK_OR_KW},
     {"else",        TOK_OTHERWISE},
     {"ensure",      TOK_ENSURE},
     {"enum",        TOK_ENUM},
     {"false",       TOK_FALSE},
+    {"fn",          TOK_DO},
     {"for",         TOK_FOR},
     {"for_each",    TOK_FOR_EACH},
     {"if",          TOK_IF},
@@ -56,6 +61,7 @@ static const KeywordEntry keywords[] = {
     {"range",       TOK_RANGE},
     {"return",      TOK_RETURN},
     {"struct",      TOK_STRUCT},
+    {"switch",      TOK_WHEN},
     {"true",        TOK_TRUE},
     {"use",         TOK_USE},
     {"using",       TOK_USING},
@@ -94,6 +100,27 @@ bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, con
         else lo = mid + 1;
     }
     return false;
+}
+
+/* Return the spelling a keyword token was actually written with, so
+ * diagnostics quote the user's source rather than the canonical spelling of
+ * an aliased keyword (`while` must not be reported as `as_long_as`). The
+ * lexer stores the matched table entry in tok.literal, so a lookup that
+ * round-trips back to the same token type confirms the literal is a real
+ * keyword spelling; everything else (identifiers, punctuation, EOF) falls
+ * back to the token type's name. */
+const char *token_display_name(Token tok) {
+    if (tok.literal) {
+        TokenType kw_type;
+        const char *kw_str;
+        size_t len = strlen(tok.literal);
+        if (len <= INT_MAX &&
+            token_lookup_keyword_n(tok.literal, (int)len, &kw_type, &kw_str) &&
+            kw_type == tok.type) {
+            return tok.literal;
+        }
+    }
+    return token_type_name(tok.type);
 }
 
 const char *token_type_name(TokenType type) {
@@ -149,6 +176,7 @@ const char *token_type_name(TokenType type) {
     case TOK_DOC:            return "#doc";
     case TOK_JSON_ATTR:      return "#json";
     case TOK_DISCARD:        return "#discard";
+    case TOK_DEPRECATED:     return "#deprecated";
     case TOK_MUT:            return "mut";
     case TOK_CONST:          return "const";
     case TOK_DO:             return "do";

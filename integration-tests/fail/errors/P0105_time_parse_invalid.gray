@@ -1,0 +1,8 @@
+/*
+ * Panic Test: P0105 - time.parse with a string that does not match the layout
+ */
+import @time
+
+do main() {
+    println(time.parse("not a date", "%Y-%m-%d"))
+}

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4016 - undefined module-qualified type
+ * Expected: "undefined type 'Bar'" (unqualified), not the mangled 'Foo_Bar'
+ */
+
+// expect-error: E4016
+
+const Foo struct {
+    a int
+}
+
+do main() {
+    mut x Foo.Bar = 0
+}

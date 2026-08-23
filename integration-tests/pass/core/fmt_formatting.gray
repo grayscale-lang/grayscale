@@ -212,6 +212,36 @@ do main() {
         failed += 1
     }
 
+    // Test 21: %b directive formats bool as true/false
+    mut b1 string = fmt.sprintf("%b", true)
+    if b1 == "true" {
+        println("  [PASS] %b true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %b true: got '${b1}'")
+        failed += 1
+    }
+
+    // Test 22: %b directive with false
+    mut b2 string = fmt.sprintf("%b", false)
+    if b2 == "false" {
+        println("  [PASS] %b false")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %b false: got '${b2}'")
+        failed += 1
+    }
+
+    // Test 23: multiple %b directives don't desync later directives
+    mut b3 string = fmt.sprintf("t=%b f=%b n=%d", true, false, 42)
+    if b3 == "t=true f=false n=42" {
+        println("  [PASS] %b does not desync following directives")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] %b desync: got '${b3}'")
+        failed += 1
+    }
+
     // Summary
     println("")
     println("Results: ${passed} passed, ${failed} failed")

@@ -1,0 +1,12 @@
+/* Error Test: E2088 - mixed !in/not_in aliases in same file */
+// expect-error: E2088
+do main() {
+    mut nums [int] = {1, 2, 3}
+    if 5 !in nums {
+        println("not found")
+    }
+
+    if 6 not_in nums {
+        println("also not found")
+    }
+}

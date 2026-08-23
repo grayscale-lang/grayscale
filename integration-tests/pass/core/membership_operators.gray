@@ -1,5 +1,5 @@
 /*
- * membership_operators.gray - Test in, not_in, and !in operators
+ * membership_operators.gray - Test in and !in operators
  */
 
 
@@ -28,16 +28,7 @@ do main() {
         passed += 1
     }
 
-    // Test 3: not_in operator
-    if 99 not_in numbers {
-        println("  [PASS] 99 not_in numbers")
-        passed += 1
-    } otherwise {
-        println("  [FAIL] 99 should be not_in numbers")
-        failed += 1
-    }
-
-    // Test 4: !in shorthand
+    // Test 3: !in shorthand
     if 99 !in numbers {
         println("  [PASS] 99 !in numbers")
         passed += 1
@@ -46,7 +37,7 @@ do main() {
         failed += 1
     }
 
-    // Test 5: in with range
+    // Test 4: in with range
     if 5 in range(0, 10) {
         println("  [PASS] 5 in range(0, 10)")
         passed += 1
@@ -55,16 +46,16 @@ do main() {
         failed += 1
     }
 
-    // Test 6: not_in with range
-    if 10 not_in range(0, 10) {
-        println("  [PASS] 10 not_in range(0, 10) (exclusive end)")
+    // Test 5: !in with range
+    if 10 !in range(0, 10) {
+        println("  [PASS] 10 !in range(0, 10) (exclusive end)")
         passed += 1
     } otherwise {
         println("  [FAIL] 10 should not be in range(0, 10)")
         failed += 1
     }
 
-    // Test 7: in with string array
+    // Test 6: in with string array
     mut fruits [string] = {"apple", "banana", "cherry"}
     if "banana" in fruits {
         println("  [PASS] banana in fruits")
@@ -74,7 +65,7 @@ do main() {
         failed += 1
     }
 
-    // Test 8: !in with string array
+    // Test 7: !in with string array
     if "grape" !in fruits {
         println("  [PASS] grape !in fruits")
         passed += 1
@@ -83,7 +74,7 @@ do main() {
         failed += 1
     }
 
-    // Test 9: !in result assigned to bool variable
+    // Test 8: !in result assigned to bool variable
     mut notFound bool = 99 !in numbers
     if notFound == true {
         println("  [PASS] !in result assigned to bool (true)")
@@ -93,7 +84,7 @@ do main() {
         failed += 1
     }
 
-    // Test 10: !in result assigned to bool variable (false case)
+    // Test 9: !in result assigned to bool variable (false case)
     mut found bool = 30 !in numbers
     if found == false {
         println("  [PASS] !in result assigned to bool (false)")

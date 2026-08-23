@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3040 - a bare stdlib call reached through `import and use`
+ * still has to capture every return value
+ */
+// expect-error: E3040
+
+import and use @math
+
+do main() {
+    mut x float = modf(1.5)
+    println(x)
+}

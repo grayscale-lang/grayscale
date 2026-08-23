@@ -1,0 +1,66 @@
+/*
+ * using_stdlib_multi_return.gray - stdlib multi-return through `import and use`
+ *
+ * Destructuring a stdlib call reached by its bare name previously failed with
+ * E3006 "returns only 1 value", because the return slots were resolved for
+ * module-qualified calls only.
+ */
+
+import and use @math, @strconv, @channels
+
+do main() {
+    println("=== Using Multi-Return Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- non-fallible pair: math.modf --
+    mut whole, frac = modf(2.5)
+    if whole == 2.0 && frac == 0.5 {
+        println("  [PASS] modf via using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] modf via using: got ${whole} and ${frac}")
+        failed += 1
+    }
+
+    // -- fallible pair: strconv.to_int --
+    mut n, err = to_int("42")
+    if n == 42 && err == nil {
+        println("  [PASS] to_int via using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_int via using")
+        failed += 1
+    }
+
+    mut bad, bad_err = to_int("nope")
+    if bad_err != nil {
+        println("  [PASS] to_int error slot via using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_int error slot via using: got ${bad}")
+        failed += 1
+    }
+
+    // -- non-fallible pair: channels.try_receive --
+    mut ch = open(1)
+    mut sent = try_send(ch, 7)
+    mut got, ok = try_receive(ch)
+    if sent && ok && got == 7 {
+        println("  [PASS] try_receive via using")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] try_receive via using: got ${got}, ok ${ok}")
+        failed += 1
+    }
+    close(ch)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

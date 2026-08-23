@@ -218,7 +218,9 @@
     GRAY_ERROR("E3133", "types", "alias '%s' creates a circular reference") \
     GRAY_ERROR("E3134", "types", "alias '%s' cannot target a module-qualified type; only local types can be aliased") \
     GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
-    GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration")
+    GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
+    GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
+    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -409,7 +411,9 @@
     GRAY_PANIC("P0101", "server",     "server.cors: origin contains CR or LF — HTTP header injection is not allowed") \
     GRAY_PANIC("P0102", "arithmetic", "invalid digit in integer literal") \
     GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
-    GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes")
+    GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
+    GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
+    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
@@ -429,7 +433,8 @@
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3004", "safety", "pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \
-    GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored")
+    GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored") \
+    GRAY_WARNING("W3007", "deprecation", "reference to a function, struct, or enum marked #deprecated")
 
 /* Look up the canonical message for a code like "E3050" or "W2001".
  * Returns NULL if the code is unknown. The returned pointer is a

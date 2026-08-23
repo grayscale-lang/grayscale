@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 #define MAX_MULTI_VARS 16
 #define MAX_SHARED_RETURNS 16
@@ -82,7 +83,7 @@ static bool expect_peek_token(Parser *parser, TokenType type) {
     }
     char buf[MSG_BUF_SIZE];
     snprintf(buf, sizeof(buf), "expected '%s', got '%s'",
-        token_type_name(type), token_type_name(parser->peek_token.type));
+        token_type_name(type), token_display_name(parser->peek_token));
     /* Point at current token (where the expected token should be), not the peek token */
     diagnostic_error_message(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
         parser->file, parser->cur_token.line, parser->cur_token.column, 0);
@@ -101,6 +102,7 @@ static bool is_keyword_token(TokenType type) {
     case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
     case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
     case TOK_MODULE: case TOK_PRIVATE: case TOK_ALIAS:
+    case TOK_IS: case TOK_DEFAULT:
         return true;
     default:
         return false;
@@ -518,6 +520,17 @@ static AstNode *parse_float_literal(Parser *parser) {
         node->data.float_value.value = atof(buf);
     } else {
         node->data.float_value.value = atof(lit);
+    }
+    /* A decimal literal has no spelling for infinity, so an infinite result
+     * can only mean the value saturated past DBL_MAX. Reject it here, at the
+     * point of conversion: the value is already wrong by the time anything
+     * downstream sees it, and codegen would render it as the bare token
+     * `inf`, which is not valid C. Underflow to zero is left alone; that is
+     * IEEE-conformant, not an error. */
+    if (isinf(node->data.float_value.value)) {
+        diagnostic_error_code(parser->diag, "E3138", parser->file,
+            parser->cur_token.line, parser->cur_token.column, 0);
+        node->data.float_value.value = 0.0;
     }
     return node;
 }
@@ -1019,7 +1032,7 @@ static AstNode *parse_prefix(Parser *parser) {
                 snprintf(buf, sizeof(buf), "unexpected end of interpolation expression");
             else
                 snprintf(buf, sizeof(buf), "unexpected token '%s'",
-                    token_type_name(parser->cur_token.type));
+                    token_display_name(parser->cur_token));
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
@@ -1446,6 +1459,24 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
 
             while (peek_token_is(parser, TOK_COMMA)) {
                 next_token(parser); /* skip comma */
+                /* The binding name must be an identifier or '_'. Without
+                 * this check a keyword is taken as the name and the token
+                 * after it consumed as a type annotation. */
+                if (!peek_token_is(parser, TOK_IDENT) && !peek_token_is(parser, TOK_BLANK)) {
+                    if (is_keyword_token(parser->peek_token.type)) {
+                        char msg[MSG_BUF_SIZE];
+                        snprintf(msg, sizeof(msg),
+                            "'%s' is a reserved keyword and cannot be used as a variable name",
+                            parser->peek_token.literal);
+                        diagnostic_error_message(parser->diag, "E2002",
+                            arena_copy_string(parser->arena, msg),
+                            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
+                        synchronize_parser(parser);
+                        return NULL;
+                    }
+                    expect_peek_token(parser, TOK_IDENT); /* will error */
+                    return NULL;
+                }
                 next_token(parser); /* name (IDENT or _) */
                 if (var_count >= MAX_MULTI_VARS) {
                     diagnostic_error_code_formatted(parser->diag, "E2062", parser->file, parser->cur_token.line, parser->cur_token.column, 0, MAX_MULTI_VARS);
@@ -2092,6 +2123,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     node->data.struct_decl.funcs = arena_alloc(parser->arena, sizeof(StructFunc) * func_cap);
 
     bool pending_discard = false;
+    bool pending_deprecated = false;
+    const char *pending_deprecated_message = NULL;
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
@@ -2112,6 +2145,33 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             next_token(parser);
             continue;
         }
+        /* #deprecated inside struct body: same pending-flag treatment,
+         * independent of pending_discard so both can stack on one function. */
+        if (current_token_is(parser, TOK_DEPRECATED)) {
+            next_token(parser); /* consume #deprecated */
+            pending_deprecated = true;
+            pending_deprecated_message = NULL;
+            if (current_token_is(parser, TOK_LPAREN)) {
+                next_token(parser); /* consume ( */
+                if (current_token_is(parser, TOK_STRING)) {
+                    pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
+                    next_token(parser); /* consume string */
+                } else {
+                    diagnostic_error_message(parser->diag, "E2002",
+                        arena_copy_string(parser->arena,
+                            "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                }
+                if (current_token_is(parser, TOK_RPAREN)) {
+                    next_token(parser); /* consume ) */
+                } else {
+                    diagnostic_error_message(parser->diag, "E2002",
+                        arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                }
+            }
+            continue;
+        }
         /* Check for struct-namespaced function: do func() or private do func() */
         if (current_token_is(parser, TOK_DO)) {
             AstNode *fn = parse_func_declaration(parser);
@@ -2119,6 +2179,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 if (pending_discard) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
+                }
+                if (pending_deprecated) {
+                    fn->data.func_decl.is_deprecated = true;
+                    fn->data.func_decl.deprecated_message = pending_deprecated_message;
+                    pending_deprecated = false;
+                    pending_deprecated_message = NULL;
                 }
                 ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
                     node->data.struct_decl.func_count, func_cap);
@@ -2135,6 +2201,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 if (pending_discard) {
                     fn->data.func_decl.is_discard = true;
                     pending_discard = false;
+                }
+                if (pending_deprecated) {
+                    fn->data.func_decl.is_deprecated = true;
+                    fn->data.func_decl.deprecated_message = pending_deprecated_message;
+                    pending_deprecated = false;
+                    pending_deprecated_message = NULL;
                 }
                 ARENA_GROW(parser->arena, node->data.struct_decl.funcs,
                     node->data.struct_decl.func_count, func_cap);
@@ -2191,6 +2263,17 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             diagnostic_error_code(parser->diag, "E2089",
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             pending_discard = false;
+        }
+
+        /* Same for #deprecated. Clearing the pending state is what stops the
+         * attribute from drifting onto the next struct function in the body. */
+        if (pending_deprecated) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            pending_deprecated = false;
+            pending_deprecated_message = NULL;
         }
 
         /* E2002: multiple fields on the same line */
@@ -2309,6 +2392,33 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         ARENA_GROW(parser->arena, node->data.enum_decl.values,
             node->data.enum_decl.value_count, val_cap);
+
+        /* Neither attribute is meaningful on a variant, and both were being
+         * read as the variant name, embedding '#discard'/'#deprecated' in the
+         * generated C enumerator. Diagnose and consume them here so the name
+         * slot below sees the real variant. */
+        if (current_token_is(parser, TOK_DISCARD)) {
+            diagnostic_error_message(parser->diag, "E2089",
+                arena_copy_string(parser->arena,
+                    "#discard attribute can only be applied to function declarations, not enum variants"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser);
+            continue;
+        }
+        if (current_token_is(parser, TOK_DEPRECATED)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser); /* consume #deprecated */
+            /* Consume an optional ("message") so it is not read as a variant */
+            if (current_token_is(parser, TOK_LPAREN)) {
+                while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF))
+                    next_token(parser);
+                if (current_token_is(parser, TOK_RPAREN)) next_token(parser);
+            }
+            continue;
+        }
 
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOK_CONST)) {
@@ -2683,6 +2793,7 @@ static AstNode *parse_when_statement(Parser *parser) {
 
             WhenCase *when_case = &node->data.when_stmt.cases[node->data.when_stmt.case_count];
             memset(when_case, 0, sizeof(WhenCase));
+            when_case->kw_token = parser->cur_token;
 
             int val_cap = GROW_ARRAY_INIT_CAP;
             when_case->value_count = 0;
@@ -2998,6 +3109,48 @@ static AstNode *parse_statement(Parser *parser) {
         }
         return stmt;
     }
+    case TOK_DEPRECATED: {
+        /* #deprecated or #deprecated("message"); applies to the next
+         * function, struct, or enum declaration. */
+        next_token(parser); /* consume #deprecated */
+        const char *message = NULL;
+        if (current_token_is(parser, TOK_LPAREN)) {
+            next_token(parser); /* consume ( */
+            if (current_token_is(parser, TOK_STRING)) {
+                message = arena_copy_string(parser->arena, parser->cur_token.literal);
+                next_token(parser); /* consume string */
+            } else {
+                diagnostic_error_message(parser->diag, "E2002",
+                    arena_copy_string(parser->arena,
+                        "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            }
+            if (current_token_is(parser, TOK_RPAREN)) {
+                next_token(parser); /* consume ) */
+            } else {
+                diagnostic_error_message(parser->diag, "E2002",
+                    arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            }
+        }
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_deprecated = true;
+            stmt->data.func_decl.deprecated_message = message;
+        } else if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_deprecated = true;
+            stmt->data.struct_decl.deprecated_message = message;
+        } else if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_deprecated = true;
+            stmt->data.enum_decl.deprecated_message = message;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
     case TOK_DOC:
         /* Skip #doc attribute tokens; consume args if present */
         if (peek_token_is(parser, TOK_LPAREN)) {
@@ -3027,8 +3180,11 @@ static AstNode *parse_statement(Parser *parser) {
     default: {
         /* Bare variable declaration: x int = 5  or  x, err = func()
          * Also handles array types: x [int] = {1,2,3}
-         * Whitespace before '[' disambiguates from index expressions (E2075). */
+         * Whitespace before '[' disambiguates from index expressions (E2075).
+         * The name and what follows it must share a line, so a bare
+         * identifier cannot swallow the next statement's first token. */
         if (current_token_is(parser, TOK_IDENT) &&
+            parser->peek_token.line == parser->cur_token.line &&
             (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_COMMA) ||
              (peek_token_is(parser, TOK_LBRACKET) && parser->peek_token.preceded_by_ws))) {
             return parse_var_declaration_ex(parser, true);

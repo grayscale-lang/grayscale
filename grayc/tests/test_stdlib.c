@@ -57,6 +57,41 @@ static void test_strings_to_upper_mixed(void) {
     ASSERT_GRAY_STR(r, "HELLO WORLD 123");
 }
 
+/* Separators were emitted on sight, so a trailing one appended a '_' that
+ * nothing followed: "foo " became "foo_". Leading separators were already
+ * dropped by the pos > 0 guard, which is where the asymmetry showed. */
+static void test_strings_to_snake_case_separators(void) {
+    static const struct { const char *in; const char *out; } cases[] = {
+        { "-foo", "foo" },          { "foo-", "foo" },
+        { " foo", "foo" },          { "foo ", "foo" },
+        { "_foo", "foo" },          { "foo_", "foo" },
+        { "foo bar ", "foo_bar" },  { "--foo--bar--", "foo_bar" },
+        { "foo--bar", "foo_bar" },  { "User Name ", "user_name" },
+        { "  a  b  ", "a_b" },      { "already_snake_case", "already_snake_case" },
+        { "", "" },                 { "---", "" },
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        GrayString r = gray_strings_to_snake_case(arena, gray_string_lit(cases[i].in));
+        ASSERT_GRAY_STR(r, cases[i].out);
+    }
+}
+
+/* The acronym and camelCase boundary rules must survive the change, in every
+ * position relative to a separator. */
+static void test_strings_to_snake_case_boundaries(void) {
+    static const struct { const char *in; const char *out; } cases[] = {
+        { "HTTPServer", "http_server" },   { "HTTPServer ", "http_server" },
+        { " HTTPServer", "http_server" },  { "parseHTTPResponse", "parse_http_response" },
+        { "XMLHttpRequest", "xml_http_request" },
+        { "fooBar", "foo_bar" },           { "foo_Bar", "foo_bar" },
+        { "foo2Bar", "foo2_bar" },         { "A", "a" },
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        GrayString r = gray_strings_to_snake_case(arena, gray_string_lit(cases[i].in));
+        ASSERT_GRAY_STR(r, cases[i].out);
+    }
+}
+
 static void test_strings_to_lower(void) {
     GrayString r = gray_strings_to_lower(arena, gray_string_lit("HELLO"));
     ASSERT_GRAY_STR(r, "hello");
@@ -950,6 +985,8 @@ int main(void) {
     printf("--- strings ---\n");
     RUN_TEST(test_strings_to_upper);
     RUN_TEST(test_strings_to_upper_mixed);
+    RUN_TEST(test_strings_to_snake_case_separators);
+    RUN_TEST(test_strings_to_snake_case_boundaries);
     RUN_TEST(test_strings_to_lower);
     RUN_TEST(test_strings_trim);
     RUN_TEST(test_strings_trim_tabs_newlines);

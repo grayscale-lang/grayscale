@@ -1,0 +1,89 @@
+/*
+ * float_scientific_notation.gray - exponent notation in float literals
+ *
+ * The lexer previously stopped at the mantissa, so `1.0e308` became the
+ * float `1.0` followed by an identifier `e308`.
+ */
+
+import @math
+
+do main() {
+    println("=== Scientific Notation Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if 1e3 == 1000.0 {
+        println("  [PASS] bare exponent")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare exponent: got ${1e3}")
+        failed += 1
+    }
+
+    if 1.5e3 == 1500.0 {
+        println("  [PASS] exponent after a fraction")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] exponent after a fraction: got ${1.5e3}")
+        failed += 1
+    }
+
+    if 2E3 == 2000.0 {
+        println("  [PASS] uppercase E")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] uppercase E: got ${2E3}")
+        failed += 1
+    }
+
+    if 1.5e-3 == 0.0015 {
+        println("  [PASS] negative exponent")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative exponent: got ${1.5e-3}")
+        failed += 1
+    }
+
+    if 2e+3 == 2000.0 {
+        println("  [PASS] explicit plus exponent")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit plus exponent: got ${2e+3}")
+        failed += 1
+    }
+
+    if 1e1_0 == 10000000000.0 {
+        println("  [PASS] underscores inside the exponent")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] underscores inside the exponent: got ${1e1_0}")
+        failed += 1
+    }
+
+    // The bounds constants are only writable as literals with an exponent
+    if 1.7976931348623157e308 == math.MAX_FLOAT && -1.7976931348623157e308 == math.MIN_FLOAT {
+        println("  [PASS] float bounds round-trip as literals")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] float bounds round-trip as literals")
+        failed += 1
+    }
+
+    // Hex literals still lex independently of the exponent rule
+    if 0x1E == 30 {
+        println("  [PASS] hex 0x1E unaffected")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] hex 0x1E: got ${0x1E}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

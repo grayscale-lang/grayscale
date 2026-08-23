@@ -1,0 +1,25 @@
+import "./scope"
+
+do main() {
+    println("=== Self-Referential Struct Pointer Var Decl Test ===")
+
+    root = scope.make_root()
+    child = scope.make_child(root)
+
+    found_in_child = scope.scope_lookup(child, "x")
+    if found_in_child != nil && found_in_child^.name == "root-x" {
+        println("  [PASS] lookup walks up parent chain via explicit ^Scope local")
+    } otherwise {
+        println("  [FAIL] lookup walks up parent chain via explicit ^Scope local")
+    }
+
+    missing = scope.scope_lookup(child, "does-not-exist")
+    if missing == nil {
+        println("  [PASS] lookup returns nil for missing name")
+    } otherwise {
+        println("  [FAIL] lookup returns nil for missing name")
+    }
+
+    println("")
+    println("ALL TESTS PASSED")
+}

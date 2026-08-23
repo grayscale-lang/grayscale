@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3088 - %b format directive requires a bool argument
+ * Expected: "format directive '%b' expects bool but got int"
+ */
+
+import @fmt
+
+do main() {
+    fmt.printfln("%b", 42)
+}

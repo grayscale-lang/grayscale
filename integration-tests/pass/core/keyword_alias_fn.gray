@@ -1,0 +1,43 @@
+/*
+ * keyword_alias_fn.gray - fn as alias for do
+ *
+ * `fn` is a syntax alias for `do`. Both keywords produce the same token,
+ * so they are interchangeable, but a single file must pick one. The alias
+ * is accepted for struct functions as well as free functions.
+ */
+
+const Math struct {
+    _pad int
+
+    fn add(a int, b int) -> int {
+        return a + b
+    }
+}
+
+fn double(n int) -> int {
+    return n * 2
+}
+
+fn main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if double(21) == 42 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    if Math.add(3, 4) == 7 {
+        passed += 1
+    } otherwise {
+        failed += 1
+    }
+
+    println("keyword_alias_fn: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("FAIL")
+    } otherwise {
+        println("PASS")
+    }
+}

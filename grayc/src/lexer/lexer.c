@@ -37,6 +37,13 @@ static char peek_char(Lexer *lexer) {
     return lexer->input[lexer->read_position];
 }
 
+/* Look ahead `offset` characters past the current one; offset 1 is peek_char. */
+static char peek_char_at(Lexer *lexer, int offset) {
+    int pos = lexer->read_position + offset - 1;
+    if (pos < 0 || pos >= lexer->input_len) return 0;
+    return lexer->input[pos];
+}
+
 static void skip_whitespace(Lexer *lexer) {
     while (lexer->ch == ' ' || lexer->ch == '\t' || lexer->ch == '\r' || lexer->ch == '\n') {
         read_char(lexer);
@@ -151,6 +158,23 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
             /* Consume decimal point; validation below will catch errors */
             *type = TOK_FLOAT;
             read_char(lexer);
+            while (isdigit((unsigned char)lexer->ch) || lexer->ch == '_') {
+                read_char(lexer);
+            }
+        }
+    }
+
+    /* Exponent: 1e9, 1.5e-3, 2E+10. Only consumed when real exponent digits
+     * follow, so a bare identifier after a number (2E) still lexes as two
+     * tokens the way it always did. */
+    if (lexer->ch == 'e' || lexer->ch == 'E') {
+        char next = peek_char(lexer);
+        bool signed_exp = (next == '+' || next == '-');
+        char after_sign = signed_exp ? peek_char_at(lexer, 2) : next;
+        if (isdigit((unsigned char)after_sign)) {
+            *type = TOK_FLOAT;
+            read_char(lexer);                 /* e/E */
+            if (signed_exp) read_char(lexer); /* +/- */
             while (isdigit((unsigned char)lexer->ch) || lexer->ch == '_') {
                 read_char(lexer);
             }
@@ -532,9 +556,12 @@ Token lexer_next_token(Lexer *lexer) {
         } else if (check_upcoming_chars(lexer, "#discard", 8)) {
             tok = make_token(TOK_DISCARD, "#discard", tok.line, tok.column);
             for (int i = 0; i < 7; i++) read_char(lexer);
+        } else if (check_upcoming_chars(lexer, "#deprecated", 11)) {
+            tok = make_token(TOK_DEPRECATED, "#deprecated", tok.line, tok.column);
+            for (int i = 0; i < 10; i++) read_char(lexer);
         } else {
             lexer->error_code = "E1019";
-            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard' for attributes";
+            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard', '#deprecated' for attributes";
             tok = make_token(TOK_ILLEGAL, lexer->error_msg, tok.line, tok.column);
         }
         break;

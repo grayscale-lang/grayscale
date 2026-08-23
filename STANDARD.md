@@ -32,11 +32,12 @@ This document defines the Grayscale programming language. It serves as the autho
 
 ### 1.2 Overview
 
-Grayscale is a compiled language where simplicity meets flexibility. Inspired by C, Odin, Rust, and Go. The language emphasizes:
+Grayscale is a programming language for software that's simple to write and safe to run. Inspired by C, Odin, Rust, and Go. The language emphasizes:
 
-- **Simplicity**: A small, focused feature set that stays out of your way
-- **Flexibility**: Readable syntax that bends to how you think
-- **Safety**: Static type checking with runtime bounds checking
+- **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
+- **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
+- **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
 
 ---
 
@@ -98,16 +99,17 @@ The following words are reserved and may not be used as identifiers:
 
 **Control flow:**
 ```
-as_long_as   break       continue    default
-else         ensure      for         for_each    if
-is           loop        or          or_return   otherwise
-return       when        while
+as_long_as   break       case        continue    default
+defer        elif        else        ensure      for
+for_each     if          is          loop        or
+or_return    otherwise   return      switch      when
+while
 ```
 
 **Declarations:**
 ```
-alias        const       do          enum        import      mut
-new          private     struct      use*        using
+alias        const       do          enum        fn          import
+mut          new         private     struct      use*        using
 ```
 
 > 💡 **Tip:** `use*` is reserved exclusively for the `import and use` statement. It has no other syntactic role.
@@ -137,11 +139,39 @@ true
 
 Some keywords have shorter or more familiar aliases. Both forms are identical and produce the same token:
 
-| Alias   | Canonical      | Purpose              |
-|---------|----------------|----------------------|
-| `else`  | `otherwise`    | Default branch       |
-| `while` | `as_long_as`   | Condition loop       |
-| `!in`   | `not_in`       | Non-membership test  |
+| Alias    | Canonical      | Purpose               |
+|----------|----------------|-----------------------|
+| `else`   | `otherwise`    | Default branch        |
+| `elif`   | `or`           | Else-if branch        |
+| `while`  | `as_long_as`   | Condition loop        |
+| `fn`     | `do`           | Function declaration  |
+| `switch` | `when`         | Pattern match         |
+| `case`   | `is`           | Pattern match branch  |
+| `defer`  | `ensure`       | Deferred call         |
+| `!in`    | `not_in`       | Non-membership test   |
+
+Each pair is tracked independently, so one file may write `while` and `fn` while another writes
+`as_long_as` and `do`. Mixing the two spellings of a single pair within one file is an `E2088` error.
+
+**Joint pairs.** Two of the pairs span two keywords each, and both words move together — a file must
+take both from the same side or neither:
+
+| Dialect     | Pattern match      | Branch chain        |
+|-------------|--------------------|---------------------|
+| Canonical   | `when` … `is`      | `or` … `otherwise`  |
+| Alias       | `switch` … `case`  | `elif` … `else`     |
+
+```gray
+switch x { case 1 { } default { } }    // ok
+when x   { is 1 { } default { } }      // ok
+switch x { is 1 { } default { } }      // E2088 — crossed dialects
+
+if a { } elif b { } else { }           // ok
+if a { } or b { } otherwise { }        // ok
+if a { } elif b { } otherwise { }      // E2088 — crossed dialects
+```
+
+`if` and `default` are spelled the same in both dialects and never vary.
 
 > 💡 **Tip:** The `map` keyword is optional in type position — `[string:int]` and `map[string:int]` are identical. The parser normalizes both to the same canonical form.
 
@@ -422,6 +452,17 @@ println(x)   // 100
 Printing a pointer value (`println(p)`, `print(p)`, etc.) outputs the address in hex (`0x...`) when non-nil and `nil` when null. Use `p^` to access the pointee.
 
 Dereferencing a `nil` pointer causes a runtime panic.
+
+`nil` is assignable anywhere a pointer type is expected — variable initialization, assignment, struct fields, and function call arguments (including struct function calls and default parameter values):
+
+```gray
+do make_node(parent ^Node) -> ^Node {
+    n = new(Node)
+    return n
+}
+
+root = make_node(nil)  // OK: nil satisfies the ^Node parameter
+```
 
 **Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
 
@@ -1323,9 +1364,21 @@ The `or` keyword introduces additional conditions.
 
 The `otherwise` keyword introduces the default case.
 
-`else` is an alias for `otherwise`. Both are valid, user's choice.
+`elif` is an alias for `or`, and `else` is an alias for `otherwise`. Both dialects are valid, user's
+choice — but the two branch keywords move together, so an `elif` chain must close with `else` and an
+`or` chain must close with `otherwise`. See [Section 2.5](#25-keywords).
 
-> 💡 **Tip:** `else` and `otherwise` are identical. Pick whichever reads more naturally to you and stick with it.
+```gray
+if x < 0 {
+    println("negative")
+} elif x == 0 {
+    println("zero")
+} else {
+    println("positive")
+}
+```
+
+> 💡 **Tip:** `or`/`otherwise` and `elif`/`else` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 6.3 Loop Statements
 
@@ -1504,6 +1557,18 @@ when x {
 }
 ```
 
+`switch` is an alias for `when` and `case` is an alias for `is`. The two words move together: a
+`switch` must use `case` branches and a `when` must use `is` branches. `default` is spelled the same
+either way. See [Section 2.5](#25-keywords).
+
+```gray
+switch x {
+    case 1 { println("one") }
+    case 2, 3 { println("two or three") }
+    default { println("other") }
+}
+```
+
 **Allowed condition types:** `int`, `uint`, `string`, `char`, `byte`, `bool`, `float`, and enum types. Float conditions emit a warning about imprecision. Collection types (arrays, maps) are not allowed.
 
 **Strict mode** requires all possible values to be handled:
@@ -1536,6 +1601,10 @@ do process_file() {
     // cleanup() will be called when function ends
 }
 ```
+
+`defer` is an alias for `ensure`. Both are valid, user's choice.
+
+> 💡 **Tip:** `defer` and `ensure` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 6.7 Or-Return Statement
 
@@ -1574,6 +1643,16 @@ do process() {
     // Void function (no return type)
 }
 ```
+
+`fn` is an alias for `do`. Both are valid, user's choice.
+
+```gray
+fn add(a int, b int) -> int {
+    return a + b
+}
+```
+
+> 💡 **Tip:** `fn` and `do` are identical. Pick whichever reads more naturally to you and stick with it.
 
 ### 7.2 Parameters
 
@@ -1876,6 +1955,7 @@ const Person struct {
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
+| `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -1963,6 +2043,59 @@ const List struct {
 
 - `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
 - `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
+
+#### 7.5.4 `#deprecated` Attribute
+
+The `#deprecated` attribute marks a function, struct, or enum as deprecated. The compiler emits a `W3007` warning at every reference to the marked item — every call, every struct-literal construction, every `EnumName.VARIANT` access, and every place its name appears as a declared type (variable, parameter, return type, or struct field). A replacement message is optional:
+
+```gray
+#deprecated("use new_format() instead")
+do old_format(s string) -> string {
+    return new_format(s)
+}
+
+#deprecated
+do untouched() {
+    // no message — warning falls back to a generic "is deprecated" text
+}
+
+do main() {
+    old_format("hello") // warning: old_format is deprecated: use new_format() instead
+    untouched()          // warning: untouched is deprecated
+}
+```
+
+It applies the same way to struct and enum declarations, and to individual struct functions:
+
+```gray
+#deprecated("Point is old, use Point3D")
+const Point struct {
+    x int
+    y int
+}
+
+const Container struct {
+    id int
+
+    #deprecated("use current() instead")
+    do legacy(self Container) -> int {
+        return 1
+    }
+
+    do current(self Container) -> int {
+        return 2
+    }
+}
+```
+
+**Rules:**
+
+- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2002).
+- The message argument, when present, must be a string literal: `#deprecated("...")`.
+- A deprecated function's own recursive calls to itself do not trigger the warning, and code inside a deprecated struct's own struct-functions can reference that struct's type without warning. A struct-function calling a *different* deprecated struct-function or referencing a *different* deprecated type still warns normally.
+- Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
+- `#deprecated` can be stacked with other attributes (including `#discard`) on the same declaration, in any order.
+- Like all warnings, `W3007` can be suppressed with `-q W3007` or `-q all`.
 
 ### 7.6 Function References
 
@@ -2814,6 +2947,9 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 |----------|-----------|-------------|
 | `to_upper` | `(s string) -> string` | Convert to uppercase |
 | `to_lower` | `(s string) -> string` | Convert to lowercase |
+| `to_title` | `(s string) -> string` | Capitalize the first letter of each whitespace-separated word, lowercase the rest |
+| `to_snake_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and hyphens to snake_case; acronym runs stay together (`HTTPServer` → `http_server`) |
+| `to_camel_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to camelCase |
 
 #### Access Functions
 
@@ -2832,6 +2968,9 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `index_of` | `(s string, sub string) -> int` | First index of substring |
 | `last_index_of` | `(s string, sub string) -> int` | Last index of substring (-1 if not found) |
 | `count` | `(s string, sub string) -> int` | Count occurrences |
+| `contains_any` | `(s string, chars string) -> bool` | True if any single character from `chars` appears in `s`; false when `chars` is empty |
+| `equal_fold` | `(a string, b string) -> bool` | Case-insensitive equality (ASCII) |
+| `compare` | `(a string, b string) -> int` | Bytewise comparison; -1 if `a` sorts first, 1 if `b` does, 0 if equal |
 
 #### Classification Functions
 
@@ -2862,6 +3001,8 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `split` | `(s string, sep string) -> [string]` | Split into array |
+| `split_whitespace` | `(s string) -> [string]` | Split on runs of whitespace, discarding empty pieces |
+| `split_n` | `(s string, sep string, n int) -> [string]` | Split into at most `n` pieces; the last holds the unsplit remainder. Empty array when `n <= 0` |
 | `join` | `(arr [string], sep string) -> string` | Join array |
 | `slice` | `(s string, start int, end int) -> string` | Extract substring |
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
@@ -2897,6 +3038,10 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `abs` | `(n T) -> T` | Absolute value |
 | `neg` | `(n T) -> T` | Negation |
 | `sign` | `(n T) -> int` | Sign (-1, 0, or 1) |
+| `mod` | `(x float, y float) -> float` | Floating-point remainder, carrying the sign of `x` |
+| `copysign` | `(x float, y float) -> float` | Magnitude of `x` with the sign of `y` |
+| `fma` | `(x float, y float, z float) -> float` | Fused multiply-add: `x * y + z` with a single rounding step |
+| `modf` | `(x float) -> (float, float)` | Integer and fractional parts of `x`, both carrying its sign. Both values must be captured: `mut whole, frac = math.modf(x)` |
 
 #### Min/Max/Clamp
 
@@ -2970,6 +3115,8 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `is_infinite` | `(n float) -> bool` | Check if infinite |
 | `is_nan` | `(n float) -> bool` | Check if NaN |
 | `is_finite` | `(n float) -> bool` | Check if finite (not infinite or NaN) |
+| `is_power_of_two` | `(n int) -> bool` | Check if a positive power of two; zero and negatives are not |
+| `next_power_of_two` | `(n int) -> int` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_INT` |
 
 #### Utility
 
@@ -2990,6 +3137,10 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 - `INF` - Positive infinity
 - `NEG_INF` - Negative infinity
 - `EPSILON` - Smallest representable float difference
+- `MAX_INT` - Largest value an `int` can hold (9223372036854775807)
+- `MIN_INT` - Smallest value an `int` can hold (-9223372036854775808)
+- `MAX_FLOAT` - Largest finite value a `float` can hold (1.7976931348623157e308)
+- `MIN_FLOAT` - Smallest, i.e. most negative, finite value a `float` can hold (-1.7976931348623157e308)
 
 ### 9.6 Time Module (`@time`)
 
@@ -3012,6 +3163,7 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `minute` | `(timestamp int) -> int` | Get minute |
 | `second` | `(timestamp int) -> int` | Get second |
 | `weekday` | `(timestamp int) -> int` | Get day of week (0=Sunday) |
+| `is_leap_year` | `(year int) -> bool` | Check if year is a leap year |
 
 #### Formatting
 
@@ -3022,11 +3174,23 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `date` | `(timestamp int) -> string` | Date (YYYY-MM-DD) |
 | `to_clock` | `(timestamp int) -> string` | Time (HH:MM:SS) |
 
+#### Parsing
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `parse` | `(s string, layout string) -> (int, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
+
+**Behavior:**
+- Panics on invalid input, unless the result is destructured (`mut ts, err = time.parse(...)` or `mut ts, _ = time.parse(...)`), in which case an Error is returned instead.
+
+Error-returning variant: `parse`
+
 #### Arithmetic
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `diff` | `(t1 int, t2 int) -> int` | Difference in seconds (t2 - t1); negative if t1 is after t2 |
+| `since` | `(t int) -> int` | Seconds elapsed from t to now; equivalent to `diff(t, now())` |
 
 #### Performance Timing
 
@@ -3753,6 +3917,25 @@ These functions never fail.
 | `BASE_36` | `36` | Base-36 (digits + full alphabet) |
 
 Constants can be used qualified (`strconv.BASE_16`) or bare after `import and use @strconv`. Any integer value between 2 and 36 is also accepted directly as the base argument.
+
+### 9.28 Runtime Module (`@runtime`)
+
+Read-only introspection into the compiler-managed arenas (default + heap), execution state, and build info. Answers "what is the Grayscale runtime doing right now?" — it does not offer any control or mutation; manual memory management stays in `@mem`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `arena_usage` | `() -> int` | Bytes currently used in the default (scope) arena |
+| `heap_usage` | `() -> int` | Bytes currently used in the heap arena (backs `new()`) |
+| `total_usage` | `() -> int` | Combined default + heap arena bytes currently used |
+| `peak_usage` | `() -> int` | High-water mark of combined default + heap arena bytes committed at any point during execution |
+| `alloc_count` | `() -> int` | Total number of arena allocations across the default and heap arenas since program start |
+| `arena_blocks` | `() -> int` | Number of blocks chained in the default arena |
+| `heap_blocks` | `() -> int` | Number of blocks chained in the heap arena |
+| `arena_limit` | `() -> int` | Current arena growth limit in bytes (from `--arena-limit`, or the 1 GB default) |
+| `version` | `() -> string` | Grayscale version that compiled this binary |
+| `call_depth` | `() -> int` | Current call stack depth |
+| `call_limit` | `() -> int` | Maximum allowed call stack depth (10,000) |
+| `uptime` | `() -> float` | Seconds elapsed since the program started |
 
 ---
 

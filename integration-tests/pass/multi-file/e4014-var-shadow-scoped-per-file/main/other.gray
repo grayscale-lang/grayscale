@@ -1,0 +1,9 @@
+/*
+ * other.gray - does NOT import "types" at all. Its local variable named
+ * "types" shadows nothing from this file's own perspective.
+ */
+
+do use_local() -> string {
+    mut types [string] = {"a", "b"}
+    return types[0]
+}

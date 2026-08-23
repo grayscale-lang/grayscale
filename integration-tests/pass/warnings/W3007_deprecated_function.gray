@@ -1,0 +1,25 @@
+/*
+ * Warning Test: W3007 - deprecated-function
+ * Expected: warning when a #deprecated function is called from outside
+ * its own body. A deprecated function's own recursive call to itself
+ * must NOT produce a second warning (self-reference exemption).
+ */
+
+#deprecated("use new_format() instead")
+do old_format(s string) -> string {
+    return s
+}
+
+#deprecated("recursion demo")
+do countdown(n int) -> int {
+    if n <= 0 {
+        return 0
+    }
+    return countdown(n - 1) // no warning: recursive self-call is exempt
+}
+
+do main() {
+    mut r string = old_format("hi") // warning: old_format is deprecated
+    mut n int = countdown(3)        // warning: countdown is deprecated (this call only)
+    println("${r} ${n}")
+}

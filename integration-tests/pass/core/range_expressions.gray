@@ -107,15 +107,6 @@ do main() {
         failed += 1
     }
 
-    // Test 11: not_in operator with range
-    if 15 not_in range(0, 10) {
-        println("  [PASS] 15 not_in range(0, 10)")
-        passed += 1
-    } otherwise {
-        println("  [FAIL] 15 should not_in range(0, 10)")
-        failed += 1
-    }
-
     // ==================== RANGE IN WHEN/IS ====================
     println("  -- range in when/is --")
 

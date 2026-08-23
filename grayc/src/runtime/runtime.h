@@ -37,6 +37,8 @@ typedef struct {
     size_t default_block_size;
     size_t max_bytes;         /* 0 = unlimited (user arenas) */
     size_t total_allocated;   /* cumulative bytes across all blocks */
+    size_t peak_bytes;        /* high-water mark of total_allocated */
+    size_t alloc_count;       /* cumulative allocations on this arena */
     bool destroyed;
 } GrayArena;
 
@@ -46,6 +48,7 @@ void *gray_arena_alloc_uninitialized(GrayArena *arena, size_t size);
 void gray_arena_reset(GrayArena *arena);
 void gray_arena_destroy(GrayArena *arena, const char *file, int line);
 size_t gray_arena_usage(GrayArena *arena);
+size_t gray_arena_block_count(GrayArena *arena);
 
 /* Per-thread default arena — each thread (including spawned threads) gets its own. */
 extern _Thread_local GrayArena *gray_default_arena;
@@ -53,6 +56,14 @@ extern _Thread_local GrayArena *gray_default_arena;
 /* Persistent heap arena — lives for the lifetime of the program.
  * Used by new() so returned pointers are never dangling. */
 extern _Thread_local GrayArena *gray_heap_arena;
+
+/* Cumulative count of allocations made against whichever arena is installed
+ * as the default or heap arena. Tracked separately from GrayArena::alloc_count
+ * because a loop body swaps in a fresh per-iteration arena and destroys it
+ * every pass: reading the installed arena's own counter makes the total drop
+ * to zero on loop entry and discards everything the body allocated.
+ * Thread-local to match the arena globals it follows. */
+extern _Thread_local size_t gray_total_alloc_count;
 
 /* --- String --- */
 
@@ -132,6 +143,9 @@ GrayString gray_string_concat(GrayArena *arena, GrayString a, GrayString b);
 
 void gray_runtime_init(size_t arena_limit);
 void gray_runtime_shutdown(void);
+
+/* Seconds elapsed since gray_runtime_init() was called */
+double gray_runtime_uptime(void);
 
 /* --- Scope-based memory management --- */
 

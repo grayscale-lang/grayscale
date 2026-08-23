@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3040 - math.modf returns 2 values; capturing one drops the other
+ */
+// expect-error: E3040
+
+import @math
+
+do main() {
+    mut x float = math.modf(1.5)
+    println(x)
+}

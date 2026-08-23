@@ -1,0 +1,16 @@
+/* Error Test: E2088 - 'elif' crossed with 'otherwise'
+ *
+ * The branch keywords are tracked jointly: a chain using 'elif' must
+ * close with 'else', not 'otherwise'.
+ */
+// expect-error: E2088
+do main() {
+    mut x int = 10
+    if x < 0 {
+        println("neg")
+    } elif x == 0 {
+        println("zero")
+    } otherwise {
+        println("pos")
+    }
+}

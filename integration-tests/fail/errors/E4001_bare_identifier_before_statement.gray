@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4001 - undefined-variable
+ * Expected: "undefined variable"
+ */
+// expect-error: E4001
+
+do main() {
+    zzz  // Must not consume the next line's token as a type
+    println("done")
+}

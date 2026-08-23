@@ -863,8 +863,8 @@ static void test_e2e_function_reference_basic(void) {
         ""
         "do double(n int) -> int { return n * 2 }\n"
         "do main() {\n"
-        "  const fn = ()double\n"
-        "  println(fn(21))\n"
+        "  const f = ()double\n"
+        "  println(f(21))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "42");
@@ -875,8 +875,8 @@ static void test_e2e_function_reference_via_ref(void) {
         ""
         "do negate(n int) -> int { return n * -1 }\n"
         "do main() {\n"
-        "  mut fn = ref(negate)\n"
-        "  println(fn(5))\n"
+        "  mut f = ref(negate)\n"
+        "  println(f(5))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "-5");

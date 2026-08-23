@@ -29,6 +29,80 @@ GrayString gray_strings_to_lower(GrayArena *arena, GrayString s) {
     return r;
 }
 
+GrayString gray_strings_to_title(GrayArena *arena, GrayString s) {
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
+    bool at_word_start = true;
+    for (int32_t i = 0; i < s.len; i++) {
+        unsigned char c = (unsigned char)s.data[i];
+        if (isspace(c)) {
+            buf[i] = (char)c;
+            at_word_start = true;
+            continue;
+        }
+        buf[i] = at_word_start ? (char)toupper(c) : (char)tolower(c);
+        at_word_start = false;
+    }
+    buf[s.len] = '\0';
+    GrayString r = { buf, s.len };
+    return r;
+}
+
+/* Every character can emit at most one separator plus itself, so the worst
+ * case is twice the input length. */
+GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len * 2 + 1);
+    int32_t pos = 0;
+    /* Deferred rather than emitted on sight, so a separator only produces a
+     * '_' once a real character arrives to follow it. That drops trailing
+     * separators for free and collapses runs, the same way to_camel_case
+     * defers its capitalization. */
+    bool pending_sep = false;
+    for (int32_t i = 0; i < s.len; i++) {
+        unsigned char c = (unsigned char)s.data[i];
+        if (c == ' ' || c == '-' || c == '_') {
+            /* Leading separators are dropped rather than opening with '_'. */
+            pending_sep = pos > 0;
+            continue;
+        }
+        if (isupper(c)) {
+            unsigned char prev = i > 0 ? (unsigned char)s.data[i - 1] : 0;
+            unsigned char next = i + 1 < s.len ? (unsigned char)s.data[i + 1] : 0;
+            /* Break after a lowercase run, and at the tail of an acronym run
+             * so "HTTPServer" splits as "http_server" rather than "h_t_t_p...". */
+            bool boundary = islower(prev) || isdigit(prev) || (isupper(prev) && islower(next));
+            if (boundary && pos > 0) pending_sep = true;
+        }
+        if (pending_sep) {
+            buf[pos++] = '_';
+            pending_sep = false;
+        }
+        buf[pos++] = (char)tolower(c);
+    }
+    buf[pos] = '\0';
+    GrayString r = { buf, pos };
+    return r;
+}
+
+GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s) {
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
+    int32_t pos = 0;
+    bool upper_next = false;
+    for (int32_t i = 0; i < s.len; i++) {
+        unsigned char c = (unsigned char)s.data[i];
+        if (c == '_' || c == '-' || c == ' ') {
+            /* Leading separators are dropped rather than capitalizing the
+             * first word. */
+            upper_next = pos > 0;
+            continue;
+        }
+        buf[pos++] = upper_next ? (char)toupper(c) : (char)tolower(c);
+        upper_next = false;
+    }
+    buf[pos] = '\0';
+    GrayString r = { buf, pos };
+    return r;
+}
+
 GrayString gray_strings_trim(GrayArena *arena, GrayString s) {
     int32_t start = 0, end = s.len;
     while (start < end && isspace((unsigned char)s.data[start])) start++;
@@ -171,6 +245,34 @@ GrayString gray_strings_slice(GrayArena *arena, GrayString s, int64_t start, int
     return gray_string_new(arena, s.data + start, (int32_t)(end - start));
 }
 
+bool gray_strings_contains_any(GrayString s, GrayString chars) {
+    for (int32_t i = 0; i < s.len; i++) {
+        for (int32_t j = 0; j < chars.len; j++) {
+            if (s.data[i] == chars.data[j]) return true;
+        }
+    }
+    return false;
+}
+
+bool gray_strings_equal_fold(GrayString a, GrayString b) {
+    if (a.len != b.len) return false;
+    for (int32_t i = 0; i < a.len; i++) {
+        if (tolower((unsigned char)a.data[i]) != tolower((unsigned char)b.data[i])) return false;
+    }
+    return true;
+}
+
+int64_t gray_strings_compare(GrayString a, GrayString b) {
+    int32_t n = a.len < b.len ? a.len : b.len;
+    for (int32_t i = 0; i < n; i++) {
+        unsigned char ca = (unsigned char)a.data[i];
+        unsigned char cb = (unsigned char)b.data[i];
+        if (ca != cb) return ca < cb ? -1 : 1;
+    }
+    if (a.len == b.len) return 0;
+    return a.len < b.len ? -1 : 1;
+}
+
 GrayArray gray_strings_split(GrayArena *arena, GrayString s, GrayString sep) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
     if (sep.len == 0) {
@@ -184,6 +286,43 @@ GrayArray gray_strings_split(GrayArena *arena, GrayString s, GrayString sep) {
             GRAY_ARRAY_PUSH(arena, &arr, &part);
             i += sep.len - 1;
             start = i + 1;
+        }
+    }
+    GrayString last = gray_string_new(arena, s.data + start, s.len - start);
+    GRAY_ARRAY_PUSH(arena, &arr, &last);
+    return arr;
+}
+
+GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString s) {
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    int32_t i = 0;
+    while (i < s.len) {
+        while (i < s.len && isspace((unsigned char)s.data[i])) i++;
+        if (i >= s.len) break;
+        int32_t start = i;
+        while (i < s.len && !isspace((unsigned char)s.data[i])) i++;
+        GrayString part = gray_string_new(arena, s.data + start, i - start);
+        GRAY_ARRAY_PUSH(arena, &arr, &part);
+    }
+    return arr;
+}
+
+GrayArray gray_strings_split_n(GrayArena *arena, GrayString s, GrayString sep, int64_t n) {
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
+    if (n <= 0) return arr;
+    if (sep.len == 0) {
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
+        return arr;
+    }
+    int32_t start = 0;
+    /* Stop splitting once one slot is left; it takes the whole remainder. */
+    for (int32_t i = 0; n > 1 && i <= s.len - sep.len; i++) {
+        if (memcmp(s.data + i, sep.data, (size_t)sep.len) == 0) {
+            GrayString part = gray_string_new(arena, s.data + start, i - start);
+            GRAY_ARRAY_PUSH(arena, &arr, &part);
+            i += sep.len - 1;
+            start = i + 1;
+            n--;
         }
     }
     GrayString last = gray_string_new(arena, s.data + start, s.len - start);

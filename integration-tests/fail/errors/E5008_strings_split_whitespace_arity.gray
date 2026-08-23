@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5008 - strings.split_whitespace takes exactly one argument
+ */
+// expect-error: E5008
+
+import @strings
+
+do main() {
+    mut parts [string] = strings.split_whitespace("a b", "x")
+    println(len(parts))
+}

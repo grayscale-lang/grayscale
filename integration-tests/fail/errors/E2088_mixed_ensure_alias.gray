@@ -1,0 +1,20 @@
+/* Error Test: E2088 - mixed ensure/defer aliases in same file */
+// expect-error: E2088
+do cleanup() {
+    println("cleanup")
+}
+
+do first() {
+    ensure cleanup()
+    println("first")
+}
+
+do second() {
+    defer cleanup()
+    println("second")
+}
+
+do main() {
+    first()
+    second()
+}

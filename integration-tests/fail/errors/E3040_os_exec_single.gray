@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3040 - os.exec returns 4 values; capturing one drops three
+ */
+// expect-error: E3040
+
+import @os
+
+do main() {
+    mut code int = os.exec("echo", {"hi"})
+    println(code)
+}

@@ -1,0 +1,16 @@
+/* Error Test: E2088 - mixed or/elif aliases in same file */
+// expect-error: E2088
+do main() {
+    mut x int = 10
+    if x > 100 {
+        println("huge")
+    } or x > 5 {
+        println("big")
+    }
+
+    if x < 0 {
+        println("neg")
+    } elif x == 10 {
+        println("ten")
+    }
+}

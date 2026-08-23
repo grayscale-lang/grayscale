@@ -1,0 +1,12 @@
+/* Error Test: E2089 - #discard applied to an enum variant */
+// expect-error: E2089
+const Flag enum {
+    #discard
+    ON
+    OFF
+}
+
+do main() {
+    mut f Flag = Flag.ON
+    println("${f}")
+}

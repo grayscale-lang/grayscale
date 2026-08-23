@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 382 codes** (261 errors, 17 warnings, 104 panics)
+**Total: 387 codes** (263 errors, 18 warnings, 106 panics)
 
 ---
 
@@ -203,6 +203,8 @@
 | `E3134` | types | alias '%s' cannot target a module-qualified type; only local types can be aliased |
 | `E3135` | types | alias '%s' cannot target the wildcard type '?' |
 | `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
+| `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
+| `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -296,6 +298,7 @@
 | `W3004` | safety | pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
 | `W3006` | safety | empty default branch in when statement; unmatched values are silently ignored |
+| `W3007` | deprecation | reference to a function, struct, or enum marked #deprecated |
 
 ---
 
@@ -409,6 +412,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0102` | arithmetic | invalid digit in integer literal |
 | `P0103` | io | file path contains an embedded null byte |
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
+| `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
+| `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
 
 ---
 
@@ -433,4 +438,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-21 02:06:07 UTC*
+*Generated on 2026-08-23 04:47:37 UTC*

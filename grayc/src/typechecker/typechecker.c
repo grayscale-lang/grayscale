@@ -249,6 +249,43 @@ static const char *assignment_target_root_name(AstNode *e) {
     }
 }
 
+/* Depth of the scope declaring `name`, biased by +1 so 0 means "not found".
+ * Deeper means shorter-lived: a pointer may only hold an address whose
+ * origin depth is at most the pointer's own. */
+static int symbol_scope_depth(Scope *scope, const char *name) {
+    for (Scope *cur = scope; cur; cur = cur->parent)
+        if (scope_lookup_local(cur, name)) return cur->depth + 1;
+    return 0;
+}
+
+/* If `value` produces a pointer with a known lifetime origin, report that
+ * origin's scope depth and name. Covers both the direct form addr(x)/raw(x)
+ * and a pointer variable that already carries an origin, so an address that
+ * is laundered through any number of intermediates stays tracked. */
+static int pointer_origin_of(TypeChecker *checker, AstNode *value,
+                             const char **out_name) {
+    if (!value) return 0;
+    if (value->kind == NODE_CALL_EXPR &&
+        value->data.call.function->kind == NODE_LABEL &&
+        value->data.call.arg_count == 1 &&
+        (strcmp(value->data.call.function->data.label.value, "addr") == 0 ||
+         strcmp(value->data.call.function->data.label.value, "raw") == 0)) {
+        const char *root = assignment_target_root_name(value->data.call.args[0]);
+        if (!root) return 0;
+        int depth = symbol_scope_depth(checker->current_scope, root);
+        if (depth) *out_name = root;
+        return depth;
+    }
+    if (value->kind == NODE_LABEL) {
+        Symbol *src = scope_lookup(checker->current_scope, value->data.label.value);
+        if (src && src->origin_depth) {
+            *out_name = src->origin_name;
+            return src->origin_depth;
+        }
+    }
+    return 0;
+}
+
 /* True if the access path contains a map index, e.g. ref(m["k"]) or
  * ref(m["k"].field) or ref(rows[i].cells["k"]). Map values relocate on
  * rehash so a pointer to one is unsafe. */
@@ -282,6 +319,8 @@ static void register_struct(TypeChecker *checker, const char *name,
     si->field_names = field_names;
     si->field_types = field_types;
     si->field_count = field_count;
+    si->is_deprecated = false;
+    si->deprecated_message = NULL;
 }
 
 static int struct_info_name_compare(const void *a, const void *b) {
@@ -354,17 +393,30 @@ static bool is_enum_name(TypeChecker *checker, const char *name) {
                    sizeof(const char *), enum_name_string_compare) != NULL;
 }
 
+/* Best-effort unqualified form of a type name that has no registry entry
+ * to recover a proper display name from — e.g. an undefined type, where
+ * read_type_name() mangled a written "mod.Type" into "mod_Type" and
+ * there's no struct/enum to look the original spelling up on. Mirrors the
+ * module-prefix heuristic already used to resolve module-prefixed lookups
+ * in typechecker_type_from_name(). */
+static const char *unqualified_display_name(const char *name) {
+    if (!name) return name;
+    const char *us = strchr(name, '_');
+    if (us && us[1] >= 'A' && us[1] <= 'Z') return us + 1;
+    return name;
+}
+
 /* The name the programmer wrote for a struct, never the module-prefixed
  * lookup key. Diagnostics and namespace-collision checks must use this. */
 static const char *struct_display_name(TypeChecker *checker, const char *name) {
     StructInfo *si = find_struct(checker, name);
-    return si ? si->display_name : name;
+    return si ? si->display_name : unqualified_display_name(name);
 }
 
 /* As struct_display_name, for enums. */
 static const char *enum_display_name(TypeChecker *checker, const char *name) {
     int i = find_enum_index(checker, name);
-    if (i < 0) return name;
+    if (i < 0) return unqualified_display_name(name);
     return checker->enum_display_names[i] ? checker->enum_display_names[i] : checker->enum_names[i];
 }
 
@@ -839,6 +891,78 @@ static const char *func_display_name(const FuncSig *fs) {
     return fs ? fs->name : "";
 }
 
+/* --- #deprecated warning helpers ---
+ * Fire W3007 at every genuine reference site (not internal lookup/diagnostic
+ * helper calls). Each caller is responsible for only calling these from a
+ * spot that represents a real user reference — see call sites. */
+
+static void warn_deprecated(TypeChecker *checker, AstNode *node, const char *kind,
+    const char *display_name, const char *message) {
+    char *msg = message
+        ? typechecker_format(checker, "%s '%s' is deprecated: %s", kind, display_name, message)
+        : typechecker_format(checker, "%s '%s' is deprecated", kind, display_name);
+    diagnostic_warning_message(checker->diag, "W3007", msg,
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+}
+
+/* Exempt a deprecated function's own recursive calls to itself (pointer
+ * identity on FuncSig.decl, not name — struct functions are registered
+ * under a prefixed lookup key that never matches the plain AST name). */
+static void warn_if_func_deprecated(TypeChecker *checker, AstNode *node, FuncSig *sig) {
+    if (!sig || !sig->is_deprecated) return;
+    if (checker->current_func_decl && sig->decl == checker->current_func_decl) return;
+    /* func_display_name() only strips module-import prefixes via
+     * original_name; struct-scoped functions are registered under a
+     * "StructName_func" key with no original_name set, so it would
+     * leak the prefixed key. FUNC_DISPLAY_NAME reads the AST node's
+     * own (never-prefixed) .name field instead. */
+    const char *display = sig->decl ? FUNC_DISPLAY_NAME(sig->decl) : func_display_name(sig);
+    warn_deprecated(checker, node, "function", display, sig->deprecated_message);
+}
+
+/* Exempt references to a deprecated struct's own type from within its own
+ * struct-functions (same mechanism as the existing private-field-access
+ * check: checker->current_struct_name, set/restored around struct-function
+ * body typechecking). Does NOT cascade to that struct's struct-function
+ * calls — those are independent and only warn if separately deprecated. */
+static void warn_if_struct_deprecated(TypeChecker *checker, AstNode *node, StructInfo *si) {
+    if (!si || !si->is_deprecated) return;
+    if (checker->current_struct_name && strcmp(checker->current_struct_name, si->struct_name) == 0) return;
+    warn_deprecated(checker, node, "struct", si->display_name, si->deprecated_message);
+}
+
+/* Enums have no executable body that could reference themselves, so no
+ * self-reference exemption is needed here. */
+static void warn_if_enum_deprecated(TypeChecker *checker, AstNode *node, int enum_index) {
+    if (enum_index < 0 || !checker->enum_is_deprecated[enum_index]) return;
+    warn_deprecated(checker, node, "enum", checker->enum_display_names[enum_index],
+        checker->enum_deprecated_messages[enum_index]);
+}
+
+/* Check a declared type-name string (var-decl / param / return / field
+ * annotation) against the struct and enum registries and warn if it
+ * names a deprecated one. Bare names only — [Old]/^Old wrappers are not
+ * unwrapped, matching the scope of this pass.
+ *
+ * self_struct_name: pass the enclosing struct's own name when checking a
+ * struct-scoped function's param/return types, so a deprecated struct's
+ * own `self StructName` parameter is exempt the same way its body is
+ * (checker->current_struct_name isn't set yet at signature-registration
+ * time, so warn_if_struct_deprecated's own self-check can't catch this —
+ * it only guards references from inside an already-typechecked body). */
+static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, const char *type_name,
+    const char *self_struct_name) {
+    if (!type_name) return;
+    if (self_struct_name && strcmp(type_name, self_struct_name) == 0) return;
+    StructInfo *tn_si = find_struct(checker, type_name);
+    if (tn_si) {
+        warn_if_struct_deprecated(checker, node, tn_si);
+        return;
+    }
+    int tn_ei = find_enum_index(checker, type_name);
+    if (tn_ei >= 0) warn_if_enum_deprecated(checker, node, tn_ei);
+}
+
 /* --- Stdlib argument kind validation --- */
 
 typedef enum {
@@ -1123,6 +1247,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "cbrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "ceil",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, NULL},
+    {"math", "copysign",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "cos",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "cosh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "deg_to_rad",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
@@ -1131,6 +1256,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "exp2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "factorial",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"math", "floor",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "fma",         3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "float"},
     {"math", "gcd",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"math", "hypot",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "is_even",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
@@ -1138,6 +1264,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "is_infinite", 1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
     {"math", "is_nan",      1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
     {"math", "is_odd",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
+    {"math", "is_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"math", "is_prime",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"math", "lcm",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"math", "lerp",        3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "float"},
@@ -1147,7 +1274,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "log_base",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
     {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
+    {"math", "mod",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "modf",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "next_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "round",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
@@ -1205,6 +1335,19 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"regex", "is_valid", 1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
     {"regex", "replace",  3, 3, true,  FT_STRING,       3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}, "string"},
     {"regex", "split",    2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
+    /* runtime */
+    {"runtime", "alloc_count",  0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "arena_blocks", 0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "arena_limit",  0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "arena_usage",  0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "call_depth",   0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "call_limit",   0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "heap_blocks",  0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "heap_usage",   0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "peak_usage",   0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "total_usage",  0, 0, false, FT_NONE, 0, {{0}}, "int"},
+    {"runtime", "uptime",       0, 0, false, FT_NONE, 0, {{0}}, "float"},
+    {"runtime", "version",      0, 0, false, FT_NONE, 0, {{0}}, "string"},
     /* server */
     {"server", "add_route",  4, 4, false, FT_NONE, 0, {{0}},"void"},
     {"server", "add_router", 0, 0, false, FT_NONE, 0, {{0}},"Router"},
@@ -1235,9 +1378,12 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strconv", "to_uint",    1, 2, true,  FT_UINT,  2, {{0, ARG_STRING}, {1, ARG_INT}}, "uint"},
     /* strings */
     {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
+    {"strings", "compare",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "contains_any",  2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"strings", "count",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "ends_with",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "equal_fold",    2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"strings", "from_chars",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
     {"strings", "index_of",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "is_alnum",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
@@ -1256,9 +1402,14 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "reverse",       1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "slice",         3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_INT}}, "string"},
     {"strings", "split",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
+    {"strings", "split_n",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_INT}}, "[string]"},
+    {"strings", "split_whitespace", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[string]"},
     {"strings", "starts_with",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"strings", "to_camel_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_chars",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[char]"},
     {"strings", "to_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "to_snake_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "to_title",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "trim",          1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "trim_left",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
@@ -1287,12 +1438,15 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"time", "elapsed_ms", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "format",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
     {"time", "hour",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "is_leap_year", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"time", "minute",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "month",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "now",        0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "now_ms",     0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "now_ns",     0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"time", "parse",      2, 2, true,  FT_INT,  2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"time", "second",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "since",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "tick",       0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "to_clock",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "to_iso",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -1519,13 +1673,50 @@ static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name)
     return false;
 }
 
+/* Owning module for a stdlib opaque type's bare name (Thread, Mutex, ...),
+ * or NULL if bare_name isn't one. Shared by is_stdlib_opaque_type_available()
+ * and typechecker_mark_type_module_used() so both agree on the mapping. */
+static const char *stdlib_opaque_module(const char *bare_name) {
+    static const struct { const char *type; const char *mod; } opaque_map[] = {
+        {"Arena",        "mem"},
+        {"Thread",       "threads"},
+        {"Mutex",        "sync"},
+        {"SpinLock",     "atomic"},
+        {"Channel",      "channels"},
+        {"Socket",       "net"},
+        {"Listener",     "net"},
+        {"Database",     "sqlite"},
+        {"Router",       "server"},
+        {"HttpRequest",  "server"},
+        {"HttpResponse", "http"},
+        {"UUID",         "uuid"},
+        {NULL, NULL}
+    };
+    for (int i = 0; opaque_map[i].type; i++) {
+        if (strcmp(bare_name, opaque_map[i].type) == 0) return opaque_map[i].mod;
+    }
+    return NULL;
+}
+
 /* If type_name is module-prefixed (e.g. "T_Query"), mark that module used.
  * The parser rewrites "T.Query" to "T_Query", so we split on the first
- * underscore and check whether the prefix is a known import. */
+ * underscore and check whether the prefix is a known import. A bare stdlib
+ * opaque type name (Thread, Mutex, ...) reached via `using`/`import and use`
+ * has no prefix to split on, so it's checked against the opaque map instead. */
 static void typechecker_mark_type_module_used(TypeChecker *checker, const char *type_name) {
     if (!type_name) return;
     const char *us = strchr(type_name, '_');
-    if (!us || us == type_name) return;
+    if (!us || us == type_name) {
+        const char *mod = stdlib_opaque_module(type_name);
+        if (!mod) return;
+        for (int mi = 0; mi < checker->import_count; mi++) {
+            if (strcmp(checker->imported_modules[mi], mod) == 0) {
+                checker->import_used[mi] = true;
+                return;
+            }
+        }
+        return;
+    }
     size_t prefix_len = (size_t)(us - type_name);
     for (int mi = 0; mi < checker->import_count; mi++) {
         if (strlen(checker->imported_modules[mi]) == prefix_len &&
@@ -1681,6 +1872,8 @@ static const UsingConst _using_consts[] = {
     {"PHI","math",TK_FLOAT},{"SQRT2","math",TK_FLOAT},{"LN2","math",TK_FLOAT},
     {"LN10","math",TK_FLOAT},{"INF","math",TK_FLOAT},{"NEG_INF","math",TK_FLOAT},
     {"EPSILON","math",TK_FLOAT},
+    {"MAX_INT","math",TK_INT},{"MIN_INT","math",TK_INT},
+    {"MAX_FLOAT","math",TK_FLOAT},{"MIN_FLOAT","math",TK_FLOAT},
     {"MAC_OS","os",TK_INT},{"LINUX","os",TK_INT},{"WINDOWS","os",TK_INT},{"OTHER","os",TK_INT},
     {"O_RDONLY","io",TK_INT},{"O_WRONLY","io",TK_INT},{"O_RDWR","io",TK_INT},
     {"BASE_2","strconv",TK_INT},{"BASE_8","strconv",TK_INT},{"BASE_10","strconv",TK_INT},
@@ -1688,6 +1881,80 @@ static const UsingConst _using_consts[] = {
     {"NIL_UUID","uuid",TK_STRUCT},
     {NULL,NULL,TK_UNKNOWN}
 };
+
+/* Stdlib functions that return more than one value without being fallible.
+ * Fallible functions carry their (T, Error) shape through stdlib_func_meta
+ * instead, so they are deliberately absent here. */
+#define STDLIB_MAX_RETURN_SLOTS 4
+typedef struct {
+    const char *mod;
+    const char *fn;
+    int count;
+    GrayType *slots[STDLIB_MAX_RETURN_SLOTS];
+} StdlibMultiReturn;
+
+static const StdlibMultiReturn _stdlib_multi_returns[] = {
+    {"channels", "try_receive", 2, {&TYPE_INT, &TYPE_BOOL}},
+    {"math",     "modf",        2, {&TYPE_FLOAT, &TYPE_FLOAT}},
+    {"os",       "exec",        4, {&TYPE_INT, &TYPE_STRING, &TYPE_STRING, &TYPE_BOOL}},
+    {NULL, NULL, 0, {NULL}}
+};
+
+static const StdlibMultiReturn *find_stdlib_multi_return(const char *mod, const char *fn) {
+    if (!mod || !fn) return NULL;
+    for (int i = 0; _stdlib_multi_returns[i].mod; i++) {
+        if (strcmp(_stdlib_multi_returns[i].mod, mod) == 0 &&
+            strcmp(_stdlib_multi_returns[i].fn, fn) == 0)
+            return &_stdlib_multi_returns[i];
+    }
+    return NULL;
+}
+
+/* Resolve a bare call name to the stdlib module supplying it through
+ * `import and use` / `using`, or NULL when no using-module provides it. */
+static const char *find_using_stdlib_module(TypeChecker *checker, const char *fn) {
+    if (!fn) return NULL;
+    for (int i = 0; i < checker->using_module_count; i++) {
+        if (!using_module_accessible(checker, i)) continue;
+        const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[i]);
+        if (find_stdlib_meta(real_mod, fn)) return real_mod;
+    }
+    return NULL;
+}
+
+static void set_temp_return_slots(TypeChecker *checker, const char *tmp_name,
+                                  GrayType **slots, int count) {
+    Symbol *sym = scope_lookup_local(checker->current_scope, tmp_name);
+    if (!sym) { free(slots); return; }
+    sym->ret_types = slots;
+    sym->ret_count = count;
+    sym->ret_types_owned = true;
+}
+
+/* Give a destructuring temp its slot types for a stdlib call, covering both
+ * the fallible (T, Error) shape and the non-fallible multi-value functions.
+ * Returns true when slots were applied. */
+static bool apply_stdlib_call_returns(TypeChecker *checker, const char *tmp_name,
+                                      const char *mod, const char *fn) {
+    const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, fn);
+    if (mr) {
+        GrayType **rt = xmalloc(sizeof(GrayType *) * (size_t)mr->count);
+        for (int i = 0; i < mr->count; i++) rt[i] = mr->slots[i];
+        set_temp_return_slots(checker, tmp_name, rt, mr->count);
+        return true;
+    }
+    if (typechecker_is_fallible_stdlib(mod, fn)) {
+        GrayType *primary = typechecker_get_fallible_stdlib_type(mod, fn);
+        if (primary) {
+            GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
+            rt[0] = primary;
+            rt[1] = type_from_name("Error");
+            set_temp_return_slots(checker, tmp_name, rt, 2);
+            return true;
+        }
+    }
+    return false;
+}
 
 /* Find the index of a module name in checker->imported_modules[], or -1. */
 static int typechecker_find_import_index(TypeChecker *checker, const char *mod) {
@@ -1728,7 +1995,7 @@ static void register_enum(TypeChecker *checker, const char *name,
     const char *display_name, bool is_string,
     const char **values, int value_count,
     const char ***payload_types, int *payload_counts, bool is_tagged,
-    bool is_flags) {
+    bool is_flags, bool is_deprecated, const char *deprecated_message) {
     if (checker->enum_count >= checker->enum_cap) {
         checker->enum_cap = checker->enum_cap ? checker->enum_cap * 2 : 8;
         checker->enum_names = xrealloc(checker->enum_names, sizeof(const char *) * checker->enum_cap);
@@ -1740,6 +2007,8 @@ static void register_enum(TypeChecker *checker, const char *name,
         checker->enum_payload_counts = xrealloc(checker->enum_payload_counts, sizeof(int *) * checker->enum_cap);
         checker->enum_is_tagged = xrealloc(checker->enum_is_tagged, sizeof(bool) * checker->enum_cap);
         checker->enum_is_flags = xrealloc(checker->enum_is_flags, sizeof(bool) * checker->enum_cap);
+        checker->enum_is_deprecated = xrealloc(checker->enum_is_deprecated, sizeof(bool) * checker->enum_cap);
+        checker->enum_deprecated_messages = xrealloc(checker->enum_deprecated_messages, sizeof(const char *) * checker->enum_cap);
     }
     checker->enum_names_sorted_built = false;
     checker->enum_names[checker->enum_count] = name;
@@ -1751,7 +2020,17 @@ static void register_enum(TypeChecker *checker, const char *name,
     checker->enum_payload_counts[checker->enum_count] = payload_counts;
     checker->enum_is_tagged[checker->enum_count] = is_tagged;
     checker->enum_is_flags[checker->enum_count] = is_flags;
+    checker->enum_is_deprecated[checker->enum_count] = is_deprecated;
+    checker->enum_deprecated_messages[checker->enum_count] = deprecated_message;
     checker->enum_count++;
+}
+
+/* Stdlib opaque types (Thread, Mutex, ...) are only valid when their owning
+ * module is imported. bare_name must already have any module prefix
+ * stripped (e.g. "Thread", not "threads_Thread"). */
+static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *bare_name) {
+    const char *mod = stdlib_opaque_module(bare_name);
+    return mod && typechecker_is_imported_module(checker, mod);
 }
 
 /* Resolve a type name, returning TK_ENUM for known enum names instead of
@@ -1813,30 +2092,8 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             /* Error is always available (no import needed). */
             if (strcmp(name, "Error") == 0) { /* allow */ }
             /* Stdlib opaque types are valid only when their module is imported. */
-            else {
-                static const struct { const char *type; const char *mod; } opaque_map[] = {
-                    {"Arena",        "mem"},
-                    {"Thread",       "threads"},
-                    {"Mutex",        "sync"},
-                    {"SpinLock",     "atomic"},
-                    {"Channel",      "channels"},
-                    {"Socket",       "net"},
-                    {"Listener",     "net"},
-                    {"Database",     "sqlite"},
-                    {"Router",       "server"},
-                    {"HttpRequest",  "server"},
-                    {"HttpResponse", "http"},
-                    {"UUID",         "uuid"},
-                    {NULL, NULL}
-                };
-                bool found = false;
-                for (int i = 0; opaque_map[i].type; i++) {
-                    if (strcmp(name, opaque_map[i].type) == 0) {
-                        found = typechecker_is_imported_module(checker, opaque_map[i].mod);
-                        break;
-                    }
-                }
-                if (!found) return &TYPE_UNKNOWN;
+            else if (!is_stdlib_opaque_type_available(checker, name)) {
+                return &TYPE_UNKNOWN;
             }
         }
     }
@@ -1937,15 +2194,23 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
         *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
-    /* Simple constant folding for literal +, -, * */
+    /* Simple constant folding for literal +, -, *, /. Every operation is
+     * guarded against int64 overflow/UB (signed overflow, and the one
+     * division that traps: INT64_MIN / -1) — on overflow the expression
+     * is simply treated as non-foldable rather than invoking undefined
+     * behavior in the compiler's own arithmetic. */
     if (node->kind == NODE_INFIX_EXPR) {
-        int64_t left_value, right_value;
+        int64_t left_value, right_value, result;
         if (try_get_literal_int(node->data.infix.left, &left_value) &&
             try_get_literal_int(node->data.infix.right, &right_value)) {
-            if (node->data.infix.op == TOK_PLUS) { *out = left_value + right_value; return true; }
-            if (node->data.infix.op == TOK_MINUS) { *out = left_value - right_value; return true; }
-            if (node->data.infix.op == TOK_ASTERISK) { *out = left_value * right_value; return true; }
-            if (node->data.infix.op == TOK_SLASH && right_value != 0) { *out = left_value / right_value; return true; }
+            if (node->data.infix.op == TOK_PLUS &&
+                !__builtin_add_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_MINUS &&
+                !__builtin_sub_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_ASTERISK &&
+                !__builtin_mul_overflow(left_value, right_value, &result)) { *out = result; return true; }
+            if (node->data.infix.op == TOK_SLASH && right_value != 0 &&
+                !(left_value == INT64_MIN && right_value == -1)) { *out = left_value / right_value; return true; }
         }
     }
     return false;
@@ -2069,7 +2334,7 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS &&
         node->data.prefix.right && node->data.prefix.right->kind == NODE_INT_VALUE) {
         if (node->data.prefix.right->data.int_value.overflow_u64) { *overflowed = true; return false; }
-        *out = -node->data.prefix.right->data.int_value.value;
+        *out = (int64_t)(0u - (uint64_t)node->data.prefix.right->data.int_value.value);
         return true;
     }
     if (node->kind == NODE_LABEL) {
@@ -2105,8 +2370,18 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
             if (__builtin_mul_overflow(left_value, right_value, &result)) { *overflowed = true; return false; }
             *out = result; return true;
         }
-        if (op == TOK_SLASH && right_value != 0) { *out = left_value / right_value; return true; }
-        if (op == TOK_PERCENT && right_value != 0) { *out = left_value % right_value; return true; }
+        /* INT64_MIN / -1 (and the equivalent %) is the one division C
+         * leaves undefined at the int64 boundary — it traps (SIGFPE) on
+         * x86-64. Treat it as overflow rather than performing it. */
+        bool div_by_min_neg_one = left_value == INT64_MIN && right_value == -1;
+        if (op == TOK_SLASH && right_value != 0) {
+            if (div_by_min_neg_one) { *overflowed = true; return false; }
+            *out = left_value / right_value; return true;
+        }
+        if (op == TOK_PERCENT && right_value != 0) {
+            if (div_by_min_neg_one) { *overflowed = true; return false; }
+            *out = left_value % right_value; return true;
+        }
     }
     return false;
 }
@@ -2975,6 +3250,10 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                             expected = "char";
                             ok = dt->kind == TK_CHAR || dt->kind == TK_INT;
                             break;
+                        case 'b':
+                            expected = "bool";
+                            ok = dt->kind == TK_BOOL;
+                            break;
                         default:
                             ok = true;
                             break;
@@ -3047,6 +3326,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
         FuncSig *sig = find_func(checker, prefixed);
         if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             /* Resolve named arguments for struct static calls */
             if (sig->decl) {
                 char display[MSG_BUF_SIZE];
@@ -3157,7 +3437,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     !types_assignable(checker, param_t, arg_t) &&
                     !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                     !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                    !(arg_t->kind == TK_NIL &&
+                      (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected %s, got %s",
@@ -3249,6 +3531,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, mfn);
         } else if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             /* Resolve named arguments for user-module function calls */
             if (sig->decl) {
                 char display[MSG_BUF_SIZE];
@@ -3388,6 +3671,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     /* Mark the function used and resolve return type */
                     ssig->used = true;
                     sym->used = true;
+                    warn_if_func_deprecated(checker, node, ssig);
                     if (ssig->is_generic && ssig->decl &&
                         ssig->decl->kind == NODE_FUNC_DECL) {
                         char *binding = NULL;
@@ -3464,7 +3748,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                                !(arg_t->kind == TK_NIL &&
+                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -3569,6 +3855,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     }
                     ssig->used = true;
                     sym->used = true;
+                    warn_if_func_deprecated(checker, node, ssig);
                     result = ssig->return_count > 0 ? ssig->return_types[0] : &TYPE_VOID;
                     /* Validate argument count */
                     {
@@ -3608,7 +3895,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 !types_assignable(checker, param_t, arg_t) &&
                                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                                !(arg_t->kind == TK_NIL &&
+                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                                 char amsg[MSG_BUF_SIZE];
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
@@ -3718,6 +4007,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             find_func(checker, arg->data.label.value)) {
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
+            warn_if_func_deprecated(checker, node, rfs);
             /* Build typed function reference: "func(int,string)->int" */
             char sig[MSG_BUF_SIZE];
             int pos = 0;
@@ -4333,6 +4623,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     FuncSig *sig = find_func(checker, function_name);
     if (sig) {
         sig->used = true;
+        warn_if_func_deprecated(checker, node, sig);
         /* Use the user-facing name in error messages, never
          * the module-prefixed internal key. */
         function_name = func_display_name(sig);
@@ -4577,7 +4868,10 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 !types_assignable(checker, param_t, arg_t) &&
                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
                 !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL)) {
+                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+                /* nil is a valid value for pointer and Error parameters */
+                !(arg_t->kind == TK_NIL &&
+                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
@@ -4756,7 +5050,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *pt = ref_sig->param_types[argument_index];
                         if (at && pt && at->kind != TK_UNKNOWN &&
                             pt->kind != TK_UNKNOWN &&
-                            !types_assignable(checker, pt, at)) {
+                            !types_assignable(checker, pt, at) &&
+                            !(at->kind == TK_NIL &&
+                              (pt->kind == TK_POINTER || pt->kind == TK_ERROR))) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",
@@ -4823,7 +5119,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         GrayType *at = resolve_expression(checker, arg);
                         GrayType *pt = sig->param_types[argument_index] ? type_from_name(sig->param_types[argument_index]) : NULL;
                         if (at && pt && at->kind != TK_UNKNOWN && pt->kind != TK_UNKNOWN &&
-                            !types_assignable(checker, pt, at)) {
+                            !types_assignable(checker, pt, at) &&
+                            !(at->kind == TK_NIL &&
+                              (pt->kind == TK_POINTER || pt->kind == TK_ERROR))) {
                             char *msg = NULL;
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected %s, got %s",
@@ -4948,6 +5246,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 result = &TYPE_VOID;
                             }
                             sig->used = true;
+                            warn_if_func_deprecated(checker, node, sig);
                         }
                     }
                 }
@@ -5263,6 +5562,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         FuncSig *sig = find_func(checker, prefixed);
         if (sig) {
             sig->used = true;
+            warn_if_func_deprecated(checker, node, sig);
             result = sig->return_count > 0 ? sig->return_types[0] : &TYPE_VOID;
             /* Check argument count */
             if (node->data.call.arg_count != sig->param_count) {
@@ -5551,7 +5851,8 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         AstNode *r = node->data.infix.right;
         bool is_zero = false;
         int64_t iv;
-        if (try_get_literal_int(r, &iv) && iv == 0) {
+        bool r_is_int_literal = try_get_literal_int(r, &iv);
+        if (r_is_int_literal && iv == 0) {
             is_zero = true;
         } else if (r && r->kind == NODE_FLOAT_VALUE &&
                    r->data.float_value.value == 0.0) {
@@ -5571,6 +5872,20 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3002", msg,
                 NODE_FILE(checker, r), r->token.line, r->token.column, 0);
             infix_errored = true;
+        } else if (op == TOK_SLASH) {
+            /* E3137: INT64_MIN / -1 is the one division C leaves undefined
+             * at the int64 boundary — it traps (SIGFPE) on x86-64. Check
+             * both literal operands directly rather than relying on
+             * try_get_literal_int() to fold the whole division, since that
+             * folder now refuses (by design) to perform this division. */
+            int64_t lv;
+            if (r_is_int_literal && iv == -1 &&
+                try_get_literal_int(node->data.infix.left, &lv) && lv == INT64_MIN) {
+                diagnostic_error_code_formatted(checker->diag, "E3137",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    (long long)lv, (long long)iv, type_display_name(checker, left));
+                infix_errored = true;
+            }
         }
     }
 
@@ -5991,6 +6306,12 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
 
         /* Check for module constants */
         if (strcmp(obj_name, "math") == 0) {
+            /* MAX_INT/MIN_INT are the only integer-valued math constants;
+             * everything else in the module is a float. */
+            const char *mem = node->data.member.member;
+            if (strcmp(mem, "MAX_INT") == 0 || strcmp(mem, "MIN_INT") == 0) {
+                return &TYPE_INT;
+            }
             result = &TYPE_FLOAT; /* PI, E, TAU, etc. */
             return result;
         }
@@ -6028,6 +6349,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (is_enum_name(checker, resolved_obj)) {
             /* Rewrite the label to the resolved enum name for codegen */
             obj->data.label.value = resolved_obj;
+            warn_if_enum_deprecated(checker, node, find_enum_index(checker, resolved_obj));
             /* Validate member exists */
             bool member_found = false;
             for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
@@ -6246,12 +6568,13 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     }
     typechecker_mark_type_module_used(checker, struct_name);
     StructInfo *si = find_struct(checker, struct_name);
+    warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
     if (!si && !is_struct_name(checker, struct_name)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "undefined type '%s'; check the spelling or import the module that defines it",
-            struct_name);
+            unqualified_display_name(struct_name));
         diagnostic_error_message(checker->diag, "E4016", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         result = &TYPE_UNKNOWN;
@@ -6444,6 +6767,7 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     FuncSig *ref_sig = ref_name ? find_func(checker, ref_name) : NULL;
     if (ref_sig) {
         ref_sig->used = true;
+        warn_if_func_deprecated(checker, node, ref_sig);
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
@@ -7177,12 +7501,20 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             GrayType *nt = type_from_name(new_type);
             bool known = is_struct_name(checker, new_type) ||
                          is_enum_name(checker, new_type) ||
-                         (nt->kind != TK_UNKNOWN && nt->kind != TK_STRUCT);
+                         (nt->kind != TK_UNKNOWN && nt->kind != TK_STRUCT) ||
+                         /* Stdlib opaque types (Thread, Mutex, ...): type_from_name()
+                          * normalizes the mangled mod_Type to a bare-name TK_STRUCT,
+                          * which the disjunct above deliberately excludes since
+                          * type_from_name() also returns TK_STRUCT for any
+                          * unregistered capitalized name. Check the opaque
+                          * allowlist explicitly instead, same as
+                          * typechecker_type_from_name() does elsewhere. */
+                         is_stdlib_opaque_type_available(checker, unqualified_display_name(new_type));
             if (!known) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'new()' requires a known type, but '%s' is not defined",
-                    new_type);
+                    unqualified_display_name(new_type));
                 diagnostic_error_message(checker->diag, "E3041", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -7219,106 +7551,233 @@ static void check_reserved_name(TypeChecker *checker, const char *name, const ch
 
 /* --- Keyword alias consistency (E2088) --- */
 
+/* One alias family: the spelling that first established the file's dialect.
+ * `dialect` is 0 for the canonical spelling and 1 for the alias; the two words
+ * of a joint pair (when/is vs switch/case, or/otherwise vs elif/else) share a
+ * single tracker and pass the same dialect id, so crossing them is a mix. */
 typedef struct {
     const char *form;   /* first keyword form seen (e.g. "while" or "as_long_as") */
+    int dialect;
     int line;
     int column;
 } AliasFirst;
 
-static void check_alias_walk(TypeChecker *checker, AstNode *node,
-                             AliasFirst *while_first, AliasFirst *else_first,
-                             const char *file);
+typedef struct {
+    AliasFirst loop;    /* while / as_long_as                     */
+    AliasFirst branch;  /* or + otherwise / elif + else   (joint) */
+    AliasFirst not_in;  /* !in / not_in                           */
+    AliasFirst func;    /* do / fn                                */
+    AliasFirst match;   /* when + is / switch + case      (joint) */
+    AliasFirst ensure;  /* ensure / defer                         */
+} AliasState;
 
-static void check_alias_block(TypeChecker *checker, AstNode *block,
-                              AliasFirst *while_first, AliasFirst *else_first,
-                              const char *file) {
-    if (!block || block->kind != NODE_BLOCK_STMT) return;
-    for (int i = 0; i < block->data.block.count; i++) {
-        check_alias_walk(checker, block->data.block.stmts[i],
-                         while_first, else_first, file);
+/* Record the spelling that establishes this file's dialect for one alias
+ * family, or report E2088 when a later spelling belongs to the other side. */
+static void note_alias(TypeChecker *checker, AliasFirst *slot, const char *form,
+                       int dialect, int line, int column, const char *file) {
+    if (!slot->form) {
+        slot->form = form;
+        slot->dialect = dialect;
+        slot->line = line;
+        slot->column = column;
+    } else if (slot->dialect != dialect) {
+        char *msg = typechecker_format(checker,
+            "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
+            form, slot->form, slot->line);
+        diagnostic_error_message(checker->diag, "E2088", msg, file, line, column, 0);
+    }
+}
+
+/* Match a token spelling against one alias family and record it. Spellings that
+ * belong to no pair (a leading 'if', a when case with no keyword) are ignored. */
+static void note_alias_form(TypeChecker *checker, AliasFirst *slot,
+                            const char *form, const char *canonical, const char *alias,
+                            int line, int column, const char *file) {
+    if (!form) return;
+    if (strcmp(form, canonical) == 0) {
+        note_alias(checker, slot, form, 0, line, column, file);
+    } else if (strcmp(form, alias) == 0) {
+        note_alias(checker, slot, form, 1, line, column, file);
     }
 }
 
 static void check_alias_walk(TypeChecker *checker, AstNode *node,
-                             AliasFirst *while_first, AliasFirst *else_first,
-                             const char *file) {
+                             AliasState *state, const char *file);
+
+static void check_alias_block(TypeChecker *checker, AstNode *block,
+                              AliasState *state, const char *file) {
+    if (!block || block->kind != NODE_BLOCK_STMT) return;
+    for (int i = 0; i < block->data.block.count; i++) {
+        check_alias_walk(checker, block->data.block.stmts[i], state, file);
+    }
+}
+
+/* Recursively scan an expression tree for the !in/not_in membership operator. */
+static void check_alias_expr(TypeChecker *checker, AstNode *expr,
+                             AliasState *state, const char *file) {
+    if (!expr) return;
+
+    switch (expr->kind) {
+    case NODE_INFIX_EXPR: {
+        if (expr->data.infix.op == TOK_NOT_IN) {
+            note_alias_form(checker, &state->not_in, expr->token.literal,
+                            "not_in", "!in",
+                            expr->token.line, expr->token.column, file);
+        }
+        check_alias_expr(checker, expr->data.infix.left, state, file);
+        check_alias_expr(checker, expr->data.infix.right, state, file);
+        break;
+    }
+    case NODE_PREFIX_EXPR:
+        check_alias_expr(checker, expr->data.prefix.right, state, file);
+        break;
+    case NODE_POSTFIX_EXPR:
+        check_alias_expr(checker, expr->data.postfix.left, state, file);
+        break;
+    case NODE_CALL_EXPR:
+        check_alias_expr(checker, expr->data.call.function, state, file);
+        for (int i = 0; i < expr->data.call.arg_count; i++) {
+            check_alias_expr(checker, expr->data.call.args[i], state, file);
+        }
+        break;
+    case NODE_INDEX_EXPR:
+        check_alias_expr(checker, expr->data.index_expr.left, state, file);
+        check_alias_expr(checker, expr->data.index_expr.index, state, file);
+        break;
+    case NODE_MEMBER_EXPR:
+        check_alias_expr(checker, expr->data.member.object, state, file);
+        break;
+    case NODE_CAST_EXPR:
+        check_alias_expr(checker, expr->data.cast.value, state, file);
+        break;
+    case NODE_RANGE_EXPR:
+        check_alias_expr(checker, expr->data.range_expr.start, state, file);
+        check_alias_expr(checker, expr->data.range_expr.end, state, file);
+        check_alias_expr(checker, expr->data.range_expr.step, state, file);
+        break;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < expr->data.array_value.count; i++) {
+            check_alias_expr(checker, expr->data.array_value.elements[i], state, file);
+        }
+        break;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < expr->data.map_value.count; i++) {
+            check_alias_expr(checker, expr->data.map_value.keys[i], state, file);
+            check_alias_expr(checker, expr->data.map_value.values[i], state, file);
+        }
+        break;
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < expr->data.struct_value.count; i++) {
+            check_alias_expr(checker, expr->data.struct_value.field_values[i], state, file);
+        }
+        break;
+    case NODE_INTERPOLATED_STRING:
+        for (int i = 0; i < expr->data.interpolated_string.part_count; i++) {
+            check_alias_expr(checker, expr->data.interpolated_string.parts[i], state, file);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static void check_alias_walk(TypeChecker *checker, AstNode *node,
+                             AliasState *state, const char *file) {
     if (!node) return;
 
     switch (node->kind) {
     case NODE_WHILE_STMT: {
-        const char *form = node->token.literal;
-        if (form && (strcmp(form, "while") == 0 || strcmp(form, "as_long_as") == 0)) {
-            if (!while_first->form) {
-                while_first->form = form;
-                while_first->line = node->token.line;
-                while_first->column = node->token.column;
-            } else if (strcmp(while_first->form, form) != 0) {
-                char *msg = typechecker_format(checker,
-                    "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
-                    form, while_first->form, while_first->line);
-                diagnostic_error_message(checker->diag, "E2088", msg,
-                    file, node->token.line, node->token.column, 0);
-            }
-        }
-        check_alias_block(checker, node->data.while_stmt.body,
-                          while_first, else_first, file);
+        note_alias_form(checker, &state->loop, node->token.literal,
+                        "as_long_as", "while",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.while_stmt.condition, state, file);
+        check_alias_block(checker, node->data.while_stmt.body, state, file);
         break;
     }
     case NODE_IF_STMT: {
-        /* Check else/otherwise alias if this node has an alternative with a stored else_token */
+        /* 'or'/'elif' arrives as a nested if node whose own token is the
+         * branch keyword; a leading 'if' matches neither and is skipped. */
+        note_alias_form(checker, &state->branch, node->token.literal,
+                        "or", "elif",
+                        node->token.line, node->token.column, file);
+        /* The final branch shares the same tracker: a file that writes 'elif'
+         * must close with 'else', and one that writes 'or' must close with
+         * 'otherwise'. */
         if (node->data.if_stmt.alternative && node->data.if_stmt.else_token.line > 0) {
-            const char *form = node->data.if_stmt.else_token.literal;
-            if (form && (strcmp(form, "else") == 0 || strcmp(form, "otherwise") == 0)) {
-                if (!else_first->form) {
-                    else_first->form = form;
-                    else_first->line = node->data.if_stmt.else_token.line;
-                    else_first->column = node->data.if_stmt.else_token.column;
-                } else if (strcmp(else_first->form, form) != 0) {
-                    char *msg = typechecker_format(checker,
-                        "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d",
-                        form, else_first->form, else_first->line);
-                    diagnostic_error_message(checker->diag, "E2088", msg,
-                        file, node->data.if_stmt.else_token.line,
-                        node->data.if_stmt.else_token.column, 0);
-                }
-            }
+            note_alias_form(checker, &state->branch, node->data.if_stmt.else_token.literal,
+                            "otherwise", "else",
+                            node->data.if_stmt.else_token.line,
+                            node->data.if_stmt.else_token.column, file);
         }
-        check_alias_block(checker, node->data.if_stmt.consequence,
-                          while_first, else_first, file);
+        check_alias_expr(checker, node->data.if_stmt.condition, state, file);
+        check_alias_block(checker, node->data.if_stmt.consequence, state, file);
         if (node->data.if_stmt.alternative) {
-            check_alias_walk(checker, node->data.if_stmt.alternative,
-                             while_first, else_first, file);
+            check_alias_walk(checker, node->data.if_stmt.alternative, state, file);
         }
         break;
     }
     case NODE_BLOCK_STMT:
-        check_alias_block(checker, node, while_first, else_first, file);
+        check_alias_block(checker, node, state, file);
         break;
     case NODE_FOR_STMT:
-        check_alias_block(checker, node->data.for_stmt.body,
-                          while_first, else_first, file);
+        check_alias_expr(checker, node->data.for_stmt.iterable, state, file);
+        check_alias_block(checker, node->data.for_stmt.body, state, file);
         break;
     case NODE_FOR_EACH_STMT:
-        check_alias_block(checker, node->data.for_each.body,
-                          while_first, else_first, file);
+        check_alias_expr(checker, node->data.for_each.collection, state, file);
+        check_alias_block(checker, node->data.for_each.body, state, file);
         break;
     case NODE_LOOP_STMT:
-        check_alias_block(checker, node->data.loop_stmt.body,
-                          while_first, else_first, file);
+        check_alias_block(checker, node->data.loop_stmt.body, state, file);
         break;
     case NODE_FUNC_DECL:
-        check_alias_block(checker, node->data.func_decl.body,
-                          while_first, else_first, file);
+        note_alias_form(checker, &state->func, node->token.literal,
+                        "do", "fn",
+                        node->token.line, node->token.column, file);
+        check_alias_block(checker, node->data.func_decl.body, state, file);
+        break;
+    case NODE_STRUCT_DECL:
+        /* Struct functions are declared with 'do'/'fn' too. */
+        for (int i = 0; i < node->data.struct_decl.func_count; i++) {
+            check_alias_walk(checker, node->data.struct_decl.funcs[i].func_decl, state, file);
+        }
         break;
     case NODE_WHEN_STMT:
+        note_alias_form(checker, &state->match, node->token.literal,
+                        "when", "switch",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.when_stmt.value, state, file);
         for (int i = 0; i < node->data.when_stmt.case_count; i++) {
-            check_alias_block(checker, node->data.when_stmt.cases[i].body,
-                              while_first, else_first, file);
+            /* Case keywords share the tracker: 'switch' pairs with 'case',
+             * 'when' with 'is'. */
+            Token kw = node->data.when_stmt.cases[i].kw_token;
+            note_alias_form(checker, &state->match, kw.literal,
+                            "is", "case", kw.line, kw.column, file);
+            check_alias_block(checker, node->data.when_stmt.cases[i].body, state, file);
         }
         if (node->data.when_stmt.default_body) {
-            check_alias_block(checker, node->data.when_stmt.default_body,
-                              while_first, else_first, file);
+            check_alias_block(checker, node->data.when_stmt.default_body, state, file);
         }
+        break;
+    case NODE_VAR_DECL:
+        check_alias_expr(checker, node->data.var_decl.value, state, file);
+        break;
+    case NODE_ASSIGN_STMT:
+        check_alias_expr(checker, node->data.assign.value, state, file);
+        break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++) {
+            check_alias_expr(checker, node->data.return_stmt.values[i], state, file);
+        }
+        break;
+    case NODE_ENSURE_STMT:
+        note_alias_form(checker, &state->ensure, node->token.literal,
+                        "ensure", "defer",
+                        node->token.line, node->token.column, file);
+        check_alias_expr(checker, node->data.ensure_stmt.expr, state, file);
+        break;
+    case NODE_EXPR_STMT:
+        check_alias_expr(checker, node->data.expr_stmt.expr, state, file);
         break;
     default:
         break;
@@ -7330,8 +7789,7 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
 
     /* Track per-file state: group statements by source file */
     const char *current_file = NULL;
-    AliasFirst while_first = {0};
-    AliasFirst else_first = {0};
+    AliasState state = {0};
 
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -7345,12 +7803,10 @@ static void check_keyword_alias_consistency(TypeChecker *checker, AstNode *progr
             (current_file && stmt_file && strcmp(current_file, stmt_file) == 0);
         if (!same_file) {
             current_file = stmt_file;
-            while_first = (AliasFirst){0};
-            else_first = (AliasFirst){0};
+            state = (AliasState){0};
         }
 
-        check_alias_walk(checker, stmt, &while_first, &else_first,
-                         stmt_file ? stmt_file : checker->file);
+        check_alias_walk(checker, stmt, &state, stmt_file ? stmt_file : checker->file);
     }
 }
 
@@ -7608,6 +8064,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     if (node->data.var_decl.type_name) {
         node->data.var_decl.type_name = resolve_type_alias(checker, node->data.var_decl.type_name);
     }
+    /* #deprecated: warn when a variable is explicitly annotated with a
+     * deprecated struct or enum type. */
+    warn_if_type_name_deprecated(checker, node, node->data.var_decl.type_name, NULL);
     /* E5013: file-scope initializers cannot contain function calls.
      * A runtime call as an initializer would either need a module-init
      * function (which Grayscale does not generate) or produce invalid C
@@ -7873,7 +8332,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "undefined type '%s'; check the spelling or import the module that defines it",
-            node->data.var_decl.type_name);
+            unqualified_display_name(node->data.var_decl.type_name));
         diagnostic_error_message(checker->diag, "E4016", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
@@ -7966,6 +8425,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (call_fn->kind == NODE_LABEL) {
                 call_name = call_fn->data.label.value;
                 sig = find_func(checker, call_name);
+                /* A bare call carries no module qualifier; resolve it through
+                 * the using-modules so the checks below consult the module
+                 * that actually supplies it rather than matching the name
+                 * against every stdlib module. */
+                if (!sig) call_mod = find_using_stdlib_module(checker, call_name);
             } else if (call_fn->kind == NODE_MEMBER_EXPR &&
                        call_fn->data.member.object->kind == NODE_LABEL) {
                 const char *mod_raw = call_fn->data.member.object->data.label.value;
@@ -7984,11 +8448,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     diagnostic_error_code_formatted(checker->diag, "E3089", NODE_FILE(checker, node),
                         node->token.line, node->token.column, 0,
                         call_name, call_name, call_name);
-                } else if (call_mod && strcmp(call_mod, "channels") == 0 &&
-                           strcmp(call_name, "try_receive") == 0) {
-                    diagnostic_error_code_formatted(checker->diag, "E3040", NODE_FILE(checker, node),
-                        node->token.line, node->token.column, 0,
-                        call_name, 2, call_name);
+                } else if (call_name) {
+                    /* Non-fallible stdlib functions returning several values;
+                     * capturing one slot silently drops the rest. Bare calls
+                     * have no module qualifier, so fall back to the
+                     * using-modules for those. */
+                    const StdlibMultiReturn *mr =
+                        find_stdlib_multi_return(call_mod, call_name);
+                    if (mr) {
+                        diagnostic_error_code_formatted(checker->diag, "E3040",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            call_name, mr->count, call_name);
+                    }
                 }
             }
         }
@@ -8596,11 +9067,23 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E4013", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
             }
         }
-        /* E4014: shadows an imported module */
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], node->data.var_decl.name) == 0) {
-                diagnostic_error_code_formatted(checker->diag, "E4014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
-                break;
+        /* E4014: shadows an imported module. imported_modules[] is a single
+         * whole-program list covering every file's imports, so it must be
+         * filtered to the imports visible in this variable's own file —
+         * otherwise a local named after some unrelated file's import gets
+         * flagged. token.file is NULL for main-file nodes, matching
+         * import_files[]'s own NULL-means-main-file convention. */
+        {
+            const char *var_file = node->token.file;
+            for (int mi = 0; mi < checker->import_count; mi++) {
+                const char *imp_file = checker->import_files[mi];
+                bool same_file = (!var_file && !imp_file) ||
+                    (var_file && imp_file && strcmp(var_file, imp_file) == 0);
+                if (!same_file) continue;
+                if (strcmp(checker->imported_modules[mi], node->data.var_decl.name) == 0) {
+                    diagnostic_error_code_formatted(checker->diag, "E4014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
+                    break;
+                }
             }
         }
         if (declared->kind == TK_UNKNOWN &&
@@ -8704,6 +9187,15 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * subsequent uses error as undefined. */
             if (fn->kind == NODE_LABEL) {
                 FuncSig *sig = find_func(checker, fn->data.label.value);
+                if (!sig) {
+                    /* A bare stdlib call reaching its module through
+                     * `import and use` / `using` has no FuncSig to consult. */
+                    const char *umod = find_using_stdlib_module(checker, fn->data.label.value);
+                    if (umod) {
+                        apply_stdlib_call_returns(checker, node->data.var_decl.name,
+                                                  umod, fn->data.label.value);
+                    }
+                }
                 if (sig && sig->return_count > 1) {
                     Symbol *sym = scope_lookup_local(checker->current_scope,
                         node->data.var_decl.name);
@@ -8753,47 +9245,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 fn->data.member.object->kind == NODE_LABEL) {
                 const char *mod = fn->data.member.object->data.label.value;
                 const char *mfn = fn->data.member.member;
-                if (typechecker_is_fallible_stdlib(mod, mfn)) {
-                    GrayType *primary = typechecker_get_fallible_stdlib_type(mod, mfn);
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym && primary) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
-                        rt[0] = primary;
-                        rt[1] = type_from_name("Error");
-                        sym->ret_types = rt;
-                        sym->ret_count = 2;
-                        sym->ret_types_owned = true;
-                    }
-                }
-                /* os.exec returns (int, string, string, bool) — synthesize 4-type slots */
-                if (strcmp(mod, "os") == 0 && strcmp(mfn, "exec") == 0) {
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 4);
-                        rt[0] = &TYPE_INT;
-                        rt[1] = &TYPE_STRING;
-                        rt[2] = &TYPE_STRING;
-                        rt[3] = &TYPE_BOOL;
-                        sym->ret_types = rt;
-                        sym->ret_count = 4;
-                        sym->ret_types_owned = true;
-                    }
-                }
-                /* channels.try_receive returns (int, bool) */
-                if (strcmp(mod, "channels") == 0 && strcmp(mfn, "try_receive") == 0) {
-                    Symbol *sym = scope_lookup_local(checker->current_scope,
-                        node->data.var_decl.name);
-                    if (sym) {
-                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
-                        rt[0] = &TYPE_INT;
-                        rt[1] = &TYPE_BOOL;
-                        sym->ret_types = rt;
-                        sym->ret_count = 2;
-                        sym->ret_types_owned = true;
-                    }
-                }
+                apply_stdlib_call_returns(checker, node->data.var_decl.name, mod, mfn);
             }
             /* User-defined module calls (mod.func); look up the prefixed
              * function signature and propagate multi-return types so
@@ -8848,6 +9300,20 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 Symbol *dst_sym = scope_lookup_local(checker->current_scope,
                     node->data.var_decl.name);
                 if (dst_sym) dst_sym->const_source = true;
+            }
+        }
+        /* Record the lifetime origin of a pointer declared from addr()/raw()
+         * or copied from another tracked pointer. A declaration is always
+         * legal — the pointer cannot outlive its own scope — but the origin
+         * travels with it so later escapes (E3063, E3097) are still caught. */
+        {
+            Symbol *dst_sym = scope_lookup_local(checker->current_scope,
+                node->data.var_decl.name);
+            if (dst_sym) {
+                const char *origin_name = NULL;
+                dst_sym->origin_depth = pointer_origin_of(checker,
+                    node->data.var_decl.value, &origin_name);
+                dst_sym->origin_name = origin_name;
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -9478,24 +9944,24 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* : reject addr() of local assigned to outer-scope variable,
-     * and warn on cross-scope pointer assignments. */
-    if (target->kind == NODE_LABEL && node->data.assign.value &&
-        node->data.assign.value->kind == NODE_CALL_EXPR &&
-        node->data.assign.value->data.call.function->kind == NODE_LABEL &&
-        (strcmp(node->data.assign.value->data.call.function->data.label.value, "addr") == 0 ||
-         strcmp(node->data.assign.value->data.call.function->data.label.value, "raw") == 0) &&
-        node->data.assign.value->data.call.arg_count == 1 &&
-        node->data.assign.value->data.call.args[0]->kind == NODE_LABEL) {
+    /* E3097: reject storing an address into a pointer that outlives it.
+     * The origin travels through intermediate pointers, so laundering the
+     * address (p = tmp where tmp = addr(local)) is caught too. */
+    if (target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
-        const char *addr_var = node->data.assign.value->data.call.args[0]->data.label.value;
-        Symbol *ptr_sym_local = scope_lookup_local(checker->current_scope, ptr_name);
-        Symbol *addr_sym_local = scope_lookup_local(checker->current_scope, addr_var);
-        if (!ptr_sym_local && scope_lookup(checker->current_scope, ptr_name) &&
-            addr_sym_local) {
+        const char *origin_name = NULL;
+        int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+                                             &origin_name);
+        if (origin_depth > symbol_scope_depth(checker->current_scope, ptr_name)) {
             diagnostic_error_code_formatted(checker->diag, "E3097",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                ptr_name, addr_var);
+                ptr_name, origin_name);
+        } else {
+            Symbol *ptr_sym = scope_lookup(checker->current_scope, ptr_name);
+            if (ptr_sym) {
+                ptr_sym->origin_depth = origin_depth;
+                ptr_sym->origin_name = origin_name;
+            }
         }
     }
 }
@@ -9525,20 +9991,18 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             "use exit(code) to terminate with a status code");
         return;
     }
-    /* : reject addr() of local variable in return; the
-     * local's memory is freed when the function returns. */
+    /* E3063: reject returning the address of a local; its memory is freed
+     * when the function returns. The origin travels through intermediate
+     * pointers, so `mut p = addr(local); return p` is caught as well. */
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         AstNode *return_val = node->data.return_stmt.values[i];
-        if (return_val->kind == NODE_CALL_EXPR &&
-            return_val->data.call.function->kind == NODE_LABEL &&
-            strcmp(return_val->data.call.function->data.label.value, "addr") == 0 &&
-            return_val->data.call.arg_count == 1 &&
-            return_val->data.call.args[0]->kind == NODE_LABEL) {
-            const char *var_name = return_val->data.call.args[0]->data.label.value;
-            Symbol *sym = scope_lookup(checker->current_scope, var_name);
-            if (sym) {
-                diagnostic_error_code_formatted(checker->diag, "E3063", NODE_FILE(checker, node), return_val->token.line, return_val->token.column, 0, var_name, var_name);
-            }
+        const char *origin_name = NULL;
+        int origin_depth = pointer_origin_of(checker, return_val, &origin_name);
+        if (origin_depth > 0 &&
+            origin_depth >= checker->current_func_scope_depth) {
+            diagnostic_error_code_formatted(checker->diag, "E3063",
+                NODE_FILE(checker, node), return_val->token.line,
+                return_val->token.column, 0, origin_name, origin_name);
         }
     }
     /* E3071: `return nil` from a function whose return type contains
@@ -10169,6 +10633,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     Scope *func_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
     checker->current_scope = func_scope;
+    int saved_func_scope_depth = checker->current_func_scope_depth;
+    checker->current_func_scope_depth = func_scope->depth + 1;
     checker->func_depth++;
     checker->destroyed_arena_count = 0;
 
@@ -10278,7 +10744,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "undefined type '%s'; check the spelling or import the module that defines it",
-                p->type_name);
+                unqualified_display_name(p->type_name));
             diagnostic_error_message(checker->diag, "E4016", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -10429,7 +10895,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "undefined type '%s'; check the spelling or import the module that defines it",
-                    rtn);
+                    unqualified_display_name(rtn));
                 diagnostic_error_message(checker->diag, "E4016", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -10466,6 +10932,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     bool saved_is_main = checker->current_func_is_main;
     checker->current_func_is_main =
         (strcmp(node->data.func_decl.name, "main") == 0);
+    AstNode *saved_func_decl = checker->current_func_decl;
+    checker->current_func_decl = node;
 
     check_block(checker, node->data.func_decl.body);
 
@@ -10550,6 +11018,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     checker->current_return_names = prev_return_names;
     checker->current_main_return_suppressed = saved_main_suppressed;
     checker->current_func_is_main = saved_is_main;
+    checker->current_func_scope_depth = saved_func_scope_depth;
+    checker->current_func_decl = saved_func_decl;
     checker->using_module_count = prev_using_count;
     checker->type_param_name = NULL;
     checker->type_param_binding = NULL;
@@ -11494,7 +11964,7 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags);
+        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
     }
 }
 
@@ -11514,6 +11984,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < field_count; j++) {
             fnames[j] = stmt->data.struct_decl.fields[j].name;
             ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.struct_decl.fields[j].type_name, NULL);
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
@@ -11628,6 +12099,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
+        checker->structs[checker->struct_count - 1].is_deprecated = stmt->data.struct_decl.is_deprecated;
+        checker->structs[checker->struct_count - 1].deprecated_message = stmt->data.struct_decl.deprecated_message;
 
         /* Detect generic structs (any field with ? in type) */
         stmt->data.struct_decl.is_generic = false;
@@ -11671,11 +12144,15 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             GrayType **ptypes = arena_alloc(checker->arena, sizeof(GrayType *) * (parameter_count ? parameter_count : 1));
             for (int k = 0; k < parameter_count; k++) {
                 ptypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.params[k].type_name);
+                warn_if_type_name_deprecated(checker, fn, fn->data.func_decl.params[k].type_name,
+                    stmt->data.struct_decl.name);
             }
             int return_count = fn->data.func_decl.return_type_count;
             GrayType **rtypes = arena_alloc(checker->arena, sizeof(GrayType *) * (return_count ? return_count : 1));
             for (int k = 0; k < return_count; k++) {
                 rtypes[k] = typechecker_type_from_name(checker, fn->data.func_decl.return_types[k]);
+                warn_if_type_name_deprecated(checker, fn, fn->data.func_decl.return_types[k],
+                    stmt->data.struct_decl.name);
             }
             /* Register with prefixed name: StructName_funcName */
             char buffer[MSG_BUF_SIZE];
@@ -11684,6 +12161,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
             checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
+            checker->funcs[checker->func_count - 1].is_deprecated = fn->data.func_decl.is_deprecated;
+            checker->funcs[checker->func_count - 1].deprecated_message = fn->data.func_decl.deprecated_message;
             if (fn->data.func_decl.is_discard && return_count == 0) {
                 diagnostic_error_code_formatted(checker->diag, "E5042",
                     NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
@@ -11705,6 +12184,7 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < parameter_count; j++) {
             ptypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.params[j].type_name);
             typechecker_mark_type_module_used(checker, stmt->data.func_decl.params[j].type_name);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.func_decl.params[j].type_name, NULL);
         }
 
         int return_count = stmt->data.func_decl.return_type_count;
@@ -11712,6 +12192,7 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         for (int j = 0; j < return_count; j++) {
             rtypes[j] = typechecker_type_from_name(checker, stmt->data.func_decl.return_types[j]);
             typechecker_mark_type_module_used(checker, stmt->data.func_decl.return_types[j]);
+            warn_if_type_name_deprecated(checker, stmt, stmt->data.func_decl.return_types[j], NULL);
         }
 
         /* E4008: main() cannot have parameters or return types */
@@ -11747,6 +12228,8 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+        checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
+        checker->funcs[checker->func_count - 1].deprecated_message = stmt->data.func_decl.deprecated_message;
         /* E5042: #discard on a void function is an error */
         if (stmt->data.func_decl.is_discard && return_count == 0) {
             diagnostic_error_code_formatted(checker->diag, "E5042",
@@ -11770,6 +12253,8 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
                         register_func(checker, unprefixed, ptypes, parameter_count, rtypes, return_count);
                         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
                         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
+                        checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
+                        checker->funcs[checker->func_count - 1].deprecated_message = stmt->data.func_decl.deprecated_message;
                         checker->funcs[checker->func_count - 1].def_line = 0; /* suppress unused warning */
                         finalize_generic_signature(&checker->funcs[checker->func_count - 1], stmt);
                         break;
@@ -11837,6 +12322,8 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->enum_payload_counts);
     free(checker->enum_is_tagged);
     free(checker->enum_is_flags);
+    free(checker->enum_is_deprecated);
+    free(checker->enum_deprecated_messages);
     free(checker->enum_names_sorted);
     free(checker->enum_names_sorted_indices);
 
@@ -12030,6 +12517,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     memcpy(fn, checker->structs[struct_index].field_names, sizeof(const char *) * field_count);
                     memcpy(ft, checker->structs[struct_index].field_types, sizeof(GrayType *) * field_count);
                     register_struct(checker, unprefixed, unprefixed, fn, ft, field_count);
+                    checker->structs[checker->struct_count - 1].is_deprecated = checker->structs[struct_index].is_deprecated;
+                    checker->structs[checker->struct_count - 1].deprecated_message = checker->structs[struct_index].deprecated_message;
                 }
             }
         }
@@ -12042,7 +12531,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     register_enum(checker, unprefixed, unprefixed, checker->enum_is_string[enum_index],
                         checker->enum_values[enum_index], checker->enum_value_counts[enum_index],
                         checker->enum_payload_types[enum_index], checker->enum_payload_counts[enum_index],
-                        checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index]);
+                        checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index],
+                        checker->enum_is_deprecated[enum_index], checker->enum_deprecated_messages[enum_index]);
                 }
             }
         }
@@ -12064,13 +12554,15 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                         checker->funcs[field_index].return_types,
                         checker->funcs[field_index].return_count);
                     checker->funcs[checker->func_count - 1].is_discard = checker->funcs[field_index].is_discard;
+                    checker->funcs[checker->func_count - 1].is_deprecated = checker->funcs[field_index].is_deprecated;
+                    checker->funcs[checker->func_count - 1].deprecated_message = checker->funcs[field_index].deprecated_message;
                     checker->funcs[checker->func_count - 1].def_line = 0;
                 }
             }
         }
     }
 
-    /* E2088: keyword alias consistency (while vs as_long_as, else vs otherwise) */
+    /* E2088: keyword alias consistency (while/as_long_as, do/fn, when+is/switch+case, etc.) */
     check_keyword_alias_consistency(checker, program);
 
     /* Pass 2: check all statements */

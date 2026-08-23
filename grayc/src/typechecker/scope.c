@@ -47,6 +47,7 @@ Scope *scope_create(Scope *parent) {
     Scope *scope = xmalloc(sizeof(Scope));
     memset(scope, 0, sizeof(Scope));
     scope->parent = parent;
+    scope->depth = parent ? parent->depth + 1 : 0;
     return scope;
 }
 

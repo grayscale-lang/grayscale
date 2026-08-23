@@ -1,0 +1,57 @@
+const Pool struct {
+    cache map[string:int]
+    items [int]
+    label string
+}
+
+do create_pool_explicit() -> ^Pool {
+    p = new(Pool)
+    p^.cache = {:}
+    return p
+}
+
+do create_pool_auto() -> ^Pool {
+    p = new(Pool)
+    p.cache = {:}
+    p.items = {1, 2, 3}
+    p.label = "hi"
+    return p
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    /* explicit p^.field = {:} on a new()-heap struct that escapes the function */
+    pool1 = create_pool_explicit()
+    mut c1 = pool1^.cache
+    c1["a"] = 1
+    pool1^.cache = c1
+    if pool1^.cache["a"] == 1 {
+        println("  [PASS] explicit-deref map field survives after new()-heap escape")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit-deref map field did not survive")
+        failed += 1
+    }
+
+    /* auto-deref p.field = value on map/array/string fields */
+    pool2 = create_pool_auto()
+    mut c2 = pool2.cache
+    c2["b"] = 2
+    pool2.cache = c2
+    if pool2.cache["b"] == 2 && len(pool2.items) == 3 && pool2.items[2] == 3 && pool2.label == "hi" {
+        println("  [PASS] auto-deref map/array/string fields survive after new()-heap escape")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] auto-deref fields did not survive")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

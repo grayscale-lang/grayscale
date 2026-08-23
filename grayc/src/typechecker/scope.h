@@ -19,6 +19,14 @@ typedef struct {
     bool mutable;
     bool is_ref;         /* true if created via ref() — transparent reference */
     bool const_source;   /* true if pointer was taken from a const variable via addr() */
+    /* Lifetime origin of a pointer value: the depth of the scope declaring
+     * the variable whose address this pointer holds, biased by +1 so that 0
+     * means "no tracked origin", plus that variable's name for diagnostics.
+     * Set at addr()/raw() and propagated through pointer assignment so the
+     * escape checks (E3063, E3097) survive laundering through intermediate
+     * pointer variables. */
+    int origin_depth;
+    const char *origin_name;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */
@@ -46,6 +54,7 @@ typedef struct {
 
 typedef struct Scope {
     struct Scope *parent;
+    int depth;         /* 0 for the root scope, parent->depth + 1 otherwise */
     Symbol *symbols;
     int count;
     int cap;

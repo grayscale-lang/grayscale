@@ -236,7 +236,7 @@ static void test_parse_error_reports(void) {
 }
 
 static void test_parse_function_reference(void) {
-    AstNode *program = parse_test_input("do main() { mut fn = ()double }");
+    AstNode *program = parse_test_input("do main() { mut f = ()double }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
@@ -864,6 +864,135 @@ static void test_parse_error_truncated_at_eof(void) {
     ASSERT(strstr(message, "interpolation") == NULL);
 }
 
+/* Aliased keywords share a TokenType with their canonical spelling, so a
+ * diagnostic built from the type alone renames the user's source text
+ * ("unexpected token 'do'" for a typed `fn`). Every spelling must be quoted
+ * back exactly as written. */
+static void test_parse_error_E2002_reports_typed_keyword(void) {
+    static const char *spellings[] = {
+        "fn", "do", "switch", "when", "case", "is", "elif", "or",
+        "defer", "ensure", "while", "as_long_as", "else", "otherwise",
+    };
+    for (size_t i = 0; i < sizeof(spellings) / sizeof(spellings[0]); i++) {
+        char input[64];
+        char expected[64];
+        snprintf(input, sizeof(input), "do main() {\n    mut x int = %s\n}", spellings[i]);
+        snprintf(expected, sizeof(expected), "unexpected token '%s'", spellings[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        const char *message = parser_message_for(diagnostics, "E2002");
+        ASSERT_NOT_NULL(message);
+        ASSERT(strcmp(message, expected) == 0);
+    }
+}
+
+/* Non-keyword tokens carry a literal that is not a keyword spelling (or none
+ * at all), so they must keep falling back to the token type's name. */
+static void test_parse_error_E2002_non_keyword_fallback(void) {
+    AstNode *program = parse_test_input("do main() {\n    mut x int = = 5\n}");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2002");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strcmp(message, "unexpected token '='") == 0);
+}
+
+/* The "got" half of E2001 names the token actually present, so it has the
+ * same obligation to quote the alias the user typed. */
+static void test_parse_error_E2001_reports_typed_keyword(void) {
+    AstNode *program = parse_test_input("do main() {\n    for i in range(0, 2) while {\n    }\n}");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2001");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strstr(message, "got 'while'") != NULL);
+    ASSERT(strstr(message, "as_long_as") == NULL);
+}
+
+/* strtod saturates an out-of-range literal to HUGE_VAL, which codegen used to
+ * render as the bare token `inf` (and then mangle into `inf.0`), leaking a C
+ * compiler error. The literal must be rejected at conversion time, and the
+ * check must not move the boundary: DBL_MAX itself still parses. */
+static void test_parse_error_E3138_float_literal_overflow(void) {
+    static const char *overflowing[] = {
+        "1.7976931348623159e308", "1.8e308", "2.0e308", "1.0e309", "9.9e999",
+    };
+    for (size_t i = 0; i < sizeof(overflowing) / sizeof(overflowing[0]); i++) {
+        char input[64];
+        snprintf(input, sizeof(input), "do main() { mut x float = %s }", overflowing[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        ASSERT(parser_has_code(diagnostics, "E3138"));
+    }
+}
+
+/* DBL_MAX is representable, and underflow to zero is IEEE-conformant rather
+ * than an error, so neither may trip the new range check. */
+static void test_parse_float_literal_in_range(void) {
+    static const char *in_range[] = {
+        "1.7976931348623157e308", "1.0e-400", "3.14", "0.0", "1_000.5",
+    };
+    for (size_t i = 0; i < sizeof(in_range) / sizeof(in_range[0]); i++) {
+        char input[64];
+        snprintf(input, sizeof(input), "do main() { mut x float = %s }", in_range[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        ASSERT(!parser_has_code(diagnostics, "E3138"));
+    }
+}
+
+/* #discard on a struct field was diagnosed and cleared, #deprecated only
+ * diagnosed nothing at all — so the pending flag survived the field and was
+ * attached to the next struct function in the body, silently marking it
+ * deprecated. Clearing the pending state is what closes the leak. */
+static void test_parse_error_deprecated_on_struct_field(void) {
+    AstNode *program = parse_test_input(
+        "const Point struct {\n #deprecated\n x int\n\n do sum() -> int { return 3 }\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
+    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_NOT_NULL(fn);
+    ASSERT(!fn->data.func_decl.is_deprecated);
+    ASSERT(fn->data.func_decl.deprecated_message == NULL);
+}
+
+/* Neither attribute belongs on an enum variant, and both were being read as
+ * the variant name, embedding the attribute text in the generated C
+ * enumerator. */
+static void test_parse_error_attributes_on_enum_variant(void) {
+    AstNode *program = parse_test_input("const Color enum {\n #deprecated\n RED\n GREEN\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
+    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "RED");
+
+    program = parse_test_input("const Flag enum {\n #discard\n ON\n OFF\n}");
+    statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2089"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
+    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "ON");
+}
+
+/* The attributes must keep working where they are legal: on the struct
+ * function itself, message and all. */
+static void test_parse_deprecated_on_struct_func(void) {
+    AstNode *program = parse_test_input(
+        "const Point struct {\n x int\n\n #deprecated(\"use add\")\n do sum() -> int { return 3 }\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(!parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_NOT_NULL(fn);
+    ASSERT(fn->data.func_decl.is_deprecated);
+    ASSERT_STR_EQ(fn->data.func_decl.deprecated_message, "use add");
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -968,6 +1097,14 @@ int main(void) {
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
     RUN_TEST(test_parse_error_truncated_at_eof);
+    RUN_TEST(test_parse_error_E2002_reports_typed_keyword);
+    RUN_TEST(test_parse_error_E2002_non_keyword_fallback);
+    RUN_TEST(test_parse_error_E2001_reports_typed_keyword);
+    RUN_TEST(test_parse_error_E3138_float_literal_overflow);
+    RUN_TEST(test_parse_float_literal_in_range);
+    RUN_TEST(test_parse_error_deprecated_on_struct_field);
+    RUN_TEST(test_parse_error_attributes_on_enum_variant);
+    RUN_TEST(test_parse_deprecated_on_struct_func);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

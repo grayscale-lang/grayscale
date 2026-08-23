@@ -137,6 +137,18 @@ int64_t gray_time_second(int64_t ts);
  */
 int64_t gray_time_weekday(int64_t ts);
 
+/*@man is_leap_year
+ *@module time
+ *@group Components
+ *@sig is_leap_year(year int) -> bool
+ *@desc Returns true if year is a leap year (divisible by 4, except centuries not divisible by 400).
+ *@example
+ *   import @time
+ *   println(time.is_leap_year(2024))
+ *@end
+ */
+bool gray_time_is_leap_year(int64_t year);
+
 /* Formatting */
 
 /*@man format
@@ -187,6 +199,22 @@ GrayString gray_time_date(GrayArena *arena, int64_t ts);
  */
 GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
 
+/* Parsing */
+
+/*@man parse
+ *@module time
+ *@group Parsing
+ *@sig parse(s string, layout string) -> (int, Error)
+ *@desc Parses a time string into a Unix timestamp using a layout string with strftime-style directives (%Y, %m, %d, %H, %M, %S). Panics if s does not match layout unless the result is destructured, in which case an Error is returned instead.
+ *@example
+ *   import @time
+ *   mut ts, _ = time.parse("2025-06-01", "%Y-%m-%d")
+ *   mut val, err = time.parse("not a date", "%Y-%m-%d")
+ *@end
+ */
+int64_t gray_time_parse(GrayString s, GrayString layout);
+GrayResult_int gray_time_parse_result(GrayString s, GrayString layout);
+
 /* Arithmetic */
 
 /*@man diff
@@ -203,6 +231,20 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
  *@end
  */
 int64_t gray_time_diff(int64_t t1, int64_t t2);
+
+/*@man since
+ *@module time
+ *@group Arithmetic
+ *@sig since(t int) -> int
+ *@desc Returns the number of seconds elapsed from t to now. Equivalent to time.diff(t, time.now()).
+ *@example
+ *   import @time
+ *   mut start int = time.now()
+ *   mut elapsed int = time.since(start)
+ *   println(elapsed)
+ *@end
+ */
+int64_t gray_time_since(int64_t t);
 
 /* Performance */
 

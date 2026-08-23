@@ -577,6 +577,87 @@ static inline double gray_math_distance(double x1, double y1, double x2, double 
     return hypot(x2 - x1, y2 - y1);
 }
 
+/*@man mod
+ *@module math
+ *@group Arithmetic
+ *@sig mod(x float, y float) -> float
+ *@desc Returns the floating-point remainder of x divided by y, carrying the sign of x.
+ *@example
+ *   import @math
+ *   println(math.mod(7.5, 2.0))
+ *@end
+ */
+static inline double gray_math_mod(double x, double y) {
+    return fmod(x, y);
+}
+
+/*@man copysign
+ *@module math
+ *@group Arithmetic
+ *@sig copysign(x float, y float) -> float
+ *@desc Returns the magnitude of x with the sign of y.
+ *@example
+ *   import @math
+ *   println(math.copysign(3.0, -1.0))
+ *@end
+ */
+static inline double gray_math_copysign(double x, double y) {
+    return copysign(x, y);
+}
+
+/*@man fma
+ *@module math
+ *@group Arithmetic
+ *@sig fma(x float, y float, z float) -> float
+ *@desc Fused multiply-add: computes x * y + z with a single rounding step, which is more accurate than writing the two operations separately.
+ *@example
+ *   import @math
+ *   println(math.fma(2.0, 3.0, 1.0))
+ *@end
+ */
+static inline double gray_math_fma(double x, double y, double z) {
+    return fma(x, y, z);
+}
+
+/* Integer and fractional halves of a float, in destructuring order. */
+typedef struct { double v0; double v1; } GrayMathModf;
+
+/*@man modf
+ *@module math
+ *@group Arithmetic
+ *@sig modf(x float) -> (float, float)
+ *@desc Splits x into its integer and fractional parts, both carrying the sign of x.
+ *@example
+ *   import @math
+ *   mut whole float, mut frac float = math.modf(3.75)
+ *@end
+ */
+GrayMathModf gray_math_modf(double x);
+
+/*@man is_power_of_two
+ *@module math
+ *@group Integer
+ *@sig is_power_of_two(n int) -> bool
+ *@desc Returns true if n is a positive power of two. Zero and negative values are not.
+ *@example
+ *   import @math
+ *   println(math.is_power_of_two(64))
+ *@end
+ */
+bool gray_math_is_power_of_two(int64_t n);
+
+/*@man next_power_of_two
+ *@module math
+ *@group Integer
+ *@sig next_power_of_two(n int) -> int
+ *@desc Returns the smallest power of two greater than or equal to n, or 1 when n is zero or negative. Panics if the result would exceed MAX_INT.
+ *@example
+ *   import @math
+ *   println(math.next_power_of_two(100))
+ *@end
+ */
+int64_t gray_math_next_power_of_two(int64_t n);
+
 /*@man PI
  *@module math
  *@group Constants
@@ -655,6 +736,42 @@ static inline double gray_math_distance(double x1, double y1, double x2, double 
  *@kind const
  *@sig -Inf
  *@desc Negative infinity.
+ *@end
+ */
+
+/*@man MAX_INT
+ *@module math
+ *@group Constants
+ *@kind const
+ *@sig 9223372036854775807
+ *@desc The largest value an int can hold.
+ *@end
+ */
+
+/*@man MIN_INT
+ *@module math
+ *@group Constants
+ *@kind const
+ *@sig -9223372036854775808
+ *@desc The smallest value an int can hold.
+ *@end
+ */
+
+/*@man MAX_FLOAT
+ *@module math
+ *@group Constants
+ *@kind const
+ *@sig 1.7976931348623157e308
+ *@desc The largest finite value a float can hold.
+ *@end
+ */
+
+/*@man MIN_FLOAT
+ *@module math
+ *@group Constants
+ *@kind const
+ *@sig -1.7976931348623157e308
+ *@desc The smallest (most negative) finite value a float can hold. For the smallest positive magnitude a float can represent, see EPSILON.
  *@end
  */
 
