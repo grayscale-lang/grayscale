@@ -10,14 +10,14 @@ do main() {
     mut failed int = 0
 
     // Test 1: raw string with newlines
-    mut raw string = `line1
+    mut raw_text string = `line1
 line2
 line3`
-    if len(raw) > 10 {
+    if len(raw_text) > 10 {
         println("  [PASS] raw string with newlines")
         passed += 1
     } otherwise {
-        println("  [FAIL] raw string len: ${len(raw)}")
+        println("  [FAIL] raw string len: ${len(raw_text)}")
         failed += 1
     }
 
