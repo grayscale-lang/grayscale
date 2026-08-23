@@ -1,0 +1,11 @@
+// expect-error: E5016
+/*
+ * Error Test: E5016 - 'fields' used as a variable name
+ *
+ * Builtin functions cannot be shadowed by user variables, even when their
+ * names are handled outside the original reserved-name list.
+ */
+
+do main() {
+    mut fields int = 1
+}

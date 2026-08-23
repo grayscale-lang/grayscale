@@ -5,6 +5,9 @@
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
+ *
+ * Contributors:
+ *  - @sjh9714
  */
 
 #ifndef GRAY_RESERVED_H
@@ -73,17 +76,22 @@ static const char *const gray_builtin_func_names[] = {
     "eprintln",
     "error",
     "exit",
+    "fields",
     "here",
     "input",
     "len",
+    "new",
     "panic",
     "print",
     "println",
+    "range",
+    "raw",
     "ref",
     "size_of",
     "sleep_ms",
     "sleep_ns",
     "sleep_s",
+    "system",
     "to_char",
     "type_of",
 };
