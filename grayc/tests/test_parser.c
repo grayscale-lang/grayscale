@@ -236,7 +236,7 @@ static void test_parse_error_reports(void) {
 }
 
 static void test_parse_function_reference(void) {
-    AstNode *program = parse_test_input("do main() { mut fn = ()double }");
+    AstNode *program = parse_test_input("do main() { mut f = ()double }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
