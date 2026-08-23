@@ -64,39 +64,51 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts) {
     return gray_time_format(arena, gray_string_lit("%H:%M:%S"), ts);
 }
 
-/* Parses s against layout into tm. Returns true on a full match. */
-static bool time_parse_tm(GrayString s, GrayString layout, struct tm *tm) {
-    memset(tm, 0, sizeof(*tm));
-    char *end = strptime(s.data, layout.data, tm);
-    return end != NULL && *end == '\0';
+/* Parses s against layout and converts the result to a Unix timestamp.
+ * Returns true on a full match of a real calendar date.
+ *
+ * strptime range-checks each field in isolation, so it accepts a day that
+ * does not exist in the parsed month, and mktime is then documented to
+ * normalize the impossible combination rather than fail: 2023-02-29 becomes
+ * 2023-03-01, and day zero rolls backwards into the previous month. The
+ * t == -1 guard does not catch either, since mktime only reports failure for
+ * times it cannot represent at all. Compare the calendar fields across the
+ * mktime call instead and reject anything it had to move.
+ *
+ * Only the date fields are compared. tm_hour is legitimately shifted when a
+ * local time falls in a DST gap, and the time-of-day fields need no help:
+ * strptime range-checks them and no cross-field normalization applies. */
+static bool time_parse_to_timestamp(GrayString s, GrayString layout, int64_t *out) {
+    struct tm tm;
+    memset(&tm, 0, sizeof(tm));
+    char *end = strptime(s.data, layout.data, &tm);
+    if (end == NULL || *end != '\0') return false;
+
+    int year = tm.tm_year, mon = tm.tm_mon, mday = tm.tm_mday;
+    tm.tm_isdst = -1;
+    time_t t = mktime(&tm);
+    if (t == (time_t)-1) return false;
+    if (tm.tm_year != year || tm.tm_mon != mon || tm.tm_mday != mday) return false;
+
+    *out = (int64_t)t;
+    return true;
 }
 
 int64_t gray_time_parse(GrayString s, GrayString layout) {
-    struct tm tm;
-    if (!time_parse_tm(s, layout, &tm))
+    int64_t ts;
+    if (!time_parse_to_timestamp(s, layout, &ts))
         gray_panic_code("P0105", "time.parse: cannot parse '%s' with layout '%s'", s.data, layout.data);
-    tm.tm_isdst = -1;
-    time_t t = mktime(&tm);
-    if (t == (time_t)-1)
-        gray_panic_code("P0105", "time.parse: cannot parse '%s' with layout '%s'", s.data, layout.data);
-    return (int64_t)t;
+    return ts;
 }
 
 GrayResult_int gray_time_parse_result(GrayString s, GrayString layout) {
-    struct tm tm;
-    if (!time_parse_tm(s, layout, &tm)) {
+    int64_t ts;
+    if (!time_parse_to_timestamp(s, layout, &ts)) {
         GrayError *err = gray_error_new(gray_default_arena, gray_string_format(gray_default_arena,
             "cannot parse '%.*s' with layout '%.*s'", s.len, s.data, layout.len, layout.data));
         return (GrayResult_int){0, err};
     }
-    tm.tm_isdst = -1;
-    time_t t = mktime(&tm);
-    if (t == (time_t)-1) {
-        GrayError *err = gray_error_new(gray_default_arena, gray_string_format(gray_default_arena,
-            "cannot parse '%.*s' with layout '%.*s'", s.len, s.data, layout.len, layout.data));
-        return (GrayResult_int){0, err};
-    }
-    return (GrayResult_int){(int64_t)t, NULL};
+    return (GrayResult_int){ts, NULL};
 }
 
 int64_t gray_time_diff(int64_t t1, int64_t t2) { return gray_sub_check(t2, t1, __FILE__, __LINE__); }

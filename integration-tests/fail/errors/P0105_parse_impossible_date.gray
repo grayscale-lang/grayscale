@@ -1,0 +1,6 @@
+/* Panic Test: P0105 - time.parse on a day that does not exist in the month */
+import @time
+
+do main() {
+    println("${time.parse("2023-02-29", "%Y-%m-%d")}")
+}

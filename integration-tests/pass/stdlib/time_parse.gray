@@ -4,6 +4,31 @@
 
 import @time
 
+/* strptime range-checks each field on its own and mktime normalizes an
+ * impossible day-in-month rather than failing, so a date like 2023-02-29 used
+ * to come back as a clean 2023-03-01. */
+do check_rejected(label string, date string, &passed int, &failed int) {
+    mut ts, err = time.parse(date, "%Y-%m-%d")
+    if err != nil {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: accepted, got ${time.date(ts)}")
+        failed += 1
+    }
+}
+
+do check_accepted(label string, date string, &passed int, &failed int) {
+    mut ts, err = time.parse(date, "%Y-%m-%d")
+    if err == nil && time.date(ts) == date {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected ${date}")
+        failed += 1
+    }
+}
+
 do main() {
     println("=== Time Parse/Calendar/Since Test ===")
     mut passed int = 0
@@ -48,6 +73,27 @@ do main() {
         println("  [FAIL] parse destructure error: got val=${val2}")
         failed += 1
     }
+
+    // impossible calendar dates must not normalize into a different day
+    check_rejected("reject Feb 29 non-leap", "2023-02-29", passed, failed)
+    check_rejected("reject Feb 30", "2024-02-30", passed, failed)
+    check_rejected("reject Feb 31", "2024-02-31", passed, failed)
+    check_rejected("reject Apr 31", "2024-04-31", passed, failed)
+    check_rejected("reject Jun 31", "2024-06-31", passed, failed)
+    check_rejected("reject Sep 31", "2024-09-31", passed, failed)
+    check_rejected("reject Nov 31", "2024-11-31", passed, failed)
+    check_rejected("reject day zero", "2024-03-00", passed, failed)
+    check_rejected("reject Feb 29 in 1900", "1900-02-29", passed, failed)
+    check_rejected("reject Feb 29 in 2100", "2100-02-29", passed, failed)
+
+    // real dates on the same boundaries must still parse
+    check_accepted("accept leap day", "2024-02-29", passed, failed)
+    check_accepted("accept Feb 28 non-leap", "2023-02-28", passed, failed)
+    check_accepted("accept Feb 29 in 2000", "2000-02-29", passed, failed)
+    check_accepted("accept Apr 30", "2024-04-30", passed, failed)
+    check_accepted("accept Dec 31", "2024-12-31", passed, failed)
+    check_accepted("accept DST spring forward", "2024-03-10", passed, failed)
+    check_accepted("accept DST fall back", "2024-11-03", passed, failed)
 
     // time.is_leap_year: divisible by 4, not by 100
     if time.is_leap_year(2024) == true {
