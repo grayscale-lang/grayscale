@@ -64,8 +64,9 @@ do main() {
     println("  [PASS] sleep(0)")
     passed += 1
 
-    // is_alive is true immediately after spawn, false after join
-    mut t2 = threads.spawn(()worker)
+    // is_alive is true immediately after spawn, false after join — use a
+    // slow worker so the thread cannot finish before the check
+    mut t2 = threads.spawn(()slow_worker)
     if threads.is_alive(t2) {
         println("  [PASS] is_alive true after spawn")
         passed += 1
