@@ -52,10 +52,16 @@ GrayString gray_strings_to_title(GrayArena *arena, GrayString s) {
 GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len * 2 + 1);
     int32_t pos = 0;
+    /* Deferred rather than emitted on sight, so a separator only produces a
+     * '_' once a real character arrives to follow it. That drops trailing
+     * separators for free and collapses runs, the same way to_camel_case
+     * defers its capitalization. */
+    bool pending_sep = false;
     for (int32_t i = 0; i < s.len; i++) {
         unsigned char c = (unsigned char)s.data[i];
         if (c == ' ' || c == '-' || c == '_') {
-            if (pos > 0 && buf[pos - 1] != '_') buf[pos++] = '_';
+            /* Leading separators are dropped rather than opening with '_'. */
+            pending_sep = pos > 0;
             continue;
         }
         if (isupper(c)) {
@@ -64,7 +70,11 @@ GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
             /* Break after a lowercase run, and at the tail of an acronym run
              * so "HTTPServer" splits as "http_server" rather than "h_t_t_p...". */
             bool boundary = islower(prev) || isdigit(prev) || (isupper(prev) && islower(next));
-            if (boundary && pos > 0 && buf[pos - 1] != '_') buf[pos++] = '_';
+            if (boundary && pos > 0) pending_sep = true;
+        }
+        if (pending_sep) {
+            buf[pos++] = '_';
+            pending_sep = false;
         }
         buf[pos++] = (char)tolower(c);
     }
