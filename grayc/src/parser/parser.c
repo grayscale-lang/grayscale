@@ -2265,6 +2265,17 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             pending_discard = false;
         }
 
+        /* Same for #deprecated. Clearing the pending state is what stops the
+         * attribute from drifting onto the next struct function in the body. */
+        if (pending_deprecated) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            pending_deprecated = false;
+            pending_deprecated_message = NULL;
+        }
+
         /* E2002: multiple fields on the same line */
         if (prev_field_line >= 0 && parser->cur_token.line == prev_field_line) {
             diagnostic_error_message(parser->diag, "E2002",
@@ -2381,6 +2392,33 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
         ARENA_GROW(parser->arena, node->data.enum_decl.values,
             node->data.enum_decl.value_count, val_cap);
+
+        /* Neither attribute is meaningful on a variant, and both were being
+         * read as the variant name, embedding '#discard'/'#deprecated' in the
+         * generated C enumerator. Diagnose and consume them here so the name
+         * slot below sees the real variant. */
+        if (current_token_is(parser, TOK_DISCARD)) {
+            diagnostic_error_message(parser->diag, "E2089",
+                arena_copy_string(parser->arena,
+                    "#discard attribute can only be applied to function declarations, not enum variants"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser);
+            continue;
+        }
+        if (current_token_is(parser, TOK_DEPRECATED)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser); /* consume #deprecated */
+            /* Consume an optional ("message") so it is not read as a variant */
+            if (current_token_is(parser, TOK_LPAREN)) {
+                while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF))
+                    next_token(parser);
+                if (current_token_is(parser, TOK_RPAREN)) next_token(parser);
+            }
+            continue;
+        }
 
         /* E2058: nested struct/enum declaration */
         if (current_token_is(parser, TOK_CONST)) {

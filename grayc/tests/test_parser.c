@@ -939,6 +939,60 @@ static void test_parse_float_literal_in_range(void) {
     }
 }
 
+/* #discard on a struct field was diagnosed and cleared, #deprecated only
+ * diagnosed nothing at all — so the pending flag survived the field and was
+ * attached to the next struct function in the body, silently marking it
+ * deprecated. Clearing the pending state is what closes the leak. */
+static void test_parse_error_deprecated_on_struct_field(void) {
+    AstNode *program = parse_test_input(
+        "const Point struct {\n #deprecated\n x int\n\n do sum() -> int { return 3 }\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
+    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_NOT_NULL(fn);
+    ASSERT(!fn->data.func_decl.is_deprecated);
+    ASSERT(fn->data.func_decl.deprecated_message == NULL);
+}
+
+/* Neither attribute belongs on an enum variant, and both were being read as
+ * the variant name, embedding the attribute text in the generated C
+ * enumerator. */
+static void test_parse_error_attributes_on_enum_variant(void) {
+    AstNode *program = parse_test_input("const Color enum {\n #deprecated\n RED\n GREEN\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
+    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "RED");
+
+    program = parse_test_input("const Flag enum {\n #discard\n ON\n OFF\n}");
+    statement = first_statement(program);
+    ASSERT(parser_has_code(diagnostics, "E2089"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
+    ASSERT_EQ(statement->data.enum_decl.value_count, 2);
+    ASSERT_STR_EQ(statement->data.enum_decl.values[0].name, "ON");
+}
+
+/* The attributes must keep working where they are legal: on the struct
+ * function itself, message and all. */
+static void test_parse_deprecated_on_struct_func(void) {
+    AstNode *program = parse_test_input(
+        "const Point struct {\n x int\n\n #deprecated(\"use add\")\n do sum() -> int { return 3 }\n}");
+    AstNode *statement = first_statement(program);
+    ASSERT(!parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->data.struct_decl.func_count, 1);
+    AstNode *fn = statement->data.struct_decl.funcs[0].func_decl;
+    ASSERT_NOT_NULL(fn);
+    ASSERT(fn->data.func_decl.is_deprecated);
+    ASSERT_STR_EQ(fn->data.func_decl.deprecated_message, "use add");
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -1048,6 +1102,9 @@ int main(void) {
     RUN_TEST(test_parse_error_E2001_reports_typed_keyword);
     RUN_TEST(test_parse_error_E3138_float_literal_overflow);
     RUN_TEST(test_parse_float_literal_in_range);
+    RUN_TEST(test_parse_error_deprecated_on_struct_field);
+    RUN_TEST(test_parse_error_attributes_on_enum_variant);
+    RUN_TEST(test_parse_deprecated_on_struct_func);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
