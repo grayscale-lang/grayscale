@@ -173,4 +173,9 @@ bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, con
 /* Return human-readable name for a token type */
 const char *token_type_name(TokenType type);
 
+/* Return the spelling a token was actually written with, for diagnostics.
+ * Keyword tokens report the alias the user typed (`while`, not `as_long_as`);
+ * every other token falls back to token_type_name. */
+const char *token_display_name(Token tok);
+
 #endif

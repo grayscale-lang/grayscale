@@ -1,0 +1,9 @@
+/*
+ * Error Test: E2002 - unexpected-token
+ * Expected: "unexpected token 'fn'" — the alias the user typed, not its
+ * canonical spelling 'do'.
+ */
+
+do main() {
+    mut x int = fn
+}

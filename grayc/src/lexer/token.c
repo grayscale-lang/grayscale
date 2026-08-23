@@ -9,6 +9,7 @@
  */
 
 #include "token.h"
+#include <limits.h>
 #include <string.h>
 
 typedef struct {
@@ -99,6 +100,27 @@ bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, con
         else lo = mid + 1;
     }
     return false;
+}
+
+/* Return the spelling a keyword token was actually written with, so
+ * diagnostics quote the user's source rather than the canonical spelling of
+ * an aliased keyword (`while` must not be reported as `as_long_as`). The
+ * lexer stores the matched table entry in tok.literal, so a lookup that
+ * round-trips back to the same token type confirms the literal is a real
+ * keyword spelling; everything else (identifiers, punctuation, EOF) falls
+ * back to the token type's name. */
+const char *token_display_name(Token tok) {
+    if (tok.literal) {
+        TokenType kw_type;
+        const char *kw_str;
+        size_t len = strlen(tok.literal);
+        if (len <= INT_MAX &&
+            token_lookup_keyword_n(tok.literal, (int)len, &kw_type, &kw_str) &&
+            kw_type == tok.type) {
+            return tok.literal;
+        }
+    }
+    return token_type_name(tok.type);
 }
 
 const char *token_type_name(TokenType type) {

@@ -864,6 +864,49 @@ static void test_parse_error_truncated_at_eof(void) {
     ASSERT(strstr(message, "interpolation") == NULL);
 }
 
+/* Aliased keywords share a TokenType with their canonical spelling, so a
+ * diagnostic built from the type alone renames the user's source text
+ * ("unexpected token 'do'" for a typed `fn`). Every spelling must be quoted
+ * back exactly as written. */
+static void test_parse_error_E2002_reports_typed_keyword(void) {
+    static const char *spellings[] = {
+        "fn", "do", "switch", "when", "case", "is", "elif", "or",
+        "defer", "ensure", "while", "as_long_as", "else", "otherwise",
+    };
+    for (size_t i = 0; i < sizeof(spellings) / sizeof(spellings[0]); i++) {
+        char input[64];
+        char expected[64];
+        snprintf(input, sizeof(input), "do main() {\n    mut x int = %s\n}", spellings[i]);
+        snprintf(expected, sizeof(expected), "unexpected token '%s'", spellings[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        const char *message = parser_message_for(diagnostics, "E2002");
+        ASSERT_NOT_NULL(message);
+        ASSERT(strcmp(message, expected) == 0);
+    }
+}
+
+/* Non-keyword tokens carry a literal that is not a keyword spelling (or none
+ * at all), so they must keep falling back to the token type's name. */
+static void test_parse_error_E2002_non_keyword_fallback(void) {
+    AstNode *program = parse_test_input("do main() {\n    mut x int = = 5\n}");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2002");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strcmp(message, "unexpected token '='") == 0);
+}
+
+/* The "got" half of E2001 names the token actually present, so it has the
+ * same obligation to quote the alias the user typed. */
+static void test_parse_error_E2001_reports_typed_keyword(void) {
+    AstNode *program = parse_test_input("do main() {\n    for i in range(0, 2) while {\n    }\n}");
+    (void)program;
+    const char *message = parser_message_for(diagnostics, "E2001");
+    ASSERT_NOT_NULL(message);
+    ASSERT(strstr(message, "got 'while'") != NULL);
+    ASSERT(strstr(message, "as_long_as") == NULL);
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -968,6 +1011,9 @@ int main(void) {
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
     RUN_TEST(test_parse_error_truncated_at_eof);
+    RUN_TEST(test_parse_error_E2002_reports_typed_keyword);
+    RUN_TEST(test_parse_error_E2002_non_keyword_fallback);
+    RUN_TEST(test_parse_error_E2001_reports_typed_keyword);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

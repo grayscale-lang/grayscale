@@ -82,7 +82,7 @@ static bool expect_peek_token(Parser *parser, TokenType type) {
     }
     char buf[MSG_BUF_SIZE];
     snprintf(buf, sizeof(buf), "expected '%s', got '%s'",
-        token_type_name(type), token_type_name(parser->peek_token.type));
+        token_type_name(type), token_display_name(parser->peek_token));
     /* Point at current token (where the expected token should be), not the peek token */
     diagnostic_error_message(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
         parser->file, parser->cur_token.line, parser->cur_token.column, 0);
@@ -1020,7 +1020,7 @@ static AstNode *parse_prefix(Parser *parser) {
                 snprintf(buf, sizeof(buf), "unexpected end of interpolation expression");
             else
                 snprintf(buf, sizeof(buf), "unexpected token '%s'",
-                    token_type_name(parser->cur_token.type));
+                    token_display_name(parser->cur_token));
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
