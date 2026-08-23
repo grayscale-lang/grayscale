@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.0...grayscale-v0.5.1) (2026-08-23)
+
+
+### Bug Fixes
+
+* **typechecker:** reserve all builtin function names ([999e0cc](https://github.com/grayscale-lang/grayscale/commit/999e0cc40bf5df18fc0211988447d3e84f1042c0))
+* **typechecker:** reserve all builtin function names ([cf71f7a](https://github.com/grayscale-lang/grayscale/commit/cf71f7ad1567663ba316896ba9c42126f4d58ca3))
+
 ## [0.5.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.4.1...grayscale-v0.5.0) (2026-08-23)
 
 
