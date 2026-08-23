@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.5.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.4.1...grayscale-v0.5.0) (2026-08-23)
+
+
+### Features
+
+* add #deprecated attribute ([#2384](https://github.com/grayscale-lang/grayscale/issues/2384)) ([ebc69ef](https://github.com/grayscale-lang/grayscale/commit/ebc69ef4ad6baaea61e020192525f86be3e29710))
+* **lang:** add keyword aliases fn, elif, switch, case, defer ([#2441](https://github.com/grayscale-lang/grayscale/issues/2441)) ([cb15833](https://github.com/grayscale-lang/grayscale/commit/cb158332aadfcfe01e9d021455e330285b60b832))
+* **stdlib:** add math float primitives, power-of-two helpers, and bounds constants ([#2435](https://github.com/grayscale-lang/grayscale/issues/2435)) ([141814b](https://github.com/grayscale-lang/grayscale/commit/141814b1a02c0c5785975861951cef26f70b6062))
+* **stdlib:** add runtime module ([#2310](https://github.com/grayscale-lang/grayscale/issues/2310)) ([1c36f59](https://github.com/grayscale-lang/grayscale/commit/1c36f59d3b7861cc34bbb49e9244fec67f6c1806))
+* **stdlib:** add runtime module for compiler-managed arena and execution introspection ([#2310](https://github.com/grayscale-lang/grayscale/issues/2310)) ([ddc16d5](https://github.com/grayscale-lang/grayscale/commit/ddc16d567615733e6e74c227fcee8fcee5e5f05b))
+* **stdlib:** add strings split, compare, and case functions ([#2433](https://github.com/grayscale-lang/grayscale/issues/2433)) ([2501ddf](https://github.com/grayscale-lang/grayscale/commit/2501ddfdd7a3762aeb974c6e9bf553c8be9e1d75))
+* **stdlib:** add time.parse, is_leap_year, since functions ([#2439](https://github.com/grayscale-lang/grayscale/issues/2439)) ([4486647](https://github.com/grayscale-lang/grayscale/commit/4486647fc9cb2ac979ec68eb2a98716839d74726))
+* **typechecker:** add #deprecated attribute for functions, structs, and enums ([#2384](https://github.com/grayscale-lang/grayscale/issues/2384)) ([646c93e](https://github.com/grayscale-lang/grayscale/commit/646c93edbd7bbd949d29abbba347d8721d0be851))
+
+
+### Bug Fixes
+
+* **codegen:** escape array copy-assignment to outer arena inside loop scope ([#2430](https://github.com/grayscale-lang/grayscale/issues/2430)) ([949dbf1](https://github.com/grayscale-lang/grayscale/commit/949dbf145809d7080f5652f732b83891b5b74e60))
+* **codegen:** escape container field writes to heap arena through new()-tracked pointers ([#2424](https://github.com/grayscale-lang/grayscale/issues/2424)) ([5ea3b4e](https://github.com/grayscale-lang/grayscale/commit/5ea3b4ee4ad6396d5c98e54f04920f0f1399fa4e))
+* **diagnostics:** restore --&gt; file:line:column format string ([#2443](https://github.com/grayscale-lang/grayscale/issues/2443)) ([3bef9f4](https://github.com/grayscale-lang/grayscale/commit/3bef9f47ea511139595b561f3d621bbd5da22bf0))
+* **fmt:** translate %b to a real C conversion and require a bool argument ([#2428](https://github.com/grayscale-lang/grayscale/issues/2428)) ([0a3908b](https://github.com/grayscale-lang/grayscale/commit/0a3908bb0b3f50161f26da9ad14ba49251e2e2f9))
+* **imports:** rewrite wrapped type names in local var-decl annotations ([#2427](https://github.com/grayscale-lang/grayscale/issues/2427)) ([68581b2](https://github.com/grayscale-lang/grayscale/commit/68581b2b7cad7b880f68313d287d0e9410a48138))
+* **lang:** reserve is and default as identifiers ([#2454](https://github.com/grayscale-lang/grayscale/issues/2454)) ([d079a70](https://github.com/grayscale-lang/grayscale/commit/d079a70a5f21e518b5bcf361d6955c97d692edeb))
+* **lexer:** accept exponent notation in float literals ([c7050f3](https://github.com/grayscale-lang/grayscale/commit/c7050f30f00d710fd0ecc6a8bc89c19895f23d57))
+* **parser:** diagnose misplaced #deprecated and #discard attributes ([1b7bd06](https://github.com/grayscale-lang/grayscale/commit/1b7bd060b6ef9883632b2b1a21ac0ae6bcd74ef4))
+* **parser:** reject float literals that overflow a 64-bit float ([10f92af](https://github.com/grayscale-lang/grayscale/commit/10f92afc151a219dab64ee750d09bc4e77ef62dc))
+* **parser:** reject reserved keywords as destructuring binding names ([#2451](https://github.com/grayscale-lang/grayscale/issues/2451)) ([912ed0a](https://github.com/grayscale-lang/grayscale/commit/912ed0a74ec677f2617fbfbd5d98518a8bc27b6d))
+* **parser:** report the keyword spelling the user typed ([8202a6f](https://github.com/grayscale-lang/grayscale/commit/8202a6f1018975227d94124bfbea95265235bcff))
+* **parser:** require declaration name and type on the same line ([#2455](https://github.com/grayscale-lang/grayscale/issues/2455)) ([02c5336](https://github.com/grayscale-lang/grayscale/commit/02c53368f0f8049d3ade960af7cb8e8a962dead4))
+* **runtime:** keep runtime.alloc_count cumulative across loop bodies ([d0ae993](https://github.com/grayscale-lang/grayscale/commit/d0ae993765c8d30aca9752dfcf1097b61324191f))
+* **stdlib:** drop trailing separator in strings.to_snake_case ([bef0cfd](https://github.com/grayscale-lang/grayscale/commit/bef0cfde1b0ab3dbf33d5cc0f96e0e1d074e3387))
+* **stdlib:** reject impossible calendar dates in time.parse ([12c11b5](https://github.com/grayscale-lang/grayscale/commit/12c11b5d6f13df489e4b89438d3d647e53e992a3))
+* **tests:** deflake is_alive check by spawning a slow worker ([5f31477](https://github.com/grayscale-lang/grayscale/commit/5f314771e492e2b0dbf84a44b1a749ae0b7fba2a))
+* **tests:** stop using reserved keyword 'fn' as a variable name ([9349e7f](https://github.com/grayscale-lang/grayscale/commit/9349e7f7583726254f6406cb5c21a8d000a10f29))
+* **tests:** use one membership operator spelling per file ([1952366](https://github.com/grayscale-lang/grayscale/commit/19523663dd7a854bc3840d2b8b84e0d79610bdb8))
+* **typechecker:** accept nil literal for pointer-typed call arguments ([#2426](https://github.com/grayscale-lang/grayscale/issues/2426)) ([049ff0d](https://github.com/grayscale-lang/grayscale/commit/049ff0d8414555f405ea862a6e9eae0583f49b56))
+* **typechecker:** enforce !in/not_in keyword alias consistency ([#2440](https://github.com/grayscale-lang/grayscale/issues/2440)) ([8779ee6](https://github.com/grayscale-lang/grayscale/commit/8779ee66507f1e9c35e675cd451a10083156bde8))
+* **typechecker:** guard constant folding against int64 overflow UB ([#2392](https://github.com/grayscale-lang/grayscale/issues/2392)) ([eda3e5b](https://github.com/grayscale-lang/grayscale/commit/eda3e5bf2a34879f4f46df37c8da88007458d9a5))
+* **typechecker:** recognize stdlib opaque types in new() across all import forms ([#2445](https://github.com/grayscale-lang/grayscale/issues/2445)) ([f1791ea](https://github.com/grayscale-lang/grayscale/commit/f1791ea642adabaed9479e0e643ca8028150f71e))
+* **typechecker:** resolve stdlib multi-return through the using path ([9d4dcf5](https://github.com/grayscale-lang/grayscale/commit/9d4dcf54ec2364d0f91981466a6cb8d909e963c8))
+* **typechecker:** scope E4014 shadowed-import check to the declaring file ([#2429](https://github.com/grayscale-lang/grayscale/issues/2429)) ([89a0a2c](https://github.com/grayscale-lang/grayscale/commit/89a0a2ca47bb866c53f169d814321e3febdd3f24))
+* **typechecker:** show unqualified name for undefined module-qualified types ([#2444](https://github.com/grayscale-lang/grayscale/issues/2444)) ([2a99923](https://github.com/grayscale-lang/grayscale/commit/2a9992358dc8db4fb5be639d126ec8ff5f932b7d))
+* **typechecker:** track pointer origin through assignment for E3063 and E3097 ([#2410](https://github.com/grayscale-lang/grayscale/issues/2410)) ([71a1431](https://github.com/grayscale-lang/grayscale/commit/71a143145067b1203b99dfc8066915cdd351535a))
+
 ## [0.4.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.4.0...grayscale-v0.4.1) (2026-08-21)
 
 
