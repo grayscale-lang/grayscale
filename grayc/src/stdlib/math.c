@@ -67,6 +67,30 @@ int64_t gray_math_lcm(int64_t a, int64_t b) {
     return (a / g) * b;
 }
 
+GrayMathModf gray_math_modf(double x) {
+    double integral;
+    double frac = modf(x, &integral);
+    GrayMathModf r = { integral, frac };
+    return r;
+}
+
+bool gray_math_is_power_of_two(int64_t n) {
+    return n > 0 && (n & (n - 1)) == 0;
+}
+
+int64_t gray_math_next_power_of_two(int64_t n) {
+    if (n <= 1) return 1;
+    /* 2^62 is the largest power of two an int64 holds; anything above it
+     * would round up past MAX_INT. */
+    if (n > (int64_t)1 << 62) {
+        gray_panic_code("P0106",
+            "math.next_power_of_two() result is too large for int, got %lld", (long long)n);
+    }
+    int64_t p = 1;
+    while (p < n) p <<= 1;
+    return p;
+}
+
 bool gray_math_is_prime(int64_t n) {
     if (n < 2) return false;
     if (n < 4) return true;

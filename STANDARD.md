@@ -3038,6 +3038,10 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `abs` | `(n T) -> T` | Absolute value |
 | `neg` | `(n T) -> T` | Negation |
 | `sign` | `(n T) -> int` | Sign (-1, 0, or 1) |
+| `mod` | `(x float, y float) -> float` | Floating-point remainder, carrying the sign of `x` |
+| `copysign` | `(x float, y float) -> float` | Magnitude of `x` with the sign of `y` |
+| `fma` | `(x float, y float, z float) -> float` | Fused multiply-add: `x * y + z` with a single rounding step |
+| `modf` | `(x float) -> (float, float)` | Integer and fractional parts of `x`, both carrying its sign. Both values must be captured: `mut whole, frac = math.modf(x)` |
 
 #### Min/Max/Clamp
 
@@ -3111,6 +3115,8 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `is_infinite` | `(n float) -> bool` | Check if infinite |
 | `is_nan` | `(n float) -> bool` | Check if NaN |
 | `is_finite` | `(n float) -> bool` | Check if finite (not infinite or NaN) |
+| `is_power_of_two` | `(n int) -> bool` | Check if a positive power of two; zero and negatives are not |
+| `next_power_of_two` | `(n int) -> int` | Smallest power of two >= `n`, or 1 when `n <= 0`. Panics (`P0106`) above 2^62, where the result would exceed `MAX_INT` |
 
 #### Utility
 
@@ -3131,6 +3137,10 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 - `INF` - Positive infinity
 - `NEG_INF` - Negative infinity
 - `EPSILON` - Smallest representable float difference
+- `MAX_INT` - Largest value an `int` can hold (9223372036854775807)
+- `MIN_INT` - Smallest value an `int` can hold (-9223372036854775808)
+- `MAX_FLOAT` - Largest finite value a `float` can hold (1.7976931348623157e308)
+- `MIN_FLOAT` - Smallest, i.e. most negative, finite value a `float` can hold (-1.7976931348623157e308)
 
 ### 9.6 Time Module (`@time`)
 

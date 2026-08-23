@@ -1,0 +1,9 @@
+/*
+ * Runtime Panic Test: P0106 - next_power_of_two above 2^62 would exceed MAX_INT
+ */
+
+import @math
+
+do main() {
+    println(math.next_power_of_two(4611686018427387905))
+}

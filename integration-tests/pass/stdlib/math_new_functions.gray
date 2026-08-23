@@ -1,0 +1,125 @@
+/*
+ * math_new_functions.gray - Integration test for the math module additions
+ * in #2435: mod, copysign, fma, modf, is_power_of_two, next_power_of_two,
+ * and the MAX/MIN bounds constants.
+ */
+
+import @math
+
+do main() {
+    println("=== Math New Functions Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- mod: remainder carries the sign of the dividend --
+    if math.mod(7.5, 2.0) == 1.5 && math.mod(-7.5, 2.0) == -1.5 {
+        println("  [PASS] mod")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mod: got ${math.mod(7.5, 2.0)} and ${math.mod(-7.5, 2.0)}")
+        failed += 1
+    }
+
+    // -- copysign --
+    if math.copysign(3.0, -1.0) == -3.0 && math.copysign(-3.0, 1.0) == 3.0 {
+        println("  [PASS] copysign")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] copysign")
+        failed += 1
+    }
+
+    // -- fma --
+    if math.fma(2.0, 3.0, 1.0) == 7.0 {
+        println("  [PASS] fma")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] fma: expected 7.0, got ${math.fma(2.0, 3.0, 1.0)}")
+        failed += 1
+    }
+
+    // -- modf: both halves carry the sign --
+    mut whole, frac = math.modf(3.75)
+    if whole == 3.0 && frac == 0.75 {
+        println("  [PASS] modf positive")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] modf positive: got ${whole} and ${frac}")
+        failed += 1
+    }
+    mut nwhole, nfrac = math.modf(-3.75)
+    if nwhole == -3.0 && nfrac == -0.75 {
+        println("  [PASS] modf negative")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] modf negative: got ${nwhole} and ${nfrac}")
+        failed += 1
+    }
+
+    // -- is_power_of_two --
+    if math.is_power_of_two(64) && math.is_power_of_two(1) && !math.is_power_of_two(63) && !math.is_power_of_two(0) && !math.is_power_of_two(-8) {
+        println("  [PASS] is_power_of_two")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_power_of_two")
+        failed += 1
+    }
+
+    // -- next_power_of_two --
+    if math.next_power_of_two(100) == 128 && math.next_power_of_two(1024) == 1024 && math.next_power_of_two(1) == 1 && math.next_power_of_two(0) == 1 && math.next_power_of_two(-5) == 1 {
+        println("  [PASS] next_power_of_two")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] next_power_of_two: got ${math.next_power_of_two(100)}")
+        failed += 1
+    }
+
+    // -- bounds constants --
+    if math.MAX_INT == 9223372036854775807 {
+        println("  [PASS] MAX_INT")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] MAX_INT: got ${math.MAX_INT}")
+        failed += 1
+    }
+    if math.MIN_INT < 0 && math.MIN_INT + math.MAX_INT == -1 {
+        println("  [PASS] MIN_INT")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] MIN_INT: got ${math.MIN_INT}")
+        failed += 1
+    }
+    if math.MAX_FLOAT < math.INF && math.is_finite(math.MAX_FLOAT) && math.MAX_FLOAT > 0.0 {
+        println("  [PASS] MAX_FLOAT")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] MAX_FLOAT")
+        failed += 1
+    }
+    if math.MIN_FLOAT > math.NEG_INF && math.is_finite(math.MIN_FLOAT) && math.MIN_FLOAT + math.MAX_FLOAT == 0.0 {
+        println("  [PASS] MIN_FLOAT")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] MIN_FLOAT")
+        failed += 1
+    }
+
+    // -- MAX_INT is an int, not a float: usable where an int is required --
+    mut bound int = math.MAX_INT
+    if bound == math.MAX_INT {
+        println("  [PASS] MAX_INT is int-typed")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] MAX_INT is int-typed")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -411,7 +411,8 @@
     GRAY_PANIC("P0102", "arithmetic", "invalid digit in integer literal") \
     GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
     GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
-    GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'")
+    GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
+    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

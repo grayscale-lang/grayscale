@@ -1210,6 +1210,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "cbrt",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "ceil",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "clamp",       3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, NULL},
+    {"math", "copysign",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "cos",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "cosh",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "deg_to_rad",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
@@ -1218,6 +1219,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "exp2",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "factorial",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"math", "floor",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "fma",         3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "float"},
     {"math", "gcd",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"math", "hypot",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "is_even",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
@@ -1225,6 +1227,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "is_infinite", 1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
     {"math", "is_nan",      1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "bool"},
     {"math", "is_odd",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
+    {"math", "is_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"math", "is_prime",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"math", "lcm",         2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"math", "lerp",        3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "float"},
@@ -1234,7 +1237,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "log_base",    2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "max",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
     {"math", "min",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, NULL},
+    {"math", "mod",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
+    {"math", "modf",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "neg",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
+    {"math", "next_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "round",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
@@ -1829,6 +1835,8 @@ static const UsingConst _using_consts[] = {
     {"PHI","math",TK_FLOAT},{"SQRT2","math",TK_FLOAT},{"LN2","math",TK_FLOAT},
     {"LN10","math",TK_FLOAT},{"INF","math",TK_FLOAT},{"NEG_INF","math",TK_FLOAT},
     {"EPSILON","math",TK_FLOAT},
+    {"MAX_INT","math",TK_INT},{"MIN_INT","math",TK_INT},
+    {"MAX_FLOAT","math",TK_FLOAT},{"MIN_FLOAT","math",TK_FLOAT},
     {"MAC_OS","os",TK_INT},{"LINUX","os",TK_INT},{"WINDOWS","os",TK_INT},{"OTHER","os",TK_INT},
     {"O_RDONLY","io",TK_INT},{"O_WRONLY","io",TK_INT},{"O_RDWR","io",TK_INT},
     {"BASE_2","strconv",TK_INT},{"BASE_8","strconv",TK_INT},{"BASE_10","strconv",TK_INT},
@@ -6187,6 +6195,12 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
 
         /* Check for module constants */
         if (strcmp(obj_name, "math") == 0) {
+            /* MAX_INT/MIN_INT are the only integer-valued math constants;
+             * everything else in the module is a float. */
+            const char *mem = node->data.member.member;
+            if (strcmp(mem, "MAX_INT") == 0 || strcmp(mem, "MIN_INT") == 0) {
+                return &TYPE_INT;
+            }
             result = &TYPE_FLOAT; /* PI, E, TAU, etc. */
             return result;
         }
@@ -8318,8 +8332,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     diagnostic_error_code_formatted(checker->diag, "E3089", NODE_FILE(checker, node),
                         node->token.line, node->token.column, 0,
                         call_name, call_name, call_name);
-                } else if (call_mod && strcmp(call_mod, "channels") == 0 &&
-                           strcmp(call_name, "try_receive") == 0) {
+                } else if (call_mod &&
+                           ((strcmp(call_mod, "channels") == 0 &&
+                             strcmp(call_name, "try_receive") == 0) ||
+                            (strcmp(call_mod, "math") == 0 &&
+                             strcmp(call_name, "modf") == 0))) {
+                    /* Non-fallible stdlib functions that return a pair;
+                     * capturing one slot silently drops the other. */
                     diagnostic_error_code_formatted(checker->diag, "E3040", NODE_FILE(checker, node),
                         node->token.line, node->token.column, 0,
                         call_name, 2, call_name);
@@ -9124,6 +9143,19 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         rt[3] = &TYPE_BOOL;
                         sym->ret_types = rt;
                         sym->ret_count = 4;
+                        sym->ret_types_owned = true;
+                    }
+                }
+                /* math.modf returns (float, float) */
+                if (strcmp(mod, "math") == 0 && strcmp(mfn, "modf") == 0) {
+                    Symbol *sym = scope_lookup_local(checker->current_scope,
+                        node->data.var_decl.name);
+                    if (sym) {
+                        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
+                        rt[0] = &TYPE_FLOAT;
+                        rt[1] = &TYPE_FLOAT;
+                        sym->ret_types = rt;
+                        sym->ret_count = 2;
                         sym->ret_types_owned = true;
                     }
                 }

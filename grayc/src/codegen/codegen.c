@@ -1243,6 +1243,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         {"SQRT2","math","1.41421356237309504880"},{"LN2","math","0.69314718055994530942"},
         {"LN10","math","2.30258509299404568402"},{"INF","math","(1.0/0.0)"},
         {"NEG_INF","math","(-1.0/0.0)"},{"EPSILON","math","2.2204460492503131e-16"},
+        {"MAX_INT","math","9223372036854775807LL"},{"MIN_INT","math","(-9223372036854775807LL - 1)"},
+        {"MAX_FLOAT","math","1.7976931348623157e308"},{"MIN_FLOAT","math","-1.7976931348623157e308"},
         {"MAC_OS","os","0"},{"LINUX","os","1"},{"WINDOWS","os","2"},{"OTHER","os","3"},
         {"O_RDONLY","io","0"},{"O_WRONLY","io","1"},{"O_RDWR","io","2"},
         {"BASE_2","strconv","2"},{"BASE_8","strconv","8"},{"BASE_10","strconv","10"},
@@ -2543,6 +2545,10 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             if (strcmp(mem, "INF") == 0)     { emit(codegen, "(1.0/0.0)"); return; }
             if (strcmp(mem, "NEG_INF") == 0) { emit(codegen, "(-1.0/0.0)"); return; }
             if (strcmp(mem, "EPSILON") == 0) { emit(codegen, "2.2204460492503131e-16"); return; }
+            if (strcmp(mem, "MAX_INT") == 0) { emit(codegen, "9223372036854775807LL"); return; }
+            if (strcmp(mem, "MIN_INT") == 0) { emit(codegen, "(-9223372036854775807LL - 1)"); return; }
+            if (strcmp(mem, "MAX_FLOAT") == 0) { emit(codegen, "1.7976931348623157e308"); return; }
+            if (strcmp(mem, "MIN_FLOAT") == 0) { emit(codegen, "-1.7976931348623157e308"); return; }
         }
 
         /* @io constants */
