@@ -907,6 +907,38 @@ static void test_parse_error_E2001_reports_typed_keyword(void) {
     ASSERT(strstr(message, "as_long_as") == NULL);
 }
 
+/* strtod saturates an out-of-range literal to HUGE_VAL, which codegen used to
+ * render as the bare token `inf` (and then mangle into `inf.0`), leaking a C
+ * compiler error. The literal must be rejected at conversion time, and the
+ * check must not move the boundary: DBL_MAX itself still parses. */
+static void test_parse_error_E3138_float_literal_overflow(void) {
+    static const char *overflowing[] = {
+        "1.7976931348623159e308", "1.8e308", "2.0e308", "1.0e309", "9.9e999",
+    };
+    for (size_t i = 0; i < sizeof(overflowing) / sizeof(overflowing[0]); i++) {
+        char input[64];
+        snprintf(input, sizeof(input), "do main() { mut x float = %s }", overflowing[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        ASSERT(parser_has_code(diagnostics, "E3138"));
+    }
+}
+
+/* DBL_MAX is representable, and underflow to zero is IEEE-conformant rather
+ * than an error, so neither may trip the new range check. */
+static void test_parse_float_literal_in_range(void) {
+    static const char *in_range[] = {
+        "1.7976931348623157e308", "1.0e-400", "3.14", "0.0", "1_000.5",
+    };
+    for (size_t i = 0; i < sizeof(in_range) / sizeof(in_range[0]); i++) {
+        char input[64];
+        snprintf(input, sizeof(input), "do main() { mut x float = %s }", in_range[i]);
+        AstNode *program = parse_test_input(input);
+        (void)program;
+        ASSERT(!parser_has_code(diagnostics, "E3138"));
+    }
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -1014,6 +1046,8 @@ int main(void) {
     RUN_TEST(test_parse_error_E2002_reports_typed_keyword);
     RUN_TEST(test_parse_error_E2002_non_keyword_fallback);
     RUN_TEST(test_parse_error_E2001_reports_typed_keyword);
+    RUN_TEST(test_parse_error_E3138_float_literal_overflow);
+    RUN_TEST(test_parse_float_literal_in_range);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

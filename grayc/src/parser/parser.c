@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 #define MAX_MULTI_VARS 16
 #define MAX_SHARED_RETURNS 16
@@ -519,6 +520,17 @@ static AstNode *parse_float_literal(Parser *parser) {
         node->data.float_value.value = atof(buf);
     } else {
         node->data.float_value.value = atof(lit);
+    }
+    /* A decimal literal has no spelling for infinity, so an infinite result
+     * can only mean the value saturated past DBL_MAX. Reject it here, at the
+     * point of conversion: the value is already wrong by the time anything
+     * downstream sees it, and codegen would render it as the bare token
+     * `inf`, which is not valid C. Underflow to zero is left alone; that is
+     * IEEE-conformant, not an error. */
+    if (isinf(node->data.float_value.value)) {
+        diagnostic_error_code(parser->diag, "E3138", parser->file,
+            parser->cur_token.line, parser->cur_token.column, 0);
+        node->data.float_value.value = 0.0;
     }
     return node;
 }
