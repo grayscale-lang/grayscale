@@ -3737,9 +3737,6 @@ Arena-based memory allocation. Compiler-only feature.
 | `usage` | `(arena Arena) -> int` | Return the number of bytes currently used |
 | `init` | `(arena Arena, Type) -> ^Type` | Allocate a zero-initialized value of `Type` in the arena |
 | `alloc` | `(arena Arena, value T) -> ^T` | Allocate a copy of value in the arena |
-| `make` | `(arena Arena, Type) -> ^Type` | Allocate zero-initialized value of Type in arena |
-| `free` | `(arena Arena)` | Free an arena (alias for destroy) |
-| `size_of` | `(Type) -> int` | Size of type in bytes |
 | `raw_copy` | `(dest ptr, src ptr, n int)` | Copy `n` bytes from `src` to `dest` |
 | `zero` | `(p ptr, n int)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value int, n int)` | Set `n` bytes at `p` to `value` |
