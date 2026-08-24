@@ -262,7 +262,7 @@
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
 | `E6004` | imports | cannot import own module directory |
-| `E6008` | imports | '%s.%s' is a module constant and cannot be assigned to |
+| `E6008` | imports | cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
@@ -442,4 +442,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-23 21:22:52 UTC*
+*Generated on 2026-08-24 10:34:46 UTC*

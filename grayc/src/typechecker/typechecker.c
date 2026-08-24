@@ -1701,18 +1701,23 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
     return best;
 }
 
-/* Whether a top-level variable or constant, named by its import-merged name
- * (<mod>_<name>), was declared private. Privacy lives on the declaration, not
- * on the Symbol, so the program is the only place to read it from. */
-static bool module_var_is_private(TypeChecker *checker, const char *prefixed_name) {
-    if (!checker->program) return false;
+/* A top-level variable or constant by its import-merged name (<mod>_<name>),
+ * or NULL. Whether a declaration is private or mutable lives on the
+ * declaration, not on the Symbol, so the program is the only place to read
+ * either from. */
+static AstNode *find_module_var_decl(TypeChecker *checker, const char *prefixed_name) {
+    if (!checker->program) return NULL;
     for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
         AstNode *stmt = checker->program->data.program.stmts[i];
         if (stmt->kind != NODE_VAR_DECL) continue;
-        if (strcmp(stmt->data.var_decl.name, prefixed_name) != 0) continue;
-        return stmt->data.var_decl.is_private;
+        if (strcmp(stmt->data.var_decl.name, prefixed_name) == 0) return stmt;
     }
-    return false;
+    return NULL;
+}
+
+static bool module_var_is_private(TypeChecker *checker, const char *prefixed_name) {
+    AstNode *decl = find_module_var_decl(checker, prefixed_name);
+    return decl && decl->data.var_decl.is_private;
 }
 
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
@@ -9639,9 +9644,17 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
         }
         if (is_module) {
+            /* The member is not necessarily a constant. Stdlib members
+             * (math.PI) have no declaration to consult and are constants; a
+             * user module's `mut` variable is not, and calling it one
+             * described the declaration incorrectly. */
+            char prefixed[MSG_BUF_SIZE];
+            snprintf(prefixed, sizeof(prefixed), "%s_%s", obj, target->data.member.member);
+            AstNode *decl = find_module_var_decl(checker, prefixed);
+            const char *kind = (decl && decl->data.var_decl.mutable) ? "variable" : "constant";
             diagnostic_error_code_formatted(checker->diag, "E6008",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                obj, target->data.member.member);
+                obj, target->data.member.member, kind);
         }
     }
 

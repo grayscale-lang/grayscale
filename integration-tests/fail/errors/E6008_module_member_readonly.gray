@@ -2,6 +2,8 @@
  * Error Test: E6008 - module-member-readonly
  * Expected: "cannot assign to module member"
  */
+// expect-error: E6008
+// expect-error-count: 1
 
 import @math
 
