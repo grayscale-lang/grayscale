@@ -1,0 +1,5 @@
+const Shape enum {
+    Circle(float)
+    Rect(float, float)
+    Point
+}

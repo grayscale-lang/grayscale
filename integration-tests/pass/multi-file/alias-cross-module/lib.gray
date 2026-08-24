@@ -1,0 +1,5 @@
+alias Score = int
+
+do bump(s Score) -> Score {
+    return s + 1
+}

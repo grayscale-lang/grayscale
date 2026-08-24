@@ -1,0 +1,16 @@
+/*
+ * Test: struct field defaults referring to sibling files of a directory module
+ *
+ * STANDARD.md 8.2: every .gray file of an imported directory merges into one
+ * namespace and sibling cross-references resolve internally. The field's type
+ * already resolved; only the default initializer failed, with E4001.
+ */
+import "./pkg"
+
+do main() {
+    mut b = new(pkg.Box)
+    assert(b.n == 7, "field default reads a sibling constant")
+    assert(b.c == pkg.Color.GREEN, "field default reads a sibling enum variant")
+
+    println("ALL TESTS PASSED")
+}

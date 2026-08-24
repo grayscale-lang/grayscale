@@ -1,0 +1,6 @@
+const Color enum {
+    RED
+    GREEN
+}
+
+const FALLBACK int = 7
