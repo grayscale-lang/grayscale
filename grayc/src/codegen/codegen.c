@@ -7016,6 +7016,21 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     int cc = ns_func->data.func_decl.param_count < node->data.call.arg_count
                         ? ns_func->data.func_decl.param_count : node->data.call.arg_count;
                     for (int pi = 0; pi < cc && !binding; pi++) {
+                        /* Type parameter: the binding is the argument label
+                         * itself (a struct name), not a resolved value type.
+                         * Without this the loop found nothing to bind and
+                         * mangled the call against a specialization that was
+                         * never emitted. */
+                        if (ns_func->data.func_decl.params[pi].is_type_param) {
+                            if (node->data.call.args[pi]->kind == NODE_LABEL) {
+                                const char *lbl = node->data.call.args[pi]->data.label.value;
+                                if (strcmp(lbl, "?") == 0 && codegen->wildcard_binding)
+                                    binding = codegen->wildcard_binding;
+                                else
+                                    binding = lbl;
+                            }
+                            continue;
+                        }
                         const char *ptn = ns_func->data.func_decl.params[pi].type_name;
                         if (!ptn || !strchr(ptn, '?')) continue;
                         GrayType *arg_type = codegen->type_table
@@ -7059,9 +7074,15 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                     self_injected = true;
                 }
+                bool arg_emitted = self_injected;
                 for (int i = 0; i < node->data.call.arg_count; i++) {
-                    if (i > 0 || self_injected) emit(codegen, ", ");
                     int pi = self_injected ? i + 1 : i;
+                    /* Type params are erased in C; emitting one leaked the
+                     * type name into the output as a bare identifier. */
+                    if (pi < ns_func->data.func_decl.param_count &&
+                        ns_func->data.func_decl.params[pi].is_type_param) continue;
+                    if (arg_emitted) emit(codegen, ", ");
+                    arg_emitted = true;
                     bool mut_param = pi < ns_func->data.func_decl.param_count &&
                         ns_func->data.func_decl.params[pi].mutable;
                     emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
@@ -7070,7 +7091,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 {
                     int self_offset = self_injected ? 1 : 0;
                     int first_default = node->data.call.arg_count + self_offset;
-                    bool any_emitted = self_injected || node->data.call.arg_count > 0;
+                    bool any_emitted = arg_emitted;
                     for (int i = first_default; i < ns_func->data.func_decl.param_count; i++) {
                         if (ns_func->data.func_decl.params[i].is_type_param) continue;
                         if (any_emitted) emit(codegen, ", ");

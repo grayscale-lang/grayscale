@@ -2486,6 +2486,27 @@ mut x = make(int)      // Error E3127 — int is not a struct
 mut y = make(1 + 2)    // Error E3128 — not a type name
 ```
 
+#### Across module boundaries
+
+Generic functions work through a module prefix, and the qualified spelling behaves exactly like the bare one:
+
+```gray
+import "./utils.gray"
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p = utils.make(Point)     // same as 'using utils' + make(Point)
+}
+```
+
+The type argument must be a bare struct name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+
+#### More restrictions
+
 **Returning the type argument requires a wildcard return type (E3139):**
 
 A concrete return type is a promise that has to hold for every caller. Returning the type argument breaks it for all but the caller that happens to pass a matching type, so the declaration is rejected on its own — no call site required:

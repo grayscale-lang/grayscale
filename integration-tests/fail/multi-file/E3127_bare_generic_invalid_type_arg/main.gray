@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3127 - the same invalid type argument as the qualified test,
+ * written bare through 'using'. Both spellings must report identically.
+ * Expected: "'int' is not a struct"
+ */
+// expect-error: E3127
+// expect-error-count: 1
+
+import "./utils.gray"
+using utils
+
+do main() {
+    mut x = new_T(int)
+    println(x)
+}

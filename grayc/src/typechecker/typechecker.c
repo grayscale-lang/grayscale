@@ -3371,6 +3371,160 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+/* Generic-call handling shared by every call spelling: bind the wildcard or
+ * type parameter from the arguments, validate a type argument (E3127/E3128),
+ * record the instantiation so codegen emits the specialization, and produce
+ * the substituted return type.
+ *
+ * The module-qualified path had none of this, so `mod.generic(int)` accepted
+ * an invalid type argument in silence and `mod.generic(T)` mangled a call to
+ * a specialization that was never emitted. Sharing one implementation is what
+ * keeps the qualified and bare spellings reporting identically.
+ *
+ * Returns the concrete return type, or NULL when the call is not generic or
+ * nothing could be bound. *is_generic_out reports whether the callee is
+ * generic at all, which callers use to suppress the scalar arg/param check. */
+static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
+    FuncSig *sig, const char *function_name, bool *is_generic_out) {
+    char *generic_binding = NULL;
+    GrayType *generic_return_t = NULL;
+    bool is_generic_call = sig->is_generic && sig->decl &&
+        sig->decl->kind == NODE_FUNC_DECL;
+    if (is_generic_call) {
+        int clamped_argument_count = node->data.call.arg_count < sig->decl->data.func_decl.param_count
+            ? node->data.call.arg_count : sig->decl->data.func_decl.param_count;
+        for (int argument_index = 0; argument_index < clamped_argument_count; argument_index++) {
+            const char *ptn = sig->decl->data.func_decl.params[argument_index].type_name;
+            /* Type parameter (<?>) — binding comes from the label
+             * (a struct name), not from resolve_expression. */
+            if (sig->decl->data.func_decl.params[argument_index].is_type_param) {
+                if (node->data.call.args[argument_index]->kind != NODE_LABEL) {
+                    diagnostic_error_code(checker->diag, "E3128",
+                        NODE_FILE(checker, node->data.call.args[argument_index]),
+                        node->data.call.args[argument_index]->token.line,
+                        node->data.call.args[argument_index]->token.column, 0);
+                    continue;
+                }
+                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
+                /* Type parameter forwarding: rewrite T → "?" so
+                 * codegen can substitute, same as new(T). */
+                if (checker->type_param_name &&
+                    strcmp(arg_label, checker->type_param_name) == 0) {
+                    node->data.call.args[argument_index]->data.label.value = "?";
+                    arg_label = "?";
+                }
+                if (strcmp(arg_label, "?") == 0) {
+                    if (checker->type_param_binding) {
+                        arg_label = checker->type_param_binding;
+                    } else {
+                        /* First pass — no binding yet, accept and
+                         * propagate the wildcard. */
+                        if (!generic_binding) generic_binding = (char *)"?";
+                        continue;
+                    }
+                }
+                /* Must not be a variable in scope */
+                if (scope_lookup(checker->current_scope, arg_label)) {
+                    diagnostic_error_code(checker->diag, "E3128",
+                        NODE_FILE(checker, node->data.call.args[argument_index]),
+                        node->data.call.args[argument_index]->token.line,
+                        node->data.call.args[argument_index]->token.column, 0);
+                    continue;
+                }
+                /* Must be a struct name */
+                if (!is_struct_name(checker, arg_label)) {
+                    diagnostic_error_code_formatted(checker->diag, "E3127",
+                        NODE_FILE(checker, node->data.call.args[argument_index]),
+                        node->data.call.args[argument_index]->token.line,
+                        node->data.call.args[argument_index]->token.column, 0,
+                        arg_label);
+                    continue;
+                }
+                if (!generic_binding) {
+                    generic_binding = (char *)arg_label;
+                }
+                continue;
+            }
+            GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
+            if (!type_name_has_wildcard(ptn)) continue;
+            /* E3100: struct/enum type name passed as a value argument */
+            if (at->kind == TK_UNKNOWN &&
+                node->data.call.args[argument_index]->kind == NODE_LABEL) {
+                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
+                if (!scope_lookup(checker->current_scope, arg_label)) {
+                    if (is_struct_name(checker, arg_label)) {
+                        char *msg = NULL;
+                        msg = typechecker_format(checker,
+                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                            arg_label, arg_label, arg_label);
+                        diagnostic_error_message(checker->diag, "E3100", msg,
+                            NODE_FILE(checker, node->data.call.args[argument_index]),
+                            node->data.call.args[argument_index]->token.line,
+                            node->data.call.args[argument_index]->token.column, 0);
+                        continue;
+                    } else if (is_enum_name(checker, arg_label)) {
+                        char *msg = NULL;
+                        msg = typechecker_format(checker,
+                            "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                            arg_label, arg_label);
+                        diagnostic_error_message(checker->diag, "E3100", msg,
+                            NODE_FILE(checker, node->data.call.args[argument_index]),
+                            node->data.call.args[argument_index]->token.line,
+                            node->data.call.args[argument_index]->token.column, 0);
+                        continue;
+                    }
+                }
+            }
+            char *bound = bind_wildcard(ptn, at);
+            if (!bound) {
+                /* arg is TK_UNKNOWN: we are inside a generic
+                 * function body during the main pass and the
+                 * outer param hasn't been bound yet. The
+                 * re-check pass will validate with concrete
+                 * types — skip the false-positive here. */
+                if (at->kind == TK_UNKNOWN) continue;
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "cannot infer wildcard type '%s' from argument %d of '%s' (got %s)",
+                    ptn, argument_index + 1, function_name, type_name(at));
+                diagnostic_error_message(checker->diag, "E3001", msg,
+                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
+                    node->data.call.args[argument_index]->token.column, 0);
+                continue;
+            }
+            if (!generic_binding) {
+                generic_binding = bound;
+            } else if (strcmp(generic_binding, bound) != 0) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "wildcard type conflict in '%s': '?' was bound to %s, but argument %d is %s",
+                    function_name, generic_binding, argument_index + 1, bound);
+                diagnostic_error_message(checker->diag, "E3001", msg,
+                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
+                    node->data.call.args[argument_index]->token.column, 0);
+                free(bound);
+            } else {
+                free(bound);
+            }
+        }
+        if (generic_binding) {
+            record_instantiation(sig, generic_binding, node);
+            if (sig->decl->data.func_decl.return_type_count > 0) {
+                char *rt_str = substitute_wildcard(
+                    sig->decl->data.func_decl.return_types[0],
+                    generic_binding);
+                generic_return_t = type_from_name(rt_str);
+                /* rt_str is owned by type_from_name on the
+                 * heap path; leak is fine at compile time. */
+            } else {
+                generic_return_t = &TYPE_VOID;
+            }
+        }
+    }
+    if (is_generic_out) *is_generic_out = is_generic_call;
+    return generic_return_t;
+}
+
 static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn, const char *mod_raw, AstNode *fn) {
     GrayType *result = &TYPE_UNKNOWN;
     if (is_struct_name(checker, mod)) {
@@ -3588,12 +3742,21 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             sig->used = true;
             warn_if_func_deprecated(checker, node, sig);
             /* Resolve named arguments for user-module function calls */
+            char display[MSG_BUF_SIZE];
+            snprintf(display, sizeof(display), "%s.%s", mod, mfn);
             if (sig->decl) {
-                char display[MSG_BUF_SIZE];
-                snprintf(display, sizeof(display), "%s.%s", mod, mfn);
                 typechecker_resolve_named_arguments(checker, node, sig->decl, display);
             }
-            if (sig->return_count > 0) {
+            /* A generic callee needs the same binding, validation and
+             * instantiation recording the bare-call spelling gets; without
+             * it an invalid type argument passed silently and codegen
+             * mangled a call to a specialization it never emitted. */
+            bool mod_is_generic = false;
+            GrayType *mod_generic_ret = resolve_generic_call(checker, node, sig,
+                display, &mod_is_generic);
+            if (mod_is_generic && mod_generic_ret) {
+                result = mod_generic_ret;
+            } else if (sig->return_count > 0) {
                 result = sig->return_types[0];
             } else {
                 result = &TYPE_VOID;
@@ -4791,141 +4954,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
          * substitute T into the return type. Skip the normal
          * per-arg check below since '?' would otherwise collapse
          * to TK_UNKNOWN and produce no useful errors. */
-        char *generic_binding = NULL;
-        GrayType *generic_return_t = NULL;
-        bool is_generic_call = sig->is_generic && sig->decl &&
-            sig->decl->kind == NODE_FUNC_DECL;
-        if (is_generic_call) {
-            int clamped_argument_count = node->data.call.arg_count < sig->decl->data.func_decl.param_count
-                ? node->data.call.arg_count : sig->decl->data.func_decl.param_count;
-            for (int argument_index = 0; argument_index < clamped_argument_count; argument_index++) {
-                const char *ptn = sig->decl->data.func_decl.params[argument_index].type_name;
-                /* Type parameter (<?>) — binding comes from the label
-                 * (a struct name), not from resolve_expression. */
-                if (sig->decl->data.func_decl.params[argument_index].is_type_param) {
-                    if (node->data.call.args[argument_index]->kind != NODE_LABEL) {
-                        diagnostic_error_code(checker->diag, "E3128",
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                    /* Type parameter forwarding: rewrite T → "?" so
-                     * codegen can substitute, same as new(T). */
-                    if (checker->type_param_name &&
-                        strcmp(arg_label, checker->type_param_name) == 0) {
-                        node->data.call.args[argument_index]->data.label.value = "?";
-                        arg_label = "?";
-                    }
-                    if (strcmp(arg_label, "?") == 0) {
-                        if (checker->type_param_binding) {
-                            arg_label = checker->type_param_binding;
-                        } else {
-                            /* First pass — no binding yet, accept and
-                             * propagate the wildcard. */
-                            if (!generic_binding) generic_binding = (char *)"?";
-                            continue;
-                        }
-                    }
-                    /* Must not be a variable in scope */
-                    if (scope_lookup(checker->current_scope, arg_label)) {
-                        diagnostic_error_code(checker->diag, "E3128",
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                    /* Must be a struct name */
-                    if (!is_struct_name(checker, arg_label)) {
-                        diagnostic_error_code_formatted(checker->diag, "E3127",
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0,
-                            arg_label);
-                        continue;
-                    }
-                    if (!generic_binding) {
-                        generic_binding = (char *)arg_label;
-                    }
-                    continue;
-                }
-                GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
-                if (!type_name_has_wildcard(ptn)) continue;
-                /* E3100: struct/enum type name passed as a value argument */
-                if (at->kind == TK_UNKNOWN &&
-                    node->data.call.args[argument_index]->kind == NODE_LABEL) {
-                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                    if (!scope_lookup(checker->current_scope, arg_label)) {
-                        if (is_struct_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                                arg_label, arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        } else if (is_enum_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                                arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        }
-                    }
-                }
-                char *bound = bind_wildcard(ptn, at);
-                if (!bound) {
-                    /* arg is TK_UNKNOWN: we are inside a generic
-                     * function body during the main pass and the
-                     * outer param hasn't been bound yet. The
-                     * re-check pass will validate with concrete
-                     * types — skip the false-positive here. */
-                    if (at->kind == TK_UNKNOWN) continue;
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "cannot infer wildcard type '%s' from argument %d of '%s' (got %s)",
-                        ptn, argument_index + 1, function_name, type_name(at));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
-                    continue;
-                }
-                if (!generic_binding) {
-                    generic_binding = bound;
-                } else if (strcmp(generic_binding, bound) != 0) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "wildcard type conflict in '%s': '?' was bound to %s, but argument %d is %s",
-                        function_name, generic_binding, argument_index + 1, bound);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
-                    free(bound);
-                } else {
-                    free(bound);
-                }
-            }
-            if (generic_binding) {
-                record_instantiation(sig, generic_binding, node);
-                if (sig->decl->data.func_decl.return_type_count > 0) {
-                    char *rt_str = substitute_wildcard(
-                        sig->decl->data.func_decl.return_types[0],
-                        generic_binding);
-                    generic_return_t = type_from_name(rt_str);
-                    /* rt_str is owned by type_from_name on the
-                     * heap path; leak is fine at compile time. */
-                } else {
-                    generic_return_t = &TYPE_VOID;
-                }
-            }
-        }
+        bool is_generic_call = false;
+        GrayType *generic_return_t = resolve_generic_call(checker, node, sig,
+            function_name, &is_generic_call);
 
         /* Check argument types */
         int check_count = node->data.call.arg_count < sig->param_count
