@@ -11926,6 +11926,25 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
 
 /* ── declaration registration sub-handlers ────────────────────────── */
 
+/* Insert a top-level declaration into its module's scope, keyed by the name
+ * as written in source. The module is the one owning the file the declaration
+ * was written in, so every file of a directory import lands in one scope.
+ *
+ * Transitional: the import merge still renames imported declarations, so the
+ * source name is `source_name` (the *_DISPLAY_NAME macros) while `stmt` still
+ * carries the mangled one. Once the merge stops renaming, the two coincide. */
+static DeclEntry *module_register(TypeChecker *checker, AstNode *stmt,
+                                  DeclKind kind, const char *source_name,
+                                  bool is_private) {
+    const char *module = module_table_module_for_file(checker->modules, stmt->token.file);
+    ModuleScope *scope = module_table_find(checker->modules, module);
+    if (!scope || !source_name) return NULL;
+    return module_scope_define(checker->modules, scope, kind, source_name,
+                               stmt, NULL, NODE_FILE(checker, stmt),
+                               stmt->token.line,
+                               is_private ? VIS_PRIVATE : VIS_PUBLIC);
+}
+
 static void register_decl_imports(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -12013,6 +12032,8 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
         checker->type_alias_files[checker->type_alias_count] = stmt->token.file;
         checker->type_alias_is_private[checker->type_alias_count] = stmt->data.alias_decl.is_private;
         checker->type_alias_count++;
+        module_register(checker, stmt, DECL_ALIAS, aname,
+                        stmt->data.alias_decl.is_private);
 
         next_alias:;
     }
@@ -12193,6 +12214,7 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
+        module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
     }
 }
 
@@ -12327,6 +12349,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
+        module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
         checker->structs[checker->struct_count - 1].is_deprecated = stmt->data.struct_decl.is_deprecated;
         checker->structs[checker->struct_count - 1].deprecated_message = stmt->data.struct_decl.deprecated_message;
 
@@ -12468,6 +12491,8 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
+        module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
+                        stmt->data.func_decl.is_private);
         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
         checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
@@ -12507,6 +12532,20 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
     }
 }
 
+/* Module-level constants and variables. These have no flat-array registry of
+ * their own — they are ordinary scope symbols — but they are module members,
+ * so `mod.NAME` has to resolve to them. */
+static void register_decl_consts(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_VAR_DECL || stmt->data.var_decl.synthetic) continue;
+        const char *source_name = stmt->data.var_decl.original_name
+            ? stmt->data.var_decl.original_name : stmt->data.var_decl.name;
+        module_register(checker, stmt, DECL_CONST, source_name,
+                        stmt->data.var_decl.is_private);
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
     register_decl_imports(checker, program);
@@ -12514,6 +12553,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     register_decl_enums(checker, program);
     register_decl_structs(checker, program);
     register_decl_functions(checker, program);
+    register_decl_consts(checker, program);
 
     /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {
@@ -12614,7 +12654,13 @@ TypeChecker *typechecker_create(DiagnosticList *diag, const char *file) {
     checker->current_scope = scope_create(NULL);
     checker->type_table = typetable_create();
     checker->arena = arena_create(64 * 1024);
+    checker->modules = module_table_create(checker->arena);
     return checker;
+}
+
+void typechecker_add_file_module(TypeChecker *checker, const char *file,
+                                 const char *module_name, bool is_entry) {
+    module_table_map_file(checker->modules, file, module_name, is_entry);
 }
 
 void typechecker_check(TypeChecker *checker, AstNode *program) {

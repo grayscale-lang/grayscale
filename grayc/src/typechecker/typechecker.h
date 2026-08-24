@@ -13,6 +13,7 @@
 
 #include "types.h"
 #include "scope.h"
+#include "module_table.h"
 #include "../parser/ast.h"
 #include "../util/error.h"
 #include "../util/arena.h"
@@ -207,6 +208,10 @@ typedef struct {
     /* Arena for diagnostic message strings — replaces per-message strdup */
     Arena *arena;
 
+    /* Per-module symbol table: every top-level declaration keyed by
+     * (module, name-as-written). Populated by register_declarations. */
+    ModuleTable *modules;
+
     /* Type alias registry (alias Name = Type) */
     const char **type_alias_names;
     const char **type_alias_targets;
@@ -227,6 +232,11 @@ typedef struct {
 
 /* Create and run the type checker */
 TypeChecker *typechecker_create(DiagnosticList *diag, const char *file);
+
+/* Record which module a source file belongs to. The import driver calls this
+ * for the entry file and every file it pulls in, before typechecker_check. */
+void typechecker_add_file_module(TypeChecker *checker, const char *file,
+                                 const char *module_name, bool is_entry);
 void typechecker_check(TypeChecker *checker, AstNode *program);
 void typechecker_free(TypeChecker *checker);
 

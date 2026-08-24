@@ -65,6 +65,7 @@ typedef struct {
 
 typedef struct {
     Arena *arena;
+    const char *entry_module;  /* the entry file's module; NULL until mapped */
     ModuleScope **modules;
     int count;
     int cap;
@@ -76,6 +77,16 @@ typedef struct {
     const char **alias_modules;
     int alias_count;
     int alias_cap;
+
+    /* source file -> owning module. A declaration belongs to the module of
+     * the file it was written in, which is what makes every .gray file of a
+     * directory-merged module land in one ModuleScope. */
+    const char **file_paths;
+    const char **file_modules;
+    ModuleHashEntry *file_hash;
+    int file_count;
+    int file_cap;
+    int file_hash_cap;
 } ModuleTable;
 
 /* Why a qualified lookup failed. Callers need the distinction to pick between
@@ -88,6 +99,15 @@ typedef enum {
 } ResolveStatus;
 
 ModuleTable *module_table_create(Arena *arena);
+
+/* Record which module a source file belongs to, creating the module's scope.
+ * `is_entry` marks the entry file, whose module emits unprefixed symbols. */
+void module_table_map_file(ModuleTable *table, const char *file,
+                           const char *module_name, bool is_entry);
+
+/* The module a file belongs to, falling back to the entry module for files
+ * that were never mapped (synthetic nodes carry no usable path). */
+const char *module_table_module_for_file(ModuleTable *table, const char *file);
 
 /* Get the named module's scope, creating it if absent. `is_entry` is only
  * honored on creation. */

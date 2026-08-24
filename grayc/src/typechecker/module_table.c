@@ -106,6 +106,49 @@ ModuleScope *module_table_scope(ModuleTable *table, const char *module_name,
     return scope;
 }
 
+/* --- File -> module --- */
+
+void module_table_map_file(ModuleTable *table, const char *file,
+                           const char *module_name, bool is_entry) {
+    if (!table || !module_name) return;
+
+    module_table_scope(table, module_name, is_entry);
+    if (is_entry) table->entry_module = module_table_find(table, module_name)->name;
+    if (!file) return;
+
+    Arena *arena = table->arena;
+    if (hash_find(table->file_hash, table->file_hash_cap, file) >= 0) return;
+
+    if (table->file_count >= table->file_cap) {
+        table->file_cap = GROW_NEXT_CAP(table->file_cap);
+        ARENA_GROW_TO(arena, table->file_paths, table->file_count, table->file_cap);
+        ARENA_GROW_TO(arena, table->file_modules, table->file_count, table->file_cap);
+    }
+
+    int new_count = table->file_count + 1;
+    if (!table->file_hash || new_count * 2 > table->file_hash_cap) {
+        table->file_hash_cap = hash_target_cap(table->file_hash_cap, new_count);
+        table->file_hash = hash_alloc(arena, table->file_hash_cap);
+        for (int i = 0; i < table->file_count; i++)
+            hash_place(table->file_hash, table->file_hash_cap, table->file_paths[i], i);
+    }
+
+    table->file_paths[table->file_count] = arena_copy_string(arena, file);
+    table->file_modules[table->file_count] = module_table_find(table, module_name)->name;
+    hash_place(table->file_hash, table->file_hash_cap,
+               table->file_paths[table->file_count], table->file_count);
+    table->file_count++;
+}
+
+const char *module_table_module_for_file(ModuleTable *table, const char *file) {
+    if (!table) return NULL;
+    if (file) {
+        int idx = hash_find(table->file_hash, table->file_hash_cap, file);
+        if (idx >= 0) return table->file_modules[idx];
+    }
+    return table->entry_module;
+}
+
 /* --- Module scopes --- */
 
 DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name) {

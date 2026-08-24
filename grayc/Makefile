@@ -180,7 +180,7 @@ src/vendor/sqlite3.o: src/vendor/sqlite3.c
 -include $(OBJ:.o=.d) $(RT_OBJ:.o=.d)
 
 clean:
-	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer$(EXE) tests/test_parser$(EXE) tests/test_typechecker$(EXE) tests/test_util$(EXE) tests/test_codegen$(EXE) tests/test_runtime$(EXE) tests/test_panics$(EXE) tests/test_stdlib$(EXE) tests/*_san* tests/*.d
+	rm -f $(OBJ) $(RT_OBJ) $(ATOMIC_OBJ) $(BIN) $(RT_LIB) $(OBJ:.o=.d) $(RT_OBJ:.o=.d) tests/test_lexer$(EXE) tests/test_parser$(EXE) tests/test_typechecker$(EXE) tests/test_module_table$(EXE) tests/test_util$(EXE) tests/test_codegen$(EXE) tests/test_runtime$(EXE) tests/test_panics$(EXE) tests/test_stdlib$(EXE) tests/*_san* tests/*.d
 	rm -rf tests/*.dSYM
 
 install: build
@@ -224,6 +224,11 @@ tests/test_parser$(EXE): tests/test_parser.c $(TEST_DEPS)
 tests/test_typechecker$(EXE): tests/test_typechecker.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
+tests/test_module_table$(EXE): tests/test_module_table.c src/util/arena.o \
+                              src/typechecker/module_table.o src/typechecker/scope.o \
+                              src/typechecker/types.o src/util/platform.o
+	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+
 tests/test_util$(EXE): tests/test_util.c src/util/arena.o src/util/buf.o src/typechecker/scope.o src/typechecker/types.o src/util/error.o src/util/error_codes.o src/util/platform.o
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
@@ -248,9 +253,9 @@ tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
 # test_panics forks a child per case to capture the panic, and there is no
 # fork on Windows. Every other suite runs everywhere.
 ifdef WINDOWS
-UNIT_SUITES = lexer parser typechecker util runtime stdlib
+UNIT_SUITES = lexer parser typechecker module_table util runtime stdlib
 else
-UNIT_SUITES = lexer parser typechecker util runtime panics stdlib
+UNIT_SUITES = lexer parser typechecker module_table util runtime panics stdlib
 endif
 UNIT_BINS = $(addprefix tests/test_,$(addsuffix $(EXE),$(UNIT_SUITES)))
 
