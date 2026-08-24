@@ -927,7 +927,6 @@ int main(int argc, char **argv) {
      * resolution is the only place that knows which module a given .gray file
      * belongs to, so it is collected here and handed over once the type
      * checker exists. */
-    const char *entry_module_name = NULL;
     const char **module_files = NULL;
     const char **module_names = NULL;
     int module_file_count = 0, module_file_cap = 0;
@@ -953,7 +952,6 @@ int main(int argc, char **argv) {
         } else {
             snprintf(main_mod_buf, sizeof(main_mod_buf), "%s", main_base);
         }
-        entry_module_name = arena_copy_string(arena, main_mod_buf);
 
         /* Determine the directory of the input file */
         char input_dir[PATH_BUF_SIZE];
@@ -1619,7 +1617,7 @@ int main(int argc, char **argv) {
 
     /* Type check */
     TypeChecker *checker = typechecker_create(diag, input_file);
-    typechecker_add_file_module(checker, input_file, entry_module_name, true);
+    typechecker_add_file_module(checker, input_file, NULL, true);
     for (int i = 0; i < module_file_count; i++)
         typechecker_add_file_module(checker, module_files[i], module_names[i], false);
     typechecker_check(checker, program);

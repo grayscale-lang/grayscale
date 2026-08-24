@@ -16,7 +16,7 @@ static Arena *arena;
 
 static ModuleTable *table_with_modules(void) {
     ModuleTable *table = module_table_create(arena);
-    module_table_map_file(table, "main.gray", "main", true);
+    module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "lib.gray", "lib", false);
     return table;
 }
@@ -66,7 +66,7 @@ static void test_unknown_module_has_no_scope(void) {
  * reference an ordinary same-module lookup. */
 static void test_directory_module_merges_files(void) {
     ModuleTable *table = module_table_create(arena);
-    module_table_map_file(table, "main.gray", "main", true);
+    module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "pkg/types.gray", "pkg", false);
     module_table_map_file(table, "pkg/logic.gray", "pkg", false);
 
@@ -80,8 +80,8 @@ static void test_directory_module_merges_files(void) {
 
 static void test_unmapped_file_falls_back_to_entry(void) {
     ModuleTable *table = table_with_modules();
-    ASSERT_STR_EQ(module_table_module_for_file(table, "unknown.gray"), "main");
-    ASSERT_STR_EQ(module_table_module_for_file(table, NULL), "main");
+    ASSERT_STR_EQ(module_table_module_for_file(table, "unknown.gray"), MODULE_ENTRY_NAME);
+    ASSERT_STR_EQ(module_table_module_for_file(table, NULL), MODULE_ENTRY_NAME);
 }
 
 /* The hash starts at 16 slots and is held at a load factor of one half, so
@@ -112,6 +112,37 @@ static void test_many_modules_preserved(void) {
         snprintf(mod, sizeof(mod), "mod%d", i);
         ASSERT_NOT_NULL(module_table_find(table, mod));
     }
+}
+
+/* An imported module whose basename matches the entry file's is still a
+ * separate module. Keying the entry scope by its basename would have merged
+ * the two. */
+static void test_imported_module_may_share_entry_basename(void) {
+    ModuleTable *table = module_table_create(arena);
+    module_table_map_file(table, "main.gray", NULL, true);
+    module_table_map_file(table, "sub/main.gray", "main", false);
+
+    define(table, MODULE_ENTRY_NAME, "shared", VIS_PUBLIC);
+    define(table, "main", "shared", VIS_PUBLIC);
+
+    ASSERT_EQ(module_table_find(table, MODULE_ENTRY_NAME)->count, 1);
+    ASSERT_EQ(module_table_find(table, "main")->count, 1);
+    ASSERT_STR_EQ(module_mangle(table, module_scope_lookup(
+        module_table_find(table, "main"), "shared")), "main_shared");
+    ASSERT_STR_EQ(module_mangle(table, module_scope_lookup(
+        module_table_find(table, MODULE_ENTRY_NAME), "shared")), "shared");
+}
+
+/* Grayscale has no syntax for qualifying by the entry module, so an empty
+ * qualifier must not reach into its declarations. */
+static void test_entry_module_is_not_a_qualifier(void) {
+    ModuleTable *table = table_with_modules();
+    define(table, MODULE_ENTRY_NAME, "helper", VIS_PUBLIC);
+    ResolveStatus status;
+    DeclEntry *found = module_resolve_qualified(table, MODULE_ENTRY_NAME,
+                                                MODULE_ENTRY_NAME, "helper", &status);
+    ASSERT_EQ(status, RESOLVE_NO_MODULE);
+    ASSERT(found == NULL);
 }
 
 /* --- Qualified resolution --- */
@@ -199,12 +230,12 @@ static void test_self_alias_ignored(void) {
 
 static void test_unqualified_prefers_current_module(void) {
     ModuleTable *table = table_with_modules();
-    DeclEntry *own = define(table, "main", "name", VIS_PUBLIC);
+    DeclEntry *own = define(table, MODULE_ENTRY_NAME, "name", VIS_PUBLIC);
     define(table, "lib", "name", VIS_PUBLIC);
 
     const char *using_list[] = {"lib"};
     const char *ambiguous = NULL;
-    DeclEntry *found = module_resolve_unqualified(table, "main", using_list, 1,
+    DeclEntry *found = module_resolve_unqualified(table, MODULE_ENTRY_NAME, using_list, 1,
                                                   "name", &ambiguous);
     ASSERT(found == own);
     ASSERT(ambiguous == NULL);
@@ -265,7 +296,7 @@ static void test_unqualified_miss(void) {
 static void test_mangle_imported_and_entry(void) {
     ModuleTable *table = table_with_modules();
     DeclEntry *imported = define(table, "lib", "Point", VIS_PUBLIC);
-    DeclEntry *local = define(table, "main", "main", VIS_PUBLIC);
+    DeclEntry *local = define(table, MODULE_ENTRY_NAME, "main", VIS_PUBLIC);
 
     ASSERT_STR_EQ(module_mangle(table, imported), "lib_Point");
     ASSERT_STR_EQ(module_mangle(table, local), "main");
@@ -306,6 +337,8 @@ int main(void) {
     RUN_TEST(test_unmapped_file_falls_back_to_entry);
     RUN_TEST(test_growth_preserves_all_entries);
     RUN_TEST(test_many_modules_preserved);
+    RUN_TEST(test_imported_module_may_share_entry_basename);
+    RUN_TEST(test_entry_module_is_not_a_qualifier);
     RUN_TEST(test_resolve_qualified_ok);
     RUN_TEST(test_resolve_qualified_unknown_module);
     RUN_TEST(test_resolve_qualified_unknown_member);

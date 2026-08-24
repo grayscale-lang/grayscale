@@ -175,12 +175,6 @@ typedef struct {
     /* File currently being validated — used to filter using_modules per-file */
     const char *current_check_file;
 
-    /* Import alias → module name mapping */
-    const char **alias_names;
-    const char **alias_modules;
-    int alias_count;
-    int alias_cap;
-
     /*  track mem.destroy() calls for double-free detection */
     const char **destroyed_arenas;
     int destroyed_arena_count;

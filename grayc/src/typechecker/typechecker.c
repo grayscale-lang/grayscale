@@ -498,10 +498,7 @@ static const char *type_display_name(TypeChecker *checker, GrayType *t) {
 
 /* Resolve an import alias to the actual module name */
 static const char *typechecker_resolve_alias(TypeChecker *checker, const char *name) {
-    for (int i = 0; i < checker->alias_count; i++) {
-        if (strcmp(checker->alias_names[i], name) == 0) return checker->alias_modules[i];
-    }
-    return name;
+    return module_table_resolve_alias(checker->modules, name);
 }
 
 /* Resolve a type alias name to the underlying type name.
@@ -877,6 +874,23 @@ static FuncSig *find_func(TypeChecker *checker, const char *name) {
     FuncSig **hit = bsearch(&key_ptr, checker->funcs_sorted,
         (size_t)checker->func_count, sizeof(FuncSig *), function_signature_name_compare);
     return hit ? *hit : NULL;
+}
+
+/* The signature of `mod.name`, or NULL. Whether `mod` names a module is
+ * decided by the symbol table, and the registry key comes from the resolved
+ * declaration rather than from the spelling of the reference.
+ *
+ * Transitional: the stdlib keeps its own registry and is not in the table, so
+ * modules the table does not hold still fall back to the string form. */
+static FuncSig *find_module_func(TypeChecker *checker, const char *mod,
+                                 const char *name) {
+    char key[MSG_BUF_SIZE];
+    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
+    if (entry && entry->kind == DECL_FUNC)
+        return find_func(checker, module_mangle_into(entry, key, sizeof(key)));
+    snprintf(key, sizeof(key), "%s_%s",
+             module_table_resolve_alias(checker->modules, mod), name);
+    return find_func(checker, key);
 }
 
 /* The name the programmer wrote, never the module-prefixed internal one.
@@ -1701,22 +1715,23 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
     return best;
 }
 
-/* A top-level variable or constant by its import-merged name (<mod>_<name>),
- * or NULL. Whether a declaration is private or mutable lives on the
- * declaration, not on the Symbol, so the program is the only place to read
- * either from. */
-static AstNode *find_module_var_decl(TypeChecker *checker, const char *prefixed_name) {
-    if (!checker->program) return NULL;
-    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
-        AstNode *stmt = checker->program->data.program.stmts[i];
-        if (stmt->kind != NODE_VAR_DECL) continue;
-        if (strcmp(stmt->data.var_decl.name, prefixed_name) == 0) return stmt;
-    }
-    return NULL;
+/* The declaration of `mod.name`, or NULL when that module declares no such
+ * variable or constant. Whether a declaration is private or mutable lives on
+ * the declaration, not on the Symbol, so the declaration is the only place to
+ * read either from.
+ *
+ * Visibility is deliberately not applied here: callers want the declaration
+ * whether or not they may access it, and decide separately what to say about
+ * a private one. */
+static AstNode *find_module_var_decl(TypeChecker *checker, const char *mod,
+                                     const char *name) {
+    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
+    return (entry && entry->kind == DECL_CONST) ? entry->ast_node : NULL;
 }
 
-static bool module_var_is_private(TypeChecker *checker, const char *prefixed_name) {
-    AstNode *decl = find_module_var_decl(checker, prefixed_name);
+static bool module_var_is_private(TypeChecker *checker, const char *mod,
+                                  const char *name) {
+    AstNode *decl = find_module_var_decl(checker, mod, name);
     return decl && decl->data.var_decl.is_private;
 }
 
@@ -2539,12 +2554,9 @@ static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode
         sig = find_func(checker, name);
     } else if (fn && fn->kind == NODE_MEMBER_EXPR &&
                fn->data.member.object->kind == NODE_LABEL) {
-        const char *mod_raw = fn->data.member.object->data.label.value;
-        const char *mod = typechecker_resolve_alias(checker, mod_raw);
         name = fn->data.member.member;
-        char prefixed[MSG_BUF_SIZE];
-        snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, name);
-        sig = find_func(checker, prefixed);
+        sig = find_module_func(checker,
+            fn->data.member.object->data.label.value, name);
     }
     if (sig && sig->return_count > 1) {
         diagnostic_error_code_formatted(checker->diag, "E3040",
@@ -3732,10 +3744,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             result = &TYPE_VOID;
         }
     } else {
-        /* Try user-defined module: look up <module>_<func> in function registry */
-        char prefixed[MSG_BUF_SIZE];
-        snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, mfn);
-        FuncSig *sig = find_func(checker, prefixed);
+        /* Try user-defined module */
+        FuncSig *sig = find_module_func(checker, mod, mfn);
         if (sig && sig->is_private) {
             diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, mfn);
         } else if (sig) {
@@ -5374,11 +5384,9 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     using_stdlib_mod = real_mod;
                     result = umeta->return_type ? resolve_return_type(umeta->return_type) : &TYPE_UNKNOWN;
                 }
-                /* 2) Try user-defined module: look up <module>_<func> */
+                /* 2) Try user-defined module */
                 if (!found_in_using) {
-                    char prefixed[MSG_BUF_SIZE];
-                    snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, function_name);
-                    FuncSig *sig = find_func(checker, prefixed);
+                    FuncSig *sig = find_module_func(checker, real_mod, function_name);
                     if (sig) {
                         if (sig->is_private) {
                             diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, function_name);
@@ -5497,29 +5505,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
 
         /* E3040: a multi-return call cannot appear in single-value
          * argument position. Caller must destructure first. */
-        AstNode *arg = node->data.call.args[i];
-        if (arg->kind == NODE_CALL_EXPR) {
-            AstNode *afn = arg->data.call.function;
-            FuncSig *asig = NULL;
-            const char *aname = NULL;
-            if (afn && afn->kind == NODE_LABEL) {
-                aname = afn->data.label.value;
-                asig = find_func(checker, aname);
-            } else if (afn && afn->kind == NODE_MEMBER_EXPR &&
-                       afn->data.member.object->kind == NODE_LABEL) {
-                const char *mod_raw = afn->data.member.object->data.label.value;
-                const char *mod = typechecker_resolve_alias(checker, mod_raw);
-                aname = afn->data.member.member;
-                char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, aname);
-                asig = find_func(checker, prefixed);
-            }
-            if (asig && asig->return_count > 1) {
-                diagnostic_error_code_formatted(checker->diag, "E3040",
-                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                    aname, asig->return_count, aname);
-            }
-        }
+        reject_multi_return_in_single_position(checker, node->data.call.args[i]);
     }
 
     /* E3097: addr() of inner-scope variable passed alongside an outer-scope
@@ -6532,7 +6518,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                  * outside its file as a private function. Only the two call
                  * paths checked this, so reading one through mod.NAME crossed
                  * the boundary with no diagnostic at all. */
-                if (module_var_is_private(checker, prefixed)) {
+                if (module_var_is_private(checker, obj_name, member)) {
                     diagnostic_error_code_formatted(checker->diag, "E4015",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         member);
@@ -8589,9 +8575,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 const char *mod_raw = call_fn->data.member.object->data.label.value;
                 call_mod = typechecker_resolve_alias(checker, mod_raw);
                 const char *mfn = call_fn->data.member.member;
-                char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", call_mod, mfn);
-                sig = find_func(checker, prefixed);
+                sig = find_module_func(checker, mod_raw, mfn);
                 call_name = mfn;
             }
             if (sig && sig->return_count > 1) {
@@ -9406,12 +9390,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * destructuring like `mut a, b = mod.func()` works. */
             if (fn->kind == NODE_MEMBER_EXPR &&
                 fn->data.member.object->kind == NODE_LABEL) {
-                const char *mod_raw = fn->data.member.object->data.label.value;
-                const char *mod = typechecker_resolve_alias(checker, mod_raw);
                 const char *mfn = fn->data.member.member;
-                char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, mfn);
-                FuncSig *sig = find_func(checker, prefixed);
+                FuncSig *sig = find_module_func(checker,
+                    fn->data.member.object->data.label.value, mfn);
                 if (sig && sig->return_count > 1) {
                     Symbol *sym = scope_lookup_local(checker->current_scope,
                         node->data.var_decl.name);
@@ -9679,9 +9660,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
              * (math.PI) have no declaration to consult and are constants; a
              * user module's `mut` variable is not, and calling it one
              * described the declaration incorrectly. */
-            char prefixed[MSG_BUF_SIZE];
-            snprintf(prefixed, sizeof(prefixed), "%s_%s", obj, target->data.member.member);
-            AstNode *decl = find_module_var_decl(checker, prefixed);
+            AstNode *decl = find_module_var_decl(checker, obj,
+                                                 target->data.member.member);
             const char *kind = (decl && decl->data.var_decl.mutable) ? "variable" : "constant";
             diagnostic_error_code_formatted(checker->diag, "E6008",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -11973,16 +11953,7 @@ static void register_decl_imports(TypeChecker *checker, AstNode *program) {
                     checker->import_count++;
                 }
                 /* Track alias → module mapping */
-                if (item->alias && item->module && strcmp(item->alias, item->module) != 0) {
-                    if (checker->alias_count >= checker->alias_cap) {
-                        checker->alias_cap = checker->alias_cap ? checker->alias_cap * 2 : 8;
-                        checker->alias_names = xrealloc(checker->alias_names, sizeof(const char *) * checker->alias_cap);
-                        checker->alias_modules = xrealloc(checker->alias_modules, sizeof(const char *) * checker->alias_cap);
-                    }
-                    checker->alias_names[checker->alias_count] = item->alias;
-                    checker->alias_modules[checker->alias_count] = item->module;
-                    checker->alias_count++;
-                }
+                module_table_add_alias(checker->modules, item->alias, item->module);
             }
         }
     }
@@ -12618,8 +12589,6 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->using_modules);
     free(checker->using_module_files);
     free(checker->using_module_import_indices);
-    free(checker->alias_names);
-    free(checker->alias_modules);
 
     free(checker->destroyed_arenas);
 

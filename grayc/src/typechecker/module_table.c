@@ -110,7 +110,9 @@ ModuleScope *module_table_scope(ModuleTable *table, const char *module_name,
 
 void module_table_map_file(ModuleTable *table, const char *file,
                            const char *module_name, bool is_entry) {
-    if (!table || !module_name) return;
+    if (!table) return;
+    if (is_entry) module_name = MODULE_ENTRY_NAME;
+    if (!module_name) return;
 
     module_table_scope(table, module_name, is_entry);
     if (is_entry) table->entry_module = module_table_find(table, module_name)->name;
@@ -230,7 +232,10 @@ DeclEntry *module_resolve_qualified(ModuleTable *table,
     ResolveStatus status = RESOLVE_NO_MODULE;
     DeclEntry *entry = NULL;
 
-    if (table && module_or_alias && name) {
+    /* The empty name keys the entry module, which no source qualifier can
+     * spell. Guarding here keeps a stray empty qualifier from reaching into
+     * the entry file's declarations. */
+    if (table && module_or_alias && *module_or_alias && name) {
         const char *module_name = module_table_resolve_alias(table, module_or_alias);
         ModuleScope *scope = module_table_find(table, module_name);
         if (scope) {
@@ -292,12 +297,17 @@ DeclEntry *module_resolve_unqualified(ModuleTable *table,
 
 /* --- Mangling --- */
 
-const char *module_mangle(ModuleTable *table, const DeclEntry *entry) {
+const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen) {
     if (!entry) return NULL;
     if (entry->module_is_entry || !entry->module_name) return entry->name;
+    snprintf(buf, buflen, "%s_%s", entry->module_name, entry->name);
+    return buf;
+}
+
+const char *module_mangle(ModuleTable *table, const DeclEntry *entry) {
     char buf[MSG_BUF_SIZE];
-    snprintf(buf, sizeof(buf), "%s_%s", entry->module_name, entry->name);
-    return arena_copy_string(table->arena, buf);
+    const char *mangled = module_mangle_into(entry, buf, sizeof(buf));
+    return mangled ? arena_copy_string(table->arena, mangled) : NULL;
 }
 
 bool module_split_qualified(Arena *arena, const char *spelling,

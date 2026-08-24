@@ -16,6 +16,12 @@
 #include "../parser/ast.h"
 #include "../util/arena.h"
 
+/* The entry file's module is keyed under a name no import can produce. An
+ * imported module whose basename matches the entry file's therefore stays a
+ * separate scope, and no qualifier can ever name the entry module — which
+ * Grayscale has no syntax for in the first place. */
+#define MODULE_ENTRY_NAME ""
+
 typedef enum {
     DECL_STRUCT,
     DECL_ENUM,
@@ -101,7 +107,8 @@ typedef enum {
 ModuleTable *module_table_create(Arena *arena);
 
 /* Record which module a source file belongs to, creating the module's scope.
- * `is_entry` marks the entry file, whose module emits unprefixed symbols. */
+ * `is_entry` marks the entry file, whose module emits unprefixed symbols and
+ * is keyed under MODULE_ENTRY_NAME regardless of `module_name`. */
 void module_table_map_file(ModuleTable *table, const char *file,
                            const char *module_name, bool is_entry);
 
@@ -156,8 +163,13 @@ DeclEntry *module_resolve_unqualified(ModuleTable *table,
                                       const char **out_ambiguous_with);
 
 /* The C symbol name for a declaration: "mod_Name", or "Name" for the entry
- * module. The single point at which module membership becomes a string. */
+ * module. The single point at which module membership becomes a string.
+ *
+ * module_mangle copies into the table's arena, for names that outlive the
+ * call; module_mangle_into writes to a caller buffer, for lookup keys that do
+ * not. Both return their result. */
 const char *module_mangle(ModuleTable *table, const DeclEntry *entry);
+const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen);
 
 /* Split "lib.Score" into ("lib", "Score"). Returns false when `spelling` has
  * no dot, leaving *out_module NULL and *out_name == spelling. */
