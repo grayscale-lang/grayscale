@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4015 - reading a private module-level constant from another
+ * module. STANDARD.md documents this as an error; it was accepted.
+ * Expected: "'PRIVATE_CONST' is private and cannot be accessed from outside its file"
+ */
+// expect-error: E4015
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    println(lib.PRIVATE_CONST)
+}

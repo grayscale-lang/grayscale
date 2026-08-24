@@ -1458,7 +1458,6 @@ int main(int argc, char **argv) {
                         char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
                         snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.var_decl.name);
                         imp_stmt->data.var_decl.name = prefixed;
-                        imp_stmt->data.var_decl.is_private = true;
                     }
                     /* Rewrite initializer expressions */
                     rewrite_labels(imp_stmt->data.var_decl.value, orig_names, new_names, name_count, arena);

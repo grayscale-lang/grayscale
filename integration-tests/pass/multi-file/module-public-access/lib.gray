@@ -1,0 +1,13 @@
+private mut private_var int = 42
+private const PRIVATE_CONST int = 7
+
+mut public_var int = 100
+const PUBLIC_CONST int = 9
+
+private do private_fn() -> int {
+    return private_var + PRIVATE_CONST
+}
+
+do public_fn() -> int {
+    return private_fn()
+}

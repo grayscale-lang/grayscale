@@ -1701,6 +1701,20 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
     return best;
 }
 
+/* Whether a top-level variable or constant, named by its import-merged name
+ * (<mod>_<name>), was declared private. Privacy lives on the declaration, not
+ * on the Symbol, so the program is the only place to read it from. */
+static bool module_var_is_private(TypeChecker *checker, const char *prefixed_name) {
+    if (!checker->program) return false;
+    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
+        AstNode *stmt = checker->program->data.program.stmts[i];
+        if (stmt->kind != NODE_VAR_DECL) continue;
+        if (strcmp(stmt->data.var_decl.name, prefixed_name) != 0) continue;
+        return stmt->data.var_decl.is_private;
+    }
+    return false;
+}
+
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->import_count; i++) {
         if (strcmp(checker->imported_modules[i], name) == 0)
@@ -6478,6 +6492,15 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             Symbol *mod_sym = scope_lookup(checker->current_scope, prefixed);
             if (mod_sym) {
                 mod_sym->used = true;
+                /* E4015: a private variable or constant is as unreachable from
+                 * outside its file as a private function. Only the two call
+                 * paths checked this, so reading one through mod.NAME crossed
+                 * the boundary with no diagnostic at all. */
+                if (module_var_is_private(checker, prefixed)) {
+                    diagnostic_error_code_formatted(checker->diag, "E4015",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        member);
+                }
                 result = mod_sym->type;
                 /* Mark module as used */
                 mark_import_used(checker, obj_name);
