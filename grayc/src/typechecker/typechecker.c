@@ -13030,6 +13030,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     }
 }
 
+ModuleTable *typechecker_get_modules(TypeChecker *checker) {
+    return checker->modules;
+}
+
 TypeTable *typechecker_get_table(TypeChecker *checker) {
     return checker->type_table;
 }

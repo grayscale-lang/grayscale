@@ -1655,6 +1655,7 @@ int main(int argc, char **argv) {
     /* Generate C code */
     CodeGen codegen = codegen_create(input_file);
     codegen.type_table = typechecker_get_table(checker);
+    codegen.modules = typechecker_get_modules(checker);
     codegen.arena_limit = arena_limit;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);

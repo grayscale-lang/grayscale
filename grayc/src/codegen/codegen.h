@@ -59,6 +59,11 @@ typedef struct {
     /* Type table from type checker (for type-aware codegen) */
     TypeTable *type_table;
 
+    /* Module symbol table from the type checker. Module membership and the
+     * mangled name of any declaration come from here — codegen does not
+     * re-derive either. */
+    ModuleTable *modules;
+
     /* Current var decl context (for context-aware call emission) */
     const char *current_var_name;
     const char *current_var_type;
@@ -108,12 +113,6 @@ typedef struct {
     const char **using_modules;
     int using_module_count;
     int using_module_cap;
-
-    /* Import alias → module name mapping */
-    const char **alias_names;
-    const char **alias_modules;
-    int alias_count;
-    int alias_cap;
 
     /* All imported module names (for module detection in member expressions) */
     const char **imported_modules;

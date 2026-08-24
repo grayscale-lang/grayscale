@@ -79,20 +79,20 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 
-/* Resolve an unprefixed type name (e.g. "Point") to its module-prefixed
- * form (e.g. "lib_Point") by searching struct declarations and enum names.
- * Returns the prefixed name if found, otherwise returns the original. */
+/* Resolve an unprefixed type name (e.g. "Point") to the mangled name of the
+ * declaration it refers to (e.g. "lib_Point"), or return it unchanged.
+ *
+ * This used to match on the text after the last underscore of every declared
+ * struct and enum, which claimed any local name that happened to contain one.
+ * The module a type belongs to is now read from the symbol table. */
 static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
-    if (!codegen || !name) return name;
-    for (int i = 0; i < codegen->struct_decl_count; i++) {
-        const char *struct_decl_name = codegen->struct_decls[i]->data.struct_decl.name;
-        const char *underscore = strrchr(struct_decl_name, '_');
-        if (underscore && strcmp(underscore + 1, name) == 0) return struct_decl_name;
-    }
-    for (int i = 0; i < codegen->enum_count; i++) {
-        const char *enum_decl_name = codegen->enum_names[i];
-        const char *underscore = strrchr(enum_decl_name, '_');
-        if (underscore && strcmp(underscore + 1, name) == 0) return enum_decl_name;
+    if (!codegen || !codegen->modules || !name) return name;
+    for (int i = 0; i < codegen->modules->count; i++) {
+        ModuleScope *scope = codegen->modules->modules[i];
+        if (scope->is_entry) continue;
+        DeclEntry *entry = module_scope_lookup(scope, name);
+        if (entry && (entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM))
+            return module_mangle(codegen->modules, entry);
     }
     return name;
 }
@@ -874,13 +874,10 @@ static void emit_deep_array_copy(CodeGen *codegen, AstNode *src_node, const char
     emit(codegen, "; })");
 }
 
-/* Resolve an import alias to the actual module name, or return the name itself.
- * alias_names is sorted after the init pass, so we use bsearch. */
+/* Resolve an import alias to the actual module name, or return the name
+ * itself. The mapping is the type checker's, not a second copy built here. */
 static const char *resolve_alias(CodeGen *codegen, const char *name) {
-    const char **hit = bsearch(name, codegen->alias_names, (size_t)codegen->alias_count,
-                               sizeof(const char *), keyword_compare);
-    if (hit) return codegen->alias_modules[hit - codegen->alias_names];
-    return name;
+    return module_table_resolve_alias(codegen->modules, name);
 }
 
 /* Check if a variable name is a mutable parameter in the current function */
@@ -2625,35 +2622,23 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
         }
 
         /* User-module qualified constant/variable access: mod.NAME → mod_NAME
-         * Only apply for known imported module names, not local variables */
+         *
+         * Module membership must come from a registration, never from a name
+         * guess: a prefix scan over declared functions used to live here and
+         * claimed any local whose name was some function's prefix (`item.priority`
+         * became `item_priority` whenever `do item_is_alive(...)` was in scope).
+         * The symbol table answers directly for a user module, and gives the
+         * mangled name at the same time. Stdlib modules are not in it, so those
+         * still go through the import list. */
         if (mod[0] >= 'a' && mod[0] <= 'z') {
-            /* Check if mod is an imported module by looking for mod_-prefixed
-             * declarations. Stack buffer — identifiers are always short. */
-            bool is_module = false;
-            char check_name[512];
-            snprintf(check_name, sizeof(check_name), "%s_%s", mod, mem);
-            /* Note: a "is `mod` a module?" prefix scan over all declared
-             * functions used to live here. It produced false positives
-             * whenever a local variable or parameter shared its name with
-             * any function's prefix (e.g. `item.priority` got mangled to
-             * `item_priority` whenever `do item_is_alive(...)` was in
-             * scope). Module membership must come from an explicit
-             * registration (find_function above, using_modules, aliases, or
-             * imported_modules below), never from a name-prefix guess. */
-            if (find_function(codegen, check_name)) is_module = true;
-            if (!is_module) {
-                for (int ui = 0; ui < codegen->using_module_count; ui++) {
-                    if (strcmp(codegen->using_modules[ui], mod) == 0) { is_module = true; break; }
-                }
+            DeclEntry *entry = module_resolve_qualified(codegen->modules, NULL, mod, mem, NULL);
+            if (entry) {
+                emit(codegen, module_mangle(codegen->modules, entry));
+                return;
             }
-            if (!is_module) {
-                for (int ai = 0; ai < codegen->alias_count; ai++) {
-                    if (strcmp(codegen->alias_names[ai], mod) == 0) {
-                        is_module = true;
-                        mod = codegen->alias_modules[ai];
-                        break;
-                    }
-                }
+            bool is_module = false;
+            for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                if (strcmp(codegen->using_modules[ui], mod) == 0) { is_module = true; break; }
             }
             if (!is_module) {
                 for (int import_index = 0; import_index < codegen->imported_module_count; import_index++) {
@@ -2661,7 +2646,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 }
             }
             if (is_module) {
-                emit_formatted(codegen, "%s_%s", mod, mem);
+                emit_formatted(codegen, "%s_%s", resolve_alias(codegen, mod), mem);
                 return;
             }
         }
@@ -10308,10 +10293,6 @@ CodeGen codegen_create(const char *file) {
     codegen.using_modules = NULL;
     codegen.using_module_count = 0;
     codegen.using_module_cap = 0;
-    codegen.alias_names = NULL;
-    codegen.alias_modules = NULL;
-    codegen.alias_count = 0;
-    codegen.alias_cap = 0;
     codegen.imported_modules = NULL;
     codegen.imported_module_count = 0;
     codegen.imported_module_cap = 0;
@@ -10397,19 +10378,6 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                         codegen->imported_module_cap);
                     codegen->imported_modules[codegen->imported_module_count++] = mname;
                 }
-                /* Track alias → module mapping */
-                if (item->alias && item->module && strcmp(item->alias, item->module) != 0) {
-                    if (codegen->alias_count >= codegen->alias_cap) {
-                        codegen->alias_cap = codegen->alias_cap ? codegen->alias_cap * 2 : 8;
-                        codegen->alias_names = xrealloc(codegen->alias_names,
-                            sizeof(const char *) * (size_t)codegen->alias_cap);
-                        codegen->alias_modules = xrealloc(codegen->alias_modules,
-                            sizeof(const char *) * (size_t)codegen->alias_cap);
-                    }
-                    codegen->alias_names[codegen->alias_count] = item->alias;
-                    codegen->alias_modules[codegen->alias_count] = item->module;
-                    codegen->alias_count++;
-                }
             }
             /* import and use; register all modules for using */
             if (stmt->data.import_stmt.auto_use) {
@@ -10457,20 +10425,6 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         } else if (stmt->kind != NODE_USING_STMT) {
             BUCKET_PUSH(other_bucket, other_bucket_count, other_bucket_cap, stmt);
         }
-    }
-
-    /* Sort alias arrays for O(log n) bsearch in resolve_alias() */
-    for (int i = 1; i < codegen->alias_count; i++) {
-        const char *kn = codegen->alias_names[i];
-        const char *km = codegen->alias_modules[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(codegen->alias_names[j], kn) > 0) {
-            codegen->alias_names[j+1] = codegen->alias_names[j];
-            codegen->alias_modules[j+1] = codegen->alias_modules[j];
-            j--;
-        }
-        codegen->alias_names[j+1] = kn;
-        codegen->alias_modules[j+1] = km;
     }
 
     /* Emit preamble — core headers always included, stdlib headers only when imported */
@@ -11095,8 +11049,6 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->struct_decls);
     free(codegen->func_field_index);
     free(codegen->using_modules);
-    free(codegen->alias_names);
-    free(codegen->alias_modules);
     free(codegen->type_alias_names);
     free(codegen->type_alias_targets);
     free(codegen->imported_modules);
