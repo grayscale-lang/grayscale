@@ -876,21 +876,29 @@ static FuncSig *find_func(TypeChecker *checker, const char *name) {
     return hit ? *hit : NULL;
 }
 
-/* The signature of `mod.name`, or NULL. Whether `mod` names a module is
- * decided by the symbol table, and the registry key comes from the resolved
- * declaration rather than from the spelling of the reference.
+/* The flat-registry key for the member `name` of module `mod`, written into
+ * `buf`. Derived from the declaration the symbol table resolves to, so the
+ * module name comes from where the declaration actually lives rather than
+ * from the spelling of the reference.
  *
- * Transitional: the stdlib keeps its own registry and is not in the table, so
- * modules the table does not hold still fall back to the string form. */
+ * Transitional: the stdlib keeps its own registries and is not in the table,
+ * so a module the table does not hold still falls back to the string form.
+ * The registries remain the authority on what a key names — this decides only
+ * how the key is spelled. */
+static const char *module_member_key(TypeChecker *checker, const char *mod,
+                                     const char *name, char *buf, size_t buflen) {
+    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
+    if (entry) return module_mangle_into(entry, buf, buflen);
+    snprintf(buf, buflen, "%s_%s",
+             module_table_resolve_alias(checker->modules, mod), name);
+    return buf;
+}
+
+/* The signature of `mod.name`, or NULL. */
 static FuncSig *find_module_func(TypeChecker *checker, const char *mod,
                                  const char *name) {
     char key[MSG_BUF_SIZE];
-    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
-    if (entry && entry->kind == DECL_FUNC)
-        return find_func(checker, module_mangle_into(entry, key, sizeof(key)));
-    snprintf(key, sizeof(key), "%s_%s",
-             module_table_resolve_alias(checker->modules, mod), name);
-    return find_func(checker, key);
+    return find_func(checker, module_member_key(checker, mod, name, key, sizeof(key)));
 }
 
 /* The name the programmer wrote, never the module-prefixed internal one.
@@ -2147,9 +2155,9 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
         !is_struct_name(checker, name) && !is_enum_name(checker, name)) {
         for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
             if (!using_module_accessible(checker, using_index)) continue;
-            const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
             char prefixed[MSG_BUF_SIZE];
-            snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, name);
+            module_member_key(checker, checker->using_modules[using_index], name,
+                              prefixed, sizeof(prefixed));
             if (is_enum_name(checker, prefixed)) return type_enum(prefixed);
             if (is_struct_name(checker, prefixed)) return type_struct(prefixed);
         }
@@ -4919,14 +4927,15 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
          * W1002/W1003 don't fire on the source. */
         for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
             if (!using_module_accessible(checker, using_index)) continue;
-            const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
             char pfx[MSG_BUF_SIZE];
-            snprintf(pfx, sizeof(pfx), "%s_%s", real_mod, function_name);
+            module_member_key(checker, checker->using_modules[using_index],
+                              function_name, pfx, sizeof(pfx));
             FuncSig *psig = find_func(checker, pfx);
             if (psig) {
                 psig->used = true;
                 mark_import_used(checker, checker->using_modules[using_index]);
-                mark_import_used(checker, real_mod);
+                mark_import_used(checker,
+                    typechecker_resolve_alias(checker, checker->using_modules[using_index]));
                 break;
             }
         }
@@ -5464,13 +5473,13 @@ static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
     if (!obj->data.member.object || obj->data.member.object->kind != NODE_LABEL) return;
 
     const char *mod_raw = obj->data.member.object->data.label.value;
-    const char *mod = typechecker_resolve_alias(checker, mod_raw);
     char prefixed[MSG_BUF_SIZE];
-    snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, obj->data.member.member);
+    module_member_key(checker, mod_raw, obj->data.member.member,
+                      prefixed, sizeof(prefixed));
     if (!is_enum_name(checker, prefixed)) return;
 
     mark_import_used(checker, mod_raw);
-    mark_import_used(checker, mod);
+    mark_import_used(checker, typechecker_resolve_alias(checker, mod_raw));
     obj->kind = NODE_LABEL;
     obj->data.label.value = arena_copy_string(checker->arena, prefixed);
 }
@@ -6399,9 +6408,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         obj->data.member.object->kind == NODE_LABEL) {
         const char *mod_name = obj->data.member.object->data.label.value;
         const char *type_name = obj->data.member.member;
-        /* Build prefixed type name: mod_Type */
         char prefixed_type[MSG_BUF_SIZE];
-        snprintf(prefixed_type, sizeof(prefixed_type), "%s_%s", mod_name, type_name);
+        module_member_key(checker, mod_name, type_name,
+                          prefixed_type, sizeof(prefixed_type));
         /* Check if it's a module-qualified enum access */
         if (is_enum_name(checker, prefixed_type)) {
             /* Validate variant exists */
@@ -6510,7 +6519,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         /* Check for user-module constant access: mod.CONST */
         if (typechecker_is_imported_module(checker, obj_name)) {
             char prefixed[MSG_BUF_SIZE];
-            snprintf(prefixed, sizeof(prefixed), "%s_%s", obj_name, member);
+            module_member_key(checker, obj_name, member, prefixed, sizeof(prefixed));
             Symbol *mod_sym = scope_lookup(checker->current_scope, prefixed);
             if (mod_sym) {
                 mod_sym->used = true;
@@ -6623,7 +6632,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             if (mod[0] >= 'a' && mod[0] <= 'z' &&
                 type_n[0] >= 'A' && type_n[0] <= 'Z') {
                 char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, type_n);
+                module_member_key(checker, mod, type_n, prefixed, sizeof(prefixed));
                 if (is_enum_name(checker, prefixed)) {
                     result = &TYPE_INT;
                     /* Mark module as used */
@@ -7158,7 +7167,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 if (!using_module_accessible(checker, using_index)) continue;
                 const char *umod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                 char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", umod, name);
+                module_member_key(checker, checker->using_modules[using_index], name,
+                                  prefixed, sizeof(prefixed));
                 sym = scope_lookup(checker->current_scope, prefixed);
                 if (sym) {
                     /* Rewrite the label to the prefixed name so codegen finds it */
@@ -8333,11 +8343,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         const char *call_name = NULL;
         if (call_fn->kind == NODE_LABEL) call_name = call_fn->data.label.value;
         else if (call_fn->kind == NODE_MEMBER_EXPR && call_fn->data.member.object->kind == NODE_LABEL) {
-            /* module.func() or Type.func(); construct prefixed name */
-            static char prefixed[MSG_BUF_SIZE];
-            snprintf(prefixed, sizeof(prefixed), "%s_%s",
-                call_fn->data.member.object->data.label.value, call_fn->data.member.member);
-            call_name = prefixed;
+            /* module.func() or Type.func() */
+            char prefixed[MSG_BUF_SIZE];
+            call_name = arena_copy_string(checker->arena,
+                module_member_key(checker, call_fn->data.member.object->data.label.value,
+                                  call_fn->data.member.member, prefixed, sizeof(prefixed)));
         }
         if (call_name) {
             FuncSig *sig = find_func(checker, call_name);
@@ -9462,10 +9472,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             } else if (fref->kind == NODE_MEMBER_EXPR &&
                        fref->data.member.object->kind == NODE_LABEL) {
                 char buffer[MSG_BUF_SIZE];
-                snprintf(buffer, sizeof(buffer), "%s_%s",
-                    fref->data.member.object->data.label.value,
-                    fref->data.member.member);
-                rname = arena_copy_string(checker->arena, buffer);
+                rname = arena_copy_string(checker->arena,
+                    module_member_key(checker, fref->data.member.object->data.label.value,
+                                      fref->data.member.member, buffer, sizeof(buffer)));
             }
             if (rname) {
                 Symbol *sym = scope_lookup_local(checker->current_scope,
@@ -9489,9 +9498,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 } else if (ref_arg->kind == NODE_MEMBER_EXPR &&
                            ref_arg->data.member.object->kind == NODE_LABEL) {
                     char buffer[MSG_BUF_SIZE];
-                    snprintf(buffer, sizeof(buffer), "%s_%s",
-                        ref_arg->data.member.object->data.label.value,
-                        ref_arg->data.member.member);
+                    module_member_key(checker, ref_arg->data.member.object->data.label.value,
+                                      ref_arg->data.member.member, buffer, sizeof(buffer));
                     if (find_func(checker, buffer))
                         rname = arena_copy_string(checker->arena, buffer);
                 }
@@ -9527,14 +9535,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         sym->func_array_refs[enum_index] = fref->data.label.value;
                     } else if (fref->kind == NODE_MEMBER_EXPR &&
                                fref->data.member.object->kind == NODE_LABEL) {
-                        size_t plen =
-                            strlen(fref->data.member.object->data.label.value) +
-                            strlen(fref->data.member.member) + 2;
-                        char *pref = xmalloc(plen);
-                        snprintf(pref, plen, "%s_%s",
-                            fref->data.member.object->data.label.value,
-                            fref->data.member.member);
-                        sym->func_array_refs[enum_index] = pref;
+                        char buffer[MSG_BUF_SIZE];
+                        sym->func_array_refs[enum_index] = arena_copy_string(checker->arena,
+                            module_member_key(checker,
+                                fref->data.member.object->data.label.value,
+                                fref->data.member.member, buffer, sizeof(buffer)));
                     }
                 }
             }
@@ -10480,7 +10485,7 @@ static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
                 if (obj_name && mem_name && !is_side_effect) {
                     /* Check if struct function has #discard attribute */
                     char prefixed[MSG_BUF_SIZE];
-                    snprintf(prefixed, sizeof(prefixed), "%s_%s", obj_name, mem_name);
+                    module_member_key(checker, obj_name, mem_name, prefixed, sizeof(prefixed));
                     FuncSig *fs = find_func(checker, prefixed);
                     if (!fs || !fs->is_discard) {
                         char full[MSG_BUF_SIZE];
@@ -11560,9 +11565,9 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                     } else {
                         for (int using_index = 0; using_index < checker->using_module_count && !has_enum_case; using_index++) {
                             if (!using_module_accessible(checker, using_index)) continue;
-                            const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
                             char prefixed[MSG_BUF_SIZE];
-                            snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, name);
+                            module_member_key(checker, checker->using_modules[using_index],
+                                              name, prefixed, sizeof(prefixed));
                             if (is_enum_name(checker, prefixed)) has_enum_case = true;
                         }
                     }
