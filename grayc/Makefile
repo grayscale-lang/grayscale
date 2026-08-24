@@ -58,6 +58,7 @@ SRC = src/main.c \
       src/parser/parser.c \
       src/typechecker/types.c \
       src/typechecker/scope.c \
+      src/typechecker/module_table.c \
       src/typechecker/typechecker.c \
       src/codegen/codegen.c \
       src/fmt/fmt.c
@@ -199,7 +200,8 @@ TEST_DEPS = src/util/arena.o src/util/buf.o src/util/error.o src/util/error_code
             src/util/platform.o \
             src/lexer/token.o src/lexer/lexer.o \
             src/parser/ast.o src/parser/parser.o \
-            src/typechecker/types.o src/typechecker/scope.o src/typechecker/typechecker.o
+            src/typechecker/types.o src/typechecker/scope.o \
+            src/typechecker/module_table.o src/typechecker/typechecker.o
 
 # Runtime sources needed by the runtime test binary. The sanitizer targets
 # compile these directly rather than linking objects, so both forms are
@@ -286,7 +288,8 @@ TEST_SRC_FILES = src/util/arena.c src/util/buf.c src/util/error.c src/util/error
                  src/util/platform.c \
                  src/lexer/token.c src/lexer/lexer.c \
                  src/parser/ast.c src/parser/parser.c \
-                 src/typechecker/types.c src/typechecker/scope.c src/typechecker/typechecker.c
+                 src/typechecker/types.c src/typechecker/scope.c src/typechecker/module_table.c \
+                 src/typechecker/typechecker.c
 
 # UBSan works everywhere; ASan needs Linux for reliable CI
 UBSAN_FLAGS = -fsanitize=undefined -fno-omit-frame-pointer -g -O1

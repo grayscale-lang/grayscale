@@ -1,0 +1,270 @@
+/*
+ * module_table.c — Implements the per-module symbol table and the two
+ * resolvers (qualified and unqualified) that every module-aware lookup in the
+ * compiler goes through.
+ *
+ * Author:  Marshall A Burns (@SchoolyB)
+ * Copyright (c) 2025-Present Marshall A Burns
+ * Licensed under the MIT License. See LICENSE for details.
+ */
+
+#include "module_table.h"
+#include "scope.h"
+#include "../util/constants.h"
+#include "../util/xalloc.h"
+#include <stdio.h>
+#include <string.h>
+
+#define MODULE_HASH_INIT_CAP 16
+
+/* --- Shared open-addressing helpers ---
+ *
+ * Both the module table (module name -> ModuleScope) and each module scope
+ * (declaration name -> DeclEntry) are name -> index maps over a dense array,
+ * so they share one probe. Capacity is always a power of two and the load
+ * factor is held at or below one half, which linear probing needs in order to
+ * terminate on a free slot. */
+
+static void hash_place(ModuleHashEntry *hash, int cap, const char *name, int idx) {
+    uint32_t mask = (uint32_t)(cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    for (;;) {
+        if (!hash[h].name) {
+            hash[h].name = name;
+            hash[h].idx = idx;
+            return;
+        }
+        h = (h + 1) & mask;
+    }
+}
+
+/* Index of `name`, or -1 when absent. */
+static int hash_find(const ModuleHashEntry *hash, int cap, const char *name) {
+    if (!hash) return -1;
+    uint32_t mask = (uint32_t)(cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    for (;;) {
+        const ModuleHashEntry *e = &hash[h];
+        if (!e->name) return -1;
+        if (strcmp(e->name, name) == 0) return e->idx;
+        h = (h + 1) & mask;
+    }
+}
+
+static ModuleHashEntry *hash_alloc(Arena *arena, int cap) {
+    ModuleHashEntry *hash = arena_alloc(arena, sizeof(ModuleHashEntry) * (size_t)cap);
+    memset(hash, 0, sizeof(ModuleHashEntry) * (size_t)cap);
+    return hash;
+}
+
+/* Grow the hash to hold new_count entries at a load factor of one half. */
+static int hash_target_cap(int cur_cap, int new_count) {
+    int cap = cur_cap ? cur_cap : MODULE_HASH_INIT_CAP;
+    while (new_count * 2 > cap) cap *= 2;
+    return cap;
+}
+
+/* --- Module table --- */
+
+ModuleTable *module_table_create(Arena *arena) {
+    ModuleTable *table = arena_alloc(arena, sizeof(ModuleTable));
+    memset(table, 0, sizeof(ModuleTable));
+    table->arena = arena;
+    return table;
+}
+
+ModuleScope *module_table_find(ModuleTable *table, const char *module_name) {
+    if (!table || !module_name) return NULL;
+    int idx = hash_find(table->hash, table->hash_cap, module_name);
+    return idx < 0 ? NULL : table->modules[idx];
+}
+
+ModuleScope *module_table_scope(ModuleTable *table, const char *module_name,
+                                bool is_entry) {
+    ModuleScope *existing = module_table_find(table, module_name);
+    if (existing) return existing;
+
+    Arena *arena = table->arena;
+    ModuleScope *scope = arena_alloc(arena, sizeof(ModuleScope));
+    memset(scope, 0, sizeof(ModuleScope));
+    scope->name = arena_copy_string(arena, module_name);
+    scope->is_entry = is_entry;
+
+    ARENA_GROW(arena, table->modules, table->count, table->cap);
+
+    int new_count = table->count + 1;
+    if (!table->hash || new_count * 2 > table->hash_cap) {
+        table->hash_cap = hash_target_cap(table->hash_cap, new_count);
+        table->hash = hash_alloc(arena, table->hash_cap);
+        for (int i = 0; i < table->count; i++)
+            hash_place(table->hash, table->hash_cap, table->modules[i]->name, i);
+    }
+
+    table->modules[table->count] = scope;
+    hash_place(table->hash, table->hash_cap, scope->name, table->count);
+    table->count++;
+    return scope;
+}
+
+/* --- Module scopes --- */
+
+DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
+    if (!scope || !name) return NULL;
+    int idx = hash_find(scope->hash, scope->hash_cap, name);
+    return idx < 0 ? NULL : scope->entries[idx];
+}
+
+DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
+                               DeclKind kind, const char *name,
+                               AstNode *ast_node, GrayType *gray_type,
+                               const char *origin_file, int origin_line,
+                               Visibility visibility) {
+    DeclEntry *existing = module_scope_lookup(scope, name);
+    if (existing) return existing;
+
+    Arena *arena = table->arena;
+    DeclEntry *entry = arena_alloc(arena, sizeof(DeclEntry));
+    memset(entry, 0, sizeof(DeclEntry));
+    entry->kind = kind;
+    entry->name = arena_copy_string(arena, name);
+    entry->module_name = scope->name;
+    entry->module_is_entry = scope->is_entry;
+    entry->ast_node = ast_node;
+    entry->gray_type = gray_type;
+    entry->origin_file = origin_file;
+    entry->origin_line = origin_line;
+    entry->visibility = visibility;
+
+    ARENA_GROW(arena, scope->entries, scope->count, scope->cap);
+
+    int new_count = scope->count + 1;
+    if (!scope->hash || new_count * 2 > scope->hash_cap) {
+        scope->hash_cap = hash_target_cap(scope->hash_cap, new_count);
+        scope->hash = hash_alloc(arena, scope->hash_cap);
+        for (int i = 0; i < scope->count; i++)
+            hash_place(scope->hash, scope->hash_cap, scope->entries[i]->name, i);
+    }
+
+    scope->entries[scope->count] = entry;
+    hash_place(scope->hash, scope->hash_cap, entry->name, scope->count);
+    scope->count++;
+    return entry;
+}
+
+/* --- Aliases --- */
+
+void module_table_add_alias(ModuleTable *table, const char *alias,
+                            const char *module_name) {
+    if (!alias || !module_name || strcmp(alias, module_name) == 0) return;
+    for (int i = 0; i < table->alias_count; i++) {
+        if (strcmp(table->alias_names[i], alias) == 0) return;
+    }
+    if (table->alias_count >= table->alias_cap) {
+        table->alias_cap = GROW_NEXT_CAP(table->alias_cap);
+        ARENA_GROW_TO(table->arena, table->alias_names, table->alias_count, table->alias_cap);
+        ARENA_GROW_TO(table->arena, table->alias_modules, table->alias_count, table->alias_cap);
+    }
+    table->alias_names[table->alias_count] = arena_copy_string(table->arena, alias);
+    table->alias_modules[table->alias_count] = arena_copy_string(table->arena, module_name);
+    table->alias_count++;
+}
+
+const char *module_table_resolve_alias(ModuleTable *table, const char *alias) {
+    if (!table || !alias) return alias;
+    for (int i = 0; i < table->alias_count; i++) {
+        if (strcmp(table->alias_names[i], alias) == 0) return table->alias_modules[i];
+    }
+    return alias;
+}
+
+/* --- Resolution --- */
+
+DeclEntry *module_resolve_qualified(ModuleTable *table,
+                                    const char *current_module,
+                                    const char *module_or_alias,
+                                    const char *name,
+                                    ResolveStatus *out_status) {
+    ResolveStatus status = RESOLVE_NO_MODULE;
+    DeclEntry *entry = NULL;
+
+    if (table && module_or_alias && name) {
+        const char *module_name = module_table_resolve_alias(table, module_or_alias);
+        ModuleScope *scope = module_table_find(table, module_name);
+        if (scope) {
+            entry = module_scope_lookup(scope, name);
+            if (!entry) {
+                status = RESOLVE_NO_DECL;
+            } else if (entry->visibility == VIS_PRIVATE &&
+                       (!current_module || strcmp(current_module, entry->module_name) != 0)) {
+                status = RESOLVE_PRIVATE;
+            } else {
+                status = RESOLVE_OK;
+            }
+        }
+    }
+
+    if (out_status) *out_status = status;
+    /* entry is non-NULL exactly for RESOLVE_OK and RESOLVE_PRIVATE. */
+    return entry;
+}
+
+DeclEntry *module_resolve_unqualified(ModuleTable *table,
+                                      const char *current_module,
+                                      const char **using_modules,
+                                      int using_count,
+                                      const char *name,
+                                      const char **out_ambiguous_with) {
+    if (out_ambiguous_with) *out_ambiguous_with = NULL;
+    if (!table || !name) return NULL;
+
+    /* The current module always wins — a local declaration shadows anything a
+     * `using` brought in, and is never ambiguous with it. */
+    ModuleScope *own = module_table_find(table, current_module);
+    if (own) {
+        DeclEntry *entry = module_scope_lookup(own, name);
+        if (entry) return entry;
+    }
+
+    DeclEntry *found = NULL;
+    for (int i = 0; i < using_count; i++) {
+        const char *module_name = module_table_resolve_alias(table, using_modules[i]);
+        ModuleScope *scope = module_table_find(table, module_name);
+        if (!scope) continue;
+        DeclEntry *entry = module_scope_lookup(scope, name);
+        if (!entry || entry->visibility == VIS_PRIVATE) continue;
+        if (!found) {
+            found = entry;
+            /* Without an ambiguity report to make, the first match is the
+             * answer and the remaining modules need not be searched. */
+            if (!out_ambiguous_with) return found;
+            continue;
+        }
+        if (entry != found) {
+            *out_ambiguous_with = entry->module_name;
+            return NULL;
+        }
+    }
+    return found;
+}
+
+/* --- Mangling --- */
+
+const char *module_mangle(ModuleTable *table, const DeclEntry *entry) {
+    if (!entry) return NULL;
+    if (entry->module_is_entry || !entry->module_name) return entry->name;
+    char buf[MSG_BUF_SIZE];
+    snprintf(buf, sizeof(buf), "%s_%s", entry->module_name, entry->name);
+    return arena_copy_string(table->arena, buf);
+}
+
+bool module_split_qualified(Arena *arena, const char *spelling,
+                            const char **out_module, const char **out_name) {
+    *out_module = NULL;
+    *out_name = spelling;
+    if (!spelling) return false;
+    const char *dot = strchr(spelling, '.');
+    if (!dot) return false;
+    *out_module = arena_copy_string_with_length(arena, spelling, (size_t)(dot - spelling));
+    *out_name = dot + 1;
+    return true;
+}
