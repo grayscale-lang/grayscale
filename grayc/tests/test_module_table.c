@@ -145,6 +145,46 @@ static void test_entry_module_is_not_a_qualifier(void) {
     ASSERT(found == NULL);
 }
 
+/* The node index recovers a declaration's module from the node alone, which
+ * is how a later phase gets the mangled name without a file or a name to look
+ * up. */
+static void test_node_index(void) {
+    ModuleTable *table = table_with_modules();
+    AstNode fake_a;
+    AstNode fake_b;
+    ModuleScope *lib = module_table_find(table, "lib");
+    DeclEntry *a = module_scope_define(table, lib, DECL_FUNC, "a", &fake_a, NULL,
+                                       "lib.gray", 1, VIS_PUBLIC);
+    DeclEntry *b = module_scope_define(table, lib, DECL_FUNC, "b", &fake_b, NULL,
+                                       "lib.gray", 2, VIS_PUBLIC);
+
+    ASSERT(module_table_entry_for_node(table, &fake_a) == a);
+    ASSERT(module_table_entry_for_node(table, &fake_b) == b);
+    ASSERT_STR_EQ(module_mangle(table, module_table_entry_for_node(table, &fake_a)), "lib_a");
+
+    AstNode unknown;
+    ASSERT(module_table_entry_for_node(table, &unknown) == NULL);
+    ASSERT(module_table_entry_for_node(table, NULL) == NULL);
+}
+
+/* The index rehashes; every node must survive it. */
+static void test_node_index_growth(void) {
+    ModuleTable *table = table_with_modules();
+    static AstNode nodes[300];
+    ModuleScope *lib = module_table_find(table, "lib");
+    char name[32];
+    for (int i = 0; i < 300; i++) {
+        snprintf(name, sizeof(name), "n%d", i);
+        module_scope_define(table, lib, DECL_FUNC, name, &nodes[i], NULL, "lib.gray", i, VIS_PUBLIC);
+    }
+    for (int i = 0; i < 300; i++) {
+        snprintf(name, sizeof(name), "n%d", i);
+        DeclEntry *e = module_table_entry_for_node(table, &nodes[i]);
+        ASSERT_NOT_NULL(e);
+        ASSERT_STR_EQ(e->name, name);
+    }
+}
+
 /* --- Qualified resolution --- */
 
 static void test_resolve_qualified_ok(void) {
@@ -337,6 +377,8 @@ int main(void) {
     RUN_TEST(test_unmapped_file_falls_back_to_entry);
     RUN_TEST(test_growth_preserves_all_entries);
     RUN_TEST(test_many_modules_preserved);
+    RUN_TEST(test_node_index);
+    RUN_TEST(test_node_index_growth);
     RUN_TEST(test_imported_module_may_share_entry_basename);
     RUN_TEST(test_entry_module_is_not_a_qualifier);
     RUN_TEST(test_resolve_qualified_ok);

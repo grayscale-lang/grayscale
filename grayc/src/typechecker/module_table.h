@@ -56,6 +56,13 @@ typedef struct {
     int idx;           /* index into the owning array */
 } ModuleHashEntry;
 
+/* Reverse index: declaration node -> its entry. Lets a later phase recover a
+ * declaration's module from the node alone, without a name to look up. */
+typedef struct {
+    const AstNode *node;  /* NULL = empty slot */
+    DeclEntry *entry;
+} ModuleNodeEntry;
+
 /* The declarations of one module. Every .gray file of a directory-merged
  * module inserts into the same ModuleScope, so sibling lookups are ordinary
  * same-module lookups. */
@@ -87,6 +94,10 @@ typedef struct {
     /* source file -> owning module. A declaration belongs to the module of
      * the file it was written in, which is what makes every .gray file of a
      * directory-merged module land in one ModuleScope. */
+    ModuleNodeEntry *node_index;
+    int node_count;
+    int node_hash_cap;
+
     const char **file_paths;
     const char **file_modules;
     ModuleHashEntry *file_hash;
@@ -134,6 +145,11 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
 
 /* Look a name up in one module, ignoring visibility. */
 DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name);
+
+/* The entry declared by this AST node, or NULL. The module a declaration
+ * belongs to is a property of the declaration, so a phase holding the node
+ * needs no name and no file of its own to recover it. */
+DeclEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node);
 
 void module_table_add_alias(ModuleTable *table, const char *alias,
                             const char *module_name);

@@ -97,6 +97,23 @@ static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
     return name;
 }
 
+/* The C name for a declaration node: the mangled name of the symbol-table
+ * entry that declared it. The module a declaration belongs to is a property
+ * of the declaration, so this needs no name to look up and no file context.
+ *
+ * `fallback` covers nodes the table holds no entry for — struct functions,
+ * which are namespaced under their struct rather than their module, and
+ * generic instantiations, which are mangled by binding. */
+static const char *codegen_decl_name(CodeGen *codegen, AstNode *node,
+                                     const char *fallback) {
+    /* While a generic instantiation is being emitted the caller has already
+     * put the per-binding mangled name in hand (and on the node). That
+     * mangling is by type argument, not by module, and wins. */
+    if (codegen->wildcard_binding) return fallback;
+    DeclEntry *entry = module_table_entry_for_node(codegen->modules, node);
+    return entry ? module_mangle(codegen->modules, entry) : fallback;
+}
+
 /* --- Helpers --- */
 
 static char *normalize_path_separators(const char *path);
@@ -9621,7 +9638,8 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
         emit(codegen, "static void gray_fn_main(void)");
     } else {
         emit_formatted(codegen, "static %s ", function_return_type(codegen, node));
-        emit_formatted(codegen, "gray_fn_%s(", node->data.func_decl.name);
+        emit_formatted(codegen, "gray_fn_%s(",
+            codegen_decl_name(codegen, node, node->data.func_decl.name));
 
         /* Parameters — skip type params (erased in C) */
         bool first_param = true;
@@ -10504,9 +10522,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         AstNode **structs = codegen->struct_decls;
         for (int i = 0; i < struct_count; i++) {
             if (structs[i]->data.struct_decl.is_generic) continue;
-            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n",
-                structs[i]->data.struct_decl.name,
-                structs[i]->data.struct_decl.name);
+            {
+                const char *sn = codegen_decl_name(codegen, structs[i],
+                                                   structs[i]->data.struct_decl.name);
+                emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", sn, sn);
+            }
         }
         if (struct_count > 0) emit(codegen, "\n");
     }
@@ -10556,7 +10576,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 emit(codegen, "\n");
             } else if (is_tagged) {
                 /* Defer tagged enum typedefs — only emit the tag enum now */
-                const char *ename = stmt->data.enum_decl.name;
+                const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
                 emit_formatted(codegen, "typedef enum {\n");
                 for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
                     emit_formatted(codegen, "    GrayEnum_%s_TAG_%s = %d,\n", ename, stmt->data.enum_decl.values[j].name, j);
@@ -10581,7 +10601,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                      * explicit values entirely. */
                     emit(codegen, ",\n");
                 }
-                emit_formatted(codegen, "} GrayEnum_%s;\n\n", stmt->data.enum_decl.name);
+                emit_formatted(codegen, "} GrayEnum_%s;\n\n",
+                    codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name));
             }
     }
 
@@ -10640,7 +10661,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                     /* : skip generic structs here; they're
                      * emitted per-instantiation below. */
                     if (struct_node->data.struct_decl.is_generic) continue;
-                    emit_formatted(codegen, "struct GrayStruct_%s {\n", struct_node->data.struct_decl.name);
+                    emit_formatted(codegen, "struct GrayStruct_%s {\n",
+                        codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                     for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                         StructField *field = &struct_node->data.struct_decl.fields[j];
                         emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
@@ -10653,7 +10675,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         for (int i = 0; i < struct_count; i++) {
             if (!emitted[i]) {
                 AstNode *struct_node = structs[i];
-                emit_formatted(codegen, "struct GrayStruct_%s {\n", struct_node->data.struct_decl.name);
+                emit_formatted(codegen, "struct GrayStruct_%s {\n",
+                    codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                 for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                     StructField *field = &struct_node->data.struct_decl.fields[j];
                     emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
@@ -10671,14 +10694,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = stmt->data.enum_decl.name;
+        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
         emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
     }
 
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = stmt->data.enum_decl.name;
+        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
 
         /* Payload structs (only for variants with payloads) */
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
@@ -10952,7 +10975,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
             emit_formatted(codegen, "static %s ", function_return_type(codegen, stmt));
             if (has_wc) stmt->data.func_decl.name = orig_name;
-            emit_formatted(codegen, "gray_fn_%s(", emit_name);
+            emit_formatted(codegen, "gray_fn_%s(",
+                has_wc ? emit_name : codegen_decl_name(codegen, stmt, emit_name));
             {
                 bool fwd_first = true;
                 for (int j = 0; j < stmt->data.func_decl.param_count; j++) {

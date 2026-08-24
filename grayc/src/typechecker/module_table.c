@@ -14,6 +14,7 @@
 #include "../util/xalloc.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 #define MODULE_HASH_INIT_CAP 16
 
@@ -151,6 +152,54 @@ const char *module_table_module_for_file(ModuleTable *table, const char *file) {
     return table->entry_module;
 }
 
+/* --- Node -> declaration index --- */
+
+static void node_index_place(ModuleNodeEntry *index, int cap,
+                             const AstNode *node, DeclEntry *entry) {
+    uint32_t mask = (uint32_t)(cap - 1);
+    /* Pointer hash: the low bits of an allocation address carry no entropy,
+     * so mix the whole value down first. */
+    uint32_t h = (uint32_t)(((uintptr_t)node >> 4) * 2654435761u) & mask;
+    for (;;) {
+        if (!index[h].node) {
+            index[h].node = node;
+            index[h].entry = entry;
+            return;
+        }
+        h = (h + 1) & mask;
+    }
+}
+
+static void node_index_add(ModuleTable *table, const AstNode *node, DeclEntry *entry) {
+    if (!node) return;
+    int new_count = table->node_count + 1;
+    if (!table->node_index || new_count * 2 > table->node_hash_cap) {
+        int cap = hash_target_cap(table->node_hash_cap, new_count);
+        ModuleNodeEntry *fresh = arena_alloc(table->arena, sizeof(ModuleNodeEntry) * (size_t)cap);
+        memset(fresh, 0, sizeof(ModuleNodeEntry) * (size_t)cap);
+        for (int i = 0; i < table->node_hash_cap; i++) {
+            if (table->node_index[i].node)
+                node_index_place(fresh, cap, table->node_index[i].node, table->node_index[i].entry);
+        }
+        table->node_index = fresh;
+        table->node_hash_cap = cap;
+    }
+    node_index_place(table->node_index, table->node_hash_cap, node, entry);
+    table->node_count++;
+}
+
+DeclEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node) {
+    if (!table || !node || !table->node_index) return NULL;
+    uint32_t mask = (uint32_t)(table->node_hash_cap - 1);
+    uint32_t h = (uint32_t)(((uintptr_t)node >> 4) * 2654435761u) & mask;
+    for (;;) {
+        ModuleNodeEntry *e = &table->node_index[h];
+        if (!e->node) return NULL;
+        if (e->node == node) return e->entry;
+        h = (h + 1) & mask;
+    }
+}
+
 /* --- Module scopes --- */
 
 DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
@@ -193,6 +242,7 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     scope->entries[scope->count] = entry;
     hash_place(scope->hash, scope->hash_cap, entry->name, scope->count);
     scope->count++;
+    node_index_add(table, ast_node, entry);
     return entry;
 }
 
