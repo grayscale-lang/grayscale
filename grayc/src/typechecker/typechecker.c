@@ -11918,6 +11918,20 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
  * Transitional: the import merge still renames imported declarations, so the
  * source name is `source_name` (the *_DISPLAY_NAME macros) while `stmt` still
  * carries the mangled one. Once the merge stops renaming, the two coincide. */
+/* The flat-registry key for a declaration: the mangled name of the entry the
+ * symbol table holds for it. `fallback` covers declarations the table has no
+ * entry for, which today is none — it is there so a future registration path
+ * that runs before the table is populated degrades to the old spelling rather
+ * than to a wrong one.
+ *
+ * This is the point of issue #2485's "mangling becomes a pure function of a
+ * resolved declaration": the key no longer comes from a name the import merge
+ * rewrote, it comes from where the declaration actually lives. */
+static const char *decl_registry_key(TypeChecker *checker, const DeclEntry *entry,
+                                     const char *fallback) {
+    return entry ? module_mangle(checker->modules, entry) : fallback;
+}
+
 static DeclEntry *module_register(TypeChecker *checker, AstNode *stmt,
                                   DeclKind kind, const char *source_name,
                                   bool is_private) {
@@ -12189,8 +12203,9 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_enum(checker, stmt->data.enum_decl.name, ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
-        module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+        register_enum(checker, decl_registry_key(checker, entry, stmt->data.enum_decl.name),
+            ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
     }
 }
 
@@ -12324,8 +12339,9 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             diagnostic_error_message(checker->diag, "E4007", msg,
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_struct(checker, stmt->data.struct_decl.name, STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
-        module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+        register_struct(checker, decl_registry_key(checker, entry, stmt->data.struct_decl.name),
+                        STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
         checker->structs[checker->struct_count - 1].is_deprecated = stmt->data.struct_decl.is_deprecated;
         checker->structs[checker->struct_count - 1].deprecated_message = stmt->data.struct_decl.deprecated_message;
 
@@ -12466,9 +12482,10 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
             diagnostic_error_message(checker->diag, "E4007", msg,
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        register_func(checker, stmt->data.func_decl.name, ptypes, parameter_count, rtypes, return_count);
-        module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
-                        stmt->data.func_decl.is_private);
+        DeclEntry *entry = module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
+                                           stmt->data.func_decl.is_private);
+        register_func(checker, decl_registry_key(checker, entry, stmt->data.func_decl.name),
+                      ptypes, parameter_count, rtypes, return_count);
         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
         checker->funcs[checker->func_count - 1].is_discard = stmt->data.func_decl.is_discard;
         checker->funcs[checker->func_count - 1].is_deprecated = stmt->data.func_decl.is_deprecated;
