@@ -71,11 +71,17 @@ fail() { printf "  ${RED}FAIL${NC}  %s %s\n" "$1" "$2"; ((++FAIL_COUNT)); }
 # produces, so one mistake reported twice does not slip by.
 run_fail_test() {
     local label="$1" entry="$2" marker_file="$3"
-    local expected_error expected_count output actual_count
+    local expected_error expected_count output actual_count forbidden
     expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$marker_file" \
         | grep -oE '[EPW][0-9]+' | head -1)
     expected_count=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error-count:[[:space:]]*[0-9]+' "$marker_file" \
         | grep -oE '[0-9]+' | head -1)
+    # expect-not: <text> — the diagnostics must not contain <text>. The guard
+    # below catches a module-mangled type name (mod_Type) on its shape alone;
+    # a mangled function name (mod_func) is indistinguishable from a plain
+    # snake_case name, so a test that pins one names it here.
+    forbidden=$(grep -E '^[[:space:]]*//[[:space:]]*expect-not:' "$marker_file" \
+        | sed -E 's|^[[:space:]]*//[[:space:]]*expect-not:[[:space:]]*||' | head -1)
     if [ -n "$expected_error" ]; then
         output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$entry" 2>&1) || true
         actual_count=$(echo "$output" | grep -cE '^error\[' || true)
@@ -83,7 +89,11 @@ run_fail_test() {
             fail "$label" "(expected $expected_count error(s), got $actual_count)"
         elif echo "$output" | grep -q "error\[$expected_error\]" \
             && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
-            pass "$label"
+            if [ -n "$forbidden" ] && echo "$output" | grep -qF -- "$forbidden"; then
+                fail "$label" "(output contains '$forbidden')"
+            else
+                pass "$label"
+            fi
         else
             fail "$label" "(expected $expected_error)"
         fi

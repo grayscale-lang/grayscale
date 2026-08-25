@@ -900,11 +900,15 @@ static FuncSig *find_module_func(TypeChecker *checker, const char *mod,
 /* The name the programmer wrote, never the module-prefixed internal one.
  * FuncSig.name is the flattened lookup key (e.g. "mod_size" for `size`
  * imported from module `mod`); the user-facing name lives on the decl.
- * Diagnostics and namespace-collision checks must use this, not .name. */
+ * Diagnostics and namespace-collision checks must use this, not .name.
+ *
+ * The declaration node's own .name is the name as written — merging an
+ * import no longer rewrites it, so original_name stays NULL and is only a
+ * fallback for whatever still sets it. Reading .name is what keeps a
+ * mangled key out of user-facing text. */
 static const char *func_display_name(const FuncSig *fs) {
-    if (fs && fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
-        fs->decl->data.func_decl.original_name) {
-        return fs->decl->data.func_decl.original_name;
+    if (fs && fs->decl && fs->decl->kind == NODE_FUNC_DECL) {
+        return FUNC_DISPLAY_NAME(fs->decl);
     }
     return fs ? fs->name : "";
 }

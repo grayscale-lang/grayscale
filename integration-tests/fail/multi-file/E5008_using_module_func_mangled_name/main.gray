@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5008 - wrong argument count calling a module function
+ * unqualified. Expected: the message names the function as it was written,
+ * 'add_two', never the module-prefixed lookup key 'lib_add_two'.
+ */
+
+// expect-error: E5008
+// expect-not: lib_add_two
+
+import and use "./lib.gray"
+
+do main() {
+    mut sum = add_two(1)
+    println("${sum}")
+}
