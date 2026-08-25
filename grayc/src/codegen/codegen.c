@@ -114,6 +114,18 @@ static void codegen_enter_node(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* Is `mod` a module this program imported or used? Only the stdlib reaches
+ * this now — a user module is answered by the symbol table, which also gives
+ * the declaration's name. The two lists differ only in that `using` may hold
+ * an alias, so both are consulted. */
+static bool codegen_module_imported(CodeGen *codegen, const char *mod) {
+    for (int i = 0; i < codegen->using_module_count; i++)
+        if (strcmp(codegen->using_modules[i], mod) == 0) return true;
+    for (int i = 0; i < codegen->imported_module_count; i++)
+        if (strcmp(codegen->imported_modules[i], mod) == 0) return true;
+    return false;
+}
+
 /* The scope emission resolves names in. */
 static ResolveScope codegen_scope(CodeGen *codegen) {
     ResolveScope scope;
@@ -2722,16 +2734,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 emit(codegen, module_mangle(codegen->modules, entry));
                 return;
             }
-            bool is_module = false;
-            for (int ui = 0; ui < codegen->using_module_count; ui++) {
-                if (strcmp(codegen->using_modules[ui], mod) == 0) { is_module = true; break; }
-            }
-            if (!is_module) {
-                for (int import_index = 0; import_index < codegen->imported_module_count; import_index++) {
-                    if (strcmp(codegen->imported_modules[import_index], mod) == 0) { is_module = true; break; }
-                }
-            }
-            if (is_module) {
+            if (codegen_module_imported(codegen, mod)) {
                 emit_formatted(codegen, "%s_%s", resolve_alias(codegen, mod), mem);
                 return;
             }
