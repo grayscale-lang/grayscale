@@ -11079,6 +11079,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     for (int i = 0; i < codegen->func_count; i++) {
         AstNode *stmt = codegen->all_funcs[i];
         if (stmt->kind != NODE_FUNC_DECL) continue;
+        /* A parameter or return type written bare resolves against the module
+         * the function was declared in, so the forward declaration has to be
+         * emitted in that module — otherwise it disagrees with the definition
+         * whenever two modules declare the same type name. */
+        codegen_enter_node(codegen, stmt);
         if (strcmp(stmt->data.func_decl.name, "main") == 0) {
             emit(codegen, "static void gray_fn_main(void);\n");
             continue;
