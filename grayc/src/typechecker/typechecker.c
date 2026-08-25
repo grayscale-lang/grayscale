@@ -12106,7 +12106,7 @@ static DeclEntry *module_register(TypeChecker *checker, AstNode *stmt,
     ModuleScope *scope = module_table_find(checker->modules, module);
     if (!scope || !source_name) return NULL;
     return module_scope_define(checker->modules, scope, kind, source_name,
-                               stmt, NULL, NODE_FILE(checker, stmt),
+                               stmt, NODE_FILE(checker, stmt),
                                stmt->token.line,
                                is_private ? VIS_PRIVATE : VIS_PUBLIC);
 }

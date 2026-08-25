@@ -45,7 +45,6 @@ typedef struct {
     const char *module_name;  /* owning module; back-pointer for mangling */
     bool module_is_entry;     /* owning module is the entry file: emits unprefixed */
     AstNode *ast_node;        /* original, unrenamed declaration node */
-    GrayType *gray_type;      /* resolved type, or NULL until types are built */
     const char *origin_file;
     int origin_line;
     Visibility visibility;
@@ -150,7 +149,7 @@ ModuleScope *module_table_find(ModuleTable *table, const char *module_name);
  * existing entry (unmodified) if `name` is already declared in that module. */
 DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
                                DeclKind kind, const char *name,
-                               AstNode *ast_node, GrayType *gray_type,
+                               AstNode *ast_node,
                                const char *origin_file, int origin_line,
                                Visibility visibility);
 

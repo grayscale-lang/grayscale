@@ -44,7 +44,7 @@ static const char *module_file(const char *module) {
 static DeclEntry *define(ModuleTable *table, const char *module,
                          const char *name, Visibility vis) {
     ModuleScope *scope = module_table_find(table, module);
-    return module_scope_define(table, scope, DECL_FUNC, name, NULL, NULL,
+    return module_scope_define(table, scope, DECL_FUNC, name, NULL,
                                module_file(module), 1, vis);
 }
 
@@ -174,9 +174,9 @@ static void test_node_index(void) {
     AstNode fake_a;
     AstNode fake_b;
     ModuleScope *lib = module_table_find(table, "lib");
-    DeclEntry *a = module_scope_define(table, lib, DECL_FUNC, "a", &fake_a, NULL,
+    DeclEntry *a = module_scope_define(table, lib, DECL_FUNC, "a", &fake_a,
                                        "lib.gray", 1, VIS_PUBLIC);
-    DeclEntry *b = module_scope_define(table, lib, DECL_FUNC, "b", &fake_b, NULL,
+    DeclEntry *b = module_scope_define(table, lib, DECL_FUNC, "b", &fake_b,
                                        "lib.gray", 2, VIS_PUBLIC);
 
     ASSERT(module_table_entry_for_node(table, &fake_a) == a);
@@ -196,7 +196,7 @@ static void test_node_index_growth(void) {
     char name[32];
     for (int i = 0; i < 300; i++) {
         snprintf(name, sizeof(name), "n%d", i);
-        module_scope_define(table, lib, DECL_FUNC, name, &nodes[i], NULL, "lib.gray", i, VIS_PUBLIC);
+        module_scope_define(table, lib, DECL_FUNC, name, &nodes[i], "lib.gray", i, VIS_PUBLIC);
     }
     for (int i = 0; i < 300; i++) {
         snprintf(name, sizeof(name), "n%d", i);
@@ -275,7 +275,7 @@ static void test_private_is_file_scoped_within_a_module(void) {
     module_table_map_file(table, "pkg/a.gray", "pkg", false);
     module_table_map_file(table, "pkg/b.gray", "pkg", false);
     ModuleScope *pkg = module_table_find(table, "pkg");
-    module_scope_define(table, pkg, DECL_FUNC, "secret", NULL, NULL,
+    module_scope_define(table, pkg, DECL_FUNC, "secret", NULL,
                         "pkg/a.gray", 1, VIS_PRIVATE);
 
     ResolveScope same = scope_of("pkg", "pkg/a.gray", NULL, 0);
@@ -390,10 +390,10 @@ static ModuleTable *typed_table(void) {
     module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "lib.gray", "lib", false);
     ModuleScope *lib = module_table_find(table, "lib");
-    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, NULL, module_file("lib"), 1, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, NULL, module_file("lib"), 2, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, NULL, module_file("lib"), 3, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, NULL, module_file("lib"), 4, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, module_file("lib"), 1, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, module_file("lib"), 2, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, module_file("lib"), 3, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, module_file("lib"), 4, VIS_PUBLIC);
     return table;
 }
 

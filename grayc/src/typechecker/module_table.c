@@ -210,7 +210,7 @@ DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
 
 DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
                                DeclKind kind, const char *name,
-                               AstNode *ast_node, GrayType *gray_type,
+                               AstNode *ast_node,
                                const char *origin_file, int origin_line,
                                Visibility visibility) {
     DeclEntry *existing = module_scope_lookup(scope, name);
@@ -224,7 +224,6 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     entry->module_name = scope->name;
     entry->module_is_entry = scope->is_entry;
     entry->ast_node = ast_node;
-    entry->gray_type = gray_type;
     entry->origin_file = origin_file;
     entry->origin_line = origin_line;
     entry->visibility = visibility;
