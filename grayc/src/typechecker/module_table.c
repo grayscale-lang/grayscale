@@ -200,6 +200,51 @@ DeclEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node) 
     }
 }
 
+/* --- Mangled name -> entry --- */
+
+static void mangled_index_add(ModuleTable *table, DeclEntry *entry) {
+    char buf[MSG_BUF_SIZE];
+    const char *mangled = module_mangle_into(entry, buf, sizeof(buf));
+    if (!mangled) return;
+    if (hash_find(table->mangled_index, table->mangled_hash_cap, mangled) >= 0) return;
+
+    Arena *arena = table->arena;
+    if (table->mangled_count >= table->mangled_cap) {
+        table->mangled_cap = GROW_NEXT_CAP(table->mangled_cap);
+        ARENA_GROW_TO(arena, table->mangled_entries, table->mangled_count, table->mangled_cap);
+    }
+    int new_count = table->mangled_count + 1;
+    if (!table->mangled_index || new_count * 2 > table->mangled_hash_cap) {
+        table->mangled_hash_cap = hash_target_cap(table->mangled_hash_cap, new_count);
+        table->mangled_index = hash_alloc(arena, table->mangled_hash_cap);
+        for (int i = 0; i < table->mangled_count; i++) {
+            char rebuf[MSG_BUF_SIZE];
+            hash_place(table->mangled_index, table->mangled_hash_cap,
+                       arena_copy_string(arena,
+                           module_mangle_into(table->mangled_entries[i], rebuf, sizeof(rebuf))), i);
+        }
+    }
+    table->mangled_entries[table->mangled_count] = entry;
+    hash_place(table->mangled_index, table->mangled_hash_cap,
+               arena_copy_string(arena, mangled), table->mangled_count);
+    table->mangled_count++;
+}
+
+DeclEntry *module_table_find_mangled(ModuleTable *table, const char *mangled) {
+    if (!table || !mangled) return NULL;
+    int idx = hash_find(table->mangled_index, table->mangled_hash_cap, mangled);
+    return idx < 0 ? NULL : table->mangled_entries[idx];
+}
+
+DeclEntry *module_table_declare_synthetic(ModuleTable *table, const char *module_name,
+                                          DeclKind kind, const char *name,
+                                          const char *origin_file) {
+    if (!table) return NULL;
+    ModuleScope *scope = module_table_scope(table, module_name ? module_name : MODULE_ENTRY_NAME,
+                                            !module_name || !*module_name);
+    return module_scope_define(table, scope, kind, name, NULL, origin_file, 0, VIS_PUBLIC);
+}
+
 /* --- Module scopes --- */
 
 DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name) {
@@ -227,6 +272,7 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     entry->origin_file = origin_file;
     entry->origin_line = origin_line;
     entry->visibility = visibility;
+    entry->registry_index = -1;
 
     ARENA_GROW(arena, scope->entries, scope->count, scope->cap);
 
@@ -242,6 +288,7 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     hash_place(scope->hash, scope->hash_cap, entry->name, scope->count);
     scope->count++;
     node_index_add(table, ast_node, entry);
+    mangled_index_add(table, entry);
     return entry;
 }
 

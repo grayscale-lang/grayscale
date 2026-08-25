@@ -48,6 +48,11 @@ typedef struct {
     const char *origin_file;
     int origin_line;
     Visibility visibility;
+    /* Where this declaration's details live in the registry for its kind
+     * (struct fields, function signature, enum variants), or -1 before they
+     * are registered. Resolving a name yields the entry, and the entry yields
+     * the details directly — no second lookup keyed by a mangled string. */
+    int registry_index;
 } DeclEntry;
 
 typedef struct {
@@ -96,6 +101,14 @@ typedef struct {
     ModuleNodeEntry *node_index;
     int node_count;
     int node_hash_cap;
+
+    /* Mangled C name -> entry. One index replacing the per-registry sorted
+     * name arrays each phase used to keep. */
+    ModuleHashEntry *mangled_index;
+    DeclEntry **mangled_entries;
+    int mangled_count;
+    int mangled_cap;
+    int mangled_hash_cap;
 
     const char **file_paths;
     const char **file_modules;
@@ -160,6 +173,17 @@ DeclEntry *module_scope_lookup(ModuleScope *scope, const char *name);
  * belongs to is a property of the declaration, so a phase holding the node
  * needs no name and no file of its own to recover it. */
 DeclEntry *module_table_entry_for_node(ModuleTable *table, const AstNode *node);
+
+/* The entry whose mangled C name is `mangled`, or NULL. For lookups that
+ * already hold the emitted name rather than the name as written. */
+DeclEntry *module_table_find_mangled(ModuleTable *table, const char *mangled);
+
+/* Declare something that has no source declaration node of its own — a
+ * struct function, namespaced under its struct, or a compiler-provided type.
+ * It joins the mangled index so it resolves like anything else. */
+DeclEntry *module_table_declare_synthetic(ModuleTable *table, const char *module_name,
+                                          DeclKind kind, const char *name,
+                                          const char *origin_file);
 
 void module_table_add_alias(ModuleTable *table, const char *alias,
                             const char *module_name);

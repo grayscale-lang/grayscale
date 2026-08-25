@@ -210,6 +210,7 @@ static const char *checker_resolve_decl_into(TypeChecker *checker, const char *w
                                              char *buf, size_t buflen);
 static void checker_refresh_using(TypeChecker *checker);
 static ResolveScope checker_scope(TypeChecker *checker);
+static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written);
 
 /* True if the expression is an assignment target (something with a stable
  * address): a variable, a field of an assignment target, an index into an
@@ -312,11 +313,33 @@ static bool path_contains_map_index(TypeChecker *checker, AstNode *e) {
 
 /* --- Struct info helpers --- */
 
+/* Is this type name already taken by a different declaration? The registries
+ * fill one kind at a time, so a struct/enum collision is visible in the
+ * symbol table before either registry can see both halves of it. */
+static bool type_name_already_declared(TypeChecker *checker, const char *name,
+                                       const AstNode *stmt) {
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    return entry && entry->ast_node && entry->ast_node != stmt &&
+           (entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM ||
+            entry->kind == DECL_ALIAS);
+}
+
+/* Anything registered without a source declaration of its own — a compiler
+ * provided type, a stdlib opaque type — still needs an entry, so that every
+ * lookup goes through the symbol table and none through a name array. */
+static void adopt_registration(TypeChecker *checker, DeclKind kind,
+                               const char *name, int index) {
+    if (!checker->modules || module_table_find_mangled(checker->modules, name)) return;
+    DeclEntry *entry = module_table_declare_synthetic(checker->modules, NULL, kind,
+                                                      name, checker->file);
+    if (entry) entry->registry_index = index;
+}
+
 static void register_struct(TypeChecker *checker, const char *name,
     const char *display_name,
     const char **field_names, GrayType **field_types, int field_count) {
     GROW_ARRAY(checker->structs, checker->struct_count, checker->struct_cap);
-    checker->structs_sorted_built = false;
+    adopt_registration(checker, DECL_STRUCT, name, checker->struct_count);
     StructInfo *si = &checker->structs[checker->struct_count++];
     si->struct_name = name;
     si->display_name = display_name ? display_name : name;
@@ -327,10 +350,6 @@ static void register_struct(TypeChecker *checker, const char *name,
     si->deprecated_message = NULL;
 }
 
-static int struct_info_name_compare(const void *a, const void *b) {
-    return strcmp((*(const StructInfo *const *)a)->struct_name,
-                  (*(const StructInfo *const *)b)->struct_name);
-}
 
 /* The lookup helpers below take a name as written — a bare `Foo` inside its
  * own module, a `using`'d `Foo`, or a qualified `lib.Foo` — and resolve it to
@@ -339,74 +358,32 @@ static int struct_info_name_compare(const void *a, const void *b) {
  * the parser. Resolution is idempotent: a name that names no declaration,
  * an already-mangled key included, comes back unchanged. */
 static StructInfo *find_struct(TypeChecker *checker, const char *name) {
-    char resolved[MSG_BUF_SIZE];
-    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
-    if (checker->struct_count == 0) return NULL;
-    if (!checker->structs_sorted_built) {
-        checker->structs_sorted = xrealloc(checker->structs_sorted,
-            sizeof(StructInfo *) * (size_t)checker->struct_count);
-        for (int i = 0; i < checker->struct_count; i++)
-            checker->structs_sorted[i] = &checker->structs[i];
-        qsort(checker->structs_sorted, (size_t)checker->struct_count,
-              sizeof(StructInfo *), struct_info_name_compare);
-        checker->structs_sorted_built = true;
-    }
-    StructInfo key = { .struct_name = name };
-    StructInfo *key_ptr = &key;
-    StructInfo **hit = bsearch(&key_ptr, checker->structs_sorted,
-        (size_t)checker->struct_count, sizeof(StructInfo *), struct_info_name_compare);
-    return hit ? *hit : NULL;
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    if (entry && entry->kind == DECL_STRUCT && entry->registry_index >= 0 &&
+        entry->registry_index < checker->struct_count)
+        return &checker->structs[entry->registry_index];
+    return NULL;
 }
 
 static bool is_struct_name(TypeChecker *checker, const char *name) {
     return find_struct(checker, name) != NULL;
 }
 
-static int enum_name_string_compare(const void *a, const void *b) {
-    return strcmp(*(const char *const *)a, *(const char *const *)b);
-}
 
-static void enum_ensure_sorted(TypeChecker *checker) {
-    if (checker->enum_names_sorted_built) return;
-    checker->enum_names_sorted = xrealloc(checker->enum_names_sorted,
-        sizeof(const char *) * (size_t)checker->enum_count);
-    checker->enum_names_sorted_indices = xrealloc(checker->enum_names_sorted_indices,
-        sizeof(int) * (size_t)checker->enum_count);
-    for (int i = 0; i < checker->enum_count; i++)
-        checker->enum_names_sorted[i] = checker->enum_names[i];
-    qsort(checker->enum_names_sorted, (size_t)checker->enum_count,
-          sizeof(const char *), enum_name_string_compare);
-    /* Build reverse mapping from sorted position to original index */
-    for (int sorted_index = 0; sorted_index < checker->enum_count; sorted_index++) {
-        for (int i = 0; i < checker->enum_count; i++) {
-            if (checker->enum_names[i] == checker->enum_names_sorted[sorted_index]) {
-                checker->enum_names_sorted_indices[sorted_index] = i;
-                break;
-            }
-        }
-    }
-    checker->enum_names_sorted_built = true;
-}
 
 /* Returns the original index of the named enum via O(log n) bsearch, or -1. */
 static int find_enum_index(TypeChecker *checker, const char *name) {
-    char resolved[MSG_BUF_SIZE];
-    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
-    if (checker->enum_count == 0) return -1;
-    enum_ensure_sorted(checker);
-    const char **hit = bsearch(&name, checker->enum_names_sorted,
-        (size_t)checker->enum_count, sizeof(const char *), enum_name_string_compare);
-    if (!hit) return -1;
-    return checker->enum_names_sorted_indices[hit - checker->enum_names_sorted];
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    if (entry && entry->kind == DECL_ENUM && entry->registry_index >= 0 &&
+        entry->registry_index < checker->enum_count)
+        return entry->registry_index;
+    return -1;
 }
 
 static bool is_enum_name(TypeChecker *checker, const char *name) {
-    if (checker->enum_count == 0) return false;
-    char resolved[MSG_BUF_SIZE];
-    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
-    enum_ensure_sorted(checker);
-    return bsearch(&name, checker->enum_names_sorted, (size_t)checker->enum_count,
-                   sizeof(const char *), enum_name_string_compare) != NULL;
+    return find_enum_index(checker, name) >= 0;
 }
 
 /* Best-effort unqualified form of a type name that has no registry entry
@@ -666,7 +643,7 @@ static void register_func(TypeChecker *checker, const char *name,
     GrayType **param_types, int param_count,
     GrayType **return_types, int return_count) {
     GROW_ARRAY(checker->funcs, checker->func_count, checker->func_cap);
-    checker->funcs_sorted_built = false;
+    adopt_registration(checker, DECL_FUNC, name, checker->func_count);
     FuncSig *fs = &checker->funcs[checker->func_count++];
     fs->name = name;
     fs->param_types = param_types;
@@ -875,29 +852,14 @@ static bool record_instantiation(FuncSig *fs, const char *concrete,
     return true;
 }
 
-static int function_signature_name_compare(const void *a, const void *b) {
-    return strcmp((*(const FuncSig *const *)a)->name,
-                  (*(const FuncSig *const *)b)->name);
-}
 
 static FuncSig *find_func(TypeChecker *checker, const char *name) {
-    if (checker->func_count == 0) return NULL;
-    char resolved[MSG_BUF_SIZE];
-    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
-    if (!checker->funcs_sorted_built) {
-        checker->funcs_sorted = xrealloc(checker->funcs_sorted,
-            sizeof(FuncSig *) * (size_t)checker->func_count);
-        for (int i = 0; i < checker->func_count; i++)
-            checker->funcs_sorted[i] = &checker->funcs[i];
-        qsort(checker->funcs_sorted, (size_t)checker->func_count,
-              sizeof(FuncSig *), function_signature_name_compare);
-        checker->funcs_sorted_built = true;
-    }
-    FuncSig key = { .name = name };
-    FuncSig *key_ptr = &key;
-    FuncSig **hit = bsearch(&key_ptr, checker->funcs_sorted,
-        (size_t)checker->func_count, sizeof(FuncSig *), function_signature_name_compare);
-    return hit ? *hit : NULL;
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    if (!entry) entry = module_table_find_mangled(checker->modules, name);
+    if (entry && entry->kind == DECL_FUNC && entry->registry_index >= 0 &&
+        entry->registry_index < checker->func_count)
+        return &checker->funcs[entry->registry_index];
+    return NULL;
 }
 
 /* The flat-registry key for the member `name` of module `mod`, written into
@@ -2094,6 +2056,7 @@ static void register_enum(TypeChecker *checker, const char *name,
     const char **values, int value_count,
     const char ***payload_types, int *payload_counts, bool is_tagged,
     bool is_flags, bool is_deprecated, const char *deprecated_message) {
+    adopt_registration(checker, DECL_ENUM, name, checker->enum_count);
     if (checker->enum_count >= checker->enum_cap) {
         checker->enum_cap = checker->enum_cap ? checker->enum_cap * 2 : 8;
         checker->enum_names = xrealloc(checker->enum_names, sizeof(const char *) * checker->enum_cap);
@@ -2108,7 +2071,6 @@ static void register_enum(TypeChecker *checker, const char *name,
         checker->enum_is_deprecated = xrealloc(checker->enum_is_deprecated, sizeof(bool) * checker->enum_cap);
         checker->enum_deprecated_messages = xrealloc(checker->enum_deprecated_messages, sizeof(const char *) * checker->enum_cap);
     }
-    checker->enum_names_sorted_built = false;
     checker->enum_names[checker->enum_count] = name;
     checker->enum_display_names[checker->enum_count] = display_name ? display_name : name;
     checker->enum_is_string[checker->enum_count] = is_string;
@@ -2168,6 +2130,13 @@ static void checker_refresh_using(TypeChecker *checker) {
     }
     checker->using_visible_file = checker->current_check_file;
     checker->using_visible_stamp = checker->using_module_count;
+}
+
+/* The declaration a written name refers to, or NULL. */
+static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written) {
+    if (!written || !checker->modules) return NULL;
+    ResolveScope scope = checker_scope(checker);
+    return module_resolve_written(checker->modules, &scope, written);
 }
 
 static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
@@ -12164,7 +12133,8 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             }
         }
         /* E4007: collision with existing struct/enum type */
-        if (is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
+        if (type_name_already_declared(checker, aname, stmt) ||
+            is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
             char *msg = typechecker_format(checker,
                 "a type named '%s' is already declared", aname);
             diagnostic_error_message(checker->diag, "E4007", msg,
@@ -12327,7 +12297,8 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             }
         }
         /* E4007: duplicate enum name */
-        if (is_enum_name(checker, stmt->data.enum_decl.name) ||
+        if (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
+            is_enum_name(checker, stmt->data.enum_decl.name) ||
             is_struct_name(checker, stmt->data.enum_decl.name)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
@@ -12370,6 +12341,11 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+        /* A name declared twice in one module resolves to the first
+         * declaration; the duplicate must not repoint it at its own
+         * registry slot, or the collision it is about to be reported
+         * for would go unnoticed. */
+        if (entry && entry->kind == DECL_ENUM) entry->registry_index = checker->enum_count;
         register_enum(checker, decl_registry_key(checker, entry, stmt->data.enum_decl.name),
             ENUM_DISPLAY_NAME(stmt), is_str, vnames, variant_count, pt, payload_counts, has_tagged, stmt->data.enum_decl.is_flags, stmt->data.enum_decl.is_deprecated, stmt->data.enum_decl.deprecated_message);
     }
@@ -12496,7 +12472,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         /* E4007: duplicate struct name */
-        if (is_struct_name(checker, stmt->data.struct_decl.name) ||
+        if (type_name_already_declared(checker, stmt->data.struct_decl.name, stmt) ||
+            is_struct_name(checker, stmt->data.struct_decl.name) ||
             is_enum_name(checker, stmt->data.struct_decl.name)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
@@ -12506,6 +12483,11 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
         DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+        /* A name declared twice in one module resolves to the first
+         * declaration; the duplicate must not repoint it at its own
+         * registry slot, or the collision it is about to be reported
+         * for would go unnoticed. */
+        if (entry && entry->kind == DECL_STRUCT) entry->registry_index = checker->struct_count;
         register_struct(checker, decl_registry_key(checker, entry, stmt->data.struct_decl.name),
                         STRUCT_DISPLAY_NAME(stmt), fnames, ftypes, field_count);
         checker->structs[checker->struct_count - 1].is_deprecated = stmt->data.struct_decl.is_deprecated;
@@ -12583,11 +12565,20 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
              * struct is namespaced under its module — so the key is built
              * from the struct's registry spelling, not from the name as
              * written in the declaration. */
-            snprintf(buffer, sizeof(buffer), "%s_%s",
-                decl_registry_key(checker,
-                    module_table_entry_for_node(checker->modules, stmt),
-                    stmt->data.struct_decl.name),
-                fn->data.func_decl.name);
+            {
+                DeclEntry *sdecl = module_table_entry_for_node(checker->modules, stmt);
+                snprintf(buffer, sizeof(buffer), "%s_%s",
+                    sdecl ? sdecl->name : stmt->data.struct_decl.name,
+                    fn->data.func_decl.name);
+                DeclEntry *fentry = module_table_declare_synthetic(checker->modules,
+                    sdecl ? sdecl->module_name : NULL, DECL_FUNC,
+                    arena_copy_string(checker->arena, buffer),
+                    NODE_FILE(checker, stmt));
+                if (fentry) fentry->registry_index = checker->func_count;
+                snprintf(buffer, sizeof(buffer), "%s_%s",
+                    decl_registry_key(checker, sdecl, stmt->data.struct_decl.name),
+                    fn->data.func_decl.name);
+            }
             const char *prefixed = arena_copy_string(checker->arena, buffer);
             register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
@@ -12658,6 +12649,11 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         }
         DeclEntry *entry = module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
                                            stmt->data.func_decl.is_private);
+        /* A name declared twice in one module resolves to the first
+         * declaration; the duplicate must not repoint it at its own
+         * registry slot, or the collision it is about to be reported
+         * for would go unnoticed. */
+        if (entry && entry->kind == DECL_FUNC) entry->registry_index = checker->func_count;
         register_func(checker, decl_registry_key(checker, entry, stmt->data.func_decl.name),
                       ptypes, parameter_count, rtypes, return_count);
         checker->funcs[checker->func_count - 1].is_private = stmt->data.func_decl.is_private;
@@ -12837,10 +12833,8 @@ void typechecker_free(TypeChecker *checker) {
         free(checker->funcs[i].instantiation_calls);
     }
     free(checker->funcs);
-    free(checker->funcs_sorted);
 
     free(checker->structs);
-    free(checker->structs_sorted);
 
     free(checker->enum_names);
     free(checker->enum_display_names);
@@ -12853,8 +12847,6 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->enum_is_flags);
     free(checker->enum_is_deprecated);
     free(checker->enum_deprecated_messages);
-    free(checker->enum_names_sorted);
-    free(checker->enum_names_sorted_indices);
 
     free(checker->imported_modules);
     free(checker->import_files);
