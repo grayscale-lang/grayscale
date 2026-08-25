@@ -2132,11 +2132,23 @@ static void checker_refresh_using(TypeChecker *checker) {
     checker->using_visible_stamp = checker->using_module_count;
 }
 
+/* Resolve a reference and leave the answer on the node, so codegen reads it
+ * instead of resolving the same name again. */
+static DeclEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
+                                           const char *written);
+
 /* The declaration a written name refers to, or NULL. */
 static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written) {
     if (!written || !checker->modules) return NULL;
     ResolveScope scope = checker_scope(checker);
     return module_resolve_written(checker->modules, &scope, written);
+}
+
+static DeclEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
+                                           const char *written) {
+    DeclEntry *entry = checker_resolve_entry(checker, written);
+    if (entry && node) node->resolved_decl = entry;
+    return entry;
 }
 
 static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
@@ -6798,11 +6810,10 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     }
     typechecker_mark_type_module_used(checker, struct_name);
     {
-        char resolved[MSG_BUF_SIZE];
-        const char *key = checker_resolve_decl_into(checker, struct_name,
-                                                    resolved, sizeof(resolved));
-        if (key != struct_name)
-            struct_name = arena_copy_string(checker->arena, key);
+        DeclEntry *entry = checker_cache_resolution(checker, node, struct_name);
+        if (entry)
+            struct_name = arena_copy_string(checker->arena,
+                module_mangle(checker->modules, entry));
     }
     StructInfo *si = find_struct(checker, struct_name);
     warn_if_struct_deprecated(checker, node, si);
@@ -7258,9 +7269,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
          * that module's spelling, so a reference from inside the module has
          * to resolve the same way. */
         if (!sym) {
-            char resolved[MSG_BUF_SIZE];
-            const char *key = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
-            if (key != name) sym = scope_lookup(checker->current_scope, key);
+            DeclEntry *entry = checker_cache_resolution(checker, node, name);
+            if (entry) {
+                char key[MSG_BUF_SIZE];
+                sym = scope_lookup(checker->current_scope,
+                                   module_mangle_into(entry, key, sizeof(key)));
+            }
         }
         /* Try using-module-prefixed name if not found */
         if (!sym) {

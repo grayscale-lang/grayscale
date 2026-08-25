@@ -130,6 +130,12 @@ struct AstNode {
     NodeKind kind;
     Token token;
 
+    /* The declaration this node refers to, once the type checker has resolved
+     * it. Codegen reads it rather than resolving the name a second time.
+     * NULL on nodes that name no declaration. Opaque here: ast.h is included
+     * by the parser, which has no symbol table. */
+    struct DeclEntry_ *resolved_decl;
+
     union {
         /* NODE_LABEL */
         struct { const char *value; } label;

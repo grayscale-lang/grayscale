@@ -39,7 +39,7 @@ typedef enum {
  * written in source. Entries are allocated individually from the compiler
  * arena so a DeclEntry* cached on an AST node stays valid as the owning
  * module grows. */
-typedef struct {
+typedef struct DeclEntry_ {
     DeclKind kind;
     const char *name;         /* as written in source — never mangled */
     const char *module_name;  /* owning module; back-pointer for mangling */

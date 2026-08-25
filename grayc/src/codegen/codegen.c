@@ -152,6 +152,15 @@ static const char *codegen_resolve_decl(CodeGen *codegen, const char *written) {
     return entry ? module_mangle(codegen->modules, entry) : written;
 }
 
+/* The declaration a reference node names: the type checker's cached answer
+ * when it left one, otherwise resolved here. */
+static const char *codegen_resolve_ref(CodeGen *codegen, AstNode *node,
+                                       const char *written) {
+    if (node && node->resolved_decl)
+        return module_mangle(codegen->modules, node->resolved_decl);
+    return codegen_resolve_decl(codegen, written);
+}
+
 static const char *codegen_decl_name(CodeGen *codegen, AstNode *node,
                                      const char *fallback) {
     /* While a generic instantiation is being emitted the caller has already
@@ -1355,7 +1364,7 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
          * declarations, so they resolve to nothing and stay as written —
          * which is why a binding that merely shares a name with a sibling
          * file of its module is left alone. */
-        const char *resolved = codegen_resolve_decl(codegen, raw);
+        const char *resolved = codegen_resolve_ref(codegen, node, raw);
         emit(codegen, resolved != raw ? sanitize_name(resolved) : name);
     }
 }
@@ -1826,6 +1835,8 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     const char *sname = node->data.struct_value.name;
     if (strcmp(sname, "?") == 0 && codegen->wildcard_binding) {
         sname = codegen->wildcard_binding;
+    } else if (node->resolved_decl) {
+        sname = module_mangle(codegen->modules, node->resolved_decl);
     } else {
         codegen_enter_node(codegen, node);
         sname = codegen_resolve_type(codegen, sname);
@@ -2602,7 +2613,7 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
          * any other reference — taking a reference to a function inside its
          * own module used to emit the unmangled symbol. */
         emit(codegen, "gray_fn_");
-        emit(codegen, codegen_resolve_decl(codegen,
+        emit(codegen, codegen_resolve_ref(codegen, node->data.func_ref.function,
             node->data.func_ref.function->data.label.value));
     } else if (node->data.func_ref.function->kind == NODE_MEMBER_EXPR) {
         /* ()StructName.funcName → gray_fn_StructName_funcName */
