@@ -13339,14 +13339,15 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             strcmp(fs->name, "main") != 0 &&
             !fs->is_private &&
             !(fs->name[0] >= 'A' && fs->name[0] <= 'Z' && strchr(fs->name, '_'))) {
-            const char *display = (fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
-                fs->decl->data.func_decl.original_name) ?
-                fs->decl->data.func_decl.original_name : fs->name;
+            const char *display = func_display_name(fs);
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "function '%s' is declared but never called", display);
+            /* def_line numbers the file the function was declared in, which
+             * is not the entry file when the function came from an import. */
             diagnostic_warning_message(checker->diag, "W1003", msg,
-                checker->file, fs->def_line, 1, 0);
+                fs->decl ? NODE_FILE(checker, fs->decl) : checker->file,
+                fs->def_line, 1, 0);
         }
     }
 }
