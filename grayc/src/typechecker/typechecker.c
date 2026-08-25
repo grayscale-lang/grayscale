@@ -206,6 +206,9 @@ static const char *operator_to_string(TokenType op) {
 /* Forward declarations for type-name checks used by is_assignment_target */
 static bool is_struct_name(TypeChecker *checker, const char *name);
 static bool is_enum_name(TypeChecker *checker, const char *name);
+static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
+                                             char *buf, size_t buflen);
+static void checker_refresh_using(TypeChecker *checker);
 
 /* True if the expression is an assignment target (something with a stable
  * address): a variable, a field of an assignment target, an index into an
@@ -328,7 +331,15 @@ static int struct_info_name_compare(const void *a, const void *b) {
                   (*(const StructInfo *const *)b)->struct_name);
 }
 
+/* The lookup helpers below take a name as written — a bare `Foo` inside its
+ * own module, a `using`'d `Foo`, or a qualified `lib.Foo` — and resolve it to
+ * the registry spelling before looking it up. Doing it here rather than at
+ * each call site is what lets a reference stay as written all the way from
+ * the parser. Resolution is idempotent: a name that names no declaration,
+ * an already-mangled key included, comes back unchanged. */
 static StructInfo *find_struct(TypeChecker *checker, const char *name) {
+    char resolved[MSG_BUF_SIZE];
+    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
     if (checker->struct_count == 0) return NULL;
     if (!checker->structs_sorted_built) {
         checker->structs_sorted = xrealloc(checker->structs_sorted,
@@ -378,6 +389,8 @@ static void enum_ensure_sorted(TypeChecker *checker) {
 
 /* Returns the original index of the named enum via O(log n) bsearch, or -1. */
 static int find_enum_index(TypeChecker *checker, const char *name) {
+    char resolved[MSG_BUF_SIZE];
+    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
     if (checker->enum_count == 0) return -1;
     enum_ensure_sorted(checker);
     const char **hit = bsearch(&name, checker->enum_names_sorted,
@@ -388,6 +401,8 @@ static int find_enum_index(TypeChecker *checker, const char *name) {
 
 static bool is_enum_name(TypeChecker *checker, const char *name) {
     if (checker->enum_count == 0) return false;
+    char resolved[MSG_BUF_SIZE];
+    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
     enum_ensure_sorted(checker);
     return bsearch(&name, checker->enum_names_sorted, (size_t)checker->enum_count,
                    sizeof(const char *), enum_name_string_compare) != NULL;
@@ -401,6 +416,10 @@ static bool is_enum_name(TypeChecker *checker, const char *name) {
  * in typechecker_type_from_name(). */
 static const char *unqualified_display_name(const char *name) {
     if (!name) return name;
+    /* As written: mod.Type. */
+    const char *dot = strchr(name, '.');
+    if (dot && dot[1] >= 'A' && dot[1] <= 'Z') return dot + 1;
+    /* As mangled: mod_Type. */
     const char *us = strchr(name, '_');
     if (us && us[1] >= 'A' && us[1] <= 'Z') return us + 1;
     return name;
@@ -420,16 +439,18 @@ static const char *enum_display_name(TypeChecker *checker, const char *name) {
     return checker->enum_display_names[i] ? checker->enum_display_names[i] : checker->enum_names[i];
 }
 
-/* Compare two type names by their user-facing display names, so that
- * module-prefixed internal names (e.g. lib_Foo vs objects_Foo) match
- * when they refer to the same user-defined type. */
+/* Type identity is the resolved declaration, not the spelling of the
+ * reference. Both names arrive already mapped onto their registry spelling,
+ * so lib_Foo and objects_Foo are the different types they are — comparing
+ * display names made every module's `Foo` the same `Foo`, and let one
+ * module's struct be passed where another's was expected. */
 static bool typechecker_same_struct_type(TypeChecker *checker, const char *a, const char *b) {
-    if (a == b || strcmp(a, b) == 0) return true;
-    return strcmp(struct_display_name(checker, a), struct_display_name(checker, b)) == 0;
+    (void)checker;
+    return a == b || strcmp(a, b) == 0;
 }
 static bool typechecker_same_enum_type(TypeChecker *checker, const char *a, const char *b) {
-    if (a == b || strcmp(a, b) == 0) return true;
-    return strcmp(enum_display_name(checker, a), enum_display_name(checker, b)) == 0;
+    (void)checker;
+    return a == b || strcmp(a, b) == 0;
 }
 /* Compare array element type names accounting for module-prefixed struct
  * aliases (e.g. "Item" vs "utils_Item" should match). */
@@ -860,6 +881,8 @@ static int function_signature_name_compare(const void *a, const void *b) {
 
 static FuncSig *find_func(TypeChecker *checker, const char *name) {
     if (checker->func_count == 0) return NULL;
+    char resolved[MSG_BUF_SIZE];
+    name = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
     if (!checker->funcs_sorted_built) {
         checker->funcs_sorted = xrealloc(checker->funcs_sorted,
             sizeof(FuncSig *) * (size_t)checker->func_count);
@@ -2113,7 +2136,70 @@ static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *ba
 
 /* Resolve a type name, returning TK_ENUM for known enum names instead of
  * the default TK_STRUCT that type_from_name() produces for uppercase names. */
+/* Refresh the visible `using` list for the current file. */
+static void checker_refresh_using(TypeChecker *checker) {
+    if (checker->using_visible_file == checker->current_check_file &&
+        checker->using_visible_stamp == checker->using_module_count)
+        return;
+    checker->using_visible_count = 0;
+    for (int i = 0; i < checker->using_module_count; i++) {
+        if (!using_module_accessible(checker, i)) continue;
+        if (checker->using_visible_count >= checker->using_visible_cap) {
+            checker->using_visible_cap = GROW_NEXT_CAP(checker->using_visible_cap);
+            checker->using_visible = xrealloc(checker->using_visible,
+                sizeof(const char *) * (size_t)checker->using_visible_cap);
+        }
+        checker->using_visible[checker->using_visible_count++] = checker->using_modules[i];
+    }
+    checker->using_visible_file = checker->current_check_file;
+    checker->using_visible_stamp = checker->using_module_count;
+}
+
+static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
+                                             char *buf, size_t buflen) {
+    if (!written || !checker->modules) return written;
+    checker_refresh_using(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules,
+        module_table_module_for_file(checker->modules, checker->current_check_file),
+        checker->using_visible, checker->using_visible_count, written);
+    return entry ? module_mangle_into(entry, buf, buflen) : written;
+}
+
+/* Does `name` name a module-level constant or variable visible from here?
+ * Scope symbols for those are bound during the statement walk, but a struct
+ * field's default value is checked while declarations are still being
+ * registered — so the symbol may not exist yet even though the declaration
+ * does. The symbol table is complete by then, so it is what decides. */
+static bool module_declares_const(TypeChecker *checker, const char *name) {
+    if (!checker->modules) return false;
+    checker_refresh_using(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules,
+        module_table_module_for_file(checker->modules, checker->current_check_file),
+        checker->using_visible, checker->using_visible_count, name);
+    return entry && entry->kind == DECL_CONST;
+}
+
+/* The registry spelling of an enum name, as an arena string safe to hand to
+ * type_enum(), whose result outlives the call. */
+static const char *checker_resolve_enum_key(TypeChecker *checker, const char *written) {
+    char buf[MSG_BUF_SIZE];
+    const char *key = checker_resolve_decl_into(checker, written, buf, sizeof(buf));
+    return key == written ? written : arena_copy_string(checker->arena, key);
+}
+
+/* The registry spelling of a type name as written in the current file. */
+static const char *checker_resolve_type_name(TypeChecker *checker, const char *written) {
+    if (!written || !checker->modules) return written;
+    checker_refresh_using(checker);
+    return module_resolve_type_name(checker->modules,
+        module_table_module_for_file(checker->modules, checker->current_check_file),
+        checker->using_visible, checker->using_visible_count, written);
+}
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
+    /* Map the name as written — "lib.Score", or a bare "Score" naming this
+     * module's own or a using'd declaration — onto the registry spelling. */
+    name = checker_resolve_type_name(checker, name);
     /* Resolve type aliases before any type lookup.
      * Also check private access for the original name. */
     if (name) {
@@ -2603,15 +2689,18 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
 
     /* Validate the variant exists in the enum */
     bool found = false;
-    for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
-        if (strcmp(checker->enum_names[enum_index], enum_name) == 0) {
+    {
+        /* find_enum_index resolves the name as written; a linear scan over
+         * enum_names compares against the registry spelling directly and
+         * misses a bare name inside its own module. */
+        int enum_index = find_enum_index(checker, enum_name);
+        if (enum_index >= 0) {
             for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
                 if (strcmp(checker->enum_values[enum_index][variant_index], variant) == 0) {
                     found = true;
                     break;
                 }
             }
-            break;
         }
     }
 
@@ -3551,7 +3640,11 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
         /* Struct-namespaced function call: Type.func(); look up return type */
         const char *display_mod = struct_display_name(checker, mod);
         char prefixed[MSG_BUF_SIZE];
-        snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, mfn);
+        {
+            char sk[MSG_BUF_SIZE];
+            snprintf(prefixed, sizeof(prefixed), "%s_%s",
+                checker_resolve_decl_into(checker, mod, sk, sizeof(sk)), mfn);
+        }
         FuncSig *sig = find_func(checker, prefixed);
         if (sig) {
             sig->used = true;
@@ -3811,7 +3904,11 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     return result;
                 }
                 char sfn[MSG_BUF_SIZE];
-                snprintf(sfn, sizeof(sfn), "%s_%s", struct_name, mfn);
+                {
+                    char sk[MSG_BUF_SIZE];
+                    snprintf(sfn, sizeof(sfn), "%s_%s",
+                        checker_resolve_decl_into(checker, struct_name, sk, sizeof(sk)), mfn);
+                }
                 FuncSig *ssig = find_func(checker, sfn);
                 /* Auto-dispatch instance.func() → Type.func(instance)
                  * whenever the struct function takes the struct (or a
@@ -4908,7 +5005,12 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
         AstNode *fn = node->data.call.function;
         if (fn && fn->kind == NODE_LABEL) {
             char mangled[MSG_BUF_SIZE];
-            snprintf(mangled, sizeof(mangled), "%s_%s", checker->current_struct_name, function_name);
+            {
+                char sk[MSG_BUF_SIZE];
+                snprintf(mangled, sizeof(mangled), "%s_%s",
+                    checker_resolve_decl_into(checker, checker->current_struct_name, sk, sizeof(sk)),
+                    function_name);
+            }
             sig = find_func(checker, mangled);
             if (sig) {
                 fn->data.label.value = arena_copy_string(checker->arena, mangled);
@@ -5748,6 +5850,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     check_mutable_arg(checker, arg, param_desc, fn_display);
                 }
             }
+            /* Return the signature's type directly. Falling through let a
+             * later stage of this function overwrite it, which is why an
+             * inferred binding from mod.Struct.func() came out unknown while
+             * the annotated spelling of the same call was fine. */
+            return result;
         } else {
             result = &TYPE_VOID;
         }
@@ -5776,7 +5883,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 /* E3115: plain enum, can't call */
                 const char *dname = checker->enum_display_names[eidx];
                 diagnostic_error_code_formatted(checker->diag, "E3115", NODE_FILE(checker, node), node->token.line, node->token.column, 0, dname, vname);
-                result = type_enum(ename);
+                result = type_enum(checker_resolve_enum_key(checker, ename));
                 return result;
             }
             int expected_pc = checker->enum_payload_counts[eidx][vidx];
@@ -5798,7 +5905,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
-            result = type_enum(ename);
+            result = type_enum(checker_resolve_enum_key(checker, ename));
         } else {
             result = &TYPE_UNKNOWN;
         }
@@ -6415,8 +6522,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (is_enum_name(checker, prefixed_type)) {
             /* Validate variant exists */
             bool member_found = false;
-            for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
-                if (strcmp(checker->enum_names[enum_index], prefixed_type) == 0) {
+            for (int enum_index = find_enum_index(checker, prefixed_type);
+                 enum_index >= 0; enum_index = -1) {
+                {
                     for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
                         if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
                             member_found = true;
@@ -6492,8 +6600,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             warn_if_enum_deprecated(checker, node, find_enum_index(checker, resolved_obj));
             /* Validate member exists */
             bool member_found = false;
-            for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
-                if (strcmp(checker->enum_names[enum_index], resolved_obj) == 0) {
+            for (int enum_index = find_enum_index(checker, resolved_obj);
+                 enum_index >= 0; enum_index = -1) {
+                {
                     for (int variant_index = 0; variant_index < checker->enum_value_counts[enum_index]; variant_index++) {
                         if (strcmp(checker->enum_values[enum_index][variant_index], member) == 0) {
                             member_found = true;
@@ -6506,7 +6615,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             if (!member_found) {
                 diagnostic_error_code_formatted(checker->diag, "E3047", NODE_FILE(checker, node), node->token.line, node->token.column, 0, resolved_obj, member);
             }
-            result = type_enum(resolved_obj);
+            result = type_enum(checker_resolve_enum_key(checker, resolved_obj));
             return result;
         }
 
@@ -6716,6 +6825,13 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         }
     }
     typechecker_mark_type_module_used(checker, struct_name);
+    {
+        char resolved[MSG_BUF_SIZE];
+        const char *key = checker_resolve_decl_into(checker, struct_name,
+                                                    resolved, sizeof(resolved));
+        if (key != struct_name)
+            struct_name = arena_copy_string(checker->arena, key);
+    }
     StructInfo *si = find_struct(checker, struct_name);
     warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
@@ -6908,7 +7024,12 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
                 ref_struct_name = obj->data.label.value;
                 ref_member_name = member;
                 char buffer[MSG_BUF_SIZE];
-                snprintf(buffer, sizeof(buffer), "%s_%s", obj->data.label.value, member);
+                {
+                    char sk[MSG_BUF_SIZE];
+                    snprintf(buffer, sizeof(buffer), "%s_%s",
+                        checker_resolve_decl_into(checker, obj->data.label.value, sk, sizeof(sk)),
+                        member);
+                }
                 ref_name = arena_copy_string(checker->arena, buffer);
             }
         }
@@ -7161,6 +7282,14 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
          * legitimately take type names as arguments. */
 
         Symbol *sym = scope_lookup(checker->current_scope, name);
+        /* A bare name that names a module-level declaration is bound under
+         * that module's spelling, so a reference from inside the module has
+         * to resolve the same way. */
+        if (!sym) {
+            char resolved[MSG_BUF_SIZE];
+            const char *key = checker_resolve_decl_into(checker, name, resolved, sizeof(resolved));
+            if (key != name) sym = scope_lookup(checker->current_scope, key);
+        }
         /* Try using-module-prefixed name if not found */
         if (!sym) {
             for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
@@ -7218,7 +7347,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                    !is_struct_name(checker, name) &&
                    !typechecker_is_imported_module(checker, name) &&
                    !is_enum_name(checker, resolve_type_alias(checker, name)) &&
-                   !is_struct_name(checker, resolve_type_alias(checker, name))) {
+                   !is_struct_name(checker, resolve_type_alias(checker, name)) &&
+                   !module_declares_const(checker, name)) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 diagnostic_error_code_formatted(checker->diag, "E1012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name + 1);
@@ -9264,11 +9394,19 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
             if (!wildcard_propagation) return;
         }
-        scope_define(checker->current_scope, node->data.var_decl.name,
+        /* A module-level variable is bound under the name its module gives
+         * it, because that is what a reference to it resolves to. Locals have
+         * no table entry and keep the name as written. */
+        const char *bind_name = node->data.var_decl.name;
+        {
+            DeclEntry *entry = module_table_entry_for_node(checker->modules, node);
+            if (entry && entry->kind == DECL_CONST)
+                bind_name = module_mangle(checker->modules, entry);
+        }
+        scope_define(checker->current_scope, bind_name,
             declared, node->data.var_decl.mutable);
         /* Store definition location and declared type for unused/signedness warnings */
-        Symbol *def_sym = scope_lookup_local(checker->current_scope,
-            node->data.var_decl.name);
+        Symbol *def_sym = scope_lookup_local(checker->current_scope, bind_name);
         if (def_sym) {
             def_sym->declared_type = node->data.var_decl.type_name;
             def_sym->def_line = node->token.line;
@@ -11484,6 +11622,19 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                     const char *name = cv->data.member.object->data.label.value;
                     if (is_enum_name(checker, name)) enum_name = name;
                 }
+                /* Module-qualified: mod.Enum.VARIANT nests the enum one level
+                 * deeper, so a bare-label test never saw it and the `when`
+                 * was reported as being on a non-enum type. */
+                if (cv->kind == NODE_MEMBER_EXPR &&
+                    cv->data.member.object->kind == NODE_MEMBER_EXPR &&
+                    cv->data.member.object->data.member.object->kind == NODE_LABEL) {
+                    char qualified[MSG_BUF_SIZE];
+                    snprintf(qualified, sizeof(qualified), "%s.%s",
+                        cv->data.member.object->data.member.object->data.label.value,
+                        cv->data.member.object->data.member.member);
+                    if (is_enum_name(checker, qualified))
+                        enum_name = arena_copy_string(checker->arena, qualified);
+                }
                 /* Also infer from resolved implicit enum */
                 if (cv->kind == NODE_IMPLICIT_ENUM &&
                     cv->data.implicit_enum.resolved_enum) {
@@ -11499,8 +11650,9 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         if (enum_name) {
             /* Find the enum's variants */
             int enum_idx = -1;
-            for (int enum_index = 0; enum_index < checker->enum_count; enum_index++) {
-                if (strcmp(checker->enum_names[enum_index], enum_name) == 0) {
+            for (int enum_index = find_enum_index(checker, enum_name);
+                 enum_index >= 0; enum_index = -1) {
+                {
                     enum_idx = enum_index;
                     break;
                 }
@@ -11514,9 +11666,12 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                     for (int const_index = 0; const_index < node->data.when_stmt.case_count && !covered; const_index++) {
                         for (int cj = 0; cj < node->data.when_stmt.cases[const_index].value_count && !covered; cj++) {
                             AstNode *cv = node->data.when_stmt.cases[const_index].values[cj];
-                            /* Match Enum.VARIANT pattern */
+                            /* Match Enum.VARIANT, and the module-qualified
+                             * mod.Enum.VARIANT, whose object is itself a
+                             * member expression rather than a bare label. */
                             if (cv->kind == NODE_MEMBER_EXPR &&
-                                cv->data.member.object->kind == NODE_LABEL &&
+                                (cv->data.member.object->kind == NODE_LABEL ||
+                                 cv->data.member.object->kind == NODE_MEMBER_EXPR) &&
                                 strcmp(cv->data.member.member, variants[variant_index]) == 0) {
                                 covered = true;
                             }
@@ -11896,6 +12051,15 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
     if (is_enum_name(checker, type_name)) return;
     if (is_struct_name(checker, type_name)) return;
     if (struct_name_declared(program, type_name)) return;
+    /* Forward reference: the flat registries are filled in program order, so
+     * a field may name a type registered later or in another module. The
+     * symbol table is complete before any of this runs, so it is what says
+     * whether the type exists. */
+    {
+        char buf[MSG_BUF_SIZE];
+        if (checker_resolve_decl_into(checker, type_name, buf, sizeof(buf)) != type_name)
+            return;
+    }
 
     /* Stdlib opaque struct types are registered after user structs; accept
      * them here so struct fields can reference them without false E4016. */
@@ -12017,13 +12181,16 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             checker->type_alias_files = xrealloc(checker->type_alias_files, sizeof(const char *) * (size_t)checker->type_alias_cap);
             checker->type_alias_is_private = xrealloc(checker->type_alias_is_private, sizeof(bool) * (size_t)checker->type_alias_cap);
         }
-        checker->type_alias_names[checker->type_alias_count] = aname;
         checker->type_alias_targets[checker->type_alias_count] = target;
         checker->type_alias_files[checker->type_alias_count] = stmt->token.file;
         checker->type_alias_is_private[checker->type_alias_count] = stmt->data.alias_decl.is_private;
+        {
+            DeclEntry *entry = module_register(checker, stmt, DECL_ALIAS, aname,
+                                               stmt->data.alias_decl.is_private);
+            checker->type_alias_names[checker->type_alias_count] =
+                decl_registry_key(checker, entry, aname);
+        }
         checker->type_alias_count++;
-        module_register(checker, stmt, DECL_ALIAS, aname,
-                        stmt->data.alias_decl.is_private);
 
         next_alias:;
     }
@@ -12413,7 +12580,15 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             }
             /* Register with prefixed name: StructName_funcName */
             char buffer[MSG_BUF_SIZE];
-            snprintf(buffer, sizeof(buffer), "%s_%s", stmt->data.struct_decl.name, fn->data.func_decl.name);
+            /* A struct function is namespaced under its struct, and the
+             * struct is namespaced under its module — so the key is built
+             * from the struct's registry spelling, not from the name as
+             * written in the declaration. */
+            snprintf(buffer, sizeof(buffer), "%s_%s",
+                decl_registry_key(checker,
+                    module_table_entry_for_node(checker->modules, stmt),
+                    stmt->data.struct_decl.name),
+                fn->data.func_decl.name);
             const char *prefixed = arena_copy_string(checker->arena, buffer);
             register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
@@ -12539,8 +12714,88 @@ static void register_decl_consts(TypeChecker *checker, AstNode *program) {
     }
 }
 
+/* Put every top-level declaration into its module's scope before anything
+ * resolves a type. The passes below resolve field, parameter, and return
+ * types as they register, and a type may name a declaration that appears
+ * later in the merged program or in another module entirely — so the symbol
+ * table has to be complete first. module_register is idempotent, so the
+ * passes can keep calling it for the entry they need. */
+static void register_decl_symbols(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        switch (stmt->kind) {
+        case NODE_ALIAS_DECL:
+            module_register(checker, stmt, DECL_ALIAS, stmt->data.alias_decl.name,
+                            stmt->data.alias_decl.is_private);
+            break;
+        case NODE_ENUM_DECL:
+            module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+            break;
+        case NODE_STRUCT_DECL:
+            module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+            break;
+        case NODE_FUNC_DECL:
+            module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
+                            stmt->data.func_decl.is_private);
+            break;
+        case NODE_VAR_DECL:
+            if (!stmt->data.var_decl.synthetic) {
+                const char *source_name = stmt->data.var_decl.original_name
+                    ? stmt->data.var_decl.original_name : stmt->data.var_decl.name;
+                module_register(checker, stmt, DECL_CONST, source_name,
+                                stmt->data.var_decl.is_private);
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+/* Record a using entry once per (module, file). */
+static void using_add(TypeChecker *checker, const char *module, const char *file) {
+    if (!module) return;
+    for (int i = 0; i < checker->using_module_count; i++) {
+        if (strcmp(checker->using_modules[i], module) != 0) continue;
+        const char *f = checker->using_module_files[i];
+        if ((!f && !file) || (f && file && strcmp(f, file) == 0)) return;
+    }
+    if (checker->using_module_count >= checker->using_module_cap) {
+        checker->using_module_cap = checker->using_module_cap ? checker->using_module_cap * 2 : 8;
+        checker->using_modules = xrealloc(checker->using_modules,
+            sizeof(const char *) * (size_t)checker->using_module_cap);
+        checker->using_module_files = xrealloc(checker->using_module_files,
+            sizeof(const char *) * (size_t)checker->using_module_cap);
+        checker->using_module_import_indices = xrealloc(checker->using_module_import_indices,
+            sizeof(int) * (size_t)checker->using_module_cap);
+    }
+    checker->using_module_files[checker->using_module_count] = file;
+    checker->using_module_import_indices[checker->using_module_count] =
+        typechecker_find_import_index(checker, module);
+    checker->using_modules[checker->using_module_count++] = module;
+}
+
+/* Collect `using` and `import and use` before anything resolves a name.
+ * A bare name in a file that used a module has to resolve while types are
+ * being registered, which happens before the statement walk that used to be
+ * the only place this list was built. Diagnostics stay in that walk. */
+static void register_decl_usings(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind == NODE_USING_STMT) {
+            for (int j = 0; j < stmt->data.using_stmt.count; j++)
+                using_add(checker, stmt->data.using_stmt.modules[j], stmt->token.file);
+        } else if (stmt->kind == NODE_IMPORT_STMT && stmt->data.import_stmt.auto_use) {
+            for (int j = 0; j < stmt->data.import_stmt.count; j++)
+                using_add(checker, stmt->data.import_stmt.items[j].module, stmt->token.file);
+        }
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
+    register_decl_symbols(checker, program);
+    register_decl_usings(checker, program);
     register_decl_imports(checker, program);
     register_decl_aliases(checker, program);
     register_decl_enums(checker, program);
@@ -12652,6 +12907,11 @@ TypeChecker *typechecker_create(DiagnosticList *diag, const char *file) {
 void typechecker_add_file_module(TypeChecker *checker, const char *file,
                                  const char *module_name, bool is_entry) {
     module_table_map_file(checker->modules, file, module_name, is_entry);
+}
+
+void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
+                                  const char *module_name) {
+    module_table_add_alias(checker->modules, alias, module_name);
 }
 
 void typechecker_check(TypeChecker *checker, AstNode *program) {

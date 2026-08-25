@@ -178,6 +178,23 @@ DeclEntry *module_resolve_unqualified(ModuleTable *table,
                                       const char *name,
                                       const char **out_ambiguous_with);
 
+/* Resolve a name as written in source — "lib.Score" or a bare "Score" — as
+ * seen from inside `current_module`. A qualified name goes to the module its
+ * qualifier names; a bare name tries the current module first, then each
+ * using'd module in declared order. */
+DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module,
+                                  const char **using_modules, int using_count,
+                                  const char *written);
+
+/* The mangled spelling of a written type name, with every leaf identifier
+ * resolved through the symbol table. Handles the composite spellings —
+ * [T], [T,N], ^T, map[K:V], and nestings of them — so that a type annotation
+ * is rewritten in exactly one place instead of at each site that inspects it.
+ * Returns `written` unchanged when nothing in it resolves to a declaration. */
+const char *module_resolve_type_name(ModuleTable *table, const char *current_module,
+                                     const char **using_modules, int using_count,
+                                     const char *written);
+
 /* The C symbol name for a declaration: "mod_Name", or "Name" for the entry
  * module. The single point at which module membership becomes a string.
  *

@@ -331,6 +331,98 @@ static void test_unqualified_miss(void) {
     ASSERT(module_resolve_unqualified(table, "main", using_list, 1, "absent", NULL) == NULL);
 }
 
+/* --- Written names --- */
+
+static ModuleTable *typed_table(void) {
+    ModuleTable *table = module_table_create(arena);
+    module_table_map_file(table, "main.gray", NULL, true);
+    module_table_map_file(table, "lib.gray", "lib", false);
+    ModuleScope *lib = module_table_find(table, "lib");
+    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, NULL, "lib.gray", 1, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, NULL, "lib.gray", 2, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, NULL, "lib.gray", 3, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, NULL, "lib.gray", 4, VIS_PUBLIC);
+    return table;
+}
+
+static void test_resolve_written_qualified(void) {
+    ModuleTable *table = typed_table();
+    DeclEntry *e = module_resolve_written(table, MODULE_ENTRY_NAME, NULL, 0, "lib.Point");
+    ASSERT_NOT_NULL(e);
+    ASSERT_STR_EQ(e->name, "Point");
+    ASSERT_STR_EQ(e->module_name, "lib");
+}
+
+/* A bare name inside a module finds that module's own declarations — the
+ * sibling case, which the import merge handled by textual rewriting. */
+static void test_resolve_written_bare_in_own_module(void) {
+    ModuleTable *table = typed_table();
+    DeclEntry *e = module_resolve_written(table, "lib", NULL, 0, "Point");
+    ASSERT_NOT_NULL(e);
+    ASSERT_STR_EQ(e->module_name, "lib");
+}
+
+static void test_resolve_written_bare_needs_using(void) {
+    ModuleTable *table = typed_table();
+    ASSERT(module_resolve_written(table, MODULE_ENTRY_NAME, NULL, 0, "Point") == NULL);
+    const char *using_list[] = {"lib"};
+    ASSERT_NOT_NULL(module_resolve_written(table, MODULE_ENTRY_NAME, using_list, 1, "Point"));
+}
+
+/* --- Written type names --- */
+
+static void test_type_name_leaf(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "lib.Point"),
+                  "lib_Point");
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Color"), "lib_Color");
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Score"), "lib_Score");
+}
+
+static void test_type_name_primitives_untouched(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "int"), "int");
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "string"), "string");
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Unknown"), "Unknown");
+}
+
+/* A function is not a type; a type annotation must not pick one up. */
+static void test_type_name_ignores_non_types(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "helper"), "helper");
+}
+
+static void test_type_name_composites(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[lib.Point]"),
+                  "[lib_Point]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[lib.Point,3]"),
+                  "[lib_Point,3]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "^lib.Point"),
+                  "^lib_Point");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0,
+                                           "map[string:lib.Point]"),
+                  "map[string:lib_Point]");
+}
+
+static void test_type_name_nested_composites(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[[lib.Point]]"),
+                  "[[lib_Point]]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "^[lib.Point]"),
+                  "^[lib_Point]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0,
+                                           "map[lib.Color:[lib.Point]]"),
+                  "map[lib_Color:[lib_Point]]");
+}
+
+static void test_type_name_unresolvable_unchanged(void) {
+    ModuleTable *table = typed_table();
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[Nope]"), "[Nope]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "map[string:int]"),
+                  "map[string:int]");
+}
+
 /* --- Mangling and splitting --- */
 
 static void test_mangle_imported_and_entry(void) {
@@ -396,6 +488,15 @@ int main(void) {
     RUN_TEST(test_unqualified_ambiguity_reported);
     RUN_TEST(test_unqualified_first_match_without_slot);
     RUN_TEST(test_unqualified_miss);
+    RUN_TEST(test_resolve_written_qualified);
+    RUN_TEST(test_resolve_written_bare_in_own_module);
+    RUN_TEST(test_resolve_written_bare_needs_using);
+    RUN_TEST(test_type_name_leaf);
+    RUN_TEST(test_type_name_primitives_untouched);
+    RUN_TEST(test_type_name_ignores_non_types);
+    RUN_TEST(test_type_name_composites);
+    RUN_TEST(test_type_name_nested_composites);
+    RUN_TEST(test_type_name_unresolvable_unchanged);
     RUN_TEST(test_mangle_imported_and_entry);
     RUN_TEST(test_split_qualified);
     RUN_TEST(test_split_ignores_underscores);

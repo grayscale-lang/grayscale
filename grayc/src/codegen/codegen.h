@@ -64,6 +64,11 @@ typedef struct {
      * re-derive either. */
     ModuleTable *modules;
 
+    /* The module whose file is currently being emitted. A name written bare
+     * inside a module body resolves against this, the way the type checker
+     * resolves one against the file being checked. */
+    const char *current_module;
+
     /* Current var decl context (for context-aware call emission) */
     const char *current_var_name;
     const char *current_var_type;

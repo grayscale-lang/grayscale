@@ -345,6 +345,108 @@ DeclEntry *module_resolve_unqualified(ModuleTable *table,
     return found;
 }
 
+DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module,
+                                  const char **using_modules, int using_count,
+                                  const char *written) {
+    if (!table || !written) return NULL;
+    /* Leaf names only. A composite spelling — [T], ^T, map[K:V] — has to go
+     * through module_resolve_type_name, which takes it apart first; splitting
+     * one here on its first '.' would produce nonsense like ("[types",
+     * "Item]"). */
+    if (strpbrk(written, "[]^:?,")) return NULL;
+    const char *dot = strchr(written, '.');
+    if (dot) {
+        char qualifier[MSG_BUF_SIZE];
+        size_t qlen = (size_t)(dot - written);
+        if (qlen >= sizeof(qualifier)) return NULL;
+        memcpy(qualifier, written, qlen);
+        qualifier[qlen] = '\0';
+        return module_resolve_qualified(table, current_module, qualifier, dot + 1, NULL);
+    }
+    return module_resolve_unqualified(table, current_module, using_modules,
+                                      using_count, written, NULL);
+}
+
+/* --- Written type names --- */
+
+/* Index of `ch` at bracket depth zero, or -1. */
+static int find_at_depth_zero(const char *s, size_t len, char ch) {
+    int depth = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (s[i] == '[') depth++;
+        else if (s[i] == ']') depth--;
+        else if (s[i] == ch && depth == 0) return (int)i;
+    }
+    return -1;
+}
+
+const char *module_resolve_type_name(ModuleTable *table, const char *current_module,
+                                     const char **using_modules, int using_count,
+                                     const char *written) {
+    if (!table || !written) return written;
+    size_t len = strlen(written);
+    if (len == 0) return written;
+    Arena *arena = table->arena;
+
+    /* Array: [T] or [T,N] */
+    if (written[0] == '[' && written[len - 1] == ']') {
+        size_t inner_len = len - 2;
+        char *inner = arena_copy_string_with_length(arena, written + 1, inner_len);
+        int comma = find_at_depth_zero(inner, inner_len, ',');
+        const char *size_suffix = NULL;
+        if (comma >= 0) {
+            inner[comma] = '\0';
+            size_suffix = inner + comma + 1;
+        }
+        const char *elem = module_resolve_type_name(table, current_module,
+                                                    using_modules, using_count, inner);
+        if (elem == inner && !size_suffix) return written;
+        char buf[MSG_BUF_SIZE];
+        if (size_suffix) snprintf(buf, sizeof(buf), "[%s,%s]", elem, size_suffix);
+        else             snprintf(buf, sizeof(buf), "[%s]", elem);
+        return arena_copy_string(arena, buf);
+    }
+
+    /* Pointer: ^T */
+    if (written[0] == '^') {
+        const char *pointee = module_resolve_type_name(table, current_module,
+                                                       using_modules, using_count,
+                                                       written + 1);
+        if (pointee == written + 1) return written;
+        char buf[MSG_BUF_SIZE];
+        snprintf(buf, sizeof(buf), "^%s", pointee);
+        return arena_copy_string(arena, buf);
+    }
+
+    /* Map: map[K:V] */
+    if (len > 5 && strncmp(written, "map[", 4) == 0 && written[len - 1] == ']') {
+        size_t inner_len = len - 5;
+        char *inner = arena_copy_string_with_length(arena, written + 4, inner_len);
+        int colon = find_at_depth_zero(inner, inner_len, ':');
+        if (colon < 0) return written; /* malformed; leave alone */
+        inner[colon] = '\0';
+        const char *k = inner;
+        const char *v = inner + colon + 1;
+        const char *rk = module_resolve_type_name(table, current_module,
+                                                  using_modules, using_count, k);
+        const char *rv = module_resolve_type_name(table, current_module,
+                                                  using_modules, using_count, v);
+        if (rk == k && rv == v) return written;
+        char buf[MSG_BUF_SIZE];
+        snprintf(buf, sizeof(buf), "map[%s:%s]", rk, rv);
+        return arena_copy_string(arena, buf);
+    }
+
+    /* Leaf. Only type declarations name a type; a function or constant that
+     * happens to share the spelling must not capture it. */
+    DeclEntry *entry = module_resolve_written(table, current_module, using_modules,
+                                              using_count, written);
+    if (!entry) return written;
+    if (entry->kind != DECL_STRUCT && entry->kind != DECL_ENUM && entry->kind != DECL_ALIAS)
+        return written;
+    return module_mangle(table, entry);
+}
+
 /* --- Mangling --- */
 
 const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen) {

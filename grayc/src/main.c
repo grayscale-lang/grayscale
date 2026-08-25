@@ -208,281 +208,6 @@ static const char *find_runtime_dir(const char *argv0) {
     return NULL;
 }
 
-/* Rewrite a type-name string from an imported module, replacing any
- * occurrence of an `orig_names[i]` bare identifier with its prefixed
- * equivalent. Handles composite type spellings:
- *
- *   - bare:        Node            → lib_Node
- *   - array:       [Node]          → [lib_Node]
- *   - fixed array: [Node,3]        → [lib_Node,3]
- *   - pointer:     ^Node           → ^lib_Node
- *   - map:         map[K:V]        → map[rewrite(K):rewrite(V)]
- *   - nested:      [[Node]], ^[Node], map[string:[Node]], etc.
- *
- * Returns the input pointer unchanged when nothing matched. Returns a
- * fresh arena-allocated string when a rewrite was needed. Function-ref
- * spellings ("func(...)") are left alone — they don't reference user
- * structs in the import paths this helper is called from. */
-static const char *rewrite_type_name(const char *t,
-                                     const char **orig_names,
-                                     const char **new_names,
-                                     int name_count,
-                                     Arena *arena) {
-    if (!t) return t;
-    size_t len = strlen(t);
-    if (len == 0) return t;
-
-    /* Array: [T] or [T,N] */
-    if (t[0] == '[' && t[len - 1] == ']') {
-        char *inner = arena_copy_string_with_length(arena, t + 1, len - 2);
-        /* Split fixed-size suffix off the element type. We can use the
-         * first ',' at depth 0 because element types use brackets, not
-         * commas, internally — even nested arrays look like [[T]]. */
-        size_t inner_len = len - 2;
-        int depth = 0;
-        int comma_pos = -1;
-        for (size_t i = 0; i < inner_len; i++) {
-            if (inner[i] == '[') depth++;
-            else if (inner[i] == ']') depth--;
-            else if (inner[i] == ',' && depth == 0) { comma_pos = (int)i; break; }
-        }
-        const char *size_suffix = NULL;
-        if (comma_pos >= 0) {
-            inner[comma_pos] = '\0';
-            size_suffix = inner + comma_pos + 1;
-        }
-        const char *new_elem = rewrite_type_name(inner, orig_names, new_names, name_count, arena);
-        if (new_elem == inner && !comma_pos) return t;
-        char *buf = arena_alloc(arena, MSG_BUF_SIZE);
-        if (size_suffix) snprintf(buf, MSG_BUF_SIZE, "[%s,%s]", new_elem, size_suffix);
-        else             snprintf(buf, MSG_BUF_SIZE, "[%s]", new_elem);
-        return buf;
-    }
-
-    /* Pointer: ^T */
-    if (t[0] == '^') {
-        const char *pointee = t + 1;
-        const char *new_pointee = rewrite_type_name(pointee, orig_names, new_names, name_count, arena);
-        if (new_pointee == pointee) return t;
-        char *buf = arena_alloc(arena, MSG_BUF_SIZE);
-        snprintf(buf, MSG_BUF_SIZE, "^%s", new_pointee);
-        return buf;
-    }
-
-    /* Map: map[K:V] */
-    if (len > 5 && strncmp(t, "map[", 4) == 0 && t[len - 1] == ']') {
-        size_t inner_len = len - 5; /* between "map[" and "]" */
-        char *inner = arena_copy_string_with_length(arena, t + 4, inner_len);
-        /* Find ':' at depth 0 — K may itself be a bracketed type. */
-        int depth = 0;
-        int colon_pos = -1;
-        for (size_t i = 0; i < inner_len; i++) {
-            if (inner[i] == '[') depth++;
-            else if (inner[i] == ']') depth--;
-            else if (inner[i] == ':' && depth == 0) { colon_pos = (int)i; break; }
-        }
-        if (colon_pos < 0) return t; /* malformed; leave alone */
-        inner[colon_pos] = '\0';
-        const char *k = inner;
-        const char *v = inner + colon_pos + 1;
-        const char *new_k = rewrite_type_name(k, orig_names, new_names, name_count, arena);
-        const char *new_v = rewrite_type_name(v, orig_names, new_names, name_count, arena);
-        if (new_k == k && new_v == v) return t;
-        char *buf = arena_alloc(arena, MSG_BUF_SIZE);
-        snprintf(buf, MSG_BUF_SIZE, "map[%s:%s]", new_k, new_v);
-        return buf;
-    }
-
-    /* Bare name: direct match against orig_names. */
-    for (int i = 0; i < name_count; i++) {
-        if (strcmp(t, orig_names[i]) == 0) return new_names[i];
-    }
-    return t;
-}
-
-/* Rewrite labels in an AST tree: replace unprefixed names with prefixed versions */
-static void rewrite_labels(AstNode *node, const char **orig, const char **prefixed, int count, Arena *arena) {
-    if (!node) return;
-    if (node->kind == NODE_LABEL) {
-        for (int i = 0; i < count; i++) {
-            if (strcmp(node->data.label.value, orig[i]) == 0) {
-                node->data.label.value = prefixed[i];
-                return;
-            }
-        }
-        return;
-    }
-    /* Recurse into child nodes */
-    switch (node->kind) {
-    case NODE_PREFIX_EXPR: rewrite_labels(node->data.prefix.right, orig, prefixed, count, arena); break;
-    case NODE_INFIX_EXPR:
-        rewrite_labels(node->data.infix.left, orig, prefixed, count, arena);
-        rewrite_labels(node->data.infix.right, orig, prefixed, count, arena);
-        break;
-    case NODE_CALL_EXPR:
-        rewrite_labels(node->data.call.function, orig, prefixed, count, arena);
-        for (int i = 0; i < node->data.call.arg_count; i++)
-            rewrite_labels(node->data.call.args[i], orig, prefixed, count, arena);
-        break;
-    case NODE_RETURN_STMT:
-        for (int i = 0; i < node->data.return_stmt.count; i++)
-            rewrite_labels(node->data.return_stmt.values[i], orig, prefixed, count, arena);
-        break;
-    case NODE_VAR_DECL:
-        /* Rewrite type annotation: mut req Request → mut req mod_Request.
-         * Use rewrite_type_name so wrapped forms (^Request, [Request],
-         * map[string:Request]) are rewritten too, not just bare names. */
-        if (node->data.var_decl.type_name) {
-            node->data.var_decl.type_name = rewrite_type_name(
-                node->data.var_decl.type_name, orig, prefixed, count, arena);
-        }
-        rewrite_labels(node->data.var_decl.value, orig, prefixed, count, arena);
-        break;
-    case NODE_ASSIGN_STMT:
-        rewrite_labels(node->data.assign.target, orig, prefixed, count, arena);
-        rewrite_labels(node->data.assign.value, orig, prefixed, count, arena);
-        break;
-    case NODE_IF_STMT:
-        rewrite_labels(node->data.if_stmt.condition, orig, prefixed, count, arena);
-        if (node->data.if_stmt.consequence) {
-            rewrite_labels(node->data.if_stmt.consequence, orig, prefixed, count, arena);
-        }
-        if (node->data.if_stmt.alternative) {
-            rewrite_labels(node->data.if_stmt.alternative, orig, prefixed, count, arena);
-        }
-        break;
-    case NODE_BLOCK_STMT:
-        for (int i = 0; i < node->data.block.count; i++)
-            rewrite_labels(node->data.block.stmts[i], orig, prefixed, count, arena);
-        break;
-    case NODE_EXPR_STMT:
-        rewrite_labels(node->data.expr_stmt.expr, orig, prefixed, count, arena);
-        break;
-    case NODE_POSTFIX_EXPR:
-        rewrite_labels(node->data.postfix.left, orig, prefixed, count, arena);
-        break;
-    case NODE_INDEX_EXPR:
-        rewrite_labels(node->data.index_expr.left, orig, prefixed, count, arena);
-        rewrite_labels(node->data.index_expr.index, orig, prefixed, count, arena);
-        break;
-    case NODE_MEMBER_EXPR:
-        rewrite_labels(node->data.member.object, orig, prefixed, count, arena);
-        break;
-    case NODE_FOR_STMT:
-        rewrite_labels(node->data.for_stmt.iterable, orig, prefixed, count, arena);
-        rewrite_labels(node->data.for_stmt.body, orig, prefixed, count, arena);
-        break;
-    case NODE_FOR_EACH_STMT:
-        rewrite_labels(node->data.for_each.collection, orig, prefixed, count, arena);
-        rewrite_labels(node->data.for_each.body, orig, prefixed, count, arena);
-        break;
-    case NODE_WHILE_STMT:
-        rewrite_labels(node->data.while_stmt.condition, orig, prefixed, count, arena);
-        rewrite_labels(node->data.while_stmt.body, orig, prefixed, count, arena);
-        break;
-    case NODE_LOOP_STMT:
-        rewrite_labels(node->data.loop_stmt.body, orig, prefixed, count, arena);
-        break;
-    case NODE_INTERPOLATED_STRING:
-        for (int i = 0; i < node->data.interpolated_string.part_count; i++)
-            rewrite_labels(node->data.interpolated_string.parts[i], orig, prefixed, count, arena);
-        break;
-    case NODE_STRUCT_VALUE:
-        /* Rewrite struct literal name: Point{...} → shapes_Point{...} */
-        for (int i = 0; i < count; i++) {
-            if (node->data.struct_value.name && strcmp(node->data.struct_value.name, orig[i]) == 0) {
-                node->data.struct_value.name = prefixed[i];
-                break;
-            }
-        }
-        /* Rewrite field value expressions */
-        for (int i = 0; i < node->data.struct_value.count; i++) {
-            rewrite_labels(node->data.struct_value.field_values[i], orig, prefixed, count, arena);
-        }
-        break;
-    case NODE_WHEN_STMT:
-        rewrite_labels(node->data.when_stmt.value, orig, prefixed, count, arena);
-        for (int i = 0; i < node->data.when_stmt.case_count; i++) {
-            WhenCase *wc = &node->data.when_stmt.cases[i];
-            for (int j = 0; j < wc->value_count; j++)
-                rewrite_labels(wc->values[j], orig, prefixed, count, arena);
-            rewrite_labels(wc->body, orig, prefixed, count, arena);
-        }
-        if (node->data.when_stmt.default_body)
-            rewrite_labels(node->data.when_stmt.default_body, orig, prefixed, count, arena);
-        break;
-    case NODE_ENSURE_STMT:
-        rewrite_labels(node->data.ensure_stmt.expr, orig, prefixed, count, arena);
-        break;
-    case NODE_CAST_EXPR:
-        /* Rewrite cast target type: as(Request, x) → as(mod_Request, x) */
-        if (node->data.cast.target_type) {
-            for (int i = 0; i < count; i++) {
-                if (strcmp(node->data.cast.target_type, orig[i]) == 0) {
-                    node->data.cast.target_type = prefixed[i];
-                    break;
-                }
-            }
-        }
-        rewrite_labels(node->data.cast.value, orig, prefixed, count, arena);
-        break;
-    case NODE_NEW_EXPR:
-        /* Rewrite new() type: new(Hero) → new(mod_Hero) */
-        if (node->data.new_expr.type_name) {
-            for (int i = 0; i < count; i++) {
-                if (strcmp(node->data.new_expr.type_name, orig[i]) == 0) {
-                    node->data.new_expr.type_name = prefixed[i];
-                    break;
-                }
-            }
-        }
-        break;
-    case NODE_RANGE_EXPR:
-        rewrite_labels(node->data.range_expr.start, orig, prefixed, count, arena);
-        rewrite_labels(node->data.range_expr.end, orig, prefixed, count, arena);
-        rewrite_labels(node->data.range_expr.step, orig, prefixed, count, arena);
-        break;
-    case NODE_FUNC_DECL:
-        for (int i = 0; i < node->data.func_decl.return_type_count; i++) {
-            node->data.func_decl.return_types[i] = rewrite_type_name(
-                node->data.func_decl.return_types[i], orig, prefixed, count, arena);
-        }
-        for (int i = 0; i < node->data.func_decl.param_count; i++) {
-            if (!node->data.func_decl.params[i].type_name) continue;
-            node->data.func_decl.params[i].type_name = rewrite_type_name(
-                node->data.func_decl.params[i].type_name, orig, prefixed, count, arena);
-        }
-        rewrite_labels(node->data.func_decl.body, orig, prefixed, count, arena);
-        break;
-    case NODE_STRUCT_DECL:
-        /* Field types and struct-function signatures reference imported types
-         * by their bare name (Color), but the merged program registers them
-         * prefixed (types_Color). Without this the two never unify and every
-         * use reports "expected Color, got Color". */
-        for (int i = 0; i < node->data.struct_decl.field_count; i++) {
-            if (!node->data.struct_decl.fields[i].type_name) continue;
-            node->data.struct_decl.fields[i].type_name = rewrite_type_name(
-                node->data.struct_decl.fields[i].type_name, orig, prefixed, count, arena);
-        }
-        /* Struct functions are NODE_FUNC_DECLs; that case already rewrites
-         * return types, parameter types, and the body. */
-        for (int i = 0; i < node->data.struct_decl.func_count; i++)
-            rewrite_labels(node->data.struct_decl.funcs[i].func_decl, orig, prefixed, count, arena);
-        break;
-    case NODE_ARRAY_VALUE:
-        for (int i = 0; i < node->data.array_value.count; i++)
-            rewrite_labels(node->data.array_value.elements[i], orig, prefixed, count, arena);
-        break;
-    case NODE_MAP_VALUE:
-        for (int i = 0; i < node->data.map_value.count; i++) {
-            rewrite_labels(node->data.map_value.keys[i], orig, prefixed, count, arena);
-            rewrite_labels(node->data.map_value.values[i], orig, prefixed, count, arena);
-        }
-        break;
-    default: break;
-    }
-}
-
 /* Import cache: track already-imported files to avoid duplicates and cycles.
  * Open-addressing hash set keyed on canonical file path. */
 
@@ -930,6 +655,13 @@ int main(int argc, char **argv) {
     const char **module_files = NULL;
     const char **module_names = NULL;
     int module_file_count = 0, module_file_cap = 0;
+    /* Sibling imports inside a directory module: `import "./types.gray"` from
+     * another file of the same directory names a file, not a module, so
+     * `types.Item` has to resolve to the directory module that file belongs
+     * to. Recorded as an alias rather than by rewriting the reference. */
+    const char **module_alias_names = NULL;
+    const char **module_alias_targets = NULL;
+    int module_alias_count = 0, module_alias_cap = 0;
 
     /* Resolve local imports: parse imported .gray files and merge declarations */
     {
@@ -1175,19 +907,6 @@ int main(int argc, char **argv) {
                     sizeof(const char *) * (size_t)(file_count > 0 ? file_count : 1));
                 int parsed_count = 0;
 
-                /* Sibling import aliases collected during parse pass.
-                 * After all names are known, compound mappings (alias_Name → mod_Name)
-                 * are generated for each alias × declaration name. */
-                const char **sibling_aliases = NULL;
-                int sibling_alias_cap = 0;
-                int sibling_alias_count = 0;
-
-                /* Combined name mapping across all files in this import */
-                const char **orig_names = NULL;
-                const char **new_names = NULL;
-                int name_cap = 0;
-                int name_count = 0;
-
                 /* Parse pass: parse each file, collect names, inject transitive imports */
                 for (int fi = 0; fi < file_count; fi++) {
                     const char *cur_file_path = file_list[fi];
@@ -1341,19 +1060,19 @@ int main(int argc, char **argv) {
                                         }
                                         sib_alias = arena_copy_string(arena, sib_buf);
                                     }
-                                    /* Track unique sibling aliases */
-                                    bool already_tracked = false;
-                                    for (int sa = 0; sa < sibling_alias_count; sa++) {
-                                        if (strcmp(sibling_aliases[sa], sib_alias) == 0) {
-                                            already_tracked = true;
-                                            break;
-                                        }
+                                    /* Record the sibling's own name as an alias
+                                     * of the directory module, so a qualified
+                                     * reference through it resolves. */
+                                    if (module_alias_count >= module_alias_cap) {
+                                        module_alias_cap = GROW_NEXT_CAP(module_alias_cap);
+                                        ARENA_GROW_TO(arena, module_alias_names,
+                                            module_alias_count, module_alias_cap);
+                                        ARENA_GROW_TO(arena, module_alias_targets,
+                                            module_alias_count, module_alias_cap);
                                     }
-                                    if (!already_tracked) {
-                                        ARENA_GROW(arena, sibling_aliases,
-                                            sibling_alias_count, sibling_alias_cap);
-                                        sibling_aliases[sibling_alias_count++] = sib_alias;
-                                    }
+                                    module_alias_names[module_alias_count] = sib_alias;
+                                    module_alias_targets[module_alias_count] = mod_name;
+                                    module_alias_count++;
                                     /* Null out the sibling import path so it's not injected */
                                     titem->path = NULL;
                                 } else {
@@ -1376,113 +1095,29 @@ int main(int argc, char **argv) {
                         free(norm_import_dir);
                     }
 
-                    /* Collect declaration names from this file into the combined mapping */
-                    for (int mi = 0; mi < imp_program->data.program.stmt_count; mi++) {
-                        AstNode *s = imp_program->data.program.stmts[mi];
-                        const char *oname = NULL;
-                        if (s->kind == NODE_FUNC_DECL) oname = s->data.func_decl.name;
-                        else if (s->kind == NODE_VAR_DECL) oname = s->data.var_decl.name;
-                        else if (s->kind == NODE_STRUCT_DECL) oname = s->data.struct_decl.name;
-                        else if (s->kind == NODE_ENUM_DECL) oname = s->data.enum_decl.name;
-                        if (oname) {
-                            if (name_count >= name_cap) {
-                                name_cap = GROW_NEXT_CAP(name_cap);
-                                ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
-                                ARENA_GROW_TO(arena, new_names, name_count, name_cap);
-                            }
-                            orig_names[name_count] = oname;
-                            char *pn = arena_alloc(arena, MSG_BUF_SIZE);
-                            snprintf(pn, MSG_BUF_SIZE, "%s_%s", mod_name, oname);
-                            new_names[name_count] = pn;
-                            name_count++;
-                        }
-                    }
-
-                    /* Store parsed program for the rewrite pass */
+                    /* Store the parsed program for the merge pass */
                     parsed_programs[parsed_count] = imp_program;
                     parsed_paths[parsed_count] = cur_file_path;
                     parsed_count++;
                 }
 
-                /* Generate compound mappings for sibling imports.
-                 * The parser converts types.Item → types_Item at parse time, so we
-                 * need mappings like types_Item → mylib_Item for each alias × name. */
-                {
-                    int base_name_count = name_count;
-                    for (int sa = 0; sa < sibling_alias_count; sa++) {
-                        const char *alias = sibling_aliases[sa];
-                        for (int ni = 0; ni < base_name_count; ni++) {
-                            /* Build "alias_OrigName" and map to "mod_OrigName" */
-                            char *compound = arena_alloc(arena, MSG_BUF_SIZE);
-                            snprintf(compound, MSG_BUF_SIZE, "%s_%s", alias, orig_names[ni]);
-                            /* Avoid duplicates */
-                            bool dup = false;
-                            for (int ci = 0; ci < name_count; ci++) {
-                                if (strcmp(orig_names[ci], compound) == 0) { dup = true; break; }
-                            }
-                            if (dup) continue;
-                            if (name_count >= name_cap) {
-                                name_cap = GROW_NEXT_CAP(name_cap);
-                                ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
-                                ARENA_GROW_TO(arena, new_names, name_count, name_cap);
-                            }
-                            orig_names[name_count] = compound;
-                            new_names[name_count] = new_names[ni]; /* same as mod_OrigName */
-                            name_count++;
-                        }
-                        /* Also add bare alias → mod_name for label references */
-                        {
-                            bool dup = false;
-                            for (int ci = 0; ci < name_count; ci++) {
-                                if (strcmp(orig_names[ci], alias) == 0) { dup = true; break; }
-                            }
-                            if (!dup) {
-                                if (name_count >= name_cap) {
-                                    name_cap = GROW_NEXT_CAP(name_cap);
-                                    ARENA_GROW_TO(arena, orig_names, name_count, name_cap);
-                                    ARENA_GROW_TO(arena, new_names, name_count, name_cap);
-                                }
-                                orig_names[name_count] = alias;
-                                new_names[name_count] = mod_name;
-                                name_count++;
-                            }
-                        }
-                    }
-                }
-
-                /* Rewrite+merge pass: use combined mapping to rewrite ALL files */
+                /* Merge pass */
                 for (int pi = 0; pi < parsed_count; pi++) {
                     AstNode *imp_program = parsed_programs[pi];
 
-                /* Merge imported declarations into main program.
-                 * Two passes: var_decls first (so they're in scope for function bodies),
-                 * then everything else. */
+                /* Merge imported declarations into the main program.
+                 * Two passes: var_decls first (so they are in scope for
+                 * function bodies), then everything else.
+                 *
+                 * Names are left exactly as written. Which module a
+                 * declaration belongs to is recorded by file, and every
+                 * reference to it is resolved against the symbol table. */
 
                 /* Pass 1: variable declarations */
                 for (int mi = 0; mi < imp_program->data.program.stmt_count; mi++) {
                     AstNode *imp_stmt = imp_program->data.program.stmts[mi];
                     if (imp_stmt->kind != NODE_VAR_DECL) continue;
 
-                    if (!imp_stmt->data.var_decl.mutable) {
-                        imp_stmt->data.var_decl.original_name = imp_stmt->data.var_decl.name;
-                        char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
-                        snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.var_decl.name);
-                        imp_stmt->data.var_decl.name = prefixed;
-                        if (imp_stmt->data.var_decl.type_name) {
-                            imp_stmt->data.var_decl.type_name = rewrite_type_name(
-                                imp_stmt->data.var_decl.type_name,
-                                orig_names, new_names, name_count, arena);
-                        }
-                    } else {
-                        imp_stmt->data.var_decl.original_name = imp_stmt->data.var_decl.name;
-                        char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
-                        snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.var_decl.name);
-                        imp_stmt->data.var_decl.name = prefixed;
-                    }
-                    /* Rewrite initializer expressions */
-                    rewrite_labels(imp_stmt->data.var_decl.value, orig_names, new_names, name_count, arena);
-
-                    /* Insert at beginning */
                     ARENA_GROW(arena, program->data.program.stmts,
                         program->data.program.stmt_count, program->data.program.stmt_cap);
                     int insert_at = 0;
@@ -1509,72 +1144,6 @@ int main(int argc, char **argv) {
                         imp_stmt->kind == NODE_MODULE_DECL ||
                         imp_stmt->kind == NODE_VAR_DECL) continue;
 
-                    /* Prefix function names and rewrite body + type references */
-                    if (imp_stmt->kind == NODE_FUNC_DECL) {
-                        imp_stmt->data.func_decl.original_name = imp_stmt->data.func_decl.name;
-                        char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
-                        snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.func_decl.name);
-                        imp_stmt->data.func_decl.name = prefixed;
-                        /* Rewrite internal references in function body */
-                        rewrite_labels(imp_stmt->data.func_decl.body, orig_names, new_names, name_count, arena);
-                        /* Rewrite return type references */
-                        for (int ri = 0; ri < imp_stmt->data.func_decl.return_type_count; ri++) {
-                            imp_stmt->data.func_decl.return_types[ri] = rewrite_type_name(
-                                imp_stmt->data.func_decl.return_types[ri],
-                                orig_names, new_names, name_count, arena);
-                        }
-                        /* Rewrite parameter type references */
-                        for (int pi = 0; pi < imp_stmt->data.func_decl.param_count; pi++) {
-                            const char *pt = imp_stmt->data.func_decl.params[pi].type_name;
-                            if (!pt) continue;
-                            imp_stmt->data.func_decl.params[pi].type_name = rewrite_type_name(
-                                pt, orig_names, new_names, name_count, arena);
-                        }
-                    }
-
-                    /* Prefix struct names and rewrite field type references */
-                    if (imp_stmt->kind == NODE_STRUCT_DECL) {
-                        imp_stmt->data.struct_decl.original_name = imp_stmt->data.struct_decl.name;
-                        char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
-                        snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.struct_decl.name);
-                        imp_stmt->data.struct_decl.name = prefixed;
-                        /* Rewrite field types that reference other imported types */
-                        for (int fld = 0; fld < imp_stmt->data.struct_decl.field_count; fld++) {
-                            const char *ft = imp_stmt->data.struct_decl.fields[fld].type_name;
-                            if (!ft) continue;
-                            imp_stmt->data.struct_decl.fields[fld].type_name = rewrite_type_name(
-                                ft, orig_names, new_names, name_count, arena);
-                        }
-                        /* Rewrite struct-namespaced function bodies, return types, and param types */
-                        for (int si = 0; si < imp_stmt->data.struct_decl.func_count; si++) {
-                            AstNode *fn = imp_stmt->data.struct_decl.funcs[si].func_decl;
-                            if (!fn || fn->kind != NODE_FUNC_DECL) continue;
-                            /* Rewrite function body labels */
-                            rewrite_labels(fn->data.func_decl.body, orig_names, new_names, name_count, arena);
-                            /* Rewrite return types */
-                            for (int ri = 0; ri < fn->data.func_decl.return_type_count; ri++) {
-                                fn->data.func_decl.return_types[ri] = rewrite_type_name(
-                                    fn->data.func_decl.return_types[ri],
-                                    orig_names, new_names, name_count, arena);
-                            }
-                            /* Rewrite parameter types */
-                            for (int pi = 0; pi < fn->data.func_decl.param_count; pi++) {
-                                const char *pt = fn->data.func_decl.params[pi].type_name;
-                                if (!pt) continue;
-                                fn->data.func_decl.params[pi].type_name = rewrite_type_name(
-                                    pt, orig_names, new_names, name_count, arena);
-                            }
-                        }
-                    }
-
-                    /* Prefix enum names with module name */
-                    if (imp_stmt->kind == NODE_ENUM_DECL) {
-                        imp_stmt->data.enum_decl.original_name = imp_stmt->data.enum_decl.name;
-                        char *prefixed = arena_alloc(arena, MSG_BUF_SIZE);
-                        snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod_name, imp_stmt->data.enum_decl.name);
-                        imp_stmt->data.enum_decl.name = prefixed;
-                    }
-
                     /* Insert into main program BEFORE existing declarations.
                      * This ensures imported constants/functions are visible to all code. */
                     ARENA_GROW(arena, program->data.program.stmts,
@@ -1599,16 +1168,6 @@ int main(int argc, char **argv) {
                 }
                 } /* end for (pi: rewrite+merge pass) */
 
-                /* Rewrite label references in ALL program statements — both the
-                 * original main-file nodes and previously merged imports.
-                 * Previously merged imports may reference types from the module
-                 * currently being processed (cross-module struct returns, etc.)
-                 * and those references must be rewritten too. */
-                for (int si = 0; si < program->data.program.stmt_count; si++) {
-                    rewrite_labels(program->data.program.stmts[si],
-                        orig_names, new_names, name_count, arena);
-                }
-
                 /* Mark this import item as fully processed. */
                 item->path = NULL;
             }
@@ -1620,6 +1179,8 @@ int main(int argc, char **argv) {
     typechecker_add_file_module(checker, input_file, NULL, true);
     for (int i = 0; i < module_file_count; i++)
         typechecker_add_file_module(checker, module_files[i], module_names[i], false);
+    for (int i = 0; i < module_alias_count; i++)
+        typechecker_add_module_alias(checker, module_alias_names[i], module_alias_targets[i]);
     typechecker_check(checker, program);
 
     if (diagnostic_has_errors(diag)) {

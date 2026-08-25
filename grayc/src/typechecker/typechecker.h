@@ -175,6 +175,15 @@ typedef struct {
     /* File currently being validated — used to filter using_modules per-file */
     const char *current_check_file;
 
+    /* The using'd modules visible from current_check_file, in declared order:
+     * the search order for an unqualified name. Rebuilt when the file or the
+     * using list changes, so name resolution does not re-filter per lookup. */
+    const char **using_visible;
+    int using_visible_count;
+    int using_visible_cap;
+    const char *using_visible_file;
+    int using_visible_stamp;
+
     /*  track mem.destroy() calls for double-free detection */
     const char **destroyed_arenas;
     int destroyed_arena_count;
@@ -231,6 +240,12 @@ TypeChecker *typechecker_create(DiagnosticList *diag, const char *file);
  * for the entry file and every file it pulls in, before typechecker_check. */
 void typechecker_add_file_module(TypeChecker *checker, const char *file,
                                  const char *module_name, bool is_entry);
+
+/* Record that `alias` names `module_name`. Used for import aliases and for
+ * sibling files of a directory module, which are named as if they were
+ * modules but resolve to the directory's module. */
+void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
+                                  const char *module_name);
 void typechecker_check(TypeChecker *checker, AstNode *program);
 void typechecker_free(TypeChecker *checker);
 

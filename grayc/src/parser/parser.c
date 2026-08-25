@@ -195,8 +195,10 @@ static const char *read_type_name(Parser *parser) {
         size_t nlen = strlen(name), qlen = strlen(parser->cur_token.literal);
         size_t len = nlen + qlen + 2;
         char *qualified = arena_alloc(parser->arena, len);
-        /* Use underscore for module-qualified types: mod.Type → mod_Type */
-        snprintf(qualified, len, "%s_%s", name, parser->cur_token.literal);
+        /* The qualifier stays attached: mod.Type is carried through as written
+         * and resolved against the symbol table, not flattened to mod_Type
+         * here where there is nothing to resolve it against. */
+        snprintf(qualified, len, "%s.%s", name, parser->cur_token.literal);
         return qualified;
     }
     return name;
@@ -764,7 +766,7 @@ static AstNode *parse_prefix(Parser *parser) {
                     parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z') {
                     /* mod.Name{; module-qualified struct literal */
                     char *prefixed = arena_alloc(parser->arena, MSG_BUF_SIZE);
-                    snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod, parser->cur_token.literal);
+                    snprintf(prefixed, MSG_BUF_SIZE, "%s.%s", mod, parser->cur_token.literal);
                     next_token(parser); /* move to { */
                     return parse_struct_literal(parser, prefixed);
                 }
@@ -2859,7 +2861,7 @@ static AstNode *parse_when_statement(Parser *parser) {
                         next_token(parser); /* skip dot */
                         if (is_qualified_enum) {
                             char qualified[MSG_BUF_SIZE];
-                            snprintf(qualified, sizeof(qualified), "%s_%s",
+                            snprintf(qualified, sizeof(qualified), "%s.%s",
                                 pat->data.when_pattern.enum_name, parser->cur_token.literal);
                             pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, qualified);
                             next_token(parser); /* skip enum name */
