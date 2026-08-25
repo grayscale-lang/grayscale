@@ -107,9 +107,21 @@ static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
 /* Track which module's file is being emitted. Every node of a declaration
  * carries the same file, so setting this per statement covers the bodies. */
 static void codegen_enter_node(CodeGen *codegen, AstNode *node) {
-    if (node && node->token.file && codegen->modules)
+    if (node && node->token.file && codegen->modules) {
         codegen->current_module =
             module_table_module_for_file(codegen->modules, node->token.file);
+        codegen->current_file = node->token.file;
+    }
+}
+
+/* The scope emission resolves names in. */
+static ResolveScope codegen_scope(CodeGen *codegen) {
+    ResolveScope scope;
+    scope.module = codegen->current_module;
+    scope.file = codegen->current_file ? codegen->current_file : codegen->file;
+    scope.using_modules = codegen->using_modules;
+    scope.using_count = codegen->using_module_count;
+    return scope;
 }
 
 /* The C-visible spelling of a name as written where it appears: bare inside
@@ -117,16 +129,14 @@ static void codegen_enter_node(CodeGen *codegen, AstNode *node) {
  * at which a written name becomes the symbol it names. */
 static const char *codegen_resolve_type(CodeGen *codegen, const char *written) {
     if (!codegen || !codegen->modules || !written) return written;
-    return module_resolve_type_name(codegen->modules, codegen->current_module,
-                                    codegen->using_modules,
-                                    codegen->using_module_count, written);
+    ResolveScope scope = codegen_scope(codegen);
+    return module_resolve_type_name(codegen->modules, &scope, written);
 }
 
 static const char *codegen_resolve_decl(CodeGen *codegen, const char *written) {
     if (!codegen || !codegen->modules || !written) return written;
-    DeclEntry *entry = module_resolve_written(codegen->modules, codegen->current_module,
-                                              codegen->using_modules,
-                                              codegen->using_module_count, written);
+    ResolveScope scope = codegen_scope(codegen);
+    DeclEntry *entry = module_resolve_written(codegen->modules, &scope, written);
     return entry ? module_mangle(codegen->modules, entry) : written;
 }
 
@@ -2706,7 +2716,8 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
          * mangled name at the same time. Stdlib modules are not in it, so those
          * still go through the import list. */
         if (mod[0] >= 'a' && mod[0] <= 'z') {
-            DeclEntry *entry = module_resolve_qualified(codegen->modules, NULL, mod, mem, NULL);
+            ResolveScope mscope = codegen_scope(codegen);
+            DeclEntry *entry = module_resolve_qualified(codegen->modules, &mscope, mod, mem, NULL);
             if (entry) {
                 emit(codegen, module_mangle(codegen->modules, entry));
                 return;

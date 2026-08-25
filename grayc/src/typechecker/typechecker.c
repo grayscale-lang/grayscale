@@ -209,6 +209,7 @@ static bool is_enum_name(TypeChecker *checker, const char *name);
 static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
                                              char *buf, size_t buflen);
 static void checker_refresh_using(TypeChecker *checker);
+static ResolveScope checker_scope(TypeChecker *checker);
 
 /* True if the expression is an assignment target (something with a stable
  * address): a variable, a field of an assignment target, an index into an
@@ -910,7 +911,8 @@ static FuncSig *find_func(TypeChecker *checker, const char *name) {
  * how the key is spelled. */
 static const char *module_member_key(TypeChecker *checker, const char *mod,
                                      const char *name, char *buf, size_t buflen) {
-    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_qualified(checker->modules, &scope, mod, name, NULL);
     if (entry) return module_mangle_into(entry, buf, buflen);
     snprintf(buf, buflen, "%s_%s",
              module_table_resolve_alias(checker->modules, mod), name);
@@ -1756,14 +1758,9 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
  * a private one. */
 static AstNode *find_module_var_decl(TypeChecker *checker, const char *mod,
                                      const char *name) {
-    DeclEntry *entry = module_resolve_qualified(checker->modules, NULL, mod, name, NULL);
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_qualified(checker->modules, &scope, mod, name, NULL);
     return (entry && entry->kind == DECL_CONST) ? entry->ast_node : NULL;
-}
-
-static bool module_var_is_private(TypeChecker *checker, const char *mod,
-                                  const char *name) {
-    AstNode *decl = find_module_var_decl(checker, mod, name);
-    return decl && decl->data.var_decl.is_private;
 }
 
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
@@ -2136,6 +2133,24 @@ static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *ba
 
 /* Resolve a type name, returning TK_ENUM for known enum names instead of
  * the default TK_STRUCT that type_from_name() produces for uppercase names. */
+/* Report `mod.name` as inaccessible if the symbol table says so, and return
+ * whether it did. The visibility rule itself lives in the table; this is only
+ * the diagnostic each call site used to hand-roll — E4015 for a function,
+ * variable or constant, E4021 for a type alias. */
+static bool reject_if_private(TypeChecker *checker, AstNode *node,
+                              const char *mod, const char *name);
+
+/* The scope every resolution in this file happens in. */
+static ResolveScope checker_scope(TypeChecker *checker) {
+    checker_refresh_using(checker);
+    ResolveScope scope;
+    scope.module = module_table_module_for_file(checker->modules, checker->current_check_file);
+    scope.file = checker->current_check_file ? checker->current_check_file : checker->file;
+    scope.using_modules = checker->using_visible;
+    scope.using_count = checker->using_visible_count;
+    return scope;
+}
+
 /* Refresh the visible `using` list for the current file. */
 static void checker_refresh_using(TypeChecker *checker) {
     if (checker->using_visible_file == checker->current_check_file &&
@@ -2158,11 +2173,22 @@ static void checker_refresh_using(TypeChecker *checker) {
 static const char *checker_resolve_decl_into(TypeChecker *checker, const char *written,
                                              char *buf, size_t buflen) {
     if (!written || !checker->modules) return written;
-    checker_refresh_using(checker);
-    DeclEntry *entry = module_resolve_written(checker->modules,
-        module_table_module_for_file(checker->modules, checker->current_check_file),
-        checker->using_visible, checker->using_visible_count, written);
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, written);
     return entry ? module_mangle_into(entry, buf, buflen) : written;
+}
+
+static bool reject_if_private(TypeChecker *checker, AstNode *node,
+                              const char *mod, const char *name) {
+    if (!checker->modules || !mod || !name) return false;
+    ResolveScope scope = checker_scope(checker);
+    ResolveStatus status;
+    DeclEntry *entry = module_resolve_qualified(checker->modules, &scope, mod, name, &status);
+    if (status != RESOLVE_PRIVATE) return false;
+    const char *code = entry->kind == DECL_ALIAS ? "E4021" : "E4015";
+    diagnostic_error_code_formatted(checker->diag, code,
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+    return true;
 }
 
 /* Does `name` name a module-level constant or variable visible from here?
@@ -2172,10 +2198,8 @@ static const char *checker_resolve_decl_into(TypeChecker *checker, const char *w
  * does. The symbol table is complete by then, so it is what decides. */
 static bool module_declares_const(TypeChecker *checker, const char *name) {
     if (!checker->modules) return false;
-    checker_refresh_using(checker);
-    DeclEntry *entry = module_resolve_written(checker->modules,
-        module_table_module_for_file(checker->modules, checker->current_check_file),
-        checker->using_visible, checker->using_visible_count, name);
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, name);
     return entry && entry->kind == DECL_CONST;
 }
 
@@ -2190,42 +2214,28 @@ static const char *checker_resolve_enum_key(TypeChecker *checker, const char *wr
 /* The registry spelling of a type name as written in the current file. */
 static const char *checker_resolve_type_name(TypeChecker *checker, const char *written) {
     if (!written || !checker->modules) return written;
-    checker_refresh_using(checker);
-    return module_resolve_type_name(checker->modules,
-        module_table_module_for_file(checker->modules, checker->current_check_file),
-        checker->using_visible, checker->using_visible_count, written);
+    ResolveScope scope = checker_scope(checker);
+    return module_resolve_type_name(checker->modules, &scope, written);
 }
 
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
+    const char *written_name = name;
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
      * module's own or a using'd declaration — onto the registry spelling. */
     name = checker_resolve_type_name(checker, name);
     /* Resolve type aliases before any type lookup.
      * Also check private access for the original name. */
     if (name) {
-        /* For cross-module refs the parser mangles lib.ID → lib_ID,
-         * but aliases are registered under the bare name (ID).
-         * Strip the module prefix before comparing. */
-        const char *base_name = name;
-        const char *us = strchr(name, '_');
-        if (us && us[1] >= 'A' && us[1] <= 'Z') {
-            base_name = us + 1;
-        }
-        for (int i = 0; i < checker->type_alias_count; i++) {
-            if (strcmp(checker->type_alias_names[i], name) == 0 ||
-                (base_name != name && strcmp(checker->type_alias_names[i], base_name) == 0)) {
-                if (checker->type_alias_is_private[i]) {
-                    const char *alias_file = checker->type_alias_files[i];
-                    const char *caller_file = checker->current_check_file;
-                    bool same_file = (!alias_file && !caller_file) ||
-                        (alias_file && caller_file && strcmp(alias_file, caller_file) == 0);
-                    if (!same_file) {
-                        diagnostic_error_code_formatted(checker->diag, "E4021",
-                            checker->current_check_file ? checker->current_check_file : checker->file,
-                            0, 0, 0, checker->type_alias_names[i]);
-                    }
-                }
-                break;
+        /* Naming a private declaration from outside the file that declares it
+         * is an error whatever the declaration is; the table decides, and the
+         * kind only picks which code to report. */
+        if (checker->modules) {
+            ResolveScope vscope = checker_scope(checker);
+            DeclEntry *entry = module_resolve_written(checker->modules, &vscope, written_name);
+            if (entry && !module_decl_visible(&vscope, entry)) {
+                diagnostic_error_code_formatted(checker->diag,
+                    entry->kind == DECL_ALIAS ? "E4021" : "E4015",
+                    vscope.file, 0, 0, 0, entry->name);
             }
         }
         name = resolve_type_alias(checker, name);
@@ -3847,8 +3857,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
     } else {
         /* Try user-defined module */
         FuncSig *sig = find_module_func(checker, mod, mfn);
-        if (sig && sig->is_private) {
-            diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, mfn);
+        if (sig && reject_if_private(checker, node, mod, mfn)) {
+            /* diagnostic already reported */
         } else if (sig) {
             sig->used = true;
             warn_if_func_deprecated(checker, node, sig);
@@ -5499,8 +5509,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 if (!found_in_using) {
                     FuncSig *sig = find_module_func(checker, real_mod, function_name);
                     if (sig) {
-                        if (sig->is_private) {
-                            diagnostic_error_code_formatted(checker->diag, "E4015", NODE_FILE(checker, node), node->token.line, node->token.column, 0, function_name);
+                        if (reject_if_private(checker, node, real_mod, function_name)) {
                             found_in_using = true;
                         } else {
                             found_in_using = true;
@@ -6632,15 +6641,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             Symbol *mod_sym = scope_lookup(checker->current_scope, prefixed);
             if (mod_sym) {
                 mod_sym->used = true;
-                /* E4015: a private variable or constant is as unreachable from
-                 * outside its file as a private function. Only the two call
-                 * paths checked this, so reading one through mod.NAME crossed
-                 * the boundary with no diagnostic at all. */
-                if (module_var_is_private(checker, obj_name, member)) {
-                    diagnostic_error_code_formatted(checker->diag, "E4015",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        member);
-                }
+                /* A private variable or constant is as unreachable from
+                 * outside its file as a private function. */
+                reject_if_private(checker, node, obj_name, member);
                 result = mod_sym->type;
                 /* Mark module as used */
                 mark_import_used(checker, obj_name);
@@ -12178,12 +12181,8 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             checker->type_alias_cap = checker->type_alias_cap ? checker->type_alias_cap * 2 : 8;
             checker->type_alias_names = xrealloc(checker->type_alias_names, sizeof(const char *) * (size_t)checker->type_alias_cap);
             checker->type_alias_targets = xrealloc(checker->type_alias_targets, sizeof(const char *) * (size_t)checker->type_alias_cap);
-            checker->type_alias_files = xrealloc(checker->type_alias_files, sizeof(const char *) * (size_t)checker->type_alias_cap);
-            checker->type_alias_is_private = xrealloc(checker->type_alias_is_private, sizeof(bool) * (size_t)checker->type_alias_cap);
         }
         checker->type_alias_targets[checker->type_alias_count] = target;
-        checker->type_alias_files[checker->type_alias_count] = stmt->token.file;
-        checker->type_alias_is_private[checker->type_alias_count] = stmt->data.alias_decl.is_private;
         {
             DeclEntry *entry = module_register(checker, stmt, DECL_ALIAS, aname,
                                                stmt->data.alias_decl.is_private);
@@ -12871,8 +12870,6 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->type_alias_names);
     free(checker->type_alias_targets);
-    free(checker->type_alias_files);
-    free(checker->type_alias_is_private);
 
     free(checker->const_int_names);
     free(checker->const_int_values);

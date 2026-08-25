@@ -69,6 +69,10 @@ typedef struct {
      * resolves one against the file being checked. */
     const char *current_module;
 
+    /* The file that module's declarations are being emitted from. Visibility
+     * is file-scoped, so resolution needs it alongside the module. */
+    const char *current_file;
+
     /* Current var decl context (for context-aware call emission) */
     const char *current_var_name;
     const char *current_var_type;

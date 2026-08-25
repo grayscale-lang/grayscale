@@ -106,6 +106,17 @@ typedef struct {
     int file_hash_cap;
 } ModuleTable;
 
+/* Where a name is being resolved from. `module` scopes an unqualified
+ * lookup; `file` decides visibility, because a private declaration is
+ * private to the file that declares it, not to its module — a directory
+ * module's files do not see each other's private declarations. */
+typedef struct {
+    const char *module;
+    const char *file;
+    const char **using_modules;
+    int using_count;
+} ResolveScope;
+
 /* Why a qualified lookup failed. Callers need the distinction to pick between
  * "no such module", "no such member", and the private-access diagnostics. */
 typedef enum {
@@ -158,32 +169,32 @@ void module_table_add_alias(ModuleTable *table, const char *alias,
  * it is not an alias, so the result is always usable as a module name. */
 const char *module_table_resolve_alias(ModuleTable *table, const char *alias);
 
-/* Resolve `module_or_alias.name` as seen from `current_module`, applying the
+/* Resolve `module_or_alias.name` as seen from `scope`, applying the
  * visibility rule. `out_status` may be NULL. On RESOLVE_PRIVATE the entry is
- * still returned so the caller can point at its declaration site. */
+ * still returned so the caller can report where it was declared. */
 DeclEntry *module_resolve_qualified(ModuleTable *table,
-                                    const char *current_module,
+                                    const ResolveScope *scope,
                                     const char *module_or_alias,
                                     const char *name,
                                     ResolveStatus *out_status);
 
-/* Resolve a bare `name`: the current module first, then each `using`'d module
- * in declared order. A name found in more than one using'd module is
+/* Resolve a bare `name`: the scope's own module first, then each `using`'d
+ * module in declared order. A name found in more than one using'd module is
  * ambiguous — *out_ambiguous_with receives the second module's name and the
  * result is NULL. Pass NULL for out_ambiguous_with to take the first match. */
 DeclEntry *module_resolve_unqualified(ModuleTable *table,
-                                      const char *current_module,
-                                      const char **using_modules,
-                                      int using_count,
+                                      const ResolveScope *scope,
                                       const char *name,
                                       const char **out_ambiguous_with);
+
+/* Is `entry` reachable from `scope`? The single visibility rule. */
+bool module_decl_visible(const ResolveScope *scope, const DeclEntry *entry);
 
 /* Resolve a name as written in source — "lib.Score" or a bare "Score" — as
  * seen from inside `current_module`. A qualified name goes to the module its
  * qualifier names; a bare name tries the current module first, then each
  * using'd module in declared order. */
-DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module,
-                                  const char **using_modules, int using_count,
+DeclEntry *module_resolve_written(ModuleTable *table, const ResolveScope *scope,
                                   const char *written);
 
 /* The mangled spelling of a written type name, with every leaf identifier
@@ -191,8 +202,7 @@ DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module
  * [T], [T,N], ^T, map[K:V], and nestings of them — so that a type annotation
  * is rewritten in exactly one place instead of at each site that inspects it.
  * Returns `written` unchanged when nothing in it resolves to a declaration. */
-const char *module_resolve_type_name(ModuleTable *table, const char *current_module,
-                                     const char **using_modules, int using_count,
+const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *scope,
                                      const char *written);
 
 /* The C symbol name for a declaration: "mod_Name", or "Name" for the entry

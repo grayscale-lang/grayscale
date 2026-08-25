@@ -274,8 +274,17 @@ const char *module_table_resolve_alias(ModuleTable *table, const char *alias) {
 
 /* --- Resolution --- */
 
+bool module_decl_visible(const ResolveScope *scope, const DeclEntry *entry) {
+    if (!entry || entry->visibility != VIS_PRIVATE) return true;
+    /* Private is private to the declaring file. Two files of one directory
+     * module are as much "outside" each other as two separate modules. */
+    const char *from = scope ? scope->file : NULL;
+    if (!from || !entry->origin_file) return false;
+    return strcmp(from, entry->origin_file) == 0;
+}
+
 DeclEntry *module_resolve_qualified(ModuleTable *table,
-                                    const char *current_module,
+                                    const ResolveScope *scope,
                                     const char *module_or_alias,
                                     const char *name,
                                     ResolveStatus *out_status) {
@@ -287,17 +296,12 @@ DeclEntry *module_resolve_qualified(ModuleTable *table,
      * the entry file's declarations. */
     if (table && module_or_alias && *module_or_alias && name) {
         const char *module_name = module_table_resolve_alias(table, module_or_alias);
-        ModuleScope *scope = module_table_find(table, module_name);
-        if (scope) {
-            entry = module_scope_lookup(scope, name);
-            if (!entry) {
-                status = RESOLVE_NO_DECL;
-            } else if (entry->visibility == VIS_PRIVATE &&
-                       (!current_module || strcmp(current_module, entry->module_name) != 0)) {
-                status = RESOLVE_PRIVATE;
-            } else {
-                status = RESOLVE_OK;
-            }
+        ModuleScope *ms = module_table_find(table, module_name);
+        if (ms) {
+            entry = module_scope_lookup(ms, name);
+            if (!entry) status = RESOLVE_NO_DECL;
+            else if (!module_decl_visible(scope, entry)) status = RESOLVE_PRIVATE;
+            else status = RESOLVE_OK;
         }
     }
 
@@ -307,29 +311,27 @@ DeclEntry *module_resolve_qualified(ModuleTable *table,
 }
 
 DeclEntry *module_resolve_unqualified(ModuleTable *table,
-                                      const char *current_module,
-                                      const char **using_modules,
-                                      int using_count,
+                                      const ResolveScope *scope,
                                       const char *name,
                                       const char **out_ambiguous_with) {
     if (out_ambiguous_with) *out_ambiguous_with = NULL;
-    if (!table || !name) return NULL;
+    if (!table || !name || !scope) return NULL;
 
     /* The current module always wins — a local declaration shadows anything a
      * `using` brought in, and is never ambiguous with it. */
-    ModuleScope *own = module_table_find(table, current_module);
+    ModuleScope *own = module_table_find(table, scope->module);
     if (own) {
         DeclEntry *entry = module_scope_lookup(own, name);
         if (entry) return entry;
     }
 
     DeclEntry *found = NULL;
-    for (int i = 0; i < using_count; i++) {
-        const char *module_name = module_table_resolve_alias(table, using_modules[i]);
-        ModuleScope *scope = module_table_find(table, module_name);
-        if (!scope) continue;
-        DeclEntry *entry = module_scope_lookup(scope, name);
-        if (!entry || entry->visibility == VIS_PRIVATE) continue;
+    for (int i = 0; i < scope->using_count; i++) {
+        const char *module_name = module_table_resolve_alias(table, scope->using_modules[i]);
+        ModuleScope *ms = module_table_find(table, module_name);
+        if (!ms) continue;
+        DeclEntry *entry = module_scope_lookup(ms, name);
+        if (!entry || !module_decl_visible(scope, entry)) continue;
         if (!found) {
             found = entry;
             /* Without an ambiguity report to make, the first match is the
@@ -345,10 +347,9 @@ DeclEntry *module_resolve_unqualified(ModuleTable *table,
     return found;
 }
 
-DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module,
-                                  const char **using_modules, int using_count,
+DeclEntry *module_resolve_written(ModuleTable *table, const ResolveScope *scope,
                                   const char *written) {
-    if (!table || !written) return NULL;
+    if (!table || !written || !scope) return NULL;
     /* Leaf names only. A composite spelling — [T], ^T, map[K:V] — has to go
      * through module_resolve_type_name, which takes it apart first; splitting
      * one here on its first '.' would produce nonsense like ("[types",
@@ -361,10 +362,9 @@ DeclEntry *module_resolve_written(ModuleTable *table, const char *current_module
         if (qlen >= sizeof(qualifier)) return NULL;
         memcpy(qualifier, written, qlen);
         qualifier[qlen] = '\0';
-        return module_resolve_qualified(table, current_module, qualifier, dot + 1, NULL);
+        return module_resolve_qualified(table, scope, qualifier, dot + 1, NULL);
     }
-    return module_resolve_unqualified(table, current_module, using_modules,
-                                      using_count, written, NULL);
+    return module_resolve_unqualified(table, scope, written, NULL);
 }
 
 /* --- Written type names --- */
@@ -380,8 +380,7 @@ static int find_at_depth_zero(const char *s, size_t len, char ch) {
     return -1;
 }
 
-const char *module_resolve_type_name(ModuleTable *table, const char *current_module,
-                                     const char **using_modules, int using_count,
+const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *scope,
                                      const char *written) {
     if (!table || !written) return written;
     size_t len = strlen(written);
@@ -398,8 +397,7 @@ const char *module_resolve_type_name(ModuleTable *table, const char *current_mod
             inner[comma] = '\0';
             size_suffix = inner + comma + 1;
         }
-        const char *elem = module_resolve_type_name(table, current_module,
-                                                    using_modules, using_count, inner);
+        const char *elem = module_resolve_type_name(table, scope, inner);
         if (elem == inner && !size_suffix) return written;
         char buf[MSG_BUF_SIZE];
         if (size_suffix) snprintf(buf, sizeof(buf), "[%s,%s]", elem, size_suffix);
@@ -409,9 +407,7 @@ const char *module_resolve_type_name(ModuleTable *table, const char *current_mod
 
     /* Pointer: ^T */
     if (written[0] == '^') {
-        const char *pointee = module_resolve_type_name(table, current_module,
-                                                       using_modules, using_count,
-                                                       written + 1);
+        const char *pointee = module_resolve_type_name(table, scope, written + 1);
         if (pointee == written + 1) return written;
         char buf[MSG_BUF_SIZE];
         snprintf(buf, sizeof(buf), "^%s", pointee);
@@ -427,10 +423,8 @@ const char *module_resolve_type_name(ModuleTable *table, const char *current_mod
         inner[colon] = '\0';
         const char *k = inner;
         const char *v = inner + colon + 1;
-        const char *rk = module_resolve_type_name(table, current_module,
-                                                  using_modules, using_count, k);
-        const char *rv = module_resolve_type_name(table, current_module,
-                                                  using_modules, using_count, v);
+        const char *rk = module_resolve_type_name(table, scope, k);
+        const char *rv = module_resolve_type_name(table, scope, v);
         if (rk == k && rv == v) return written;
         char buf[MSG_BUF_SIZE];
         snprintf(buf, sizeof(buf), "map[%s:%s]", rk, rv);
@@ -439,8 +433,7 @@ const char *module_resolve_type_name(ModuleTable *table, const char *current_mod
 
     /* Leaf. Only type declarations name a type; a function or constant that
      * happens to share the spelling must not capture it. */
-    DeclEntry *entry = module_resolve_written(table, current_module, using_modules,
-                                              using_count, written);
+    DeclEntry *entry = module_resolve_written(table, scope, written);
     if (!entry) return written;
     if (entry->kind != DECL_STRUCT && entry->kind != DECL_ENUM && entry->kind != DECL_ALIAS)
         return written;

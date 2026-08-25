@@ -21,11 +21,31 @@ static ModuleTable *table_with_modules(void) {
     return table;
 }
 
+/* A scope resolving from `module`, with the given using list. `file` matters
+ * only for visibility; tests that care pass a declaration's origin file. */
+static ResolveScope scope_of(const char *module, const char *file,
+                             const char **using_modules, int using_count) {
+    ResolveScope s;
+    s.module = module;
+    s.file = file;
+    s.using_modules = using_modules;
+    s.using_count = using_count;
+    return s;
+}
+
+/* The file a module's declarations live in. Privacy is file-scoped, so tests
+ * need declarations and callers to sit in distinct files. */
+static const char *module_file(const char *module) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s.gray", *module ? module : "main");
+    return arena_copy_string(arena, buf);
+}
+
 static DeclEntry *define(ModuleTable *table, const char *module,
                          const char *name, Visibility vis) {
     ModuleScope *scope = module_table_find(table, module);
     return module_scope_define(table, scope, DECL_FUNC, name, NULL, NULL,
-                               "test.gray", 1, vis);
+                               module_file(module), 1, vis);
 }
 
 /* --- Scopes and definition --- */
@@ -139,7 +159,8 @@ static void test_entry_module_is_not_a_qualifier(void) {
     ModuleTable *table = table_with_modules();
     define(table, MODULE_ENTRY_NAME, "helper", VIS_PUBLIC);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, MODULE_ENTRY_NAME,
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    DeclEntry *found = module_resolve_qualified(table, &sc,
                                                 MODULE_ENTRY_NAME, "helper", &status);
     ASSERT_EQ(status, RESOLVE_NO_MODULE);
     ASSERT(found == NULL);
@@ -189,27 +210,30 @@ static void test_node_index_growth(void) {
 
 static void test_resolve_qualified_ok(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     DeclEntry *declared = define(table, "lib", "helper", VIS_PUBLIC);
 
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "main", "lib", "helper", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "helper", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT(found == declared);
 }
 
 static void test_resolve_qualified_unknown_module(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "main", "nosuch", "helper", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "nosuch", "helper", &status);
     ASSERT_EQ(status, RESOLVE_NO_MODULE);
     ASSERT(found == NULL);
 }
 
 static void test_resolve_qualified_unknown_member(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     define(table, "lib", "helper", VIS_PUBLIC);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "main", "lib", "absent", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "absent", &status);
     ASSERT_EQ(status, RESOLVE_NO_DECL);
     ASSERT(found == NULL);
 }
@@ -218,38 +242,63 @@ static void test_resolve_qualified_unknown_member(void) {
  * they were declared. Only the status says access was refused. */
 static void test_resolve_qualified_private_from_outside(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     DeclEntry *declared = define(table, "lib", "secret", VIS_PRIVATE);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "main", "lib", "secret", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
     ASSERT_EQ(status, RESOLVE_PRIVATE);
     ASSERT(found == declared);
 }
 
 static void test_resolve_qualified_private_from_own_module(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
     define(table, "lib", "secret", VIS_PRIVATE);
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "lib", "lib", "secret", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "lib", "secret", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT_NOT_NULL(found);
 }
 
 static void test_resolve_qualified_null_status_allowed(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     define(table, "lib", "helper", VIS_PUBLIC);
-    ASSERT_NOT_NULL(module_resolve_qualified(table, "main", "lib", "helper", NULL));
+    ASSERT_NOT_NULL(module_resolve_qualified(table, &sc, "lib", "helper", NULL));
+}
+
+/* Private is scoped to the declaring file, not the module: two files merged
+ * into one directory module are as much "outside" each other as two modules. */
+static void test_private_is_file_scoped_within_a_module(void) {
+    ModuleTable *table = module_table_create(arena);
+    module_table_map_file(table, "main.gray", NULL, true);
+    module_table_map_file(table, "pkg/a.gray", "pkg", false);
+    module_table_map_file(table, "pkg/b.gray", "pkg", false);
+    ModuleScope *pkg = module_table_find(table, "pkg");
+    module_scope_define(table, pkg, DECL_FUNC, "secret", NULL, NULL,
+                        "pkg/a.gray", 1, VIS_PRIVATE);
+
+    ResolveScope same = scope_of("pkg", "pkg/a.gray", NULL, 0);
+    ResolveScope sibling = scope_of("pkg", "pkg/b.gray", NULL, 0);
+    ResolveStatus st;
+
+    module_resolve_qualified(table, &same, "pkg", "secret", &st);
+    ASSERT_EQ(st, RESOLVE_OK);
+    module_resolve_qualified(table, &sibling, "pkg", "secret", &st);
+    ASSERT_EQ(st, RESOLVE_PRIVATE);
 }
 
 /* --- Aliases --- */
 
 static void test_alias_resolves_to_module(void) {
     ModuleTable *table = table_with_modules();
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     module_table_add_alias(table, "l", "lib");
     define(table, "lib", "helper", VIS_PUBLIC);
 
     ASSERT_STR_EQ(module_table_resolve_alias(table, "l"), "lib");
     ResolveStatus status;
-    DeclEntry *found = module_resolve_qualified(table, "main", "l", "helper", &status);
+    DeclEntry *found = module_resolve_qualified(table, &sc, "l", "helper", &status);
     ASSERT_EQ(status, RESOLVE_OK);
     ASSERT_NOT_NULL(found);
     ASSERT_STR_EQ(found->module_name, "lib");
@@ -274,9 +323,9 @@ static void test_unqualified_prefers_current_module(void) {
     define(table, "lib", "name", VIS_PUBLIC);
 
     const char *using_list[] = {"lib"};
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
     const char *ambiguous = NULL;
-    DeclEntry *found = module_resolve_unqualified(table, MODULE_ENTRY_NAME, using_list, 1,
-                                                  "name", &ambiguous);
+    DeclEntry *found = module_resolve_unqualified(table, &sc, "name", &ambiguous);
     ASSERT(found == own);
     ASSERT(ambiguous == NULL);
 }
@@ -285,8 +334,8 @@ static void test_unqualified_finds_using_module(void) {
     ModuleTable *table = table_with_modules();
     DeclEntry *declared = define(table, "lib", "helper", VIS_PUBLIC);
     const char *using_list[] = {"lib"};
-    DeclEntry *found = module_resolve_unqualified(table, "main", using_list, 1,
-                                                  "helper", NULL);
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
+    DeclEntry *found = module_resolve_unqualified(table, &sc, "helper", NULL);
     ASSERT(found == declared);
 }
 
@@ -294,7 +343,8 @@ static void test_unqualified_skips_private(void) {
     ModuleTable *table = table_with_modules();
     define(table, "lib", "secret", VIS_PRIVATE);
     const char *using_list[] = {"lib"};
-    ASSERT(module_resolve_unqualified(table, "main", using_list, 1, "secret", NULL) == NULL);
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
+    ASSERT(module_resolve_unqualified(table, &sc, "secret", NULL) == NULL);
 }
 
 /* Two using'd modules exporting the same name is an error, not a silent pick
@@ -306,9 +356,9 @@ static void test_unqualified_ambiguity_reported(void) {
     define(table, "other", "shared", VIS_PUBLIC);
 
     const char *using_list[] = {"lib", "other"};
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
     const char *ambiguous = NULL;
-    DeclEntry *found = module_resolve_unqualified(table, "main", using_list, 2,
-                                                  "shared", &ambiguous);
+    DeclEntry *found = module_resolve_unqualified(table, &sc, "shared", &ambiguous);
     ASSERT(found == NULL);
     ASSERT_NOT_NULL(ambiguous);
     ASSERT_STR_EQ(ambiguous, "other");
@@ -322,13 +372,15 @@ static void test_unqualified_first_match_without_slot(void) {
     define(table, "other", "shared", VIS_PUBLIC);
 
     const char *using_list[] = {"lib", "other"};
-    ASSERT(module_resolve_unqualified(table, "main", using_list, 2, "shared", NULL) == first);
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
+    ASSERT(module_resolve_unqualified(table, &sc, "shared", NULL) == first);
 }
 
 static void test_unqualified_miss(void) {
     ModuleTable *table = table_with_modules();
     const char *using_list[] = {"lib"};
-    ASSERT(module_resolve_unqualified(table, "main", using_list, 1, "absent", NULL) == NULL);
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, sizeof(using_list)/sizeof(using_list[0]));
+    ASSERT(module_resolve_unqualified(table, &sc, "absent", NULL) == NULL);
 }
 
 /* --- Written names --- */
@@ -338,16 +390,17 @@ static ModuleTable *typed_table(void) {
     module_table_map_file(table, "main.gray", NULL, true);
     module_table_map_file(table, "lib.gray", "lib", false);
     ModuleScope *lib = module_table_find(table, "lib");
-    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, NULL, "lib.gray", 1, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, NULL, "lib.gray", 2, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, NULL, "lib.gray", 3, VIS_PUBLIC);
-    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, NULL, "lib.gray", 4, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_STRUCT, "Point", NULL, NULL, module_file("lib"), 1, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ENUM, "Color", NULL, NULL, module_file("lib"), 2, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_ALIAS, "Score", NULL, NULL, module_file("lib"), 3, VIS_PUBLIC);
+    module_scope_define(table, lib, DECL_FUNC, "helper", NULL, NULL, module_file("lib"), 4, VIS_PUBLIC);
     return table;
 }
 
 static void test_resolve_written_qualified(void) {
     ModuleTable *table = typed_table();
-    DeclEntry *e = module_resolve_written(table, MODULE_ENTRY_NAME, NULL, 0, "lib.Point");
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    DeclEntry *e = module_resolve_written(table, &sc, "lib.Point");
     ASSERT_NOT_NULL(e);
     ASSERT_STR_EQ(e->name, "Point");
     ASSERT_STR_EQ(e->module_name, "lib");
@@ -357,69 +410,76 @@ static void test_resolve_written_qualified(void) {
  * sibling case, which the import merge handled by textual rewriting. */
 static void test_resolve_written_bare_in_own_module(void) {
     ModuleTable *table = typed_table();
-    DeclEntry *e = module_resolve_written(table, "lib", NULL, 0, "Point");
+    ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
+    DeclEntry *e = module_resolve_written(table, &sc, "Point");
     ASSERT_NOT_NULL(e);
     ASSERT_STR_EQ(e->module_name, "lib");
 }
 
 static void test_resolve_written_bare_needs_using(void) {
     ModuleTable *table = typed_table();
-    ASSERT(module_resolve_written(table, MODULE_ENTRY_NAME, NULL, 0, "Point") == NULL);
+    ResolveScope bare = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    ASSERT(module_resolve_written(table, &bare, "Point") == NULL);
     const char *using_list[] = {"lib"};
-    ASSERT_NOT_NULL(module_resolve_written(table, MODULE_ENTRY_NAME, using_list, 1, "Point"));
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), using_list, 1);
+    ASSERT_NOT_NULL(module_resolve_written(table, &sc, "Point"));
 }
 
 /* --- Written type names --- */
 
 static void test_type_name_leaf(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "lib.Point"),
+    ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "lib.Point"),
                   "lib_Point");
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Color"), "lib_Color");
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Score"), "lib_Score");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "Color"), "lib_Color");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "Score"), "lib_Score");
 }
 
 static void test_type_name_primitives_untouched(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "int"), "int");
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "string"), "string");
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "Unknown"), "Unknown");
+    ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "int"), "int");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "string"), "string");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "Unknown"), "Unknown");
 }
 
 /* A function is not a type; a type annotation must not pick one up. */
 static void test_type_name_ignores_non_types(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, "lib", NULL, 0, "helper"), "helper");
+    ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "helper"), "helper");
 }
 
 static void test_type_name_composites(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[lib.Point]"),
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "[lib.Point]"),
                   "[lib_Point]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[lib.Point,3]"),
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "[lib.Point,3]"),
                   "[lib_Point,3]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "^lib.Point"),
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "^lib.Point"),
                   "^lib_Point");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0,
-                                           "map[string:lib.Point]"),
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "map[string:lib.Point]"),
                   "map[string:lib_Point]");
 }
 
 static void test_type_name_nested_composites(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[[lib.Point]]"),
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "[[lib.Point]]"),
                   "[[lib_Point]]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "^[lib.Point]"),
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "^[lib.Point]"),
                   "^[lib_Point]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0,
-                                           "map[lib.Color:[lib.Point]]"),
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "map[lib.Color:[lib.Point]]"),
                   "map[lib_Color:[lib_Point]]");
 }
 
 static void test_type_name_unresolvable_unchanged(void) {
     ModuleTable *table = typed_table();
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "[Nope]"), "[Nope]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, MODULE_ENTRY_NAME, NULL, 0, "map[string:int]"),
+    ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "[Nope]"), "[Nope]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "map[string:int]"),
                   "map[string:int]");
 }
 
@@ -479,6 +539,7 @@ int main(void) {
     RUN_TEST(test_resolve_qualified_private_from_outside);
     RUN_TEST(test_resolve_qualified_private_from_own_module);
     RUN_TEST(test_resolve_qualified_null_status_allowed);
+    RUN_TEST(test_private_is_file_scoped_within_a_module);
     RUN_TEST(test_alias_resolves_to_module);
     RUN_TEST(test_non_alias_passes_through);
     RUN_TEST(test_self_alias_ignored);
