@@ -10768,13 +10768,28 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 if (emitted[i]) continue;
                 AstNode *struct_node = structs[i];
                 bool deps_met = true;
+                /* A field names its type as written in its own module's file,
+                 * while a declaration is known by its C name. Resolve both
+                 * sides before comparing: a bare `Inner` written inside module
+                 * lib is the declaration named lib_Inner. Comparing the two
+                 * spellings directly finds no dependency, and the struct is
+                 * emitted before the one it holds by value. */
+                codegen_enter_node(codegen, struct_node);
                 for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                     const char *field_type = struct_node->data.struct_decl.fields[j].type_name;
                     if (!field_type) continue;
+                    /* Only a by-value field constrains the order; a pointer,
+                     * array or map field is satisfied by the forward
+                     * declaration already emitted above. */
+                    if (field_type[0] == '^' || field_type[0] == '[' ||
+                        strncmp(field_type, "map[", 4) == 0) continue;
+                    const char *dep = codegen_resolve_type(codegen, field_type);
                     /* Check if this field type is another user struct */
                     for (int k = 0; k < struct_count; k++) {
                         if (k != i && !emitted[k] &&
-                            strcmp(structs[k]->data.struct_decl.name, field_type) == 0) {
+                            strcmp(codegen_decl_name(codegen, structs[k],
+                                                     structs[k]->data.struct_decl.name),
+                                   dep) == 0) {
                             deps_met = false;
                             break;
                         }

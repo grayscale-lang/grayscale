@@ -1938,21 +1938,40 @@ static void typechecker_resolve_named_arguments(TypeChecker *checker, AstNode *n
 
 
 /* : stdlib constants reachable via `import and use` / `using`. */
-typedef struct { const char *name; const char *mod; TypeKind return_kind; } UsingConst;
+typedef struct {
+    const char *name;
+    const char *mod;
+    TypeKind return_kind;
+    const char *struct_name; /* only for TK_STRUCT constants; NULL otherwise */
+} UsingConst;
+static GrayType *stdlib_const_type(int index);
+
 static const UsingConst _using_consts[] = {
-    {"PI","math",TK_FLOAT},{"E","math",TK_FLOAT},{"TAU","math",TK_FLOAT},
-    {"PHI","math",TK_FLOAT},{"SQRT2","math",TK_FLOAT},{"LN2","math",TK_FLOAT},
-    {"LN10","math",TK_FLOAT},{"INF","math",TK_FLOAT},{"NEG_INF","math",TK_FLOAT},
-    {"EPSILON","math",TK_FLOAT},
-    {"MAX_INT","math",TK_INT},{"MIN_INT","math",TK_INT},
-    {"MAX_FLOAT","math",TK_FLOAT},{"MIN_FLOAT","math",TK_FLOAT},
-    {"MAC_OS","os",TK_INT},{"LINUX","os",TK_INT},{"WINDOWS","os",TK_INT},{"OTHER","os",TK_INT},
-    {"O_RDONLY","io",TK_INT},{"O_WRONLY","io",TK_INT},{"O_RDWR","io",TK_INT},
-    {"BASE_2","strconv",TK_INT},{"BASE_8","strconv",TK_INT},{"BASE_10","strconv",TK_INT},
-    {"BASE_16","strconv",TK_INT},{"BASE_36","strconv",TK_INT},
-    {"NIL_UUID","uuid",TK_STRUCT},
-    {NULL,NULL,TK_UNKNOWN}
+    {"PI","math",TK_FLOAT,NULL},{"E","math",TK_FLOAT,NULL},{"TAU","math",TK_FLOAT,NULL},
+    {"PHI","math",TK_FLOAT,NULL},{"SQRT2","math",TK_FLOAT,NULL},{"LN2","math",TK_FLOAT,NULL},
+    {"LN10","math",TK_FLOAT,NULL},{"INF","math",TK_FLOAT,NULL},{"NEG_INF","math",TK_FLOAT,NULL},
+    {"EPSILON","math",TK_FLOAT,NULL},
+    {"MAX_INT","math",TK_INT,NULL},{"MIN_INT","math",TK_INT,NULL},
+    {"MAX_FLOAT","math",TK_FLOAT,NULL},{"MIN_FLOAT","math",TK_FLOAT,NULL},
+    {"MAC_OS","os",TK_INT,NULL},{"LINUX","os",TK_INT,NULL},{"WINDOWS","os",TK_INT,NULL},{"OTHER","os",TK_INT,NULL},
+    {"O_RDONLY","io",TK_INT,NULL},{"O_WRONLY","io",TK_INT,NULL},{"O_RDWR","io",TK_INT,NULL},
+    {"BASE_2","strconv",TK_INT,NULL},{"BASE_8","strconv",TK_INT,NULL},{"BASE_10","strconv",TK_INT,NULL},
+    {"BASE_16","strconv",TK_INT,NULL},{"BASE_36","strconv",TK_INT,NULL},
+    {"NIL_UUID","uuid",TK_STRUCT,"UUID"},
+    {NULL,NULL,TK_UNKNOWN,NULL}
 };
+
+/* The type of a stdlib constant, from the one table that describes them. */
+static GrayType *stdlib_const_type(int index) {
+    switch (_using_consts[index].return_kind) {
+    case TK_FLOAT:  return &TYPE_FLOAT;
+    case TK_INT:    return &TYPE_INT;
+    case TK_STRING: return &TYPE_STRING;
+    case TK_STRUCT: return _using_consts[index].struct_name
+                        ? type_struct(_using_consts[index].struct_name) : &TYPE_UNKNOWN;
+    default:        return &TYPE_UNKNOWN;
+    }
+}
 
 /* Stdlib functions that return more than one value without being fallible.
  * Fallible functions carry their (T, Error) shape through stdlib_func_meta
@@ -2049,12 +2068,7 @@ static GrayType *typechecker_lookup_using_constant(TypeChecker *checker, const c
                 strcmp(real_mod, _using_consts[const_index].mod) == 0) {
                 int mi = checker->using_module_import_indices[using_index];
                 if (mi >= 0) checker->import_used[mi] = true;
-                switch (_using_consts[const_index].return_kind) {
-                case TK_FLOAT: return &TYPE_FLOAT;
-                case TK_INT:   return &TYPE_INT;
-                case TK_STRING: return &TYPE_STRING;
-                default:       return &TYPE_UNKNOWN;
-                }
+                return stdlib_const_type(const_index);
             }
         }
     }
@@ -6554,42 +6568,18 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         /* Mark module as used (for member access like math.PI) */
         mark_import_used(checker, obj_name);
 
-        /* Check for module constants */
-        if (strcmp(obj_name, "math") == 0) {
-            /* MAX_INT/MIN_INT are the only integer-valued math constants;
-             * everything else in the module is a float. */
-            const char *mem = node->data.member.member;
-            if (strcmp(mem, "MAX_INT") == 0 || strcmp(mem, "MIN_INT") == 0) {
-                return &TYPE_INT;
-            }
-            result = &TYPE_FLOAT; /* PI, E, TAU, etc. */
-            return result;
-        }
-        if (strcmp(obj_name, "os") == 0) {
-            result = &TYPE_INT; /* MAC_OS, LINUX, etc. */
-            return result;
-        }
-        if (strcmp(obj_name, "io") == 0) {
-            const char *mem = node->data.member.member;
-            if (strcmp(mem, "O_RDONLY") == 0 || strcmp(mem, "O_WRONLY") == 0 ||
-                strcmp(mem, "O_RDWR") == 0) {
-                result = &TYPE_INT;
-                return result;
-            }
-        }
-        if (strcmp(obj_name, "strconv") == 0) {
-            const char *mem = node->data.member.member;
-            if (strcmp(mem, "BASE_2") == 0 || strcmp(mem, "BASE_8") == 0 ||
-                strcmp(mem, "BASE_10") == 0 || strcmp(mem, "BASE_16") == 0 ||
-                strcmp(mem, "BASE_36") == 0) {
-                result = &TYPE_INT;
-                return result;
-            }
-        }
-        if (strcmp(obj_name, "uuid") == 0) {
-            const char *mem = node->data.member.member;
-            if (strcmp(mem, "NIL_UUID") == 0) {
-                result = type_struct("UUID");
+        /* Stdlib module constant: math.PI, io.O_RDONLY, uuid.NIL_UUID, ...
+         * One lookup, from the table that describes them. This used to be a
+         * chain of per-module string compares in which `math.<anything>`
+         * typed as float, so a misspelled constant became a float rather
+         * than an error. */
+        {
+            ResolveScope cscope = checker_scope(checker);
+            DeclEntry *centry = module_resolve_qualified(checker->modules, &cscope,
+                obj_name, node->data.member.member, NULL);
+            if (centry && centry->external && centry->kind == DECL_CONST &&
+                centry->registry_index >= 0) {
+                result = stdlib_const_type(centry->registry_index);
                 return result;
             }
         }
@@ -12124,6 +12114,12 @@ static void register_stdlib_module(TypeChecker *checker, const char *module) {
         DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
             DECL_STRUCT, stdlib_opaque_map[i].type, NULL);
         if (entry) entry->external = true;
+    }
+    for (int i = 0; _using_consts[i].name; i++) {
+        if (strcmp(_using_consts[i].mod, module) != 0) continue;
+        DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
+            DECL_CONST, _using_consts[i].name, NULL);
+        if (entry) { entry->external = true; entry->registry_index = i; }
     }
     for (int i = 0; i < STDLIB_META_N; i++) {
         if (strcmp(stdlib_func_meta[i].mod, module) != 0) continue;
