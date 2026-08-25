@@ -273,6 +273,7 @@ DeclEntry *module_scope_define(ModuleTable *table, ModuleScope *scope,
     entry->origin_line = origin_line;
     entry->visibility = visibility;
     entry->registry_index = -1;
+    entry->external = false;
 
     ARENA_GROW(arena, scope->entries, scope->count, scope->cap);
 
@@ -490,6 +491,7 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
 
 const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen) {
     if (!entry) return NULL;
+    if (entry->external) return entry->name;
     if (entry->module_is_entry || !entry->module_name) return entry->name;
     snprintf(buf, buflen, "%s_%s", entry->module_name, entry->name);
     return buf;

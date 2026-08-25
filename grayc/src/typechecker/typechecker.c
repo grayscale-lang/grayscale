@@ -329,7 +329,16 @@ static bool type_name_already_declared(TypeChecker *checker, const char *name,
  * lookup goes through the symbol table and none through a name array. */
 static void adopt_registration(TypeChecker *checker, DeclKind kind,
                                const char *name, int index) {
-    if (!checker->modules || module_table_find_mangled(checker->modules, name)) return;
+    if (!checker->modules) return;
+    DeclEntry *existing = module_table_find_mangled(checker->modules, name);
+    if (existing) {
+        /* A stdlib opaque type is declared by its module before its details
+         * are registered here. Point the existing entry at them rather than
+         * leaving it detail-less and shadowing this registration. */
+        if (existing->kind == kind && existing->registry_index < 0)
+            existing->registry_index = index;
+        return;
+    }
     DeclEntry *entry = module_table_declare_synthetic(checker->modules, NULL, kind,
                                                       name, checker->file);
     if (entry) entry->registry_index = index;
@@ -1736,8 +1745,9 @@ static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name)
 /* Owning module for a stdlib opaque type's bare name (Thread, Mutex, ...),
  * or NULL if bare_name isn't one. Shared by is_stdlib_opaque_type_available()
  * and typechecker_mark_type_module_used() so both agree on the mapping. */
-static const char *stdlib_opaque_module(const char *bare_name) {
-    static const struct { const char *type; const char *mod; } opaque_map[] = {
+/* The stdlib's opaque types and the module each belongs to. One list, so
+ * resolution and registration cannot disagree about it. */
+static const struct { const char *type; const char *mod; } stdlib_opaque_map[] = {
         {"Arena",        "mem"},
         {"Thread",       "threads"},
         {"Mutex",        "sync"},
@@ -1751,9 +1761,11 @@ static const char *stdlib_opaque_module(const char *bare_name) {
         {"HttpResponse", "http"},
         {"UUID",         "uuid"},
         {NULL, NULL}
-    };
-    for (int i = 0; opaque_map[i].type; i++) {
-        if (strcmp(bare_name, opaque_map[i].type) == 0) return opaque_map[i].mod;
+};
+
+static const char *stdlib_opaque_module(const char *bare_name) {
+    for (int i = 0; stdlib_opaque_map[i].type; i++) {
+        if (strcmp(bare_name, stdlib_opaque_map[i].type) == 0) return stdlib_opaque_map[i].mod;
     }
     return NULL;
 }
@@ -7752,7 +7764,9 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             node->data.new_expr.type_name = "?";
             new_type = "?";
         }
-        /* Resolve type aliases for new() */
+        /* Resolve the name as written, then aliases — the same order a type
+         * annotation goes through, so `new(mod.T)` and `^mod.T` agree. */
+        new_type = checker_resolve_type_name(checker, new_type);
         new_type = resolve_type_alias(checker, new_type);
         node->data.new_expr.type_name = new_type;
         if (strcmp(new_type, "?") == 0) {
@@ -12094,12 +12108,39 @@ static DeclEntry *module_register(TypeChecker *checker, AstNode *stmt,
                                is_private ? VIS_PRIVATE : VIS_PUBLIC);
 }
 
+/* Put a stdlib module's declarations in the symbol table when it is imported,
+ * so `mod.name` resolves through the same path a user module does. Gated on
+ * the import: an unimported stdlib module must stay unresolvable, or the
+ * unknown-module and unused-import diagnostics lose their basis.
+ *
+ * These entries are for resolution and visibility only — the C name of a
+ * stdlib call comes from its emitter, which is why they are external. */
+static void register_stdlib_module(TypeChecker *checker, const char *module) {
+    if (!checker->modules || !module) return;
+    if (module_table_find(checker->modules, module)) return;
+
+    for (int i = 0; stdlib_opaque_map[i].type; i++) {
+        if (strcmp(stdlib_opaque_map[i].mod, module) != 0) continue;
+        DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
+            DECL_STRUCT, stdlib_opaque_map[i].type, NULL);
+        if (entry) entry->external = true;
+    }
+    for (int i = 0; i < STDLIB_META_N; i++) {
+        if (strcmp(stdlib_func_meta[i].mod, module) != 0) continue;
+        DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
+            DECL_FUNC, stdlib_func_meta[i].fn, NULL);
+        if (entry) { entry->external = true; entry->registry_index = i; }
+    }
+}
+
 static void register_decl_imports(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind == NODE_IMPORT_STMT) {
             for (int j = 0; j < stmt->data.import_stmt.count; j++) {
                 ImportItem *item = &stmt->data.import_stmt.items[j];
+                if (item->is_stdlib && item->module && is_stdlib_module_name(item->module))
+                    register_stdlib_module(checker, item->module);
                 if (item->is_stdlib && item->module && !is_stdlib_module_name(item->module)) {
                     diagnostic_error_code_formatted(checker->diag, "E6001", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, item->module);
                 }

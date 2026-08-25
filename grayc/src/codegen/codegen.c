@@ -80,32 +80,6 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *v
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
 
-/* Resolve an unprefixed type name (e.g. "Point") to the mangled name of the
- * declaration it refers to (e.g. "lib_Point"), or return it unchanged.
- *
- * This used to match on the text after the last underscore of every declared
- * struct and enum, which claimed any local name that happened to contain one.
- * The module a type belongs to is now read from the symbol table.
- *
- * The scope is asked first. Only when the name belongs to no module in scope
- * does this fall back to scanning every module and taking the first match,
- * which is a guess — two modules may declare the same type name, and the one
- * in scope is the one meant. */
-static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
-    if (!codegen || !codegen->modules || !name) return name;
-    {
-        const char *scoped = codegen_resolve_type(codegen, name);
-        if (scoped != name) return scoped;
-    }
-    for (int i = 0; i < codegen->modules->count; i++) {
-        ModuleScope *scope = codegen->modules->modules[i];
-        if (scope->is_entry) continue;
-        DeclEntry *entry = module_scope_lookup(scope, name);
-        if (entry && (entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM))
-            return module_mangle(codegen->modules, entry);
-    }
-    return name;
-}
 
 /* The C name for a declaration node: the mangled name of the symbol-table
  * entry that declared it. The module a declaration belongs to is a property
@@ -598,8 +572,8 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strchr(type_name, '.')) {
         const char *resolved = codegen_resolve_type(codegen, type_name);
         if (resolved == type_name) {
-            /* Not a user module — the stdlib keeps its own registries and
-             * names its opaque types unqualified, so mem.Arena is Arena. */
+            /* Unresolvable qualified name: fall back to the bare half so a
+             * type the table has not been told about still maps. */
             return gray_type_to_c_codegen(codegen, strchr(type_name, '.') + 1);
         }
         /* An alias is erased: once resolved it may name a type alias, whose
@@ -630,7 +604,6 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
             resolved = codegen_resolve_type(codegen, type_name);
             /* Names the table does not hold — stdlib opaque types — keep the
              * using-module search. */
-            if (resolved == type_name) resolved = resolve_unprefixed_name(codegen, type_name);
         }
         /* Module-qualified opaque types: mod_Type -> strip prefix and
          * re-resolve so opaque mappings (Channel->GrayChannel etc.) apply.
@@ -1861,7 +1834,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             }
         }
         if (!found) {
-            sname = resolve_unprefixed_name(codegen, sname);
+            sname = codegen_resolve_type(codegen, sname);
         }
     }
     /* : use mangled name for generic struct instantiations */
@@ -2705,7 +2678,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             if (codegen_is_enum(codegen, mod)) {
                 resolved_enum = mod;
             } else {
-                const char *resolved_name = resolve_unprefixed_name(codegen, mod);
+                const char *resolved_name = codegen_resolve_type(codegen, mod);
                 if (resolved_name != mod && codegen_is_enum(codegen, resolved_name)) resolved_enum = resolved_name;
             }
             if (resolved_enum) {
@@ -6864,7 +6837,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         /* Also check using-module-resolved names */
         const char *resolved_ename = ename;
         if (!codegen_is_enum(codegen, ename)) {
-            const char *resolved_name = resolve_unprefixed_name(codegen, ename);
+            const char *resolved_name = codegen_resolve_type(codegen, ename);
             if (resolved_name != ename && codegen_is_enum(codegen, resolved_name)) resolved_ename = resolved_name;
         }
         if (codegen_is_enum(codegen, resolved_ename) && codegen_enum_is_tagged(codegen, resolved_ename)) {
@@ -10814,6 +10787,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                     /* : skip generic structs here; they're
                      * emitted per-instantiation below. */
                     if (struct_node->data.struct_decl.is_generic) continue;
+                    /* Field types written bare name this struct's module. */
+                    codegen_enter_node(codegen, struct_node);
                     emit_formatted(codegen, "struct GrayStruct_%s {\n",
                         codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                     for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
@@ -10828,6 +10803,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         for (int i = 0; i < struct_count; i++) {
             if (!emitted[i]) {
                 AstNode *struct_node = structs[i];
+                codegen_enter_node(codegen, struct_node);
                 emit_formatted(codegen, "struct GrayStruct_%s {\n",
                     codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                 for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {

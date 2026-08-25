@@ -48,6 +48,10 @@ typedef struct DeclEntry_ {
     const char *origin_file;
     int origin_line;
     Visibility visibility;
+    /* Declared by the compiler rather than by Grayscale source: a stdlib
+     * function or opaque type. It resolves like anything else, but its C name
+     * is produced by the stdlib emitter, not by mangling this entry. */
+    bool external;
     /* Where this declaration's details live in the registry for its kind
      * (struct fields, function signature, enum variants), or -1 before they
      * are registered. Resolving a name yields the entry, and the entry yields
