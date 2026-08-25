@@ -78,15 +78,25 @@ static int codegen_enum_index(CodeGen *codegen, const char *name);
 static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
+static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
 
 /* Resolve an unprefixed type name (e.g. "Point") to the mangled name of the
  * declaration it refers to (e.g. "lib_Point"), or return it unchanged.
  *
  * This used to match on the text after the last underscore of every declared
  * struct and enum, which claimed any local name that happened to contain one.
- * The module a type belongs to is now read from the symbol table. */
+ * The module a type belongs to is now read from the symbol table.
+ *
+ * The scope is asked first. Only when the name belongs to no module in scope
+ * does this fall back to scanning every module and taking the first match,
+ * which is a guess — two modules may declare the same type name, and the one
+ * in scope is the one meant. */
 static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
     if (!codegen || !codegen->modules || !name) return name;
+    {
+        const char *scoped = codegen_resolve_type(codegen, name);
+        if (scoped != name) return scoped;
+    }
     for (int i = 0; i < codegen->modules->count; i++) {
         ModuleScope *scope = codegen->modules->modules[i];
         if (scope->is_entry) continue;
