@@ -35,6 +35,13 @@ alias Length = Distance
 /* Private alias (accessible within same file) */
 private alias Secret = int
 
+/* Chained struct alias */
+alias Spot = Vec2
+
+do sum_point(p Point) -> int {
+    return p.x + p.y
+}
+
 do main() {
     /* Primitive aliases */
     mut d Meters = 10.5
@@ -63,6 +70,19 @@ do main() {
     mut p Vec2 = Point{x: 5, y: 10}
     assert(p.x == 5, "Vec2 alias should work for struct access")
     assert(p.y == 10, "Vec2 alias should work for struct access")
+
+    /* Struct alias as a constructor */
+    mut v Vec2 = Vec2{x: 7, y: 8}
+    assert(v.x == 7, "Vec2 alias should work as a struct constructor")
+    assert(v.y == 8, "Vec2 alias should work as a struct constructor")
+    assert(type_of(v) == "Point", "Vec2 constructor should build a Point")
+
+    /* Chained struct alias as a constructor */
+    mut v2 Spot = Spot{x: 1, y: 2}
+    assert(v2.x == 1, "chained struct alias should work as a constructor")
+
+    /* Struct alias constructor passed where the struct is expected */
+    assert(sum_point(Vec2{x: 2, y: 3}) == 5, "alias constructor should pass as Point")
 
     /* Struct alias with new() */
     mut q ^Vec2 = new(Vec2)

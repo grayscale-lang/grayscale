@@ -7144,6 +7144,17 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             struct_name = arena_copy_string(checker->arena,
                 module_mangle(checker->modules, entry));
     }
+    /* An alias names the struct it stands for, so Vec{...} builds a Point.
+     * Re-point the node at the target too, so codegen emits the struct's own
+     * tag instead of the alias spelling, which no C struct is named after. */
+    {
+        const char *target = resolve_type_alias(checker, struct_name);
+        if (target && strcmp(target, struct_name) != 0) {
+            struct_name = target;
+            node->data.struct_value.name = target;
+            node->resolved_decl = NULL;
+        }
+    }
     StructInfo *si = find_struct(checker, struct_name);
     warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
