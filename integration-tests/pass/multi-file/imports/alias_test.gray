@@ -3,12 +3,12 @@
  *
  * Tests:
  *   - import and use alias"./path.gray" syntax
- *   - import and use alias@stdlib syntax
+ *   - import and use of a stdlib module alongside aliased local modules
  *   - Chained with mixed aliases
  */
 
 // Use aliased imports for everything
-import and use a"./libA.gray", b"./libB.gray", m@math
+import and use a"./libA.gray", b"./libB.gray", @math
 
 const TestResult struct {
     passed int
@@ -100,16 +100,16 @@ do test_aliased_user_modules() -> TestResult {
 
 do test_aliased_stdlib() -> TestResult {
     println("------------------------------------------")
-    println("  Test: Aliased stdlib (m@math)")
+    println("  Test: Stdlib alongside aliased locals (@math)")
     println("------------------------------------------")
     mut passed int = 0
     mut failed int = 0
 
-    // math imported as 'm' with auto-use
-    println("  Testing m.sqrt() and unqualified sqrt()...")
-    mut s1 float = m.sqrt(16.0)
+    // math imported with auto-use
+    println("  Testing math.sqrt() and unqualified sqrt()...")
+    mut s1 float = math.sqrt(16.0)
     mut s2 float = sqrt(25.0)
-    println("    m.sqrt(16.0) = ${s1}")
+    println("    math.sqrt(16.0) = ${s1}")
     println("    sqrt(25.0) = ${s2}")
     if s1 == 4.0 {
         passed += 1
@@ -122,9 +122,9 @@ do test_aliased_stdlib() -> TestResult {
         failed += 1
     }
 
-    println("  Testing m.abs()...")
-    mut a1 int = m.abs(-42)
-    println("    m.abs(-42) = ${a1}")
+    println("  Testing math.abs()...")
+    mut a1 int = math.abs(-42)
+    println("    math.abs(-42) = ${a1}")
     if a1 == 42 {
         passed += 1
     } otherwise {

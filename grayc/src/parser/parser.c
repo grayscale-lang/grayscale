@@ -2006,13 +2006,10 @@ static AstNode *parse_import_statement(Parser *parser) {
         }
 
         /* Check for alias: identifier followed by @ or string */
+        Token alias_token = parser->cur_token;
+        bool aliased_stdlib = false;
         if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_AT)) {
-            if (strcmp(parser->cur_token.literal, "c") == 0) {
-                diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,"'c' is reserved for C interop; choose a different alias"),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            }
-            item->alias = parser->cur_token.literal;
+            aliased_stdlib = true;
             next_token(parser); /* consume alias, now on @ */
         } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_STRING)) {
             item->alias = parser->cur_token.literal;
@@ -2023,7 +2020,20 @@ static AstNode *parse_import_statement(Parser *parser) {
             item->is_stdlib = true;
             next_token(parser);
             item->module = parser->cur_token.literal;
-            if (!item->alias) item->alias = parser->cur_token.literal;
+            item->alias = parser->cur_token.literal;
+            /* A local import may be aliased because its name comes from the
+             * filesystem and can collide or be unspellable. A stdlib module's
+             * name is fixed, unique, and always a valid identifier, so a
+             * second name for it is one the symbol table cannot key. */
+            if (aliased_stdlib) {
+                char buf[MSG_BUF_SIZE];
+                snprintf(buf, sizeof(buf),
+                    "standard library import '@%s' cannot be aliased", item->module);
+                diagnostic_error_help(parser->diag, "E6007",
+                    arena_copy_string(parser->arena, buf),
+                    parser->file, alias_token.line, alias_token.column, 0,
+                    "remove the alias and use the module's own name");
+            }
         } else if (current_token_is(parser, TOK_STRING)) {
             item->is_stdlib = false;
             item->path = parser->cur_token.literal;

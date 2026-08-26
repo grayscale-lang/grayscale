@@ -290,6 +290,7 @@
     GRAY_ERROR("E6004", "imports", "cannot import own module directory") \
     GRAY_ERROR("E6005", "imports", "cannot import the program's entry point") \
     GRAY_ERROR("E6006", "imports", "module name derived from the import path is not a usable identifier") \
+    GRAY_ERROR("E6007", "imports", "standard library imports cannot be aliased") \
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
 

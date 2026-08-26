@@ -2575,11 +2575,11 @@ When both `helpers.gray` and a `helpers/` directory exist, the file takes priori
 
 If a directory contains no `.gray` files, it is an error.
 
-**Import aliasing:**
+**Import aliasing:** Only local imports may be aliased. A local module's name comes from the filesystem, where it can collide with another module or fail to be a valid identifier; a standard library module's name is fixed and unique, so aliasing one is an error.
 
 ```gray
-import m @math              // use m.sqrt() instead of math.sqrt()
 import mymod "./server"     // use mymod.handle() instead of server.handle()
+import m @math              // Error: '@math' cannot be aliased
 ```
 
 **Multiple imports** can be comma-separated:

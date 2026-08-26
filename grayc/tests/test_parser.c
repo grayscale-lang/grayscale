@@ -758,12 +758,12 @@ static void test_parse_return_multiple_values(void) {
 }
 
 static void test_parse_import_alias(void) {
-    /* Grayscale alias syntax: import alias @module */
-    AstNode *program = parse_test_input("import m @math");
+    /* Grayscale alias syntax: import alias "path" — local imports only */
+    AstNode *program = parse_test_input("import m \"./mylib\"");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_IMPORT_STMT);
-    ASSERT_STR_EQ(statement->data.import_stmt.items[0].module, "math");
+    ASSERT_STR_EQ(statement->data.import_stmt.items[0].path, "./mylib");
     ASSERT_STR_EQ(statement->data.import_stmt.items[0].alias, "m");
 }
 
