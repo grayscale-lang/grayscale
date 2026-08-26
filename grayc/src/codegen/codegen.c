@@ -1276,6 +1276,18 @@ static AstNode *find_function(CodeGen *codegen, const char *name) {
     return hit ? *hit : NULL;
 }
 
+/* The function a bare name in a `ref(name)` refers to. Codegen renames every
+ * declaration to its module-mangled spelling, so a name written inside an
+ * imported module is not the key its function is indexed under — looking up
+ * only the written name missed it and emitted a variable's address. */
+static AstNode *find_referenced_function(CodeGen *codegen, AstNode *label) {
+    const char *written = label->data.label.value;
+    AstNode *target = find_function(codegen, written);
+    if (target) return target;
+    const char *resolved = codegen_resolve_ref(codegen, label, written);
+    return resolved != written ? find_function(codegen, resolved) : NULL;
+}
+
 /* Build the (field_name, struct_name) index for func-typed fields once.
  * Order matches struct_decls so the first-match heuristic is preserved. */
 static void build_function_field_index(CodeGen *codegen) {
@@ -4304,11 +4316,12 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
     if (strcmp(func, "ref") == 0 && node->data.call.arg_count == 1) {
         /* Check if argument is a function name; emit as function pointer */
         if (node->data.call.args[0]->kind == NODE_LABEL) {
-            const char *arg_name = node->data.call.args[0]->data.label.value;
-            AstNode *target = find_function(codegen, arg_name);
+            AstNode *target = find_referenced_function(codegen, node->data.call.args[0]);
             if (target) {
-                /* Function reference: emit gray_fn_name (function pointer) */
-                emit_formatted(codegen, "gray_fn_%s", arg_name);
+                /* Function reference: emit gray_fn_name (function pointer).
+                 * The declaration carries the mangled name, which is the
+                 * symbol the function is defined under. */
+                emit_formatted(codegen, "gray_fn_%s", target->data.func_decl.name);
                 return true;
             }
         }
@@ -8193,7 +8206,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
             if (node->data.var_decl.value->data.call.arg_count == 1) {
                 AstNode *arg = node->data.var_decl.value->data.call.args[0];
                 bool is_assignable =
-                    (arg->kind == NODE_LABEL && !find_function(codegen, arg->data.label.value)) ||
+                    (arg->kind == NODE_LABEL && !find_referenced_function(codegen, arg)) ||
                     arg->kind == NODE_MEMBER_EXPR ||
                     arg->kind == NODE_INDEX_EXPR;
                 if (is_assignable) {

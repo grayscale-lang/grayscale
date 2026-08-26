@@ -15,3 +15,8 @@ do total(nums [int]) -> int {
 do via_param(a int, b int) -> int {
     return apply(()add_two, a, b)
 }
+
+do via_ref(a int, b int) -> int {
+    const g = ref(add_two)
+    return g(a, b)
+}
