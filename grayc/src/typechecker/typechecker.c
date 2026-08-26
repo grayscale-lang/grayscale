@@ -6733,6 +6733,25 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             }
             result = &TYPE_UNKNOWN;
         }
+
+        /* An imported module whose member matched nothing above: the member
+         * does not exist. Leaving the type unknown reported nothing, because
+         * the checks downstream skip TK_UNKNOWN to avoid cascading — so an
+         * annotated declaration accepted the typo silently and an inferred
+         * one surfaced later as an undefined variable, blaming the variable
+         * rather than the member. The table holds every member of an
+         * imported module, stdlib included, so it settles this. */
+        if (!sym && result->kind == TK_UNKNOWN &&
+            typechecker_is_imported_module(checker, obj_name) &&
+            !is_struct_name(checker, resolved_obj) &&
+            !is_enum_name(checker, resolved_obj)) {
+            ResolveScope mscope = checker_scope(checker);
+            if (!module_resolve_qualified(checker->modules, &mscope, obj_name, member, NULL)) {
+                diagnostic_error_code_formatted(checker->diag, "E4024",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    obj_name, member);
+            }
+        }
     } else if (obj->kind == NODE_MEMBER_EXPR) {
         /* Check for module-qualified enum: lib.Color.RED */
         if (obj->data.member.object->kind == NODE_LABEL) {
