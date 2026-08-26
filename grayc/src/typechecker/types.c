@@ -275,11 +275,10 @@ void type_pool_reset(void) {
             }
             break;
         default:
-            /* Builtin non-singleton pool entries: type->name is either a
-             * string literal (TK_ERROR → "Error", TK_UNKNOWN → "func")
-             * or a strdup'd name (i8, f32, u64, …).  Skip literal kinds. */
-            if (type->kind != TK_ERROR && type->kind != TK_UNKNOWN)
-                free((char *)type->name);
+            /* Builtin non-singleton pool entries (Error, i8, f32, u64, …).
+             * type_from_name copies every one of these names, so there is no
+             * kind whose name must be left alone. */
+            free((char *)type->name);
             break;
         }
     }
@@ -347,7 +346,7 @@ static BuiltinTypeEntry builtin_types[] = {
     { "f32",    NULL,         TK_FLOAT,   NULL },
     { "f64",    NULL,         TK_FLOAT,   NULL },
     { "float",  &TYPE_FLOAT,  0, NULL },
-    { "func",   NULL,         TK_UNKNOWN, "func" },
+    { "func",   NULL,         TK_FUNCTION, "func" },
     { "i128",   NULL,         TK_INT,     NULL },
     { "i16",    NULL,         TK_INT,     NULL },
     { "i256",   NULL,         TK_INT,     NULL },
@@ -407,7 +406,10 @@ GrayType *type_from_name(const char *name) {
         if (existing) return existing;
         GrayType *type = type_alloc();
         type->kind = hit->alloc_kind;
-        type->name = hit->alloc_name ? hit->alloc_name : strdup(name);
+        /* Always a copy: a pooled entry owns its name whatever its kind, so
+         * the teardown below frees uniformly instead of carrying a list of
+         * the kinds whose names happen to be literals. */
+        type->name = strdup(resolved_name);
         pool_insert(type->kind, type->name, type);
         return type;
     }

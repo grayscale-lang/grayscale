@@ -2314,15 +2314,129 @@ static const char *checker_resolve_type_name(TypeChecker *checker, const char *w
 
 /* Does a written type annotation name a type that does not exist? An
  * annotation resolves to TK_UNKNOWN either because the name is undefined or
- * because it is the generic wildcard, which has no type until a call site
- * binds one — only the first is an error.
+ * because it is the generic wildcard, whose type comes from the call site
+ * that binds it, or the bare `func`, an untyped function reference that
+ * codegen stores as void *. Everything else that types as unknown is a name
+ * for nothing.
  *
  * The name's casing has nothing to do with it. Every E4016 site used to
  * require an initial capital, so a lowercase spelling skipped the check
  * outright and `x zag` typechecked clean and failed in the C compiler. */
 static bool type_name_is_undefined(const char *written, const GrayType *resolved) {
     if (!written || !resolved || resolved->kind != TK_UNKNOWN) return false;
-    return strcmp(written, "?") != 0;
+    return !type_name_has_wildcard(written);
+}
+
+/* Do two function types disagree? A typed reference carries its signature in
+ * its canonical encoded name — "func(int)->int" — so any difference between
+ * two of those is a mismatch. The bare `func` names no signature: it is
+ * every function type at once, and matches all of them. */
+static bool func_types_mismatch(const GrayType *a, const GrayType *b) {
+    if (!a || !b || a->kind != TK_FUNCTION || b->kind != TK_FUNCTION) return false;
+    if (!a->name || !b->name) return false;
+    if (strcmp(a->name, "func") == 0 || strcmp(b->name, "func") == 0) return false;
+    return strcmp(a->name, b->name) != 0;
+}
+
+static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
+
+/* Decompose a written container type into the type names it is built from:
+ * the pointee of ^T, the element of [T] or [T,N], the key and value of
+ * map[K:V]. Returns true when `written` is a container spelling — *out_count
+ * is then how many component names were written, which is zero for a
+ * malformed one. A leaf name returns false.
+ *
+ * The separator scans run at bracket depth zero, so a component that is
+ * itself a container — [map[string:int],3] — splits where it should. */
+static bool type_name_components(const char *written, char out[2][MSG_BUF_SIZE],
+                                 int *out_count) {
+    *out_count = 0;
+    if (!written || !*written) return false;
+
+    if (written[0] == '^') {
+        const char *pointee = written;
+        while (*pointee == '^') pointee++;
+        if (*pointee) {
+            snprintf(out[0], MSG_BUF_SIZE, "%s", pointee);
+            *out_count = 1;
+        }
+        return true;
+    }
+
+    if (written[0] == '[') {
+        size_t len = strlen(written);
+        if (len > 2 && written[len - 1] == ']') {
+            char elem[MSG_BUF_SIZE];
+            size_t element_length = len - 2;
+            if (element_length >= MSG_BUF_SIZE) element_length = MSG_BUF_SIZE - 1;
+            memcpy(elem, written + 1, element_length);
+            elem[element_length] = '\0';
+            /* Drop the ,N of a fixed-size array; a comma nested inside the
+             * element type is not that separator. */
+            int depth = 0;
+            for (int i = 0; elem[i]; i++) {
+                if (elem[i] == '[') depth++;
+                else if (elem[i] == ']') depth--;
+                else if (elem[i] == ',' && depth == 0) { elem[i] = '\0'; break; }
+            }
+            snprintf(out[0], MSG_BUF_SIZE, "%s", elem);
+            *out_count = 1;
+        }
+        return true;
+    }
+
+    if (strncmp(written, "map[", 4) == 0) {
+        size_t len = strlen(written);
+        if (len > 5 && written[len - 1] == ']') {
+            char inner[MSG_BUF_SIZE];
+            size_t inner_len = len - 5;  /* skip "map[" and "]" */
+            if (inner_len >= MSG_BUF_SIZE) inner_len = MSG_BUF_SIZE - 1;
+            memcpy(inner, written + 4, inner_len);
+            inner[inner_len] = '\0';
+            int depth = 0, colon_pos = -1;
+            for (int i = 0; inner[i]; i++) {
+                if (inner[i] == '[') depth++;
+                else if (inner[i] == ']') depth--;
+                else if (inner[i] == ':' && depth == 0) { colon_pos = i; break; }
+            }
+            if (colon_pos >= 0) {
+                inner[colon_pos] = '\0';
+                snprintf(out[0], MSG_BUF_SIZE, "%s", inner);
+                snprintf(out[1], MSG_BUF_SIZE, "%s", inner + colon_pos + 1);
+                *out_count = 2;
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+/* The first leaf of a written type that names no type, copied into `buf`, or
+ * NULL when every leaf resolves.
+ *
+ * A container types as TK_ARRAY or TK_MAP whatever its elements name, so
+ * testing an annotation as a whole never looks inside it and `x [zag]`
+ * reached the C compiler. Naming the offending leaf rather than the whole
+ * spelling is also what the reader needs. */
+static const char *undefined_type_leaf(TypeChecker *checker, const char *written,
+                                       char *buf, size_t buflen) {
+    if (!written || !*written) return NULL;
+
+    char parts[2][MSG_BUF_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++) {
+            const char *bad = undefined_type_leaf(checker, parts[i], buf, buflen);
+            if (bad) return bad;
+        }
+        return NULL;
+    }
+
+    if (!type_name_is_undefined(written, typechecker_type_from_name(checker, written)))
+        return NULL;
+    snprintf(buf, buflen, "%s", written);
+    return buf;
 }
 
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
@@ -5419,9 +5533,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             /* E3066: typed-func signatures must match exactly */
-            if (arg_t->kind == TK_FUNCTION && param_t->kind == TK_FUNCTION &&
-                arg_t->name && param_t->name &&
-                strcmp(arg_t->name, param_t->name) != 0) {
+            if (func_types_mismatch(arg_t, param_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
@@ -6811,13 +6923,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             }
         } else if (sym && sym->type->kind == TK_STRUCT) {
             result = struct_field_type(checker, sym->type->name, member);
-            /* : func-typed fields resolve as TK_UNKNOWN (name="func")
-             * via type_from_name because "func" maps to TK_UNKNOWN. Don't
-             * emit E3010 "no field" when the field genuinely exists; it's
-             * just a func field. */
-            bool is_func_field = (result->kind == TK_UNKNOWN && result->name &&
-                                  strcmp(result->name, "func") == 0);
-            if (result->kind == TK_UNKNOWN && !is_func_field && member[0] != 'v') {
+            if (result->kind == TK_UNKNOWN && member[0] != 'v') {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, struct_display_name(checker, sym->type->name), member);
             }
         } else if (sym && member[0] == 'v' && member[1] >= '0' && member[1] <= '9') {
@@ -6920,9 +7026,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         if (!obj_t) obj_t = resolve_expression(checker, obj);
         if (obj_t && obj_t->kind == TK_STRUCT) {
             result = struct_field_type(checker, obj_t->name, member);
-            bool is_func_field = (result->kind == TK_UNKNOWN && result->name &&
-                                  strcmp(result->name, "func") == 0);
-            if (result->kind == TK_UNKNOWN && !is_func_field && member[0] != 'v') {
+            if (result->kind == TK_UNKNOWN && member[0] != 'v') {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     struct_display_name(checker, obj_t->name), member);
             }
@@ -7383,8 +7487,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
              * location instead. */
             int line = node->token.line;
             int col = node->token.column;
-            bool is_func_type = (pt->kind == TK_FUNCTION ||
-                                   (pt->name && strcmp(pt->name, "func") == 0));
+            bool is_func_type = (pt->kind == TK_FUNCTION);
             if (pt->kind == TK_VOID) {
                 diagnostic_error_message(checker->diag, "E3041",
                     "cannot interpolate void expression; the function does not return a value",
@@ -8801,14 +8904,20 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     GrayType *declared = node->data.var_decl.type_name
         ? typechecker_type_from_name(checker, node->data.var_decl.type_name)
         : &TYPE_UNKNOWN;
-    /* E4016: explicitly annotated type name that doesn't exist */
-    if (type_name_is_undefined(node->data.var_decl.type_name, declared)) {
-        char *msg = NULL;
-        msg = typechecker_format(checker,
-            "undefined type '%s'; check the spelling or import the module that defines it",
-            unqualified_display_name(node->data.var_decl.type_name));
-        diagnostic_error_message(checker->diag, "E4016", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    /* E4016: explicitly annotated type name that doesn't exist, at any depth
+     * — the element of an array, either half of a map, a pointee. */
+    {
+        char leaf[MSG_BUF_SIZE];
+        const char *undefined = undefined_type_leaf(checker,
+            node->data.var_decl.type_name, leaf, sizeof(leaf));
+        if (undefined) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "undefined type '%s'; check the spelling or import the module that defines it",
+                unqualified_display_name(undefined));
+            diagnostic_error_message(checker->diag, "E4016", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
     }
     typechecker_mark_type_module_used(checker, node->data.var_decl.type_name);
 
@@ -8953,9 +9062,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         /* E3066: typed-func variable assigned a function reference with a
          * different signature. Both sides are TK_FUNCTION; the canonical
          * encoded names (e.g. "func(int)->int") must match exactly. */
-        if (declared->kind == TK_FUNCTION && value_type->kind == TK_FUNCTION &&
-            declared->name && value_type->name &&
-            strcmp(declared->name, value_type->name) != 0) {
+        if (func_types_mismatch(declared, value_type)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "cannot assign %s to variable of type %s",
@@ -8965,12 +9072,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 node->data.var_decl.value->token.line,
                 node->data.var_decl.value->token.column, 0);
         }
-        /* E3001 (): \`mut f func = expr\` requires expr to be a
-         * function reference. The declared type "func" round-trips as
-         * TK_UNKNOWN via type_from_name, so the generic mismatch check
-         * below can't see it; it would fall through to "declared is
-         * unknown, infer from value" and silently adopt whatever type
-         * the call site returned. Catch it explicitly here. */
+        /* E3001: \`f func = expr\` requires expr to be a function reference.
+         * The generic mismatch check below would catch it too, but only to
+         * say the kinds differ; naming the reference form is what the reader
+         * needs, so this reports first and suppresses that one. */
+        bool func_decl_reported = false;
         if (node->data.var_decl.type_name &&
             strcmp(node->data.var_decl.type_name, "func") == 0 &&
             node->data.var_decl.value) {
@@ -8998,12 +9104,14 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                func_decl_reported = true;
             }
         }
         /* If no declared type, infer from value */
         if (declared->kind == TK_UNKNOWN) {
             declared = value_type;
-        } else if (value_type->kind != TK_UNKNOWN &&
+        } else if (!func_decl_reported &&
+                   value_type->kind != TK_UNKNOWN &&
                    value_type->kind != TK_VOID &&
                    value_type->kind != TK_NIL &&
                    !types_assignable(checker, declared, value_type) &&
@@ -9561,7 +9669,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
         }
         if (declared->kind == TK_UNKNOWN &&
-            !(declared->name && strcmp(declared->name, "func") == 0) &&
             !(node->data.var_decl.value &&
               (node->data.var_decl.value->kind == NODE_CALL_EXPR ||
                node->data.var_decl.value->kind == NODE_MEMBER_EXPR))) {
@@ -10215,10 +10322,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Function-to-function signature mismatch on direct variable assignment */
-    if (target->kind == NODE_LABEL &&
-        target_t->kind == TK_FUNCTION && value_t->kind == TK_FUNCTION &&
-        target_t->name && value_t->name &&
-        strcmp(target_t->name, value_t->name) != 0) {
+    if (target->kind == NODE_LABEL && func_types_mismatch(target_t, value_t)) {
         char *msg = typechecker_format(checker,
             "type mismatch: cannot assign '%s' to '%s' variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t),
@@ -10389,9 +10493,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             /* E3066: func signature mismatch on struct field assignment */
-            if (field_t->kind == TK_FUNCTION && value_t->kind == TK_FUNCTION &&
-                field_t->name && value_t->name &&
-                strcmp(field_t->name, value_t->name) != 0) {
+            if (func_types_mismatch(field_t, value_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "cannot assign %s to field '%s' of type %s",
@@ -10676,9 +10778,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
         /* E3066: func signature mismatch in return */
-        if (ret_t->kind == TK_FUNCTION && expected->kind == TK_FUNCTION &&
-            ret_t->name && expected->name &&
-            strcmp(ret_t->name, expected->name) != 0) {
+        if (func_types_mismatch(ret_t, expected)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "cannot return %s from function declared to return %s",
@@ -11280,13 +11380,18 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
         }
         GrayType *ptype = p->type_name ? typechecker_type_from_name(checker, p->type_name) : &TYPE_UNKNOWN;
         /* E4016: undefined parameter type */
-        if (type_name_is_undefined(p->type_name, ptype)) {
-            char *msg = NULL;
-            msg = typechecker_format(checker,
-                "undefined type '%s'; check the spelling or import the module that defines it",
-                unqualified_display_name(p->type_name));
-            diagnostic_error_message(checker->diag, "E4016", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        {
+            char leaf[MSG_BUF_SIZE];
+            const char *undefined = undefined_type_leaf(checker, p->type_name,
+                                                        leaf, sizeof(leaf));
+            if (undefined) {
+                char *msg = NULL;
+                msg = typechecker_format(checker,
+                    "undefined type '%s'; check the spelling or import the module that defines it",
+                    unqualified_display_name(undefined));
+                diagnostic_error_message(checker->diag, "E4016", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
         }
         /* Type inference: if no explicit type annotation, infer from default
          * value when it is an enum member access (e.g. t = Color.RED). */
@@ -11430,11 +11535,13 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             checker->current_return_type_names[i] = node->data.func_decl.return_types[i];
             /* E4016: undefined return type */
             const char *rtn = node->data.func_decl.return_types[i];
-            if (type_name_is_undefined(rtn, checker->current_return_types[i])) {
+            char leaf[MSG_BUF_SIZE];
+            const char *undefined = undefined_type_leaf(checker, rtn, leaf, sizeof(leaf));
+            if (undefined) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "undefined type '%s'; check the spelling or import the module that defines it",
-                    unqualified_display_name(rtn));
+                    unqualified_display_name(undefined));
                 diagnostic_error_message(checker->diag, "E4016", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -12160,56 +12267,16 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
                                           AstNode *stmt) {
     if (!type_name || !*type_name) return;
 
-    /* Pointer: ^T → recurse on T */
-    if (type_name[0] == '^') {
-        const char *pointee = type_name + 1;
-        while (*pointee == '^') pointee++;
-        validate_field_type_recursive(checker, program, pointee, field_name, stmt);
-        return;
-    }
-
-    /* Array: [T] or [T,N] → recurse on T */
-    if (type_name[0] == '[') {
-        size_t len = strlen(type_name);
-        if (len > 2 && type_name[len - 1] == ']') {
-            char elem[MSG_BUF_SIZE];
-            size_t element_length = len - 2;
-            memcpy(elem, type_name + 1, element_length);
-            elem[element_length] = '\0';
-            char *comma = strchr(elem, ',');
-            if (comma) *comma = '\0';
-            validate_field_type_recursive(checker, program, elem, field_name, stmt);
+    /* Containers recurse on what they are built from: the element of an
+     * array, both halves of a map, the pointee of a pointer. */
+    {
+        char parts[2][MSG_BUF_SIZE];
+        int part_count = 0;
+        if (type_name_components(type_name, parts, &part_count)) {
+            for (int i = 0; i < part_count; i++)
+                validate_field_type_recursive(checker, program, parts[i], field_name, stmt);
+            return;
         }
-        return;
-    }
-
-    /* Map: map[K:V] → recurse on K and V separately */
-    if (strncmp(type_name, "map[", 4) == 0) {
-        size_t len = strlen(type_name);
-        if (len > 5 && type_name[len - 1] == ']') {
-            /* Extract inner "K:V" string */
-            char inner[MSG_BUF_SIZE];
-            size_t inner_len = len - 5; /* skip "map[" and "]" */
-            memcpy(inner, type_name + 4, inner_len);
-            inner[inner_len] = '\0';
-            /* Find colon at depth 0 (handles nested [T] keys) */
-            int depth = 0;
-            int colon_pos = -1;
-            for (int i = 0; inner[i]; i++) {
-                if (inner[i] == '[') depth++;
-                else if (inner[i] == ']') depth--;
-                else if (inner[i] == ':' && depth == 0) { colon_pos = i; break; }
-            }
-            if (colon_pos >= 0) {
-                char key_t[MSG_BUF_SIZE];
-                memcpy(key_t, inner, (size_t)colon_pos);
-                key_t[colon_pos] = '\0';
-                const char *val_t = inner + colon_pos + 1;
-                validate_field_type_recursive(checker, program, key_t, field_name, stmt);
-                validate_field_type_recursive(checker, program, val_t, field_name, stmt);
-            }
-        }
-        return;
     }
 
     /* Leaf: must be a known primitive, enum, struct, or wildcard '?' */
