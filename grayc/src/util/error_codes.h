@@ -288,6 +288,7 @@
     GRAY_ERROR("E6002", "imports", "cannot find file or directory '%s'") \
     GRAY_ERROR("E6003", "imports", "directory '%s' contains no .gray files") \
     GRAY_ERROR("E6004", "imports", "cannot import own module directory") \
+    GRAY_ERROR("E6005", "imports", "cannot import the program's entry point") \
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
 

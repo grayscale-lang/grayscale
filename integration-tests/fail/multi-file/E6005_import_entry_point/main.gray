@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6005 - importing the file that declares main()
+ * Expected: "cannot import '...'; it is the program's entry point"
+ */
+
+import "./lib"
+
+do shared() -> int {
+    return 10
+}
+
+do main() {
+    println("${lib.use_it()}")
+}

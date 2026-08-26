@@ -1,0 +1,9 @@
+/*
+ * lib.gray - imports the entry point back
+ */
+
+import "./main"
+
+do use_it() -> int {
+    return main.shared()
+}

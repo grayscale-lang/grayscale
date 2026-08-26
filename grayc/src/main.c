@@ -673,9 +673,11 @@ int main(int argc, char **argv) {
         /* Mark the main file as already imported (prevents circular import loops).
          * Use realpath so that diamond dependencies reaching the main file via
          * different relative paths are still detected as duplicates. */
+        const char *entry_real_path;
         {
             char *rp = gray_realpath(input_file);
-            mark_imported(rp ? arena_copy_string(arena, rp) : input_file);
+            entry_real_path = rp ? arena_copy_string(arena, rp) : input_file;
+            mark_imported(entry_real_path);
             free(rp);
         }
 
@@ -926,6 +928,21 @@ int main(int argc, char **argv) {
                     char *norm = gray_realpath(cur_file_path);
                     const char *norm_path = norm ? arena_copy_string(arena, norm) : cur_file_path;
                     free(norm);
+
+                    /* The entry file is the program, not a module: its
+                     * declarations stay unmangled and are never registered
+                     * under a module name, so importing it yields an empty
+                     * namespace. Reject the import instead of letting every
+                     * qualified reference through it fail later. */
+                    if (file_count == 1 && gray_path_equal(norm_path, entry_real_path)) {
+                        char msg[MSG_BUF_LARGE];
+                        snprintf(msg, sizeof(msg),
+                            "cannot import '%s'; it is the program's entry point", item->path);
+                        diagnostic_error_help(diag, "E6005", strdup(msg),
+                            stmt_file, stmt->token.line, stmt->token.column, 0,
+                            "move the shared declarations into a third file and import that from both");
+                        continue;
+                    }
 
                     /* Skip if already imported (handles cycles and duplicates) */
                     if (already_imported(norm_path)) {
