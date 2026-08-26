@@ -1,0 +1,18 @@
+import "./strings", "./math", strconv "./mylib"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if strings.to_upper("hi") == "LOCAL" { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if math.abs(-3) == 999 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if strconv.to_upper("hi") == "ALIASED" { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("Passed: ${passed}")
+    println("Failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

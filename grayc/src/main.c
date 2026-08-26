@@ -726,6 +726,7 @@ int main(int argc, char **argv) {
 
         const char **seen_modules = NULL;
         const char **seen_paths = NULL;
+        bool *seen_is_stdlib = NULL;
         int seen_cap = 0;
         int seen_count = 0;
 
@@ -739,7 +740,45 @@ int main(int argc, char **argv) {
 
             for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
                 ImportItem *item = &stmt->data.import_stmt.items[ii];
-                if (item->is_stdlib || item->is_c_import || !item->path) continue;
+                if (item->is_c_import) continue;
+
+                /* A stdlib import binds a module name just as a local one
+                 * does. Recording it here is what makes a local import of the
+                 * same name collide, instead of the two silently resolving to
+                 * different modules in different phases. */
+                if (item->is_stdlib) {
+                    const char *std_name = item->alias ? item->alias : item->module;
+                    if (!std_name) continue;
+                    bool bound = false;
+                    for (int sm = 0; sm < seen_count; sm++) {
+                        if (strcmp(seen_modules[sm], std_name) != 0) continue;
+                        /* The same stdlib module reached twice is one module. */
+                        if (!seen_is_stdlib[sm]) {
+                            char msg[MSG_BUF_SIZE];
+                            snprintf(msg, sizeof(msg),
+                                "module name '%s' is already imported; use an alias to distinguish them",
+                                std_name);
+                            diagnostic_error(diag, "E6001", strdup(msg),
+                                stmt_file, stmt->token.line, stmt->token.column, 0);
+                        }
+                        bound = true;
+                        break;
+                    }
+                    if (bound) continue;
+                    if (seen_count >= seen_cap) {
+                        seen_cap = GROW_NEXT_CAP(seen_cap);
+                        ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
+                        ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
+                        ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
+                    }
+                    seen_modules[seen_count] = std_name;
+                    seen_paths[seen_count] = NULL;
+                    seen_is_stdlib[seen_count] = true;
+                    seen_count++;
+                    continue;
+                }
+
+                if (!item->path) continue;
 
                 /* Resolve path relative to the file that contains the import.
                  * For imports written directly in the entry file, source_dir is NULL
@@ -865,7 +904,7 @@ int main(int argc, char **argv) {
                 bool collision = false;
                 for (int sm = 0; sm < seen_count; sm++) {
                     if (strcmp(seen_modules[sm], mod_name) == 0) {
-                        if (strcmp(seen_paths[sm], norm_import) == 0) {
+                        if (!seen_is_stdlib[sm] && strcmp(seen_paths[sm], norm_import) == 0) {
                             /* Same file, same module name — diamond dependency.
                              * Only warn for direct imports; transitive diamonds
                              * (from inside directory modules) are silently deduped. */
@@ -896,9 +935,11 @@ int main(int argc, char **argv) {
                     seen_cap = GROW_NEXT_CAP(seen_cap);
                     ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
                     ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
+                    ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
                 }
                 seen_modules[seen_count] = mod_name;
                 seen_paths[seen_count] = arena_copy_string(arena, norm_import);
+                seen_is_stdlib[seen_count] = false;
                 seen_count++;
 
                 /* Set the alias if not already set */

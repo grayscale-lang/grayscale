@@ -3449,6 +3449,12 @@ static bool is_stdlib_call(AstNode *node, const char **module, const char **func
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
         if (obj->kind == NODE_LABEL) {
+            /* A qualifier bound to a user module resolves to a declaration
+             * written in Grayscale. Its C name comes from mangling that
+             * declaration, not from the stdlib emitter for a module that
+             * happens to share the name. */
+            DeclEntry *resolved = node->data.call.function->resolved_decl;
+            if (resolved && !resolved->external) return false;
             *module = obj->data.label.value;
             *func = node->data.call.function->data.member.member;
             return true;

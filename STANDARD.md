@@ -2588,7 +2588,14 @@ import mymod "./server"     // use mymod.handle() instead of server.handle()
 import @math, "./helpers", "./models"
 ```
 
-**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate:
+**Module name validity:** A module name derived from the import path must be a valid Grayscale identifier and must not be a keyword. A file whose name is neither must be imported with an alias:
+
+```gray
+import "./my-utils"       // Error: 'my-utils' is not a valid identifier
+import u "./my-utils"     // OK
+```
+
+**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
 
 ```gray
 // Error: both resolve to module name "utils"
@@ -2596,7 +2603,12 @@ import "./utils", "./lib/utils"
 
 // Fix: alias one
 import "./utils", lib_utils "./lib/utils"
+
+// Error: both resolve to module name "strings"
+import @strings, "./strings"
 ```
+
+A local module may share a stdlib module's name as long as the stdlib module is not also imported; the local module is then the only `strings` in scope.
 
 **Directory import semantics:**
 

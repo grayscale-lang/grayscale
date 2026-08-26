@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 393 codes** (269 errors, 18 warnings, 106 panics)
+**Total: 394 codes** (270 errors, 18 warnings, 106 panics)
 
 ---
 
@@ -264,6 +264,7 @@
 | `E6003` | imports | directory '%s' contains no .gray files |
 | `E6004` | imports | cannot import own module directory |
 | `E6005` | imports | cannot import the program's entry point |
+| `E6006` | imports | module name derived from the import path is not a usable identifier |
 | `E6008` | imports | cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E7004` | stdlib | function argument must be an integer, not a float |
@@ -444,4 +445,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-26 09:56:24 UTC*
+*Generated on 2026-08-26 10:06:36 UTC*

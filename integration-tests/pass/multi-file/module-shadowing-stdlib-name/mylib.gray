@@ -1,0 +1,3 @@
+do to_upper(s string) -> string {
+    return "ALIASED"
+}

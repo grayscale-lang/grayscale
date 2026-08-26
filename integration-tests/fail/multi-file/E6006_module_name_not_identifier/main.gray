@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6006 - module name derived from the file name is not an identifier
+ * Expected: "module name 'my-utils' is not a valid identifier"
+ */
+
+import "./my-utils"
+
+do main() {
+    println("${my-utils.hello()}")
+}

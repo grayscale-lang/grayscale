@@ -1,0 +1,3 @@
+do abs(n int) -> int {
+    return 999
+}

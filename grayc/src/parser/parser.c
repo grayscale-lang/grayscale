@@ -1942,6 +1942,23 @@ static AstNode *parse_func_declaration(Parser *parser) {
     return node;
 }
 
+/* Why `name` cannot be bound as a module name, or NULL when it can. The
+ * phrase completes "module name 'x' ...". */
+static const char *module_name_reject_reason(const char *name) {
+    if (!name[0]) return "is empty";
+    if (!isalpha((unsigned char)name[0]) && name[0] != '_')
+        return "is not a valid identifier";
+    for (const char *p = name + 1; *p; p++) {
+        if (!isalnum((unsigned char)*p) && *p != '_')
+            return "is not a valid identifier";
+    }
+    TokenType kw_type;
+    const char *kw_text;
+    if (token_lookup_keyword_n(name, (int)strlen(name), &kw_type, &kw_text))
+        return "is a keyword";
+    return NULL;
+}
+
 static AstNode *parse_import_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_IMPORT_STMT, parser->cur_token);
 
@@ -2011,6 +2028,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             item->is_stdlib = false;
             item->path = parser->cur_token.literal;
             /* Derive module name from filename/directory if no alias */
+            bool derived_module = !item->alias;
             if (!item->alias) {
                 const char *slash = strrchr(item->path, '/');
                 const char *base = slash ? slash + 1 : item->path;
@@ -2029,6 +2047,24 @@ static AstNode *parse_import_statement(Parser *parser) {
                     mod[blen] = '\0';
                     item->alias = mod;
                     item->module = mod;
+                }
+            }
+            /* A derived module name comes from the filesystem, which allows
+             * spellings Grayscale identifiers do not. Reject them here, where
+             * an alias is the fix, rather than at the use site where the name
+             * parses as something else entirely. */
+            if (derived_module && item->module) {
+                const char *reason = module_name_reject_reason(item->module);
+                if (reason) {
+                    char buf[MSG_BUF_SIZE];
+                    char help[MSG_BUF_SIZE];
+                    snprintf(buf, sizeof(buf), "module name '%s' %s", item->module, reason);
+                    snprintf(help, sizeof(help),
+                        "give the import an alias, e.g. import m \"%s\"", item->path);
+                    diagnostic_error_help(parser->diag, "E6006",
+                        arena_copy_string(parser->arena, buf),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        arena_copy_string(parser->arena, help));
                 }
             }
             /* Reject 'c' as a module name; reserved for C interop */
