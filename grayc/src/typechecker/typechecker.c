@@ -1816,15 +1816,61 @@ static const char *stdlib_opaque_module(const char *bare_name) {
     return NULL;
 }
 
-/* If type_name is module-prefixed (e.g. "T_Query"), mark that module used.
- * The parser rewrites "T.Query" to "T_Query", so we split on the first
- * underscore and check whether the prefix is a known import. A bare stdlib
- * opaque type name (Thread, Mutex, ...) reached via `using`/`import and use`
- * has no prefix to split on, so it's checked against the opaque map instead. */
+/* If type_name is module-prefixed (e.g. "T.Query" or "T_Query"), mark that
+ * module used. A type name reaches here as written or already mangled, so we
+ * split on whichever separator comes first and check whether the prefix is a
+ * known import. A bare stdlib opaque type name (Thread, Mutex, ...) reached
+ * via `using`/`import and use` has no prefix to split on, so it's checked
+ * against the opaque map instead. */
+static void typechecker_mark_type_module_used(TypeChecker *checker, const char *type_name);
+
+/* As typechecker_mark_type_module_used, for a name that is a slice of a
+ * larger type string rather than one of its own. */
+static void typechecker_mark_type_module_used_n(TypeChecker *checker,
+                                                const char *type_name, size_t len) {
+    char buffer[TYPE_NAME_MAX];
+    if (len == 0 || len >= sizeof(buffer)) return;
+    memcpy(buffer, type_name, len);
+    buffer[len] = '\0';
+    typechecker_mark_type_module_used(checker, buffer);
+}
+
 static void typechecker_mark_type_module_used(TypeChecker *checker, const char *type_name) {
     if (!type_name) return;
-    const char *us = strchr(type_name, '_');
-    if (!us || us == type_name) {
+    /* A module named inside a pointer, array or map type is named just as
+     * much as a bare one. The prefix scan below reads from the first
+     * character, so "[mod_Item]" measured a prefix of "[mod" and matched no
+     * import — and the file was told an import it uses is unused. */
+    if (type_name[0] == '^') {
+        typechecker_mark_type_module_used(checker, type_name + 1);
+        return;
+    }
+    {
+        const char *key, *value;
+        size_t key_len, value_len;
+        if (parse_map_key_value(type_name, &key, &key_len, &value, &value_len)) {
+            typechecker_mark_type_module_used_n(checker, key, key_len);
+            typechecker_mark_type_module_used_n(checker, value, value_len);
+            return;
+        }
+    }
+    if (type_name[0] == '[') {
+        size_t len = strlen(type_name);
+        if (len < 3 || type_name[len - 1] != ']') return;
+        const char *element = type_name + 1;
+        size_t element_len = len - 2;
+        /* A fixed-size array carries its length: [T,8]. */
+        int depth = 0;
+        for (size_t i = 0; i < element_len; i++) {
+            if (element[i] == '[') depth++;
+            else if (element[i] == ']') depth--;
+            else if (element[i] == ',' && depth == 0) { element_len = i; break; }
+        }
+        typechecker_mark_type_module_used_n(checker, element, element_len);
+        return;
+    }
+    const char *separator = strpbrk(type_name, "._");
+    if (!separator || separator == type_name) {
         const char *mod = stdlib_opaque_module(type_name);
         if (!mod) return;
         for (int mi = 0; mi < checker->import_count; mi++) {
@@ -1835,7 +1881,7 @@ static void typechecker_mark_type_module_used(TypeChecker *checker, const char *
         }
         return;
     }
-    size_t prefix_len = (size_t)(us - type_name);
+    size_t prefix_len = (size_t)(separator - type_name);
     for (int mi = 0; mi < checker->import_count; mi++) {
         if (strlen(checker->imported_modules[mi]) == prefix_len &&
             strncmp(checker->imported_modules[mi], type_name, prefix_len) == 0) {
