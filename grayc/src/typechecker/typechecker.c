@@ -7088,6 +7088,12 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
         const char *member = node->data.func_ref.function->data.member.member;
         if (obj->kind == NODE_LABEL) {
             const char *mod_name = typechecker_resolve_alias(checker, obj->data.label.value);
+            /* Naming a module member is using the module, whether the name is
+             * called or referenced. Only calls marked the import before, so a
+             * file whose only use of an import was a func reference was told
+             * the import was never used. */
+            if (!mark_import_used(checker, obj->data.label.value))
+                mark_import_used(checker, mod_name);
             /* Surface 2: ()module.func — stdlib module functions are not first-class values */
             if (is_stdlib_module_name(mod_name)) {
                 char *msg = NULL;

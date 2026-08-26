@@ -1,0 +1,18 @@
+/*
+ * Test: a func reference to an imported module's function
+ *
+ * Referencing a module member uses the module the same way calling it does.
+ * Only calls marked the import used, so a file whose only use of an import
+ * was a func reference was told the import was never used.
+ */
+
+// expect-not: W1002
+
+import "./helper.gray"
+
+do main() {
+    const g = ()helper.add_two
+    assert(g(1, 2) == 3, "()module.func from the entry file")
+
+    println("ALL TESTS PASSED")
+}
