@@ -2439,28 +2439,45 @@ static const char *undefined_type_leaf(TypeChecker *checker, const char *written
     return buf;
 }
 
+/* The private declaration a written type name reaches, or NULL. Mirrors
+ * undefined_type_leaf: every leaf of a container or pointer spelling is
+ * checked, and the answer is returned rather than reported, because the
+ * name-to-type query has no source location of its own to report against. */
+static DeclEntry *private_type_leaf(TypeChecker *checker, const char *written) {
+    if (!written || !*written || !checker->modules) return NULL;
+
+    char parts[2][MSG_BUF_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++) {
+            DeclEntry *bad = private_type_leaf(checker, parts[i]);
+            if (bad) return bad;
+        }
+        return NULL;
+    }
+
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    return (entry && !module_decl_visible(&scope, entry)) ? entry : NULL;
+}
+
+/* Naming a private declaration from outside the file that declares it is an
+ * error whatever the declaration is; the kind only picks which code to
+ * report. Called once per written annotation, against the node that wrote it. */
+static void reject_private_type(TypeChecker *checker, AstNode *node, const char *written) {
+    DeclEntry *entry = private_type_leaf(checker, written);
+    if (!entry) return;
+    diagnostic_error_code_formatted(checker->diag,
+        entry->kind == DECL_ALIAS ? "E4021" : "E4015",
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
+}
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
-    const char *written_name = name;
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
      * module's own or a using'd declaration — onto the registry spelling. */
     name = checker_resolve_type_name(checker, name);
-    /* Resolve type aliases before any type lookup.
-     * Also check private access for the original name. */
-    if (name) {
-        /* Naming a private declaration from outside the file that declares it
-         * is an error whatever the declaration is; the table decides, and the
-         * kind only picks which code to report. */
-        if (checker->modules) {
-            ResolveScope vscope = checker_scope(checker);
-            DeclEntry *entry = module_resolve_written(checker->modules, &vscope, written_name);
-            if (entry && !module_decl_visible(&vscope, entry)) {
-                diagnostic_error_code_formatted(checker->diag,
-                    entry->kind == DECL_ALIAS ? "E4021" : "E4015",
-                    vscope.file, 0, 0, 0, entry->name);
-            }
-        }
-        name = resolve_type_alias(checker, name);
-    }
+    /* Resolve type aliases before any type lookup. */
+    if (name) name = resolve_type_alias(checker, name);
     if (name && is_enum_name(checker, name)) return type_enum(name);
     GrayType *resolved_type = type_from_name(name);
     /* : try prefixed type names from using-modules so bare
@@ -8919,6 +8936,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
     }
+    /* E4021/E4015: annotated type is private to another file */
+    reject_private_type(checker, node, node->data.var_decl.type_name);
     typechecker_mark_type_module_used(checker, node->data.var_decl.type_name);
 
     /* E3057: reject composite types as map keys before downstream checks
@@ -11393,6 +11412,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
+        reject_private_type(checker, node, p->type_name);
         /* Type inference: if no explicit type annotation, infer from default
          * value when it is an enum member access (e.g. t = Color.RED). */
         if (!p->type_name && p->default_value) {
@@ -11535,6 +11555,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             checker->current_return_type_names[i] = node->data.func_decl.return_types[i];
             /* E4016: undefined return type */
             const char *rtn = node->data.func_decl.return_types[i];
+            reject_private_type(checker, node, rtn);
             char leaf[MSG_BUF_SIZE];
             const char *undefined = undefined_type_leaf(checker, rtn, leaf, sizeof(leaf));
             if (undefined) {
@@ -11679,6 +11700,10 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
 }
 
 static void check_struct_decl(TypeChecker *checker, AstNode *node) {
+    /* E4021/E4015: a field's annotated type is private to another file */
+    for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
+        reject_private_type(checker, node, node->data.struct_decl.fields[field_index].type_name);
+    }
     /* E3099: struct name collides with a stdlib opaque type reserved by codegen.
      * These names map to internal C types (GrayRouter, GrayThread, etc.) before the
      * user-struct path, so any user struct with these names silently generates
