@@ -2548,7 +2548,7 @@ project/
 
 Directory imports merge all top-level `.gray` files in that directory into a single namespace under the directory's name. Subdirectories are **not** included; they are separate modules that must be imported independently. Hidden files (names starting with `.`) are excluded from directory scans.
 
-All relative import paths are resolved relative to the **entry point file's directory**, not the importing file's directory. This means a file inside `models/` that uses `import "./shared.gray"` resolves relative to the project root (where `main.gray` lives), not relative to `models/`.
+All relative import paths are resolved relative to the **importing file's directory**, not the entry point file's directory. A file inside `models/` that uses `import "./shared.gray"` resolves to `models/shared.gray`; to reach a file in the project root it writes `import "../shared.gray"`.
 
 ### 8.2 Imports
 
@@ -2603,7 +2603,7 @@ import "./utils", lib_utils "./lib/utils"
 When a directory is imported, all `.gray` files within it are merged into a single module namespace (the directory name). The following rules apply:
 
 - Files within the directory may import each other via relative paths (e.g., `import "./types.gray"`). These sibling cross-references are resolved internally and do not create separate namespaces; all symbols remain under the directory's namespace.
-- Transitive imports inside directory files resolve relative to the importing file's location, not the entry file.
+- Transitive imports inside directory files follow the same rule as everywhere else: they resolve relative to the importing file's location.
 - If a file inside a directory imports its own parent directory (self-referential import), it is rejected.
 - If a directory import is followed by a direct import of a file already in that directory, the compiler warns that the import is redundant; the directory namespace should be used instead.
 - If two files in a directory declare the same symbol name, it is a collision error.
