@@ -10026,6 +10026,21 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     }
 }
 
+/* The symbol a bare name binds to. A module-level declaration is bound in
+ * scope under its module's spelling, so a bare reference from inside the
+ * module resolves through the symbol table first — a plain scope_lookup
+ * misses it, and a write then looks like a new local that shadows it. */
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name) {
+    if (!name) return NULL;
+    Symbol *sym = scope_lookup(checker->current_scope, name);
+    if (sym) return sym;
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    if (!entry) return NULL;
+    char key[MSG_BUF_SIZE];
+    return scope_lookup(checker->current_scope,
+                        module_mangle_into(entry, key, sizeof(key)));
+}
+
 static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     /* Implicit declaration: x = expr where x is not in scope */
     {
@@ -10034,7 +10049,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             node->data.assign.op == TOK_ASSIGN &&
             strcmp(target->data.label.value, "_") != 0) {
             const char *name = target->data.label.value;
-            Symbol *sym = scope_lookup(checker->current_scope, name);
+            Symbol *sym = checker_lookup_symbol(checker, name);
             if (!sym && !typechecker_is_builtin(name) &&
                 !is_struct_name(checker, name) && !is_enum_name(checker, name) &&
                 !find_func(checker, name)) {
@@ -10176,7 +10191,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     {
         const char *root = assignment_target_root_name(target);
         if (root) {
-            Symbol *sym = scope_lookup(checker->current_scope, root);
+            Symbol *sym = checker_lookup_symbol(checker, root);
             /* p.field on a pointer parameter auto-derefs to p^.field — the
              * pointer itself is not being modified, so don't flag it. */
             if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
