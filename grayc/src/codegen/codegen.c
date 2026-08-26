@@ -2781,8 +2781,18 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     if (node->data.member.object->kind == NODE_MEMBER_EXPR) {
         AstNode *inner = node->data.member.object;
         const char *value = node->data.member.member;
+        /* An alias standing for an enum reaches this the same way the enum
+         * does — lib.Hue.RED is lib.Color.RED — so resolve it to the enum it
+         * names instead of falling through to plain member access. */
+        const char *prefixed = NULL;
         if (inner->resolved_decl && inner->resolved_decl->kind == DECL_ENUM) {
-            const char *prefixed = module_mangle(codegen->modules, inner->resolved_decl);
+            prefixed = module_mangle(codegen->modules, inner->resolved_decl);
+        } else if (inner->resolved_decl && inner->resolved_decl->kind == DECL_ALIAS) {
+            const char *target = resolve_type_alias_codegen(codegen,
+                module_mangle(codegen->modules, inner->resolved_decl));
+            if (codegen_is_enum(codegen, target)) prefixed = target;
+        }
+        if (prefixed) {
             if (codegen_enum_is_tagged(codegen, prefixed)) {
                 emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
                     prefixed, prefixed, value);

@@ -603,6 +603,10 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             }
         }
         if (!found) break;
+        /* A target that is itself a container — alias Counts = [Count] —
+         * has to go back through the branches above, or the alias nested
+         * inside it never gets followed. */
+        if (name[0] == '^' || name[0] == '[') return resolve_type_alias(checker, name);
     }
     return name;
 }
@@ -12517,8 +12521,15 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind != NODE_ALIAS_DECL) continue;
 
+        checker->current_check_file = stmt->token.file;
         const char *aname = stmt->data.alias_decl.name;
-        const char *target = stmt->data.alias_decl.target_type;
+        /* The target is written in the alias's own module, so it has to be
+         * mapped onto its registry spelling like any other type annotation.
+         * Left as written, a target naming a type in a non-entry module —
+         * registered as `mod_Point`, not `Point` — resolved to nothing, and
+         * so did every alias chained onto another alias in such a module. */
+        const char *target = checker_resolve_type_name(checker,
+                                                       stmt->data.alias_decl.target_type);
 
         /* E4020: duplicate alias name */
         for (int j = 0; j < checker->type_alias_count; j++) {
@@ -12547,8 +12558,10 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             checker->type_alias_cap = checker->type_alias_cap ? checker->type_alias_cap * 2 : 8;
             checker->type_alias_names = xrealloc(checker->type_alias_names, sizeof(const char *) * (size_t)checker->type_alias_cap);
             checker->type_alias_targets = xrealloc(checker->type_alias_targets, sizeof(const char *) * (size_t)checker->type_alias_cap);
+            checker->type_alias_nodes = xrealloc(checker->type_alias_nodes, sizeof(AstNode *) * (size_t)checker->type_alias_cap);
         }
         checker->type_alias_targets[checker->type_alias_count] = target;
+        checker->type_alias_nodes[checker->type_alias_count] = stmt;
         {
             DeclEntry *entry = module_register(checker, stmt, DECL_ALIAS, aname,
                                                stmt->data.alias_decl.is_private);
@@ -12582,8 +12595,10 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             if (!found) break;
         }
         if (cycle) {
+            AstNode *decl = checker->type_alias_nodes[i];
             diagnostic_error_code_formatted(checker->diag, "E3133",
-                checker->file, 0, 0, 0, checker->type_alias_names[i]);
+                NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                decl->data.alias_decl.name);
             continue;
         }
         /* E3132: target type must exist — resolve fully then check.
@@ -13252,8 +13267,10 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
             /* Uppercase name — must be a registered struct or enum */
             if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
                 strcmp(resolved, "Error") != 0) {
+                AstNode *decl = checker->type_alias_nodes[i];
                 diagnostic_error_code_formatted(checker->diag, "E3132",
-                    checker->file, 0, 0, 0, checker->type_alias_targets[i]);
+                    NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                    decl->data.alias_decl.target_type);
             }
         }
     }
@@ -13478,6 +13495,7 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->type_alias_names);
     free(checker->type_alias_targets);
+    free(checker->type_alias_nodes);
 
     free(checker->const_int_names);
     free(checker->const_int_values);

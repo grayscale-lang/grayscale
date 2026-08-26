@@ -3,3 +3,26 @@ alias Score = int
 do bump(s Score) -> Score {
     return s + 1
 }
+
+const Point struct {
+    x int
+    y int
+}
+
+const Color enum {
+    RED
+    GREEN
+}
+
+alias Vec = Point
+alias Spot = Vec
+alias Hue = Color
+alias Scores = [Score]
+
+do make_vec(x int, y int) -> Vec {
+    return Vec{x: x, y: y}
+}
+
+do vec_sum(v Spot) -> int {
+    return v.x + v.y
+}
