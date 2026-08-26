@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4016 - undefined-type-in-container
+ * Expected: "undefined type 'zag'; check the spelling or import the module that defines it"
+ *
+ * A container types as an array or a map whatever its elements name, so
+ * checking the annotation as a whole never looked inside one and this
+ * reached the C compiler. The diagnostic names the offending leaf, not the
+ * whole spelling.
+ */
+
+do main() {
+    mut items [zag] = {}  // zag is not defined
+}

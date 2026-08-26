@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4015 - reading a private module-level variable from another
+ * module. Only the call paths checked privacy, so this crossed the module
+ * boundary and printed with no diagnostic at all.
+ * Expected: "'private_var' is private and cannot be accessed from outside its file"
+ */
+// expect-error: E4015
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    println(lib.private_var)
+}

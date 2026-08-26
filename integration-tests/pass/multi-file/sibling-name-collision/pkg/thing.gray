@@ -1,0 +1,19 @@
+import "./color.gray"
+
+const Thing struct {
+    color Color
+}
+
+do describe(color Color) -> int {
+    if color == Color.RED { return 1 }
+    return 0
+}
+
+do make_thing(color Color) -> Thing {
+    return Thing{color: color}
+}
+
+do local_shadow() -> int {
+    mut color int = 7
+    return color
+}

@@ -103,6 +103,11 @@ void diagnostic_error_code(DiagnosticList *diagnostics, const char *code,
 void diagnostic_error_code_help(DiagnosticList *diagnostics, const char *code,
     const char *file, int line, int col, int end_col, const char *help);
 
+/* Registry template + args, plus an actionable hint shown as `= help:`.
+ * The formatted counterpart of diagnostic_error_code_help. */
+void diagnostic_error_code_formatted_help(DiagnosticList *diagnostics, const char *code,
+    const char *file, int line, int col_start, int end_col, const char *help, ...);
+
 void diagnostic_error_code_formatted(DiagnosticList *diagnostics, const char *code,
     const char *file, int line, int col, int end_col, ...);
 

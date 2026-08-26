@@ -220,7 +220,8 @@
     GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
     GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
-    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308")
+    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308") \
+    GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -241,7 +242,10 @@
     GRAY_ERROR("E4018", "names", "struct '%s' has no function named '%s'") \
     GRAY_ERROR("E4019", "names", "cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values") \
     GRAY_ERROR("E4020", "names", "type alias '%s' is already declared") \
-    GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file")
+    GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file") \
+    GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them") \
+    GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'") \
+    GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -284,7 +288,11 @@
     GRAY_ERROR("E6002", "imports", "cannot find file or directory '%s'") \
     GRAY_ERROR("E6003", "imports", "directory '%s' contains no .gray files") \
     GRAY_ERROR("E6004", "imports", "cannot import own module directory") \
-    GRAY_ERROR("E6008", "imports", "'%s.%s' is a module constant and cannot be assigned to")
+    GRAY_ERROR("E6005", "imports", "cannot import the program's entry point") \
+    GRAY_ERROR("E6006", "imports", "module name derived from the import path is not a usable identifier") \
+    GRAY_ERROR("E6007", "imports", "standard library imports cannot be aliased") \
+    GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
+    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \

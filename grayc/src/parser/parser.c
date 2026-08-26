@@ -195,8 +195,10 @@ static const char *read_type_name(Parser *parser) {
         size_t nlen = strlen(name), qlen = strlen(parser->cur_token.literal);
         size_t len = nlen + qlen + 2;
         char *qualified = arena_alloc(parser->arena, len);
-        /* Use underscore for module-qualified types: mod.Type → mod_Type */
-        snprintf(qualified, len, "%s_%s", name, parser->cur_token.literal);
+        /* The qualifier stays attached: mod.Type is carried through as written
+         * and resolved against the symbol table, not flattened to mod_Type
+         * here where there is nothing to resolve it against. */
+        snprintf(qualified, len, "%s.%s", name, parser->cur_token.literal);
         return qualified;
     }
     return name;
@@ -764,7 +766,7 @@ static AstNode *parse_prefix(Parser *parser) {
                     parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z') {
                     /* mod.Name{; module-qualified struct literal */
                     char *prefixed = arena_alloc(parser->arena, MSG_BUF_SIZE);
-                    snprintf(prefixed, MSG_BUF_SIZE, "%s_%s", mod, parser->cur_token.literal);
+                    snprintf(prefixed, MSG_BUF_SIZE, "%s.%s", mod, parser->cur_token.literal);
                     next_token(parser); /* move to { */
                     return parse_struct_literal(parser, prefixed);
                 }
@@ -1940,6 +1942,23 @@ static AstNode *parse_func_declaration(Parser *parser) {
     return node;
 }
 
+/* Why `name` cannot be bound as a module name, or NULL when it can. The
+ * phrase completes "module name 'x' ...". */
+static const char *module_name_reject_reason(const char *name) {
+    if (!name[0]) return "is empty";
+    if (!isalpha((unsigned char)name[0]) && name[0] != '_')
+        return "is not a valid identifier";
+    for (const char *p = name + 1; *p; p++) {
+        if (!isalnum((unsigned char)*p) && *p != '_')
+            return "is not a valid identifier";
+    }
+    TokenType kw_type;
+    const char *kw_text;
+    if (token_lookup_keyword_n(name, (int)strlen(name), &kw_type, &kw_text))
+        return "is a keyword";
+    return NULL;
+}
+
 static AstNode *parse_import_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_IMPORT_STMT, parser->cur_token);
 
@@ -1987,13 +2006,10 @@ static AstNode *parse_import_statement(Parser *parser) {
         }
 
         /* Check for alias: identifier followed by @ or string */
+        Token alias_token = parser->cur_token;
+        bool aliased_stdlib = false;
         if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_AT)) {
-            if (strcmp(parser->cur_token.literal, "c") == 0) {
-                diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,"'c' is reserved for C interop; choose a different alias"),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            }
-            item->alias = parser->cur_token.literal;
+            aliased_stdlib = true;
             next_token(parser); /* consume alias, now on @ */
         } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_STRING)) {
             item->alias = parser->cur_token.literal;
@@ -2004,11 +2020,25 @@ static AstNode *parse_import_statement(Parser *parser) {
             item->is_stdlib = true;
             next_token(parser);
             item->module = parser->cur_token.literal;
-            if (!item->alias) item->alias = parser->cur_token.literal;
+            item->alias = parser->cur_token.literal;
+            /* A local import may be aliased because its name comes from the
+             * filesystem and can collide or be unspellable. A stdlib module's
+             * name is fixed, unique, and always a valid identifier, so a
+             * second name for it is one the symbol table cannot key. */
+            if (aliased_stdlib) {
+                char buf[MSG_BUF_SIZE];
+                snprintf(buf, sizeof(buf),
+                    "standard library import '@%s' cannot be aliased", item->module);
+                diagnostic_error_help(parser->diag, "E6007",
+                    arena_copy_string(parser->arena, buf),
+                    parser->file, alias_token.line, alias_token.column, 0,
+                    "remove the alias and use the module's own name");
+            }
         } else if (current_token_is(parser, TOK_STRING)) {
             item->is_stdlib = false;
             item->path = parser->cur_token.literal;
             /* Derive module name from filename/directory if no alias */
+            bool derived_module = !item->alias;
             if (!item->alias) {
                 const char *slash = strrchr(item->path, '/');
                 const char *base = slash ? slash + 1 : item->path;
@@ -2027,6 +2057,24 @@ static AstNode *parse_import_statement(Parser *parser) {
                     mod[blen] = '\0';
                     item->alias = mod;
                     item->module = mod;
+                }
+            }
+            /* A derived module name comes from the filesystem, which allows
+             * spellings Grayscale identifiers do not. Reject them here, where
+             * an alias is the fix, rather than at the use site where the name
+             * parses as something else entirely. */
+            if (derived_module && item->module) {
+                const char *reason = module_name_reject_reason(item->module);
+                if (reason) {
+                    char buf[MSG_BUF_SIZE];
+                    char help[MSG_BUF_SIZE];
+                    snprintf(buf, sizeof(buf), "module name '%s' %s", item->module, reason);
+                    snprintf(help, sizeof(help),
+                        "give the import an alias, e.g. import m \"%s\"", item->path);
+                    diagnostic_error_help(parser->diag, "E6006",
+                        arena_copy_string(parser->arena, buf),
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        arena_copy_string(parser->arena, help));
                 }
             }
             /* Reject 'c' as a module name; reserved for C interop */
@@ -2859,7 +2907,7 @@ static AstNode *parse_when_statement(Parser *parser) {
                         next_token(parser); /* skip dot */
                         if (is_qualified_enum) {
                             char qualified[MSG_BUF_SIZE];
-                            snprintf(qualified, sizeof(qualified), "%s_%s",
+                            snprintf(qualified, sizeof(qualified), "%s.%s",
                                 pat->data.when_pattern.enum_name, parser->cur_token.literal);
                             pat->data.when_pattern.enum_name = arena_copy_string(parser->arena, qualified);
                             next_token(parser); /* skip enum name */

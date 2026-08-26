@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3128 - the same module-qualified type argument, written bare
+ * through 'using'. Both spellings must report identically.
+ * Expected: "got a non-type expression"
+ */
+// expect-error: E3128
+// expect-error-count: 1
+
+import "./utils.gray"
+import "./types.gray"
+using utils
+
+do main() {
+    mut x = new_T(types.Actor)
+    println(x.id)
+}

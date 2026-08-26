@@ -1,0 +1,46 @@
+/*
+ * module-public-access - Public module variables and constants stay readable
+ * across modules, and a module's own private declarations stay usable from
+ * inside the file that declares them.
+ */
+
+import "./lib.gray"
+
+do main() {
+    println("=== Module Public Access Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if lib.public_var == 100 {
+        println("  [PASS] lib.public_var == 100")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lib.public_var: expected 100, got ${lib.public_var}")
+        failed += 1
+    }
+
+    if lib.PUBLIC_CONST == 9 {
+        println("  [PASS] lib.PUBLIC_CONST == 9")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lib.PUBLIC_CONST: expected 9, got ${lib.PUBLIC_CONST}")
+        failed += 1
+    }
+
+    mut internal int = lib.public_fn()
+    if internal == 49 {
+        println("  [PASS] lib.public_fn() reached its own private members")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lib.public_fn(): expected 49, got ${internal}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,7 @@
+/*
+ * strings.gray - shares its module name with the stdlib strings module
+ */
+
+do to_upper(s string) -> string {
+    return "LOCAL"
+}

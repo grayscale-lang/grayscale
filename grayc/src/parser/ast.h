@@ -130,6 +130,12 @@ struct AstNode {
     NodeKind kind;
     Token token;
 
+    /* The declaration this node refers to, once the type checker has resolved
+     * it. Codegen reads it rather than resolving the name a second time.
+     * NULL on nodes that name no declaration. Opaque here: ast.h is included
+     * by the parser, which has no symbol table. */
+    struct DeclEntry_ *resolved_decl;
+
     union {
         /* NODE_LABEL */
         struct { const char *value; } label;
@@ -385,5 +391,28 @@ struct AstNode {
 
 /* Node constructor helpers */
 AstNode *ast_alloc(Arena *arena, NodeKind kind, Token token);
+
+/* --- member expression shape accessors ---------------------------------
+ *
+ * `a.b` is a NODE_MEMBER_EXPR whose object says what `a` is: a module, a
+ * struct type, an enum type, a local, or another qualified name. Every phase
+ * needs the written qualifier before it can decide which; these are the one
+ * place the shape is tested, so a phase asks for the qualifier instead of
+ * open-coding the node-kind check. */
+
+/* The bare name a member expression is written against — "mod" in mod.f(),
+ * "Type" in Type.VARIANT, "v" in v.field — or NULL when the object is not a
+ * plain name. */
+const char *ast_member_qualifier(const AstNode *node);
+
+/* Like ast_member_qualifier, but sees through an explicit deref: `p^.f` is
+ * written against `p`. */
+const char *ast_member_base_qualifier(const AstNode *node);
+
+/* The halves of a nested qualified spelling — mod.Type.member. Returns false,
+ * leaving the outputs untouched, when the object is not itself written
+ * against a bare name. Either output may be NULL. */
+bool ast_member_chain(const AstNode *node, const char **out_qualifier,
+                      const char **out_type);
 
 #endif

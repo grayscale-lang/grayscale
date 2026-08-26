@@ -1,0 +1,8 @@
+const Item struct {
+    id int
+}
+
+const Tag enum {
+    A
+    B
+}

@@ -1,0 +1,29 @@
+/*
+ * Test: a module named only inside a container or pointer type
+ *
+ * The import-used scan reads the module prefix from the start of the type
+ * name, so "[types.Item]" measured a prefix of "[types", matched no import,
+ * and the file was told an import it uses is unused.
+ */
+
+// expect-not: W1002
+
+import "./types.gray"
+
+do collect(xs [types.Item]) -> int {
+    return len(xs)
+}
+
+do main() {
+    mut xs [types.Item] = {}
+    mut m map[string:types.Tag] = {:}
+    mut grid [[types.Item]] = {}
+    mut p ^types.Item = nil
+
+    assert(collect(xs) == 0, "array of an imported struct")
+    assert(len(m) == 0, "map valued by an imported enum")
+    assert(len(grid) == 0, "nested array of an imported struct")
+    assert(p == nil, "pointer to an imported struct")
+
+    println("ALL TESTS PASSED")
+}

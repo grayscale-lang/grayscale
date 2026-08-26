@@ -57,6 +57,57 @@ fi
 pass() { printf "  ${GREEN}PASS${NC}  %s\n" "$1"; ((++PASS_COUNT)); }
 fail() { printf "  ${RED}FAIL${NC}  %s %s\n" "$1" "$2"; ((++FAIL_COUNT)); }
 
+# run_fail_test <label> <entry.gray> <marker-file>
+#
+# A test may pin the exact diagnostic with marker comments in <marker-file>:
+#
+#     // expect-error: E5008
+#     // expect-error-count: 1
+#
+# With expect-error the file runs through 'check' and must produce that code.
+# Without it a test only has to fail somehow, which cannot tell a typechecker
+# rejection apart from the C compiler choking on what the typechecker let
+# through. expect-error-count additionally pins how many errors the file
+# produces, so one mistake reported twice does not slip by.
+# expect-not: <text> — the run's diagnostics must not contain <text>. The
+# mangled-name guard in run_fail_test catches a module-mangled type name
+# (mod_Type) on its shape alone; a mangled function name, or a warning code
+# that must not appear, has no such shape and is named here instead.
+forbidden_marker() {
+    grep -E '^[[:space:]]*//[[:space:]]*expect-not:' "$1" \
+        | sed -E 's|^[[:space:]]*//[[:space:]]*expect-not:[[:space:]]*||' | head -1
+}
+
+run_fail_test() {
+    local label="$1" entry="$2" marker_file="$3"
+    local expected_error expected_count output actual_count forbidden
+    expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$marker_file" \
+        | grep -oE '[EPW][0-9]+' | head -1)
+    expected_count=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error-count:[[:space:]]*[0-9]+' "$marker_file" \
+        | grep -oE '[0-9]+' | head -1)
+    forbidden=$(forbidden_marker "$marker_file")
+    if [ -n "$expected_error" ]; then
+        output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$entry" 2>&1) || true
+        actual_count=$(echo "$output" | grep -cE '^error\[' || true)
+        if [ -n "$expected_count" ] && [ "$actual_count" != "$expected_count" ]; then
+            fail "$label" "(expected $expected_count error(s), got $actual_count)"
+        elif echo "$output" | grep -q "error\[$expected_error\]" \
+            && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
+            if [ -n "$forbidden" ] && echo "$output" | grep -qF -- "$forbidden"; then
+                fail "$label" "(output contains '$forbidden')"
+            else
+                pass "$label"
+            fi
+        else
+            fail "$label" "(expected $expected_error)"
+        fi
+    elif run_timeout $TIMEOUT "$GRAY_BIN" "$entry" >/dev/null 2>&1; then
+        fail "$label" "(expected error, got success)"
+    else
+        pass "$label"
+    fi
+}
+
 echo "========================================"
 echo "  Grayscale Integration Test Suite"
 echo "========================================"
@@ -103,8 +154,13 @@ for dir in "$TEST_DIR"/pass/multi-file/*/; do
         dir_name=$(basename "$dir")
         main_file=$(find "$dir" -name "main.gray" | head -1)
         if [ -n "$main_file" ]; then
+            forbidden=$(forbidden_marker "$main_file")
             if output=$(run_timeout $TIMEOUT "$GRAY_BIN" "$main_file" 2>&1); then
-                pass "multi-file/$dir_name"
+                if [ -n "$forbidden" ] && echo "$output" | grep -qF -- "$forbidden"; then
+                    fail "multi-file/$dir_name" "(output contains '$forbidden')"
+                else
+                    pass "multi-file/$dir_name"
+                fi
             else
                 fail "multi-file/$dir_name" "(execution error)"
             fi
@@ -211,33 +267,12 @@ fi
 echo ""
 printf "${BOLD}FAIL tests (expecting errors):${NC}\n"
 
-# Error tests (should fail)
-#
-# A test may pin the exact diagnostic with a marker comment:
-#
-#     // expect-error: E5008
-#
-# Those run through 'check' and must produce that code. Without it a test
-# only has to fail somehow, which cannot tell a typechecker rejection apart
-# from the C compiler choking on what the typechecker let through.
+# Error tests (should fail). See run_fail_test for the marker comments a test
+# can use to pin the exact diagnostic and how many errors it produces.
 for test_file in "$TEST_DIR"/fail/errors/*.gray; do
     if [ -f "$test_file" ]; then
         test_name=$(basename "$test_file" .gray)
-        expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$test_file" \
-            | grep -oE '[EPW][0-9]+' | head -1)
-        if [ -n "$expected_error" ]; then
-            output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$test_file" 2>&1) || true
-            if echo "$output" | grep -q "error\[$expected_error\]" \
-                && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
-                pass "errors/$test_name"
-            else
-                fail "errors/$test_name" "(expected $expected_error)"
-            fi
-        elif run_timeout $TIMEOUT "$GRAY_BIN" "$test_file" >/dev/null 2>&1; then
-            fail "errors/$test_name" "(expected error, got success)"
-        else
-            pass "errors/$test_name"
-        fi
+        run_fail_test "errors/$test_name" "$test_file" "$test_file"
     fi
 done
 
@@ -248,11 +283,7 @@ rm -f ./*.graydb
 for test_file in "$TEST_DIR"/fail/multi-file/*.gray; do
     if [ -f "$test_file" ]; then
         test_name=$(basename "$test_file" .gray)
-        if run_timeout $TIMEOUT "$GRAY_BIN" "$test_file" >/dev/null 2>&1; then
-            fail "multi-file/$test_name" "(expected error, got success)"
-        else
-            pass "multi-file/$test_name"
-        fi
+        run_fail_test "multi-file/$test_name" "$test_file" "$test_file"
     fi
 done
 
@@ -262,11 +293,7 @@ for dir in "$TEST_DIR"/fail/multi-file/*/; do
         dir_name=$(basename "$dir")
         main_file=$(find "$dir" -name "main.gray" | head -1)
         if [ -n "$main_file" ]; then
-            if run_timeout $TIMEOUT "$GRAY_BIN" "$main_file" >/dev/null 2>&1; then
-                fail "multi-file/$dir_name" "(expected error, got success)"
-            else
-                pass "multi-file/$dir_name"
-            fi
+            run_fail_test "multi-file/$dir_name" "$main_file" "$main_file"
         fi
     fi
 done

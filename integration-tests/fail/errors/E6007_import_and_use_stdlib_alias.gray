@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6007 - aliasing a standard library import with 'import and use'
+ * Expected: "standard library import '@strings' cannot be aliased"
+ */
+
+import and use str @strings
+
+do main() {
+    println(str.to_upper("hi"))
+}

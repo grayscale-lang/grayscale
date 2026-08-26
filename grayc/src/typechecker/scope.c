@@ -15,7 +15,7 @@
 
 #define SCOPE_INITIAL_CAP 8
 
-static uint32_t scope_str_hash(const char *string) {
+uint32_t scope_str_hash(const char *string) {
     uint32_t h = 5381u;
     for (const unsigned char *p = (const unsigned char *)string; *p; p++)
         h = h * 33u ^ (uint32_t)*p;

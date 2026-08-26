@@ -1,0 +1,78 @@
+/*
+ * type_param_concrete_return_ok.gray - A concrete return type stays legal on a
+ * function with a type parameter whenever the body returns a value of that
+ * concrete type. Only returning the caller's type argument is rejected.
+ */
+
+const Foo struct {
+    name string
+}
+
+// Returns the type argument, and says so.
+do new_T(t <?>) -> ? {
+    return new(t)^
+}
+
+do new_T_ptr(t <?>) -> ^? {
+    return new(t)
+}
+
+// Promises Foo, returns an actual Foo.
+do new_foo(t <?>) -> Foo {
+    return new(Foo)^
+}
+
+// Promises int, returns an actual int.
+do size_T(t <?>) -> int {
+    return size_of(t)
+}
+
+do main() {
+    println("=== Type Parameter Concrete Return Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a Foo = new_T(Foo)
+    if a.name == "" {
+        println("  [PASS] new_T(Foo) returned a zeroed Foo")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new_T(Foo): expected an empty name, got ${a.name}")
+        failed += 1
+    }
+
+    mut b ^Foo = new_T_ptr(Foo)
+    if b^.name == "" {
+        println("  [PASS] new_T_ptr(Foo) returned a pointer to a zeroed Foo")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new_T_ptr(Foo): expected an empty name, got ${b^.name}")
+        failed += 1
+    }
+
+    mut c Foo = new_foo(Foo)
+    if c.name == "" {
+        println("  [PASS] new_foo(Foo) returned an actual Foo")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new_foo(Foo): expected an empty name, got ${c.name}")
+        failed += 1
+    }
+
+    mut s int = size_T(Foo)
+    if s > 0 {
+        println("  [PASS] size_T(Foo) returned a positive int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_T(Foo): expected a positive int, got ${s}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

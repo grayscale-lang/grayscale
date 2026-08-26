@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4015 - reading a private module constant imported through a
+ * nested relative path.
+ * Expected: "'SECRET_VALUE' is private and cannot be accessed from outside its file"
+ */
+// expect-error: E4015
+// expect-error-count: 1
+
+import "./somemod/internal/secret.gray"
+
+do main() {
+    println(secret.SECRET_VALUE)
+}

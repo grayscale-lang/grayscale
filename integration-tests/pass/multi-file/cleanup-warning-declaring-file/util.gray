@@ -1,0 +1,8 @@
+do used() -> int {
+    mut unused_local int = 99
+    return 1
+}
+
+do never_called() -> int {
+    return 2
+}

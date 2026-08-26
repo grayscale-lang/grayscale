@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4023 - a known module called with a function name it does not
+ * declare. This resolved to void, drawing a false E3038.
+ * Expected: "module 'utils' has no function named 'no_such_function'"
+ */
+// expect-error: E4023
+// expect-error-count: 1
+
+import "./utils.gray"
+
+do main() {
+    mut x = utils.no_such_function()
+    println(x)
+}

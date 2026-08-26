@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3010 - a field that does not exist, read twice afterwards.
+ * Expected: one error, naming the field. A declaration whose initializer
+ * failed used to go unregistered, so every later read of the variable added
+ * an undefined-variable error on top of the one real mistake.
+ */
+
+// expect-error: E3010
+// expect-error-count: 1
+
+const P struct {
+    a int
+}
+
+do main() {
+    mut p P = P{a: 1}
+    mut y = p.nope
+    println("${y}")
+    println("${y}")
+}

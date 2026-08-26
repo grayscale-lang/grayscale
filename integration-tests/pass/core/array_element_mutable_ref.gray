@@ -1,0 +1,53 @@
+/*
+ * An array or map element passed to a mutable (&) parameter takes the
+ * element's own pointer type, not a fixed int64_t *.
+ */
+
+const Item struct {
+    n int
+
+    do bump(&i Item) {
+        i.n = i.n + 1
+    }
+}
+
+do shout(&s string) {
+    s = "${s}!"
+}
+
+do half(&f float) {
+    f = f / 2.0
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut items [Item] = {Item{n: 1}}
+    Item.bump(items[0])
+    if items[0].n == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut words [string] = {"hi"}
+    shout(words[0])
+    if words[0] == "hi!" { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut nums [float] = {4.0}
+    half(nums[0])
+    if nums[0] == 2.0 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut m map[string:Item] = {"a": Item{n: 5}}
+    Item.bump(m["a"])
+    if m["a"].n == 6 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut ms map[string:string] = {"a": "yo"}
+    shout(ms["a"])
+    if ms["a"] == "yo!" { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

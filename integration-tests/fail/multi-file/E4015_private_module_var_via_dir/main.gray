@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4015 - reading a private module-level variable through a
+ * directory import.
+ * Expected: "'private_var' is private and cannot be accessed from outside its file"
+ */
+// expect-error: E4015
+// expect-error-count: 1
+
+import "./mylib"
+
+do main() {
+    println(mylib.private_var)
+}

@@ -1,0 +1,19 @@
+/*
+ * Test: func references taken inside an imported module
+ *
+ * `()name` and `ref(name)` written in a non-entry file must emit the module's
+ * mangled symbol. Emitting the bare name produced invalid C, and taking the
+ * reference never marked the target used, so W1003 fired on a function that
+ * is called. `ref(name)` looked the function up under the name as written,
+ * missed it, and emitted a variable's address instead of a function pointer.
+ */
+import "./helper.gray"
+
+do main() {
+    mut nums [int] = {1, 2, 3}
+    assert(helper.total(nums) == 6, "func ref passed to a stdlib higher-order function")
+    assert(helper.via_param(4, 5) == 9, "func ref passed to a user func parameter")
+    assert(helper.via_ref(6, 7) == 13, "ref(name) bound to a const")
+
+    println("ALL TESTS PASSED")
+}

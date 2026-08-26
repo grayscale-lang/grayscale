@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6001 - a local import and a stdlib import bind the same name
+ * Expected: "module name 'strings' is already imported; use an alias"
+ */
+
+import @strings, "./strings"
+
+do main() {
+    println(strings.to_upper("hi"))
+}

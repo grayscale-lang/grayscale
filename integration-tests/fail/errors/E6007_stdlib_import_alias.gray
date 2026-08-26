@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6007 - aliasing a standard library import
+ * Expected: "standard library import '@math' cannot be aliased"
+ */
+
+import m @math
+
+do main() {
+    println(m.abs(-7))
+}

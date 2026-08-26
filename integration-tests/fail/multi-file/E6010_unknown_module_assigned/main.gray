@@ -1,0 +1,15 @@
+/*
+ * Error Test: E6010 - a misspelled module name in a call whose result is
+ * assigned. This resolved to void, drawing a false E3038 that blamed the
+ * callee's return type instead of naming the typo.
+ * Expected: "unknown module 'util'" with a "did you mean 'utils'?" hint
+ */
+// expect-error: E6010
+// expect-error-count: 1
+
+import "./utils.gray"
+
+do main() {
+    mut user_in = util.get_user_in()
+    println(user_in)
+}

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6002 - a module that failed to load merges no declarations,
+ * so every reference to it was reported undefined as well. Only the import
+ * failure is real, and it is the only error reported.
+ */
+// expect-error: E6002
+// expect-error-count: 1
+
+import "./plugins"
+
+do main() {
+    mut q plugins.Queue = plugins.Queue{pending: {}}
+    println(plugins.count_done(q))
+}

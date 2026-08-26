@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6010 - a call through a module name that was never imported.
+ * Nothing declared it anywhere, and it still passed the typechecker and
+ * reached the C compiler.
+ * Expected: "unknown module 'completely_made_up'"
+ */
+// expect-error: E6010
+// expect-error-count: 1
+
+do main() {
+    println("before")
+    completely_made_up.does_not_exist()
+    println("after")
+}

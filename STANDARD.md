@@ -2286,6 +2286,32 @@ Rules:
 - Cross-module: `module.StructName.func_name(args...)`
 - Module-qualified types can be used in variable declarations, parameters, and return types: `mut p module.Point`
 
+#### Calling a Sibling Function
+
+Inside a struct function body, a sibling function in the same struct can be called by its bare name, without the type prefix. `private` siblings are reachable this way too, since the caller is inside the struct:
+
+```gray
+const Calculator struct {
+    value int
+
+    private do internal_add(a int, b int) -> int {
+        return a + b
+    }
+
+    do add(a int, b int) -> int {
+        return internal_add(a, b)        // bare sibling call
+    }
+}
+```
+
+A bare call inside a struct function body resolves in this order:
+
+1. A top-level function of that name, if one exists.
+2. Otherwise, the enclosing struct's namespace.
+3. Otherwise, `E4002: undefined function`.
+
+A struct function may not share a name with a top-level function — that is a compile-time error (`E4022`), because the bare name would silently resolve to the top-level function and leave the struct's own function reachable only as `StructName.func_name(...)`. With that rejected, the order above is never ambiguous in a program that compiles.
+
 #### Instance Dispatch
 
 When a struct function takes the struct (or a pointer to it) as its first parameter, callers can use the instance form `instance.func(...)` instead of writing the type name. The compiler rewrites the call as `Type.func(instance, ...)`:
@@ -2460,6 +2486,46 @@ mut x = make(int)      // Error E3127 — int is not a struct
 mut y = make(1 + 2)    // Error E3128 — not a type name
 ```
 
+#### Across module boundaries
+
+Generic functions work through a module prefix, and the qualified spelling behaves exactly like the bare one:
+
+```gray
+import "./utils.gray"
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p = utils.make(Point)     // same as 'using utils' + make(Point)
+}
+```
+
+The type argument must be a bare struct name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+
+#### More restrictions
+
+**Returning the type argument requires a wildcard return type (E3139):**
+
+A concrete return type is a promise that has to hold for every caller. Returning the type argument breaks it for all but the caller that happens to pass a matching type, so the declaration is rejected on its own — no call site required:
+
+```gray
+do new_T(t <?>) -> Foo {
+    return new(t)^      // Error E3139 — returns whatever the caller passed
+}
+```
+
+Write the return type as `?` or `^?` instead. The same applies to returning a wildcard-typed parameter (`do id(v ?) -> Foo { return v }`).
+
+A concrete return type stays legal whenever the body returns a value of that type:
+
+```gray
+do new_foo(t <?>) -> Foo { return new(Foo)^ }   // OK — returns an actual Foo
+do size_T(t <?>) -> int  { return size_of(t) }  // OK — size_of is always int
+```
+
 ---
 
 ## 8. Modules
@@ -2482,7 +2548,7 @@ project/
 
 Directory imports merge all top-level `.gray` files in that directory into a single namespace under the directory's name. Subdirectories are **not** included; they are separate modules that must be imported independently. Hidden files (names starting with `.`) are excluded from directory scans.
 
-All relative import paths are resolved relative to the **entry point file's directory**, not the importing file's directory. This means a file inside `models/` that uses `import "./shared.gray"` resolves relative to the project root (where `main.gray` lives), not relative to `models/`.
+All relative import paths are resolved relative to the **importing file's directory**, not the entry point file's directory. A file inside `models/` that uses `import "./shared.gray"` resolves to `models/shared.gray`; to reach a file in the project root it writes `import "../shared.gray"`.
 
 ### 8.2 Imports
 
@@ -2509,11 +2575,11 @@ When both `helpers.gray` and a `helpers/` directory exist, the file takes priori
 
 If a directory contains no `.gray` files, it is an error.
 
-**Import aliasing:**
+**Import aliasing:** Only local imports may be aliased. A local module's name comes from the filesystem, where it can collide with another module or fail to be a valid identifier; a standard library module's name is fixed and unique, so aliasing one is an error.
 
 ```gray
-import m @math              // use m.sqrt() instead of math.sqrt()
 import mymod "./server"     // use mymod.handle() instead of server.handle()
+import m @math              // Error: '@math' cannot be aliased
 ```
 
 **Multiple imports** can be comma-separated:
@@ -2522,7 +2588,14 @@ import mymod "./server"     // use mymod.handle() instead of server.handle()
 import @math, "./helpers", "./models"
 ```
 
-**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate:
+**Module name validity:** A module name derived from the import path must be a valid Grayscale identifier and must not be a keyword. A file whose name is neither must be imported with an alias:
+
+```gray
+import "./my-utils"       // Error: 'my-utils' is not a valid identifier
+import u "./my-utils"     // OK
+```
+
+**Collision detection:** If two different imports resolve to the same module name, it is an error. The user must alias one to disambiguate. A standard library import binds a module name the same way a local import does, so the two can collide:
 
 ```gray
 // Error: both resolve to module name "utils"
@@ -2530,14 +2603,19 @@ import "./utils", "./lib/utils"
 
 // Fix: alias one
 import "./utils", lib_utils "./lib/utils"
+
+// Error: both resolve to module name "strings"
+import @strings, "./strings"
 ```
+
+A local module may share a stdlib module's name as long as the stdlib module is not also imported; the local module is then the only `strings` in scope.
 
 **Directory import semantics:**
 
 When a directory is imported, all `.gray` files within it are merged into a single module namespace (the directory name). The following rules apply:
 
 - Files within the directory may import each other via relative paths (e.g., `import "./types.gray"`). These sibling cross-references are resolved internally and do not create separate namespaces; all symbols remain under the directory's namespace.
-- Transitive imports inside directory files resolve relative to the importing file's location, not the entry file.
+- Transitive imports inside directory files follow the same rule as everywhere else: they resolve relative to the importing file's location.
 - If a file inside a directory imports its own parent directory (self-referential import), it is rejected.
 - If a directory import is followed by a direct import of a file already in that directory, the compiler warns that the import is redundant; the directory namespace should be used instead.
 - If two files in a directory declare the same symbol name, it is a collision error.
@@ -3737,9 +3815,6 @@ Arena-based memory allocation. Compiler-only feature.
 | `usage` | `(arena Arena) -> int` | Return the number of bytes currently used |
 | `init` | `(arena Arena, Type) -> ^Type` | Allocate a zero-initialized value of `Type` in the arena |
 | `alloc` | `(arena Arena, value T) -> ^T` | Allocate a copy of value in the arena |
-| `make` | `(arena Arena, Type) -> ^Type` | Allocate zero-initialized value of Type in arena |
-| `free` | `(arena Arena)` | Free an arena (alias for destroy) |
-| `size_of` | `(Type) -> int` | Size of type in bytes |
 | `raw_copy` | `(dest ptr, src ptr, n int)` | Copy `n` bytes from `src` to `dest` |
 | `zero` | `(p ptr, n int)` | Zero out `n` bytes at `p` |
 | `fill` | `(p ptr, value int, n int)` | Set `n` bytes at `p` to `value` |

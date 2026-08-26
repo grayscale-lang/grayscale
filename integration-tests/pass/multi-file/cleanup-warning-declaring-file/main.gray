@@ -1,0 +1,14 @@
+/*
+ * W1001 and W1003 name the file that declares the symbol. Both used to
+ * report the entry file while the line number counted lines in the
+ * declaring file, so the caret landed on unrelated source or on nothing.
+ */
+
+// expect-not: main.gray:
+
+import "./util.gray"
+
+do main() {
+    println("${util.used()}")
+    println("ALL TESTS PASSED")
+}

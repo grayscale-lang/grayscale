@@ -78,23 +78,81 @@ static int codegen_enum_index(CodeGen *codegen, const char *name);
 static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
+static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
 
-/* Resolve an unprefixed type name (e.g. "Point") to its module-prefixed
- * form (e.g. "lib_Point") by searching struct declarations and enum names.
- * Returns the prefixed name if found, otherwise returns the original. */
-static const char *resolve_unprefixed_name(CodeGen *codegen, const char *name) {
-    if (!codegen || !name) return name;
-    for (int i = 0; i < codegen->struct_decl_count; i++) {
-        const char *struct_decl_name = codegen->struct_decls[i]->data.struct_decl.name;
-        const char *underscore = strrchr(struct_decl_name, '_');
-        if (underscore && strcmp(underscore + 1, name) == 0) return struct_decl_name;
+
+/* The C name for a declaration node: the mangled name of the symbol-table
+ * entry that declared it. The module a declaration belongs to is a property
+ * of the declaration, so this needs no name to look up and no file context.
+ *
+ * `fallback` covers nodes the table holds no entry for — struct functions,
+ * which are namespaced under their struct rather than their module, and
+ * generic instantiations, which are mangled by binding. */
+/* Track which module's file is being emitted. Every node of a declaration
+ * carries the same file, so setting this per statement covers the bodies. */
+static void codegen_enter_node(CodeGen *codegen, AstNode *node) {
+    if (node && node->token.file && codegen->modules) {
+        codegen->current_module =
+            module_table_module_for_file(codegen->modules, node->token.file);
+        codegen->current_file = node->token.file;
     }
-    for (int i = 0; i < codegen->enum_count; i++) {
-        const char *enum_decl_name = codegen->enum_names[i];
-        const char *underscore = strrchr(enum_decl_name, '_');
-        if (underscore && strcmp(underscore + 1, name) == 0) return enum_decl_name;
-    }
-    return name;
+}
+
+/* Is `mod` a module this program imported or used? Only the stdlib reaches
+ * this now — a user module is answered by the symbol table, which also gives
+ * the declaration's name. The two lists differ only in that `using` may hold
+ * an alias, so both are consulted. */
+static bool codegen_module_imported(CodeGen *codegen, const char *mod) {
+    for (int i = 0; i < codegen->using_module_count; i++)
+        if (strcmp(codegen->using_modules[i], mod) == 0) return true;
+    for (int i = 0; i < codegen->imported_module_count; i++)
+        if (strcmp(codegen->imported_modules[i], mod) == 0) return true;
+    return false;
+}
+
+/* The scope emission resolves names in. */
+static ResolveScope codegen_scope(CodeGen *codegen) {
+    ResolveScope scope;
+    scope.module = codegen->current_module;
+    scope.file = codegen->current_file ? codegen->current_file : codegen->file;
+    scope.using_modules = codegen->using_modules;
+    scope.using_count = codegen->using_module_count;
+    return scope;
+}
+
+/* The C-visible spelling of a name as written where it appears: bare inside
+ * its own module, reachable through a `using`, or qualified. The single point
+ * at which a written name becomes the symbol it names. */
+static const char *codegen_resolve_type(CodeGen *codegen, const char *written) {
+    if (!codegen || !codegen->modules || !written) return written;
+    ResolveScope scope = codegen_scope(codegen);
+    return module_resolve_type_name(codegen->modules, &scope, written);
+}
+
+static const char *codegen_resolve_decl(CodeGen *codegen, const char *written) {
+    if (!codegen || !codegen->modules || !written) return written;
+    ResolveScope scope = codegen_scope(codegen);
+    DeclEntry *entry = module_resolve_written(codegen->modules, &scope, written);
+    return entry ? module_mangle(codegen->modules, entry) : written;
+}
+
+/* The declaration a reference node names: the type checker's cached answer
+ * when it left one, otherwise resolved here. */
+static const char *codegen_resolve_ref(CodeGen *codegen, AstNode *node,
+                                       const char *written) {
+    if (node && node->resolved_decl)
+        return module_mangle(codegen->modules, node->resolved_decl);
+    return codegen_resolve_decl(codegen, written);
+}
+
+static const char *codegen_decl_name(CodeGen *codegen, AstNode *node,
+                                     const char *fallback) {
+    /* While a generic instantiation is being emitted the caller has already
+     * put the per-binding mangled name in hand (and on the node). That
+     * mangling is by type argument, not by module, and wins. */
+    if (codegen->wildcard_binding) return fallback;
+    DeclEntry *entry = module_table_entry_for_node(codegen->modules, node);
+    return entry ? module_mangle(codegen->modules, entry) : fallback;
 }
 
 /* --- Helpers --- */
@@ -426,7 +484,13 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (!type_name) return "int64_t";
 
     /* Resolve type aliases before any type mapping */
-    if (codegen) type_name = resolve_type_alias_codegen(codegen, type_name);
+    if (codegen) {
+        /* Resolve the name as written to its module's spelling first — the
+         * alias registry is keyed that way, so `Score` inside lib and
+         * `lib.Score` outside it both find the same alias. */
+        type_name = codegen_resolve_type(codegen, type_name);
+        type_name = resolve_type_alias_codegen(codegen, type_name);
+    }
 
     /* if Wildcard type'?' appears in the type
      * string while a generic instantiation is active, rewrite via
@@ -503,15 +567,31 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         return "GrayMap";
     }
 
-    /* Qualified type name: module.Type → strip module prefix */
-    const char *dot = strchr(type_name, '.');
-    if (dot) {
-        const char *base = dot + 1;
+    /* Qualified type name: module.Type. The qualifier used to be stripped,
+     * naming the type without saying whose it was; it resolves now — so the
+     * split only has to say that the spelling *is* qualified, and hand back
+     * the bare half for the unresolvable case. */
+    const char *type_qualifier = NULL, *bare_type = NULL;
+    (void)type_qualifier;
+    if (codegen && codegen->modules &&
+        module_split_qualified(codegen->modules->arena, type_name,
+                               &type_qualifier, &bare_type)) {
+        const char *resolved = codegen_resolve_type(codegen, type_name);
+        if (resolved == type_name) {
+            /* Unresolvable qualified name: fall back to the bare half so a
+             * type the table has not been told about still maps. */
+            return gray_type_to_c_codegen(codegen, bare_type);
+        }
+        /* An alias is erased: once resolved it may name a type alias, whose
+         * underlying type is what C sees. */
+        const char *unaliased = resolve_type_alias_codegen(codegen, resolved);
+        if (unaliased != resolved && strcmp(unaliased, type_name) != 0)
+            return gray_type_to_c_codegen(codegen, unaliased);
         static char buffer[MSG_BUF_SIZE];
-        if (codegen && codegen_is_enum(codegen, base)) {
-            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", base);
+        if (codegen && codegen_is_enum(codegen, resolved)) {
+            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", resolved);
         } else {
-            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", base);
+            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", resolved);
         }
         return buffer;
     }
@@ -526,9 +606,10 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (is_user_type) {
         static char buffer[MSG_BUF_SIZE];
         const char *resolved = type_name;
-        /* Resolve unprefixed names from 'import and use' */
         if (codegen && type_name[0] >= 'A' && type_name[0] <= 'Z' && !strchr(type_name, '_')) {
-            resolved = resolve_unprefixed_name(codegen, type_name);
+            resolved = codegen_resolve_type(codegen, type_name);
+            /* Names the table does not hold — stdlib opaque types — keep the
+             * using-module search. */
         }
         /* Module-qualified opaque types: mod_Type -> strip prefix and
          * re-resolve so opaque mappings (Channel->GrayChannel etc.) apply.
@@ -874,13 +955,10 @@ static void emit_deep_array_copy(CodeGen *codegen, AstNode *src_node, const char
     emit(codegen, "; })");
 }
 
-/* Resolve an import alias to the actual module name, or return the name itself.
- * alias_names is sorted after the init pass, so we use bsearch. */
+/* Resolve an import alias to the actual module name, or return the name
+ * itself. The mapping is the type checker's, not a second copy built here. */
 static const char *resolve_alias(CodeGen *codegen, const char *name) {
-    const char **hit = bsearch(name, codegen->alias_names, (size_t)codegen->alias_count,
-                               sizeof(const char *), keyword_compare);
-    if (hit) return codegen->alias_modules[hit - codegen->alias_names];
-    return name;
+    return module_table_resolve_alias(codegen->modules, name);
 }
 
 /* Check if a variable name is a mutable parameter in the current function */
@@ -1204,6 +1282,18 @@ static AstNode *find_function(CodeGen *codegen, const char *name) {
     return hit ? *hit : NULL;
 }
 
+/* The function a bare name in a `ref(name)` refers to. Codegen renames every
+ * declaration to its module-mangled spelling, so a name written inside an
+ * imported module is not the key its function is indexed under — looking up
+ * only the written name missed it and emitted a variable's address. */
+static AstNode *find_referenced_function(CodeGen *codegen, AstNode *label) {
+    const char *written = label->data.label.value;
+    AstNode *target = find_function(codegen, written);
+    if (target) return target;
+    const char *resolved = codegen_resolve_ref(codegen, label, written);
+    return resolved != written ? find_function(codegen, resolved) : NULL;
+}
+
 /* Build the (field_name, struct_name) index for func-typed fields once.
  * Order matches struct_decls so the first-match heuristic is preserved. */
 static void build_function_field_index(CodeGen *codegen) {
@@ -1270,7 +1360,13 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
     } else if (is_reference_variable(codegen, raw)) {
         emit_formatted(codegen, "(*%s)", name);
     } else {
-        emit(codegen, name);
+        /* A bare name that names a module-level declaration is emitted under
+         * that declaration's mangled name. Locals and parameters are not
+         * declarations, so they resolve to nothing and stay as written —
+         * which is why a binding that merely shares a name with a sibling
+         * file of its module is left alone. */
+        const char *resolved = codegen_resolve_ref(codegen, node, raw);
+        emit(codegen, resolved != raw ? sanitize_name(resolved) : name);
     }
 }
 
@@ -1740,6 +1836,11 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     const char *sname = node->data.struct_value.name;
     if (strcmp(sname, "?") == 0 && codegen->wildcard_binding) {
         sname = codegen->wildcard_binding;
+    } else if (node->resolved_decl) {
+        sname = module_mangle(codegen->modules, node->resolved_decl);
+    } else {
+        codegen_enter_node(codegen, node);
+        sname = codegen_resolve_type(codegen, sname);
     }
     /* Resolve unprefixed struct names from 'import and use' */
     if (sname[0] >= 'A' && sname[0] <= 'Z') {
@@ -1751,7 +1852,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             }
         }
         if (!found) {
-            sname = resolve_unprefixed_name(codegen, sname);
+            sname = codegen_resolve_type(codegen, sname);
         }
     }
     /* : use mangled name for generic struct instantiations */
@@ -2507,16 +2608,26 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
 
 static void emit_func_ref(CodeGen *codegen, AstNode *node) {
     /* ()func_name or ()Type.func; emit as C function pointer */
+    codegen_enter_node(codegen, node);
     if (node->data.func_ref.function->kind == NODE_LABEL) {
+        /* The referenced function is named as written, so it resolves like
+         * any other reference — taking a reference to a function inside its
+         * own module used to emit the unmangled symbol. */
         emit(codegen, "gray_fn_");
-        emit(codegen, node->data.func_ref.function->data.label.value);
+        emit(codegen, codegen_resolve_ref(codegen, node->data.func_ref.function,
+            node->data.func_ref.function->data.label.value));
     } else if (node->data.func_ref.function->kind == NODE_MEMBER_EXPR) {
         /* ()StructName.funcName → gray_fn_StructName_funcName */
         AstNode *mem = node->data.func_ref.function;
-        if (mem->data.member.object->kind == NODE_LABEL) {
-            emit_formatted(codegen, "gray_fn_%s_%s",
-                mem->data.member.object->data.label.value,
-                mem->data.member.member);
+        const char *qualifier = ast_member_qualifier(mem);
+        if (mem->resolved_decl && mem->resolved_decl->kind == DECL_FUNC) {
+            /* mod.func — the whole qualified name resolved to the function,
+             * so its declaration names it outright. */
+            emit_formatted(codegen, "gray_fn_%s",
+                module_mangle(codegen->modules, mem->resolved_decl));
+        } else if (qualifier) {
+            const char *qual = codegen_resolve_decl(codegen, qualifier);
+            emit_formatted(codegen, "gray_fn_%s_%s", qual, mem->data.member.member);
         } else {
             emit(codegen, "gray_fn_");
             emit_expression(codegen, node->data.func_ref.function);
@@ -2529,8 +2640,9 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
 
 static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     /* Check for module constants first */
-    if (node->data.member.object->kind == NODE_LABEL) {
-        const char *mod = node->data.member.object->data.label.value;
+    const char *object_name = ast_member_qualifier(node);
+    if (object_name) {
+        const char *mod = object_name;
         const char *mem = node->data.member.member;
 
         /* @math constants */
@@ -2590,7 +2702,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             if (codegen_is_enum(codegen, mod)) {
                 resolved_enum = mod;
             } else {
-                const char *resolved_name = resolve_unprefixed_name(codegen, mod);
+                const char *resolved_name = codegen_resolve_type(codegen, mod);
                 if (resolved_name != mod && codegen_is_enum(codegen, resolved_name)) resolved_enum = resolved_name;
             }
             if (resolved_enum) {
@@ -2625,43 +2737,21 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
         }
 
         /* User-module qualified constant/variable access: mod.NAME → mod_NAME
-         * Only apply for known imported module names, not local variables */
+         *
+         * Module membership must come from a registration, never from a name
+         * guess: a prefix scan over declared functions used to live here and
+         * claimed any local whose name was some function's prefix (`item.priority`
+         * became `item_priority` whenever `do item_is_alive(...)` was in scope).
+         * The symbol table answers directly for a user module, and gives the
+         * mangled name at the same time. Stdlib modules are not in it, so those
+         * still go through the import list. */
         if (mod[0] >= 'a' && mod[0] <= 'z') {
-            /* Check if mod is an imported module by looking for mod_-prefixed
-             * declarations. Stack buffer — identifiers are always short. */
-            bool is_module = false;
-            char check_name[512];
-            snprintf(check_name, sizeof(check_name), "%s_%s", mod, mem);
-            /* Note: a "is `mod` a module?" prefix scan over all declared
-             * functions used to live here. It produced false positives
-             * whenever a local variable or parameter shared its name with
-             * any function's prefix (e.g. `item.priority` got mangled to
-             * `item_priority` whenever `do item_is_alive(...)` was in
-             * scope). Module membership must come from an explicit
-             * registration (find_function above, using_modules, aliases, or
-             * imported_modules below), never from a name-prefix guess. */
-            if (find_function(codegen, check_name)) is_module = true;
-            if (!is_module) {
-                for (int ui = 0; ui < codegen->using_module_count; ui++) {
-                    if (strcmp(codegen->using_modules[ui], mod) == 0) { is_module = true; break; }
-                }
+            if (node->resolved_decl) {
+                emit(codegen, module_mangle(codegen->modules, node->resolved_decl));
+                return;
             }
-            if (!is_module) {
-                for (int ai = 0; ai < codegen->alias_count; ai++) {
-                    if (strcmp(codegen->alias_names[ai], mod) == 0) {
-                        is_module = true;
-                        mod = codegen->alias_modules[ai];
-                        break;
-                    }
-                }
-            }
-            if (!is_module) {
-                for (int import_index = 0; import_index < codegen->imported_module_count; import_index++) {
-                    if (strcmp(codegen->imported_modules[import_index], mod) == 0) { is_module = true; break; }
-                }
-            }
-            if (is_module) {
-                emit_formatted(codegen, "%s_%s", mod, mem);
+            if (codegen_module_imported(codegen, mod)) {
+                emit_formatted(codegen, "%s_%s", resolve_alias(codegen, mod), mem);
                 return;
             }
         }
@@ -2673,24 +2763,16 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
      * Verify the type really is a known enum before rewriting. */
     if (node->data.member.object->kind == NODE_MEMBER_EXPR) {
         AstNode *inner = node->data.member.object;
-        if (inner->data.member.object->kind == NODE_LABEL) {
-            const char *mod = inner->data.member.object->data.label.value;
-            const char *type_name = inner->data.member.member;
-            const char *value = node->data.member.member;
-            if (mod[0] >= 'a' && mod[0] <= 'z' &&
-                type_name[0] >= 'A' && type_name[0] <= 'Z') {
-                char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, type_name);
-                if (codegen_is_enum(codegen, prefixed)) {
-                    if (codegen_enum_is_tagged(codegen, prefixed)) {
-                        emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
-                            prefixed, prefixed, value);
-                    } else {
-                        emit_formatted(codegen, "GrayEnum_%s_%s_%s", mod, type_name, value);
-                    }
-                    return;
-                }
+        const char *value = node->data.member.member;
+        if (inner->resolved_decl && inner->resolved_decl->kind == DECL_ENUM) {
+            const char *prefixed = module_mangle(codegen->modules, inner->resolved_decl);
+            if (codegen_enum_is_tagged(codegen, prefixed)) {
+                emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
+                    prefixed, prefixed, value);
+            } else {
+                emit_formatted(codegen, "GrayEnum_%s_%s", prefixed, value);
             }
+            return;
         }
     }
     /* Check if object is a pointer type; use -> instead of . */
@@ -2706,11 +2788,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
          * are multi-return unpacking temps. */
         const char *mem_name = node->data.member.member;
         if (mem_name[0] == 'v' && mem_name[1] >= '0' && mem_name[1] <= '9' && mem_name[2] == '\0') {
-            bool is_multi_temp = false;
-            if (node->data.member.object->kind == NODE_LABEL) {
-                const char *oname = node->data.member.object->data.label.value;
-                if (is_result_temporary(oname)) is_multi_temp = true;
-            }
+            bool is_multi_temp = object_name && is_result_temporary(object_name);
             if (!is_multi_temp && obj_t &&
                 (obj_t->kind == TK_INT || obj_t->kind == TK_UINT || obj_t->kind == TK_FLOAT ||
                  obj_t->kind == TK_BOOL || obj_t->kind == TK_STRING ||
@@ -2725,13 +2803,10 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
         }
 
         /* Ref vars are already dereferenced by label emission; use . not -> */
-        bool obj_is_ref = (node->data.member.object->kind == NODE_LABEL &&
-            is_reference_variable(codegen, node->data.member.object->data.label.value));
-        bool obj_is_raw = (node->data.member.object->kind == NODE_LABEL &&
-            is_raw_variable(codegen, node->data.member.object->data.label.value));
+        bool obj_is_ref = object_name && is_reference_variable(codegen, object_name);
+        bool obj_is_raw = object_name && is_raw_variable(codegen, object_name);
         /* Multi-return temp vars are always value types — never pointer-deref them */
-        bool obj_is_multi_temp = (node->data.member.object->kind == NODE_LABEL &&
-            is_result_temporary(node->data.member.object->data.label.value));
+        bool obj_is_multi_temp = object_name && is_result_temporary(object_name);
         if (!obj_is_multi_temp && !obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
             if (obj_is_raw) {
                 /* Raw pointer: direct field access, no nil check */
@@ -3143,6 +3218,11 @@ static void emit_new_expr(CodeGen *codegen, AstNode *node) {
     /* Resolve ? → concrete binding for type params */
     if (strcmp(sname, "?") == 0 && codegen->wildcard_binding) {
         sname = codegen->wildcard_binding;
+    } else {
+        /* new() names its type as written; the struct declaration it has to
+         * find (for field defaults) is keyed by the module's spelling. */
+        codegen_enter_node(codegen, node);
+        sname = codegen_resolve_type(codegen, sname);
     }
     const char *c_type = gray_type_to_c_codegen(codegen, sname);
     AstNode *sdecl = find_struct_declaration(codegen, sname);
@@ -3159,6 +3239,10 @@ static void emit_new_expr(CodeGen *codegen, AstNode *node) {
         }
     }
     if (needs_init) {
+        /* Field defaults are expressions from the struct's own file, so they
+         * resolve against the struct's module, not the caller's. */
+        const char *caller_module = codegen->current_module;
+        codegen_enter_node(codegen, sdecl);
         emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
             c_type, c_type, c_type);
         for (int field_index = 0; field_index < sdecl->data.struct_decl.field_count; field_index++) {
@@ -3188,6 +3272,7 @@ static void emit_new_expr(CodeGen *codegen, AstNode *node) {
             }
         }
         emit(codegen, "_np; })");
+        codegen->current_module = caller_module;
     } else if (sname[0] == '[') {
         /* Array type — allocate + initialize metadata */
         GrayType *arr_type = type_from_name(sname);
@@ -3364,6 +3449,12 @@ static bool is_stdlib_call(AstNode *node, const char **module, const char **func
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
         if (obj->kind == NODE_LABEL) {
+            /* A qualifier bound to a user module resolves to a declaration
+             * written in Grayscale. Its C name comes from mangling that
+             * declaration, not from the stdlib emitter for a module that
+             * happens to share the name. */
+            DeclEntry *resolved = node->data.call.function->resolved_decl;
+            if (resolved && !resolved->external) return false;
             *module = obj->data.label.value;
             *func = node->data.call.function->data.member.member;
             return true;
@@ -3441,8 +3532,8 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
     /* For call expressions, check the return type of the called function */
     if (arg->kind == NODE_CALL_EXPR && arg->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *function_node = arg->data.call.function;
-        if (function_node->data.member.object->kind == NODE_LABEL) {
-            const char *obj = function_node->data.member.object->data.label.value;
+        const char *obj = ast_member_qualifier(function_node);
+        if (obj) {
             const char *mem = function_node->data.member.member;
             /* Check if it's a known stdlib module function that returns string */
             if ((strcmp(obj, "strings") == 0) ||
@@ -4032,9 +4123,9 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             return true;
         }
         /* Enum member access: type_of(Color.RED) → "Color" */
-        if (arg->kind == NODE_MEMBER_EXPR && arg->data.member.object->kind == NODE_LABEL &&
+        if (ast_member_qualifier(arg) &&
             type && (type->kind == TK_INT || type->kind == TK_UINT || type->kind == TK_STRING)) {
-            const char *obj_name = arg->data.member.object->data.label.value;
+            const char *obj_name = ast_member_qualifier(arg);
             if (obj_name[0] >= 'A' && obj_name[0] <= 'Z' &&
                 strcmp(obj_name, "std") != 0 && strcmp(obj_name, "math") != 0 &&
                 strcmp(obj_name, "os") != 0) {
@@ -4226,11 +4317,12 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
     if (strcmp(func, "ref") == 0 && node->data.call.arg_count == 1) {
         /* Check if argument is a function name; emit as function pointer */
         if (node->data.call.args[0]->kind == NODE_LABEL) {
-            const char *arg_name = node->data.call.args[0]->data.label.value;
-            AstNode *target = find_function(codegen, arg_name);
+            AstNode *target = find_referenced_function(codegen, node->data.call.args[0]);
             if (target) {
-                /* Function reference: emit gray_fn_name (function pointer) */
-                emit_formatted(codegen, "gray_fn_%s", arg_name);
+                /* Function reference: emit gray_fn_name (function pointer).
+                 * The declaration carries the mangled name, which is the
+                 * symbol the function is defined under. */
+                emit_formatted(codegen, "gray_fn_%s", target->data.func_decl.name);
                 return true;
             }
         }
@@ -4816,9 +4908,18 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
             emit_expression(codegen, arg->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
                 codegen->file, arg->token.line);
-            emit(codegen, "(int64_t *)_mv; })");
+            /* Computed here, after c_key has been emitted: both share the
+             * one static buffer gray_type_to_c_codegen returns. */
+            const char *c_val = left_t->value_type
+                ? gray_map_element_c_type(codegen, left_t->value_type) : "int64_t";
+            emit_formatted(codegen, "(%s *)_mv; })", c_val);
         } else {
-            emit(codegen, "(int64_t *)gray_array_get_ptr(&");
+            /* The element pointer is typed by the array's element type. A
+             * fixed int64_t * here is the wrong pointer type for every
+             * element that is not an integer. */
+            const char *c_elem = (left_t && left_t->element_type)
+                ? gray_map_element_c_type(codegen, left_t->element_type) : "int64_t";
+            emit_formatted(codegen, "(%s *)gray_array_get_ptr(&", c_elem);
             emit_expression(codegen, arg->data.index_expr.left);
             emit(codegen, ", ");
             emit_expression(codegen, arg->data.index_expr.index);
@@ -6724,6 +6825,11 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     char prefixed[IDENT_BUF];
                     snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, func);
                     AstNode *uf = find_function(codegen, prefixed);
+                    /* A generic function needs its per-instantiation name,
+                     * which the general call path derives from the argument
+                     * types; this shortcut would emit the unspecialised
+                     * symbol, so leave those to it. */
+                    if (uf && func_is_generic(uf)) uf = NULL;
                     if (uf) {
                         int pc = uf->data.func_decl.param_count;
                         int ac = node->data.call.arg_count;
@@ -6747,14 +6853,13 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     }
 
     /* Tagged enum construction: Shape.Circle(3.14) */
-    if (node->data.call.function->kind == NODE_MEMBER_EXPR &&
-        node->data.call.function->data.member.object->kind == NODE_LABEL) {
-        const char *ename = node->data.call.function->data.member.object->data.label.value;
+    if (ast_member_qualifier(node->data.call.function)) {
+        const char *ename = ast_member_qualifier(node->data.call.function);
         const char *vname = node->data.call.function->data.member.member;
         /* Also check using-module-resolved names */
         const char *resolved_ename = ename;
         if (!codegen_is_enum(codegen, ename)) {
-            const char *resolved_name = resolve_unprefixed_name(codegen, ename);
+            const char *resolved_name = codegen_resolve_type(codegen, ename);
             if (resolved_name != ename && codegen_is_enum(codegen, resolved_name)) resolved_ename = resolved_name;
         }
         if (codegen_is_enum(codegen, resolved_ename) && codegen_enum_is_tagged(codegen, resolved_ename)) {
@@ -6808,14 +6913,20 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
         const char *member = node->data.call.function->data.member.member;
-        /* Handle mod.Struct.func() triple chain: geometry.Vec2.create() */
-        if (obj->kind == NODE_MEMBER_EXPR &&
-            obj->data.member.object->kind == NODE_LABEL) {
-            const char *mod = obj->data.member.object->data.label.value;
-            const char *type_name = obj->data.member.member;
-            /* Build full prefixed name: mod_Struct_func */
+        /* Handle mod.Struct.func() triple chain: geometry.Vec2.create().
+         * The struct the qualified name refers to is on the object node; the
+         * function is that struct's, namespaced under it. */
+        const char *chain_mod = NULL, *chain_type = NULL;
+        if (ast_member_chain(node->data.call.function, &chain_mod, &chain_type)) {
             char full_name[MSG_BUF_SIZE];
-            snprintf(full_name, sizeof(full_name), "%s_%s_%s", mod, type_name, member);
+            if (obj->resolved_decl) {
+                char owner[MSG_BUF_SIZE];
+                snprintf(full_name, sizeof(full_name), "%s_%s",
+                    module_mangle_into(obj->resolved_decl, owner, sizeof(owner)), member);
+            } else {
+                snprintf(full_name, sizeof(full_name), "%s_%s_%s",
+                    chain_mod, chain_type, member);
+            }
             AstNode *ns_func = find_function(codegen, full_name);
             if (ns_func) {
                 emit_formatted(codegen, "gray_fn_%s(", full_name);
@@ -6852,7 +6963,10 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 return;
             }
 
-            const char *resolved_name = resolve_alias(codegen, raw_name);
+            /* The qualifier may be a struct type, which is namespaced under
+             * its module, or an import alias. Try the symbol table first. */
+            const char *resolved_name = codegen_resolve_decl(codegen, raw_name);
+            if (resolved_name == raw_name) resolved_name = resolve_alias(codegen, raw_name);
             /* Try to find as a namespaced function: Name_func or ResolvedAlias_func */
             char ns_name[IDENT_BUF];
             snprintf(ns_name, sizeof(ns_name), "%s_%s", resolved_name, member);
@@ -7016,6 +7130,21 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     int cc = ns_func->data.func_decl.param_count < node->data.call.arg_count
                         ? ns_func->data.func_decl.param_count : node->data.call.arg_count;
                     for (int pi = 0; pi < cc && !binding; pi++) {
+                        /* Type parameter: the binding is the argument label
+                         * itself (a struct name), not a resolved value type.
+                         * Without this the loop found nothing to bind and
+                         * mangled the call against a specialization that was
+                         * never emitted. */
+                        if (ns_func->data.func_decl.params[pi].is_type_param) {
+                            if (node->data.call.args[pi]->kind == NODE_LABEL) {
+                                const char *lbl = node->data.call.args[pi]->data.label.value;
+                                if (strcmp(lbl, "?") == 0 && codegen->wildcard_binding)
+                                    binding = codegen->wildcard_binding;
+                                else
+                                    binding = lbl;
+                            }
+                            continue;
+                        }
                         const char *ptn = ns_func->data.func_decl.params[pi].type_name;
                         if (!ptn || !strchr(ptn, '?')) continue;
                         GrayType *arg_type = codegen->type_table
@@ -7059,9 +7188,15 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                     self_injected = true;
                 }
+                bool arg_emitted = self_injected;
                 for (int i = 0; i < node->data.call.arg_count; i++) {
-                    if (i > 0 || self_injected) emit(codegen, ", ");
                     int pi = self_injected ? i + 1 : i;
+                    /* Type params are erased in C; emitting one leaked the
+                     * type name into the output as a bare identifier. */
+                    if (pi < ns_func->data.func_decl.param_count &&
+                        ns_func->data.func_decl.params[pi].is_type_param) continue;
+                    if (arg_emitted) emit(codegen, ", ");
+                    arg_emitted = true;
                     bool mut_param = pi < ns_func->data.func_decl.param_count &&
                         ns_func->data.func_decl.params[pi].mutable;
                     emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
@@ -7070,7 +7205,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 {
                     int self_offset = self_injected ? 1 : 0;
                     int first_default = node->data.call.arg_count + self_offset;
-                    bool any_emitted = self_injected || node->data.call.arg_count > 0;
+                    bool any_emitted = arg_emitted;
                     for (int i = first_default; i < ns_func->data.func_decl.param_count; i++) {
                         if (ns_func->data.func_decl.params[i].is_type_param) continue;
                         if (any_emitted) emit(codegen, ", ");
@@ -7097,16 +7232,19 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     /* Look up function to check if it's a known function or a variable (function pointer) */
     AstNode *target_func = fn_name ? find_function(codegen, fn_name) : NULL;
 
-    /* If not found, try module-prefixed names (for internal cross-references in imported files) */
+    /* A name written bare inside its own module, or reachable through a
+     * `using`, names a function registered under its module's spelling. This
+     * used to match on the text after the first underscore of every declared
+     * function, which claimed any name that happened to be some function's
+     * suffix. */
     const char *resolved_fn_name = fn_name;
     if (!target_func && fn_name) {
-        for (int field_index = 0; field_index < codegen->func_count; field_index++) {
-            const char *registered = codegen->all_funcs[field_index]->data.func_decl.name;
-            const char *us = strchr(registered, '_');
-            if (us && strcmp(us + 1, fn_name) == 0) {
-                target_func = codegen->all_funcs[field_index];
-                resolved_fn_name = registered;
-                break;
+        const char *resolved = codegen_resolve_decl(codegen, fn_name);
+        if (resolved != fn_name) {
+            AstNode *found = find_function(codegen, resolved);
+            if (found) {
+                target_func = found;
+                resolved_fn_name = resolved;
             }
         }
     }
@@ -7213,10 +7351,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         AstNode *fref = st->data.var_decl.value->data.func_ref.function;
                         if (fref->kind == NODE_LABEL) {
                             ref_func = find_function(codegen, fref->data.label.value);
-                        } else if (fref->kind == NODE_MEMBER_EXPR &&
-                                   fref->data.member.object &&
-                                   fref->data.member.object->kind == NODE_LABEL) {
-                            const char *resolved_obj = fref->data.member.object->data.label.value;
+                        } else if (ast_member_qualifier(fref)) {
+                            const char *resolved_obj = ast_member_qualifier(fref);
                             const char *resolved_member = fref->data.member.member;
                             char resolved_name[IDENT_BUF];
                             snprintf(resolved_name, sizeof(resolved_name), "%s_%s", resolved_obj, resolved_member);
@@ -7284,7 +7420,9 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         AstNode *obj = node->data.call.function->data.member.object;
         const char *member = node->data.call.function->data.member.member;
         if (obj->kind == NODE_LABEL) {
-            const char *mod_name = resolve_alias(codegen, obj->data.label.value);
+            const char *mod_name = codegen_resolve_decl(codegen, obj->data.label.value);
+            if (mod_name == obj->data.label.value)
+                mod_name = resolve_alias(codegen, obj->data.label.value);
             emit_formatted(codegen, "gray_%s_%s", mod_name, member);
             /* Look up target_func for default params / mutable ref handling */
             char prefixed[256];
@@ -8081,7 +8219,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
             if (node->data.var_decl.value->data.call.arg_count == 1) {
                 AstNode *arg = node->data.var_decl.value->data.call.args[0];
                 bool is_assignable =
-                    (arg->kind == NODE_LABEL && !find_function(codegen, arg->data.label.value)) ||
+                    (arg->kind == NODE_LABEL && !find_referenced_function(codegen, arg)) ||
                     arg->kind == NODE_MEMBER_EXPR ||
                     arg->kind == NODE_INDEX_EXPR;
                 if (is_assignable) {
@@ -9061,7 +9199,10 @@ static char *iter_guard_expr(CodeGen *codegen, bool needs_tmp,
                              const char *tmp_name, AstNode *coll) {
     if (needs_tmp) return strdup(tmp_name);
     const char *raw = coll->data.label.value;
-    const char *san = sanitize_name(raw);
+    /* A module-level collection is emitted under its module's mangled name,
+     * the same as any other reference to it. */
+    const char *resolved = codegen_resolve_decl(codegen, raw);
+    const char *san = sanitize_name(resolved != raw ? resolved : raw);
     char buf[128];
     if (is_mutable_parameter(codegen, raw) || is_reference_variable(codegen, raw))
         snprintf(buf, sizeof(buf), "(*%s)", san);
@@ -9610,12 +9751,14 @@ static const char *function_return_type(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_main) {
+    codegen_enter_node(codegen, node);
     /* Return type */
     if (is_main) {
         emit(codegen, "static void gray_fn_main(void)");
     } else {
         emit_formatted(codegen, "static %s ", function_return_type(codegen, node));
-        emit_formatted(codegen, "gray_fn_%s(", node->data.func_decl.name);
+        emit_formatted(codegen, "gray_fn_%s(",
+            codegen_decl_name(codegen, node, node->data.func_decl.name));
 
         /* Parameters — skip type params (erased in C) */
         bool first_param = true;
@@ -9884,12 +10027,24 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
 }
 
 static void emit_statement(CodeGen *codegen, AstNode *node) {
+    codegen_enter_node(codegen, node);
     if (!node) return;
 
     switch (node->kind) {
-    case NODE_VAR_DECL:
+    case NODE_VAR_DECL: {
+        /* A module-level variable is emitted under the mangled name its
+         * module gives it, which is what references to it resolve to. The
+         * name is swapped in for the duration rather than threaded through
+         * the fifteen places the emitter reads it — the same shape codegen
+         * already uses for generic instantiations and struct namespacing. */
+        DeclEntry *entry = module_table_entry_for_node(codegen->modules, node);
+        const char *written = node->data.var_decl.name;
+        if (entry && entry->kind == DECL_CONST)
+            node->data.var_decl.name = module_mangle(codegen->modules, entry);
         emit_variable_declaration(codegen, node);
+        node->data.var_decl.name = written;
         break;
+    }
     case NODE_ASSIGN_STMT:
         emit_assign_statement(codegen, node);
         break;
@@ -10027,7 +10182,12 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                     /* Tagged enum, plain variant: compare .tag */
                     AstNode *cv = wc->values[j];
                     const char *vname = NULL;
-                    if (cv->kind == NODE_MEMBER_EXPR && cv->data.member.object->kind == NODE_LABEL) {
+                    if (cv->kind == NODE_MEMBER_EXPR &&
+                        (ast_member_qualifier(cv) || ast_member_chain(cv, NULL, NULL))) {
+                        /* Enum.VARIANT, and the module-qualified
+                         * mod.Enum.VARIANT — which nests one level deeper and
+                         * otherwise fell through to constructing a value
+                         * where a tag comparison belongs. */
                         vname = cv->data.member.member;
                     } else if (cv->kind == NODE_IMPLICIT_ENUM) {
                         vname = cv->data.implicit_enum.variant;
@@ -10287,10 +10447,6 @@ CodeGen codegen_create(const char *file) {
     codegen.using_modules = NULL;
     codegen.using_module_count = 0;
     codegen.using_module_cap = 0;
-    codegen.alias_names = NULL;
-    codegen.alias_modules = NULL;
-    codegen.alias_count = 0;
-    codegen.alias_cap = 0;
     codegen.imported_modules = NULL;
     codegen.imported_module_count = 0;
     codegen.imported_module_cap = 0;
@@ -10376,19 +10532,6 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                         codegen->imported_module_cap);
                     codegen->imported_modules[codegen->imported_module_count++] = mname;
                 }
-                /* Track alias → module mapping */
-                if (item->alias && item->module && strcmp(item->alias, item->module) != 0) {
-                    if (codegen->alias_count >= codegen->alias_cap) {
-                        codegen->alias_cap = codegen->alias_cap ? codegen->alias_cap * 2 : 8;
-                        codegen->alias_names = xrealloc(codegen->alias_names,
-                            sizeof(const char *) * (size_t)codegen->alias_cap);
-                        codegen->alias_modules = xrealloc(codegen->alias_modules,
-                            sizeof(const char *) * (size_t)codegen->alias_cap);
-                    }
-                    codegen->alias_names[codegen->alias_count] = item->alias;
-                    codegen->alias_modules[codegen->alias_count] = item->module;
-                    codegen->alias_count++;
-                }
             }
             /* import and use; register all modules for using */
             if (stmt->data.import_stmt.auto_use) {
@@ -10418,12 +10561,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 codegen->type_alias_targets = xrealloc(codegen->type_alias_targets,
                     sizeof(const char *) * (size_t)codegen->type_alias_cap);
             }
-            codegen->type_alias_names[codegen->type_alias_count] = stmt->data.alias_decl.name;
-            codegen->type_alias_targets[codegen->type_alias_count] = stmt->data.alias_decl.target_type;
+            /* Key the alias by its module's spelling, which is what a
+             * reference to it resolves to; and resolve the target the same
+             * way, since it names a type in the alias's own module. */
+            codegen_enter_node(codegen, stmt);
+            codegen->type_alias_names[codegen->type_alias_count] =
+                codegen_decl_name(codegen, stmt, stmt->data.alias_decl.name);
+            codegen->type_alias_targets[codegen->type_alias_count] =
+                codegen_resolve_type(codegen, stmt->data.alias_decl.target_type);
             codegen->type_alias_count++;
             continue; /* aliases are erased — not emitted */
         }
         if (stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.name =
+                codegen_decl_name(codegen, stmt, stmt->data.struct_decl.name);
             GROW_ARRAY(codegen->struct_decls, codegen->struct_decl_count,
                 codegen->struct_decl_cap);
             codegen->struct_decls[codegen->struct_decl_count++] = stmt;
@@ -10436,20 +10587,6 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         } else if (stmt->kind != NODE_USING_STMT) {
             BUCKET_PUSH(other_bucket, other_bucket_count, other_bucket_cap, stmt);
         }
-    }
-
-    /* Sort alias arrays for O(log n) bsearch in resolve_alias() */
-    for (int i = 1; i < codegen->alias_count; i++) {
-        const char *kn = codegen->alias_names[i];
-        const char *km = codegen->alias_modules[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(codegen->alias_names[j], kn) > 0) {
-            codegen->alias_names[j+1] = codegen->alias_names[j];
-            codegen->alias_modules[j+1] = codegen->alias_modules[j];
-            j--;
-        }
-        codegen->alias_names[j+1] = kn;
-        codegen->alias_modules[j+1] = km;
     }
 
     /* Emit preamble — core headers always included, stdlib headers only when imported */
@@ -10529,9 +10666,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         AstNode **structs = codegen->struct_decls;
         for (int i = 0; i < struct_count; i++) {
             if (structs[i]->data.struct_decl.is_generic) continue;
-            emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n",
-                structs[i]->data.struct_decl.name,
-                structs[i]->data.struct_decl.name);
+            {
+                const char *sn = codegen_decl_name(codegen, structs[i],
+                                                   structs[i]->data.struct_decl.name);
+                emit_formatted(codegen, "typedef struct GrayStruct_%s GrayStruct_%s;\n", sn, sn);
+            }
         }
         if (struct_count > 0) emit(codegen, "\n");
     }
@@ -10541,6 +10680,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
      * definitions because their payloads may contain struct values. */
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
+        /* Emit and register this enum under the name its module gives it.
+         * The typedef, the variant constants, and the registry all read this
+         * field, and they have to agree with what a reference resolves to.
+         * Codegen is the last phase and owns the AST from here, so the
+         * resolved name is written back rather than swapped per read. */
+        stmt->data.enum_decl.name =
+            codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
         /* Check if this is a string enum (auto-detect from values) */
             bool is_string_enum = false;
             for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
@@ -10581,7 +10727,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 emit(codegen, "\n");
             } else if (is_tagged) {
                 /* Defer tagged enum typedefs — only emit the tag enum now */
-                const char *ename = stmt->data.enum_decl.name;
+                const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
                 emit_formatted(codegen, "typedef enum {\n");
                 for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
                     emit_formatted(codegen, "    GrayEnum_%s_TAG_%s = %d,\n", ename, stmt->data.enum_decl.values[j].name, j);
@@ -10606,7 +10752,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                      * explicit values entirely. */
                     emit(codegen, ",\n");
                 }
-                emit_formatted(codegen, "} GrayEnum_%s;\n\n", stmt->data.enum_decl.name);
+                emit_formatted(codegen, "} GrayEnum_%s;\n\n",
+                    codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name));
             }
     }
 
@@ -10646,13 +10793,28 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 if (emitted[i]) continue;
                 AstNode *struct_node = structs[i];
                 bool deps_met = true;
+                /* A field names its type as written in its own module's file,
+                 * while a declaration is known by its C name. Resolve both
+                 * sides before comparing: a bare `Inner` written inside module
+                 * lib is the declaration named lib_Inner. Comparing the two
+                 * spellings directly finds no dependency, and the struct is
+                 * emitted before the one it holds by value. */
+                codegen_enter_node(codegen, struct_node);
                 for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                     const char *field_type = struct_node->data.struct_decl.fields[j].type_name;
                     if (!field_type) continue;
+                    /* Only a by-value field constrains the order; a pointer,
+                     * array or map field is satisfied by the forward
+                     * declaration already emitted above. */
+                    if (field_type[0] == '^' || field_type[0] == '[' ||
+                        strncmp(field_type, "map[", 4) == 0) continue;
+                    const char *dep = codegen_resolve_type(codegen, field_type);
                     /* Check if this field type is another user struct */
                     for (int k = 0; k < struct_count; k++) {
                         if (k != i && !emitted[k] &&
-                            strcmp(structs[k]->data.struct_decl.name, field_type) == 0) {
+                            strcmp(codegen_decl_name(codegen, structs[k],
+                                                     structs[k]->data.struct_decl.name),
+                                   dep) == 0) {
                             deps_met = false;
                             break;
                         }
@@ -10665,7 +10827,10 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                     /* : skip generic structs here; they're
                      * emitted per-instantiation below. */
                     if (struct_node->data.struct_decl.is_generic) continue;
-                    emit_formatted(codegen, "struct GrayStruct_%s {\n", struct_node->data.struct_decl.name);
+                    /* Field types written bare name this struct's module. */
+                    codegen_enter_node(codegen, struct_node);
+                    emit_formatted(codegen, "struct GrayStruct_%s {\n",
+                        codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                     for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                         StructField *field = &struct_node->data.struct_decl.fields[j];
                         emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
@@ -10678,7 +10843,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         for (int i = 0; i < struct_count; i++) {
             if (!emitted[i]) {
                 AstNode *struct_node = structs[i];
-                emit_formatted(codegen, "struct GrayStruct_%s {\n", struct_node->data.struct_decl.name);
+                codegen_enter_node(codegen, struct_node);
+                emit_formatted(codegen, "struct GrayStruct_%s {\n",
+                    codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
                 for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
                     StructField *field = &struct_node->data.struct_decl.fields[j];
                     emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
@@ -10696,14 +10863,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = stmt->data.enum_decl.name;
+        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
         emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
     }
 
     for (int i = 0; i < enum_bucket_count; i++) {
         AstNode *stmt = enum_bucket[i];
         if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = stmt->data.enum_decl.name;
+        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
 
         /* Payload structs (only for variants with payloads) */
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
@@ -10881,9 +11048,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Collect all function declarations (including struct-namespaced) */
     for (int i = 0; i < func_bucket_count; i++) {
         AstNode *stmt = func_bucket[i];
+        stmt->data.func_decl.name =
+            codegen_decl_name(codegen, stmt, stmt->data.func_decl.name);
         GROW_ARRAY(codegen->all_funcs, codegen->func_count, codegen->func_cap);
         codegen->all_funcs[codegen->func_count++] = stmt;
     }
+    /* The by-name index sorts on func_decl.name, which the loop above just
+     * rewrote; anything built before this point is keyed by the old names. */
+    codegen->funcs_by_name_built = false;
     /* Collect struct-namespaced functions with prefixed names */
     for (int i = 0; i < codegen->struct_decl_count; i++) {
         AstNode *stmt = codegen->struct_decls[i];
@@ -10933,6 +11105,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     for (int i = 0; i < codegen->func_count; i++) {
         AstNode *stmt = codegen->all_funcs[i];
         if (stmt->kind != NODE_FUNC_DECL) continue;
+        /* A parameter or return type written bare resolves against the module
+         * the function was declared in, so the forward declaration has to be
+         * emitted in that module — otherwise it disagrees with the definition
+         * whenever two modules declare the same type name. */
+        codegen_enter_node(codegen, stmt);
         if (strcmp(stmt->data.func_decl.name, "main") == 0) {
             emit(codegen, "static void gray_fn_main(void);\n");
             continue;
@@ -10977,7 +11154,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
             emit_formatted(codegen, "static %s ", function_return_type(codegen, stmt));
             if (has_wc) stmt->data.func_decl.name = orig_name;
-            emit_formatted(codegen, "gray_fn_%s(", emit_name);
+            emit_formatted(codegen, "gray_fn_%s(",
+                has_wc ? emit_name : codegen_decl_name(codegen, stmt, emit_name));
             {
                 bool fwd_first = true;
                 for (int j = 0; j < stmt->data.func_decl.param_count; j++) {
@@ -11074,8 +11252,6 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->struct_decls);
     free(codegen->func_field_index);
     free(codegen->using_modules);
-    free(codegen->alias_names);
-    free(codegen->alias_modules);
     free(codegen->type_alias_names);
     free(codegen->type_alias_targets);
     free(codegen->imported_modules);

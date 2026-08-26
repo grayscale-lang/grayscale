@@ -1,0 +1,33 @@
+/*
+ * Test: inferred binding from a module-qualified struct function call
+ *
+ * `mut x = mod.Struct.func()` must infer the function's declared return type.
+ * Inferring `unknown` silently truncated floats and printed bools as ints,
+ * so each case is checked against the annotated spelling of the same call.
+ */
+import "./thing.gray"
+
+do main() {
+    mut t = thing.Thing{id: "z"}
+
+    mut ratio_annotated float = thing.Thing.ratio(t)
+    mut ratio_inferred = thing.Thing.ratio(t)
+    assert(ratio_inferred == ratio_annotated, "inferred float matches annotated")
+    assert("${ratio_inferred}" == "2.5", "inferred float keeps its fractional part")
+    assert(type_of(ratio_inferred) == "float", "inferred float reports type float")
+
+    mut ok_annotated bool = thing.Thing.ok(t)
+    mut ok_inferred = thing.Thing.ok(t)
+    assert(ok_inferred == ok_annotated, "inferred bool matches annotated")
+    assert("${ok_inferred}" == "true", "inferred bool prints as a bool, not an int")
+    assert(type_of(ok_inferred) == "bool", "inferred bool reports type bool")
+
+    mut label_inferred = thing.Thing.label(t)
+    assert(label_inferred == "thing-z", "inferred string return is a string")
+    assert(type_of(label_inferred) == "string", "inferred string reports type string")
+
+    mut count_inferred = thing.Thing.count(t)
+    assert(count_inferred == 7, "inferred int return is unaffected")
+
+    println("ALL TESTS PASSED")
+}

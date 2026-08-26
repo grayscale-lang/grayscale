@@ -1,0 +1,3 @@
+const Actor struct {
+    id int
+}

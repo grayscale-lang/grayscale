@@ -1,0 +1,15 @@
+/*
+ * Error Test: E6008 - assigning to a public 'mut' module variable from
+ * outside its module. The member is a variable, not a constant, and the
+ * diagnostic used to call it a constant regardless.
+ * Expected: "cannot assign to 'lib.public_var'; a module variable is read-only"
+ */
+// expect-error: E6008
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    lib.public_var = 5
+    println(lib.public_var)
+}

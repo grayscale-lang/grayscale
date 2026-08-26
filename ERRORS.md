@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.sh` to regenerate.
+> Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 387 codes** (263 errors, 18 warnings, 106 panics)
+**Total: 395 codes** (271 errors, 18 warnings, 106 panics)
 
 ---
 
@@ -205,6 +205,7 @@
 | `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
 | `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
 | `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
+| `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -223,6 +224,9 @@
 | `E4019` | names | cannot take a function reference to '%s'; builtin and stdlib functions are not first-class values |
 | `E4020` | names | type alias '%s' is already declared |
 | `E4021` | names | type alias '%s' is private and cannot be accessed from outside its file |
+| `E4022` | names | struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them |
+| `E4023` | names | module '%s' has no function named '%s' |
+| `E4024` | names | module '%s' has no member named '%s' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -259,7 +263,11 @@
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
 | `E6004` | imports | cannot import own module directory |
-| `E6008` | imports | '%s.%s' is a module constant and cannot be assigned to |
+| `E6005` | imports | cannot import the program's entry point |
+| `E6006` | imports | module name derived from the import path is not a usable identifier |
+| `E6007` | imports | standard library imports cannot be aliased |
+| `E6008` | imports | cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it |
+| `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -438,4 +446,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-23 04:47:37 UTC*
+*Generated on 2026-08-26 10:47:35 UTC*

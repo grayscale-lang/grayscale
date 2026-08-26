@@ -1,0 +1,4 @@
+const Dir enum {
+    NORTH
+    SOUTH
+}

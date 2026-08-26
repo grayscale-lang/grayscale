@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5008 - a module-qualified call is checked for how many
+ * arguments it was given, the same as the bare and struct spellings.
+ */
+// expect-error: E5008
+// expect-error-count: 1
+
+import "./colors.gray"
+
+do main() {
+    println(colors.describe())
+}

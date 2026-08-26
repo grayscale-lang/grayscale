@@ -1,0 +1,7 @@
+/*
+ * my-utils.gray - file name is not a valid Grayscale identifier
+ */
+
+do hello() -> int {
+    return 1
+}

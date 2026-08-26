@@ -1,0 +1,8 @@
+const Point struct {
+    x int
+    y int
+}
+
+do origin() -> Point {
+    return Point{x: 0, y: 0}
+}

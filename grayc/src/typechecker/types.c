@@ -275,11 +275,10 @@ void type_pool_reset(void) {
             }
             break;
         default:
-            /* Builtin non-singleton pool entries: type->name is either a
-             * string literal (TK_ERROR → "Error", TK_UNKNOWN → "func")
-             * or a strdup'd name (i8, f32, u64, …).  Skip literal kinds. */
-            if (type->kind != TK_ERROR && type->kind != TK_UNKNOWN)
-                free((char *)type->name);
+            /* Builtin non-singleton pool entries (Error, i8, f32, u64, …).
+             * type_from_name copies every one of these names, so there is no
+             * kind whose name must be left alone. */
+            free((char *)type->name);
             break;
         }
     }
@@ -347,7 +346,7 @@ static BuiltinTypeEntry builtin_types[] = {
     { "f32",    NULL,         TK_FLOAT,   NULL },
     { "f64",    NULL,         TK_FLOAT,   NULL },
     { "float",  &TYPE_FLOAT,  0, NULL },
-    { "func",   NULL,         TK_UNKNOWN, "func" },
+    { "func",   NULL,         TK_FUNCTION, "func" },
     { "i128",   NULL,         TK_INT,     NULL },
     { "i16",    NULL,         TK_INT,     NULL },
     { "i256",   NULL,         TK_INT,     NULL },
@@ -407,7 +406,10 @@ GrayType *type_from_name(const char *name) {
         if (existing) return existing;
         GrayType *type = type_alloc();
         type->kind = hit->alloc_kind;
-        type->name = hit->alloc_name ? hit->alloc_name : strdup(name);
+        /* Always a copy: a pooled entry owns its name whatever its kind, so
+         * the teardown below frees uniformly instead of carrying a list of
+         * the kinds whose names happen to be literals. */
+        type->name = strdup(resolved_name);
         pool_insert(type->kind, type->name, type);
         return type;
     }
@@ -462,46 +464,35 @@ GrayType *type_from_name(const char *name) {
         return type;
     }
 
-    /* Qualified type: module.Type → convert to module_Type */
-    const char *dot = strchr(name, '.');
-    if (dot) {
-        const char *base = dot + 1;
-        if (base[0] >= 'A' && base[0] <= 'Z') {
-            /* Build prefixed name: mod.Type → mod_Type */
-            size_t prefix_len = (size_t)(dot - name);
-            size_t base_len = strlen(base);
-            char *prefixed = xmalloc(prefix_len + 1 + base_len + 1);
-            memcpy(prefixed, name, prefix_len);
-            prefixed[prefix_len] = '_';
-            memcpy(prefixed + prefix_len + 1, base, base_len + 1);
-            return type_struct(prefixed);
+    /* Qualified stdlib type: mod.Type. User modules are resolved against the
+     * symbol table before reaching here, so anything still carrying a dot
+     * belongs to the stdlib, which keeps its own registries and names its
+     * opaque types unqualified (channels.Channel is the type Channel). */
+    {
+        const char *dot = strchr(name, '.');
+        if (dot && dot[1] >= 'A' && dot[1] <= 'Z') {
+            GrayType *existing = pool_find(TK_ENUM, dot + 1);
+            if (existing) return existing;
+            return type_struct(dot + 1);
         }
     }
 
-    /* Uppercase = enum or struct type, or module-prefixed: mod_Name */
+    /* Uppercase names the primitive table did not claim are user-defined
+     * types. A qualified name has already been mapped onto its registry
+     * spelling by the caller, so there is nothing left to un-guess: this used
+     * to split on '.' and on '_Uppercase', and carried a denylist of stdlib
+     * opaque type names to undo the second guess. */
     if (name[0] >= 'A' && name[0] <= 'Z') {
         GrayType *existing = pool_find(TK_ENUM, name);
         if (existing) return existing;
         return type_struct(name);
     }
     {
+        /* A module-mangled user type: mod_Name. */
         const char *us = strchr(name, '_');
         if (us && us[1] >= 'A' && us[1] <= 'Z') {
             GrayType *existing = pool_find(TK_ENUM, name);
             if (existing) return existing;
-            /* Normalize module-qualified stdlib opaque types: e.g.
-             * channels_Channel → Channel so they match the canonical
-             * type returned by stdlib call handlers. */
-            static const char *stdlib_opaque[] = {
-                "Thread", "Mutex", "SpinLock", "Channel", "Socket",
-                "Listener", "Database", "Router", "HttpRequest",
-                "HttpResponse", "UUID", "Arena", "SourceLocation", NULL
-            };
-            const char *base = us + 1;
-            for (int i = 0; stdlib_opaque[i]; i++) {
-                if (strcmp(base, stdlib_opaque[i]) == 0)
-                    return type_struct(base);
-            }
             return type_struct(name);
         }
     }

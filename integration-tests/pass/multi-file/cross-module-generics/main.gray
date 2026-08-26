@@ -1,0 +1,81 @@
+/*
+ * cross-module-generics - Generic functions called through a module prefix.
+ * The qualified spelling recorded no instantiation, so codegen emitted no
+ * specialization while the call site still mangled the name, and the C
+ * compiler was handed a call to a function that did not exist.
+ *
+ * Every case is written twice, once qualified and once bare via 'using', to
+ * pin that both spellings agree.
+ */
+
+import "./vutils.gray"
+import "./utils.gray"
+using vutils
+
+const Actor struct {
+    id int
+}
+
+do main() {
+    println("=== Cross-Module Generics Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Value wildcard, qualified
+    mut a int = vutils.identity(42)
+    if a == 42 {
+        println("  [PASS] vutils.identity(42) == 42")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] vutils.identity(42): expected 42, got ${a}")
+        failed += 1
+    }
+
+    // Value wildcard, bare through 'using'
+    mut b int = identity(42)
+    if b == 42 {
+        println("  [PASS] identity(42) == 42")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] identity(42): expected 42, got ${b}")
+        failed += 1
+    }
+
+    // Value wildcard binds a different type at a second call site
+    mut s string = vutils.identity("hello")
+    if s == "hello" {
+        println("  [PASS] vutils.identity(\"hello\") == hello")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] vutils.identity(\"hello\"): got ${s}")
+        failed += 1
+    }
+
+    // Type parameter, qualified, local struct
+    mut c Actor = utils.new_T(Actor)
+    if c.id == 0 {
+        println("  [PASS] utils.new_T(Actor) returned a zeroed Actor")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] utils.new_T(Actor): expected id 0, got ${c.id}")
+        failed += 1
+    }
+
+    // Type parameter returning a pointer, qualified
+    mut d ^Actor = utils.new_T_ptr(Actor)
+    if d^.id == 0 {
+        println("  [PASS] utils.new_T_ptr(Actor) returned a pointer to a zeroed Actor")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] utils.new_T_ptr(Actor): expected id 0, got ${d^.id}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
