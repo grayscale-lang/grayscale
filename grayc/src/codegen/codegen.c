@@ -599,8 +599,14 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     /* If starts with uppercase, it's a user-defined type */
     /* Also handle module-prefixed types: lib_Point, mod_Color */
     bool is_user_type = (type_name[0] >= 'A' && type_name[0] <= 'Z');
+    /* A registered declaration is a user type whatever its mangled spelling
+     * looks like — the guess below splits at the first '_' and loses the
+     * type when the module's own name contains one (foo_bar_Color). */
+    if (!is_user_type && codegen)
+        is_user_type = find_struct_declaration(codegen, type_name) != NULL ||
+                       codegen_is_enum(codegen, type_name);
     if (!is_user_type) {
-        const char *us = strchr(type_name, '_');
+        const char *us = strrchr(type_name, '_');
         if (us && us[1] >= 'A' && us[1] <= 'Z') is_user_type = true;
     }
     if (is_user_type) {
@@ -619,7 +625,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
          * with the same base name (e.g. geo_Point vs color_Point).
          * Also guard against infinite recursion when the stripped base
          * equals the original type_name. */
-        const char *mod_us = strchr(resolved, '_');
+        const char *mod_us = strrchr(resolved, '_');
         if (mod_us && mod_us[1] >= 'A' && mod_us[1] <= 'Z') {
             bool is_known_decl = codegen &&
                 (find_struct_declaration(codegen, resolved) != NULL ||

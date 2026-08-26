@@ -488,8 +488,9 @@ GrayType *type_from_name(const char *name) {
         return type_struct(name);
     }
     {
-        /* A module-mangled user type: mod_Name. */
-        const char *us = strchr(name, '_');
+        /* A module-mangled user type: mod_Name. Split at the last '_' so a
+         * module name that contains one keeps its whole prefix. */
+        const char *us = strrchr(name, '_');
         if (us && us[1] >= 'A' && us[1] <= 'Z') {
             GrayType *existing = pool_find(TK_ENUM, name);
             if (existing) return existing;

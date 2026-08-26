@@ -1,0 +1,22 @@
+const Baz struct {
+    y int
+}
+
+const Color enum {
+    RED
+    GREEN
+}
+
+alias Count = int
+
+do make_baz(y int) -> Baz {
+    return Baz{y: y}
+}
+
+do baz_y(b Baz) -> int {
+    return b.y
+}
+
+do count() -> Count {
+    return 5
+}

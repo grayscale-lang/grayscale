@@ -408,8 +408,9 @@ static const char *unqualified_display_name(const char *name) {
     /* As written: mod.Type. */
     const char *dot = strchr(name, '.');
     if (dot && dot[1] >= 'A' && dot[1] <= 'Z') return dot + 1;
-    /* As mangled: mod_Type. */
-    const char *us = strchr(name, '_');
+    /* As mangled: mod_Type. Split at the last '_' so a module name that
+     * contains one keeps its whole prefix. */
+    const char *us = strrchr(name, '_');
     if (us && us[1] >= 'A' && us[1] <= 'Z') return us + 1;
     return name;
 }
@@ -2479,6 +2480,11 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
     /* Resolve type aliases before any type lookup. */
     if (name) name = resolve_type_alias(checker, name);
     if (name && is_enum_name(checker, name)) return type_enum(name);
+    /* A registered struct is a struct, whatever its registry spelling looks
+     * like. type_from_name() has to guess from the spelling, and its guess
+     * for a mangled name splits at the first '_' — which loses the type in a
+     * module whose own name contains one (foo_bar_Baz). */
+    if (name && is_struct_name(checker, name)) return type_struct(name);
     GrayType *resolved_type = type_from_name(name);
     /* : try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
