@@ -471,14 +471,52 @@ static bool typechecker_enum_is_flags(TypeChecker *checker, const char *name) {
     return i >= 0 && checker->enum_is_flags[i];
 }
 
+/* How many declared types go by this user-facing name. Two means a message
+ * printing the bare name cannot tell them apart. */
+static int display_name_count(TypeChecker *checker, const char *display) {
+    int count = 0;
+    for (int i = 0; i < checker->struct_count; i++) {
+        const char *d = checker->structs[i].display_name
+            ? checker->structs[i].display_name : checker->structs[i].struct_name;
+        if (d && strcmp(d, display) == 0) count++;
+    }
+    for (int i = 0; i < checker->enum_count; i++) {
+        const char *d = checker->enum_display_names[i]
+            ? checker->enum_display_names[i] : checker->enum_names[i];
+        if (d && strcmp(d, display) == 0) count++;
+    }
+    return count;
+}
+
+/* The name a diagnostic gives a declared type: as written, qualified by its
+ * module when another declaration goes by the same name. Two modules' `Color`
+ * are different types, and "cannot assign Color to Color" tells the reader
+ * nothing about which is which. `key` is the registry spelling, `display` the
+ * name looked up from it — equal pointers mean no declaration was found. */
+static const char *qualify_ambiguous_name(TypeChecker *checker,
+                                          const char *key, const char *display) {
+    if (display == key || display_name_count(checker, display) < 2) return display;
+    DeclEntry *entry = checker_resolve_entry(checker, key);
+    if (!entry) entry = module_table_find_mangled(checker->modules, key);
+    if (!entry || !entry->module_name || !entry->module_name[0]) return display;
+    static char qual_bufs[4][TYPE_NAME_MAX];
+    static int qual_slot = 0;
+    char *out = qual_bufs[qual_slot];
+    qual_slot = (qual_slot + 1) & 3;
+    snprintf(out, sizeof(qual_bufs[0]), "%s.%s", entry->module_name, display);
+    return out;
+}
+
 /* A type name fit to print in a diagnostic — for struct/enum types this
  * is the user-facing name, never the module-prefixed lookup key. Composite
  * types (pointers, arrays, maps) recurse into their inner types so that
  * e.g. ^myutils_Thing displays as ^Thing. */
 static const char *type_display_name(TypeChecker *checker, GrayType *t) {
     if (!t) return type_name(t);
-    if (t->kind == TK_STRUCT && t->name) return struct_display_name(checker, t->name);
-    if (t->kind == TK_ENUM && t->name) return enum_display_name(checker, t->name);
+    if (t->kind == TK_STRUCT && t->name)
+        return qualify_ambiguous_name(checker, t->name, struct_display_name(checker, t->name));
+    if (t->kind == TK_ENUM && t->name)
+        return qualify_ambiguous_name(checker, t->name, enum_display_name(checker, t->name));
     if (t->kind == TK_POINTER && t->name) {
         const char *inner = struct_display_name(checker, t->name);
         if (inner == t->name) inner = enum_display_name(checker, t->name);
@@ -487,7 +525,8 @@ static const char *type_display_name(TypeChecker *checker, GrayType *t) {
             static int ptr_slot = 0;
             char *out = ptr_bufs[ptr_slot];
             ptr_slot = (ptr_slot + 1) & 3;
-            snprintf(out, sizeof(ptr_bufs[0]), "^%s", inner);
+            snprintf(out, sizeof(ptr_bufs[0]), "^%s",
+                qualify_ambiguous_name(checker, t->name, inner));
             return out;
         }
     }
@@ -499,27 +538,12 @@ static const char *type_display_name(TypeChecker *checker, GrayType *t) {
             static int arr_slot = 0;
             char *out = arr_bufs[arr_slot];
             arr_slot = (arr_slot + 1) & 3;
-            snprintf(out, sizeof(arr_bufs[0]), "[%s]", inner);
+            snprintf(out, sizeof(arr_bufs[0]), "[%s]",
+                qualify_ambiguous_name(checker, t->element_type, inner));
             return out;
         }
     }
     return type_name(t);
-}
-
-/* The type as an error must name it when the plain display name is ambiguous:
- * "mod.Type" for a declaration owned by a module, so two modules' same-named
- * types don't both read as a bare "Type". */
-static const char *type_qualified_display(TypeChecker *checker, GrayType *t,
-                                          char *buf, size_t buflen) {
-    const char *display = type_display_name(checker, t);
-    if (!t || !t->name || (t->kind != TK_STRUCT && t->kind != TK_ENUM))
-        return display;
-    DeclEntry *entry = checker_resolve_entry(checker, t->name);
-    if (!entry) entry = module_table_find_mangled(checker->modules, t->name);
-    if (!entry || !entry->module_name || !entry->module_name[0])
-        return display;
-    snprintf(buf, buflen, "%s.%s", entry->module_name, display);
-    return buf;
 }
 
 /* Resolve an import alias to the actual module name */
@@ -3977,19 +4001,12 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         (arg_t->kind == TK_NIL &&
                          (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR)))
                         continue;
-                    const char *param_d = type_display_name(checker, param_t);
-                    const char *arg_d = type_display_name(checker, arg_t);
-                    char param_buf[MSG_BUF_SIZE], arg_buf[MSG_BUF_SIZE];
-                    /* Same word on both sides means the module is the whole
-                     * difference, and the message has to say which one. */
-                    if (strcmp(param_d, arg_d) == 0) {
-                        param_d = type_qualified_display(checker, param_t, param_buf, sizeof(param_buf));
-                        arg_d = type_qualified_display(checker, arg_t, arg_buf, sizeof(arg_buf));
-                    }
                     diagnostic_error_message(checker->diag, "E3001",
                         typechecker_format(checker,
                             "argument %d of '%s': expected %s, got %s",
-                            argument_index + 1, display, param_d, arg_d),
+                            argument_index + 1, display,
+                            type_display_name(checker, param_t),
+                            type_display_name(checker, arg_t)),
                         NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
                 }
             }
@@ -6411,7 +6428,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         left->name && right->name &&
         !typechecker_same_enum_type(checker, left->name, right->name)) {
         diagnostic_error_code_formatted(checker->diag, "E3032", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            enum_display_name(checker, left->name), enum_display_name(checker, right->name));
+            type_display_name(checker, left), type_display_name(checker, right));
         infix_errored = true;
     }
 
@@ -9245,7 +9262,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             if (!compatible) {
                                 diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                     arr->data.array_value.elements[enum_index]->token.line,
-                                    arr->data.array_value.elements[enum_index]->token.column, 0, expected_et->name, actual_et->name);
+                                    arr->data.array_value.elements[enum_index]->token.column, 0,
+                                    type_display_name(checker, expected_et),
+                                    type_display_name(checker, actual_et));
                             }
                         }
                         /* E3053: cross-enum mismatch — both are TK_ENUM but
@@ -9260,7 +9279,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             !typechecker_same_enum_type(checker, actual_et->name, expected_et->name)) {
                             diagnostic_error_code_formatted(checker->diag, "E3053", NODE_FILE(checker, arr->data.array_value.elements[enum_index]),
                                 arr->data.array_value.elements[enum_index]->token.line,
-                                arr->data.array_value.elements[enum_index]->token.column, 0, expected_et->name, actual_et->name);
+                                arr->data.array_value.elements[enum_index]->token.column, 0,
+                                type_display_name(checker, expected_et),
+                                type_display_name(checker, actual_et));
                         }
                         /* E3053: cross-pointer mismatch — both are TK_POINTER but
                          * point to different types (e.g. ^int vs ^float). */

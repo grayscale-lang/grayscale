@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3001 - same-named enums from different modules are distinct
+ * types. Unified, a traffic.Color was passed where a paint.Color was
+ * expected and the program printed the variant that shared its ordinal.
+ * The message names both modules; two bare 'Color's tell the reader
+ * nothing.
+ */
+// expect-error: E3001
+// expect-error-count: 1
+// expect-not: expected Color, got Color
+
+import "./traffic.gray"
+import "./paint.gray"
+
+do main() {
+    mut c traffic.Color = traffic.Color.RED
+    println(paint.name(c))
+}
