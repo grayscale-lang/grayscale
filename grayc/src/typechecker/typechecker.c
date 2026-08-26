@@ -211,6 +211,8 @@ static const char *checker_resolve_decl_into(TypeChecker *checker, const char *w
 static void checker_refresh_using(TypeChecker *checker);
 static ResolveScope checker_scope(TypeChecker *checker);
 static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written);
+static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node);
+static bool ref_names_function(TypeChecker *checker, AstNode *arg);
 
 /* True if the expression is an assignment target (something with a stable
  * address): a variable, a field of an assignment target, an index into an
@@ -4467,7 +4469,16 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
          * label, otherwise the E3031 "bare function name as
          * value" check fires and rejects a legitimate
          * use ( follow-up). */
-        if (arg->kind == NODE_LABEL &&
+        if (arg->kind == NODE_MEMBER_EXPR && ref_names_function(checker, arg)) {
+            /* ref(name) and ()name are the same thing written two ways, so a
+             * qualified argument becomes the func-reference node the other
+             * spelling parses to. Left as a call it was checked as a pointer
+             * to a value: 'mod.func' has none, and the reference came out a
+             * ^unknown that could not be called. */
+            node->kind = NODE_FUNC_REF;
+            node->data.func_ref.function = arg;
+            result = resolve_func_ref(checker, node);
+        } else if (arg->kind == NODE_LABEL &&
             find_func(checker, arg->data.label.value)) {
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
@@ -7062,6 +7073,28 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         result = type_struct(struct_name);
     }
     return result;
+}
+
+/* Does a ref() argument name a function rather than a value? Both spellings
+ * of a function reference mean the same thing, but ref() also takes the
+ * address of a variable, field or element, so only a name that resolves to a
+ * function may be treated as a reference to one. */
+static bool ref_names_function(TypeChecker *checker, AstNode *arg) {
+    if (arg->kind == NODE_LABEL)
+        return find_func(checker, arg->data.label.value) != NULL;
+    if (arg->kind != NODE_MEMBER_EXPR ||
+        arg->data.member.object->kind != NODE_LABEL)
+        return false;
+    const char *qualifier = arg->data.member.object->data.label.value;
+    /* An instance's field, not a module's or struct's function. */
+    if (scope_lookup(checker->current_scope, qualifier)) return false;
+    if (is_stdlib_module_name(typechecker_resolve_alias(checker, qualifier)))
+        return true;  /* rejected as non-first-class, but by resolve_func_ref */
+    char key[MSG_BUF_SIZE], resolved[MSG_BUF_SIZE];
+    snprintf(key, sizeof(key), "%s_%s",
+        checker_resolve_decl_into(checker, qualifier, resolved, sizeof(resolved)),
+        arg->data.member.member);
+    return find_func(checker, key) != NULL;
 }
 
 static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {

@@ -4,15 +4,35 @@
  * Referencing a module member uses the module the same way calling it does.
  * Only calls marked the import used, so a file whose only use of an import
  * was a func reference was told the import was never used.
+ *
+ * ref(name) is the same thing as ()name, qualifier included. Written as a
+ * call it was checked as a pointer to a value — 'mod.func' has none — and
+ * the reference came out a ^unknown that could not be called.
  */
 
 // expect-not: W1002
 
 import "./helper.gray"
 
+const Vec struct {
+    x int
+    y int
+
+    do create(x int) -> Vec {
+        return Vec{x: x, y: x * 2}
+    }
+}
+
 do main() {
     const g = ()helper.add_two
     assert(g(1, 2) == 3, "()module.func from the entry file")
+
+    const r = ref(helper.add_two)
+    assert(r(4, 5) == 9, "ref(module.func) from the entry file")
+
+    const c = ref(Vec.create)
+    mut v = c(21)
+    assert(v.y == 42, "ref(Struct.func)")
 
     println("ALL TESTS PASSED")
 }
