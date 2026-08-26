@@ -6,7 +6,18 @@
  */
 import "./b", "./lib"
 
+const Local struct {
+    n int
+}
+
+/* A parameter named after a module this very file imports. */
+do read(b Local) -> int {
+    return b.n
+}
+
 do main() {
+    assert(read(Local{n: 12}) == 12, "parameter shadows a module this file imports")
+
     assert(b.peek() == 22, "local shadows its own file's module name")
 
     mut x b.Box = b.Box{v: 1, inner: b.Inner{n: 3}}
