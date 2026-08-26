@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4016 - undefined-lowercase-type
+ * Expected: "undefined type 'zag'; check the spelling or import the module that defines it"
+ *
+ * A lowercase type name used to skip the undefined-type check entirely, so
+ * this typechecked clean and failed in the C compiler instead.
+ */
+
+do main() {
+    mut x zag = 5  // zag is not defined
+}

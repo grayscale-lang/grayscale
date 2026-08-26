@@ -2312,6 +2312,19 @@ static const char *checker_resolve_type_name(TypeChecker *checker, const char *w
     return module_resolve_type_name(checker->modules, &scope, written);
 }
 
+/* Does a written type annotation name a type that does not exist? An
+ * annotation resolves to TK_UNKNOWN either because the name is undefined or
+ * because it is the generic wildcard, which has no type until a call site
+ * binds one — only the first is an error.
+ *
+ * The name's casing has nothing to do with it. Every E4016 site used to
+ * require an initial capital, so a lowercase spelling skipped the check
+ * outright and `x zag` typechecked clean and failed in the C compiler. */
+static bool type_name_is_undefined(const char *written, const GrayType *resolved) {
+    if (!written || !resolved || resolved->kind != TK_UNKNOWN) return false;
+    return strcmp(written, "?") != 0;
+}
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
     const char *written_name = name;
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
@@ -8789,8 +8802,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         ? typechecker_type_from_name(checker, node->data.var_decl.type_name)
         : &TYPE_UNKNOWN;
     /* E4016: explicitly annotated type name that doesn't exist */
-    if (node->data.var_decl.type_name && declared->kind == TK_UNKNOWN &&
-        node->data.var_decl.type_name[0] >= 'A' && node->data.var_decl.type_name[0] <= 'Z') {
+    if (type_name_is_undefined(node->data.var_decl.type_name, declared)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "undefined type '%s'; check the spelling or import the module that defines it",
@@ -11268,8 +11280,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
         }
         GrayType *ptype = p->type_name ? typechecker_type_from_name(checker, p->type_name) : &TYPE_UNKNOWN;
         /* E4016: undefined parameter type */
-        if (p->type_name && ptype->kind == TK_UNKNOWN &&
-            p->type_name[0] >= 'A' && p->type_name[0] <= 'Z') {
+        if (type_name_is_undefined(p->type_name, ptype)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "undefined type '%s'; check the spelling or import the module that defines it",
@@ -11419,8 +11430,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             checker->current_return_type_names[i] = node->data.func_decl.return_types[i];
             /* E4016: undefined return type */
             const char *rtn = node->data.func_decl.return_types[i];
-            if (rtn && checker->current_return_types[i]->kind == TK_UNKNOWN &&
-                rtn[0] >= 'A' && rtn[0] <= 'Z') {
+            if (type_name_is_undefined(rtn, checker->current_return_types[i])) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "undefined type '%s'; check the spelling or import the module that defines it",
