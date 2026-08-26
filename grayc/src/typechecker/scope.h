@@ -11,6 +11,7 @@
 #define GRAYC_SCOPE_H
 
 #include "types.h"
+#include <stdint.h>
 
 typedef struct {
     const char *name;
@@ -61,6 +62,9 @@ typedef struct Scope {
     ScopeHashEntry *hash;  /* open-addressing hash table; NULL until first define */
     int hash_cap;          /* always a power of 2 */
 } Scope;
+
+/* djb2 string hash, shared with the module symbol table. */
+uint32_t scope_str_hash(const char *string);
 
 Scope *scope_create(Scope *parent);
 void scope_destroy(Scope *scope);

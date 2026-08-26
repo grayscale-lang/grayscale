@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4024 - a stdlib module member that does not exist.
+ * Expected: the unknown member is named. An annotated declaration used to
+ * accept this silently, because the member typed as unknown and the checks
+ * downstream skip unknown to avoid cascading.
+ */
+
+// expect-error: E4024
+
+import @math
+
+do main() {
+    mut x float = math.NOT_A_CONSTANT
+    println("${x}")
+}

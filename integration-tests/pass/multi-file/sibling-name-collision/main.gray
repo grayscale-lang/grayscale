@@ -1,0 +1,21 @@
+/*
+ * Test: a binding whose name matches a sibling file in a directory module
+ *
+ * pkg/ contains color.gray, so `color` also names a sibling module inside
+ * pkg. A parameter, local, or struct-literal value called `color` is still an
+ * ordinary binding; rewriting it to the directory module name emitted `pkg`
+ * as a bare identifier and produced invalid C.
+ */
+import "./pkg"
+
+do main() {
+    assert(pkg.describe(pkg.Color.RED) == 1, "parameter named after a sibling file")
+    assert(pkg.describe(pkg.Color.GREEN) == 0, "same parameter, other variant")
+
+    mut t = pkg.make_thing(pkg.Color.RED)
+    assert(t.color == pkg.Color.RED, "struct literal value named after a sibling file")
+
+    assert(pkg.local_shadow() == 7, "local named after a sibling file")
+
+    println("ALL TESTS PASSED")
+}

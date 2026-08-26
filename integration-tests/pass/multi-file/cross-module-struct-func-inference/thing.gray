@@ -1,0 +1,8 @@
+const Thing struct {
+    id string = "x"
+
+    do ratio(t Thing) -> float { return 2.5 }
+    do ok(t Thing) -> bool { return true }
+    do label(t Thing) -> string { return "thing-${t.id}" }
+    do count(t Thing) -> int { return 7 }
+}

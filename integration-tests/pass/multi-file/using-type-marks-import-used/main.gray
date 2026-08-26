@@ -1,0 +1,15 @@
+/*
+ * A module referenced only by the bare name of one of its types is used.
+ * Marking an import used happened on qualified access, so a file that named
+ * an imported type through `using` was told the import was never used.
+ */
+
+// expect-not: W1002
+
+import and use "./types.gray"
+
+do main() {
+    mut i Item = Item{name: "sword"}
+    println(i.name)
+    println("ALL TESTS PASSED")
+}

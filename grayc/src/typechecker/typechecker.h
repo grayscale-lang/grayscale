@@ -13,6 +13,7 @@
 
 #include "types.h"
 #include "scope.h"
+#include "module_table.h"
 #include "../parser/ast.h"
 #include "../util/error.h"
 #include "../util/arena.h"
@@ -78,20 +79,10 @@ typedef struct {
     int struct_count;
     int struct_cap;
 
-    /* Sorted view of structs[] for O(log n) find_struct lookups.
-     * Invalidated whenever a new struct is registered. */
-    StructInfo **structs_sorted;
-    bool structs_sorted_built;
-
     /* Registered function signatures */
     FuncSig *funcs;
     int func_count;
     int func_cap;
-
-    /* Sorted view of funcs[] for O(log n) find_func lookups.
-     * Invalidated whenever a new function is registered. */
-    FuncSig **funcs_sorted;
-    bool funcs_sorted_built;
 
     /* Program AST (for default param lookup) */
     AstNode *program;
@@ -110,12 +101,6 @@ typedef struct {
     const char **enum_deprecated_messages; /* parallel to enum_names: NULL if bare #deprecated */
     int enum_count;
     int enum_cap;
-
-    /* Sorted view of enum_names[] for O(log n) is_enum_name lookups.
-     * Invalidated whenever a new enum is registered. */
-    const char **enum_names_sorted;
-    int *enum_names_sorted_indices; /* parallel: original index in enum_names[] for each sorted entry */
-    bool enum_names_sorted_built;
 
     /* Control flow tracking */
     int loop_depth;               /* >0 means inside a loop */
@@ -174,11 +159,14 @@ typedef struct {
     /* File currently being validated — used to filter using_modules per-file */
     const char *current_check_file;
 
-    /* Import alias → module name mapping */
-    const char **alias_names;
-    const char **alias_modules;
-    int alias_count;
-    int alias_cap;
+    /* The using'd modules visible from current_check_file, in declared order:
+     * the search order for an unqualified name. Rebuilt when the file or the
+     * using list changes, so name resolution does not re-filter per lookup. */
+    const char **using_visible;
+    int using_visible_count;
+    int using_visible_cap;
+    const char *using_visible_file;
+    int using_visible_stamp;
 
     /*  track mem.destroy() calls for double-free detection */
     const char **destroyed_arenas;
@@ -207,11 +195,13 @@ typedef struct {
     /* Arena for diagnostic message strings — replaces per-message strdup */
     Arena *arena;
 
+    /* Per-module symbol table: every top-level declaration keyed by
+     * (module, name-as-written). Populated by register_declarations. */
+    ModuleTable *modules;
+
     /* Type alias registry (alias Name = Type) */
     const char **type_alias_names;
     const char **type_alias_targets;
-    const char **type_alias_files;
-    bool *type_alias_is_private;
     int type_alias_count;
     int type_alias_cap;
 
@@ -227,6 +217,17 @@ typedef struct {
 
 /* Create and run the type checker */
 TypeChecker *typechecker_create(DiagnosticList *diag, const char *file);
+
+/* Record which module a source file belongs to. The import driver calls this
+ * for the entry file and every file it pulls in, before typechecker_check. */
+void typechecker_add_file_module(TypeChecker *checker, const char *file,
+                                 const char *module_name, bool is_entry);
+
+/* Record that `alias` names `module_name`. Used for import aliases and for
+ * sibling files of a directory module, which are named as if they were
+ * modules but resolve to the directory's module. */
+void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
+                                  const char *module_name);
 void typechecker_check(TypeChecker *checker, AstNode *program);
 void typechecker_free(TypeChecker *checker);
 
@@ -235,6 +236,9 @@ GrayType *typetable_get(TypeTable *table, AstNode *node);
 
 /* Get the type table from the checker */
 TypeTable *typechecker_get_table(TypeChecker *checker);
+
+/* Get the module symbol table from the checker (used by codegen) */
+ModuleTable *typechecker_get_modules(TypeChecker *checker);
 
 /* Check if (mod, fn) is a known stdlib function.
  * Used by codegen for unqualified 'using' dispatch. */

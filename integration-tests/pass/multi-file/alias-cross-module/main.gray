@@ -1,0 +1,22 @@
+/*
+ * Test: a type alias reached through a module qualifier
+ *
+ * STANDARD.md 3.5: aliases are erased at compile time and are fully
+ * interchangeable with the underlying type. lib.Score is int, so it accepts
+ * an int, interpolates as one, and round-trips through a module function.
+ */
+import "./lib.gray"
+
+do main() {
+    mut b lib.Score = 41
+    assert(b == 41, "module-qualified alias accepts the underlying type")
+    assert("${b}" == "41", "module-qualified alias interpolates as its underlying type")
+
+    mut c lib.Score = lib.bump(b)
+    assert(c == 42, "alias survives a round trip through a module function")
+
+    mut plain int = c
+    assert(plain == 42, "alias value assigns back to the underlying type")
+
+    println("ALL TESTS PASSED")
+}

@@ -1,0 +1,17 @@
+import @arrays
+
+do add_two(a int, b int) -> int {
+    return a + b
+}
+
+do apply(f func(int, int) -> int, a int, b int) -> int {
+    return f(a, b)
+}
+
+do total(nums [int]) -> int {
+    return arrays.reduce(nums, 0, ()add_two)
+}
+
+do via_param(a int, b int) -> int {
+    return apply(()add_two, a, b)
+}

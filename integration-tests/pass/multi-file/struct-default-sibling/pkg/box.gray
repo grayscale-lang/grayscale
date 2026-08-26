@@ -1,0 +1,6 @@
+import "./color.gray"
+
+const Box struct {
+    c Color = Color.GREEN
+    n int   = FALLBACK
+}
