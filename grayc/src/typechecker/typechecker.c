@@ -11348,8 +11348,12 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "variable '%s' is declared but never used", s->name);
+                /* def_line numbers the file holding the function body, which
+                 * is not the entry file when the function came from an
+                 * import. A local cannot outlive its function, so the
+                 * declaration node names the right file. */
                 diagnostic_warning_message(checker->diag, "W1001", msg,
-                    checker->file, s->def_line, s->def_column, 0);
+                    NODE_FILE(checker, node), s->def_line, s->def_column, 0);
             }
         }
     }

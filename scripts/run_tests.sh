@@ -69,6 +69,15 @@ fail() { printf "  ${RED}FAIL${NC}  %s %s\n" "$1" "$2"; ((++FAIL_COUNT)); }
 # rejection apart from the C compiler choking on what the typechecker let
 # through. expect-error-count additionally pins how many errors the file
 # produces, so one mistake reported twice does not slip by.
+# expect-not: <text> — the run's diagnostics must not contain <text>. The
+# mangled-name guard in run_fail_test catches a module-mangled type name
+# (mod_Type) on its shape alone; a mangled function name, or a warning code
+# that must not appear, has no such shape and is named here instead.
+forbidden_marker() {
+    grep -E '^[[:space:]]*//[[:space:]]*expect-not:' "$1" \
+        | sed -E 's|^[[:space:]]*//[[:space:]]*expect-not:[[:space:]]*||' | head -1
+}
+
 run_fail_test() {
     local label="$1" entry="$2" marker_file="$3"
     local expected_error expected_count output actual_count forbidden
@@ -76,12 +85,7 @@ run_fail_test() {
         | grep -oE '[EPW][0-9]+' | head -1)
     expected_count=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error-count:[[:space:]]*[0-9]+' "$marker_file" \
         | grep -oE '[0-9]+' | head -1)
-    # expect-not: <text> — the diagnostics must not contain <text>. The guard
-    # below catches a module-mangled type name (mod_Type) on its shape alone;
-    # a mangled function name (mod_func) is indistinguishable from a plain
-    # snake_case name, so a test that pins one names it here.
-    forbidden=$(grep -E '^[[:space:]]*//[[:space:]]*expect-not:' "$marker_file" \
-        | sed -E 's|^[[:space:]]*//[[:space:]]*expect-not:[[:space:]]*||' | head -1)
+    forbidden=$(forbidden_marker "$marker_file")
     if [ -n "$expected_error" ]; then
         output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$entry" 2>&1) || true
         actual_count=$(echo "$output" | grep -cE '^error\[' || true)
@@ -150,8 +154,13 @@ for dir in "$TEST_DIR"/pass/multi-file/*/; do
         dir_name=$(basename "$dir")
         main_file=$(find "$dir" -name "main.gray" | head -1)
         if [ -n "$main_file" ]; then
+            forbidden=$(forbidden_marker "$main_file")
             if output=$(run_timeout $TIMEOUT "$GRAY_BIN" "$main_file" 2>&1); then
-                pass "multi-file/$dir_name"
+                if [ -n "$forbidden" ] && echo "$output" | grep -qF -- "$forbidden"; then
+                    fail "multi-file/$dir_name" "(output contains '$forbidden')"
+                else
+                    pass "multi-file/$dir_name"
+                fi
             else
                 fail "multi-file/$dir_name" "(execution error)"
             fi
