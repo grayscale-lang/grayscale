@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.5.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.1...grayscale-v0.5.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **codegen:** emit function forward declarations in their own module ([#2485](https://github.com/grayscale-lang/grayscale/issues/2485)) ([b43167b](https://github.com/grayscale-lang/grayscale/commit/b43167b793206b586655c5d818f00a18d04c9d4f))
+* **codegen:** emit the mangled symbol for ref(name) inside a module ([#2474](https://github.com/grayscale-lang/grayscale/issues/2474)) ([1ed61cb](https://github.com/grayscale-lang/grayscale/commit/1ed61cb7b7d3d5a4b8b17b9bbb034426fc190a50))
+* **codegen:** resolve unprefixed type names in scope before guessing ([4ad74ec](https://github.com/grayscale-lang/grayscale/commit/4ad74ec196b9be734e62da21918922be494c7cd7))
+* **codegen:** type an array or map element pointer by its element type ([#2497](https://github.com/grayscale-lang/grayscale/issues/2497)) ([fac035e](https://github.com/grayscale-lang/grayscale/commit/fac035e0f6155e1c0b5d121c7b4fce325de79bf1))
+* **imports:** reject an import of the program's entry point ([#2502](https://github.com/grayscale-lang/grayscale/issues/2502)) ([c11883b](https://github.com/grayscale-lang/grayscale/commit/c11883ba39b18cf5d1f750a7c902c936d2967602))
+* **imports:** report a failed import once, in the file that contains it ([#2480](https://github.com/grayscale-lang/grayscale/issues/2480)) ([8d05933](https://github.com/grayscale-lang/grayscale/commit/8d05933bf8f9a49a9146213928daa244580b050f))
+* **imports:** validate and bind the module name at the import site ([#2501](https://github.com/grayscale-lang/grayscale/issues/2501)) ([50cf054](https://github.com/grayscale-lang/grayscale/commit/50cf054022ee3c53d077dd4649edaaeb2337d82c))
+* **typechecker:** check argument count on module-qualified calls ([#2490](https://github.com/grayscale-lang/grayscale/issues/2490)) ([c3a7333](https://github.com/grayscale-lang/grayscale/commit/c3a7333eff66706468bc0763450a41ce38e0056b))
+* **typechecker:** check argument types on module-qualified calls ([#2487](https://github.com/grayscale-lang/grayscale/issues/2487)) ([51f4f27](https://github.com/grayscale-lang/grayscale/commit/51f4f27ada2ad711a8cda57d0f6675648ca0496f))
+* **typechecker:** check every leaf of a container type, and type bare func ([9afa2d1](https://github.com/grayscale-lang/grayscale/commit/9afa2d125a17d4107bd95953d9913ad5bb59022f))
+* **typechecker:** declare a variable whose member initializer failed ([b69a7c0](https://github.com/grayscale-lang/grayscale/commit/b69a7c046e38f8ae9ee038436aa30daf4e9cddc4))
+* **typechecker:** enforce private on module-level variables and constants ([#2468](https://github.com/grayscale-lang/grayscale/issues/2468)) ([3f75826](https://github.com/grayscale-lang/grayscale/commit/3f758267b96cbc31c02a0a15e4a0dd71b5a50dd0))
+* **typechecker:** mark an import used by a container or pointer type ([#2491](https://github.com/grayscale-lang/grayscale/issues/2491)) ([d405036](https://github.com/grayscale-lang/grayscale/commit/d40503633d594c8899ac9c043bbe2bdebf631d30))
+* **typechecker:** mark an import used by a qualified func reference ([fa7d781](https://github.com/grayscale-lang/grayscale/commit/fa7d781a5638fe85a61479bb9055e2c87c8d26e6))
+* **typechecker:** mark an import used when a bare name resolves through using ([ab8b2b0](https://github.com/grayscale-lang/grayscale/commit/ab8b2b0854c46e5920d650c03b603f90a6ec6f9a))
+* **typechecker:** name a function as written in diagnostics ([#2485](https://github.com/grayscale-lang/grayscale/issues/2485)) ([1954727](https://github.com/grayscale-lang/grayscale/commit/1954727ce971fc002816e3e8a4a477e1293f603d))
+* **typechecker:** name the module when two types share a name ([#2488](https://github.com/grayscale-lang/grayscale/issues/2488)) ([038d0e4](https://github.com/grayscale-lang/grayscale/commit/038d0e4adb41f3a73a46eb129a45ad8d07e73383))
+* **typechecker:** name what a module member is when rejecting assignment ([9e6a865](https://github.com/grayscale-lang/grayscale/commit/9e6a865d23b0baa1a6e3515d99cd79acc0b4a7b1))
+* **typechecker:** reject an undefined lowercase type name ([2b72c46](https://github.com/grayscale-lang/grayscale/commit/2b72c46d59d6b01f1ff1df96bb0156a94f81808d))
+* **typechecker:** reject concrete return type when returning the type argument ([#2461](https://github.com/grayscale-lang/grayscale/issues/2461)) ([67e1f1d](https://github.com/grayscale-lang/grayscale/commit/67e1f1d232ba78b04ca93cd8e25a727a71693f43))
+* **typechecker:** reject unresolvable module-qualified calls ([#2463](https://github.com/grayscale-lang/grayscale/issues/2463)) ([9737079](https://github.com/grayscale-lang/grayscale/commit/9737079dad08947f460ca42891d683f68ce6a89f))
+* **typechecker:** report a private type once, at the annotation that names it ([#2506](https://github.com/grayscale-lang/grayscale/issues/2506)) ([629f419](https://github.com/grayscale-lang/grayscale/commit/629f4195103442d0c968642a3be540afc42dd6b5))
+* **typechecker:** report a struct or enum return mismatch once ([#2462](https://github.com/grayscale-lang/grayscale/issues/2462)) ([c297392](https://github.com/grayscale-lang/grayscale/commit/c297392378025c630d3af0b7ac1bd8158cc0198a))
+* **typechecker:** report an unknown module member ([bba9445](https://github.com/grayscale-lang/grayscale/commit/bba94456cef6a247d8bfd9c1f08ade1c8c6a4aaf))
+* **typechecker:** report an unused function in its own file ([#2471](https://github.com/grayscale-lang/grayscale/issues/2471)) ([c4e10b5](https://github.com/grayscale-lang/grayscale/commit/c4e10b5cb0a38a7e0ad7c03ea4eeac712b5b182a))
+* **typechecker:** report an unused variable in its own file ([#2471](https://github.com/grayscale-lang/grayscale/issues/2471)) ([9615d34](https://github.com/grayscale-lang/grayscale/commit/9615d340ee2acefa00a4a91a18606421913c44a1))
+* **typechecker:** resolve bare sibling calls in struct function bodies ([#2459](https://github.com/grayscale-lang/grayscale/issues/2459)) ([9c050bc](https://github.com/grayscale-lang/grayscale/commit/9c050bc261dc47017ddc3d8b95cfccc01bda4a12))
+* **typechecker:** run generic handling on module-qualified calls ([#2460](https://github.com/grayscale-lang/grayscale/issues/2460)) ([f1e6967](https://github.com/grayscale-lang/grayscale/commit/f1e69675e91a311ea6a8a5bac90f43d7c83c3979))
+* **typechecker:** treat ref(mod.func) as the function reference it is ([4f89bea](https://github.com/grayscale-lang/grayscale/commit/4f89bea77132d2fca4f564b5e71e10082eff7f53))
+
 ## [0.5.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.0...grayscale-v0.5.1) (2026-08-23)
 
 
