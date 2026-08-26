@@ -1,0 +1,21 @@
+/*
+ * Test: a local or parameter named after a module shadows that module
+ *
+ * A file's module name is its filename minus '.gray', so 'b.v' inside b.gray
+ * names the local 'b' and its field, not module 'b' and a member of it.
+ */
+import "./b", "./lib"
+
+do main() {
+    assert(b.peek() == 22, "local shadows its own file's module name")
+
+    mut x b.Box = b.Box{v: 1, inner: b.Inner{n: 3}}
+    assert(b.via_param(x) == 4, "parameter shadows its own file's module name")
+
+    mut y lib.Pair = lib.Pair{left: 6, right: 7}
+    assert(lib.sum(y) == 13, "parameter shadows a module another file imports")
+
+    assert(b.Box{v: 2, inner: b.Inner{n: 8}}.v == 2, "module-qualified access still resolves")
+
+    println("ALL TESTS PASSED")
+}

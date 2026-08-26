@@ -10115,8 +10115,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target_qualifier) {
         const char *obj = target_qualifier;
         bool is_module = false;
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
+        /* A local or parameter of the same name shadows the module, so the
+         * qualifier names a value and the assignment is an ordinary field
+         * write — including inside the file whose own module it names. */
+        if (!scope_lookup(checker->current_scope, obj)) {
+            for (int mi = 0; mi < checker->import_count; mi++) {
+                if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
+            }
         }
         if (is_module) {
             /* The member is not necessarily a constant. Stdlib members

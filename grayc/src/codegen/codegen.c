@@ -2638,6 +2638,17 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* True when the qualifier of `a.b` names a value rather than a module. A
+ * local or parameter shadows a module of the same name — `b.v` inside the
+ * file whose module is `b` reads the local's field — and the typechecker
+ * already resolves it that way, so a typed object is what says so here. */
+static bool member_object_is_value(CodeGen *codegen, AstNode *node) {
+    GrayType *obj_type = codegen->type_table
+        ? typetable_get(codegen->type_table, node->data.member.object)
+        : NULL;
+    return obj_type && obj_type->kind != TK_UNKNOWN;
+}
+
 static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     /* Check for module constants first */
     const char *object_name = ast_member_qualifier(node);
@@ -2745,7 +2756,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
          * The symbol table answers directly for a user module, and gives the
          * mangled name at the same time. Stdlib modules are not in it, so those
          * still go through the import list. */
-        if (mod[0] >= 'a' && mod[0] <= 'z') {
+        if (mod[0] >= 'a' && mod[0] <= 'z' && !member_object_is_value(codegen, node)) {
             if (node->resolved_decl) {
                 emit(codegen, module_mangle(codegen->modules, node->resolved_decl));
                 return;

@@ -1,0 +1,12 @@
+/*
+ * lib.gray - 'b' names a module imported by main.gray, not by this file.
+ */
+
+const Pair struct {
+    left int
+    right int
+}
+
+do sum(b Pair) -> int {
+    return b.left + b.right
+}
