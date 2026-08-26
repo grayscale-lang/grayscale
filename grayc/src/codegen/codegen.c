@@ -4908,9 +4908,18 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
             emit_expression(codegen, arg->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
                 codegen->file, arg->token.line);
-            emit(codegen, "(int64_t *)_mv; })");
+            /* Computed here, after c_key has been emitted: both share the
+             * one static buffer gray_type_to_c_codegen returns. */
+            const char *c_val = left_t->value_type
+                ? gray_map_element_c_type(codegen, left_t->value_type) : "int64_t";
+            emit_formatted(codegen, "(%s *)_mv; })", c_val);
         } else {
-            emit(codegen, "(int64_t *)gray_array_get_ptr(&");
+            /* The element pointer is typed by the array's element type. A
+             * fixed int64_t * here is the wrong pointer type for every
+             * element that is not an integer. */
+            const char *c_elem = (left_t && left_t->element_type)
+                ? gray_map_element_c_type(codegen, left_t->element_type) : "int64_t";
+            emit_formatted(codegen, "(%s *)gray_array_get_ptr(&", c_elem);
             emit_expression(codegen, arg->data.index_expr.left);
             emit(codegen, ", ");
             emit_expression(codegen, arg->data.index_expr.index);
