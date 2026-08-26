@@ -1898,12 +1898,21 @@ do print_greeting() {
 
 ### 7.4 Visibility
 
-By default, all functions and constants are public. The `private` keyword restricts access to the declaring module:
+By default, every top-level declaration is public. The `private` keyword restricts access to the declaring file, and applies to functions, constants, structs, enums, type aliases, and struct functions:
 
 ```gray
 // mathlib/mathlib.gray — module name comes from directory
 
 private const MAX_ITERATIONS int = 1000
+
+private const Counter struct {
+    n int
+}
+
+private const Mode enum {
+    FAST
+    SLOW
+}
 
 private do validate(n int) -> bool {
     return n > 0
@@ -1923,7 +1932,11 @@ import "./mathlib"
 mathlib.factorial(5)          // OK - public
 // mathlib.validate(5)        // error: private function
 // mathlib.MAX_ITERATIONS     // error: private constant
+// mathlib.Counter{n: 1}      // error: private struct
+// mathlib.Mode.FAST          // error: private enum
 ```
+
+`import and use` does not change this: a private declaration is not published under its bare name either.
 
 ### 7.5 Attributes
 

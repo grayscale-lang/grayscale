@@ -346,6 +346,20 @@ static void adopt_registration(TypeChecker *checker, DeclKind kind,
     if (entry) entry->registry_index = index;
 }
 
+/* The unprefixed alias `using` publishes for a declaration stands for that
+ * declaration, so it has to carry its visibility. Left public, an alias for a
+ * private struct or enum was reachable by a bare name from a file that cannot
+ * name it at all — which is how `private` stopped meaning anything on a type
+ * once its file was used. */
+static void inherit_decl_visibility(TypeChecker *checker, const char *from, const char *to) {
+    if (!checker->modules) return;
+    DeclEntry *src = module_table_find_mangled(checker->modules, from);
+    DeclEntry *dst = module_table_find_mangled(checker->modules, to);
+    if (!src || !dst || src == dst) return;
+    dst->visibility = src->visibility;
+    dst->origin_file = src->origin_file;
+}
+
 static void register_struct(TypeChecker *checker, const char *name,
     const char *display_name,
     const char **field_names, GrayType **field_types, int field_count) {
@@ -6150,6 +6164,20 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         if (sig) {
             sig->used = true;
             warn_if_func_deprecated(checker, node, sig);
+            /* E4017: private struct function called from outside the struct.
+             * The bare and struct-namespaced spellings of this call check it;
+             * the module-qualified triple chain did not, so `private` went
+             * unenforced across the very boundary it exists to guard. */
+            if (sig->is_private) {
+                char struct_key[MSG_BUF_SIZE];
+                snprintf(struct_key, sizeof(struct_key), "%s_%s", mod_name, struct_name);
+                if (!(checker->current_struct_name &&
+                      strcmp(checker->current_struct_name, struct_key) == 0)) {
+                    diagnostic_error_code_formatted(checker->diag, "E4017",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        struct_name, func_name);
+                }
+            }
             result = sig->return_count > 0 ? sig->return_types[0] : &TYPE_VOID;
             /* Check argument count */
             if (node->data.call.arg_count != sig->param_count) {
@@ -12751,7 +12779,8 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
+                            stmt->data.enum_decl.is_private);
         /* A name declared twice in one module resolves to the first
          * declaration; the duplicate must not repoint it at its own
          * registry slot, or the collision it is about to be reported
@@ -12893,7 +12922,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             diagnostic_error_message(checker->diag, "E4007", msg,
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt),
+                            stmt->data.struct_decl.is_private);
         /* A name declared twice in one module resolves to the first
          * declaration; the duplicate must not repoint it at its own
          * registry slot, or the collision it is about to be reported
@@ -13135,10 +13165,12 @@ static void register_decl_symbols(TypeChecker *checker, AstNode *program) {
                             stmt->data.alias_decl.is_private);
             break;
         case NODE_ENUM_DECL:
-            module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+            module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
+                            stmt->data.enum_decl.is_private);
             break;
         case NODE_STRUCT_DECL:
-            module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+            module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt),
+                            stmt->data.struct_decl.is_private);
             break;
         case NODE_FUNC_DECL:
             module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
@@ -13657,7 +13689,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
     /* Register unprefixed aliases for struct/enum types from 'import and use' modules.
      * Only process using-modules declared in the main file — transitive imports
-     * should not leak their unprefixed aliases into the main compilation unit. */
+     * should not leak their unprefixed aliases into the main compilation unit.
+     * A private declaration is not part of what `using` brings in: an
+     * unprefixed alias for one made it reachable by a bare name from a file
+     * that cannot name it at all, which is how `private` on a struct or enum
+     * stopped meaning anything across a module boundary. */
     for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
         const char *uf = checker->using_module_files ? checker->using_module_files[using_index] : NULL;
         bool is_main = (!uf && !checker->file) || (uf && checker->file && strcmp(uf, checker->file) == 0);
@@ -13679,6 +13715,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     memcpy(fn, checker->structs[struct_index].field_names, sizeof(const char *) * field_count);
                     memcpy(ft, checker->structs[struct_index].field_types, sizeof(GrayType *) * field_count);
                     register_struct(checker, unprefixed, unprefixed, fn, ft, field_count);
+                    inherit_decl_visibility(checker, sn, unprefixed);
                     checker->structs[checker->struct_count - 1].is_deprecated = checker->structs[struct_index].is_deprecated;
                     checker->structs[checker->struct_count - 1].deprecated_message = checker->structs[struct_index].deprecated_message;
                 }
@@ -13695,6 +13732,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                         checker->enum_payload_types[enum_index], checker->enum_payload_counts[enum_index],
                         checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index],
                         checker->enum_is_deprecated[enum_index], checker->enum_deprecated_messages[enum_index]);
+                    inherit_decl_visibility(checker, en, unprefixed);
                 }
             }
         }

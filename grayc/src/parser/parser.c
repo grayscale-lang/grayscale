@@ -3037,6 +3037,10 @@ static AstNode *parse_statement(Parser *parser) {
                 stmt->data.var_decl.is_private = true;
             } else if (stmt->kind == NODE_ALIAS_DECL) {
                 stmt->data.alias_decl.is_private = true;
+            } else if (stmt->kind == NODE_STRUCT_DECL) {
+                stmt->data.struct_decl.is_private = true;
+            } else if (stmt->kind == NODE_ENUM_DECL) {
+                stmt->data.enum_decl.is_private = true;
             }
         }
         return stmt;

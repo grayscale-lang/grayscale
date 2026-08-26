@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4015 - Naming a private struct from another module
+ * Expected: "is private and cannot be accessed from outside its file"
+ */
+
+// expect-error: E4015
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    mut s lib.Secret = lib.Secret{v: 7}
+    println(s.v)
+}

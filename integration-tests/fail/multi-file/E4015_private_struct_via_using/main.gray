@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4015 - A private struct is not published by 'import and use'
+ * Expected: "is private and cannot be accessed from outside its file"
+ */
+
+// expect-error: E4015
+// expect-error-count: 1
+
+import and use "./lib.gray"
+
+do main() {
+    mut s Secret = Secret{v: 7}
+    println(s.v)
+}

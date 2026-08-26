@@ -1,0 +1,12 @@
+/*
+ * lib.gray - Library with a private struct
+ */
+
+private const Secret struct {
+    v int
+}
+
+do public_fn() -> int {
+    mut s Secret = Secret{v: 1}
+    return s.v
+}

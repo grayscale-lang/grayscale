@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4017 - Calling a private struct function from another module
+ * Expected: "is private and cannot be called from outside the struct"
+ */
+
+// expect-error: E4017
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    mut b lib.Box = lib.Box{v: 5}
+    println(lib.Box.secret(b))
+}

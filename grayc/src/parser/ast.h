@@ -353,6 +353,7 @@ struct AstNode {
             int instantiation_count;
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
+            bool is_private;
         } struct_decl;
 
         /* NODE_ENUM_DECL */
@@ -365,6 +366,7 @@ struct AstNode {
             bool is_tagged;  /* true if ANY variant has a payload */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
+            bool is_private;
         } enum_decl;
 
         /* NODE_ALIAS_DECL */
