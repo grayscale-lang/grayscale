@@ -504,6 +504,22 @@ static const char *type_display_name(TypeChecker *checker, GrayType *t) {
     return type_name(t);
 }
 
+/* The type as an error must name it when the plain display name is ambiguous:
+ * "mod.Type" for a declaration owned by a module, so two modules' same-named
+ * types don't both read as a bare "Type". */
+static const char *type_qualified_display(TypeChecker *checker, GrayType *t,
+                                          char *buf, size_t buflen) {
+    const char *display = type_display_name(checker, t);
+    if (!t || !t->name || (t->kind != TK_STRUCT && t->kind != TK_ENUM))
+        return display;
+    DeclEntry *entry = checker_resolve_entry(checker, t->name);
+    if (!entry) entry = module_table_find_mangled(checker->modules, t->name);
+    if (!entry || !entry->module_name || !entry->module_name[0])
+        return display;
+    snprintf(buf, buflen, "%s.%s", entry->module_name, display);
+    return buf;
+}
+
 /* Resolve an import alias to the actual module name */
 static const char *typechecker_resolve_alias(TypeChecker *checker, const char *name) {
     return module_table_resolve_alias(checker->modules, name);
@@ -3902,6 +3918,49 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 result = sig->return_types[0];
             } else {
                 result = &TYPE_VOID;
+            }
+            /* Argument types. A module-qualified call took the callee's
+             * return type and nothing else: what it was passed went
+             * unchecked, so a mismatch — two modules' same-named but
+             * distinct structs among them — reached codegen and came back
+             * as a C compiler error. A generic callee is already unified
+             * against its arguments above. */
+            if (!mod_is_generic) {
+                int check_count = node->data.call.arg_count < sig->param_count
+                    ? node->data.call.arg_count : sig->param_count;
+                for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                    AstNode *arg = node->data.call.args[argument_index];
+                    GrayType *param_t = sig->param_types[argument_index];
+                    /* Set expected_type for implicit enum resolution */
+                    GrayType *saved_expected_u = checker->expected_type;
+                    if (param_t && param_t->kind == TK_ENUM && param_t->name)
+                        checker->expected_type = param_t;
+                    GrayType *arg_t = resolve_expression(checker, arg);
+                    checker->expected_type = saved_expected_u;
+                    if (!arg_t || !param_t ||
+                        arg_t->kind == TK_UNKNOWN || param_t->kind == TK_UNKNOWN ||
+                        types_assignable(checker, param_t, arg_t) ||
+                        (param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) ||
+                        (param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) ||
+                        (is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) ||
+                        (arg_t->kind == TK_NIL &&
+                         (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR)))
+                        continue;
+                    const char *param_d = type_display_name(checker, param_t);
+                    const char *arg_d = type_display_name(checker, arg_t);
+                    char param_buf[MSG_BUF_SIZE], arg_buf[MSG_BUF_SIZE];
+                    /* Same word on both sides means the module is the whole
+                     * difference, and the message has to say which one. */
+                    if (strcmp(param_d, arg_d) == 0) {
+                        param_d = type_qualified_display(checker, param_t, param_buf, sizeof(param_buf));
+                        arg_d = type_qualified_display(checker, arg_t, arg_buf, sizeof(arg_buf));
+                    }
+                    diagnostic_error_message(checker->diag, "E3001",
+                        typechecker_format(checker,
+                            "argument %d of '%s': expected %s, got %s",
+                            argument_index + 1, display, param_d, arg_d),
+                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+                }
             }
         } else {
             /* Check if 'mod' is a variable with a struct type —

@@ -1,0 +1,7 @@
+const Point struct {
+    hue string
+}
+
+do describe(p Point) -> string {
+    return p.hue
+}
