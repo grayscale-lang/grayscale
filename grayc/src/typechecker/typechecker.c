@@ -1765,21 +1765,6 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
     return best;
 }
 
-/* The declaration of `mod.name`, or NULL when that module declares no such
- * variable or constant. Whether a declaration is private or mutable lives on
- * the declaration, not on the Symbol, so the declaration is the only place to
- * read either from.
- *
- * Visibility is deliberately not applied here: callers want the declaration
- * whether or not they may access it, and decide separately what to say about
- * a private one. */
-static AstNode *find_module_var_decl(TypeChecker *checker, const char *mod,
-                                     const char *name) {
-    ResolveScope scope = checker_scope(checker);
-    DeclEntry *entry = module_resolve_qualified(checker->modules, &scope, mod, name, NULL);
-    return (entry && entry->kind == DECL_CONST) ? entry->ast_node : NULL;
-}
-
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->import_count; i++) {
         if (strcmp(checker->imported_modules[i], name) == 0)
@@ -2760,16 +2745,15 @@ static void reject_void_in_context(TypeChecker *checker, AstNode *expr,
 static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr) {
     if (!expr || expr->kind != NODE_CALL_EXPR) return;
     AstNode *fn = expr->data.call.function;
+    const char *qualifier = ast_member_qualifier(fn);
     FuncSig *sig = NULL;
     const char *name = NULL;
     if (fn && fn->kind == NODE_LABEL) {
         name = fn->data.label.value;
         sig = find_func(checker, name);
-    } else if (fn && fn->kind == NODE_MEMBER_EXPR &&
-               fn->data.member.object->kind == NODE_LABEL) {
+    } else if (qualifier) {
         name = fn->data.member.member;
-        sig = find_module_func(checker,
-            fn->data.member.object->data.label.value, name);
+        sig = find_module_func(checker, qualifier, name);
     }
     if (sig && sig->return_count > 1) {
         diagnostic_error_code_formatted(checker->diag, "E3040",
@@ -2835,11 +2819,29 @@ static GrayType *resolve_implicit_enum(TypeChecker *checker, AstNode *node) {
     return type_enum(enum_name);
 }
 
+/* Point a member expression's object at `type_name`. This is the
+ * instance-dispatch rewrite: `v.f()` becomes `Type.f()` so that by the time
+ * codegen sees it, it is indistinguishable from a call written that way. An
+ * object that is not a plain name — the explicit deref in `p^.f()` — is
+ * replaced by one rather than edited. */
+static void retarget_member_object(AstNode *member, const char *type_name) {
+    if (ast_member_qualifier(member)) {
+        member->data.member.object->data.label.value = strdup(type_name);
+        return;
+    }
+    AstNode *label = xcalloc(1, sizeof(AstNode));
+    label->kind = NODE_LABEL;
+    label->token = member->data.member.object->token;
+    label->data.label.value = strdup(type_name);
+    member->data.member.object = label;
+}
+
 /* E3027: validate that an argument passed to a mutable (&) parameter is a
  * mutable assignment target. Emits a diagnostic and returns if the argument
  * is a constant variable, an enum constant, or a literal/expression. */
 static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                                const char *param_desc, const char *func_display) {
+    const char *qualifier = ast_member_qualifier(arg);
     if (arg->kind == NODE_LABEL) {
         Symbol *sym = scope_lookup(checker->current_scope, arg->data.label.value);
         if (sym && !sym->mutable) {
@@ -2849,9 +2851,7 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
             diagnostic_error_message(checker->diag, "E3027", msg,
                 NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
         }
-    } else if (arg->kind == NODE_MEMBER_EXPR &&
-               arg->data.member.object->kind == NODE_LABEL &&
-               is_enum_name(checker, arg->data.member.object->data.label.value)) {
+    } else if (qualifier && is_enum_name(checker, qualifier)) {
         char *msg = typechecker_format(checker,
             "cannot pass enum constant to %s of '%s'; expected a mutable variable",
             param_desc, func_display);
@@ -4149,15 +4149,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * name, and prepend the instance as arg[0].
                      * When the object is an explicit deref (p^.func),
                      * replace it with a plain label node first. */
-                    if (fn->data.member.object->kind != NODE_LABEL) {
-                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
-                        new_obj->kind = NODE_LABEL;
-                        new_obj->token = fn->data.member.object->token;
-                        new_obj->data.label.value = strdup(struct_name);
-                        fn->data.member.object = new_obj;
-                    } else {
-                        fn->data.member.object->data.label.value = strdup(struct_name);
-                    }
+                    retarget_member_object(fn, struct_name);
                     int orig_count = node->data.call.arg_count;
                     AstNode **new_args = xmalloc(sizeof(AstNode *) * (orig_count + 1));
                     AstNode *self_arg = xcalloc(1, sizeof(AstNode));
@@ -4361,15 +4353,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         snprintf(display, sizeof(display), "%s.%s", display_sname, mfn);
                         typechecker_resolve_named_arguments(checker, node, ssig->decl, display);
                     }
-                    if (fn->data.member.object->kind != NODE_LABEL) {
-                        AstNode *new_obj = xcalloc(1, sizeof(AstNode));
-                        new_obj->kind = NODE_LABEL;
-                        new_obj->token = fn->data.member.object->token;
-                        new_obj->data.label.value = strdup(struct_name);
-                        fn->data.member.object = new_obj;
-                    } else {
-                        fn->data.member.object->data.label.value = strdup(struct_name);
-                    }
+                    retarget_member_object(fn, struct_name);
                     ssig->used = true;
                     sym->used = true;
                     warn_if_func_deprecated(checker, node, ssig);
@@ -5762,14 +5746,12 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
 static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
     AstNode *fn = node->data.call.function;
     if (!fn || fn->kind != NODE_MEMBER_EXPR) return;
-    AstNode *obj = fn->data.member.object;
-    if (!obj || obj->kind != NODE_MEMBER_EXPR) return;
-    if (!obj->data.member.object || obj->data.member.object->kind != NODE_LABEL) return;
+    const char *mod_raw = NULL, *enum_written = NULL;
+    if (!ast_member_chain(fn, &mod_raw, &enum_written)) return;
 
-    const char *mod_raw = obj->data.member.object->data.label.value;
+    AstNode *obj = fn->data.member.object;
     char prefixed[MSG_BUF_SIZE];
-    module_member_key(checker, mod_raw, obj->data.member.member,
-                      prefixed, sizeof(prefixed));
+    module_member_key(checker, mod_raw, enum_written, prefixed, sizeof(prefixed));
     if (!is_enum_name(checker, prefixed)) return;
 
     mark_import_used(checker, mod_raw);
@@ -5853,6 +5835,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     /* Resolve function return type */
     AstNode *fn = node->data.call.function;
     const char *function_name = NULL;
+    const char *chain_mod = NULL, *chain_type = NULL;
 
     /* For non-LABEL/non-MEMBER callees (e.g. arr[i]() on a [func] array)
      * the specific branches below won't traverse the function expression,
@@ -5869,13 +5852,12 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         AstNode *inner_fn = fn->data.call.function;
         const char *inner_name = NULL;
         char inner_buf[MSG_BUF_SIZE];
+        const char *inner_qualifier = ast_member_qualifier(inner_fn);
         if (inner_fn && inner_fn->kind == NODE_LABEL) {
             inner_name = inner_fn->data.label.value;
-        } else if (inner_fn && inner_fn->kind == NODE_MEMBER_EXPR &&
-                   inner_fn->data.member.object->kind == NODE_LABEL) {
+        } else if (inner_qualifier) {
             snprintf(inner_buf, sizeof(inner_buf), "%s.%s",
-                inner_fn->data.member.object->data.label.value,
-                inner_fn->data.member.member);
+                inner_qualifier, inner_fn->data.member.member);
             inner_name = inner_buf;
         }
         char *msg = NULL;
@@ -5981,12 +5963,10 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
 
     if (fn->kind == NODE_LABEL) {
         function_name = fn->data.label.value;
-    } else if (fn->kind == NODE_MEMBER_EXPR &&
-               fn->data.member.object->kind == NODE_MEMBER_EXPR &&
-               fn->data.member.object->data.member.object->kind == NODE_LABEL) {
+    } else if (ast_member_chain(fn, &chain_mod, &chain_type)) {
         /* mod.Struct.func() triple chain: geometry.Vec2.create() */
-        const char *mod_name = fn->data.member.object->data.member.object->data.label.value;
-        const char *struct_name = fn->data.member.object->data.member.member;
+        const char *mod_name = chain_mod;
+        const char *struct_name = chain_type;
         const char *func_name = fn->data.member.member;
         /* Mark module as used */
         mark_import_used(checker, mod_name);
@@ -6050,10 +6030,10 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         } else {
             result = &TYPE_VOID;
         }
-    } else if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object->kind == NODE_LABEL &&
-               is_enum_name(checker, resolve_type_alias(checker, fn->data.member.object->data.label.value))) {
+    } else if (ast_member_qualifier(fn) &&
+               is_enum_name(checker, resolve_type_alias(checker, ast_member_qualifier(fn)))) {
         /* Tagged enum construction: Shape.Circle(3.14) */
-        const char *ename = resolve_type_alias(checker, fn->data.member.object->data.label.value);
+        const char *ename = resolve_type_alias(checker, ast_member_qualifier(fn));
         fn->data.member.object->data.label.value = ename;
         const char *vname = fn->data.member.member;
         int eidx = -1;
@@ -6101,14 +6081,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         } else {
             result = &TYPE_UNKNOWN;
         }
-    } else if (fn->kind == NODE_MEMBER_EXPR &&
-               (fn->data.member.object->kind == NODE_LABEL ||
-                (fn->data.member.object->kind == NODE_POSTFIX_EXPR &&
-                 fn->data.member.object->data.postfix.op == TOK_CARET &&
-                 fn->data.member.object->data.postfix.left->kind == NODE_LABEL))) {
-        const char *mod_raw = fn->data.member.object->kind == NODE_LABEL
-            ? fn->data.member.object->data.label.value
-            : fn->data.member.object->data.postfix.left->data.label.value;
+    } else if (ast_member_base_qualifier(fn)) {
+        const char *mod_raw = ast_member_base_qualifier(fn);
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
@@ -6191,7 +6165,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     }
 
     /* Member call on expression result: foo().bar() */
-    if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object->kind != NODE_LABEL) {
+    if (fn->kind == NODE_MEMBER_EXPR && !ast_member_qualifier(fn)) {
         GrayType *obj_t = resolve_expression(checker, fn->data.member.object);
         if (obj_t && obj_t->kind != TK_STRUCT && obj_t->kind != TK_POINTER &&
             obj_t->kind != TK_UNKNOWN && obj_t->kind != TK_VOID) {
@@ -6703,12 +6677,10 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
     const char *member = node->data.member.member;
 
     /* Handle mod.Enum.VALUE or mod.Struct.field triple chain */
-    if (obj->kind == NODE_MEMBER_EXPR &&
-        obj->data.member.object->kind == NODE_LABEL) {
-        const char *mod_name = obj->data.member.object->data.label.value;
-        const char *type_name = obj->data.member.member;
+    const char *mod_name = NULL, *chain_type = NULL;
+    if (ast_member_chain(node, &mod_name, &chain_type)) {
         char prefixed_type[MSG_BUF_SIZE];
-        module_member_key(checker, mod_name, type_name,
+        module_member_key(checker, mod_name, chain_type,
                           prefixed_type, sizeof(prefixed_type));
         /* Check if it's a module-qualified enum access */
         if (is_enum_name(checker, prefixed_type)) {
@@ -6916,9 +6888,8 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         }
     } else if (obj->kind == NODE_MEMBER_EXPR) {
         /* Check for module-qualified enum: lib.Color.RED */
-        if (obj->data.member.object->kind == NODE_LABEL) {
-            const char *mod = obj->data.member.object->data.label.value;
-            const char *type_n = obj->data.member.member;
+        const char *mod = NULL, *type_n = NULL;
+        if (ast_member_chain(node, &mod, &type_n)) {
             if (mod[0] >= 'a' && mod[0] <= 'z' &&
                 type_n[0] >= 'A' && type_n[0] <= 'Z') {
                 char prefixed[MSG_BUF_SIZE];
@@ -7174,10 +7145,8 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
 static bool ref_names_function(TypeChecker *checker, AstNode *arg) {
     if (arg->kind == NODE_LABEL)
         return find_func(checker, arg->data.label.value) != NULL;
-    if (arg->kind != NODE_MEMBER_EXPR ||
-        arg->data.member.object->kind != NODE_LABEL)
-        return false;
-    const char *qualifier = arg->data.member.object->data.label.value;
+    const char *qualifier = ast_member_qualifier(arg);
+    if (!qualifier) return false;
     /* An instance's field, not a module's or struct's function. */
     if (scope_lookup(checker->current_scope, qualifier)) return false;
     if (is_stdlib_module_name(typechecker_resolve_alias(checker, qualifier)))
@@ -8684,12 +8653,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
         AstNode *call_fn = node->data.var_decl.value->data.call.function;
         const char *call_name = NULL;
+        const char *call_qualifier = ast_member_qualifier(call_fn);
         if (call_fn->kind == NODE_LABEL) call_name = call_fn->data.label.value;
-        else if (call_fn->kind == NODE_MEMBER_EXPR && call_fn->data.member.object->kind == NODE_LABEL) {
+        else if (call_qualifier) {
             /* module.func() or Type.func() */
             char prefixed[MSG_BUF_SIZE];
             call_name = arena_copy_string(checker->arena,
-                module_member_key(checker, call_fn->data.member.object->data.label.value,
+                module_member_key(checker, call_qualifier,
                                   call_fn->data.member.member, prefixed, sizeof(prefixed)));
         }
         if (call_name) {
@@ -8697,10 +8667,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (sig && (sig->return_count < 2 ||
                 sig->return_types[sig->return_count - 1]->kind != TK_ERROR)) {
                 char display[MSG_BUF_SIZE];
-                if (call_fn->kind == NODE_MEMBER_EXPR)
+                if (call_qualifier)
                     snprintf(display, sizeof(display), "%s.%s",
-                        call_fn->data.member.object->data.label.value,
-                        call_fn->data.member.member);
+                        call_qualifier, call_fn->data.member.member);
                 else {
                     strncpy(display, call_name, sizeof(display) - 1);
                     display[sizeof(display) - 1] = '\0';
@@ -8890,13 +8859,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             AstNode *call_fn = node->data.var_decl.value->data.call.function;
             const char *called = "function";
             char called_buf[MSG_BUF_SIZE];
+            const char *called_qualifier = ast_member_qualifier(call_fn);
             if (call_fn->kind == NODE_LABEL) {
                 called = call_fn->data.label.value;
-            } else if (call_fn->kind == NODE_MEMBER_EXPR &&
-                       call_fn->data.member.object->kind == NODE_LABEL) {
+            } else if (called_qualifier) {
                 snprintf(called_buf, sizeof(called_buf), "%s.%s",
-                    call_fn->data.member.object->data.label.value,
-                    call_fn->data.member.member);
+                    called_qualifier, call_fn->data.member.member);
                 called = called_buf;
             }
             char *msg = NULL;
@@ -8923,9 +8891,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                  * that actually supplies it rather than matching the name
                  * against every stdlib module. */
                 if (!sig) call_mod = find_using_stdlib_module(checker, call_name);
-            } else if (call_fn->kind == NODE_MEMBER_EXPR &&
-                       call_fn->data.member.object->kind == NODE_LABEL) {
-                const char *mod_raw = call_fn->data.member.object->data.label.value;
+            } else if (ast_member_qualifier(call_fn)) {
+                const char *mod_raw = ast_member_qualifier(call_fn);
                 call_mod = typechecker_resolve_alias(checker, mod_raw);
                 const char *mfn = call_fn->data.member.member;
                 sig = find_module_func(checker, mod_raw, mfn);
@@ -9748,20 +9715,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
             /* Stdlib module calls (mod.func); synthesize (T, Error) return
              * types for fallible functions so multi-var destructuring works. */
-            if (fn->kind == NODE_MEMBER_EXPR &&
-                fn->data.member.object->kind == NODE_LABEL) {
-                const char *mod = fn->data.member.object->data.label.value;
+            const char *call_qualifier = ast_member_qualifier(fn);
+            if (call_qualifier) {
                 const char *mfn = fn->data.member.member;
-                apply_stdlib_call_returns(checker, node->data.var_decl.name, mod, mfn);
+                apply_stdlib_call_returns(checker, node->data.var_decl.name,
+                                          call_qualifier, mfn);
             }
             /* User-defined module calls (mod.func); look up the prefixed
              * function signature and propagate multi-return types so
              * destructuring like `mut a, b = mod.func()` works. */
-            if (fn->kind == NODE_MEMBER_EXPR &&
-                fn->data.member.object->kind == NODE_LABEL) {
+            if (call_qualifier) {
                 const char *mfn = fn->data.member.member;
-                FuncSig *sig = find_module_func(checker,
-                    fn->data.member.object->data.label.value, mfn);
+                FuncSig *sig = find_module_func(checker, call_qualifier, mfn);
                 if (sig && sig->return_count > 1) {
                     Symbol *sym = scope_lookup_local(checker->current_scope,
                         node->data.var_decl.name);
@@ -9773,12 +9738,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
             /* Triple-chain calls (mod.Type.func); look up mod_Type_func
              * and propagate multi-return types for destructuring. */
-            if (fn->kind == NODE_MEMBER_EXPR &&
-                fn->data.member.object->kind == NODE_MEMBER_EXPR &&
-                fn->data.member.object->data.member.object->kind == NODE_LABEL) {
-                const char *mod_raw = fn->data.member.object->data.member.object->data.label.value;
-                const char *mod = typechecker_resolve_alias(checker, mod_raw);
-                const char *sname = fn->data.member.object->data.member.member;
+            const char *chain_mod = NULL, *sname = NULL;
+            if (ast_member_chain(fn, &chain_mod, &sname)) {
+                const char *mod = typechecker_resolve_alias(checker, chain_mod);
                 const char *mfn = fn->data.member.member;
                 char prefixed[MSG_BUF_SIZE];
                 snprintf(prefixed, sizeof(prefixed), "%s_%s_%s", mod, sname, mfn);
@@ -9826,13 +9788,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             node->data.var_decl.value->kind == NODE_FUNC_REF) {
             AstNode *fref = node->data.var_decl.value->data.func_ref.function;
             const char *rname = NULL;
+            const char *ref_qualifier = ast_member_qualifier(fref);
             if (fref->kind == NODE_LABEL) {
                 rname = fref->data.label.value;
-            } else if (fref->kind == NODE_MEMBER_EXPR &&
-                       fref->data.member.object->kind == NODE_LABEL) {
+            } else if (ref_qualifier) {
                 char buffer[MSG_BUF_SIZE];
                 rname = arena_copy_string(checker->arena,
-                    module_member_key(checker, fref->data.member.object->data.label.value,
+                    module_member_key(checker, ref_qualifier,
                                       fref->data.member.member, buffer, sizeof(buffer)));
             }
             if (rname) {
@@ -9851,13 +9813,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 node->data.var_decl.value->data.call.arg_count == 1) {
                 AstNode *ref_arg = node->data.var_decl.value->data.call.args[0];
                 const char *rname = NULL;
+                const char *arg_qualifier = ast_member_qualifier(ref_arg);
                 if (ref_arg->kind == NODE_LABEL &&
                     find_func(checker, ref_arg->data.label.value)) {
                     rname = ref_arg->data.label.value;
-                } else if (ref_arg->kind == NODE_MEMBER_EXPR &&
-                           ref_arg->data.member.object->kind == NODE_LABEL) {
+                } else if (arg_qualifier) {
                     char buffer[MSG_BUF_SIZE];
-                    module_member_key(checker, ref_arg->data.member.object->data.label.value,
+                    module_member_key(checker, arg_qualifier,
                                       ref_arg->data.member.member, buffer, sizeof(buffer));
                     if (find_func(checker, buffer))
                         rname = arena_copy_string(checker->arena, buffer);
@@ -9890,14 +9852,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     AstNode *el = lit->data.array_value.elements[enum_index];
                     if (!el || el->kind != NODE_FUNC_REF) continue;
                     AstNode *fref = el->data.func_ref.function;
+                    const char *el_qualifier = ast_member_qualifier(fref);
                     if (fref->kind == NODE_LABEL) {
                         sym->func_array_refs[enum_index] = fref->data.label.value;
-                    } else if (fref->kind == NODE_MEMBER_EXPR &&
-                               fref->data.member.object->kind == NODE_LABEL) {
+                    } else if (el_qualifier) {
                         char buffer[MSG_BUF_SIZE];
                         sym->func_array_refs[enum_index] = arena_copy_string(checker->arena,
-                            module_member_key(checker,
-                                fref->data.member.object->data.label.value,
+                            module_member_key(checker, el_qualifier,
                                 fref->data.member.member, buffer, sizeof(buffer)));
                     }
                 }
@@ -10012,9 +9973,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
 
     /* E6008: reject assignment to stdlib module constants (math.PI = x, etc.) */
     AstNode *target = node->data.assign.target;
-    if (target->kind == NODE_MEMBER_EXPR &&
-        target->data.member.object->kind == NODE_LABEL) {
-        const char *obj = target->data.member.object->data.label.value;
+    const char *target_qualifier = ast_member_qualifier(target);
+    if (target_qualifier) {
+        const char *obj = target_qualifier;
         bool is_module = false;
         for (int mi = 0; mi < checker->import_count; mi++) {
             if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
@@ -10024,8 +9985,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
              * (math.PI) have no declaration to consult and are constants; a
              * user module's `mut` variable is not, and calling it one
              * described the declaration incorrectly. */
-            AstNode *decl = find_module_var_decl(checker, obj,
-                                                 target->data.member.member);
+            DeclEntry *entry = target->resolved_decl;
+            AstNode *decl = (entry && entry->kind == DECL_CONST) ? entry->ast_node : NULL;
             const char *kind = (decl && decl->data.var_decl.mutable) ? "variable" : "constant";
             diagnostic_error_code_formatted(checker->diag, "E6008",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -10835,12 +10796,8 @@ static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
                 is_side_effect = true;
             } else {
                 /* Build display name for the error message */
-                const char *obj_name = NULL;
-                const char *mem_name = NULL;
-                if (fn->data.member.object->kind == NODE_LABEL) {
-                    obj_name = fn->data.member.object->data.label.value;
-                    mem_name = fn->data.member.member;
-                }
+                const char *obj_name = ast_member_qualifier(fn);
+                const char *mem_name = obj_name ? fn->data.member.member : NULL;
                 if (obj_name && mem_name && !is_side_effect) {
                     /* Check if struct function has #discard attribute */
                     char prefixed[MSG_BUF_SIZE];
@@ -11842,21 +11799,16 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         for (int const_index = 0; const_index < node->data.when_stmt.case_count && !enum_name; const_index++) {
             for (int cj = 0; cj < node->data.when_stmt.cases[const_index].value_count && !enum_name; cj++) {
                 AstNode *cv = node->data.when_stmt.cases[const_index].values[cj];
-                if (cv->kind == NODE_MEMBER_EXPR &&
-                    cv->data.member.object->kind == NODE_LABEL) {
-                    const char *name = cv->data.member.object->data.label.value;
-                    if (is_enum_name(checker, name)) enum_name = name;
-                }
+                const char *case_qualifier = ast_member_qualifier(cv);
+                if (case_qualifier && is_enum_name(checker, case_qualifier))
+                    enum_name = case_qualifier;
                 /* Module-qualified: mod.Enum.VARIANT nests the enum one level
                  * deeper, so a bare-label test never saw it and the `when`
                  * was reported as being on a non-enum type. */
-                if (cv->kind == NODE_MEMBER_EXPR &&
-                    cv->data.member.object->kind == NODE_MEMBER_EXPR &&
-                    cv->data.member.object->data.member.object->kind == NODE_LABEL) {
+                const char *case_mod = NULL, *case_enum = NULL;
+                if (ast_member_chain(cv, &case_mod, &case_enum)) {
                     char qualified[MSG_BUF_SIZE];
-                    snprintf(qualified, sizeof(qualified), "%s.%s",
-                        cv->data.member.object->data.member.object->data.label.value,
-                        cv->data.member.object->data.member.member);
+                    snprintf(qualified, sizeof(qualified), "%s.%s", case_mod, case_enum);
                     if (is_enum_name(checker, qualified))
                         enum_name = arena_copy_string(checker->arena, qualified);
                 }
@@ -11895,8 +11847,7 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                              * mod.Enum.VARIANT, whose object is itself a
                              * member expression rather than a bare label. */
                             if (cv->kind == NODE_MEMBER_EXPR &&
-                                (cv->data.member.object->kind == NODE_LABEL ||
-                                 cv->data.member.object->kind == NODE_MEMBER_EXPR) &&
+                                (ast_member_qualifier(cv) || ast_member_chain(cv, NULL, NULL)) &&
                                 strcmp(cv->data.member.member, variants[variant_index]) == 0) {
                                 covered = true;
                             }
@@ -11937,9 +11888,8 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 AstNode *cv = node->data.when_stmt.cases[const_index].values[cj];
                 if (cv->kind == NODE_IMPLICIT_ENUM || cv->kind == NODE_WHEN_PATTERN) {
                     has_enum_case = true;
-                } else if (cv->kind == NODE_MEMBER_EXPR &&
-                    cv->data.member.object->kind == NODE_LABEL) {
-                    const char *name = cv->data.member.object->data.label.value;
+                } else if (ast_member_qualifier(cv)) {
+                    const char *name = ast_member_qualifier(cv);
                     if (is_enum_name(checker, name)) {
                         has_enum_case = true;
                     } else {
@@ -13102,6 +13052,177 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = false;
 }
 
+/* --- qualified-name resolution ----------------------------------------
+ *
+ * `mod.Name` parses as a member expression and says nothing about what it
+ * refers to. This pass resolves each one through the symbol table, once, and
+ * leaves the declaration on the node, so the phases after it — the rest of
+ * this file and codegen — read the answer instead of re-deriving it from the
+ * qualifier's spelling at every site that needs it.
+ *
+ * Only a qualifier naming a module resolves. Struct instances, struct types
+ * and enum types are written against a bare name too, and none of them is a
+ * module member: leaving resolved_decl NULL is what says so. The nested
+ * `mod.Type.member` spelling resolves through its object, which is itself a
+ * `mod.Type`. */
+
+static void resolve_qualified_member(TypeChecker *checker, AstNode *node) {
+    if (node->resolved_decl || !checker->modules) return;
+    const char *qualifier = ast_member_qualifier(node);
+    if (!qualifier) return;
+    if (!module_table_find(checker->modules,
+                           module_table_resolve_alias(checker->modules, qualifier)))
+        return;
+    ResolveScope scope = checker_scope(checker);
+    ResolveStatus status;
+    DeclEntry *entry = module_resolve_qualified(checker->modules, &scope, qualifier,
+                                                node->data.member.member, &status);
+    if (status == RESOLVE_OK) node->resolved_decl = entry;
+}
+
+static void resolve_qualified_walk(TypeChecker *checker, AstNode *node);
+
+static void resolve_qualified_walk_each(TypeChecker *checker, AstNode **nodes, int count) {
+    for (int i = 0; i < count; i++) resolve_qualified_walk(checker, nodes[i]);
+}
+
+static void resolve_qualified_walk(TypeChecker *checker, AstNode *node) {
+    if (!node) return;
+    if (node->token.file) checker->current_check_file = node->token.file;
+
+    switch (node->kind) {
+    case NODE_MEMBER_EXPR:
+        resolve_qualified_walk(checker, node->data.member.object);
+        resolve_qualified_member(checker, node);
+        break;
+    case NODE_INTERPOLATED_STRING:
+        resolve_qualified_walk_each(checker, node->data.interpolated_string.parts,
+                                    node->data.interpolated_string.part_count);
+        break;
+    case NODE_ARRAY_VALUE:
+        resolve_qualified_walk_each(checker, node->data.array_value.elements,
+                                    node->data.array_value.count);
+        break;
+    case NODE_MAP_VALUE:
+        resolve_qualified_walk_each(checker, node->data.map_value.keys,
+                                    node->data.map_value.count);
+        resolve_qualified_walk_each(checker, node->data.map_value.values,
+                                    node->data.map_value.count);
+        break;
+    case NODE_STRUCT_VALUE:
+        resolve_qualified_walk_each(checker, node->data.struct_value.field_values,
+                                    node->data.struct_value.count);
+        break;
+    case NODE_PREFIX_EXPR:
+        resolve_qualified_walk(checker, node->data.prefix.right);
+        break;
+    case NODE_INFIX_EXPR:
+        resolve_qualified_walk(checker, node->data.infix.left);
+        resolve_qualified_walk(checker, node->data.infix.right);
+        break;
+    case NODE_POSTFIX_EXPR:
+        resolve_qualified_walk(checker, node->data.postfix.left);
+        break;
+    case NODE_CALL_EXPR:
+        resolve_qualified_walk(checker, node->data.call.function);
+        resolve_qualified_walk_each(checker, node->data.call.args,
+                                    node->data.call.arg_count);
+        break;
+    case NODE_INDEX_EXPR:
+        resolve_qualified_walk(checker, node->data.index_expr.left);
+        resolve_qualified_walk(checker, node->data.index_expr.index);
+        break;
+    case NODE_RANGE_EXPR:
+        resolve_qualified_walk(checker, node->data.range_expr.start);
+        resolve_qualified_walk(checker, node->data.range_expr.end);
+        resolve_qualified_walk(checker, node->data.range_expr.step);
+        break;
+    case NODE_CAST_EXPR:
+        resolve_qualified_walk(checker, node->data.cast.value);
+        break;
+    case NODE_FUNC_REF:
+        resolve_qualified_walk(checker, node->data.func_ref.function);
+        break;
+    case NODE_VAR_DECL:
+        resolve_qualified_walk(checker, node->data.var_decl.value);
+        break;
+    case NODE_ASSIGN_STMT:
+        resolve_qualified_walk(checker, node->data.assign.target);
+        resolve_qualified_walk(checker, node->data.assign.value);
+        break;
+    case NODE_RETURN_STMT:
+        resolve_qualified_walk_each(checker, node->data.return_stmt.values,
+                                    node->data.return_stmt.count);
+        break;
+    case NODE_ENSURE_STMT:
+        resolve_qualified_walk(checker, node->data.ensure_stmt.expr);
+        break;
+    case NODE_EXPR_STMT:
+        resolve_qualified_walk(checker, node->data.expr_stmt.expr);
+        break;
+    case NODE_BLOCK_STMT:
+        resolve_qualified_walk_each(checker, node->data.block.stmts,
+                                    node->data.block.count);
+        break;
+    case NODE_IF_STMT:
+        resolve_qualified_walk(checker, node->data.if_stmt.condition);
+        resolve_qualified_walk(checker, node->data.if_stmt.consequence);
+        resolve_qualified_walk(checker, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        resolve_qualified_walk(checker, node->data.when_stmt.value);
+        for (int i = 0; i < node->data.when_stmt.case_count; i++) {
+            resolve_qualified_walk_each(checker, node->data.when_stmt.cases[i].values,
+                                        node->data.when_stmt.cases[i].value_count);
+            resolve_qualified_walk(checker, node->data.when_stmt.cases[i].body);
+        }
+        resolve_qualified_walk(checker, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:
+        resolve_qualified_walk(checker, node->data.for_stmt.iterable);
+        resolve_qualified_walk(checker, node->data.for_stmt.body);
+        break;
+    case NODE_FOR_EACH_STMT:
+        resolve_qualified_walk(checker, node->data.for_each.collection);
+        resolve_qualified_walk(checker, node->data.for_each.body);
+        break;
+    case NODE_WHILE_STMT:
+        resolve_qualified_walk(checker, node->data.while_stmt.condition);
+        resolve_qualified_walk(checker, node->data.while_stmt.body);
+        break;
+    case NODE_LOOP_STMT:
+        resolve_qualified_walk(checker, node->data.loop_stmt.body);
+        break;
+    case NODE_FUNC_DECL:
+        for (int i = 0; i < node->data.func_decl.param_count; i++)
+            resolve_qualified_walk(checker, node->data.func_decl.params[i].default_value);
+        resolve_qualified_walk(checker, node->data.func_decl.body);
+        break;
+    case NODE_STRUCT_DECL:
+        for (int i = 0; i < node->data.struct_decl.field_count; i++)
+            resolve_qualified_walk(checker, node->data.struct_decl.fields[i].default_value);
+        for (int i = 0; i < node->data.struct_decl.func_count; i++)
+            resolve_qualified_walk(checker, node->data.struct_decl.funcs[i].func_decl);
+        break;
+    case NODE_ENUM_DECL:
+        for (int i = 0; i < node->data.enum_decl.value_count; i++)
+            resolve_qualified_walk(checker, node->data.enum_decl.values[i].value);
+        break;
+    case NODE_PROGRAM:
+        resolve_qualified_walk_each(checker, node->data.program.stmts,
+                                    node->data.program.stmt_count);
+        break;
+    default:
+        break;
+    }
+}
+
+static void resolve_qualified_names(TypeChecker *checker, AstNode *program) {
+    const char *saved_file = checker->current_check_file;
+    resolve_qualified_walk(checker, program);
+    checker->current_check_file = saved_file;
+}
+
 /* --- Public API --- */
 
 static void typetable_free(TypeTable *table) {
@@ -13375,6 +13496,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
             }
         }
     }
+
+    /* Resolve every `mod.Name` written in the program into the declaration it
+     * names, before anything reads one. */
+    resolve_qualified_names(checker, program);
 
     /* E2088: keyword alias consistency (while/as_long_as, do/fn, when+is/switch+case, etc.) */
     check_keyword_alias_consistency(checker, program);

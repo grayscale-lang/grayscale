@@ -568,13 +568,19 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     }
 
     /* Qualified type name: module.Type. The qualifier used to be stripped,
-     * naming the type without saying whose it was; it resolves now. */
-    if (strchr(type_name, '.')) {
+     * naming the type without saying whose it was; it resolves now — so the
+     * split only has to say that the spelling *is* qualified, and hand back
+     * the bare half for the unresolvable case. */
+    const char *type_qualifier = NULL, *bare_type = NULL;
+    (void)type_qualifier;
+    if (codegen && codegen->modules &&
+        module_split_qualified(codegen->modules->arena, type_name,
+                               &type_qualifier, &bare_type)) {
         const char *resolved = codegen_resolve_type(codegen, type_name);
         if (resolved == type_name) {
             /* Unresolvable qualified name: fall back to the bare half so a
              * type the table has not been told about still maps. */
-            return gray_type_to_c_codegen(codegen, strchr(type_name, '.') + 1);
+            return gray_type_to_c_codegen(codegen, bare_type);
         }
         /* An alias is erased: once resolved it may name a type alias, whose
          * underlying type is what C sees. */
@@ -2613,9 +2619,14 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
     } else if (node->data.func_ref.function->kind == NODE_MEMBER_EXPR) {
         /* ()StructName.funcName → gray_fn_StructName_funcName */
         AstNode *mem = node->data.func_ref.function;
-        if (mem->data.member.object->kind == NODE_LABEL) {
-            const char *qual = codegen_resolve_decl(codegen,
-                mem->data.member.object->data.label.value);
+        const char *qualifier = ast_member_qualifier(mem);
+        if (mem->resolved_decl && mem->resolved_decl->kind == DECL_FUNC) {
+            /* mod.func — the whole qualified name resolved to the function,
+             * so its declaration names it outright. */
+            emit_formatted(codegen, "gray_fn_%s",
+                module_mangle(codegen->modules, mem->resolved_decl));
+        } else if (qualifier) {
+            const char *qual = codegen_resolve_decl(codegen, qualifier);
             emit_formatted(codegen, "gray_fn_%s_%s", qual, mem->data.member.member);
         } else {
             emit(codegen, "gray_fn_");
@@ -2629,8 +2640,9 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
 
 static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     /* Check for module constants first */
-    if (node->data.member.object->kind == NODE_LABEL) {
-        const char *mod = node->data.member.object->data.label.value;
+    const char *object_name = ast_member_qualifier(node);
+    if (object_name) {
+        const char *mod = object_name;
         const char *mem = node->data.member.member;
 
         /* @math constants */
@@ -2734,10 +2746,8 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
          * mangled name at the same time. Stdlib modules are not in it, so those
          * still go through the import list. */
         if (mod[0] >= 'a' && mod[0] <= 'z') {
-            ResolveScope mscope = codegen_scope(codegen);
-            DeclEntry *entry = module_resolve_qualified(codegen->modules, &mscope, mod, mem, NULL);
-            if (entry) {
-                emit(codegen, module_mangle(codegen->modules, entry));
+            if (node->resolved_decl) {
+                emit(codegen, module_mangle(codegen->modules, node->resolved_decl));
                 return;
             }
             if (codegen_module_imported(codegen, mod)) {
@@ -2753,24 +2763,16 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
      * Verify the type really is a known enum before rewriting. */
     if (node->data.member.object->kind == NODE_MEMBER_EXPR) {
         AstNode *inner = node->data.member.object;
-        if (inner->data.member.object->kind == NODE_LABEL) {
-            const char *mod = inner->data.member.object->data.label.value;
-            const char *type_name = inner->data.member.member;
-            const char *value = node->data.member.member;
-            if (mod[0] >= 'a' && mod[0] <= 'z' &&
-                type_name[0] >= 'A' && type_name[0] <= 'Z') {
-                char prefixed[MSG_BUF_SIZE];
-                snprintf(prefixed, sizeof(prefixed), "%s_%s", mod, type_name);
-                if (codegen_is_enum(codegen, prefixed)) {
-                    if (codegen_enum_is_tagged(codegen, prefixed)) {
-                        emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
-                            prefixed, prefixed, value);
-                    } else {
-                        emit_formatted(codegen, "GrayEnum_%s_%s_%s", mod, type_name, value);
-                    }
-                    return;
-                }
+        const char *value = node->data.member.member;
+        if (inner->resolved_decl && inner->resolved_decl->kind == DECL_ENUM) {
+            const char *prefixed = module_mangle(codegen->modules, inner->resolved_decl);
+            if (codegen_enum_is_tagged(codegen, prefixed)) {
+                emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }",
+                    prefixed, prefixed, value);
+            } else {
+                emit_formatted(codegen, "GrayEnum_%s_%s", prefixed, value);
             }
+            return;
         }
     }
     /* Check if object is a pointer type; use -> instead of . */
@@ -2786,11 +2788,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
          * are multi-return unpacking temps. */
         const char *mem_name = node->data.member.member;
         if (mem_name[0] == 'v' && mem_name[1] >= '0' && mem_name[1] <= '9' && mem_name[2] == '\0') {
-            bool is_multi_temp = false;
-            if (node->data.member.object->kind == NODE_LABEL) {
-                const char *oname = node->data.member.object->data.label.value;
-                if (is_result_temporary(oname)) is_multi_temp = true;
-            }
+            bool is_multi_temp = object_name && is_result_temporary(object_name);
             if (!is_multi_temp && obj_t &&
                 (obj_t->kind == TK_INT || obj_t->kind == TK_UINT || obj_t->kind == TK_FLOAT ||
                  obj_t->kind == TK_BOOL || obj_t->kind == TK_STRING ||
@@ -2805,13 +2803,10 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
         }
 
         /* Ref vars are already dereferenced by label emission; use . not -> */
-        bool obj_is_ref = (node->data.member.object->kind == NODE_LABEL &&
-            is_reference_variable(codegen, node->data.member.object->data.label.value));
-        bool obj_is_raw = (node->data.member.object->kind == NODE_LABEL &&
-            is_raw_variable(codegen, node->data.member.object->data.label.value));
+        bool obj_is_ref = object_name && is_reference_variable(codegen, object_name);
+        bool obj_is_raw = object_name && is_raw_variable(codegen, object_name);
         /* Multi-return temp vars are always value types — never pointer-deref them */
-        bool obj_is_multi_temp = (node->data.member.object->kind == NODE_LABEL &&
-            is_result_temporary(node->data.member.object->data.label.value));
+        bool obj_is_multi_temp = object_name && is_result_temporary(object_name);
         if (!obj_is_multi_temp && !obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
             if (obj_is_raw) {
                 /* Raw pointer: direct field access, no nil check */
@@ -3531,8 +3526,8 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
     /* For call expressions, check the return type of the called function */
     if (arg->kind == NODE_CALL_EXPR && arg->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *function_node = arg->data.call.function;
-        if (function_node->data.member.object->kind == NODE_LABEL) {
-            const char *obj = function_node->data.member.object->data.label.value;
+        const char *obj = ast_member_qualifier(function_node);
+        if (obj) {
             const char *mem = function_node->data.member.member;
             /* Check if it's a known stdlib module function that returns string */
             if ((strcmp(obj, "strings") == 0) ||
@@ -4122,9 +4117,9 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             return true;
         }
         /* Enum member access: type_of(Color.RED) → "Color" */
-        if (arg->kind == NODE_MEMBER_EXPR && arg->data.member.object->kind == NODE_LABEL &&
+        if (ast_member_qualifier(arg) &&
             type && (type->kind == TK_INT || type->kind == TK_UINT || type->kind == TK_STRING)) {
-            const char *obj_name = arg->data.member.object->data.label.value;
+            const char *obj_name = ast_member_qualifier(arg);
             if (obj_name[0] >= 'A' && obj_name[0] <= 'Z' &&
                 strcmp(obj_name, "std") != 0 && strcmp(obj_name, "math") != 0 &&
                 strcmp(obj_name, "os") != 0) {
@@ -6843,9 +6838,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     }
 
     /* Tagged enum construction: Shape.Circle(3.14) */
-    if (node->data.call.function->kind == NODE_MEMBER_EXPR &&
-        node->data.call.function->data.member.object->kind == NODE_LABEL) {
-        const char *ename = node->data.call.function->data.member.object->data.label.value;
+    if (ast_member_qualifier(node->data.call.function)) {
+        const char *ename = ast_member_qualifier(node->data.call.function);
         const char *vname = node->data.call.function->data.member.member;
         /* Also check using-module-resolved names */
         const char *resolved_ename = ename;
@@ -6904,14 +6898,20 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
         const char *member = node->data.call.function->data.member.member;
-        /* Handle mod.Struct.func() triple chain: geometry.Vec2.create() */
-        if (obj->kind == NODE_MEMBER_EXPR &&
-            obj->data.member.object->kind == NODE_LABEL) {
-            const char *mod = obj->data.member.object->data.label.value;
-            const char *type_name = obj->data.member.member;
-            /* Build full prefixed name: mod_Struct_func */
+        /* Handle mod.Struct.func() triple chain: geometry.Vec2.create().
+         * The struct the qualified name refers to is on the object node; the
+         * function is that struct's, namespaced under it. */
+        const char *chain_mod = NULL, *chain_type = NULL;
+        if (ast_member_chain(node->data.call.function, &chain_mod, &chain_type)) {
             char full_name[MSG_BUF_SIZE];
-            snprintf(full_name, sizeof(full_name), "%s_%s_%s", mod, type_name, member);
+            if (obj->resolved_decl) {
+                char owner[MSG_BUF_SIZE];
+                snprintf(full_name, sizeof(full_name), "%s_%s",
+                    module_mangle_into(obj->resolved_decl, owner, sizeof(owner)), member);
+            } else {
+                snprintf(full_name, sizeof(full_name), "%s_%s_%s",
+                    chain_mod, chain_type, member);
+            }
             AstNode *ns_func = find_function(codegen, full_name);
             if (ns_func) {
                 emit_formatted(codegen, "gray_fn_%s(", full_name);
@@ -7336,10 +7336,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         AstNode *fref = st->data.var_decl.value->data.func_ref.function;
                         if (fref->kind == NODE_LABEL) {
                             ref_func = find_function(codegen, fref->data.label.value);
-                        } else if (fref->kind == NODE_MEMBER_EXPR &&
-                                   fref->data.member.object &&
-                                   fref->data.member.object->kind == NODE_LABEL) {
-                            const char *resolved_obj = fref->data.member.object->data.label.value;
+                        } else if (ast_member_qualifier(fref)) {
+                            const char *resolved_obj = ast_member_qualifier(fref);
                             const char *resolved_member = fref->data.member.member;
                             char resolved_name[IDENT_BUF];
                             snprintf(resolved_name, sizeof(resolved_name), "%s_%s", resolved_obj, resolved_member);
@@ -10170,8 +10168,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                     AstNode *cv = wc->values[j];
                     const char *vname = NULL;
                     if (cv->kind == NODE_MEMBER_EXPR &&
-                        (cv->data.member.object->kind == NODE_LABEL ||
-                         cv->data.member.object->kind == NODE_MEMBER_EXPR)) {
+                        (ast_member_qualifier(cv) || ast_member_chain(cv, NULL, NULL))) {
                         /* Enum.VARIANT, and the module-qualified
                          * mod.Enum.VARIANT — which nests one level deeper and
                          * otherwise fell through to constructing a value
