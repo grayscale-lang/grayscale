@@ -1,0 +1,13 @@
+/*
+ * Error Test: E6009 - two modules whose declarations mangle to one symbol
+ * Expected: "produce the same compiled name"
+ */
+// expect-error: E6009
+// expect-error-count: 1
+
+import "./foo", "./foo_bar"
+
+do main() {
+    println(foo.bar_baz())
+    println(foo_bar.baz())
+}

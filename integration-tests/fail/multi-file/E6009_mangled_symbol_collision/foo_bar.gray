@@ -1,0 +1,7 @@
+/*
+ * foo_bar.gray - 'foo_bar' + 'baz' mangles to the same name as 'foo' + 'bar_baz'
+ */
+
+do baz() -> int {
+    return 2
+}

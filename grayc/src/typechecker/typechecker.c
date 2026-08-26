@@ -13125,6 +13125,54 @@ static void register_decl_usings(TypeChecker *checker, AstNode *program) {
     }
 }
 
+static void mark_collided_func_used(TypeChecker *checker, const DeclEntry *entry) {
+    if (entry->kind != DECL_FUNC) return;
+    if (entry->registry_index < 0 || entry->registry_index >= checker->func_count) return;
+    checker->funcs[entry->registry_index].used = true;
+}
+
+/* How a declaration is written from outside its module, for a diagnostic. */
+static void decl_qualified_spelling(const DeclEntry *entry, char *buf, size_t buflen) {
+    if (entry->module_is_entry || !entry->module_name || !*entry->module_name)
+        snprintf(buf, buflen, "%s", entry->name);
+    else
+        snprintf(buf, buflen, "%s.%s", entry->module_name, entry->name);
+}
+
+/* Mangling is `<module>_<name>`, so two modules can produce one compiled name
+ * — `foo.bar_baz` and `foo_bar.baz` both mangle to `foo_bar_baz`. The mangled
+ * index keeps whichever registered first, and the loser's definition would
+ * otherwise reach the C compiler as a redefinition. Report it here instead. */
+static void check_mangle_collisions(TypeChecker *checker) {
+    ModuleTable *table = checker->modules;
+    if (!table) return;
+    for (int m = 0; m < table->count; m++) {
+        ModuleScope *scope = table->modules[m];
+        for (int i = 0; i < scope->count; i++) {
+            DeclEntry *entry = scope->entries[i];
+            if (entry->external || !entry->ast_node) continue;
+            char buf[MSG_BUF_SIZE];
+            DeclEntry *winner = module_table_find_mangled(table,
+                module_mangle_into(entry, buf, sizeof(buf)));
+            if (!winner || winner == entry || winner->external || !winner->ast_node) continue;
+            char self_name[MSG_BUF_SIZE], other_name[MSG_BUF_SIZE];
+            decl_qualified_spelling(entry, self_name, sizeof(self_name));
+            decl_qualified_spelling(winner, other_name, sizeof(other_name));
+            diagnostic_error_code_formatted_help(checker->diag, "E6009",
+                entry->origin_file, entry->ast_node->token.line,
+                entry->ast_node->token.column, 0,
+                "rename one of the declarations, or rename one of the modules",
+                self_name, other_name);
+            /* Both declarations share one entry in the function registry, so
+             * a call to either marks only one of them used. Silence the
+             * unused warning the other would draw — it is wrong, and the
+             * collision error above is the thing to act on. */
+            mark_collided_func_used(checker, entry);
+            mark_collided_func_used(checker, winner);
+        }
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
     register_decl_symbols(checker, program);
@@ -13135,6 +13183,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     register_decl_structs(checker, program);
     register_decl_functions(checker, program);
     register_decl_consts(checker, program);
+    check_mangle_collisions(checker);
 
     /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {

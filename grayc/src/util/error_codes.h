@@ -292,6 +292,7 @@
     GRAY_ERROR("E6006", "imports", "module name derived from the import path is not a usable identifier") \
     GRAY_ERROR("E6007", "imports", "standard library imports cannot be aliased") \
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
+    GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
 
 /* --- E7xxx+: Standard Library --- */
