@@ -9389,11 +9389,15 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
         if (declared->kind == TK_UNKNOWN &&
             !(declared->name && strcmp(declared->name, "func") == 0) &&
-            !(node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR)) {
+            !(node->data.var_decl.value &&
+              (node->data.var_decl.value->kind == NODE_CALL_EXPR ||
+               node->data.var_decl.value->kind == NODE_MEMBER_EXPR))) {
             /* Don't register variables with unresolved types; an error
                (E3050, E3051, etc.) has already been emitted upstream.
                Skipping scope_define prevents confusing cascading errors.
                Exceptions: func refs, func ref calls (return type unknown),
+               member access (the member named the mistake, and leaving the
+               variable undeclared turns one error into one per later read),
                and wildcard propagation (value derived from a ?-typed var). */
             bool wildcard_propagation = false;
             if (node->data.var_decl.value) {
