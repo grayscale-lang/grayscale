@@ -3907,6 +3907,35 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             if (sig->decl) {
                 typechecker_resolve_named_arguments(checker, node, sig->decl, display);
             }
+            /* Argument count, defaulted parameters accounted for. The bare
+             * and struct-namespaced spellings both check this; a
+             * module-qualified call did not, so too few arguments reached
+             * codegen and came back as a C compiler error. */
+            {
+                int min_args = sig->param_count;
+                if (sig->decl && sig->decl->kind == NODE_FUNC_DECL) {
+                    min_args = 0;
+                    for (int parameter_index = 0; parameter_index < sig->decl->data.func_decl.param_count; parameter_index++) {
+                        if (!sig->decl->data.func_decl.params[parameter_index].default_value)
+                            min_args++;
+                    }
+                }
+                if (node->data.call.arg_count < min_args ||
+                    node->data.call.arg_count > sig->param_count) {
+                    char *msg = NULL;
+                    if (min_args == sig->param_count) {
+                        msg = typechecker_format(checker,
+                            "function '%s' expects %d argument(s), got %d",
+                            display, sig->param_count, node->data.call.arg_count);
+                    } else {
+                        msg = typechecker_format(checker,
+                            "function '%s' expects %d-%d argument(s), got %d",
+                            display, min_args, sig->param_count, node->data.call.arg_count);
+                    }
+                    diagnostic_error_message(checker->diag, "E5008", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                }
+            }
             /* A generic callee needs the same binding, validation and
              * instantiation recording the bare-call spelling gets; without
              * it an invalid type argument passed silently and codegen
