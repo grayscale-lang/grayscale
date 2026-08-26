@@ -1,0 +1,15 @@
+/*
+ * Error Test: E6002 - a failed import is reported against the file that
+ * contains it, and it is the only error. Reported against the entry file,
+ * the caret landed on a valid import that never mentions the missing path,
+ * and every use of the module that failed to load piled on after it.
+ */
+// expect-error: E6002
+// expect-error-count: 1
+// expect-not: main.gray:
+
+import "./sub"
+
+do main() {
+    println(sub.hello())
+}

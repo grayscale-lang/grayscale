@@ -1,0 +1,13 @@
+/*
+ * Error Test: E6002 - a missing import is reported once. The reader used to
+ * get a raw 'gray: cannot open ...' line alongside the diagnostic saying
+ * the same thing.
+ */
+// expect-error: E6002
+// expect-not: gray: cannot open
+
+import "./models/shared.gray"
+
+do main() {
+    println(1)
+}

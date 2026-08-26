@@ -1,0 +1,15 @@
+import "./core"
+
+const Queue struct {
+    pending [core.Task]
+}
+
+do count_done(q Queue) -> int {
+    mut n int = 0
+    for_each t in q.pending {
+        if core.is_terminal(t) {
+            n += 1
+        }
+    }
+    return n
+}

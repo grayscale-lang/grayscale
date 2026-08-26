@@ -58,7 +58,10 @@ static void print_usage(void) {
     fprintf(stderr, "  -h, --help      Show this help\n");
 }
 
-static char *read_file(const char *path) {
+/* `report` prints why the file could not be opened. A caller that says so
+ * itself passes false: the import path reports E6002 against the import
+ * statement, and printed both the diagnostic and a raw duplicate of it. */
+static char *read_file(const char *path, bool report) {
     /* Fast path for regular (seekable) files. */
     char *fast = read_file_to_string(path);
     if (fast) return fast;
@@ -66,8 +69,10 @@ static char *read_file(const char *path) {
     /* Streaming fallback for non-seekable inputs (pipes, FIFOs, /dev/stdin). */
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "gray: cannot open '%s': ", path);
-        perror("");
+        if (report) {
+            fprintf(stderr, "gray: cannot open '%s': ", path);
+            perror("");
+        }
         return NULL;
     }
     clearerr(f);
@@ -544,7 +549,7 @@ int main(int argc, char **argv) {
     }
 
     /* Read source file */
-    char *source = read_file(input_file);
+    char *source = read_file(input_file, true);
     if (!source) return 1;
 
     /* fmt mode: reformat and write back, then exit */
@@ -724,6 +729,11 @@ int main(int argc, char **argv) {
 
         while (iq_head < iq_tail) {
             AstNode *stmt = import_queue[iq_head++];
+            /* Line and column below come from this import statement, so the
+             * file has to as well. Reporting them against the entry file put
+             * the caret on whatever that file happens to have on the line,
+             * which for a transitive import is never the import that failed. */
+            const char *stmt_file = stmt->token.file ? stmt->token.file : input_file;
 
             for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
                 ImportItem *item = &stmt->data.import_stmt.items[ii];
@@ -776,7 +786,7 @@ int main(int argc, char **argv) {
                                 snprintf(msg, sizeof(msg),
                                     "cannot import own module directory '%s'", item->path);
                                 diagnostic_error(diag, "E6004", strdup(msg),
-                                    input_file, stmt->token.line, stmt->token.column, 0);
+                                    stmt_file, stmt->token.line, stmt->token.column, 0);
                                 free(norm_dir);
                                 free(norm_src);
                                 continue;
@@ -790,7 +800,7 @@ int main(int argc, char **argv) {
                             char msg[MSG_BUF_LARGE];
                             snprintf(msg, sizeof(msg), "directory '%s' contains no .gray files", item->path);
                             diagnostic_error(diag, "E6003", strdup(msg),
-                                input_file, stmt->token.line, stmt->token.column, 0);
+                                stmt_file, stmt->token.line, stmt->token.column, 0);
                             continue;
                         }
                     } else {
@@ -798,7 +808,7 @@ int main(int argc, char **argv) {
                         char msg[MSG_BUF_LARGE];
                         snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", item->path);
                         diagnostic_error(diag, "E6002", strdup(msg),
-                            input_file, stmt->token.line, stmt->token.column, 0);
+                            stmt_file, stmt->token.line, stmt->token.column, 0);
                         continue;
                     }
                 }
@@ -863,7 +873,7 @@ int main(int argc, char **argv) {
                                     "module '%s' is already imported; duplicate import ignored",
                                     mod_name);
                                 diagnostic_warning(diag, "W2013", strdup(msg),
-                                    input_file, stmt->token.line, stmt->token.column, 0);
+                                    stmt_file, stmt->token.line, stmt->token.column, 0);
                             }
                             collision = true;
                             break;
@@ -874,7 +884,7 @@ int main(int argc, char **argv) {
                             "module name '%s' is already imported; use an alias to distinguish them",
                             mod_name);
                         diagnostic_error(diag, "E6001", strdup(msg),
-                            input_file, stmt->token.line, stmt->token.column, 0);
+                            stmt_file, stmt->token.line, stmt->token.column, 0);
                         collision = true;
                         break;
                     }
@@ -928,7 +938,7 @@ int main(int argc, char **argv) {
                                 "import of '%s' is redundant; already included by directory import",
                                 item->path);
                             diagnostic_warning(diag, "W2014", strdup(msg),
-                                input_file, stmt->token.line, stmt->token.column, 0);
+                                stmt_file, stmt->token.line, stmt->token.column, 0);
                         } else if (!item->source_dir && file_count == 1) {
                             /* Direct import of a file already pulled in by a directory import */
                             const char *owner_mod = imported_by_module(norm_path);
@@ -945,7 +955,7 @@ int main(int argc, char **argv) {
                                     item->path);
                             }
                             diagnostic_warning(diag, "W2015", strdup(msg),
-                                input_file, stmt->token.line, stmt->token.column, 0);
+                                stmt_file, stmt->token.line, stmt->token.column, 0);
                         }
                         continue;
                     }
@@ -964,12 +974,12 @@ int main(int argc, char **argv) {
                     module_file_count++;
 
                     /* Read and parse the imported file */
-                    char *imp_source = read_file(cur_file_path);
+                    char *imp_source = read_file(cur_file_path, false);
                     if (!imp_source) {
                         char msg[MSG_BUF_LARGE];
                         snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", cur_file_path);
                         diagnostic_error(diag, "E6002", strdup(msg),
-                            input_file, stmt->token.line, stmt->token.column, 0);
+                            stmt_file, stmt->token.line, stmt->token.column, 0);
                         continue;
                     }
 
@@ -1172,6 +1182,19 @@ int main(int argc, char **argv) {
                 item->path = NULL;
             }
         } /* end while (iq_head < iq_tail) */
+    }
+
+    /* An import that failed to resolve merged no declarations, so every
+     * reference to the module it named is about to be reported undefined.
+     * Those follow-on errors bury the one that matters and all disappear
+     * when it is fixed, so stop here and report the import failure alone. */
+    if (diagnostic_has_errors(diag)) {
+        diagnostic_print_all(diag);
+        diagnostic_print_summary(diag);
+        diagnostic_destroy(diag);
+        arena_destroy(arena);
+        free(source);
+        return 1;
     }
 
     /* Type check */

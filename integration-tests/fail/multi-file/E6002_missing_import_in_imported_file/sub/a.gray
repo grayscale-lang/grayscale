@@ -1,0 +1,5 @@
+import "./nowhere"
+
+do hello() -> int {
+    return 1
+}
