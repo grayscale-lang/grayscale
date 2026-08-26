@@ -2171,7 +2171,17 @@ static DeclEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
 static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written) {
     if (!written || !checker->modules) return NULL;
     ResolveScope scope = checker_scope(checker);
-    return module_resolve_written(checker->modules, &scope, written);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    /* A bare name that reached its declaration through `using` names a member
+     * of that module exactly as a qualified reference does, so it counts as
+     * using the import. Only qualified access marked it before, and a file
+     * that referred to an imported type by its bare name was told the import
+     * was never used. Resolving inside the declaring module is not a use. */
+    if (entry && entry->module_name && entry->module_name[0] &&
+        (!scope.module || strcmp(entry->module_name, scope.module) != 0)) {
+        mark_import_used(checker, entry->module_name);
+    }
+    return entry;
 }
 
 static DeclEntry *checker_cache_resolution(TypeChecker *checker, AstNode *node,
