@@ -3897,6 +3897,28 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
     return generic_return_t;
 }
 
+/* Does a struct function's first parameter name the struct it is namespaced
+ * under — the test for instance dispatch? The parameter type is written as it
+ * appears inside the declaring module, while `struct_name` is the registry
+ * key: `Msg` against `msg_Msg` for an imported struct. So the written name is
+ * resolved in the declaring file's scope before the two are compared. */
+static bool self_param_names_struct(TypeChecker *checker, AstNode *decl,
+                                    const char *p0_tn, const char *struct_name) {
+    if (!p0_tn || !struct_name) return false;
+    if (strcmp(p0_tn, struct_name) == 0) return true;
+    if (!checker->modules || !decl) return false;
+    ResolveScope scope;
+    scope.module = module_table_module_for_file(checker->modules, decl->token.file);
+    scope.file = decl->token.file ? decl->token.file : checker->file;
+    scope.using_modules = NULL;
+    scope.using_count = 0;
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, p0_tn);
+    if (!entry) return false;
+    char key[MSG_BUF_SIZE];
+    const char *mangled = module_mangle_into(entry, key, sizeof(key));
+    return mangled && strcmp(mangled, struct_name) == 0;
+}
+
 static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn, const char *mod_raw, AstNode *fn) {
     GrayType *result = &TYPE_UNKNOWN;
     if (is_struct_name(checker, mod)) {
@@ -4253,11 +4275,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     ssig->decl->data.func_decl.param_count > 0) {
                     const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
                     if (p0_tn) {
-                        if (strcmp(p0_tn, struct_name) == 0) {
-                            is_self_func = true;
-                        } else if (p0_tn[0] == '^' && strcmp(p0_tn + 1, struct_name) == 0) {
-                            is_self_func = true;
-                        }
+                        is_self_func =
+                            self_param_names_struct(checker, ssig->decl, p0_tn, struct_name) ||
+                            (p0_tn[0] == '^' &&
+                             self_param_names_struct(checker, ssig->decl, p0_tn + 1, struct_name));
                     }
                 }
                 if (is_self_func) {
@@ -4305,8 +4326,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * For &self (mutable), codegen cancels the deref
                      * with the address-of, emitting just the pointer. */
                     const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
-                    if (sym->type->kind == TK_POINTER && p0_tn &&
-                        strcmp(p0_tn, struct_name) == 0) {
+                    if (sym->type->kind == TK_POINTER &&
+                        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name)) {
                         AstNode *deref = xcalloc(1, sizeof(AstNode));
                         deref->kind = NODE_POSTFIX_EXPR;
                         deref->token = node->token;

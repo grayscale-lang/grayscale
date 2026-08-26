@@ -1,0 +1,27 @@
+/*
+ * Test: instance dispatch on a struct declared in an imported module
+ *
+ * STANDARD.md 7.7: 'm.describe()' rewrites to 'Msg.describe(m)'. The
+ * receiver binds the same way when Msg comes from another module, for the
+ * value, mutable and pointer receiver forms.
+ */
+import and use "./msg.gray"
+
+do main() {
+    mut m msg.Msg = msg.Msg{id: 1}
+    assert(m.describe() == "msg-1", "value receiver binds across a module boundary")
+
+    m.bump()
+    assert(m.describe() == "msg-2", "mutable receiver binds and writes through")
+
+    mut p ^msg.Msg = addr(m)
+    assert(p.peek() == 2, "pointer receiver binds through a pointer variable")
+    assert(p.describe() == "msg-2", "pointer receiver auto-derefs for a value parameter")
+
+    mut bare Msg = Msg{id: 7}
+    assert(bare.describe() == "msg-7", "instance dispatch works on the bare name too")
+
+    assert(msg.Msg.describe(m) == "msg-2", "the fully qualified form still works")
+
+    println("ALL TESTS PASSED")
+}
