@@ -8088,10 +8088,19 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 
     case NODE_CAST_EXPR: {
         GrayType *src_t = resolve_expression(checker, node->data.cast.value);
-        GrayType *dst_t = type_from_name(node->data.cast.target_type);
+        /* The cast target is a written type name like any annotation, so it
+         * goes through the same resolution: as written, then through aliases.
+         * Taken literally, `cast(x, I)` where `alias I = int` was read as a
+         * cast to an unknown user type and rejected. The diagnostic below
+         * still names the spelling the programmer used. */
+        const char *written_target = node->data.cast.target_type;
+        const char *target = resolve_type_alias(checker,
+            checker_resolve_type_name(checker, written_target));
+        node->data.cast.target_type = target;
+        GrayType *dst_t = type_from_name(target);
         /* Resolve user-defined enum types that type_from_name() can't find */
-        if (!dst_t && is_enum_name(checker, node->data.cast.target_type))
-            dst_t = type_enum(node->data.cast.target_type);
+        if (!dst_t && is_enum_name(checker, target))
+            dst_t = type_enum(target);
         /* Allowlist-based cast validation */
         if (src_t && src_t->kind != TK_UNKNOWN && dst_t && dst_t->kind != TK_UNKNOWN) {
             bool allowed = false;
@@ -8145,7 +8154,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "cannot cast '%s' to '%s'",
-                    tn, node->data.cast.target_type);
+                    tn, unqualified_display_name(written_target));
                 diagnostic_error_help(checker->diag, "E3043", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     "only primitive-to-primitive casts are supported (e.g. cast(x, int), cast(x, string))");
