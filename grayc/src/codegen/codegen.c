@@ -129,6 +129,50 @@ static const char *codegen_resolve_type(CodeGen *codegen, const char *written) {
     return module_resolve_type_name(codegen->modules, &scope, written);
 }
 
+/* The name a type is written with, for type_of(): every leaf mapped from the
+ * module-mangled registry key a cross-module reference resolves to back to the
+ * declaration's own name. Mangling is how declarations are keyed across
+ * modules and has no business reaching a program's output. Writes into `buf`
+ * and returns it. */
+static const char *codegen_written_type_name(CodeGen *codegen, const char *name,
+                                             char *buf, size_t buflen) {
+    if (!name || !*name) {
+        snprintf(buf, buflen, "unknown");
+        return buf;
+    }
+    size_t len = strlen(name);
+    char inner[MSG_BUF_SIZE];
+    if (len > 1 && name[0] == '^') {
+        snprintf(buf, buflen, "^%s",
+                 codegen_written_type_name(codegen, name + 1, inner, sizeof(inner)));
+        return buf;
+    }
+    if (len > 2 && name[0] == '[' && name[len - 1] == ']') {
+        char elem[MSG_BUF_SIZE];
+        snprintf(elem, sizeof(elem), "%.*s", (int)(len - 2), name + 1);
+        snprintf(buf, buflen, "[%s]",
+                 codegen_written_type_name(codegen, elem, inner, sizeof(inner)));
+        return buf;
+    }
+    if (len > 5 && strncmp(name, "map[", 4) == 0 && name[len - 1] == ']') {
+        char pair[MSG_BUF_SIZE];
+        snprintf(pair, sizeof(pair), "%.*s", (int)(len - 5), name + 4);
+        char *colon = strchr(pair, ':');
+        if (colon) {
+            *colon = '\0';
+            char key[MSG_BUF_SIZE];
+            codegen_written_type_name(codegen, pair, key, sizeof(key));
+            snprintf(buf, buflen, "map[%s:%s]", key,
+                     codegen_written_type_name(codegen, colon + 1, inner, sizeof(inner)));
+            return buf;
+        }
+    }
+    DeclEntry *entry = codegen->modules
+        ? module_table_find_mangled(codegen->modules, name) : NULL;
+    snprintf(buf, buflen, "%s", entry && entry->name ? entry->name : name);
+    return buf;
+}
+
 static const char *codegen_resolve_decl(CodeGen *codegen, const char *written) {
     if (!codegen || !codegen->modules || !written) return written;
     ResolveScope scope = codegen_scope(codegen);
@@ -4160,17 +4204,23 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 return true;
             }
         }
+        char written[MSG_BUF_SIZE], written2[MSG_BUF_SIZE];
         if (type && type->kind == TK_ARRAY && type->element_type) {
-            emit_formatted(codegen, "gray_string_lit(\"[%s]\")", type->element_type);
+            emit_formatted(codegen, "gray_string_lit(\"[%s]\")",
+                codegen_written_type_name(codegen, type->element_type, written, sizeof(written)));
         } else if (type && type->kind == TK_MAP) {
             const char *kt = type->key_type ? type->key_type : "unknown";
             const char *vt = type->value_type ? type->value_type : "unknown";
-            emit_formatted(codegen, "gray_string_lit(\"map[%s:%s]\")", kt, vt);
+            emit_formatted(codegen, "gray_string_lit(\"map[%s:%s]\")",
+                codegen_written_type_name(codegen, kt, written, sizeof(written)),
+                codegen_written_type_name(codegen, vt, written2, sizeof(written2)));
         } else if (type && type->kind == TK_POINTER && type->element_type) {
-            emit_formatted(codegen, "gray_string_lit(\"^%s\")", type->element_type);
+            emit_formatted(codegen, "gray_string_lit(\"^%s\")",
+                codegen_written_type_name(codegen, type->element_type, written, sizeof(written)));
         } else {
             const char *type_str = type ? type_name(type) : "unknown";
-            emit_formatted(codegen, "gray_string_lit(\"%s\")", type_str);
+            emit_formatted(codegen, "gray_string_lit(\"%s\")",
+                codegen_written_type_name(codegen, type_str, written, sizeof(written)));
         }
         return true;
     }
