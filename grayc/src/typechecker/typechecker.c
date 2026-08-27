@@ -5986,6 +5986,31 @@ static bool type_name_as_value(TypeChecker *checker, const char *name) {
            type_from_name(resolved)->kind != TK_UNKNOWN;
 }
 
+/* The declaration of the function a call names, for the spellings whose
+ * signature can be resolved before the arguments are walked: a bare name and a
+ * module-qualified one. Returns NULL for anything else, which leaves the
+ * argument loop behaving as it did. */
+static AstNode *callee_func_decl(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn) return NULL;
+    FuncSig *sig = NULL;
+    if (fn->kind == NODE_LABEL) {
+        sig = find_func(checker, fn->data.label.value);
+    } else if (fn->kind == NODE_MEMBER_EXPR) {
+        const char *qualifier = ast_member_qualifier(fn);
+        if (qualifier)
+            sig = find_module_func(checker, qualifier, fn->data.member.member);
+    }
+    return (sig && sig->decl && sig->decl->kind == NODE_FUNC_DECL) ? sig->decl : NULL;
+}
+
+/* Does argument `index` of this call land on a <?> parameter? Such a parameter
+ * takes a type name, not a value. */
+static bool arg_is_type_param_position(AstNode *decl, int index) {
+    return decl && index < decl->data.func_decl.param_count &&
+           decl->data.func_decl.params[index].is_type_param;
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
@@ -6001,7 +6026,14 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         (strcmp(node->data.call.function->data.label.value, "size_of") == 0 ||
          strcmp(node->data.call.function->data.label.value, "type_of") == 0 ||
          strcmp(node->data.call.function->data.label.value, "fields") == 0));
+    AstNode *callee_decl = callee_func_decl(checker, node);
     for (int i = 0; i < node->data.call.arg_count; i++) {
+        /* A <?> argument is a type name. resolve_generic_call() is its sole
+         * validator (E3127/E3128); resolving it here would reach the label
+         * branch of resolve_expression and report it as a value (E3100). */
+        if (arg_is_type_param_position(callee_decl, i) &&
+            node->data.call.args[i]->kind == NODE_LABEL)
+            continue;
         if (is_ref_call && node->data.call.args[i]->kind == NODE_LABEL &&
             find_func(checker, node->data.call.args[i]->data.label.value)) {
             continue;
