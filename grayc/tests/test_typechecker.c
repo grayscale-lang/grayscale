@@ -1943,11 +1943,29 @@ static void test_error_E3060_wildcard_return_no_param(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3127_sizeof_non_struct(void) {
+/* A type parameter takes any type name; a T{...} literal in the body is what
+ * narrows one to struct types, and E3127 is reported at the literal. */
+static void test_error_E3127_struct_literal_non_struct(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do mk_stack(T <?>) -> ? { return T{} }\n"
+        "do main() { mk_stack(int) }");
+    ASSERT(has_error_code(diagnostics, "E3127"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_E3127_not_reported_for_primitive_type_arg(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do identity(t <?>) -> int { return size_of(t) }\n"
         "do main() { identity(int) }");
-    ASSERT(has_error_code(diagnostics, "E3127"));
+    ASSERT(!has_error_code(diagnostics, "E3127"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E4016_type_arg_names_no_type(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do identity(t <?>) -> int { return size_of(t) }\n"
+        "do main() { identity(Nonexistent) }");
+    ASSERT(has_error_code(diagnostics, "E4016"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -2363,7 +2381,9 @@ int main(void) {
     RUN_TEST(test_error_E3126_array_size_zero);
     RUN_TEST(test_error_E3058_generic_type_error);
     RUN_TEST(test_error_E3060_wildcard_return_no_param);
-    RUN_TEST(test_error_E3127_sizeof_non_struct);
+    RUN_TEST(test_error_E3127_struct_literal_non_struct);
+    RUN_TEST(test_E3127_not_reported_for_primitive_type_arg);
+    RUN_TEST(test_error_E4016_type_arg_names_no_type);
     RUN_TEST(test_error_E3128_sizeof_variable);
     RUN_TEST(test_error_E3110_implicit_enum_no_context);
     RUN_TEST(test_error_E3124_tagged_enum_equality);
