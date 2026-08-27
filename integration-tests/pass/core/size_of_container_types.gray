@@ -1,0 +1,87 @@
+/*
+ * size_of_container_types.gray - Test size_of on container type expressions
+ *
+ * Covers: size_of([int]), size_of([int,3]), size_of([[int]]),
+ *         size_of(map[string:int]), and cast to a container type.
+ * Every array spelling is the same runtime value, so their sizes agree.
+ */
+
+do main() {
+    println("=== size_of Container Type Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: size_of([int]) is a real size
+    if size_of([int]) > 0 {
+        println("  [PASS] size_of([int]) == ${size_of([int])}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of([int]) == ${size_of([int])}")
+        failed += 1
+    }
+
+    // Test 2: every array spelling is the same runtime value
+    if size_of([string]) == size_of([int]) {
+        println("  [PASS] size_of([string]) == size_of([int])")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of([string]) == ${size_of([string])}")
+        failed += 1
+    }
+
+    // Test 3: fixed-size array spelling
+    if size_of([int,3]) == size_of([int]) {
+        println("  [PASS] size_of([int,3]) == size_of([int])")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of([int,3]) == ${size_of([int,3])}")
+        failed += 1
+    }
+
+    // Test 4: nested array spelling
+    if size_of([[int]]) == size_of([int]) {
+        println("  [PASS] size_of([[int]]) == size_of([int])")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of([[int]]) == ${size_of([[int]])}")
+        failed += 1
+    }
+
+    // Test 5: map spelling
+    if size_of(map[string:int]) > 0 {
+        println("  [PASS] size_of(map[string:int]) == ${size_of(map[string:int])}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of(map[string:int]) == ${size_of(map[string:int])}")
+        failed += 1
+    }
+
+    // Test 6: a map is not an array
+    if size_of(map[string:int]) != size_of([int]) {
+        println("  [PASS] size_of(map[string:int]) != size_of([int])")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map and array sizes matched")
+        failed += 1
+    }
+
+    // Test 7: cast still takes an array spelling
+    mut ints [int] = {1, 2, 3}
+    mut floats [float] = cast(ints, [float])
+    if floats[2] == 3.0 {
+        println("  [PASS] cast(ints, [float]) converts elements")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(ints, [float]) gave ${floats[2]}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

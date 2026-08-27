@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3043 - cast() to a map type
+ * Expected: E3043 "cannot cast" error
+ */
+
+// expect-error: E3043
+// expect-error-count: 1
+
+do main() {
+    mut m map[string:int] = {"a": 1}
+    mut n map[string:int] = cast(m, map[string:int])
+    println(len(n))
+}

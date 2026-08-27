@@ -4942,11 +4942,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             AstNode *arg = node->data.call.args[0];
             const char *written = size_of_type_spelling(checker, arg);
             if (written && strcmp(written, "?") != 0) {
-                GrayType *arg_t = typechecker_type_from_name(checker, written);
-                if (type_name_is_undefined(written, arg_t)) {
+                /* A container spelling types as TK_ARRAY or TK_MAP whatever
+                 * its parts name, so the check has to look at every leaf. */
+                char leaf[MSG_BUF_SIZE];
+                const char *undefined = undefined_type_leaf(checker, written, leaf, sizeof(leaf));
+                if (undefined) {
                     char *msg = typechecker_format(checker,
                         "undefined type '%s'; check the spelling or import the module that defines it",
-                        unqualified_display_name(written));
+                        unqualified_display_name(undefined));
                     diagnostic_error_message(checker->diag, "E4016", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 } else {
