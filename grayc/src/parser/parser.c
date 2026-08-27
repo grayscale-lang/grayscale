@@ -793,8 +793,7 @@ static AstNode *parse_prefix(Parser *parser) {
                 next_token(parser); /* move to potential type name */
 
                 if (parser->cur_token.type == TOK_IDENT &&
-                    peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal &&
-                    parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z') {
+                    peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal) {
                     /* mod.Name{; module-qualified struct literal */
                     char *prefixed = arena_alloc(parser->arena, MSG_BUF_SIZE);
                     snprintf(prefixed, MSG_BUF_SIZE, "%s.%s", mod, parser->cur_token.literal);
@@ -813,13 +812,15 @@ static AstNode *parse_prefix(Parser *parser) {
             }
         }
         /* Check for struct literal: Name{ ... }
-         * Struct/enum names start with uppercase by convention. */
+         * The name's casing has nothing to do with it. Requiring an initial
+         * capital made every lowercase-named struct unusable: the literal
+         * parsed as a bare label and the type name was then reported as a
+         * value. no_struct_literal is what keeps `if x {` from being read as
+         * one; the spelling of the name is not. */
         if (peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal) {
             const char *name = parser->cur_token.literal;
-            if (name[0] >= 'A' && name[0] <= 'Z') {
-                next_token(parser); /* move to { */
-                return parse_struct_literal(parser, name);
-            }
+            next_token(parser); /* move to { */
+            return parse_struct_literal(parser, name);
         }
         return parse_identifier(parser);
     case TOK_INT:       return parse_int_literal(parser);
@@ -1084,9 +1085,14 @@ static AstNode *parse_infix_expression(Parser *parser, AstNode *left) {
         parser->cur_token.type == TOK_LT_EQ || parser->cur_token.type == TOK_GT_EQ ||
         parser->cur_token.type == TOK_EQ || parser->cur_token.type == TOK_NOT_EQ;
     next_token(parser);
+    /* Restore what was there rather than clearing: a comparison inside an
+     * already-suppressed context — `if a == 1 && b {` — would otherwise hand
+     * the rest of the condition back an enabled flag, and `b {` would parse
+     * as a struct literal. */
+    bool saved_nsl = parser->no_struct_literal;
     if (suppress_struct_lit) parser->no_struct_literal = true;
     node->data.infix.right = parse_expression(parser, prec);
-    if (suppress_struct_lit) parser->no_struct_literal = false;
+    parser->no_struct_literal = saved_nsl;
     return node;
 }
 
@@ -2152,7 +2158,14 @@ static AstNode *parse_if_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_IF_STMT, parser->cur_token);
 
     next_token(parser);
+    /* The '{' after a condition opens the block, never a struct literal, the
+     * same way it does after a `when` subject. This used to be settled by
+     * requiring an initial capital on a literal's type name, which made every
+     * lowercase-named struct unusable everywhere else. */
+    bool saved_nsl = parser->no_struct_literal;
+    parser->no_struct_literal = true;
     node->data.if_stmt.condition = parse_expression(parser, PREC_LOWEST);
+    parser->no_struct_literal = saved_nsl;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.if_stmt.consequence = parse_block_statement(parser);
@@ -2783,7 +2796,10 @@ static AstNode *parse_while_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_WHILE_STMT, parser->cur_token);
 
     next_token(parser);
+    bool saved_nsl = parser->no_struct_literal;
+    parser->no_struct_literal = true;
     node->data.while_stmt.condition = parse_expression(parser, PREC_LOWEST);
+    parser->no_struct_literal = saved_nsl;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.while_stmt.body = parse_block_statement(parser);

@@ -1,0 +1,38 @@
+/*
+ * lowercase-type-names-cross-module - a type whose name starts lowercase is
+ * usable through a module prefix. The prefix before an underscore used to be
+ * mistaken for a module name and stripped, so the diagnostic named a type the
+ * user never wrote.
+ */
+
+import "./a"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p a.b_Point = a.b_Point{x: 1}
+    if p.x == 1 {
+        println("  [PASS] qualified struct named lowercase_Uppercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] qualified struct named lowercase_Uppercase: got ${p.x}")
+        failed += 1
+    }
+
+    mut c a.b_Color = a.b_Color.RED
+    if c == a.b_Color.RED {
+        println("  [PASS] qualified enum named lowercase_Uppercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] qualified enum named lowercase_Uppercase")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,8 @@
+const b_Point struct {
+    x int
+}
+
+const b_Color enum {
+    RED
+    GREEN
+}
