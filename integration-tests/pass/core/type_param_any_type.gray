@@ -1,0 +1,104 @@
+const Color enum {
+    RED
+    GREEN
+}
+
+const Point struct {
+    x int
+}
+
+alias Num = int
+
+do mk(T <?>) -> ^? {
+    return new(T)
+}
+
+do mk_val(T <?>) -> ? {
+    return new(T)^
+}
+
+do mk_size(T <?>) -> int {
+    return size_of(T)
+}
+
+do wrap(T <?>) -> ^? {
+    return mk(T)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut i ^int = mk(int)
+    mut s ^string = mk(string)
+    mut f ^float = mk(float)
+    mut b ^bool = mk(bool)
+    if i^ == 0 && s^ == "" && f^ == 0.0 && b^ == false {
+        println("  [PASS] primitive type arguments")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] primitive type arguments")
+        failed += 1
+    }
+
+    mut c ^Color = mk(Color)
+    if c^ == Color.RED {
+        println("  [PASS] enum type argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum type argument")
+        failed += 1
+    }
+
+    mut p ^Point = mk(Point)
+    if p^.x == 0 {
+        println("  [PASS] struct type argument still works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct type argument still works")
+        failed += 1
+    }
+
+    mut n ^int = mk(Num)
+    if n^ == 0 {
+        println("  [PASS] alias of a primitive as a type argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias of a primitive as a type argument")
+        failed += 1
+    }
+
+    mut sz int = mk_size(int)
+    if sz == 8 {
+        println("  [PASS] size_of(T) with a primitive binding")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of(T) with a primitive binding: got ${sz}")
+        failed += 1
+    }
+
+    mut w ^int = wrap(int)
+    if w^ == 0 {
+        println("  [PASS] type-parameter forwarding with a primitive binding")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type-parameter forwarding with a primitive binding")
+        failed += 1
+    }
+
+    mut v int = mk_val(int)
+    if v == 0 {
+        println("  [PASS] value-returning type parameter with a primitive")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] value-returning type parameter with a primitive")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

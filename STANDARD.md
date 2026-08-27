@@ -2442,7 +2442,7 @@ mut y = first({"a", "b"})     // ? binds to string
 
 ### 7.10 Type Parameters (`<?>`)
 
-The `<?>` annotation allows a function parameter to accept a struct type name rather than a value. This enables reusable constructors and type-aware utility functions.
+The `<?>` annotation allows a function parameter to accept a type name rather than a value. This enables reusable constructors and type-aware utility functions.
 
 ```gray
 const Point struct {
@@ -2466,7 +2466,7 @@ A type parameter name is valid in these positions:
 | Usage | Example | Result |
 |-------|---------|--------|
 | `new(T)` | `new(T)` | Heap-allocates an instance of `T` |
-| Struct literal | `T{x: 1, y: 2}` | Constructs a stack instance of `T` |
+| Struct literal | `T{x: 1, y: 2}` | Constructs a stack instance of `T`. Using this form constrains the function to struct arguments; a non-struct argument is rejected with `E3127` at the literal |
 | `size_of(T)` | `size_of(T)` | Returns the size of `T` in bytes |
 
 #### Return type inference
@@ -2498,9 +2498,9 @@ do bad(T <?>, x int) -> ^? {     // Error E2087
 }
 ```
 
-**Only struct types allowed (E3127, E3128):**
+**Any type name, but it must name a type (E4016, E3128):**
 
-Only struct type names may be passed as type arguments. Enums, primitives, and expressions are rejected:
+Structs, enums, primitives, and aliases of any of them may all be passed as type arguments. A name that names no type, and anything that is not a type name at all, are rejected:
 
 ```gray
 const Color enum {
@@ -2509,10 +2509,24 @@ const Color enum {
     BLUE
 }
 
-mut p = make(Point)    // OK — Point is a struct
-mut c = make(Color)    // Error E3127 — Color is not a struct
-mut x = make(int)      // Error E3127 — int is not a struct
-mut y = make(1 + 2)    // Error E3128 — not a type name
+mut p = make(Point)       // OK — struct
+mut c = make(Color)       // OK — enum
+mut x = make(int)         // OK — primitive
+mut y = make(1 + 2)       // Error E3128 — not a type name
+mut z = make(Nonexisto)   // Error E4016 — names no type
+```
+
+**A `T{...}` body constrains the function to structs (E3127):**
+
+A struct literal written against the type parameter is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal, and `E3058` names the call site that bound it:
+
+```gray
+do make_stack(T <?>) -> ? {
+    return T{}          // Error E3127 when T is bound to a non-struct
+}
+
+mut s = make_stack(Point)   // OK
+mut n = make_stack(int)     // Error E3127 — T is used as a struct literal
 ```
 
 #### Across module boundaries
@@ -2532,7 +2546,7 @@ do main() {
 }
 ```
 
-The type argument must be a bare struct name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+The type argument must be a bare type name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
 
 #### More restrictions
 

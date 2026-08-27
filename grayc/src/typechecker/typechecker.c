@@ -3807,6 +3807,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+/* Does `name` name a type that exists? A <?> argument has to name one: value
+ * resolution is skipped for type arguments, so this is the only thing standing
+ * between a mistyped name and codegen. type_from_name() reads any capitalized
+ * name as a struct, so it is never asked about the written name on its own —
+ * only about a builtin spelling, or about what an alias reached. */
+static bool type_arg_names_a_type(TypeChecker *checker, const char *name) {
+    if (!name) return false;
+    if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    if (typechecker_is_builtin(name) && type_from_name(name) != &TYPE_UNKNOWN)
+        return true;
+    const char *resolved = resolve_type_alias(checker,
+        checker_resolve_type_name(checker, name));
+    if (!resolved || strcmp(resolved, name) == 0) return false;
+    return is_struct_name(checker, resolved) || is_enum_name(checker, resolved) ||
+           type_from_name(resolved) != &TYPE_UNKNOWN;
+}
+
 /* Generic-call handling shared by every call spelling: bind the wildcard or
  * type parameter from the arguments, validate a type argument (E3127/E3128),
  * record the instantiation so codegen emits the specialization, and produce
@@ -3867,14 +3884,30 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
                         node->data.call.args[argument_index]->token.column, 0);
                     continue;
                 }
-                /* Must be a struct name */
-                if (!is_struct_name(checker, arg_label)) {
-                    diagnostic_error_code_formatted(checker->diag, "E3127",
+                /* Must name a type. Which types the function actually accepts
+                 * is decided by its body: a `T{...}` literal narrows it to
+                 * structs, and reports E3127 where the literal is written. */
+                if (!type_arg_names_a_type(checker, arg_label)) {
+                    diagnostic_error_code_formatted(checker->diag, "E4016",
                         NODE_FILE(checker, node->data.call.args[argument_index]),
                         node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0,
                         arg_label);
                     continue;
+                }
+                /* Bind what the name reaches, not the alias spelling. The
+                 * instantiation is mangled and substituted by binding, so an
+                 * alias bound as itself gave a return type no annotation of
+                 * the underlying type would accept. The argument label is
+                 * rewritten with it, or codegen would mangle the call site
+                 * against a specialization that is never emitted. */
+                {
+                    const char *target = resolve_type_alias(checker,
+                        checker_resolve_type_name(checker, arg_label));
+                    if (target && strcmp(target, arg_label) != 0) {
+                        arg_label = target;
+                        node->data.call.args[argument_index]->data.label.value = target;
+                    }
                 }
                 if (!generic_binding) {
                     generic_binding = (char *)arg_label;
@@ -7255,10 +7288,16 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         node->data.struct_value.name = "?";
         struct_name = "?";
     }
+    /* A literal written against a type parameter is what narrows the function
+     * to struct arguments — `T{...}` means nothing for an int. The binding is
+     * judged as E3127 below rather than as an undefined type, which is what
+     * `int` would otherwise be called here. */
+    bool name_from_type_param = false;
     if (strcmp(struct_name, "?") == 0) {
         /* During re-check with a binding, validate with concrete struct */
         if (checker->type_param_binding) {
             struct_name = checker->type_param_binding;
+            name_from_type_param = true;
         } else {
             /* Main pass — skip field validation, return unknown */
             for (int i = 0; i < node->data.struct_value.count; i++)
@@ -7289,12 +7328,23 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
     if (!si && !is_struct_name(checker, struct_name)) {
-        char *msg = NULL;
-        msg = typechecker_format(checker,
-            "undefined type '%s'; check the spelling or import the module that defines it",
-            unqualified_display_name(struct_name));
-        diagnostic_error_message(checker->diag, "E4016", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        if (name_from_type_param) {
+            /* E3127: the binding names a real type, just not a struct one. */
+            if (!node->data.struct_value.type_param_rejected) {
+                node->data.struct_value.type_param_rejected = true;
+                diagnostic_error_code_formatted(checker->diag, "E3127",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    checker->type_param_name ? checker->type_param_name : "T",
+                    unqualified_display_name(struct_name));
+            }
+        } else {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "undefined type '%s'; check the spelling or import the module that defines it",
+                unqualified_display_name(struct_name));
+            diagnostic_error_message(checker->diag, "E4016", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         result = &TYPE_UNKNOWN;
         return result;
     }

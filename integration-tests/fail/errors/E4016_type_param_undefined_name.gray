@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4016 - a type argument that names no type at all. With value
+ * resolution skipped for type arguments, this gate is the only thing between
+ * a mistyped type argument and codegen.
+ * Expected: "undefined type 'Undefined'"
+ */
+
+do make(T <?>) -> ^? {
+    return new(T)
+}
+
+do main() {
+    mut p = make(Undefined)
+}

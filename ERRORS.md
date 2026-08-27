@@ -193,8 +193,8 @@
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
 | `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const int/uint value |
 | `E3126` | types | array size must be greater than zero; '%s' resolves to %d |
-| `E3127` | types | type parameter expects a struct type name, but '%s' is not a struct; only struct types can be passed as type arguments |
-| `E3128` | types | type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct' |
+| `E3127` | types | type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct |
+| `E3128` | types | type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'int' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
 | `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
@@ -448,4 +448,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-27 07:47:28 UTC*
+*Generated on 2026-08-27 21:44:00 UTC*

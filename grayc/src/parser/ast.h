@@ -185,6 +185,10 @@ struct AstNode {
             AstNode **field_values;
             int count;
             const char *wildcard_binding; /*concrete type for ? fields */
+            /* E3127 already reported for this literal. A return value is
+             * resolved twice — once for the statement, once against the
+             * declared return type — and one bad literal is one error. */
+            bool type_param_rejected;
         } struct_value;
 
         /* NODE_PREFIX_EXPR */

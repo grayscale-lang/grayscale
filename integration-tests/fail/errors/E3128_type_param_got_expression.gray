@@ -1,6 +1,6 @@
 /*
  * Error Test: E3128 - type parameter got expression instead of type
- * Expected: "type parameter expects a struct type name, but got a non-type expression"
+ * Expected: "type parameter expects a type name, but got a non-type expression"
  */
 
 do make(T <?>) -> ^? {

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3128 - a non-type expression as a type argument. Widening the
+ * gate to any type name left this rejected.
+ * Expected: "got a non-type expression"
+ */
+
+do make(T <?>) -> ^? {
+    return new(T)
+}
+
+do main() {
+    mut p = make(1 + 2)
+}
