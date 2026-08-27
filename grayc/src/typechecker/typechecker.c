@@ -6328,6 +6328,23 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     } else if (ast_member_base_qualifier(fn)) {
         const char *mod_raw = ast_member_base_qualifier(fn);
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
+        /* A struct alias names the struct, so Vec2.f() is Point.f(). Only the
+         * import alias was resolved here, so a type alias reached the dispatch
+         * below as an unknown module and got E6010. Rewriting the qualifier is
+         * what the enum-alias branch above does, and it also hands codegen the
+         * struct's own name to mangle the call against. A variable of the same
+         * name wins: that spelling is instance dispatch, not a static call. */
+        if (!is_struct_name(checker, mod) &&
+            !scope_lookup(checker->current_scope, mod_raw) &&
+            fn->data.member.object &&
+            fn->data.member.object->kind == NODE_LABEL) {
+            const char *aliased = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, mod));
+            if (strcmp(aliased, mod) != 0 && is_struct_name(checker, aliased)) {
+                mod = aliased;
+                fn->data.member.object->data.label.value = aliased;
+            }
+        }
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
         bool mod_imported = mark_import_used(checker, mod_raw) ||
