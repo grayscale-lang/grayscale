@@ -7674,10 +7674,21 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             }
         }
         /* Try using-module-prefixed name if not found */
+        bool named_private = false;
         if (!sym) {
             for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
                 if (!using_module_accessible(checker, using_index)) continue;
                 const char *umod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
+                /* `using` does not bring a private declaration into scope, but
+                 * its symbol is still bound under the module's spelling — so
+                 * the prefixed lookup below found it and read it, and the bare
+                 * name was the one spelling `private` did not stop. */
+                if (reject_if_private(checker, node, checker->using_modules[using_index], name)) {
+                    mark_import_used(checker, checker->using_modules[using_index]);
+                    mark_import_used(checker, umod);
+                    named_private = true;
+                    break;
+                }
                 char prefixed[MSG_BUF_SIZE];
                 module_member_key(checker, checker->using_modules[using_index], name,
                                   prefixed, sizeof(prefixed));
@@ -7692,7 +7703,9 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        if (sym) {
+        if (named_private) {
+            result = &TYPE_UNKNOWN;
+        } else if (sym) {
             sym->used = true;
             result = sym->type;
             /* Transparent ref: unwrap pointer to expose underlying type.

@@ -51,10 +51,18 @@ do main() {
         println("  [FAIL] public struct function calls its private sibling")
     }
 
-    println("")
-    println("Results: ${passed}/4 passed")
+    // Test 5: private constants and variables are usable inside their own file
+    if lib.use_private_data() == 12 {
+        println("  [PASS] private data usable in the declaring file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private data usable in the declaring file")
+    }
 
-    if passed == 4 {
+    println("")
+    println("Results: ${passed}/5 passed")
+
+    if passed == 5 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")

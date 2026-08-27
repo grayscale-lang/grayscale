@@ -54,3 +54,15 @@ do use_private() -> int {
     }
     return 0
 }
+
+// Private constant and variable, reachable only inside this file
+private const HIDDEN int = 9
+private mut counter int = 3
+
+// Public constant and variable, published under their bare names by 'import and use'
+const LIMIT int = 50
+mut tally int = 5
+
+do use_private_data() -> int {
+    return HIDDEN + counter
+}
