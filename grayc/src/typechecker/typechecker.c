@@ -2452,6 +2452,28 @@ static const char *undefined_type_leaf(TypeChecker *checker, const char *written
         return NULL;
     }
 
+    /* A user module's member is resolved against the symbol table, so a dot
+     * that survives resolution names nothing there. Only the stdlib carries a
+     * qualifier this far down, and type_from_name() reads anything still
+     * dotted as one of its types — which is how `lib.Nope` typed as a struct
+     * and was reported as a mismatch rather than as a name for nothing. */
+    {
+        const char *resolved = checker_resolve_type_name(checker, written);
+        const char *dot = resolved ? strchr(resolved, '.') : NULL;
+        if (dot) {
+            char mod[MSG_BUF_SIZE];
+            size_t mlen = (size_t)(dot - resolved);
+            if (mlen < sizeof(mod)) {
+                memcpy(mod, resolved, mlen);
+                mod[mlen] = '\0';
+                if (!is_stdlib_module_name(typechecker_resolve_alias(checker, mod))) {
+                    snprintf(buf, buflen, "%s", resolved);
+                    return buf;
+                }
+            }
+        }
+    }
+
     if (!type_name_is_undefined(written, typechecker_type_from_name(checker, written)))
         return NULL;
     snprintf(buf, buflen, "%s", written);
@@ -8153,6 +8175,25 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         const char *target = resolve_type_alias(checker,
             checker_resolve_type_name(checker, written_target));
         node->data.cast.target_type = target;
+        /* E4016: a target that names no type, at any depth. The allowlist
+         * below cannot stand in for this: an undefined capitalized name types
+         * as TK_STRUCT and was reported as an unsupported conversion, and an
+         * undefined lowercase one types as TK_UNKNOWN, which skips the
+         * allowlist entirely and let the written name reach the C compiler. */
+        {
+            char leaf[MSG_BUF_SIZE];
+            const char *undefined = undefined_type_leaf(checker, written_target,
+                                                        leaf, sizeof(leaf));
+            if (undefined) {
+                char *msg = typechecker_format(checker,
+                    "undefined type '%s'; check the spelling or import the module that defines it",
+                    unqualified_display_name(undefined));
+                diagnostic_error_message(checker->diag, "E4016", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                result = &TYPE_UNKNOWN;
+                break;
+            }
+        }
         GrayType *dst_t = type_from_name(target);
         /* Resolve user-defined enum types that type_from_name() can't find */
         if (!dst_t && is_enum_name(checker, target))

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4016 - a module-qualified type name the module does not define
+ * Expected: "undefined type 'Nope'"
+ */
+
+// expect-error: E4016
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    mut p lib.Point = lib.Point{x: 1, y: 2}
+    println(cast(p.x, lib.Nope))
+}
