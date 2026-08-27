@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 396 codes** (274 errors, 16 warnings, 106 panics)
+**Total: 397 codes** (274 errors, 16 warnings, 107 panics)
 
 ---
 
@@ -423,6 +423,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
 | `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 | `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
+| `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 
 ---
 
@@ -447,4 +448,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-27 07:39:43 UTC*
+*Generated on 2026-08-27 07:47:28 UTC*

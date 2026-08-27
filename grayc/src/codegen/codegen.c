@@ -3272,6 +3272,32 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "(int64_t)gray_uint_to_int_check((uint64_t)(");
             emit_expression(codegen, val);
             emit_formatted(codegen, "), \"%s\", %d)", codegen->file, node->token.line);
+        } else if (codegen_is_enum(codegen, target) &&
+                   !codegen_enum_is_string(codegen, target) &&
+                   !codegen_enum_is_tagged(codegen, target)) {
+            /* int → enum: the value has to name a declared variant. Without
+             * this the cast stored whatever it was given, and the result
+             * matched no variant in a `when` or an `==`. The variant names go
+             * into the array as written so the C compiler supplies their
+             * values, explicit ones included. */
+            AstNode *edecl = codegen->enum_decls[codegen_enum_index(codegen, target)];
+            emit_formatted(codegen, "(%s)gray_enum_cast_check((int64_t)(",
+                gray_type_to_c_codegen(codegen, target));
+            emit_expression(codegen, val);
+            emit(codegen, "), (const int64_t[]){");
+            for (int variant_index = 0; variant_index < edecl->data.enum_decl.value_count; variant_index++) {
+                if (variant_index > 0) emit(codegen, ", ");
+                emit_formatted(codegen, "GrayEnum_%s_%s", target,
+                    edecl->data.enum_decl.values[variant_index].name);
+            }
+            /* The panic names the enum the way the program spells it, not the
+             * module-prefixed key the C constants are built from. */
+            const char *display = edecl->data.enum_decl.original_name
+                ? edecl->data.enum_decl.original_name : target;
+            emit_formatted(codegen, "}, %d, %s, \"%s\", \"%s\", %d)",
+                edecl->data.enum_decl.value_count,
+                edecl->data.enum_decl.is_flags ? "true" : "false",
+                display, codegen->file, node->token.line);
         } else {
             emit_formatted(codegen, "((%s)(", gray_type_to_c_codegen(codegen, target));
             emit_expression(codegen, val);

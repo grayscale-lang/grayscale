@@ -1,0 +1,17 @@
+/*
+ * Panic Test: P0107 - cast a negative int to an enum
+ *
+ * The value must be rejected rather than wrapping through the unsigned
+ * representation into a value that matches no variant.
+ */
+
+const Direction enum {
+    NORTH
+    SOUTH
+}
+
+do main() {
+    mut n int = -5
+    mut d Direction = cast(n, Direction)
+    println(d)
+}
