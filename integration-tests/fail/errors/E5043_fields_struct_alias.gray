@@ -1,0 +1,18 @@
+/*
+ * Error Test: E5043 - fields() on an alias of a struct type
+ * Expected: "requires a struct instance, not a type name 'Vec2'"
+ */
+
+// expect-error: E5043
+// expect-error-count: 1
+
+const Point struct {
+    x int
+    y int
+}
+
+alias Vec2 = Point
+
+do main() {
+    println(fields(Vec2))
+}

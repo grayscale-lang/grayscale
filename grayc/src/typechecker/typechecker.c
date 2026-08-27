@@ -4894,7 +4894,13 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (node->data.call.args[0]->kind == NODE_LABEL) {
             const char *aname = node->data.call.args[0]->data.label.value;
             Symbol *sym = scope_lookup(checker->current_scope, aname);
-            if (!sym && (is_struct_name(checker, aname) || is_enum_name(checker, aname))) {
+            /* An alias names the same type its target does, so the registries
+             * have to be consulted with the resolved name — `alias Vec2 =
+             * Point` is a type name here just as much as `Point` is. The
+             * diagnostic still names the spelling the programmer wrote. */
+            const char *resolved = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, aname));
+            if (!sym && (is_struct_name(checker, resolved) || is_enum_name(checker, resolved))) {
                 char *msg = typechecker_format(checker,
                     "'fields()' requires a struct instance, not a type name '%s'; use 'fields(instance)' instead",
                     aname);
