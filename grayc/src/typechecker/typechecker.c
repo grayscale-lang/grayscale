@@ -7491,6 +7491,20 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* E3066: func signature mismatch on a struct-literal field. The
+             * mismatch check above treats any two func types as assignable, so
+             * a reference with the wrong signature only got caught when it was
+             * assigned to the field afterward — never when the literal that
+             * built the struct supplied it. */
+            if (found && func_types_mismatch(expected_t, val_t)) {
+                AstNode *value = node->data.struct_value.field_values[i];
+                char *msg = typechecker_format(checker,
+                    "cannot assign %s to field '%s' of type %s",
+                    type_display_name(checker, val_t), fname,
+                    type_display_name(checker, expected_t));
+                diagnostic_error_message(checker->diag, "E3066", msg,
+                    NODE_FILE(checker, value), value->token.line, value->token.column, 0);
+            }
         }
     }
     /* : for generic structs, infer the wildcard binding from
