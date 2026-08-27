@@ -1,5 +1,5 @@
 /* E2002: type keywords cannot be used as when/is binding names */
-/* expect: E2002 */
+// expect-error: E2002
 
 const Wrapper enum {
     Value(int)

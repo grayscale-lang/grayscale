@@ -8013,7 +8013,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                    !typechecker_is_imported_module(checker, name) &&
                    !is_enum_name(checker, resolve_type_alias(checker, name)) &&
                    !is_struct_name(checker, resolve_type_alias(checker, name)) &&
-                   !module_declares_const(checker, name)) {
+                   (checker->in_file_scope_init ||
+                    !module_declares_const(checker, name))) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 diagnostic_error_code_formatted(checker->diag, "E1012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name + 1);
@@ -9350,7 +9351,17 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (val_t && val_t->kind == TK_ENUM)
                 checker->expected_type = declared;
         }
+        /* A file-scope initializer is emitted where it is written, so it can
+         * only name declarations already in scope at that point. Every earlier
+         * file-scope declaration has been defined by the walk that got here, so
+         * a name the scope does not hold is one declared further down — and
+         * the module registry alone must not vouch for it, or the reference
+         * reaches the C compiler as an undeclared identifier. Function bodies
+         * are exempt: codegen emits file-scope declarations ahead of them. */
+        bool saved_file_scope_init = checker->in_file_scope_init;
+        if (checker->func_depth == 0) checker->in_file_scope_init = true;
         GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);
+        checker->in_file_scope_init = saved_file_scope_init;
         checker->expected_type = saved_expected;
         /* : when a func-pointer call returns TK_UNKNOWN but
          * the assignment target has a concrete declared type,

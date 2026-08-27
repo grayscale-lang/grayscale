@@ -65,10 +65,11 @@ fail() { printf "  ${RED}FAIL${NC}  %s %s\n" "$1" "$2"; ((++FAIL_COUNT)); }
 #     // expect-error-count: 1
 #
 # With expect-error the file runs through 'check' and must produce that code.
-# Without it a test only has to fail somehow, which cannot tell a typechecker
-# rejection apart from the C compiler choking on what the typechecker let
-# through. expect-error-count additionally pins how many errors the file
-# produces, so one mistake reported twice does not slip by.
+# Without it the file only has to fail, but the failure must still carry a
+# Grayscale diagnostic — a bare compile failure is a C compiler error the
+# typechecker let through, not the rejection the test is there to pin.
+# expect-error-count additionally pins how many errors the file produces, so
+# one mistake reported twice does not slip by.
 # expect-not: <text> — the run's diagnostics must not contain <text>. The
 # mangled-name guard in run_fail_test catches a module-mangled type name
 # (mod_Type) on its shape alone; a mangled function name, or a warning code
@@ -101,8 +102,14 @@ run_fail_test() {
         else
             fail "$label" "(expected $expected_error)"
         fi
-    elif run_timeout $TIMEOUT "$GRAY_BIN" "$entry" >/dev/null 2>&1; then
+    elif output=$(run_timeout $TIMEOUT "$GRAY_BIN" "$entry" 2>&1); then
         fail "$label" "(expected error, got success)"
+    elif ! echo "$output" | grep -qE '(error|warning|panic)\[[EPW][0-9]+\]'; then
+        # The compile failed with no Grayscale diagnostic, which means the
+        # typechecker accepted the program and the C compiler rejected it.
+        # Without this the branch passed on any failure at all, so a leaked
+        # C error read as the test doing its job.
+        fail "$label" "(no grayscale diagnostic; C compiler error leaked)"
     else
         pass "$label"
     fi
