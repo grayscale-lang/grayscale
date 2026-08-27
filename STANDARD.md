@@ -4179,7 +4179,7 @@ Nested scopes work correctly; a loop inside an if inside a function creates thre
 
 ### 11.6 Manual Control
 
-The `@mem` module provides explicit arena control for power users who need it:
+The `@mem` module provides explicit arena control for users who need it:
 
 ```gray
 import @mem
@@ -4190,8 +4190,6 @@ mut node = mem.init(scratch, Node)
 mem.reset(scratch)
 mem.destroy(scratch)
 ```
-
-Most users never import the `@mem` module. ASBAM handles their allocations.
 
 ### 11.7 Memory Safety
 
