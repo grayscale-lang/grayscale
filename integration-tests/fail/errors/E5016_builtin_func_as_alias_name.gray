@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5016 - a builtin function name used as an alias name
+ * Expected: "is a builtin function and cannot be used as an alias name"
+ */
+
+// expect-error: E5016
+// expect-error-count: 1
+
+alias println = int
+
+do main() {
+    println("Should not run!")
+}

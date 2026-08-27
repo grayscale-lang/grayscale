@@ -12601,6 +12601,16 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             goto next_alias;
         }
+        /* E5016: a builtin's name is not available either. Structs, enums,
+         * variables, and functions all run this check; the alias declaration
+         * was the one site that did not. */
+        if (is_reserved_builtin_func_name(aname)) {
+            char *msg = typechecker_format(checker,
+                "'%s' is a builtin function and cannot be used as an alias name", aname);
+            diagnostic_error_message(checker->diag, "E5016", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            goto next_alias;
+        }
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, aname, stmt) ||
             is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
