@@ -56,7 +56,7 @@
     GRAY_ERROR("E2025", "syntax", "expected integer or constant for array size; the second value in [type, size] must be a positive integer or a const integer identifier") \
     GRAY_ERROR("E2036", "syntax", "imports must be at the top of the file, not inside a function") \
     GRAY_ERROR("E2037", "syntax", "duplicate function name in struct; each function must have a unique name") \
-    GRAY_ERROR("E2038", "syntax", "reserved name for struct or enum; this name is used by the language") \
+    GRAY_ERROR("E2038", "syntax", "reserved name; this name is used by the language") \
     GRAY_ERROR("E2039", "syntax", "required parameter '%s' cannot come after a parameter with a default value") \
     GRAY_ERROR("E2043", "syntax", "duplicate case value in when statement") \
     GRAY_ERROR("E2050", "syntax", "break and continue can only be used inside a loop") \

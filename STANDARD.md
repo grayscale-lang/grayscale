@@ -953,6 +953,7 @@ alias Lookup = map[string:int]
 - **Transitive** — aliases can chain: `alias A = int` then `alias B = A` resolves `B` to `int`.
 - **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
 - **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
+- **The alias name may not be a reserved type name** — `alias int = float` is rejected, the same way a struct or enum named `int` is.
 
 Aliases are fully interchangeable with the underlying type:
 

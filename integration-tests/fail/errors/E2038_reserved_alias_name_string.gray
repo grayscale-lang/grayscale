@@ -1,0 +1,15 @@
+/*
+ * Error Test: E2038 - a string alias name is reserved too, and the alias is
+ * not registered, so string keeps meaning string
+ * Expected: "is a reserved type name and cannot be used as an alias name"
+ */
+
+// expect-error: E2038
+// expect-error-count: 1
+
+alias string = int
+
+do main() {
+    mut s string = "hello"
+    println(s)
+}

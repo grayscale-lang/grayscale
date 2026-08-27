@@ -43,7 +43,7 @@
 | `E2025` | syntax | expected integer or constant for array size; the second value in [type, size] must be a positive integer or a const integer identifier |
 | `E2036` | syntax | imports must be at the top of the file, not inside a function |
 | `E2037` | syntax | duplicate function name in struct; each function must have a unique name |
-| `E2038` | syntax | reserved name for struct or enum; this name is used by the language |
+| `E2038` | syntax | reserved name; this name is used by the language |
 | `E2039` | syntax | required parameter '%s' cannot come after a parameter with a default value |
 | `E2043` | syntax | duplicate case value in when statement |
 | `E2050` | syntax | break and continue can only be used inside a loop |
@@ -446,4 +446,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-27 06:28:05 UTC*
+*Generated on 2026-08-27 06:43:53 UTC*

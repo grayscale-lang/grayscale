@@ -12589,6 +12589,18 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
                 goto next_alias;
             }
         }
+        /* E2038: a built-in type name is not available to redeclare. Struct
+         * and enum declarations already reject one; an alias did not, so
+         * `alias int = float` silently redefined int for the rest of the file.
+         * Skip registration so every later use of the name still means what
+         * the language says it means. */
+        if (is_reserved_type_name(aname)) {
+            char *msg = typechecker_format(checker,
+                "'%s' is a reserved type name and cannot be used as an alias name", aname);
+            diagnostic_error_message(checker->diag, "E2038", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            goto next_alias;
+        }
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, aname, stmt) ||
             is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
