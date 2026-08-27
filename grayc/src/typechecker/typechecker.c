@@ -13131,6 +13131,20 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             fnames[j] = stmt->data.struct_decl.fields[j].name;
             ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
             warn_if_type_name_deprecated(checker, stmt, stmt->data.struct_decl.fields[j].type_name, NULL);
+            /* A field type written as an alias has to be recorded as what the
+             * alias stands for. Only ftypes[j] above resolved it; the name left
+             * in the AST is what every later reader sees, and codegen builds the
+             * field's C type and its member accesses from that name. A field
+             * declared `f Handler` was emitted as an untyped `void *` and its
+             * call mangled as a struct function, while the same field written
+             * `func(int) -> int` compiled correctly. */
+            {
+                const char *key = checker_resolve_type_name(checker,
+                    stmt->data.struct_decl.fields[j].type_name);
+                const char *resolved = resolve_type_alias(checker, key);
+                if (resolved != key)
+                    stmt->data.struct_decl.fields[j].type_name = resolved;
+            }
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
