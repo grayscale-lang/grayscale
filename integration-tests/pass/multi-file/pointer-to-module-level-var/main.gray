@@ -1,0 +1,31 @@
+import "./lib"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: writing through a pointer to a module-level mut is allowed
+    if lib.bump() == 1 {
+        println("  [PASS] write through a pointer to a module-level mut")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write through a pointer to a module-level mut")
+        failed += 1
+    }
+
+    // Test 2: reading through a pointer to a module-level const is allowed
+    if lib.limit() == 5 {
+        println("  [PASS] read through a pointer to a module-level const")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read through a pointer to a module-level const")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

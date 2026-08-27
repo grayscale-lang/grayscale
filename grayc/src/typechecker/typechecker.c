@@ -2358,6 +2358,7 @@ static bool func_types_mismatch(const GrayType *a, const GrayType *b) {
 }
 
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
 
 /* Decompose a written container type into the type names it is built from:
  * the pointee of ^T, the element of [T] or [T,N], the key and value of
@@ -9983,7 +9984,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 AstNode *src = node->data.var_decl.value->data.call.args[0];
                 const char *root = assignment_target_root_name(src);
                 if (root) {
-                    Symbol *src_sym = scope_lookup(checker->current_scope, root);
+                    /* A module-level declaration is bound under its module's
+                     * spelling, so a bare reference from inside the module
+                     * misses a plain scope_lookup — and addr() on a const one
+                     * left the pointer unmarked, so the write through it was
+                     * never caught. */
+                    Symbol *src_sym = checker_lookup_symbol(checker, root);
                     if (src_sym && !src_sym->mutable) {
                         Symbol *sym = scope_lookup_local(checker->current_scope,
                             node->data.var_decl.name);

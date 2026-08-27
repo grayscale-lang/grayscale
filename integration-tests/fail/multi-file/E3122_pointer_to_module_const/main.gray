@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3122 - writing through a pointer to a module-level constant
+ * Expected: "cannot modify value through pointer 'p'"
+ */
+
+// expect-error: E3122
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    lib.sneak()
+}

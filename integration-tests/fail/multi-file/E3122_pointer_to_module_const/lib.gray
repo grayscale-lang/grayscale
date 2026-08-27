@@ -1,0 +1,6 @@
+const LIMIT int = 5
+
+do sneak() {
+    mut p ^int = addr(LIMIT)
+    p^ = 6
+}
