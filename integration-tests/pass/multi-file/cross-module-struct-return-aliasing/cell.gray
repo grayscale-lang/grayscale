@@ -1,0 +1,8 @@
+const Cell struct {
+    id  int
+    box [int]
+
+    do create(id int) -> Cell {
+        return Cell{id: id}
+    }
+}

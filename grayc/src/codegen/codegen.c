@@ -3838,6 +3838,21 @@ static AstNode *find_struct_declaration(CodeGen *codegen, const char *name) {
             return codegen->struct_decls[i];
         }
     }
+    /* Declarations are keyed by their mangled spelling, but a type is written
+     * as it is named where it appears — bare inside its own module, `using`'d,
+     * or qualified. Matching the written name alone found nothing for a struct
+     * declared in another module, and every caller reads that as "not a struct
+     * I know": the deep-copy walk then reported no heap-backed fields, so a
+     * function returning such a struct skipped its escape copy and handed back
+     * maps, arrays, and strings pointing into its own destroyed arena. */
+    const char *resolved = codegen_resolve_type(codegen, name);
+    if (resolved && resolved != name && strcmp(resolved, name) != 0) {
+        for (int i = 0; i < codegen->struct_decl_count; i++) {
+            if (strcmp(codegen->struct_decls[i]->data.struct_decl.name, resolved) == 0) {
+                return codegen->struct_decls[i];
+            }
+        }
+    }
     return NULL;
 }
 

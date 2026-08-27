@@ -1,0 +1,7 @@
+const Engine struct {
+    registry map[string:int]
+
+    do create() -> Engine {
+        return Engine{}
+    }
+}
