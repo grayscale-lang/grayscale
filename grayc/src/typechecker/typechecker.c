@@ -3116,13 +3116,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         } else if (strcmp(mfn, "alloc") == 0 && node->data.call.arg_count == 2) {
             result = resolve_expression(checker, node->data.call.args[1]);
-        } else if (strcmp(mfn, "make") == 0 && node->data.call.arg_count == 2) {
-            AstNode *type_arg = node->data.call.args[1];
-            if (type_arg->kind == NODE_LABEL) {
-                result = type_pointer(type_arg->data.label.value);
-            } else {
-                result = &TYPE_UNKNOWN;
-            }
         }
     } else if (strcmp(mod, "maps") == 0) {
         if (strcmp(mfn, "get_keys") == 0) {
