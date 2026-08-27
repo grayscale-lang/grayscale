@@ -227,6 +227,7 @@ static const char *find_runtime_dir(const char *argv0) {
 typedef struct {
     const char *path;
     const char *mod;
+    const char *from;   /* file whose import statement first pulled this path in */
 } ImportHashEntry;
 
 static ImportHashEntry *import_hash = NULL;
@@ -241,12 +242,13 @@ static uint32_t import_path_hash(const char *s) {
 
 /* Place an entry during a rehash, where the key is known to be unique. */
 static void import_hash_place(ImportHashEntry *table, uint32_t buckets,
-                              const char *path, const char *mod) {
+                              const char *path, const char *mod, const char *from) {
     uint32_t slot = import_path_hash(path) & (buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (buckets - 1)) {
         if (!table[i].path) {
             table[i].path = path;
             table[i].mod = mod;
+            table[i].from = from;
             return;
         }
     }
@@ -264,7 +266,7 @@ static void import_hash_reserve(void) {
     for (uint32_t i = 0; i < import_hash_buckets; i++) {
         if (import_hash[i].path)
             import_hash_place(new_table, new_buckets,
-                import_hash[i].path, import_hash[i].mod);
+                import_hash[i].path, import_hash[i].mod, import_hash[i].from);
     }
     free(import_hash);
     import_hash = new_table;
@@ -289,13 +291,26 @@ static const char *imported_by_module(const char *path) {
     }
 }
 
-static void mark_imported_with_module(const char *path, const char *mod) {
+/* The file whose import statement first pulled `path` in, or NULL. Two imports
+ * of one target from the same file are a duplicate; from two different files
+ * they are a diamond dependency, which is ordinary and silent. */
+static const char *imported_by_file(const char *path) {
+    if (!import_hash) return NULL;
+    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
+        if (!import_hash[i].path) return NULL;
+        if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].from;
+    }
+}
+
+static void mark_imported_from(const char *path, const char *mod, const char *from) {
     import_hash_reserve();
     uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) {
             import_hash[i].path = path;
             import_hash[i].mod = mod;
+            import_hash[i].from = from;
             imported_file_count++;
             return;
         }
@@ -303,8 +318,17 @@ static void mark_imported_with_module(const char *path, const char *mod) {
     }
 }
 
+/* Do two import statements sit in the same file? The entry file's statements
+ * carry a NULL token file, which the caller has already resolved to the input
+ * path, so a plain string compare is enough. */
+static bool same_import_file(const char *a, const char *b) {
+    if (a == b) return true;
+    if (!a || !b) return false;
+    return strcmp(a, b) == 0;
+}
+
 static void mark_imported(const char *path) {
-    mark_imported_with_module(path, NULL);
+    mark_imported_from(path, NULL, NULL);
 }
 
 /* Scan a directory for .gray files. Returns count of files found.
@@ -726,6 +750,7 @@ int main(int argc, char **argv) {
 
         const char **seen_modules = NULL;
         const char **seen_paths = NULL;
+        const char **seen_files = NULL;
         bool *seen_is_stdlib = NULL;
         int seen_cap = 0;
         int seen_count = 0;
@@ -752,7 +777,6 @@ int main(int argc, char **argv) {
                     bool bound = false;
                     for (int sm = 0; sm < seen_count; sm++) {
                         if (strcmp(seen_modules[sm], std_name) != 0) continue;
-                        /* The same stdlib module reached twice is one module. */
                         if (!seen_is_stdlib[sm]) {
                             char msg[MSG_BUF_SIZE];
                             snprintf(msg, sizeof(msg),
@@ -760,6 +784,16 @@ int main(int argc, char **argv) {
                                 std_name);
                             diagnostic_error(diag, "E6001", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
+                        } else if (same_import_file(seen_files[sm], stmt_file)) {
+                            /* One file importing the same module twice. Reached
+                             * from two different files it is a diamond, which is
+                             * ordinary and stays silent. */
+                            char msg[MSG_BUF_SIZE];
+                            snprintf(msg, sizeof(msg),
+                                "module '%s' is already imported in this file", std_name);
+                            diagnostic_error_help(diag, "E6011", strdup(msg),
+                                stmt_file, stmt->token.line, stmt->token.column, 0,
+                                "remove the duplicate import");
                         }
                         bound = true;
                         break;
@@ -769,10 +803,12 @@ int main(int argc, char **argv) {
                         seen_cap = GROW_NEXT_CAP(seen_cap);
                         ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
                         ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
+                        ARENA_GROW_TO(arena, seen_files, seen_count, seen_cap);
                         ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
                     }
                     seen_modules[seen_count] = std_name;
                     seen_paths[seen_count] = NULL;
+                    seen_files[seen_count] = stmt_file;
                     seen_is_stdlib[seen_count] = true;
                     seen_count++;
                     continue;
@@ -897,48 +933,59 @@ int main(int argc, char **argv) {
                     }
                 }
 
-                /* Module name collision detection — only for DIRECT imports from the same file.
-                 * Don't collide with the main file's own module name.
-                 * Diamond dependencies (same file via different paths) emit a warning
-                 * and are skipped rather than causing a false E6001 error. */
+                /* One file importing the same target twice, whatever it called
+                 * it. This has to be keyed on the path, not the module name: the
+                 * two spellings need not agree — `import ABC "./abc", "./abc.gray"`
+                 * names one file twice — and a name-first search misses that
+                 * entirely, which left the second name registered and never
+                 * populated. */
                 bool collision = false;
                 for (int sm = 0; sm < seen_count; sm++) {
-                    if (strcmp(seen_modules[sm], mod_name) == 0) {
-                        if (!seen_is_stdlib[sm] && strcmp(seen_paths[sm], norm_import) == 0) {
-                            /* Same file, same module name — diamond dependency.
-                             * Only warn for direct imports; transitive diamonds
-                             * (from inside directory modules) are silently deduped. */
-                            if (!item->source_dir) {
-                                char msg[MSG_BUF_SIZE];
-                                snprintf(msg, sizeof(msg),
-                                    "module '%s' is already imported; duplicate import ignored",
-                                    mod_name);
-                                diagnostic_warning(diag, "W2013", strdup(msg),
-                                    stmt_file, stmt->token.line, stmt->token.column, 0);
-                            }
-                            collision = true;
-                            break;
-                        }
-                        /* Different file, same module name — genuine collision */
-                        char msg[MSG_BUF_SIZE];
-                        snprintf(msg, sizeof(msg),
-                            "module name '%s' is already imported; use an alias to distinguish them",
-                            mod_name);
-                        diagnostic_error(diag, "E6001", strdup(msg),
-                            stmt_file, stmt->token.line, stmt->token.column, 0);
+                    if (seen_is_stdlib[sm] || !seen_paths[sm]) continue;
+                    if (strcmp(seen_paths[sm], norm_import) != 0) continue;
+                    if (!same_import_file(seen_files[sm], stmt_file)) continue;
+                    char msg[MSG_BUF_SIZE];
+                    snprintf(msg, sizeof(msg),
+                        "module '%s' is already imported in this file", mod_name);
+                    diagnostic_error_help(diag, "E6011", strdup(msg),
+                        stmt_file, stmt->token.line, stmt->token.column, 0,
+                        "remove the duplicate import");
+                    collision = true;
+                    break;
+                }
+                /* Module name collision detection. Don't collide with the main
+                 * file's own module name. Diamond dependencies (the same file
+                 * reached from two different files) are silently deduped rather
+                 * than causing a false E6001 error. */
+                for (int sm = 0; sm < seen_count && !collision; sm++) {
+                    if (strcmp(seen_modules[sm], mod_name) != 0) continue;
+                    if (!seen_is_stdlib[sm] && strcmp(seen_paths[sm], norm_import) == 0) {
+                        /* Same target, same module name, different importing
+                         * file — a diamond dependency. */
                         collision = true;
                         break;
                     }
+                    /* Different file, same module name — genuine collision */
+                    char msg[MSG_BUF_SIZE];
+                    snprintf(msg, sizeof(msg),
+                        "module name '%s' is already imported; use an alias to distinguish them",
+                        mod_name);
+                    diagnostic_error(diag, "E6001", strdup(msg),
+                        stmt_file, stmt->token.line, stmt->token.column, 0);
+                    collision = true;
+                    break;
                 }
                 if (collision) continue;
                 if (seen_count >= seen_cap) {
                     seen_cap = GROW_NEXT_CAP(seen_cap);
                     ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
                     ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
+                    ARENA_GROW_TO(arena, seen_files, seen_count, seen_cap);
                     ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
                 }
                 seen_modules[seen_count] = mod_name;
                 seen_paths[seen_count] = arena_copy_string(arena, norm_import);
+                seen_files[seen_count] = stmt_file;
                 seen_is_stdlib[seen_count] = false;
                 seen_count++;
 
@@ -997,27 +1044,31 @@ int main(int argc, char **argv) {
                                 item->path);
                             diagnostic_warning(diag, "W2014", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
-                        } else if (!item->source_dir && file_count == 1) {
-                            /* Direct import of a file already pulled in by a directory import */
+                        } else if (file_count == 1 &&
+                                   same_import_file(imported_by_file(norm_path), stmt_file)) {
+                            /* The same file already imported this target, under
+                             * whatever namespace — importing a directory and
+                             * then a file inside it names one module twice. */
                             const char *owner_mod = imported_by_module(norm_path);
-                            char msg[MSG_BUF_LARGE];
+                            char msg[MSG_BUF_LARGE], help[MSG_BUF_SIZE];
                             if (owner_mod) {
                                 snprintf(msg, sizeof(msg),
-                                    "file '%s' was already imported as part of a directory import; "
-                                    "use the '%s' namespace (e.g. %s.%s()) instead",
-                                    item->path, owner_mod, owner_mod, mod_name_buf);
+                                    "'%s' is already imported in this file as part of module '%s'",
+                                    item->path, owner_mod);
+                                snprintf(help, sizeof(help),
+                                    "use the '%s' namespace, or remove one of the imports",
+                                    owner_mod);
                             } else {
                                 snprintf(msg, sizeof(msg),
-                                    "file '%s' was already imported as part of a directory import; "
-                                    "this import is redundant",
-                                    item->path);
+                                    "'%s' is already imported in this file", item->path);
+                                snprintf(help, sizeof(help), "remove the duplicate import");
                             }
-                            diagnostic_warning(diag, "W2015", strdup(msg),
-                                stmt_file, stmt->token.line, stmt->token.column, 0);
+                            diagnostic_error_help(diag, "E6011", strdup(msg),
+                                stmt_file, stmt->token.line, stmt->token.column, 0, help);
                         }
                         continue;
                     }
-                    mark_imported_with_module(norm_path, mod_name);
+                    mark_imported_from(norm_path, mod_name, stmt_file);
 
                     /* Attribute this file to its module. Every file of a
                      * directory import records the same module name, which is
@@ -1064,6 +1115,13 @@ int main(int argc, char **argv) {
                         /* Normalize the directory being imported for sibling detection */
                         char *norm_import_dir = gray_realpath(import_path);
 
+                        /* Siblings never reach the duplicate check above: they
+                         * are turned into alias mappings and dropped instead of
+                         * being queued as imports. Track the ones this file has
+                         * named so it cannot name one twice either. */
+                        const char **seen_siblings = NULL;
+                        int seen_sibling_count = 0, seen_sibling_cap = 0;
+
                         for (int ti = 0; ti < imp_program->data.program.stmt_count; ti++) {
                             AstNode *ts = imp_program->data.program.stmts[ti];
                             if (ts->kind != NODE_IMPORT_STMT) continue;
@@ -1094,6 +1152,8 @@ int main(int argc, char **argv) {
                                     tres_check = tres_gray;
                                 }
                                 char *norm_tres = gray_realpath(tres_check);
+                                const char *sibling_path = norm_tres
+                                    ? arena_copy_string(arena, norm_tres) : NULL;
                                 if (norm_tres && norm_import_dir) {
                                     /* Check if the file's directory matches import_path.
                                      * Both buffers are ours to truncate in place. */
@@ -1113,6 +1173,27 @@ int main(int argc, char **argv) {
                                 free(norm_tres);
 
                                 if (is_sibling) {
+                                    bool sibling_dup = false;
+                                    for (int sx = 0; sx < seen_sibling_count && sibling_path; sx++) {
+                                        if (strcmp(seen_siblings[sx], sibling_path) != 0) continue;
+                                        char msg[MSG_BUF_LARGE];
+                                        snprintf(msg, sizeof(msg),
+                                            "'%s' is already imported in this file", titem->path);
+                                        diagnostic_error_help(diag, "E6011", strdup(msg),
+                                            ts->token.file ? ts->token.file : cur_file_path,
+                                            ts->token.line, ts->token.column, 0,
+                                            "remove the duplicate import");
+                                        sibling_dup = true;
+                                        break;
+                                    }
+                                    if (!sibling_dup && sibling_path) {
+                                        if (seen_sibling_count >= seen_sibling_cap) {
+                                            seen_sibling_cap = GROW_NEXT_CAP(seen_sibling_cap);
+                                            ARENA_GROW_TO(arena, seen_siblings,
+                                                seen_sibling_count, seen_sibling_cap);
+                                        }
+                                        seen_siblings[seen_sibling_count++] = sibling_path;
+                                    }
                                     /* Collect sibling alias for compound mapping generation later */
                                     const char *sib_alias = titem->alias;
                                     if (!sib_alias) {

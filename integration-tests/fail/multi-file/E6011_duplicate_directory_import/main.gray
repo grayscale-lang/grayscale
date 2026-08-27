@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6011 - The same directory imported twice, under two names
+ * Expected: "is already imported in this file"
+ */
+
+// expect-error: E6011
+// expect-error-count: 1
+// expect-not: E4023
+
+import "./lib", other "./lib"
+
+do main() {
+    println(lib.g())
+}

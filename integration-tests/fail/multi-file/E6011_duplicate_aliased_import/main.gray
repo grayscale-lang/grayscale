@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6011 - One file named twice, under an alias and under its own name
+ * Expected: "is already imported in this file"
+ */
+
+// expect-error: E6011
+// expect-error-count: 1
+// expect-not: E4023
+
+import ABC "./abc", "./abc.gray"
+
+do main() {
+    println(ABC.f())
+}

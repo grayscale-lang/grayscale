@@ -293,7 +293,8 @@
     GRAY_ERROR("E6007", "imports", "standard library imports cannot be aliased") \
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
     GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
-    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
+    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope") \
+    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
@@ -436,9 +437,7 @@
     GRAY_WARNING("W2008", "safety", "parameter shadows an enum variant name") \
     GRAY_WARNING("W2011", "safety", "named return value is declared in the signature but no matching variable exists in the function body") \
     GRAY_WARNING("W2012", "safety", "'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon'") \
-    GRAY_WARNING("W2013", "imports", "duplicate import of already-imported module") \
     GRAY_WARNING("W2014", "imports", "intra-directory import already included by directory import") \
-    GRAY_WARNING("W2015", "imports", "file already imported as part of a directory import; redundant import") \
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3004", "safety", "pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E6011 - A file inside a directory module imports one sibling twice
+ * Expected: "is already imported in this file"
+ */
+
+// expect-error: E6011
+// expect-error-count: 1
+
+import "./pkg"
+
+do main() {
+    println(pkg.combine())
+}

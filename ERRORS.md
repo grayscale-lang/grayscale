@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 396 codes** (272 errors, 18 warnings, 106 panics)
+**Total: 395 codes** (273 errors, 16 warnings, 106 panics)
 
 ---
 
@@ -269,6 +269,7 @@
 | `E6008` | imports | cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it |
 | `E6009` | imports | '%s' and '%s' produce the same compiled name; one of them would be lost |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
+| `E6011` | imports | module '%s' is already imported in this file |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -300,9 +301,7 @@
 | `W2008` | safety | parameter shadows an enum variant name |
 | `W2011` | safety | named return value is declared in the signature but no matching variable exists in the function body |
 | `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
-| `W2013` | imports | duplicate import of already-imported module |
 | `W2014` | imports | intra-directory import already included by directory import |
-| `W2015` | imports | file already imported as part of a directory import; redundant import |
 | `W3003` | safety | fixed-size array is not fully initialized; remaining elements will be zero-valued |
 | `W3004` | safety | pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
@@ -447,4 +446,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-26 14:25:31 UTC*
+*Generated on 2026-08-27 06:28:05 UTC*

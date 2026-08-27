@@ -1,0 +1,6 @@
+import "./color"
+import "./color.gray"
+
+do combine() -> int {
+    return color.hue() + 1
+}
