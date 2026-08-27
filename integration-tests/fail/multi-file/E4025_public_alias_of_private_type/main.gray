@@ -1,0 +1,16 @@
+/*
+ * Error Test: E4025 - a public alias re-exports a private struct and enum
+ * Expected: "public alias 'Vec2' cannot target private type 'Point'"
+ */
+
+// expect-error: E4025
+// expect-error-count: 2
+
+import "./secret"
+
+do main() {
+    mut p secret.Vec2 = secret.Vec2{x: 1}
+    mut c secret.Hue = secret.Hue.RED
+    println(p.x)
+    println(c)
+}

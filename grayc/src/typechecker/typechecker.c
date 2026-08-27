@@ -2502,6 +2502,30 @@ static DeclEntry *private_type_leaf(TypeChecker *checker, const char *written) {
     return (entry && !module_decl_visible(&scope, entry)) ? entry : NULL;
 }
 
+/* The private struct, enum or alias a written type name reaches, at any depth,
+ * or NULL. Unlike private_type_leaf() this ignores visibility from here: an
+ * alias declared in the same file as its target always sees it, and that file
+ * is exactly where a re-export starts. */
+static DeclEntry *private_target_leaf(TypeChecker *checker, const char *written) {
+    if (!written || !*written || !checker->modules) return NULL;
+
+    char parts[2][MSG_BUF_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++) {
+            DeclEntry *bad = private_target_leaf(checker, parts[i]);
+            if (bad) return bad;
+        }
+        return NULL;
+    }
+
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    if (!entry || entry->visibility != VIS_PRIVATE) return NULL;
+    return (entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM ||
+            entry->kind == DECL_ALIAS) ? entry : NULL;
+}
+
 /* Naming a private declaration from outside the file that declares it is an
  * error whatever the declaration is; the kind only picks which code to
  * report. Called once per written annotation, against the node that wrote it. */
@@ -13421,14 +13445,27 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
 
     /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {
+        AstNode *decl = checker->type_alias_nodes[i];
+        checker->current_check_file = decl->token.file;
         const char *resolved = resolve_type_alias(checker, checker->type_alias_targets[i]);
+        /* E4025: a public alias of a private type re-exports it. `private` on
+         * the type is enforced at every use site, and a one-line alias in the
+         * same file was the way around all of them. */
+        if (!decl->data.alias_decl.is_private) {
+            DeclEntry *target_entry = private_target_leaf(checker,
+                decl->data.alias_decl.target_type);
+            if (target_entry) {
+                diagnostic_error_code_formatted(checker->diag, "E4025",
+                    NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                    decl->data.alias_decl.name, target_entry->name);
+            }
+        }
         /* Check if the resolved name is a known type */
         GrayType *resolved_type = type_from_name(resolved);
         if (resolved_type->kind == TK_STRUCT) {
             /* Uppercase name — must be a registered struct or enum */
             if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
                 strcmp(resolved, "Error") != 0) {
-                AstNode *decl = checker->type_alias_nodes[i];
                 diagnostic_error_code_formatted(checker->diag, "E3132",
                     NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
                     decl->data.alias_decl.target_type);
