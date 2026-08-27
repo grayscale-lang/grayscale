@@ -85,6 +85,32 @@ do main() {
         failed += 1
     }
 
+    // Test 9: size_of accepts a module-qualified type name, the same way an
+    // annotation does
+    if size_of(shapes.Rect) == size_of(int) * 2 {
+        println("  [PASS] size_of on an imported struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported struct: got ${size_of(shapes.Rect)}")
+        failed += 1
+    }
+
+    if size_of(shapes.Extent) == size_of(int) {
+        println("  [PASS] size_of on an imported alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported alias: got ${size_of(shapes.Extent)}")
+        failed += 1
+    }
+
+    if size_of(shapes.Shade) > 0 {
+        println("  [PASS] size_of on an imported enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported enum: got ${size_of(shapes.Shade)}")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

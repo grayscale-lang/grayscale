@@ -24,3 +24,5 @@ const Shade enum {
     LIGHT
     DARK
 }
+
+alias Extent = int

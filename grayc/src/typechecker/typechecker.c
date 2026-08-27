@@ -4681,6 +4681,29 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
     return result;
 }
 
+/* The written type name a size_of() argument spells, or NULL when the
+ * argument is a value expression. A bare name arrives as a label; a
+ * module-qualified one arrives as a member expression, which no later phase
+ * ever read as a type — so `size_of(mod.T)` reached codegen with nothing to
+ * emit and the generated C said sizeof(unknown). */
+static const char *size_of_type_spelling(TypeChecker *checker, AstNode *arg) {
+    if (!arg) return NULL;
+    if (arg->kind == NODE_LABEL) {
+        /* A name bound to a variable is a value, not a type. */
+        if (scope_lookup(checker->current_scope, arg->data.label.value)) return NULL;
+        return arg->data.label.value;
+    }
+    if (arg->kind == NODE_MEMBER_EXPR && arg->data.member.object &&
+        arg->data.member.object->kind == NODE_LABEL &&
+        typechecker_is_imported_module(checker, arg->data.member.object->data.label.value)) {
+        char buf[MSG_BUF_SIZE];
+        snprintf(buf, sizeof(buf), "%s.%s",
+                 arg->data.member.object->data.label.value, arg->data.member.member);
+        return arena_copy_string(checker->arena, buf);
+    }
+    return NULL;
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -4914,6 +4937,30 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             strcmp(node->data.call.args[0]->data.label.value,
                    checker->type_param_name) == 0) {
             node->data.call.args[0]->data.label.value = "?";
+        }
+        {
+            AstNode *arg = node->data.call.args[0];
+            const char *written = size_of_type_spelling(checker, arg);
+            if (written && strcmp(written, "?") != 0) {
+                GrayType *arg_t = typechecker_type_from_name(checker, written);
+                if (type_name_is_undefined(written, arg_t)) {
+                    char *msg = typechecker_format(checker,
+                        "undefined type '%s'; check the spelling or import the module that defines it",
+                        unqualified_display_name(written));
+                    diagnostic_error_message(checker->diag, "E4016", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                } else {
+                    /* Normalize every spelling to the one shape codegen's type
+                     * path understands: a label holding the registry name. */
+                    const char *resolved = resolve_type_alias(checker,
+                        checker_resolve_type_name(checker, written));
+                    if (arg->kind != NODE_LABEL || strcmp(resolved, written) != 0) {
+                        AstNode *label = ast_alloc(checker->arena, NODE_LABEL, arg->token);
+                        label->data.label.value = resolved;
+                        node->data.call.args[0] = label;
+                    }
+                }
+            }
         }
         result = &TYPE_INT;
     } else if (strcmp(function_name, "to_char") == 0) {
