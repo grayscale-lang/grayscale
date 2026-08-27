@@ -1,0 +1,44 @@
+import "./types.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: cast to a module-qualified enum
+    mut n int = 1
+    mut c types.Color = cast(n, types.Color)
+    if c == types.Color.GREEN {
+        println("  [PASS] cast to module-qualified enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast to module-qualified enum")
+        failed += 1
+    }
+
+    // Test 2: cast from a module-qualified enum back to int
+    mut back int = cast(types.Color.BLUE, int)
+    if back == 2 {
+        println("  [PASS] cast module-qualified enum to int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast module-qualified enum to int: got ${back}")
+        failed += 1
+    }
+
+    // Test 3: cast to a module-qualified alias
+    mut s types.Score = cast(3.7, types.Score)
+    if s == 3 {
+        println("  [PASS] cast to module-qualified alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast to module-qualified alias: got ${s}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
