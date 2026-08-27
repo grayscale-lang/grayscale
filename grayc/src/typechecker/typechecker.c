@@ -3865,34 +3865,6 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             }
             GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
             if (!type_name_has_wildcard(ptn)) continue;
-            /* E3100: struct/enum type name passed as a value argument */
-            if (at->kind == TK_UNKNOWN &&
-                node->data.call.args[argument_index]->kind == NODE_LABEL) {
-                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                if (!scope_lookup(checker->current_scope, arg_label)) {
-                    if (is_struct_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                            arg_label, arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    } else if (is_enum_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                            arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                }
-            }
             char *bound = bind_wildcard(ptn, at);
             if (!bound) {
                 /* arg is TK_UNKNOWN: we are inside a generic
@@ -4058,34 +4030,6 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     checker->expected_type = param_t;
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 checker->expected_type = saved_expected_m;
-                /* E3100: struct/enum type name passed as a value argument */
-                if (arg_t->kind == TK_UNKNOWN &&
-                    node->data.call.args[argument_index]->kind == NODE_LABEL) {
-                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                    if (!scope_lookup(checker->current_scope, arg_label)) {
-                        if (is_struct_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                                arg_label, arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        } else if (is_enum_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                                arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        }
-                    }
-                }
                 if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                     !types_assignable(checker, param_t, arg_t) &&
                     !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
@@ -4888,11 +4832,24 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                         aname);
                     diagnostic_error_message(checker->diag, "E3084", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    result = &TYPE_STRING;
+                    return result;
                 }
             }
         }
-        /* E3038: type_of() on void function result */
+        /* E3038: type_of() on void function result. A bare builtin type name
+         * is answered from the name itself — resolving it as an expression
+         * would report it as a type name used as a value. */
         if (node->data.call.arg_count > 0) {
+            AstNode *arg = node->data.call.args[0];
+            if (arg->kind == NODE_LABEL && typechecker_is_builtin(arg->data.label.value)) {
+                GrayType *bt = type_from_name(arg->data.label.value);
+                if (bt->kind != TK_UNKNOWN) {
+                    typetable_set(checker->type_table, arg, bt);
+                    result = &TYPE_STRING;
+                    return result;
+                }
+            }
             GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
             if (arg_t->kind == TK_VOID) {
                 diagnostic_error_message(checker->diag, "E3038",
@@ -5545,35 +5502,6 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                  * would compare against TK_UNKNOWN. */
                 continue;
             }
-            /* E3100: struct/enum type name passed as a value argument */
-            if (arg_t->kind == TK_UNKNOWN &&
-                node->data.call.args[argument_index]->kind == NODE_LABEL &&
-                function_name && strcmp(function_name, "size_of") != 0) {
-                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                if (!scope_lookup(checker->current_scope, arg_label)) {
-                    if (is_struct_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                            arg_label, arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    } else if (is_enum_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                            arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                }
-            }
             if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                 !types_assignable(checker, param_t, arg_t) &&
                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
@@ -6025,6 +5953,21 @@ static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
     obj->data.label.value = arena_copy_string(checker->arena, prefixed);
 }
 
+/* Does a bare name name a struct or enum type — its own spelling, or the one
+ * an alias reaches — and so no value? */
+static bool type_name_as_value(TypeChecker *checker, const char *name) {
+    if (!name) return false;
+    if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    const char *resolved = resolve_type_alias(checker,
+        checker_resolve_type_name(checker, name));
+    if (!resolved || strcmp(resolved, name) == 0) return false;
+    /* Only a name that actually resolved to something else is judged by what
+     * it reached: type_from_name() reads any capitalized name as a struct, so
+     * asking it about the written name would answer for every undefined one. */
+    return is_struct_name(checker, resolved) || is_enum_name(checker, resolved) ||
+           type_from_name(resolved)->kind != TK_UNKNOWN;
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
@@ -6037,14 +5980,18 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
     bool is_size_of_call = (node->data.call.function &&
         node->data.call.function->kind == NODE_LABEL &&
-        strcmp(node->data.call.function->data.label.value, "size_of") == 0);
+        (strcmp(node->data.call.function->data.label.value, "size_of") == 0 ||
+         strcmp(node->data.call.function->data.label.value, "type_of") == 0 ||
+         strcmp(node->data.call.function->data.label.value, "fields") == 0));
     for (int i = 0; i < node->data.call.arg_count; i++) {
         if (is_ref_call && node->data.call.args[i]->kind == NODE_LABEL &&
             find_func(checker, node->data.call.args[i]->data.label.value)) {
             continue;
         }
-        /* Skip size_of() label arguments — the builtin handler treats
-         * them as type names (e.g. size_of(^int)), not variables. */
+        /* Skip size_of(), type_of() and fields() label arguments — those
+         * handlers own the type-name diagnostic (size_of() accepts one,
+         * type_of() rejects it with E3084 and fields() with E5043), so the
+         * general path must not report first. */
         if (is_size_of_call && node->data.call.args[i]->kind == NODE_LABEL)
             continue;
         /* Skip implicit enum nodes; they need expected_type context
@@ -6987,7 +6934,13 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    resolve_expression(checker, obj);
+    /* A label naming a type is the qualifier of an enum variant, a struct
+     * function, or a module member — all handled below. Resolving it as a
+     * value first would report the qualifier as a type name used as one. */
+    bool obj_is_type_name = obj->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, obj->data.label.value) &&
+        type_name_as_value(checker, obj->data.label.value);
+    if (!obj_is_type_name) resolve_expression(checker, obj);
 
     if (obj->kind == NODE_LABEL) {
         const char *obj_name = obj->data.label.value;
@@ -7808,8 +7761,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         } else if (typechecker_is_builtin(name)) {
             GrayType *bt = type_from_name(name);
             if (bt != &TYPE_UNKNOWN) {
-                /* Builtin type name (int, i128, float, etc.) used as a
-                 * bare label — valid as an argument to size_of(Type). */
+                /* Builtin type name (int, i128, float, ...) in a value
+                 * position. The builtins that take one — size_of(), type_of()
+                 * — resolve their own argument, so anything arriving here is
+                 * a name used as a value and was emitted into the C. */
+                diagnostic_error_code_formatted(checker->diag, "E3100",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
                 result = bt;
             } else {
                 /* Bare builtin function name used as a value (e.g. `input`
@@ -7817,6 +7774,37 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3031", NODE_FILE(checker, node),
                     node->token.line, node->token.column, 0, name, name, name);
             }
+        } else if (!typechecker_is_imported_module(checker, name) &&
+                   !module_declares_const(checker, name) &&
+                   type_name_as_value(checker, name)) {
+            /* E3100: a name that names a type but no value. Reported here
+             * rather than at each call site, because a type name reaches a
+             * value position in far more places than an argument list — a
+             * builtin argument and a plain initializer among them, neither of
+             * which checked, so the name was emitted into the generated C and
+             * the user saw a C compiler error. */
+            const char *resolved = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, name));
+            /* The way out depends on what the name reaches: a variant for an
+             * enum, an instance for a struct, and neither for an alias of a
+             * primitive, which gets the bare message. */
+            if (is_enum_name(checker, resolved)) {
+                char *msg = typechecker_format(checker,
+                    "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                    name, name);
+                diagnostic_error_message(checker->diag, "E3100", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else if (is_struct_name(checker, resolved)) {
+                char *msg = typechecker_format(checker,
+                    "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                    name, name, name);
+                diagnostic_error_message(checker->diag, "E3100", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else {
+                diagnostic_error_code_formatted(checker->diag, "E3100",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+            }
+            result = &TYPE_UNKNOWN;
         } else if (!is_enum_name(checker, name) &&
                    !is_struct_name(checker, name) &&
                    !typechecker_is_imported_module(checker, name) &&
