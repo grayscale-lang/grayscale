@@ -1,0 +1,65 @@
+import @mem
+using mem
+
+const Point struct {
+    x int
+    y int
+}
+
+alias Num = int
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a = mem.arena(4096)
+    ensure mem.destroy(a)
+
+    mut i ^int = mem.init(a, int)
+    i^ = 42
+    if i^ == 42 {
+        println("  [PASS] mem.init with a primitive type argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mem.init with a primitive type argument: got ${i^}")
+        failed += 1
+    }
+
+    mut p ^Point = mem.init(a, Point)
+    p^.x = 3
+    p^.y = 4
+    if p^.x == 3 && p^.y == 4 {
+        println("  [PASS] mem.init with a struct type argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mem.init with a struct type argument")
+        failed += 1
+    }
+
+    mut n ^Num = mem.init(a, Num)
+    n^ = 9
+    if n^ == 9 {
+        println("  [PASS] mem.init with an alias of a primitive")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mem.init with an alias of a primitive: got ${n^}")
+        failed += 1
+    }
+
+    mut b ^int = init(a, int)
+    b^ = 5
+    if b^ == 5 {
+        println("  [PASS] mem.init reached bare through 'using'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mem.init reached bare through 'using': got ${b^}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

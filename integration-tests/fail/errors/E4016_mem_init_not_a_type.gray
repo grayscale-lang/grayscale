@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4016 - mem.init() takes a type name as its second argument.
+ * That position is never resolved as a value, so this check is the only thing
+ * between a mistyped type name and the generated C.
+ * Expected: "'mem.init()' expects a type name as argument 2"
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(4096)
+    ensure mem.destroy(a)
+    mut p ^int = mem.init(a, NotAType)
+    println(p^)
+}

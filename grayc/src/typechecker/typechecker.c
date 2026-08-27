@@ -210,6 +210,7 @@ static const char *checker_resolve_decl_into(TypeChecker *checker, const char *w
                                              char *buf, size_t buflen);
 static void checker_refresh_using(TypeChecker *checker);
 static ResolveScope checker_scope(TypeChecker *checker);
+static bool type_arg_names_a_type(TypeChecker *checker, const char *name);
 static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written);
 static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node);
 static bool ref_names_function(TypeChecker *checker, AstNode *arg);
@@ -1049,7 +1050,10 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 /* --- Stdlib argument kind validation --- */
 
 typedef enum {
-    ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL
+    ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
+    /* A type name, not a value. Declaring the position here is what keeps
+     * it out of value resolution — see arg_is_type_position(). */
+    ARG_TYPE
 } ExpectedArgKind;
 
 static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
@@ -1068,6 +1072,9 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
     case ARG_CHAR:   return actual->kind == TK_CHAR;
     case ARG_CHANNEL: return actual->kind == TK_STRUCT &&
                              actual->name && strcmp(actual->name, "Channel") == 0;
+    /* Validated by name, never by resolved type — the argument is a type
+     * name and is never resolved as a value. */
+    case ARG_TYPE:   return true;
     }
     return true;
 }
@@ -1084,6 +1091,7 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_NUMBER: return "number";
     case ARG_CHAR:   return "char";
     case ARG_CHANNEL: return "Channel";
+    case ARG_TYPE:   return "a type name";
     }
     return "unknown";
 }
@@ -1376,7 +1384,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"mem", "arena",    1, 1, false, FT_NONE, 0, {{0}},"Arena"},
     {"mem", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "fill",     3, 3, false, FT_NONE, 0, {{0}},"void"},
-    {"mem", "init",     2, 2, false, FT_NONE, 0, {{0}},NULL},
+    {"mem", "init",     2, 2, false, FT_NONE, 1, {{1, ARG_TYPE}},NULL},
     {"mem", "raw_copy", 3, 3, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "reset",    1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "usage",    1, 1, false, FT_NONE, 0, {{0}},"int"},
@@ -1670,6 +1678,21 @@ static void typechecker_check_stdlib_arg_types(TypeChecker *checker, const char 
     for (int i = 0; i < m->arg_type_count; i++) {
         int idx = m->arg_types[i].index;
         if (idx < node->data.call.arg_count) {
+            /* A type position is validated by name. Resolving it as a value
+             * would report the type name as one (E3100); skipping it without
+             * validating would put a mistyped name into the generated C. */
+            if (m->arg_types[i].kind == ARG_TYPE) {
+                AstNode *arg = node->data.call.args[idx];
+                if (arg->kind != NODE_LABEL ||
+                    !type_arg_names_a_type(checker, arg->data.label.value)) {
+                    char *msg = typechecker_format(checker,
+                        "'%s.%s()' expects a type name as argument %d",
+                        mod, fn, idx + 1);
+                    diagnostic_error_message(checker->diag, "E4016", msg,
+                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+                }
+                continue;
+            }
             GrayType *arg_t = resolve_expression(checker, node->data.call.args[idx]);
             if (!arg_kind_matches(m->arg_types[i].kind, arg_t)) {
                 char *msg = NULL;
@@ -3109,7 +3132,17 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     if (strcmp(mod, "mem") == 0) {
         if (strcmp(mfn, "init") == 0 && node->data.call.arg_count == 2) {
             AstNode *type_arg = node->data.call.args[1];
-            if (type_arg->kind == NODE_LABEL) {
+            /* Point at what the name reaches: an alias bound as itself gave a
+             * pointer type that no annotation of the underlying type accepts,
+             * and codegen has no C type named after the alias. A name that
+             * reaches no type was already reported; stay unknown so the
+             * assignment does not report it a second time. */
+            if (type_arg->kind == NODE_LABEL &&
+                type_arg_names_a_type(checker, type_arg->data.label.value)) {
+                const char *target = resolve_type_alias(checker,
+                    checker_resolve_type_name(checker, type_arg->data.label.value));
+                if (target && strcmp(target, type_arg->data.label.value) != 0)
+                    type_arg->data.label.value = target;
                 result = type_pointer(type_arg->data.label.value);
             } else {
                 result = &TYPE_UNKNOWN;
@@ -6037,11 +6070,60 @@ static AstNode *callee_func_decl(TypeChecker *checker, AstNode *node) {
     return (sig && sig->decl && sig->decl->kind == NODE_FUNC_DECL) ? sig->decl : NULL;
 }
 
-/* Does argument `index` of this call land on a <?> parameter? Such a parameter
- * takes a type name, not a value. */
-static bool arg_is_type_param_position(AstNode *decl, int index) {
-    return decl && index < decl->data.func_decl.param_count &&
-           decl->data.func_decl.params[index].is_type_param;
+/* The builtins that take a type name. Each owns its own type-name diagnostic
+ * — size_of() accepts one, type_of() rejects it with E3084 and fields() with
+ * E5043 — so the general path must not resolve the argument and report first.
+ * Declared here rather than tested inline, so the predicate below is the one
+ * place that answers the question. */
+static const struct { const char *name; int index; } builtin_type_arg[] = {
+    {"size_of", 0}, {"type_of", 0}, {"fields", 0},
+};
+
+/* Is argument `index` of this call a type position — a place that takes a type
+ * name rather than a value? Answered from where the function is declared: a
+ * <?> parameter on a user function, an ARG_TYPE position in the stdlib table,
+ * or the builtin table above. A type position must never reach value
+ * resolution, which would report the type name as a value (E3100). */
+static bool arg_is_type_position(TypeChecker *checker, AstNode *node,
+                                 AstNode *callee_decl, int index) {
+    if (callee_decl && index < callee_decl->data.func_decl.param_count &&
+        callee_decl->data.func_decl.params[index].is_type_param)
+        return true;
+    AstNode *fn = node->data.call.function;
+    if (!fn) return false;
+    if (fn->kind == NODE_LABEL) {
+        for (size_t i = 0; i < sizeof(builtin_type_arg) / sizeof(builtin_type_arg[0]); i++) {
+            if (builtin_type_arg[i].index == index &&
+                strcmp(fn->data.label.value, builtin_type_arg[i].name) == 0)
+                return true;
+        }
+        /* A stdlib function reached bare through `using` is the same call as
+         * the qualified spelling, so its type positions are the same ones. */
+        for (int i = 0; i < checker->using_module_count; i++) {
+            if (!using_module_accessible(checker, i)) continue;
+            const StdlibFuncMeta *m = find_stdlib_meta(
+                typechecker_resolve_alias(checker, checker->using_modules[i]),
+                fn->data.label.value);
+            if (!m) continue;
+            for (int a = 0; a < m->arg_type_count; a++) {
+                if (m->arg_types[a].index == index && m->arg_types[a].kind == ARG_TYPE)
+                    return true;
+            }
+        }
+        return false;
+    }
+    if (fn->kind == NODE_MEMBER_EXPR) {
+        const char *qualifier = ast_member_base_qualifier(fn);
+        if (!qualifier || !typechecker_is_stdlib_import(checker, qualifier)) return false;
+        const StdlibFuncMeta *m = find_stdlib_meta(
+            typechecker_resolve_alias(checker, qualifier), fn->data.member.member);
+        if (!m) return false;
+        for (int i = 0; i < m->arg_type_count; i++) {
+            if (m->arg_types[i].index == index && m->arg_types[i].kind == ARG_TYPE)
+                return true;
+        }
+    }
+    return false;
 }
 
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
@@ -6054,29 +6136,19 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     bool is_ref_call = (node->data.call.function &&
         node->data.call.function->kind == NODE_LABEL &&
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
-    bool is_size_of_call = (node->data.call.function &&
-        node->data.call.function->kind == NODE_LABEL &&
-        (strcmp(node->data.call.function->data.label.value, "size_of") == 0 ||
-         strcmp(node->data.call.function->data.label.value, "type_of") == 0 ||
-         strcmp(node->data.call.function->data.label.value, "fields") == 0));
     AstNode *callee_decl = callee_func_decl(checker, node);
     for (int i = 0; i < node->data.call.arg_count; i++) {
-        /* A <?> argument is a type name. resolve_generic_call() is its sole
-         * validator (E3127/E3128); resolving it here would reach the label
-         * branch of resolve_expression and report it as a value (E3100). */
-        if (arg_is_type_param_position(callee_decl, i) &&
-            node->data.call.args[i]->kind == NODE_LABEL)
+        /* A type argument is validated where the call is dispatched, not here:
+         * resolve_generic_call() for a <?> parameter, the stdlib argument
+         * check for an ARG_TYPE position, the builtin's own handler for the
+         * rest. Resolving one here would report the type name as a value. */
+        if (node->data.call.args[i]->kind == NODE_LABEL &&
+            arg_is_type_position(checker, node, callee_decl, i))
             continue;
         if (is_ref_call && node->data.call.args[i]->kind == NODE_LABEL &&
             find_func(checker, node->data.call.args[i]->data.label.value)) {
             continue;
         }
-        /* Skip size_of(), type_of() and fields() label arguments — those
-         * handlers own the type-name diagnostic (size_of() accepts one,
-         * type_of() rejects it with E3084 and fields() with E5043), so the
-         * general path must not report first. */
-        if (is_size_of_call && node->data.call.args[i]->kind == NODE_LABEL)
-            continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
         if (node->data.call.args[i]->kind == NODE_IMPLICIT_ENUM)
