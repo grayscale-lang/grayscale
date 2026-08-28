@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.4](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.3...grayscale-v0.5.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **benchmarks:** auto-reset fixtures and run workloads standalone ([#2551](https://github.com/grayscale-lang/grayscale/issues/2551)) ([004ad2c](https://github.com/grayscale-lang/grayscale/commit/004ad2cea7a627977672107cc024e3301f842b28))
+* **ci:** declare strptime on glibc for time.parse ([6cbd174](https://github.com/grayscale-lang/grayscale/commit/6cbd1744a83ab337e2a950ad06f7e5df94f13f85))
+* **codegen:** bind map-value arrays to a temp for chained index and assign ([#2550](https://github.com/grayscale-lang/grayscale/issues/2550)) ([ed003bd](https://github.com/grayscale-lang/grayscale/commit/ed003bd9f4f112105345e3118e49741682c3dcc6))
+* **codegen:** defer non-constant file-scope initializers to global init ([#2545](https://github.com/grayscale-lang/grayscale/issues/2545)) ([e31df3c](https://github.com/grayscale-lang/grayscale/commit/e31df3c8a36004046659335162ae47dffd7218bc))
+* **codegen:** mask bit_not on u8 and u16 back to type width ([#2553](https://github.com/grayscale-lang/grayscale/issues/2553)) ([a73b10b](https://github.com/grayscale-lang/grayscale/commit/a73b10b2c520ab3452e43689181d09a9b1607ac0))
+* **codegen:** read cast(arr, [T]) results with the element width, not int64_t ([#2555](https://github.com/grayscale-lang/grayscale/issues/2555)) ([a2c59d9](https://github.com/grayscale-lang/grayscale/commit/a2c59d9a022bdf8571bfd91dd35be598d5a9592e))
+* **codegen:** read packed sized array elements at the real width in compound assign ([0c93c5c](https://github.com/grayscale-lang/grayscale/commit/0c93c5c400abb4b4c09a23e8da076f86cdc99e71))
+* **codegen:** resolve module-level var name when passed to a by-reference parameter ([#2546](https://github.com/grayscale-lang/grayscale/issues/2546)) ([5a5751b](https://github.com/grayscale-lang/grayscale/commit/5a5751b0256074eb0f17e2af02302550d09fc477))
+* **tests:** fix stdlib time test ([32dfb20](https://github.com/grayscale-lang/grayscale/commit/32dfb2027bf9a6634fffd3f3a909314ba67aa341))
+* **threads:** detect pthread_create failure instead of corrupting state ([#2554](https://github.com/grayscale-lang/grayscale/issues/2554)) ([6822591](https://github.com/grayscale-lang/grayscale/commit/6822591217fac9b0f1a963283df2e8b05898f7da))
+* **typechecker:** reject cast() between a string-backed enum and an integer ([#2536](https://github.com/grayscale-lang/grayscale/issues/2536)) ([c467d11](https://github.com/grayscale-lang/grayscale/commit/c467d11772573ce5c8b068c5e30a5e21ae85fa69))
+* **typechecker:** reject non-integer arguments to char() ([#2552](https://github.com/grayscale-lang/grayscale/issues/2552)) ([6839bb1](https://github.com/grayscale-lang/grayscale/commit/6839bb1133f12f9f31220e4fe3f251c2a2568438))
+* **typechecker:** resolve module-level var in member expr inside its own module ([#2537](https://github.com/grayscale-lang/grayscale/issues/2537)) ([2e16ffc](https://github.com/grayscale-lang/grayscale/commit/2e16ffcb4fcd52b826a963d6785a6b3d2660f3d3))
+* **typechecker:** resolve type aliases inside map, sized-array, and func signature positions ([#2524](https://github.com/grayscale-lang/grayscale/issues/2524)) ([838f52a](https://github.com/grayscale-lang/grayscale/commit/838f52aca067cebb3912c5ce8ac214c21763dd62))
+* **typechecker:** warn when a variable is declared with no value ([#2447](https://github.com/grayscale-lang/grayscale/issues/2447)) ([f83e0a8](https://github.com/grayscale-lang/grayscale/commit/f83e0a81945a60cc3312d48a121f7750a09739fd))
+* **windows:** fix bug in time.c ([d276f61](https://github.com/grayscale-lang/grayscale/commit/d276f61c4cfc125d351448df938be9639d6c9b5a))
+
+
+### Performance Improvements
+
+* **benchmarks:** add make benchmark real-workload suite ([#2551](https://github.com/grayscale-lang/grayscale/issues/2551)) ([ade370d](https://github.com/grayscale-lang/grayscale/commit/ade370df18486b03a3226c78cc8428432c369fb2))
+
 ## [0.5.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.2...grayscale-v0.5.3) (2026-08-28)
 
 
