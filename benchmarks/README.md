@@ -43,6 +43,22 @@ benchmarks/
 min / median / mean wall time. `cc` is the only tool assumed present —
 `date +%N`, `python3`, and `hyperfine` are not.
 
+`run.sh` wipes `.gen/` at the start of every run and regenerates it; the
+fixtures are deterministic and rebuild in under a second, so there is nothing
+to cache or clean up by hand.
+
+## Running one workload
+
+The workload sources are ordinary programs. Build and run one directly:
+
+```
+gray build benchmarks/workloads/lexer.gray -o /tmp/lexer && /tmp/lexer
+```
+
+If `BENCH_GEN` is not set, a workload looks for fixtures in `benchmarks/.gen/`
+relative to its own location, so generate them once first with
+`bash benchmarks/gen.sh` (or any prior `make benchmark`).
+
 ## Knobs
 
 | Env var | Default | Effect |
@@ -50,9 +66,7 @@ min / median / mean wall time. `cc` is the only tool assumed present —
 | `BENCH_RUNS` | 5 | Run-phase iterations per workload |
 | `BENCH_COMPILE_RUNS` | 3 | Compile-phase iterations per workload |
 | `GRAY` | `../gray` | Compiler binary to benchmark |
-
-Fixtures are generated once and reused; delete `benchmarks/.gen/` to force a
-rebuild.
+| `BENCH_GEN` | `benchmarks/.gen` | Fixture directory a workload reads |
 
 ## results.json
 

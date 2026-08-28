@@ -18,8 +18,22 @@ do is_space(c int) -> bool {
     return c == 32 || c == 9 || c == 10 || c == 13
 }
 
+// The runner exports BENCH_GEN; running a workload by hand falls back to
+// benchmarks/.gen next to this file's directory.
+do fixture_dir() -> string {
+    mut env string = os.get_env("BENCH_GEN")
+    if env != "" {
+        return env
+    }
+    mut src string = here().file
+    if !io.is_absolute(src) {
+        src = io.path_join({os.current_dir(), src})
+    }
+    return io.path_join({io.dirname(io.dirname(src)), ".gen"})
+}
+
 do main() {
-    mut gen string = os.get_env("BENCH_GEN")
+    mut gen string = fixture_dir()
     mut src, err = io.read_file("${gen}/source.txt")
     if err != nil {
         println("lexer: cannot read fixture")

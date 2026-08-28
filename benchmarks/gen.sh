@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
 #
 # gen.sh - write deterministic benchmark fixtures into benchmarks/.gen/.
-# Fixtures are regenerated only when missing, so a second `make benchmark`
-# run reuses them. Delete benchmarks/.gen/ to force a rebuild.
+# The fixtures are deterministic; running this again just rewrites them.
+# run.sh wipes .gen/ before calling this.
 #
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
 gen="$here/.gen"
 mkdir -p "$gen"
-
-if [ -f "$gen/.stamp" ]; then
-    echo "fixtures already present in $gen (delete .gen/ to regenerate)"
-    exit 0
-fi
 
 echo "generating fixtures in $gen ..."
 
@@ -69,5 +64,4 @@ awk 'BEGIN {
     echo "}"
 } > "$gen/stress.gray"
 
-touch "$gen/.stamp"
 echo "fixtures generated."

@@ -31,13 +31,17 @@ if [ ! -x "$GRAY" ]; then
     exit 1
 fi
 
+# Start each run from a clean slate: the fixtures are deterministic and
+# take under a second to rebuild, so there is nothing to preserve.
+echo "==> resetting $gen"
+rm -rf "$gen"
+mkdir -p "$bin"
+
 echo "==> building stopwatch"
 cc -O2 -o "$runner" "$here/runner.c"
 
 echo "==> generating fixtures"
 bash "$here/gen.sh"
-
-mkdir -p "$bin"
 
 # Workloads with both a compile and a run phase.
 workloads="json_roundtrip raytracer lexer life kvstore sha256"

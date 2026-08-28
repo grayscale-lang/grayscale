@@ -8,8 +8,22 @@ import @os
 import @strings
 import @maps
 
+// The runner exports BENCH_GEN; running a workload by hand falls back to
+// benchmarks/.gen next to this file's directory.
+do fixture_dir() -> string {
+    mut env string = os.get_env("BENCH_GEN")
+    if env != "" {
+        return env
+    }
+    mut src string = here().file
+    if !io.is_absolute(src) {
+        src = io.path_join({os.current_dir(), src})
+    }
+    return io.path_join({io.dirname(io.dirname(src)), ".gen"})
+}
+
 do main() {
-    mut gen string = os.get_env("BENCH_GEN")
+    mut gen string = fixture_dir()
     mut lines, err = io.read_lines("${gen}/ops.txt")
     if err != nil {
         println("kvstore: cannot read fixture")
