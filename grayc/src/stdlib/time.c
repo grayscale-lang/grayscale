@@ -9,6 +9,10 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700   /* strptime — hidden by glibc without this */
+#endif
+
 #include "time.h"
 #include "../util/constants.h"
 #include <time.h>
