@@ -1,30 +1,43 @@
 /*
- * function_scoped_using.gray - using statement inside function bodies
- *
- * function-scoped `using`
- * was silently ignored. Now NODE_USING_STMT is handled in both
- * check_statement and emit_statement, adding the module to the
- * using_modules list when encountered mid-body.
+ * function_scoped_using.gray - a `using` statement inside a function body
+ * brings the module's names into scope for the rest of that body.
  */
 
 import @math
 import @strings
 
-do math_stuff() {
+do math_stuff() -> float {
     using math
-    println(PI)
-    println(sqrt(16.0))
+    return sqrt(16.0) + floor(PI)
 }
 
-do string_stuff() {
+do string_stuff() -> string {
     using strings
-    println(to_upper("world"))
-    println(reverse("abc"))
+    return "${to_upper("world")}-${reverse("abc")}"
 }
 
 do main() {
-    println("=== Function-Scoped Using Test ===")
-    math_stuff()
-    string_stuff()
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    if math_stuff() == 7.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] function-scoped using @math: ${math_stuff()}")
+        failed += 1
+    }
+
+    if string_stuff() == "WORLD-cba" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] function-scoped using @strings: ${string_stuff()}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

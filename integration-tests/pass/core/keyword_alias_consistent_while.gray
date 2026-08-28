@@ -1,14 +1,54 @@
-/* Pass Test: consistent use of 'while' keyword alias */
-do main() {
+/* Pass Test: 'while' keyword alias drives a loop the same as 'as_long_as'. */
+
+do count_to(n int) -> int {
     mut i int = 0
-    while i < 3 {
+    while i < n {
         i++
     }
+    return i
+}
 
-    mut j int = 0
-    while j < 2 {
-        j++
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if count_to(3) == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] while loop count: ${count_to(3)}")
+        failed += 1
     }
 
-    println("PASS")
+    // A while whose condition is false from the start runs zero times.
+    mut ran int = 0
+    while false {
+        ran = 1
+    }
+    if ran == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] while with a false condition executed its body")
+        failed += 1
+    }
+
+    // Accumulate inside the loop.
+    mut sum int = 0
+    mut k int = 1
+    while k <= 5 {
+        sum += k
+        k++
+    }
+    if sum == 15 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] while accumulation: ${sum}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

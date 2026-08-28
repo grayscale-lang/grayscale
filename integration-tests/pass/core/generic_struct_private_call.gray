@@ -27,4 +27,9 @@ do main() {
     if r == 100 { passed = passed + 1 } otherwise { failed = failed + 1 }
 
     println("passed: ${passed}/${passed + failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

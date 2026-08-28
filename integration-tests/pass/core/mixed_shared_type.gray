@@ -1,9 +1,9 @@
-/* Test: Mixed shared type named return values
- * Expected: passes with output "Alice", "NYC", "30"
+/*
+ * Test: a named-return signature `(name, city string, age int)` shares
+ * `string` across the first two names and returns all three by value.
  */
 
-
-do getFullInfo() -> (name, city string, age int) {
+do get_full_info() -> (name, city string, age int) {
     mut name string = "Alice"
     mut city string = "NYC"
     mut age int = 30
@@ -11,9 +11,33 @@ do getFullInfo() -> (name, city string, age int) {
 }
 
 do main() {
-    mut n string, c string, a int = getFullInfo()
-    println(n)
-    println(c)
-    println(a)
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut n string, c string, a int = get_full_info()
+    if n == "Alice" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] name: ${n}")
+        failed += 1
+    }
+    if c == "NYC" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] city: ${c}")
+        failed += 1
+    }
+    if a == 30 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] age: ${a}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

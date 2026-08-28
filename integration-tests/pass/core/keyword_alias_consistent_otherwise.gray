@@ -1,17 +1,47 @@
-/* Pass Test: consistent use of 'otherwise' keyword alias */
-do main() {
-    mut x int = 10
+/* Pass Test: 'otherwise' keyword alias used consistently for the else arm. */
+
+do classify(x int) -> string {
     if x > 5 {
-        println("big")
+        return "big"
     } otherwise {
-        println("small")
+        return "small"
+    }
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if classify(10) == "big" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] otherwise: big branch")
+        failed += 1
+    }
+    if classify(1) == "small" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] otherwise: small branch")
+        failed += 1
     }
 
-    if x == 10 {
-        println("ten")
+    mut label string = ""
+    if false {
+        label = "a"
     } otherwise {
-        println("not ten")
+        label = "b"
+    }
+    if label == "b" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] otherwise: taken when condition is false")
+        failed += 1
     }
 
-    println("PASS")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

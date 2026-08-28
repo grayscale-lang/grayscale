@@ -1,10 +1,11 @@
 /*
- * Test: #discard attribute on functions
- * Verifies that #discard suppresses E5011 for unused return values
+ * Test: #discard suppresses E5011 for an unused return value, on both a
+ * free function and a struct function, while the value is still usable
+ * when captured.
  */
 
 #discard
-do getValue() -> int {
+do get_value() -> int {
     return 42
 }
 
@@ -18,18 +19,35 @@ const Counter struct {
 }
 
 do main() {
-    // Free function: call without capturing return value (no E5011)
-    getValue()
+    mut passed int = 0
+    mut failed int = 0
 
-    // Also works when capturing the return value
-    mut x int = getValue()
-    println("${x}")
+    // Called for effect, return discarded — must not be an error.
+    get_value()
 
-    // Struct function: call without capturing return value (no E5011)
-    mut c Counter = Counter{ count: 0 }
+    mut x int = get_value()
+    if x == 42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] captured free-function return: ${x}")
+        failed += 1
+    }
+
+    mut c Counter = Counter{ count: 5 }
     c.increment()
 
-    // Also works when capturing
     mut y int = c.increment()
-    println("${y}")
+    if y == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] captured struct-function return: ${y}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

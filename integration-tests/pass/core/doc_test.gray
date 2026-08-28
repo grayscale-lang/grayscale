@@ -1,7 +1,10 @@
 /*
- * doc_test.gray - Test #doc attribute
+ * doc_test.gray - #doc attribute (with and without a description text) on
+ * functions, structs, and enums compiles, and the annotated declarations
+ * behave normally.
  */
 
+import @arrays
 
 #doc("Adds two integers and returns the sum")
 do add(a int, b int) -> int {
@@ -14,8 +17,8 @@ do double(n int) -> int {
 }
 
 #doc
-do helper() {
-    // No description, just marked for docs
+do helper() -> int {
+    return 7
 }
 
 #doc("Represents a person with name and age")
@@ -40,6 +43,40 @@ const Permissions enum {
 }
 
 do main() {
-    println("Doc test file")
-    println("ALL TESTS PASSED")
+    mut fails [string] = {}
+
+    if add(2, 3) != 5 {
+        arrays.append(fails, "add")
+    }
+    if double(21) != 42 {
+        arrays.append(fails, "double")
+    }
+    if helper() != 7 {
+        arrays.append(fails, "helper")
+    }
+
+    mut p Person = Person{name: "Ada", age: 30}
+    if p.name != "Ada" || p.age != 30 {
+        arrays.append(fails, "Person")
+    }
+
+    mut s Status = Status.ACTIVE
+    if s != Status.ACTIVE || s == Status.DONE {
+        arrays.append(fails, "Status")
+    }
+
+    mut perm Permissions = Permissions.WRITE
+    if perm != Permissions.WRITE {
+        arrays.append(fails, "Permissions")
+    }
+
+    for_each name in fails {
+        println("[FAIL] ${name}")
+    }
+    println("Results: ${6 - len(fails)} passed, ${len(fails)} failed")
+    if len(fails) > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

@@ -1,3 +1,9 @@
+/*
+ * Test: wildcard (?) struct functions monomorphize per concrete argument
+ * type, via type-qualified calls and instance dispatch, across two
+ * structs in one file.
+ */
+
 const Box struct {
     value int
 
@@ -23,29 +29,44 @@ const Pair struct {
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut b = Box { value: 10 }
 
-    // Type-qualified wildcard calls with different concrete types
     mut r1 int = Box.identity(42)
     mut r2 string = Box.identity("hello")
     mut r3 bool = Box.identity(true)
-    mut r4 float = Box.identity(3.14)
+    mut r4 float = Box.identity(3.5)
+    if r1 == 42 && r2 == "hello" && r3 == true && r4 == 3.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] type-qualified wildcard calls")
+        failed += 1
+    }
 
-    // Instance dispatch wildcard calls
     mut r5 int = b.wrap(99)
     mut r6 string = b.wrap("world")
+    if r5 == 99 && r6 == "world" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] instance-dispatch wildcard calls")
+        failed += 1
+    }
 
-    // Second struct with wildcard
     mut r7 int = Pair.pick(0, 10, 20)
     mut r8 string = Pair.pick(1, "left", "right")
+    if r7 == 10 && r8 == "right" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] second struct wildcard calls")
+        failed += 1
+    }
 
-    println(r1)
-    println(r2)
-    println(r3)
-    println(r4)
-    println(r5)
-    println(r6)
-    println(r7)
-    println(r8)
-    println("ALL TESTS PASSED")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

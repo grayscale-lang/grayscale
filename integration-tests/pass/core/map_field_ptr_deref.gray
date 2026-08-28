@@ -1,12 +1,47 @@
+/*
+ * Test: a map-typed struct field reached through a heap pointer can be
+ * assigned and read via both explicit (b^.items) and auto (b.items)
+ * dereference.
+ */
+
 const Bag struct {
     items [string:int]
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut b = new(Bag)
+
     b^.items = {"key": 99}
-    println(b^.items["key"])
+    if b^.items["key"] == 99 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] explicit deref assign/read")
+        failed += 1
+    }
 
     b.items = {"auto": 77}
-    println(b.items["auto"])
+    if b.items["auto"] == 77 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] auto deref assign/read")
+        failed += 1
+    }
+
+    // The reassignment replaced the map, so the old key is gone.
+    if b.items["auto"] == 77 && len(b.items) == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] map field reassignment replaced contents")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

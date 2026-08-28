@@ -84,4 +84,9 @@ do main() {
     }
 
     println("fields_builtin: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }
