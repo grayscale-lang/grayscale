@@ -1,0 +1,9 @@
+/*
+ * lib.gray - LIMIT is a module-level constant; nudge() tries to write it.
+ */
+
+const LIMIT int = 5
+
+do nudge() {
+    LIMIT = 6
+}

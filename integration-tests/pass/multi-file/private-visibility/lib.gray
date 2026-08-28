@@ -20,3 +20,49 @@ do get_greeting(name string) -> string {
 
 // Public constant - SHOULD be accessible from main.gray
 const VERSION string = "1.0.0"
+
+// Private struct - should NOT be accessible from main.gray
+private const Secret struct {
+    v int
+}
+
+// Private enum - should NOT be accessible from main.gray
+private const Hidden enum {
+    ONE
+    TWO
+}
+
+// Public struct with a private struct function
+const Box struct {
+    v int
+
+    private do secret(self Box) -> int {
+        return self.v * 2
+    }
+
+    do open(self Box) -> int {
+        return Box.secret(self) + 1
+    }
+}
+
+// Private types are usable inside the file that declares them
+do use_private() -> int {
+    mut s Secret = Secret{v: 3}
+    mut h Hidden = Hidden.TWO
+    if h == Hidden.TWO {
+        return s.v
+    }
+    return 0
+}
+
+// Private constant and variable, reachable only inside this file
+private const HIDDEN int = 9
+private mut counter int = 3
+
+// Public constant and variable, published under their bare names by 'import and use'
+const LIMIT int = 50
+mut tally int = 5
+
+do use_private_data() -> int {
+    return HIDDEN + counter
+}

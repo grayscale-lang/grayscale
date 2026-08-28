@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4016 - size_of() on a container whose element type does not exist
+ * Expected: "undefined type 'Nope'"
+ */
+
+// expect-error: E4016
+// expect-error-count: 1
+
+do main() {
+    println(size_of([Nope]))
+}

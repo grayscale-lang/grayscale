@@ -1,0 +1,72 @@
+const Point struct {
+    x int
+
+    do get_x(p Point) -> int {
+        return p.x
+    }
+
+    do make(v int) -> Point {
+        return Point{x: v}
+    }
+}
+
+alias Vec2 = Point
+alias Coord = Vec2
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p Vec2 = Vec2{x: 7}
+    mut a int = Vec2.get_x(p)
+    if a == 7 {
+        println("  [PASS] static call through struct alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] static call through struct alias: expected 7, got ${a}")
+        failed += 1
+    }
+
+    mut b Vec2 = Vec2.make(3)
+    if b.x == 3 {
+        println("  [PASS] constructing struct function through alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] constructing struct function through alias: expected 3, got ${b.x}")
+        failed += 1
+    }
+
+    mut c int = Coord.get_x(p)
+    if c == 7 {
+        println("  [PASS] static call through chained alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] static call through chained alias: expected 7, got ${c}")
+        failed += 1
+    }
+
+    mut d int = Point.get_x(p)
+    if d == 7 {
+        println("  [PASS] static call through the struct's own name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] static call through the struct's own name: expected 7, got ${d}")
+        failed += 1
+    }
+
+    mut e int = p.get_x()
+    if e == 7 {
+        println("  [PASS] instance dispatch on alias-typed variable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] instance dispatch on alias-typed variable: expected 7, got ${e}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

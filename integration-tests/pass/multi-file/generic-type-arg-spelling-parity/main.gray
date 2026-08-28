@@ -1,0 +1,54 @@
+/*
+ * generic-type-arg-spelling-parity - a <?> type argument accepts any type
+ * name, not only a struct. Primitives went to the qualified and bare
+ * spellings of the same call to pin that both still agree.
+ */
+
+import "./utils.gray"
+using utils
+
+const Point struct {
+    x int
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a int = utils.new_T(int)
+    mut b int = new_T(int)
+    if a == 0 && b == 0 {
+        println("  [PASS] primitive type argument, both spellings")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] primitive type argument: got ${a} and ${b}")
+        failed += 1
+    }
+
+    mut c string = utils.new_T(string)
+    mut d string = new_T(string)
+    if c == d {
+        println("  [PASS] string type argument, both spellings agree")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string type argument: got '${c}' and '${d}'")
+        failed += 1
+    }
+
+    mut e Point = utils.new_T(Point)
+    mut f Point = new_T(Point)
+    if e.x == 0 && f.x == 0 {
+        println("  [PASS] struct type argument, both spellings")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct type argument: got ${e.x} and ${f.x}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

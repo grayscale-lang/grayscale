@@ -1,0 +1,53 @@
+import "./data_types.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: struct type from a module whose name contains an underscore
+    mut b data_types.Baz = data_types.Baz{y: 2}
+    if b.y == 2 {
+        println("  [PASS] qualified struct type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] qualified struct type")
+        failed += 1
+    }
+
+    // Test 2: the module uses its own type unqualified
+    mut b2 data_types.Baz = data_types.make_baz(7)
+    if data_types.baz_y(b2) == 7 {
+        println("  [PASS] type used inside its declaring module")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type used inside its declaring module")
+        failed += 1
+    }
+
+    // Test 3: enum type from the same module
+    mut c data_types.Color = data_types.Color.GREEN
+    if c == data_types.Color.GREEN {
+        println("  [PASS] qualified enum type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] qualified enum type")
+        failed += 1
+    }
+
+    // Test 4: alias from the same module
+    mut n data_types.Count = data_types.count()
+    if n == 5 {
+        println("  [PASS] qualified alias type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] qualified alias type")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -136,6 +136,5 @@ void gray_mem_zero(void *ptr, int64_t n);
 /* mem.set(ptr, val, n) — set n bytes to val (memset) */
 void gray_mem_set(void *ptr, int64_t val, int64_t n);
 
-/* mem.size_of(Type) — handled by codegen (sizeof) */
 
 #endif

@@ -1,0 +1,10 @@
+/*
+ * lib.gray - Library with a private constant and a private variable
+ */
+
+private const HIDDEN int = 9
+private mut counter int = 3
+
+do public_fn() -> int {
+    return HIDDEN + counter
+}

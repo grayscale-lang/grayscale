@@ -1,0 +1,21 @@
+/*
+ * Test: plain '=' assignment to a module-level mut variable
+ *
+ * A module-level declaration is bound under its module's spelling, so a bare
+ * write inside the module has to reach the same variable a bare read does —
+ * not declare a local that shadows it and drop the write.
+ */
+import "./state"
+
+do main() {
+    state.bump()
+    state.bump()
+    assert(state.report() == "2-start-false", "plain '=' writes land on the module variable")
+
+    state.set_all()
+    assert(state.report() == "43-changed-true", "int, string and bool all round-trip")
+
+    assert(state.fresh_local() == 9, "an implicit local declaration still works")
+
+    println("ALL TESTS PASSED")
+}

@@ -204,6 +204,16 @@ static const char *read_type_name(Parser *parser) {
     return name;
 }
 
+/* True when the parser sits on a token that can only begin a pointer or
+ * container type spelling: ^T, [T], [T,N], or map[K:V].  'map' is a reserved
+ * type name, so it can never be a value here. */
+static bool current_starts_complex_type(Parser *parser) {
+    if (current_token_is(parser, TOK_CARET) || current_token_is(parser, TOK_LBRACKET)) return true;
+    return current_token_is(parser, TOK_IDENT) &&
+           strcmp(parser->cur_token.literal, "map") == 0 &&
+           peek_token_is(parser, TOK_LBRACKET);
+}
+
 /* Parse a complex type annotation.
  * Precondition: parser is ON the first token of the type ([, ^, map, or IDENT).
  * Postcondition: returns the type string, parser on the last token of the type.
@@ -444,6 +454,27 @@ static const char *parse_complex_type(Parser *parser) {
         /* Plain type name (possibly qualified: module.Type) */
         return read_type_name(parser);
     }
+}
+
+/* The element type of an array spelling, or NULL when the spelling is not an
+ * array.  "[int]" -> "int", "[int,3]" -> "int" (the size is not part of the
+ * element type).  Nesting is respected, so "[[int,3]]" -> "[int,3]". */
+static const char *array_element_type(Parser *parser, const char *type_str) {
+    if (!type_str || type_str[0] != '[') return NULL;
+    size_t len = strlen(type_str);
+    if (len < 3 || type_str[len - 1] != ']') return NULL;
+    size_t elen = len - 2;
+    int depth = 0;
+    for (size_t i = 0; i < elen; i++) {
+        char c = type_str[1 + i];
+        if (c == '[') depth++;
+        else if (c == ']') depth--;
+        else if (c == ',' && depth == 0) { elen = i; break; }
+    }
+    char *elem = arena_alloc(parser->arena, elen + 1);
+    memcpy(elem, type_str + 1, elen);
+    elem[elen] = '\0';
+    return elem;
 }
 
 static AstNode *parse_identifier(Parser *parser) {
@@ -762,8 +793,7 @@ static AstNode *parse_prefix(Parser *parser) {
                 next_token(parser); /* move to potential type name */
 
                 if (parser->cur_token.type == TOK_IDENT &&
-                    peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal &&
-                    parser->cur_token.literal[0] >= 'A' && parser->cur_token.literal[0] <= 'Z') {
+                    peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal) {
                     /* mod.Name{; module-qualified struct literal */
                     char *prefixed = arena_alloc(parser->arena, MSG_BUF_SIZE);
                     snprintf(prefixed, MSG_BUF_SIZE, "%s.%s", mod, parser->cur_token.literal);
@@ -782,13 +812,15 @@ static AstNode *parse_prefix(Parser *parser) {
             }
         }
         /* Check for struct literal: Name{ ... }
-         * Struct/enum names start with uppercase by convention. */
+         * The name's casing has nothing to do with it. Requiring an initial
+         * capital made every lowercase-named struct unusable: the literal
+         * parsed as a bare label and the type name was then reported as a
+         * value. no_struct_literal is what keeps `if x {` from being read as
+         * one; the spelling of the name is not. */
         if (peek_token_is(parser, TOK_LBRACE) && !parser->no_struct_literal) {
             const char *name = parser->cur_token.literal;
-            if (name[0] >= 'A' && name[0] <= 'Z') {
-                next_token(parser); /* move to { */
-                return parse_struct_literal(parser, name);
-            }
+            next_token(parser); /* move to { */
+            return parse_struct_literal(parser, name);
         }
         return parse_identifier(parser);
     case TOK_INT:       return parse_int_literal(parser);
@@ -944,19 +976,15 @@ static AstNode *parse_prefix(Parser *parser) {
         node->data.cast.value = parse_expression(parser, PREC_LOWEST);
         if (!expect_peek_token(parser, TOK_COMMA)) return NULL;
         next_token(parser);
-        if (current_token_is(parser, TOK_LBRACKET)) {
-            /* Array type: cast(value, [type]) */
-            next_token(parser); /* element type */
-            const char *elem = parser->cur_token.literal;
-            if (!expect_peek_token(parser, TOK_RBRACKET)) return NULL;
-            size_t ts_len = strlen(elem) + 3;
-            char *type_str = arena_alloc(parser->arena, ts_len);
-            snprintf(type_str, ts_len, "[%s]", elem);
-            node->data.cast.target_type = type_str;
+        /* The target is an ordinary type annotation, so it goes through the
+         * shared type parser rather than a hand-rolled subset. */
+        const char *target = parse_complex_type(parser);
+        if (!target) return NULL;
+        node->data.cast.target_type = target;
+        const char *elem = array_element_type(parser, target);
+        if (elem) {
             node->data.cast.is_array = true;
             node->data.cast.element_type = elem;
-        } else {
-            node->data.cast.target_type = parser->cur_token.literal;
         }
         if (!expect_peek_token(parser, TOK_RPAREN)) return NULL;
         return node;
@@ -1057,9 +1085,14 @@ static AstNode *parse_infix_expression(Parser *parser, AstNode *left) {
         parser->cur_token.type == TOK_LT_EQ || parser->cur_token.type == TOK_GT_EQ ||
         parser->cur_token.type == TOK_EQ || parser->cur_token.type == TOK_NOT_EQ;
     next_token(parser);
+    /* Restore what was there rather than clearing: a comparison inside an
+     * already-suppressed context — `if a == 1 && b {` — would otherwise hand
+     * the rest of the condition back an enabled flag, and `b {` would parse
+     * as a struct literal. */
+    bool saved_nsl = parser->no_struct_literal;
     if (suppress_struct_lit) parser->no_struct_literal = true;
     node->data.infix.right = parse_expression(parser, prec);
-    if (suppress_struct_lit) parser->no_struct_literal = false;
+    parser->no_struct_literal = saved_nsl;
     return node;
 }
 
@@ -1103,10 +1136,11 @@ static AstNode *parse_call_expression(Parser *parser, AstNode *function) {
                 next_token(parser); /* skip colon, now on value */
             }
 
-            /* size_of(^T): parse pointer type as a type expression, not a general expression */
+            /* size_of(^T), size_of([T]), size_of(map[K:V]): parse the container
+             * spelling as a type expression, not as a general expression. */
             if (function->kind == NODE_LABEL &&
                 strcmp(function->data.label.value, "size_of") == 0 &&
-                current_token_is(parser, TOK_CARET)) {
+                current_starts_complex_type(parser)) {
                 const char *type_str = parse_complex_type(parser);
                 AstNode *label = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
                 label->data.label.value = type_str;
@@ -2124,7 +2158,14 @@ static AstNode *parse_if_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_IF_STMT, parser->cur_token);
 
     next_token(parser);
+    /* The '{' after a condition opens the block, never a struct literal, the
+     * same way it does after a `when` subject. This used to be settled by
+     * requiring an initial capital on a literal's type name, which made every
+     * lowercase-named struct unusable everywhere else. */
+    bool saved_nsl = parser->no_struct_literal;
+    parser->no_struct_literal = true;
     node->data.if_stmt.condition = parse_expression(parser, PREC_LOWEST);
+    parser->no_struct_literal = saved_nsl;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.if_stmt.consequence = parse_block_statement(parser);
@@ -2755,7 +2796,10 @@ static AstNode *parse_while_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_WHILE_STMT, parser->cur_token);
 
     next_token(parser);
+    bool saved_nsl = parser->no_struct_literal;
+    parser->no_struct_literal = true;
     node->data.while_stmt.condition = parse_expression(parser, PREC_LOWEST);
+    parser->no_struct_literal = saved_nsl;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.while_stmt.body = parse_block_statement(parser);
@@ -3037,6 +3081,10 @@ static AstNode *parse_statement(Parser *parser) {
                 stmt->data.var_decl.is_private = true;
             } else if (stmt->kind == NODE_ALIAS_DECL) {
                 stmt->data.alias_decl.is_private = true;
+            } else if (stmt->kind == NODE_STRUCT_DECL) {
+                stmt->data.struct_decl.is_private = true;
+            } else if (stmt->kind == NODE_ENUM_DECL) {
+                stmt->data.enum_decl.is_private = true;
             }
         }
         return stmt;

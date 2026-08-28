@@ -166,7 +166,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
-static const char *operator_to_string(TokenType op) {
+static const char *operator_display_name(TokenType op) {
     switch (op) {
     case TOK_PLUS: return "+";
     case TOK_MINUS: return "-";
@@ -210,6 +210,7 @@ static const char *checker_resolve_decl_into(TypeChecker *checker, const char *w
                                              char *buf, size_t buflen);
 static void checker_refresh_using(TypeChecker *checker);
 static ResolveScope checker_scope(TypeChecker *checker);
+static bool type_arg_names_a_type(TypeChecker *checker, const char *name);
 static DeclEntry *checker_resolve_entry(TypeChecker *checker, const char *written);
 static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node);
 static bool ref_names_function(TypeChecker *checker, AstNode *arg);
@@ -346,6 +347,20 @@ static void adopt_registration(TypeChecker *checker, DeclKind kind,
     if (entry) entry->registry_index = index;
 }
 
+/* The unprefixed alias `using` publishes for a declaration stands for that
+ * declaration, so it has to carry its visibility. Left public, an alias for a
+ * private struct or enum was reachable by a bare name from a file that cannot
+ * name it at all — which is how `private` stopped meaning anything on a type
+ * once its file was used. */
+static void inherit_decl_visibility(TypeChecker *checker, const char *from, const char *to) {
+    if (!checker->modules) return;
+    DeclEntry *src = module_table_find_mangled(checker->modules, from);
+    DeclEntry *dst = module_table_find_mangled(checker->modules, to);
+    if (!src || !dst || src == dst) return;
+    dst->visibility = src->visibility;
+    dst->origin_file = src->origin_file;
+}
+
 static void register_struct(TypeChecker *checker, const char *name,
     const char *display_name,
     const char **field_names, GrayType **field_types, int field_count) {
@@ -408,8 +423,9 @@ static const char *unqualified_display_name(const char *name) {
     /* As written: mod.Type. */
     const char *dot = strchr(name, '.');
     if (dot && dot[1] >= 'A' && dot[1] <= 'Z') return dot + 1;
-    /* As mangled: mod_Type. */
-    const char *us = strchr(name, '_');
+    /* As mangled: mod_Type. Split at the last '_' so a module name that
+     * contains one keeps its whole prefix. */
+    const char *us = strrchr(name, '_');
     if (us && us[1] >= 'A' && us[1] <= 'Z') return us + 1;
     return name;
 }
@@ -602,6 +618,10 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             }
         }
         if (!found) break;
+        /* A target that is itself a container — alias Counts = [Count] —
+         * has to go back through the branches above, or the alias nested
+         * inside it never gets followed. */
+        if (name[0] == '^' || name[0] == '[') return resolve_type_alias(checker, name);
     }
     return name;
 }
@@ -1030,7 +1050,10 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 /* --- Stdlib argument kind validation --- */
 
 typedef enum {
-    ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL
+    ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
+    /* A type name, not a value. Declaring the position here is what keeps
+     * it out of value resolution — see arg_is_type_position(). */
+    ARG_TYPE
 } ExpectedArgKind;
 
 static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
@@ -1049,6 +1072,9 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
     case ARG_CHAR:   return actual->kind == TK_CHAR;
     case ARG_CHANNEL: return actual->kind == TK_STRUCT &&
                              actual->name && strcmp(actual->name, "Channel") == 0;
+    /* Validated by name, never by resolved type — the argument is a type
+     * name and is never resolved as a value. */
+    case ARG_TYPE:   return true;
     }
     return true;
 }
@@ -1065,6 +1091,7 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_NUMBER: return "number";
     case ARG_CHAR:   return "char";
     case ARG_CHANNEL: return "Channel";
+    case ARG_TYPE:   return "a type name";
     }
     return "unknown";
 }
@@ -1357,7 +1384,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"mem", "arena",    1, 1, false, FT_NONE, 0, {{0}},"Arena"},
     {"mem", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "fill",     3, 3, false, FT_NONE, 0, {{0}},"void"},
-    {"mem", "init",     2, 2, false, FT_NONE, 0, {{0}},NULL},
+    {"mem", "init",     2, 2, false, FT_NONE, 1, {{1, ARG_TYPE}},NULL},
     {"mem", "raw_copy", 3, 3, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "reset",    1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"mem", "usage",    1, 1, false, FT_NONE, 0, {{0}},"int"},
@@ -1651,6 +1678,21 @@ static void typechecker_check_stdlib_arg_types(TypeChecker *checker, const char 
     for (int i = 0; i < m->arg_type_count; i++) {
         int idx = m->arg_types[i].index;
         if (idx < node->data.call.arg_count) {
+            /* A type position is validated by name. Resolving it as a value
+             * would report the type name as one (E3100); skipping it without
+             * validating would put a mistyped name into the generated C. */
+            if (m->arg_types[i].kind == ARG_TYPE) {
+                AstNode *arg = node->data.call.args[idx];
+                if (arg->kind != NODE_LABEL ||
+                    !type_arg_names_a_type(checker, arg->data.label.value)) {
+                    char *msg = typechecker_format(checker,
+                        "'%s.%s()' expects a type name as argument %d",
+                        mod, fn, idx + 1);
+                    diagnostic_error_message(checker->diag, "E4016", msg,
+                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+                }
+                continue;
+            }
             GrayType *arg_t = resolve_expression(checker, node->data.call.args[idx]);
             if (!arg_kind_matches(m->arg_types[i].kind, arg_t)) {
                 char *msg = NULL;
@@ -2339,6 +2381,7 @@ static bool func_types_mismatch(const GrayType *a, const GrayType *b) {
 }
 
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name);
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
 
 /* Decompose a written container type into the type names it is built from:
  * the pointee of ^T, the element of [T] or [T,N], the key and value of
@@ -2433,6 +2476,28 @@ static const char *undefined_type_leaf(TypeChecker *checker, const char *written
         return NULL;
     }
 
+    /* A user module's member is resolved against the symbol table, so a dot
+     * that survives resolution names nothing there. Only the stdlib carries a
+     * qualifier this far down, and type_from_name() reads anything still
+     * dotted as one of its types — which is how `lib.Nope` typed as a struct
+     * and was reported as a mismatch rather than as a name for nothing. */
+    {
+        const char *resolved = checker_resolve_type_name(checker, written);
+        const char *dot = resolved ? strchr(resolved, '.') : NULL;
+        if (dot) {
+            char mod[MSG_BUF_SIZE];
+            size_t mlen = (size_t)(dot - resolved);
+            if (mlen < sizeof(mod)) {
+                memcpy(mod, resolved, mlen);
+                mod[mlen] = '\0';
+                if (!is_stdlib_module_name(typechecker_resolve_alias(checker, mod))) {
+                    snprintf(buf, buflen, "%s", resolved);
+                    return buf;
+                }
+            }
+        }
+    }
+
     if (!type_name_is_undefined(written, typechecker_type_from_name(checker, written)))
         return NULL;
     snprintf(buf, buflen, "%s", written);
@@ -2461,6 +2526,30 @@ static DeclEntry *private_type_leaf(TypeChecker *checker, const char *written) {
     return (entry && !module_decl_visible(&scope, entry)) ? entry : NULL;
 }
 
+/* The private struct, enum or alias a written type name reaches, at any depth,
+ * or NULL. Unlike private_type_leaf() this ignores visibility from here: an
+ * alias declared in the same file as its target always sees it, and that file
+ * is exactly where a re-export starts. */
+static DeclEntry *private_target_leaf(TypeChecker *checker, const char *written) {
+    if (!written || !*written || !checker->modules) return NULL;
+
+    char parts[2][MSG_BUF_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++) {
+            DeclEntry *bad = private_target_leaf(checker, parts[i]);
+            if (bad) return bad;
+        }
+        return NULL;
+    }
+
+    ResolveScope scope = checker_scope(checker);
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, written);
+    if (!entry || entry->visibility != VIS_PRIVATE) return NULL;
+    return (entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM ||
+            entry->kind == DECL_ALIAS) ? entry : NULL;
+}
+
 /* Naming a private declaration from outside the file that declares it is an
  * error whatever the declaration is; the kind only picks which code to
  * report. Called once per written annotation, against the node that wrote it. */
@@ -2479,6 +2568,11 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
     /* Resolve type aliases before any type lookup. */
     if (name) name = resolve_type_alias(checker, name);
     if (name && is_enum_name(checker, name)) return type_enum(name);
+    /* A registered struct is a struct, whatever its registry spelling looks
+     * like. type_from_name() has to guess from the spelling, and its guess
+     * for a mangled name splits at the first '_' — which loses the type in a
+     * module whose own name contains one (foo_bar_Baz). */
+    if (name && is_struct_name(checker, name)) return type_struct(name);
     GrayType *resolved_type = type_from_name(name);
     /* : try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
@@ -3038,20 +3132,30 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     if (strcmp(mod, "mem") == 0) {
         if (strcmp(mfn, "init") == 0 && node->data.call.arg_count == 2) {
             AstNode *type_arg = node->data.call.args[1];
-            if (type_arg->kind == NODE_LABEL) {
+            /* Point at what the name reaches: an alias bound as itself gave a
+             * pointer type that no annotation of the underlying type accepts,
+             * and codegen has no C type named after the alias. A name that
+             * reaches no type was already reported; stay unknown so the
+             * assignment does not report it a second time. */
+            if (type_arg->kind == NODE_LABEL &&
+                type_arg_names_a_type(checker, type_arg->data.label.value)) {
+                const char *target = resolve_type_alias(checker,
+                    checker_resolve_type_name(checker, type_arg->data.label.value));
+                if (target && strcmp(target, type_arg->data.label.value) != 0)
+                    type_arg->data.label.value = target;
                 result = type_pointer(type_arg->data.label.value);
             } else {
                 result = &TYPE_UNKNOWN;
             }
         } else if (strcmp(mfn, "alloc") == 0 && node->data.call.arg_count == 2) {
-            result = resolve_expression(checker, node->data.call.args[1]);
-        } else if (strcmp(mfn, "make") == 0 && node->data.call.arg_count == 2) {
-            AstNode *type_arg = node->data.call.args[1];
-            if (type_arg->kind == NODE_LABEL) {
-                result = type_pointer(type_arg->data.label.value);
-            } else {
-                result = &TYPE_UNKNOWN;
-            }
+            /* alloc(a Arena, value T) -> ^T. Typing the call as T instead
+             * disagreed with the pointer codegen emits, so reading the result
+             * produced C that does not compile, and the documented `mut p ^int
+             * = mem.alloc(a, 42)` was rejected outright. */
+            GrayType *value_t = resolve_expression(checker, node->data.call.args[1]);
+            const char *value_tn = value_t ? type_name(value_t) : NULL;
+            result = (value_t && value_t->kind != TK_UNKNOWN && value_tn)
+                ? type_pointer(value_tn) : &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "maps") == 0) {
         if (strcmp(mfn, "get_keys") == 0) {
@@ -3743,6 +3847,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     return result;
 }
 
+/* Does `name` name a type that exists? A <?> argument has to name one: value
+ * resolution is skipped for type arguments, so this is the only thing standing
+ * between a mistyped name and codegen. type_from_name() reads any capitalized
+ * name as a struct, so it is never asked about the written name on its own —
+ * only about a builtin spelling, or about what an alias reached. */
+static bool type_arg_names_a_type(TypeChecker *checker, const char *name) {
+    if (!name) return false;
+    if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    if (typechecker_is_builtin(name) && type_from_name(name) != &TYPE_UNKNOWN)
+        return true;
+    const char *resolved = resolve_type_alias(checker,
+        checker_resolve_type_name(checker, name));
+    if (!resolved || strcmp(resolved, name) == 0) return false;
+    return is_struct_name(checker, resolved) || is_enum_name(checker, resolved) ||
+           type_from_name(resolved) != &TYPE_UNKNOWN;
+}
+
 /* Generic-call handling shared by every call spelling: bind the wildcard or
  * type parameter from the arguments, validate a type argument (E3127/E3128),
  * record the instantiation so codegen emits the specialization, and produce
@@ -3803,14 +3924,30 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
                         node->data.call.args[argument_index]->token.column, 0);
                     continue;
                 }
-                /* Must be a struct name */
-                if (!is_struct_name(checker, arg_label)) {
-                    diagnostic_error_code_formatted(checker->diag, "E3127",
+                /* Must name a type. Which types the function actually accepts
+                 * is decided by its body: a `T{...}` literal narrows it to
+                 * structs, and reports E3127 where the literal is written. */
+                if (!type_arg_names_a_type(checker, arg_label)) {
+                    diagnostic_error_code_formatted(checker->diag, "E4016",
                         NODE_FILE(checker, node->data.call.args[argument_index]),
                         node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0,
                         arg_label);
                     continue;
+                }
+                /* Bind what the name reaches, not the alias spelling. The
+                 * instantiation is mangled and substituted by binding, so an
+                 * alias bound as itself gave a return type no annotation of
+                 * the underlying type would accept. The argument label is
+                 * rewritten with it, or codegen would mangle the call site
+                 * against a specialization that is never emitted. */
+                {
+                    const char *target = resolve_type_alias(checker,
+                        checker_resolve_type_name(checker, arg_label));
+                    if (target && strcmp(target, arg_label) != 0) {
+                        arg_label = target;
+                        node->data.call.args[argument_index]->data.label.value = target;
+                    }
                 }
                 if (!generic_binding) {
                     generic_binding = (char *)arg_label;
@@ -3819,34 +3956,6 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             }
             GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
             if (!type_name_has_wildcard(ptn)) continue;
-            /* E3100: struct/enum type name passed as a value argument */
-            if (at->kind == TK_UNKNOWN &&
-                node->data.call.args[argument_index]->kind == NODE_LABEL) {
-                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                if (!scope_lookup(checker->current_scope, arg_label)) {
-                    if (is_struct_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                            arg_label, arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    } else if (is_enum_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                            arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                }
-            }
             char *bound = bind_wildcard(ptn, at);
             if (!bound) {
                 /* arg is TK_UNKNOWN: we are inside a generic
@@ -3895,6 +4004,28 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
     }
     if (is_generic_out) *is_generic_out = is_generic_call;
     return generic_return_t;
+}
+
+/* Does a struct function's first parameter name the struct it is namespaced
+ * under — the test for instance dispatch? The parameter type is written as it
+ * appears inside the declaring module, while `struct_name` is the registry
+ * key: `Msg` against `msg_Msg` for an imported struct. So the written name is
+ * resolved in the declaring file's scope before the two are compared. */
+static bool self_param_names_struct(TypeChecker *checker, AstNode *decl,
+                                    const char *p0_tn, const char *struct_name) {
+    if (!p0_tn || !struct_name) return false;
+    if (strcmp(p0_tn, struct_name) == 0) return true;
+    if (!checker->modules || !decl) return false;
+    ResolveScope scope;
+    scope.module = module_table_module_for_file(checker->modules, decl->token.file);
+    scope.file = decl->token.file ? decl->token.file : checker->file;
+    scope.using_modules = NULL;
+    scope.using_count = 0;
+    DeclEntry *entry = module_resolve_written(checker->modules, &scope, p0_tn);
+    if (!entry) return false;
+    char key[MSG_BUF_SIZE];
+    const char *mangled = module_mangle_into(entry, key, sizeof(key));
+    return mangled && strcmp(mangled, struct_name) == 0;
 }
 
 static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn, const char *mod_raw, AstNode *fn) {
@@ -3990,34 +4121,6 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     checker->expected_type = param_t;
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 checker->expected_type = saved_expected_m;
-                /* E3100: struct/enum type name passed as a value argument */
-                if (arg_t->kind == TK_UNKNOWN &&
-                    node->data.call.args[argument_index]->kind == NODE_LABEL) {
-                    const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                    if (!scope_lookup(checker->current_scope, arg_label)) {
-                        if (is_struct_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                                arg_label, arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        } else if (is_enum_name(checker, arg_label)) {
-                            char *msg = NULL;
-                            msg = typechecker_format(checker,
-                                "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                                arg_label, arg_label);
-                            diagnostic_error_message(checker->diag, "E3100", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
-                            continue;
-                        }
-                    }
-                }
                 if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                     !types_assignable(checker, param_t, arg_t) &&
                     !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
@@ -4253,11 +4356,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     ssig->decl->data.func_decl.param_count > 0) {
                     const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
                     if (p0_tn) {
-                        if (strcmp(p0_tn, struct_name) == 0) {
-                            is_self_func = true;
-                        } else if (p0_tn[0] == '^' && strcmp(p0_tn + 1, struct_name) == 0) {
-                            is_self_func = true;
-                        }
+                        is_self_func =
+                            self_param_names_struct(checker, ssig->decl, p0_tn, struct_name) ||
+                            (p0_tn[0] == '^' &&
+                             self_param_names_struct(checker, ssig->decl, p0_tn + 1, struct_name));
                     }
                 }
                 if (is_self_func) {
@@ -4305,8 +4407,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * For &self (mutable), codegen cancels the deref
                      * with the address-of, emitting just the pointer. */
                     const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
-                    if (sym->type->kind == TK_POINTER && p0_tn &&
-                        strcmp(p0_tn, struct_name) == 0) {
+                    if (sym->type->kind == TK_POINTER &&
+                        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name)) {
                         AstNode *deref = xcalloc(1, sizeof(AstNode));
                         deref->kind = NODE_POSTFIX_EXPR;
                         deref->token = node->token;
@@ -4636,6 +4738,29 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
     return result;
 }
 
+/* The written type name a size_of() argument spells, or NULL when the
+ * argument is a value expression. A bare name arrives as a label; a
+ * module-qualified one arrives as a member expression, which no later phase
+ * ever read as a type — so `size_of(mod.T)` reached codegen with nothing to
+ * emit and the generated C said sizeof(unknown). */
+static const char *size_of_type_spelling(TypeChecker *checker, AstNode *arg) {
+    if (!arg) return NULL;
+    if (arg->kind == NODE_LABEL) {
+        /* A name bound to a variable is a value, not a type. */
+        if (scope_lookup(checker->current_scope, arg->data.label.value)) return NULL;
+        return arg->data.label.value;
+    }
+    if (arg->kind == NODE_MEMBER_EXPR && arg->data.member.object &&
+        arg->data.member.object->kind == NODE_LABEL &&
+        typechecker_is_imported_module(checker, arg->data.member.object->data.label.value)) {
+        char buf[MSG_BUF_SIZE];
+        snprintf(buf, sizeof(buf), "%s.%s",
+                 arg->data.member.object->data.label.value, arg->data.member.member);
+        return arena_copy_string(checker->arena, buf);
+    }
+    return NULL;
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -4798,11 +4923,24 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                         aname);
                     diagnostic_error_message(checker->diag, "E3084", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    result = &TYPE_STRING;
+                    return result;
                 }
             }
         }
-        /* E3038: type_of() on void function result */
+        /* E3038: type_of() on void function result. A bare builtin type name
+         * is answered from the name itself — resolving it as an expression
+         * would report it as a type name used as a value. */
         if (node->data.call.arg_count > 0) {
+            AstNode *arg = node->data.call.args[0];
+            if (arg->kind == NODE_LABEL && typechecker_is_builtin(arg->data.label.value)) {
+                GrayType *bt = type_from_name(arg->data.label.value);
+                if (bt->kind != TK_UNKNOWN) {
+                    typetable_set(checker->type_table, arg, bt);
+                    result = &TYPE_STRING;
+                    return result;
+                }
+            }
             GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
             if (arg_t->kind == TK_VOID) {
                 diagnostic_error_message(checker->diag, "E3038",
@@ -4826,7 +4964,13 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (node->data.call.args[0]->kind == NODE_LABEL) {
             const char *aname = node->data.call.args[0]->data.label.value;
             Symbol *sym = scope_lookup(checker->current_scope, aname);
-            if (!sym && (is_struct_name(checker, aname) || is_enum_name(checker, aname))) {
+            /* An alias names the same type its target does, so the registries
+             * have to be consulted with the resolved name — `alias Vec2 =
+             * Point` is a type name here just as much as `Point` is. The
+             * diagnostic still names the spelling the programmer wrote. */
+            const char *resolved = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, aname));
+            if (!sym && (is_struct_name(checker, resolved) || is_enum_name(checker, resolved))) {
                 char *msg = typechecker_format(checker,
                     "'fields()' requires a struct instance, not a type name '%s'; use 'fields(instance)' instead",
                     aname);
@@ -4869,6 +5013,33 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             strcmp(node->data.call.args[0]->data.label.value,
                    checker->type_param_name) == 0) {
             node->data.call.args[0]->data.label.value = "?";
+        }
+        {
+            AstNode *arg = node->data.call.args[0];
+            const char *written = size_of_type_spelling(checker, arg);
+            if (written && strcmp(written, "?") != 0) {
+                /* A container spelling types as TK_ARRAY or TK_MAP whatever
+                 * its parts name, so the check has to look at every leaf. */
+                char leaf[MSG_BUF_SIZE];
+                const char *undefined = undefined_type_leaf(checker, written, leaf, sizeof(leaf));
+                if (undefined) {
+                    char *msg = typechecker_format(checker,
+                        "undefined type '%s'; check the spelling or import the module that defines it",
+                        unqualified_display_name(undefined));
+                    diagnostic_error_message(checker->diag, "E4016", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                } else {
+                    /* Normalize every spelling to the one shape codegen's type
+                     * path understands: a label holding the registry name. */
+                    const char *resolved = resolve_type_alias(checker,
+                        checker_resolve_type_name(checker, written));
+                    if (arg->kind != NODE_LABEL || strcmp(resolved, written) != 0) {
+                        AstNode *label = ast_alloc(checker->arena, NODE_LABEL, arg->token);
+                        label->data.label.value = resolved;
+                        node->data.call.args[0] = label;
+                    }
+                }
+            }
         }
         result = &TYPE_INT;
     } else if (strcmp(function_name, "to_char") == 0) {
@@ -5422,35 +5593,6 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                  * would compare against TK_UNKNOWN. */
                 continue;
             }
-            /* E3100: struct/enum type name passed as a value argument */
-            if (arg_t->kind == TK_UNKNOWN &&
-                node->data.call.args[argument_index]->kind == NODE_LABEL &&
-                function_name && strcmp(function_name, "size_of") != 0) {
-                const char *arg_label = node->data.call.args[argument_index]->data.label.value;
-                if (!scope_lookup(checker->current_scope, arg_label)) {
-                    if (is_struct_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
-                            arg_label, arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    } else if (is_enum_name(checker, arg_label)) {
-                        char *msg = NULL;
-                        msg = typechecker_format(checker,
-                            "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
-                            arg_label, arg_label);
-                        diagnostic_error_message(checker->diag, "E3100", msg,
-                            NODE_FILE(checker, node->data.call.args[argument_index]),
-                            node->data.call.args[argument_index]->token.line,
-                            node->data.call.args[argument_index]->token.column, 0);
-                        continue;
-                    }
-                }
-            }
             if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
                 !types_assignable(checker, param_t, arg_t) &&
                 !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
@@ -5902,6 +6044,95 @@ static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
     obj->data.label.value = arena_copy_string(checker->arena, prefixed);
 }
 
+/* Does a bare name name a struct or enum type — its own spelling, or the one
+ * an alias reaches — and so no value? */
+static bool type_name_as_value(TypeChecker *checker, const char *name) {
+    if (!name) return false;
+    if (is_struct_name(checker, name) || is_enum_name(checker, name)) return true;
+    const char *resolved = resolve_type_alias(checker,
+        checker_resolve_type_name(checker, name));
+    if (!resolved || strcmp(resolved, name) == 0) return false;
+    /* Only a name that actually resolved to something else is judged by what
+     * it reached: type_from_name() reads any capitalized name as a struct, so
+     * asking it about the written name would answer for every undefined one. */
+    return is_struct_name(checker, resolved) || is_enum_name(checker, resolved) ||
+           type_from_name(resolved)->kind != TK_UNKNOWN;
+}
+
+/* The declaration of the function a call names, for the spellings whose
+ * signature can be resolved before the arguments are walked: a bare name and a
+ * module-qualified one. Returns NULL for anything else, which leaves the
+ * argument loop behaving as it did. */
+static AstNode *callee_func_decl(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn) return NULL;
+    FuncSig *sig = NULL;
+    if (fn->kind == NODE_LABEL) {
+        sig = find_func(checker, fn->data.label.value);
+    } else if (fn->kind == NODE_MEMBER_EXPR) {
+        const char *qualifier = ast_member_qualifier(fn);
+        if (qualifier)
+            sig = find_module_func(checker, qualifier, fn->data.member.member);
+    }
+    return (sig && sig->decl && sig->decl->kind == NODE_FUNC_DECL) ? sig->decl : NULL;
+}
+
+/* The builtins that take a type name. Each owns its own type-name diagnostic
+ * — size_of() accepts one, type_of() rejects it with E3084 and fields() with
+ * E5043 — so the general path must not resolve the argument and report first.
+ * Declared here rather than tested inline, so the predicate below is the one
+ * place that answers the question. */
+static const struct { const char *name; int index; } builtin_type_arg[] = {
+    {"size_of", 0}, {"type_of", 0}, {"fields", 0},
+};
+
+/* Is argument `index` of this call a type position — a place that takes a type
+ * name rather than a value? Answered from where the function is declared: a
+ * <?> parameter on a user function, an ARG_TYPE position in the stdlib table,
+ * or the builtin table above. A type position must never reach value
+ * resolution, which would report the type name as a value (E3100). */
+static bool arg_is_type_position(TypeChecker *checker, AstNode *node,
+                                 AstNode *callee_decl, int index) {
+    if (callee_decl && index < callee_decl->data.func_decl.param_count &&
+        callee_decl->data.func_decl.params[index].is_type_param)
+        return true;
+    AstNode *fn = node->data.call.function;
+    if (!fn) return false;
+    if (fn->kind == NODE_LABEL) {
+        for (size_t i = 0; i < sizeof(builtin_type_arg) / sizeof(builtin_type_arg[0]); i++) {
+            if (builtin_type_arg[i].index == index &&
+                strcmp(fn->data.label.value, builtin_type_arg[i].name) == 0)
+                return true;
+        }
+        /* A stdlib function reached bare through `using` is the same call as
+         * the qualified spelling, so its type positions are the same ones. */
+        for (int i = 0; i < checker->using_module_count; i++) {
+            if (!using_module_accessible(checker, i)) continue;
+            const StdlibFuncMeta *m = find_stdlib_meta(
+                typechecker_resolve_alias(checker, checker->using_modules[i]),
+                fn->data.label.value);
+            if (!m) continue;
+            for (int a = 0; a < m->arg_type_count; a++) {
+                if (m->arg_types[a].index == index && m->arg_types[a].kind == ARG_TYPE)
+                    return true;
+            }
+        }
+        return false;
+    }
+    if (fn->kind == NODE_MEMBER_EXPR) {
+        const char *qualifier = ast_member_base_qualifier(fn);
+        if (!qualifier || !typechecker_is_stdlib_import(checker, qualifier)) return false;
+        const StdlibFuncMeta *m = find_stdlib_meta(
+            typechecker_resolve_alias(checker, qualifier), fn->data.member.member);
+        if (!m) return false;
+        for (int i = 0; i < m->arg_type_count; i++) {
+            if (m->arg_types[i].index == index && m->arg_types[i].kind == ARG_TYPE)
+                return true;
+        }
+    }
+    return false;
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
@@ -5912,18 +6143,19 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     bool is_ref_call = (node->data.call.function &&
         node->data.call.function->kind == NODE_LABEL &&
         strcmp(node->data.call.function->data.label.value, "ref") == 0);
-    bool is_size_of_call = (node->data.call.function &&
-        node->data.call.function->kind == NODE_LABEL &&
-        strcmp(node->data.call.function->data.label.value, "size_of") == 0);
+    AstNode *callee_decl = callee_func_decl(checker, node);
     for (int i = 0; i < node->data.call.arg_count; i++) {
+        /* A type argument is validated where the call is dispatched, not here:
+         * resolve_generic_call() for a <?> parameter, the stdlib argument
+         * check for an ARG_TYPE position, the builtin's own handler for the
+         * rest. Resolving one here would report the type name as a value. */
+        if (node->data.call.args[i]->kind == NODE_LABEL &&
+            arg_is_type_position(checker, node, callee_decl, i))
+            continue;
         if (is_ref_call && node->data.call.args[i]->kind == NODE_LABEL &&
             find_func(checker, node->data.call.args[i]->data.label.value)) {
             continue;
         }
-        /* Skip size_of() label arguments — the builtin handler treats
-         * them as type names (e.g. size_of(^int)), not variables. */
-        if (is_size_of_call && node->data.call.args[i]->kind == NODE_LABEL)
-            continue;
         /* Skip implicit enum nodes; they need expected_type context
          * from the function signature, which is resolved later. */
         if (node->data.call.args[i]->kind == NODE_IMPLICIT_ENUM)
@@ -6119,6 +6351,20 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         if (sig) {
             sig->used = true;
             warn_if_func_deprecated(checker, node, sig);
+            /* E4017: private struct function called from outside the struct.
+             * The bare and struct-namespaced spellings of this call check it;
+             * the module-qualified triple chain did not, so `private` went
+             * unenforced across the very boundary it exists to guard. */
+            if (sig->is_private) {
+                char struct_key[MSG_BUF_SIZE];
+                snprintf(struct_key, sizeof(struct_key), "%s_%s", mod_name, struct_name);
+                if (!(checker->current_struct_name &&
+                      strcmp(checker->current_struct_name, struct_key) == 0)) {
+                    diagnostic_error_code_formatted(checker->diag, "E4017",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        struct_name, func_name);
+                }
+            }
             result = sig->return_count > 0 ? sig->return_types[0] : &TYPE_VOID;
             /* Check argument count */
             if (node->data.call.arg_count != sig->param_count) {
@@ -6226,6 +6472,23 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     } else if (ast_member_base_qualifier(fn)) {
         const char *mod_raw = ast_member_base_qualifier(fn);
         const char *mod = typechecker_resolve_alias(checker, mod_raw);
+        /* A struct alias names the struct, so Vec2.f() is Point.f(). Only the
+         * import alias was resolved here, so a type alias reached the dispatch
+         * below as an unknown module and got E6010. Rewriting the qualifier is
+         * what the enum-alias branch above does, and it also hands codegen the
+         * struct's own name to mangle the call against. A variable of the same
+         * name wins: that spelling is instance dispatch, not a static call. */
+        if (!is_struct_name(checker, mod) &&
+            !scope_lookup(checker->current_scope, mod_raw) &&
+            fn->data.member.object &&
+            fn->data.member.object->kind == NODE_LABEL) {
+            const char *aliased = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, mod));
+            if (strcmp(aliased, mod) != 0 && is_struct_name(checker, aliased)) {
+                mod = aliased;
+                fn->data.member.object->data.label.value = aliased;
+            }
+        }
         const char *mfn = fn->data.member.member;
         /* Check that module is actually imported */
         bool mod_imported = mark_import_used(checker, mod_raw) ||
@@ -6382,7 +6645,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
          op == TOK_LT_EQ || op == TOK_GT_EQ)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "cannot use '%s' on strings; use strings.compare() instead", operator_to_string(op));
+            "cannot use '%s' on strings; use strings.compare() instead", operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         result = &TYPE_BOOL;
@@ -6453,7 +6716,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "invalid operands: cannot use '%s' with %s and %s",
-            operator_to_string(op), type_name(left), type_name(right));
+            operator_display_name(op), type_name(left), type_name(right));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6480,7 +6743,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "invalid operands: cannot use '%s' with %s and %s; bigint types must match",
-            operator_to_string(op), type_name(left), type_name(right));
+            operator_display_name(op), type_name(left), type_name(right));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6498,7 +6761,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "cannot use nil with operator '%s'; nil is only valid for == / != against nullable types (Error, pointers)",
-            operator_to_string(op));
+            operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6533,7 +6796,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         op != TOK_IN && op != TOK_NOT_IN) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "cannot use '%s' on string type", operator_to_string(op));
+            "cannot use '%s' on string type", operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6550,7 +6813,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
             bad = right;
         if (bad && bad->kind != TK_UNKNOWN) {
             diagnostic_error_code_formatted(checker->diag, "E3093", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), type_display_name(checker, bad));
+                operator_display_name(op), type_display_name(checker, bad));
             infix_errored = true;
         }
     }
@@ -6607,7 +6870,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (eidx >= 0 && checker->enum_is_tagged[eidx]) {
             diagnostic_error_code_formatted(checker->diag, "E3124",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), enum_display_name(checker, left->name));
+                operator_display_name(op), enum_display_name(checker, left->name));
             infix_errored = true;
         }
     }
@@ -6631,7 +6894,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
                             (right && right->kind == TK_INT);
         if ((left_is_enum || right_is_enum) &&
             !(is_ordering && has_int_side)) {
-            diagnostic_error_code_formatted(checker->diag, "E3049", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_to_string(op));
+            diagnostic_error_code_formatted(checker->diag, "E3049", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(op));
             infix_errored = true;
         }
     }
@@ -6780,7 +7043,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (!left_ok || !right_ok) {
             diagnostic_error_code_formatted(checker->diag, "E8001",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), type_display_name(checker, left), type_display_name(checker, right));
+                operator_display_name(op), type_display_name(checker, left), type_display_name(checker, right));
             infix_errored = true;
         } else {
             result = left;
@@ -6850,7 +7113,13 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    resolve_expression(checker, obj);
+    /* A label naming a type is the qualifier of an enum variant, a struct
+     * function, or a module member — all handled below. Resolving it as a
+     * value first would report the qualifier as a type name used as one. */
+    bool obj_is_type_name = obj->kind == NODE_LABEL &&
+        !scope_lookup(checker->current_scope, obj->data.label.value) &&
+        type_name_as_value(checker, obj->data.label.value);
+    if (!obj_is_type_name) resolve_expression(checker, obj);
 
     if (obj->kind == NODE_LABEL) {
         const char *obj_name = obj->data.label.value;
@@ -7098,10 +7367,16 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         node->data.struct_value.name = "?";
         struct_name = "?";
     }
+    /* A literal written against a type parameter is what narrows the function
+     * to struct arguments — `T{...}` means nothing for an int. The binding is
+     * judged as E3127 below rather than as an undefined type, which is what
+     * `int` would otherwise be called here. */
+    bool name_from_type_param = false;
     if (strcmp(struct_name, "?") == 0) {
         /* During re-check with a binding, validate with concrete struct */
         if (checker->type_param_binding) {
             struct_name = checker->type_param_binding;
+            name_from_type_param = true;
         } else {
             /* Main pass — skip field validation, return unknown */
             for (int i = 0; i < node->data.struct_value.count; i++)
@@ -7117,16 +7392,38 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             struct_name = arena_copy_string(checker->arena,
                 module_mangle(checker->modules, entry));
     }
+    /* An alias names the struct it stands for, so Vec{...} builds a Point.
+     * Re-point the node at the target too, so codegen emits the struct's own
+     * tag instead of the alias spelling, which no C struct is named after. */
+    {
+        const char *target = resolve_type_alias(checker, struct_name);
+        if (target && strcmp(target, struct_name) != 0) {
+            struct_name = target;
+            node->data.struct_value.name = target;
+            node->resolved_decl = NULL;
+        }
+    }
     StructInfo *si = find_struct(checker, struct_name);
     warn_if_struct_deprecated(checker, node, si);
     /* E4016: reject undefined/unimported struct types in struct literals */
     if (!si && !is_struct_name(checker, struct_name)) {
-        char *msg = NULL;
-        msg = typechecker_format(checker,
-            "undefined type '%s'; check the spelling or import the module that defines it",
-            unqualified_display_name(struct_name));
-        diagnostic_error_message(checker->diag, "E4016", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        if (name_from_type_param) {
+            /* E3127: the binding names a real type, just not a struct one. */
+            if (!node->data.struct_value.type_param_rejected) {
+                node->data.struct_value.type_param_rejected = true;
+                diagnostic_error_code_formatted(checker->diag, "E3127",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    checker->type_param_name ? checker->type_param_name : "T",
+                    unqualified_display_name(struct_name));
+            }
+        } else {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "undefined type '%s'; check the spelling or import the module that defines it",
+                unqualified_display_name(struct_name));
+            diagnostic_error_message(checker->diag, "E4016", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         result = &TYPE_UNKNOWN;
         return result;
     }
@@ -7200,6 +7497,20 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                     fname, struct_display_name(checker, struct_name), type_display_name(checker, expected_t), type_display_name(checker, val_t));
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+            /* E3066: func signature mismatch on a struct-literal field. The
+             * mismatch check above treats any two func types as assignable, so
+             * a reference with the wrong signature only got caught when it was
+             * assigned to the field afterward — never when the literal that
+             * built the struct supplied it. */
+            if (found && func_types_mismatch(expected_t, val_t)) {
+                AstNode *value = node->data.struct_value.field_values[i];
+                char *msg = typechecker_format(checker,
+                    "cannot assign %s to field '%s' of type %s",
+                    type_display_name(checker, val_t), fname,
+                    type_display_name(checker, expected_t));
+                diagnostic_error_message(checker->diag, "E3066", msg,
+                    NODE_FILE(checker, value), value->token.line, value->token.column, 0);
             }
         }
     }
@@ -7604,10 +7915,21 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             }
         }
         /* Try using-module-prefixed name if not found */
+        bool named_private = false;
         if (!sym) {
             for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
                 if (!using_module_accessible(checker, using_index)) continue;
                 const char *umod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
+                /* `using` does not bring a private declaration into scope, but
+                 * its symbol is still bound under the module's spelling — so
+                 * the prefixed lookup below found it and read it, and the bare
+                 * name was the one spelling `private` did not stop. */
+                if (reject_if_private(checker, node, checker->using_modules[using_index], name)) {
+                    mark_import_used(checker, checker->using_modules[using_index]);
+                    mark_import_used(checker, umod);
+                    named_private = true;
+                    break;
+                }
                 char prefixed[MSG_BUF_SIZE];
                 module_member_key(checker, checker->using_modules[using_index], name,
                                   prefixed, sizeof(prefixed));
@@ -7622,7 +7944,9 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        if (sym) {
+        if (named_private) {
+            result = &TYPE_UNKNOWN;
+        } else if (sym) {
             sym->used = true;
             result = sym->type;
             /* Transparent ref: unwrap pointer to expose underlying type.
@@ -7647,8 +7971,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         } else if (typechecker_is_builtin(name)) {
             GrayType *bt = type_from_name(name);
             if (bt != &TYPE_UNKNOWN) {
-                /* Builtin type name (int, i128, float, etc.) used as a
-                 * bare label — valid as an argument to size_of(Type). */
+                /* Builtin type name (int, i128, float, ...) in a value
+                 * position. The builtins that take one — size_of(), type_of()
+                 * — resolve their own argument, so anything arriving here is
+                 * a name used as a value and was emitted into the C. */
+                diagnostic_error_code_formatted(checker->diag, "E3100",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
                 result = bt;
             } else {
                 /* Bare builtin function name used as a value (e.g. `input`
@@ -7656,12 +7984,44 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3031", NODE_FILE(checker, node),
                     node->token.line, node->token.column, 0, name, name, name);
             }
+        } else if (!typechecker_is_imported_module(checker, name) &&
+                   !module_declares_const(checker, name) &&
+                   type_name_as_value(checker, name)) {
+            /* E3100: a name that names a type but no value. Reported here
+             * rather than at each call site, because a type name reaches a
+             * value position in far more places than an argument list — a
+             * builtin argument and a plain initializer among them, neither of
+             * which checked, so the name was emitted into the generated C and
+             * the user saw a C compiler error. */
+            const char *resolved = resolve_type_alias(checker,
+                checker_resolve_type_name(checker, name));
+            /* The way out depends on what the name reaches: a variant for an
+             * enum, an instance for a struct, and neither for an alias of a
+             * primitive, which gets the bare message. */
+            if (is_enum_name(checker, resolved)) {
+                char *msg = typechecker_format(checker,
+                    "type name '%s' cannot be used as a value; use '%s.VARIANT' to access an enum value",
+                    name, name);
+                diagnostic_error_message(checker->diag, "E3100", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else if (is_struct_name(checker, resolved)) {
+                char *msg = typechecker_format(checker,
+                    "type name '%s' cannot be used as a value; use '%s{...}' or 'new(%s)' to create an instance",
+                    name, name, name);
+                diagnostic_error_message(checker->diag, "E3100", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else {
+                diagnostic_error_code_formatted(checker->diag, "E3100",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+            }
+            result = &TYPE_UNKNOWN;
         } else if (!is_enum_name(checker, name) &&
                    !is_struct_name(checker, name) &&
                    !typechecker_is_imported_module(checker, name) &&
                    !is_enum_name(checker, resolve_type_alias(checker, name)) &&
                    !is_struct_name(checker, resolve_type_alias(checker, name)) &&
-                   !module_declares_const(checker, name)) {
+                   (checker->in_file_scope_init ||
+                    !module_declares_const(checker, name))) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 diagnostic_error_code_formatted(checker->diag, "E1012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name + 1);
@@ -7770,7 +8130,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (left_t->kind != TK_UNKNOWN && !type_is_integer(left_t)) {
-                diagnostic_error_code_formatted(checker->diag, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_to_string(node->data.postfix.op), type_display_name(checker, left_t));
+                diagnostic_error_code_formatted(checker->diag, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(node->data.postfix.op), type_display_name(checker, left_t));
             }
             result = left_t;
         } else {
@@ -8005,10 +8365,38 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
 
     case NODE_CAST_EXPR: {
         GrayType *src_t = resolve_expression(checker, node->data.cast.value);
-        GrayType *dst_t = type_from_name(node->data.cast.target_type);
+        /* The cast target is a written type name like any annotation, so it
+         * goes through the same resolution: as written, then through aliases.
+         * Taken literally, `cast(x, I)` where `alias I = int` was read as a
+         * cast to an unknown user type and rejected. The diagnostic below
+         * still names the spelling the programmer used. */
+        const char *written_target = node->data.cast.target_type;
+        const char *target = resolve_type_alias(checker,
+            checker_resolve_type_name(checker, written_target));
+        node->data.cast.target_type = target;
+        /* E4016: a target that names no type, at any depth. The allowlist
+         * below cannot stand in for this: an undefined capitalized name types
+         * as TK_STRUCT and was reported as an unsupported conversion, and an
+         * undefined lowercase one types as TK_UNKNOWN, which skips the
+         * allowlist entirely and let the written name reach the C compiler. */
+        {
+            char leaf[MSG_BUF_SIZE];
+            const char *undefined = undefined_type_leaf(checker, written_target,
+                                                        leaf, sizeof(leaf));
+            if (undefined) {
+                char *msg = typechecker_format(checker,
+                    "undefined type '%s'; check the spelling or import the module that defines it",
+                    unqualified_display_name(undefined));
+                diagnostic_error_message(checker->diag, "E4016", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                result = &TYPE_UNKNOWN;
+                break;
+            }
+        }
+        GrayType *dst_t = type_from_name(target);
         /* Resolve user-defined enum types that type_from_name() can't find */
-        if (!dst_t && is_enum_name(checker, node->data.cast.target_type))
-            dst_t = type_enum(node->data.cast.target_type);
+        if (!dst_t && is_enum_name(checker, target))
+            dst_t = type_enum(target);
         /* Allowlist-based cast validation */
         if (src_t && src_t->kind != TK_UNKNOWN && dst_t && dst_t->kind != TK_UNKNOWN) {
             bool allowed = false;
@@ -8062,7 +8450,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "cannot cast '%s' to '%s'",
-                    tn, node->data.cast.target_type);
+                    tn, unqualified_display_name(written_target));
                 diagnostic_error_help(checker->diag, "E3043", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     "only primitive-to-primitive casts are supported (e.g. cast(x, int), cast(x, string))");
@@ -8970,7 +9358,17 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (val_t && val_t->kind == TK_ENUM)
                 checker->expected_type = declared;
         }
+        /* A file-scope initializer is emitted where it is written, so it can
+         * only name declarations already in scope at that point. Every earlier
+         * file-scope declaration has been defined by the walk that got here, so
+         * a name the scope does not hold is one declared further down — and
+         * the module registry alone must not vouch for it, or the reference
+         * reaches the C compiler as an undeclared identifier. Function bodies
+         * are exempt: codegen emits file-scope declarations ahead of them. */
+        bool saved_file_scope_init = checker->in_file_scope_init;
+        if (checker->func_depth == 0) checker->in_file_scope_init = true;
         GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);
+        checker->in_file_scope_init = saved_file_scope_init;
         checker->expected_type = saved_expected;
         /* : when a func-pointer call returns TK_UNKNOWN but
          * the assignment target has a concrete declared type,
@@ -9782,7 +10180,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 AstNode *src = node->data.var_decl.value->data.call.args[0];
                 const char *root = assignment_target_root_name(src);
                 if (root) {
-                    Symbol *src_sym = scope_lookup(checker->current_scope, root);
+                    /* A module-level declaration is bound under its module's
+                     * spelling, so a bare reference from inside the module
+                     * misses a plain scope_lookup — and addr() on a const one
+                     * left the pointer unmarked, so the write through it was
+                     * never caught. */
+                    Symbol *src_sym = checker_lookup_symbol(checker, root);
                     if (src_sym && !src_sym->mutable) {
                         Symbol *sym = scope_lookup_local(checker->current_scope,
                             node->data.var_decl.name);
@@ -10005,6 +10408,21 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     }
 }
 
+/* The symbol a bare name binds to. A module-level declaration is bound in
+ * scope under its module's spelling, so a bare reference from inside the
+ * module resolves through the symbol table first — a plain scope_lookup
+ * misses it, and a write then looks like a new local that shadows it. */
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name) {
+    if (!name) return NULL;
+    Symbol *sym = scope_lookup(checker->current_scope, name);
+    if (sym) return sym;
+    DeclEntry *entry = checker_resolve_entry(checker, name);
+    if (!entry) return NULL;
+    char key[MSG_BUF_SIZE];
+    return scope_lookup(checker->current_scope,
+                        module_mangle_into(entry, key, sizeof(key)));
+}
+
 static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     /* Implicit declaration: x = expr where x is not in scope */
     {
@@ -10013,7 +10431,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             node->data.assign.op == TOK_ASSIGN &&
             strcmp(target->data.label.value, "_") != 0) {
             const char *name = target->data.label.value;
-            Symbol *sym = scope_lookup(checker->current_scope, name);
+            Symbol *sym = checker_lookup_symbol(checker, name);
             if (!sym && !typechecker_is_builtin(name) &&
                 !is_struct_name(checker, name) && !is_enum_name(checker, name) &&
                 !find_func(checker, name)) {
@@ -10065,7 +10483,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if (target_t->kind == TK_BOOL || value_t->kind == TK_BOOL) {
                 char *msg = typechecker_format(checker,
                     "invalid operands: cannot use '%s' with %s and %s",
-                    operator_to_string(aop), type_name(target_t), type_name(value_t));
+                    operator_display_name(aop), type_name(target_t), type_name(value_t));
                 diagnostic_error_message(checker->diag, "E3002", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -10082,7 +10500,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
                 aop != TOK_PLUS_ASSIGN) {
                 char *msg = typechecker_format(checker,
-                    "cannot use '%s' on string type", operator_to_string(aop));
+                    "cannot use '%s' on string type", operator_display_name(aop));
                 diagnostic_error_message(checker->diag, "E3002", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -10104,7 +10522,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                                  target_t->kind == TK_STRUCT) ? target_t : value_t;
                 diagnostic_error_code_formatted(checker->diag, "E3093",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    operator_to_string(aop), type_display_name(checker, bad));
+                    operator_display_name(aop), type_display_name(checker, bad));
             }
         }
     }
@@ -10115,8 +10533,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target_qualifier) {
         const char *obj = target_qualifier;
         bool is_module = false;
-        for (int mi = 0; mi < checker->import_count; mi++) {
-            if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
+        /* A local or parameter of the same name shadows the module, so the
+         * qualifier names a value and the assignment is an ordinary field
+         * write — including inside the file whose own module it names. */
+        if (!scope_lookup(checker->current_scope, obj)) {
+            for (int mi = 0; mi < checker->import_count; mi++) {
+                if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
+            }
         }
         if (is_module) {
             /* The member is not necessarily a constant. Stdlib members
@@ -10150,7 +10573,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     {
         const char *root = assignment_target_root_name(target);
         if (root) {
-            Symbol *sym = scope_lookup(checker->current_scope, root);
+            Symbol *sym = checker_lookup_symbol(checker, root);
             /* p.field on a pointer parameter auto-derefs to p^.field — the
              * pointer itself is not being modified, so don't flag it. */
             if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
@@ -12459,8 +12882,15 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind != NODE_ALIAS_DECL) continue;
 
+        checker->current_check_file = stmt->token.file;
         const char *aname = stmt->data.alias_decl.name;
-        const char *target = stmt->data.alias_decl.target_type;
+        /* The target is written in the alias's own module, so it has to be
+         * mapped onto its registry spelling like any other type annotation.
+         * Left as written, a target naming a type in a non-entry module —
+         * registered as `mod_Point`, not `Point` — resolved to nothing, and
+         * so did every alias chained onto another alias in such a module. */
+        const char *target = checker_resolve_type_name(checker,
+                                                       stmt->data.alias_decl.target_type);
 
         /* E4020: duplicate alias name */
         for (int j = 0; j < checker->type_alias_count; j++) {
@@ -12469,6 +12899,28 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
                     NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, aname);
                 goto next_alias;
             }
+        }
+        /* E2038: a built-in type name is not available to redeclare. Struct
+         * and enum declarations already reject one; an alias did not, so
+         * `alias int = float` silently redefined int for the rest of the file.
+         * Skip registration so every later use of the name still means what
+         * the language says it means. */
+        if (is_reserved_type_name(aname)) {
+            char *msg = typechecker_format(checker,
+                "'%s' is a reserved type name and cannot be used as an alias name", aname);
+            diagnostic_error_message(checker->diag, "E2038", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            goto next_alias;
+        }
+        /* E5016: a builtin's name is not available either. Structs, enums,
+         * variables, and functions all run this check; the alias declaration
+         * was the one site that did not. */
+        if (is_reserved_builtin_func_name(aname)) {
+            char *msg = typechecker_format(checker,
+                "'%s' is a builtin function and cannot be used as an alias name", aname);
+            diagnostic_error_message(checker->diag, "E5016", msg,
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+            goto next_alias;
         }
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, aname, stmt) ||
@@ -12489,8 +12941,10 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             checker->type_alias_cap = checker->type_alias_cap ? checker->type_alias_cap * 2 : 8;
             checker->type_alias_names = xrealloc(checker->type_alias_names, sizeof(const char *) * (size_t)checker->type_alias_cap);
             checker->type_alias_targets = xrealloc(checker->type_alias_targets, sizeof(const char *) * (size_t)checker->type_alias_cap);
+            checker->type_alias_nodes = xrealloc(checker->type_alias_nodes, sizeof(AstNode *) * (size_t)checker->type_alias_cap);
         }
         checker->type_alias_targets[checker->type_alias_count] = target;
+        checker->type_alias_nodes[checker->type_alias_count] = stmt;
         {
             DeclEntry *entry = module_register(checker, stmt, DECL_ALIAS, aname,
                                                stmt->data.alias_decl.is_private);
@@ -12524,8 +12978,10 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
             if (!found) break;
         }
         if (cycle) {
+            AstNode *decl = checker->type_alias_nodes[i];
             diagnostic_error_code_formatted(checker->diag, "E3133",
-                checker->file, 0, 0, 0, checker->type_alias_names[i]);
+                NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                decl->data.alias_decl.name);
             continue;
         }
         /* E3132: target type must exist — resolve fully then check.
@@ -12678,7 +13134,8 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
+                            stmt->data.enum_decl.is_private);
         /* A name declared twice in one module resolves to the first
          * declaration; the duplicate must not repoint it at its own
          * registry slot, or the collision it is about to be reported
@@ -12706,6 +13163,20 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             fnames[j] = stmt->data.struct_decl.fields[j].name;
             ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
             warn_if_type_name_deprecated(checker, stmt, stmt->data.struct_decl.fields[j].type_name, NULL);
+            /* A field type written as an alias has to be recorded as what the
+             * alias stands for. Only ftypes[j] above resolved it; the name left
+             * in the AST is what every later reader sees, and codegen builds the
+             * field's C type and its member accesses from that name. A field
+             * declared `f Handler` was emitted as an untyped `void *` and its
+             * call mangled as a struct function, while the same field written
+             * `func(int) -> int` compiled correctly. */
+            {
+                const char *key = checker_resolve_type_name(checker,
+                    stmt->data.struct_decl.fields[j].type_name);
+                const char *resolved = resolve_type_alias(checker, key);
+                if (resolved != key)
+                    stmt->data.struct_decl.fields[j].type_name = resolved;
+            }
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
@@ -12820,7 +13291,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             diagnostic_error_message(checker->diag, "E4007", msg,
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+        DeclEntry *entry = module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt),
+                            stmt->data.struct_decl.is_private);
         /* A name declared twice in one module resolves to the first
          * declaration; the duplicate must not repoint it at its own
          * registry slot, or the collision it is about to be reported
@@ -13062,10 +13534,12 @@ static void register_decl_symbols(TypeChecker *checker, AstNode *program) {
                             stmt->data.alias_decl.is_private);
             break;
         case NODE_ENUM_DECL:
-            module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt), false);
+            module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
+                            stmt->data.enum_decl.is_private);
             break;
         case NODE_STRUCT_DECL:
-            module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt), false);
+            module_register(checker, stmt, DECL_STRUCT, STRUCT_DISPLAY_NAME(stmt),
+                            stmt->data.struct_decl.is_private);
             break;
         case NODE_FUNC_DECL:
             module_register(checker, stmt, DECL_FUNC, FUNC_DISPLAY_NAME(stmt),
@@ -13125,6 +13599,54 @@ static void register_decl_usings(TypeChecker *checker, AstNode *program) {
     }
 }
 
+static void mark_collided_func_used(TypeChecker *checker, const DeclEntry *entry) {
+    if (entry->kind != DECL_FUNC) return;
+    if (entry->registry_index < 0 || entry->registry_index >= checker->func_count) return;
+    checker->funcs[entry->registry_index].used = true;
+}
+
+/* How a declaration is written from outside its module, for a diagnostic. */
+static void decl_qualified_spelling(const DeclEntry *entry, char *buf, size_t buflen) {
+    if (entry->module_is_entry || !entry->module_name || !*entry->module_name)
+        snprintf(buf, buflen, "%s", entry->name);
+    else
+        snprintf(buf, buflen, "%s.%s", entry->module_name, entry->name);
+}
+
+/* Mangling is `<module>_<name>`, so two modules can produce one compiled name
+ * — `foo.bar_baz` and `foo_bar.baz` both mangle to `foo_bar_baz`. The mangled
+ * index keeps whichever registered first, and the loser's definition would
+ * otherwise reach the C compiler as a redefinition. Report it here instead. */
+static void check_mangle_collisions(TypeChecker *checker) {
+    ModuleTable *table = checker->modules;
+    if (!table) return;
+    for (int m = 0; m < table->count; m++) {
+        ModuleScope *scope = table->modules[m];
+        for (int i = 0; i < scope->count; i++) {
+            DeclEntry *entry = scope->entries[i];
+            if (entry->external || !entry->ast_node) continue;
+            char buf[MSG_BUF_SIZE];
+            DeclEntry *winner = module_table_find_mangled(table,
+                module_mangle_into(entry, buf, sizeof(buf)));
+            if (!winner || winner == entry || winner->external || !winner->ast_node) continue;
+            char self_name[MSG_BUF_SIZE], other_name[MSG_BUF_SIZE];
+            decl_qualified_spelling(entry, self_name, sizeof(self_name));
+            decl_qualified_spelling(winner, other_name, sizeof(other_name));
+            diagnostic_error_code_formatted_help(checker->diag, "E6009",
+                entry->origin_file, entry->ast_node->token.line,
+                entry->ast_node->token.column, 0,
+                "rename one of the declarations, or rename one of the modules",
+                self_name, other_name);
+            /* Both declarations share one entry in the function registry, so
+             * a call to either marks only one of them used. Silence the
+             * unused warning the other would draw — it is wrong, and the
+             * collision error above is the thing to act on. */
+            mark_collided_func_used(checker, entry);
+            mark_collided_func_used(checker, winner);
+        }
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
     register_decl_symbols(checker, program);
@@ -13135,10 +13657,25 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     register_decl_structs(checker, program);
     register_decl_functions(checker, program);
     register_decl_consts(checker, program);
+    check_mangle_collisions(checker);
 
     /* Validate alias targets exist now that structs/enums are registered */
     for (int i = 0; i < checker->type_alias_count; i++) {
+        AstNode *decl = checker->type_alias_nodes[i];
+        checker->current_check_file = decl->token.file;
         const char *resolved = resolve_type_alias(checker, checker->type_alias_targets[i]);
+        /* E4025: a public alias of a private type re-exports it. `private` on
+         * the type is enforced at every use site, and a one-line alias in the
+         * same file was the way around all of them. */
+        if (!decl->data.alias_decl.is_private) {
+            DeclEntry *target_entry = private_target_leaf(checker,
+                decl->data.alias_decl.target_type);
+            if (target_entry) {
+                diagnostic_error_code_formatted(checker->diag, "E4025",
+                    NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                    decl->data.alias_decl.name, target_entry->name);
+            }
+        }
         /* Check if the resolved name is a known type */
         GrayType *resolved_type = type_from_name(resolved);
         if (resolved_type->kind == TK_STRUCT) {
@@ -13146,7 +13683,8 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
             if (!is_struct_name(checker, resolved) && !is_enum_name(checker, resolved) &&
                 strcmp(resolved, "Error") != 0) {
                 diagnostic_error_code_formatted(checker->diag, "E3132",
-                    checker->file, 0, 0, 0, checker->type_alias_targets[i]);
+                    NODE_FILE(checker, decl), decl->token.line, decl->token.column, 0,
+                    decl->data.alias_decl.target_type);
             }
         }
     }
@@ -13371,6 +13909,7 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->type_alias_names);
     free(checker->type_alias_targets);
+    free(checker->type_alias_nodes);
 
     free(checker->const_int_names);
     free(checker->const_int_values);
@@ -13532,7 +14071,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
     /* Register unprefixed aliases for struct/enum types from 'import and use' modules.
      * Only process using-modules declared in the main file — transitive imports
-     * should not leak their unprefixed aliases into the main compilation unit. */
+     * should not leak their unprefixed aliases into the main compilation unit.
+     * A private declaration is not part of what `using` brings in: an
+     * unprefixed alias for one made it reachable by a bare name from a file
+     * that cannot name it at all, which is how `private` on a struct or enum
+     * stopped meaning anything across a module boundary. */
     for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
         const char *uf = checker->using_module_files ? checker->using_module_files[using_index] : NULL;
         bool is_main = (!uf && !checker->file) || (uf && checker->file && strcmp(uf, checker->file) == 0);
@@ -13554,6 +14097,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                     memcpy(fn, checker->structs[struct_index].field_names, sizeof(const char *) * field_count);
                     memcpy(ft, checker->structs[struct_index].field_types, sizeof(GrayType *) * field_count);
                     register_struct(checker, unprefixed, unprefixed, fn, ft, field_count);
+                    inherit_decl_visibility(checker, sn, unprefixed);
                     checker->structs[checker->struct_count - 1].is_deprecated = checker->structs[struct_index].is_deprecated;
                     checker->structs[checker->struct_count - 1].deprecated_message = checker->structs[struct_index].deprecated_message;
                 }
@@ -13570,6 +14114,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
                         checker->enum_payload_types[enum_index], checker->enum_payload_counts[enum_index],
                         checker->enum_is_tagged[enum_index], checker->enum_is_flags[enum_index],
                         checker->enum_is_deprecated[enum_index], checker->enum_deprecated_messages[enum_index]);
+                    inherit_decl_visibility(checker, en, unprefixed);
                 }
             }
         }

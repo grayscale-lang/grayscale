@@ -331,12 +331,13 @@ For multi-byte UTF-8 strings, individual bytes may not form complete characters:
 
 ```gray
 mut s string = "日本語"
-println(len(s))         // 9 (byte length, not 3 characters)
-println(char_count(s))  // 3 (Unicode character count)
-println(to_char(s, 0))  // 26085 (codepoint for '日')
+println(len(s))              // 9 (byte length, not 3 characters)
+println(char_count(s))       // 3 (Unicode character count)
+println(to_char(s, 0))       // 日 (the character at codepoint index 0)
+println(int(to_char(s, 0)))  // 26085 (its Unicode codepoint value)
 ```
 
-Use `to_char()` to access characters by codepoint index and `char_count()` to get the true character count.
+Use `to_char()` to access characters by codepoint index and `char_count()` to get the true character count. `to_char()` returns a `char`; apply `int()` to it for the numeric codepoint.
 
 #### 3.1.5 Boolean Type (`bool`)
 
@@ -757,7 +758,9 @@ if dir == .WEST { println("west") }
 do get_dir() -> Direction { return .NORTH }
 
 // Struct literal fields
-const Config struct { dir Direction }
+const Config struct {
+    dir Direction
+}
 mut c = Config{ dir: .EAST }
 
 // Array literals
@@ -884,7 +887,7 @@ const p = Point{x: 1, y: 2}    // Inferred: Point
 
 // Inferred from built-in constructors
 mut val = new(Person)         // Inferred: ^Person (pointer)
-mut dup = copy(val)           // Inferred: Person
+mut dup = copy(val^)          // Inferred: Person (copy() needs a value, not a pointer)
 
 // Arrays and maps always require explicit type annotations
 mut arr [int] = {1, 2, 3}           // Explicit: [int]
@@ -953,6 +956,7 @@ alias Lookup = map[string:int]
 - **Transitive** — aliases can chain: `alias A = int` then `alias B = A` resolves `B` to `int`.
 - **Can alias:** primitives, structs, enums, arrays (`[T]`), maps (`map[K:V]`), and pointers (`^T`).
 - **Cannot alias:** module-qualified types (`mod.Type`) or the wildcard type (`?`).
+- **The alias name may not be a reserved type name or a builtin function name** — `alias int = float` and `alias println = int` are both rejected, the same way a struct or enum by those names is.
 
 Aliases are fully interchangeable with the underlying type:
 
@@ -969,10 +973,17 @@ do main() {
 Struct and enum aliases work with constructors and member access:
 
 ```gray
-const Point struct { x int, y int }
+const Point struct {
+    x int
+    y int
+}
 alias Vec2 = Point
 
-const Color enum { RED, GREEN, BLUE }
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
 alias Hue = Color
 
 do main() {
@@ -1063,7 +1074,7 @@ if true {
 
 #### Fallible Functions
 
-Some functions return a `(T, Error)` tuple; these are **fallible functions**. They require destructuring. Assigning the result to a single variable panics at runtime if the function fails; the compiler enforces destructuring to make the choice explicit:
+Some functions return a `(T, Error)` tuple; these are **fallible functions**. They require destructuring. Assigning the result to a single variable is a compile-time error (`E3089`); the compiler forces you to make the choice — inspect the error or explicitly discard it — visible in the code:
 
 ```gray
 // Correct: handle the error
@@ -1075,8 +1086,8 @@ if err != nil {
 // Correct: explicitly discard the error when you know it won't fail
 mut content, _ = io.read_file("data.txt")
 
-// Wrong: single-var assignment from a fallible function panics
-mut content = io.read_file("data.txt")  // error: use destructuring for fallible functions
+// Wrong: single-var assignment from a fallible function
+mut content = io.read_file("data.txt")  // error[E3089]: use destructuring for fallible functions
 ```
 
 #### Blank Identifier
@@ -1327,10 +1338,15 @@ range(10, 0, -2)   // 10, 8, 6, 4, 2   (decrement)
 Ranges are inclusive of the start value and exclusive of the end value.
 
 **Step validation rules:**
-- Positive step (or omitted): start must be ≤ end
-- Negative step: start must be ≥ end (for backwards iteration)
-- Zero step: always produces a runtime panic
-- Mismatched direction (e.g., `range(0, 10, -1)`) produces a runtime error
+- Positive step (or omitted) expects start ≤ end; negative step expects start ≥ end.
+  A range that violates this (its step points away from end, e.g. `range(0, 10, -1)`)
+  yields no elements.
+- When such a range is written entirely with integer **literals** and drives a `for`
+  loop (`for _ in range(0, 10, -1)`), the compiler rejects it up front with `E9005`.
+  If any operand is a variable, there is no diagnostic — the loop body just never runs.
+- `start == end` is always a valid empty range.
+- Zero step always panics at runtime with `P0090`, for literal and variable operands
+  alike.
 
 ---
 
@@ -1387,10 +1403,6 @@ if x < 0 {
 ```gray
 for i in range(0, 10) {
     println("${i}")
-}
-
-for i int in range(0, 5) {
-    // With explicit type
 }
 
 for (i in range(0, 10)) {
@@ -1898,12 +1910,21 @@ do print_greeting() {
 
 ### 7.4 Visibility
 
-By default, all functions and constants are public. The `private` keyword restricts access to the declaring module:
+By default, every top-level declaration is public. The `private` keyword restricts access to the declaring file, and applies to functions, constants, structs, enums, type aliases, and struct functions:
 
 ```gray
 // mathlib/mathlib.gray — module name comes from directory
 
 private const MAX_ITERATIONS int = 1000
+
+private const Counter struct {
+    n int
+}
+
+private const Mode enum {
+    FAST
+    SLOW
+}
 
 private do validate(n int) -> bool {
     return n > 0
@@ -1923,7 +1944,11 @@ import "./mathlib"
 mathlib.factorial(5)          // OK - public
 // mathlib.validate(5)        // error: private function
 // mathlib.MAX_ITERATIONS     // error: private constant
+// mathlib.Counter{n: 1}      // error: private struct
+// mathlib.Mode.FAST          // error: private enum
 ```
+
+`import and use` does not change this: a private declaration is not published under its bare name either.
 
 ### 7.5 Attributes
 
@@ -1997,7 +2022,7 @@ do main() {
     println(u.name)            // Alice
 
     // Serialize back to JSON, fields are mapped automatically
-    println(json.stringify(u)) // {"name":"Alice","age":25,"active":true}
+    println(json.stringify(u)) // {"name": "Alice", "age": 25, "active": true}
 }
 ```
 
@@ -2417,7 +2442,7 @@ mut y = first({"a", "b"})     // ? binds to string
 
 ### 7.10 Type Parameters (`<?>`)
 
-The `<?>` annotation allows a function parameter to accept a struct type name rather than a value. This enables reusable constructors and type-aware utility functions.
+The `<?>` annotation allows a function parameter to accept a type name rather than a value. This enables reusable constructors and type-aware utility functions.
 
 ```gray
 const Point struct {
@@ -2441,7 +2466,7 @@ A type parameter name is valid in these positions:
 | Usage | Example | Result |
 |-------|---------|--------|
 | `new(T)` | `new(T)` | Heap-allocates an instance of `T` |
-| Struct literal | `T{x: 1, y: 2}` | Constructs a stack instance of `T` |
+| Struct literal | `T{x: 1, y: 2}` | Constructs a stack instance of `T`. Using this form constrains the function to struct arguments; a non-struct argument is rejected with `E3127` at the literal |
 | `size_of(T)` | `size_of(T)` | Returns the size of `T` in bytes |
 
 #### Return type inference
@@ -2473,17 +2498,35 @@ do bad(T <?>, x int) -> ^? {     // Error E2087
 }
 ```
 
-**Only struct types allowed (E3127, E3128):**
+**Any type name, but it must name a type (E4016, E3128):**
 
-Only struct type names may be passed as type arguments. Enums, primitives, and expressions are rejected:
+Structs, enums, primitives, and aliases of any of them may all be passed as type arguments. A name that names no type, and anything that is not a type name at all, are rejected:
 
 ```gray
-const Color enum { RED, GREEN, BLUE }
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
 
-mut p = make(Point)    // OK — Point is a struct
-mut c = make(Color)    // Error E3127 — Color is not a struct
-mut x = make(int)      // Error E3127 — int is not a struct
-mut y = make(1 + 2)    // Error E3128 — not a type name
+mut p = make(Point)       // OK — struct
+mut c = make(Color)       // OK — enum
+mut x = make(int)         // OK — primitive
+mut y = make(1 + 2)       // Error E3128 — not a type name
+mut z = make(Nonexisto)   // Error E4016 — names no type
+```
+
+**A `T{...}` body constrains the function to structs (E3127):**
+
+A struct literal written against the type parameter is meaningless for a non-struct, so the function accepts only struct arguments. The error is reported at the literal, and `E3058` names the call site that bound it:
+
+```gray
+do make_stack(T <?>) -> ? {
+    return T{}          // Error E3127 when T is bound to a non-struct
+}
+
+mut s = make_stack(Point)   // OK
+mut n = make_stack(int)     // Error E3127 — T is used as a struct literal
 ```
 
 #### Across module boundaries
@@ -2503,7 +2546,7 @@ do main() {
 }
 ```
 
-The type argument must be a bare struct name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+The type argument must be a bare type name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
 
 #### More restrictions
 
@@ -2861,7 +2904,7 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 | `exit` | `(code int)` | Exit program with code |
 | `range` | `(start int, end int [, step int]) -> Range` | Create integer range |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
-| `to_char` | `(s string, index int) -> int` | Return the Unicode codepoint at character position `index` (not byte position). Panics if index is out of bounds. |
+| `to_char` | `(s string, index int) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `int()` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
 | `c_string` | `(ptr ^u8) -> string` | Convert a C `char*` return value to a Grayscale string (for C interop) |
 | `embed` | `(path string) -> string` | Read a file at compile time and return its contents as a string literal baked into the binary |
@@ -3259,7 +3302,9 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `parse` | `(s string, layout string) -> (int, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
 
 **Behavior:**
-- Panics on invalid input, unless the result is destructured (`mut ts, err = time.parse(...)` or `mut ts, _ = time.parse(...)`), in which case an Error is returned instead.
+- `parse` is a fallible function. Single-variable assignment (`mut ts int = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
+- `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
+- `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
 Error-returning variant: `parse`
 
@@ -3935,13 +3980,14 @@ String-to-type and type-to-string conversion functions with proper error handlin
 | `to_bool` | `(s string) -> (bool, Error)` | Parse string as boolean |
 
 **Behavior:**
-- When assigned to a single variable (`mut n int = strconv.to_int("42")`), panics on invalid input.
-- When destructured (`mut n, err = strconv.to_int("42")`), returns an Error instead of panicking.
+- These are fallible functions. Single-variable assignment (`mut n int = strconv.to_int("42")`) is a compile-time error (`E3089`); the result must be destructured.
+- `mut n, err = strconv.to_int(s)` — inspect `err` (non-nil on invalid input).
+- `mut n, _ = strconv.to_int(s)` — discard the error; on invalid input `n` is the zero value (`0`), no panic.
 
 **`to_int` / `to_uint` rules:**
 - The `base` parameter must be an integer between **2 and 36** (inclusive). Invalid bases produce a compile-time error when passed as a literal, or a runtime panic when passed as a variable.
 - Leading/trailing whitespace is **not** tolerated; the entire string must be a valid representation.
-- `to_uint` rejects strings containing a `-` sign (returns error or panics).
+- `to_uint` rejects strings containing a `-` sign (returns a non-nil error).
 - For bases > 10, letters `A`–`Z` (case-insensitive) represent digits 10–35.
 
 **`to_float` rules:**
@@ -3951,7 +3997,7 @@ String-to-type and type-to-string conversion functions with proper error handlin
 
 **`to_bool` rules:**
 - Accepts `"true"` and `"false"` (case-insensitive: `"TRUE"`, `"True"`, `"FALSE"`, etc. are valid).
-- All other strings produce an error or panic. There is no implicit truthiness; `"1"`, `"0"`, `"yes"`, `"no"` are **not** valid.
+- All other strings produce a non-nil error. There is no implicit truthiness; `"1"`, `"0"`, `"yes"`, `"no"` are **not** valid.
 
 #### Type-to-String Conversions (type → string)
 
@@ -4147,7 +4193,7 @@ Nested scopes work correctly; a loop inside an if inside a function creates thre
 
 ### 11.6 Manual Control
 
-The `@mem` module provides explicit arena control for power users who need it:
+The `@mem` module provides explicit arena control for users who need it:
 
 ```gray
 import @mem
@@ -4158,8 +4204,6 @@ mut node = mem.init(scratch, Node)
 mem.reset(scratch)
 mem.destroy(scratch)
 ```
-
-Most users never import the `@mem` module. ASBAM handles their allocations.
 
 ### 11.7 Memory Safety
 

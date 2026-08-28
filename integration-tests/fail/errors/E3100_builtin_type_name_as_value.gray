@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3100 - a primitive type name used as a value
+ * Expected: "type name 'int' cannot be used as a value"
+ */
+
+// expect-error: E3100
+// expect-error-count: 1
+
+do main() {
+    println(int)
+}

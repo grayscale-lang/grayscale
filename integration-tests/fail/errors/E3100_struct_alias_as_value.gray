@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3100 - an alias of a struct type used as a value
+ * Expected: "type name 'Vec2' cannot be used as a value"
+ */
+
+// expect-error: E3100
+// expect-error-count: 1
+
+const Point struct {
+    x int
+    y int
+}
+
+alias Vec2 = Point
+
+do main() {
+    println(Vec2)
+}

@@ -20,11 +20,10 @@
 
 #include "util/arena.h"
 #include "util/error.h"
-#include "util/constants.h"
 #include "util/platform.h"
-#include "util/xalloc.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "parser/imports.h"
 #include "typechecker/typechecker.h"
 #include "codegen/codegen.h"
 #include "fmt/fmt.h"
@@ -58,63 +57,6 @@ static void print_usage(void) {
     fprintf(stderr, "  -h, --help      Show this help\n");
 }
 
-/* `report` prints why the file could not be opened. A caller that says so
- * itself passes false: the import path reports E6002 against the import
- * statement, and printed both the diagnostic and a raw duplicate of it. */
-static char *read_file(const char *path, bool report) {
-    /* Fast path for regular (seekable) files. */
-    char *fast = read_file_to_string(path);
-    if (fast) return fast;
-
-    /* Streaming fallback for non-seekable inputs (pipes, FIFOs, /dev/stdin). */
-    FILE *f = fopen(path, "rb");
-    if (!f) {
-        if (report) {
-            fprintf(stderr, "gray: cannot open '%s': ", path);
-            perror("");
-        }
-        return NULL;
-    }
-    clearerr(f);
-    size_t cap = 4096;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    if (!buf) {
-        fprintf(stderr, "gray: out of memory\n");
-        fclose(f);
-        return NULL;
-    }
-    for (;;) {
-        if (len == cap) {
-            size_t new_cap = cap * 2;
-            char *new_buf = realloc(buf, new_cap);
-            if (!new_buf) {
-                free(buf);
-                fclose(f);
-                fprintf(stderr, "gray: out of memory\n");
-                return NULL;
-            }
-            buf = new_buf;
-            cap = new_cap;
-        }
-        size_t got = fread(buf + len, 1, cap - len, f);
-        if (got == 0) break;
-        len += got;
-    }
-    if (len + 1 > cap) {
-        char *grow = realloc(buf, len + 1);
-        if (!grow) {
-            free(buf);
-            fclose(f);
-            fprintf(stderr, "gray: out of memory\n");
-            return NULL;
-        }
-        buf = grow;
-    }
-    buf[len] = '\0';
-    fclose(f);
-    return buf;
-}
 
 /* Write text content to a file. Binary mode: the generated C must be
  * byte-identical on every platform, so no newline translation. */
@@ -213,138 +155,6 @@ static const char *find_runtime_dir(const char *argv0) {
     return NULL;
 }
 
-/* Import cache: track already-imported files to avoid duplicates and cycles.
- * Open-addressing hash set keyed on canonical file path. */
-
-/* Bucket count is always a power of two, and the table grows to keep the
- * load factor at or below one half. Linear probing needs a free slot to
- * terminate on, so the table must never fill. */
-#define IMPORT_HASH_INIT_BUCKETS 512
-
-#define FNV1A_OFFSET_BASIS 2166136261u
-#define FNV1A_PRIME        16777619u
-
-typedef struct {
-    const char *path;
-    const char *mod;
-} ImportHashEntry;
-
-static ImportHashEntry *import_hash = NULL;
-static uint32_t import_hash_buckets = 0;
-static int imported_file_count = 0;
-
-static uint32_t import_path_hash(const char *s) {
-    uint32_t h = FNV1A_OFFSET_BASIS;
-    for (; *s; s++) h = (h ^ (uint8_t)*s) * FNV1A_PRIME;
-    return h;
-}
-
-/* Place an entry during a rehash, where the key is known to be unique. */
-static void import_hash_place(ImportHashEntry *table, uint32_t buckets,
-                              const char *path, const char *mod) {
-    uint32_t slot = import_path_hash(path) & (buckets - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (buckets - 1)) {
-        if (!table[i].path) {
-            table[i].path = path;
-            table[i].mod = mod;
-            return;
-        }
-    }
-}
-
-/* Ensure room for one more entry at a load factor of one half or less. */
-static void import_hash_reserve(void) {
-    if (import_hash &&
-        (uint32_t)(imported_file_count + 1) * 2 <= import_hash_buckets)
-        return;
-
-    uint32_t new_buckets = import_hash_buckets
-        ? import_hash_buckets * 2 : IMPORT_HASH_INIT_BUCKETS;
-    ImportHashEntry *new_table = xcalloc(new_buckets, sizeof(ImportHashEntry));
-    for (uint32_t i = 0; i < import_hash_buckets; i++) {
-        if (import_hash[i].path)
-            import_hash_place(new_table, new_buckets,
-                import_hash[i].path, import_hash[i].mod);
-    }
-    free(import_hash);
-    import_hash = new_table;
-    import_hash_buckets = new_buckets;
-}
-
-static bool already_imported(const char *path) {
-    if (!import_hash) return false;
-    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
-        if (!import_hash[i].path) return false;
-        if (strcmp(import_hash[i].path, path) == 0) return true;
-    }
-}
-
-static const char *imported_by_module(const char *path) {
-    if (!import_hash) return NULL;
-    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
-        if (!import_hash[i].path) return NULL;
-        if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].mod;
-    }
-}
-
-static void mark_imported_with_module(const char *path, const char *mod) {
-    import_hash_reserve();
-    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
-    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
-        if (!import_hash[i].path) {
-            import_hash[i].path = path;
-            import_hash[i].mod = mod;
-            imported_file_count++;
-            return;
-        }
-        if (strcmp(import_hash[i].path, path) == 0) return;
-    }
-}
-
-static void mark_imported(const char *path) {
-    mark_imported_with_module(path, NULL);
-}
-
-/* Scan a directory for .gray files. Returns count of files found.
- * Fills paths[] with full file paths (dir_path + "/" + filename). */
-static int gray_path_cmp(const void *a, const void *b) {
-    return strcmp((const char *)a, (const char *)b);
-}
-
-struct scan_ctx {
-    const char *dir_path;
-    Arena *arena;
-    char (*paths)[PATH_BUF_SIZE];
-    int count;
-    int cap;
-};
-
-static bool scan_visitor(const char *name, void *arg) {
-    struct scan_ctx *ctx = arg;
-    if (name[0] == '.') return true; /* skip hidden files */
-    size_t nlen = strlen(name);
-    if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0)
-        return true;
-    ARENA_GROW(ctx->arena, ctx->paths, ctx->count, ctx->cap);
-    gray_path_join(ctx->paths[ctx->count], PATH_BUF_SIZE, ctx->dir_path, name);
-    ctx->count++;
-    return true;
-}
-
-/* Returns the number of .gray files found, or -1 if the directory cannot be
- * read. *out_paths receives an arena-allocated array of that many paths. */
-static int scan_gray_files(Arena *arena, const char *dir_path,
-                           char (**out_paths)[PATH_BUF_SIZE]) {
-    struct scan_ctx ctx = { dir_path, arena, NULL, 0, 0 };
-    if (!gray_scandir(dir_path, scan_visitor, &ctx)) return -1;
-
-    /* Sort alphabetically for deterministic import order */
-    qsort(ctx.paths, (size_t)ctx.count, PATH_BUF_SIZE, gray_path_cmp);
-    *out_paths = ctx.paths;
-    return ctx.count;
-}
 
 /* --- C compiler invocation ---
  *
@@ -435,134 +245,154 @@ static const char *detect_cc(void) {
     return gray_find_cc_fallback();
 }
 
-int main(int argc, char **argv) {
-    /* Windows consoles need to be opted into ANSI escape handling before any
-     * colored diagnostic is written. No-op everywhere else. */
-    gray_enable_vt_mode();
+/* Command-line configuration, filled by parse_args() and read-only after. */
+typedef struct {
+    const char *input_file;
+    const char *output_file;
+    const char *opt_level;
+    const char *cc_override;
+    const char *quiet_codes_arg;  /* comma-separated W-codes from -q, or NULL */
+    size_t arena_limit;           /* 0 = let codegen use its 1 GB default */
+    bool emit_c_only;
+    bool check_only;
+    bool run_mode;
+    bool fmt_mode;
+    bool verbose;
+    bool show_time;
+    bool no_color;
+    bool debug_symbols;
+    bool quiet_all;
+} CompilerOptions;
+
+typedef enum {
+    ARGS_OK,     /* options parsed; carry on compiling */
+    ARGS_DONE,   /* the argument was the whole request (version, help); exit 0 */
+    ARGS_ERROR,  /* the arguments were unusable; exit 1 */
+} ArgsStatus;
+
+static ArgsStatus parse_args(int argc, char **argv, CompilerOptions *opts) {
+    *opts = (CompilerOptions){ .opt_level = "-O2" };
 
     if (argc < 2) {
         print_usage();
-        return 1;
+        return ARGS_ERROR;
     }
 
-    const char *input_file = NULL;
-    const char *output_file = NULL;
-    bool emit_c_only = false;
-    bool check_only = false;
-    bool run_mode = false;
-    bool fmt_mode = false;
-    bool verbose = false;
-    bool show_time = false;
-    bool no_color = false;
-    bool debug_symbols = false;
-    bool quiet_all = false;
-    const char *quiet_codes_arg = NULL;
-    const char *opt_level = "-O2";
-    const char *cc_override = NULL;
-    size_t arena_limit = 0; /* 0 = let codegen use 1 GB default */
-
-    /* Parse arguments */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "version") == 0 || strcmp(argv[i], "--version") == 0) {
             printf("gray %s\n", GRAY_VERSION);
-            return 0;
+            return ARGS_DONE;
         }
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage();
-            return 0;
+            return ARGS_DONE;
         }
         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-            output_file = argv[++i];
+            opts->output_file = argv[++i];
             continue;
         }
         if (strcmp(argv[i], "-c") == 0) {
-            emit_c_only = true;
+            opts->emit_c_only = true;
             continue;
         }
-        if (strcmp(argv[i], "-O0") == 0) { opt_level = "-O0"; continue; }
-        if (strcmp(argv[i], "-O1") == 0) { opt_level = "-O1"; continue; }
-        if (strcmp(argv[i], "-O2") == 0) { opt_level = "-O2"; continue; }
-        if (strcmp(argv[i], "-O3") == 0) { opt_level = "-O3"; continue; }
+        if (strcmp(argv[i], "-O0") == 0) { opts->opt_level = "-O0"; continue; }
+        if (strcmp(argv[i], "-O1") == 0) { opts->opt_level = "-O1"; continue; }
+        if (strcmp(argv[i], "-O2") == 0) { opts->opt_level = "-O2"; continue; }
+        if (strcmp(argv[i], "-O3") == 0) { opts->opt_level = "-O3"; continue; }
         if (strcmp(argv[i], "-g") == 0) {
-            debug_symbols = true;
+            opts->debug_symbols = true;
             continue;
         }
-        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
-            verbose = true;
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--opts->verbose") == 0) {
+            opts->verbose = true;
             continue;
         }
         if (strcmp(argv[i], "--time") == 0) {
-            show_time = true;
+            opts->show_time = true;
             continue;
         }
         if (strcmp(argv[i], "--no-color") == 0) {
-            no_color = true;
+            opts->no_color = true;
             continue;
         }
         if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0) {
             /* --quiet / -q with optional next argument for specific codes */
             if (i + 1 < argc && argv[i + 1][0] == 'W') {
-                quiet_codes_arg = argv[++i];
+                opts->quiet_codes_arg = argv[++i];
             } else if (i + 1 < argc && argv[i + 1][0] == 'E') {
                 fprintf(stderr, "gray: '-q' only accepts warning codes (W-prefixed), not error code '%s'\n", argv[i + 1]);
-                return 1;
+                return ARGS_ERROR;
             } else {
-                quiet_all = true;
+                opts->quiet_all = true;
             }
             continue;
         }
         /* Subcommands */
-        if (strcmp(argv[i], "check") == 0 && !input_file) {
-            check_only = true;
+        if (strcmp(argv[i], "check") == 0 && !opts->input_file) {
+            opts->check_only = true;
             continue;
         }
-        if (strcmp(argv[i], "build") == 0 && !input_file) {
+        if (strcmp(argv[i], "build") == 0 && !opts->input_file) {
             /* build is the default — just skip the keyword */
             continue;
         }
-        if (strcmp(argv[i], "run") == 0 && !input_file) {
-            run_mode = true;
+        if (strcmp(argv[i], "run") == 0 && !opts->input_file) {
+            opts->run_mode = true;
             continue;
         }
         if (strcmp(argv[i], "--fmt") == 0) {
-            fmt_mode = true;
+            opts->fmt_mode = true;
             continue;
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
-            arena_limit = strtoull(argv[i] + 14, NULL, 10);
+            opts->arena_limit = strtoull(argv[i] + 14, NULL, 10);
             continue;
         }
         if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
-            cc_override = argv[++i];
+            opts->cc_override = argv[++i];
             continue;
         }
         if (argv[i][0] == '-') {
             fprintf(stderr, "gray: unknown option '%s'\n", argv[i]);
-            return 1;
+            return ARGS_ERROR;
         }
-        input_file = argv[i];
+        opts->input_file = argv[i];
     }
 
-    if (!input_file) {
+    if (!opts->input_file) {
         fprintf(stderr, "gray: no input file\n");
-        return 1;
+        return ARGS_ERROR;
+    }
+    return ARGS_OK;
+}
+
+int main(int argc, char **argv) {
+    /* Windows consoles need to be opted into ANSI escape handling before any
+     * colored diagnostic is written. No-op everywhere else. */
+    gray_enable_vt_mode();
+
+    CompilerOptions opts;
+    switch (parse_args(argc, argv, &opts)) {
+    case ARGS_DONE:  return 0;
+    case ARGS_ERROR: return 1;
+    case ARGS_OK:    break;
     }
 
     /* Read source file */
-    char *source = read_file(input_file, true);
+    char *source = gray_read_file(opts.input_file, true);
     if (!source) return 1;
 
     /* fmt mode: reformat and write back, then exit */
-    if (fmt_mode) {
+    if (opts.fmt_mode) {
         FILE *tmp = gray_tmpfile();
         if (!tmp) {
             fprintf(stderr, "gray: fmt: could not create temp file\n");
             free(source);
             return 1;
         }
-        int rc = gray_fmt_source(source, input_file, tmp);
+        int rc = gray_fmt_source(source, opts.input_file, tmp);
         if (rc != 0) {
-            fprintf(stderr, "gray: fmt: failed to format '%s'\n", input_file);
+            fprintf(stderr, "gray: fmt: failed to format '%s'\n", opts.input_file);
             fclose(tmp);
             free(source);
             return 1;
@@ -580,8 +410,8 @@ int main(int argc, char **argv) {
         fmt_buf[fmt_len] = '\0';
         fclose(tmp);
         /* Write back to the original file with explicit 0644 permissions */
-        if (!gray_write_file_mode(input_file, fmt_buf, (size_t)fmt_len)) {
-            fprintf(stderr, "gray: fmt: cannot write '%s'\n", input_file);
+        if (!gray_write_file_mode(opts.input_file, fmt_buf, (size_t)fmt_len)) {
+            fprintf(stderr, "gray: fmt: cannot write '%s'\n", opts.input_file);
             free(fmt_buf);
             free(source);
             return 1;
@@ -594,15 +424,15 @@ int main(int argc, char **argv) {
     /* Create compiler arena and diagnostics */
     Arena *arena = arena_create(COMPILER_ARENA_SIZE);
     DiagnosticList *diag = diagnostic_create();
-    diagnostic_set_source(diag, input_file, source);
-    if (no_color) diag->use_color = false;
+    diagnostic_set_source(diag, opts.input_file, source);
+    if (opts.no_color) diag->use_color = false;
 
     /* Configure warning suppression */
-    if (quiet_all) {
+    if (opts.quiet_all) {
         diag->suppress_all_warnings = true;
-    } else if (quiet_codes_arg) {
+    } else if (opts.quiet_codes_arg) {
         /* Parse comma-separated warning codes */
-        char *codes_buf = strdup(quiet_codes_arg);
+        char *codes_buf = strdup(opts.quiet_codes_arg);
         int code_cap = 8;
         diag->suppressed_codes = malloc(sizeof(const char *) * code_cap);
         diag->suppressed_count = 0;
@@ -638,10 +468,10 @@ int main(int argc, char **argv) {
     clock_t t_start = clock();
 
     /* Lex */
-    Lexer *lexer = lexer_create(arena, source, input_file);
+    Lexer *lexer = lexer_create(arena, source, opts.input_file);
 
     /* Parse */
-    Parser *parser = parser_create(arena, lexer, input_file, diag);
+    Parser *parser = parser_create(arena, lexer, opts.input_file, diag);
     AstNode *program = parser_parse_program(parser);
 
     if (diagnostic_has_errors(diag)) {
@@ -653,594 +483,13 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    /* File -> module attribution for the typechecker's symbol table. Import
-     * resolution is the only place that knows which module a given .gray file
-     * belongs to, so it is collected here and handed over once the type
-     * checker exists. */
-    const char **module_files = NULL;
-    const char **module_names = NULL;
-    int module_file_count = 0, module_file_cap = 0;
-    /* Sibling imports inside a directory module: `import "./types.gray"` from
-     * another file of the same directory names a file, not a module, so
-     * `types.Item` has to resolve to the directory module that file belongs
-     * to. Recorded as an alias rather than by rewriting the reference. */
-    const char **module_alias_names = NULL;
-    const char **module_alias_targets = NULL;
-    int module_alias_count = 0, module_alias_cap = 0;
+    /* Parse every imported .gray file and merge its declarations into the
+     * program. The file -> module attribution collected along the way is the
+     * only record of which module a source file belongs to, so it is handed
+     * to the type checker below. */
+    ImportResolution imports;
+    imports_resolve(arena, diag, program, opts.input_file, &imports);
 
-    /* Resolve local imports: parse imported .gray files and merge declarations */
-    {
-        /* Mark the main file as already imported (prevents circular import loops).
-         * Use realpath so that diamond dependencies reaching the main file via
-         * different relative paths are still detected as duplicates. */
-        const char *entry_real_path;
-        {
-            char *rp = gray_realpath(input_file);
-            entry_real_path = rp ? arena_copy_string(arena, rp) : input_file;
-            mark_imported(entry_real_path);
-            free(rp);
-        }
-
-        /* Derive main file's module name for circular import resolution */
-        const char *main_base = gray_path_basename(input_file);
-        char main_mod_buf[MSG_BUF_SIZE];
-        size_t main_mod_len = strlen(main_base);
-        if (main_mod_len > GRAY_EXT_LEN && strcmp(main_base + main_mod_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
-            memcpy(main_mod_buf, main_base, main_mod_len - GRAY_EXT_LEN);
-            main_mod_buf[main_mod_len - GRAY_EXT_LEN] = '\0';
-        } else {
-            snprintf(main_mod_buf, sizeof(main_mod_buf), "%s", main_base);
-        }
-
-        /* Determine the directory of the input file */
-        char input_dir[PATH_BUF_SIZE];
-        strncpy(input_dir, input_file, sizeof(input_dir) - 1);
-        input_dir[sizeof(input_dir) - 1] = '\0';
-        char *last_sep = gray_path_rsep(input_dir);
-        if (last_sep) *(last_sep + 1) = '\0';
-        else { input_dir[0] = '.'; input_dir[1] = '/'; input_dir[2] = '\0'; }
-
-        /* Snapshot of original main-program nodes taken before any imports are merged.
-         * The outer rewrite pass after each import only needs to update these nodes;
-         * imported nodes are already rewritten inline during the rewrite+merge pass.
-         * A plain pointer would be invalidated by in-place memmoves, so we copy
-         * the AstNode* array into a stable arena allocation here. */
-        int main_stmt_snapshot_count = program->data.program.stmt_count;
-        AstNode **main_stmt_snapshot = arena_alloc(arena,
-            sizeof(AstNode *) * (main_stmt_snapshot_count > 0 ? main_stmt_snapshot_count : 1));
-        memcpy(main_stmt_snapshot, program->data.program.stmts,
-            sizeof(AstNode *) * main_stmt_snapshot_count);
-
-        /* Seed import queue once from the initial program stmts — O(N), done once.
-         * Transitive imports push onto the tail as they are discovered, so the
-         * queue drains naturally without re-scanning the growing program AST. */
-        AstNode **import_queue = NULL;
-        int import_queue_cap = 0;
-        int iq_head = 0, iq_tail = 0;
-        for (int si = 0; si < program->data.program.stmt_count; si++) {
-            if (program->data.program.stmts[si]->kind == NODE_IMPORT_STMT) {
-                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
-                import_queue[iq_tail++] = program->data.program.stmts[si];
-            }
-        }
-
-        const char **seen_modules = NULL;
-        const char **seen_paths = NULL;
-        bool *seen_is_stdlib = NULL;
-        int seen_cap = 0;
-        int seen_count = 0;
-
-        while (iq_head < iq_tail) {
-            AstNode *stmt = import_queue[iq_head++];
-            /* Line and column below come from this import statement, so the
-             * file has to as well. Reporting them against the entry file put
-             * the caret on whatever that file happens to have on the line,
-             * which for a transitive import is never the import that failed. */
-            const char *stmt_file = stmt->token.file ? stmt->token.file : input_file;
-
-            for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
-                ImportItem *item = &stmt->data.import_stmt.items[ii];
-                if (item->is_c_import) continue;
-
-                /* A stdlib import binds a module name just as a local one
-                 * does. Recording it here is what makes a local import of the
-                 * same name collide, instead of the two silently resolving to
-                 * different modules in different phases. */
-                if (item->is_stdlib) {
-                    const char *std_name = item->alias ? item->alias : item->module;
-                    if (!std_name) continue;
-                    bool bound = false;
-                    for (int sm = 0; sm < seen_count; sm++) {
-                        if (strcmp(seen_modules[sm], std_name) != 0) continue;
-                        /* The same stdlib module reached twice is one module. */
-                        if (!seen_is_stdlib[sm]) {
-                            char msg[MSG_BUF_SIZE];
-                            snprintf(msg, sizeof(msg),
-                                "module name '%s' is already imported; use an alias to distinguish them",
-                                std_name);
-                            diagnostic_error(diag, "E6001", strdup(msg),
-                                stmt_file, stmt->token.line, stmt->token.column, 0);
-                        }
-                        bound = true;
-                        break;
-                    }
-                    if (bound) continue;
-                    if (seen_count >= seen_cap) {
-                        seen_cap = GROW_NEXT_CAP(seen_cap);
-                        ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
-                        ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
-                        ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
-                    }
-                    seen_modules[seen_count] = std_name;
-                    seen_paths[seen_count] = NULL;
-                    seen_is_stdlib[seen_count] = true;
-                    seen_count++;
-                    continue;
-                }
-
-                if (!item->path) continue;
-
-                /* Resolve path relative to the file that contains the import.
-                 * For imports written directly in the entry file, source_dir is NULL
-                 * and we fall back to input_dir. For transitive imports injected from
-                 * imported files, source_dir points at the importing file's directory. */
-                char import_path[PATH_BUF_SIZE];
-                const char *rel = item->path;
-                if (rel[0] == '.' && rel[1] == '/') rel += 2;
-                const char *base_dir = item->source_dir ? item->source_dir : input_dir;
-                snprintf(import_path, sizeof(import_path), "%s%s", base_dir, rel);
-
-                /* Determine import kind: direct .gray file, extensionless file, or directory.
-                 * Build a list of actual .gray file paths to import. */
-                char (*file_list)[PATH_BUF_SIZE] = NULL;
-                int file_count = 0;
-
-                size_t iplen = strlen(import_path);
-                if (iplen >= GRAY_EXT_LEN && strcmp(import_path + iplen - GRAY_EXT_LEN, GRAY_EXT) == 0) {
-                    /* Case 1: explicit .gray path — direct file import */
-                    file_list = arena_alloc(arena, sizeof(char[PATH_BUF_SIZE]));
-                    strncpy(file_list[0], import_path, PATH_BUF_SIZE - 1);
-                    file_list[0][PATH_BUF_SIZE - 1] = '\0';
-                    file_count = 1;
-                } else {
-                    /* Case 2: try appending .gray (extensionless file import) */
-                    char try_file[PATH_BUF_SIZE];
-                    snprintf(try_file, sizeof(try_file), "%s.gray", import_path);
-                    if (gray_is_file(try_file)) {
-                        file_list = arena_alloc(arena, sizeof(char[PATH_BUF_SIZE]));
-                        strncpy(file_list[0], try_file, PATH_BUF_SIZE - 1);
-                        file_list[0][PATH_BUF_SIZE - 1] = '\0';
-                        file_count = 1;
-                        /* Update import_path so collision detection uses the resolved path */
-                        strncpy(import_path, try_file, sizeof(import_path) - 1);
-                        import_path[sizeof(import_path) - 1] = '\0';
-                    } else if (gray_is_dir(import_path)) {
-                        /* Case 3: directory import — scan for .gray files */
-
-                        /* Self-referential directory import: if the importing file
-                         * lives inside the directory it is trying to import, reject. */
-                        if (item->source_dir) {
-                            char *norm_dir = gray_realpath(import_path);
-                            char *norm_src = gray_realpath(item->source_dir);
-                            if (norm_dir && norm_src && gray_path_equal(norm_dir, norm_src)) {
-                                char msg[MSG_BUF_LARGE];
-                                snprintf(msg, sizeof(msg),
-                                    "cannot import own module directory '%s'", item->path);
-                                diagnostic_error(diag, "E6004", strdup(msg),
-                                    stmt_file, stmt->token.line, stmt->token.column, 0);
-                                free(norm_dir);
-                                free(norm_src);
-                                continue;
-                            }
-                            free(norm_dir);
-                            free(norm_src);
-                        }
-
-                        file_count = scan_gray_files(arena, import_path, &file_list);
-                        if (file_count == 0) {
-                            char msg[MSG_BUF_LARGE];
-                            snprintf(msg, sizeof(msg), "directory '%s' contains no .gray files", item->path);
-                            diagnostic_error(diag, "E6003", strdup(msg),
-                                stmt_file, stmt->token.line, stmt->token.column, 0);
-                            continue;
-                        }
-                    } else {
-                        /* Nothing found */
-                        char msg[MSG_BUF_LARGE];
-                        snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", item->path);
-                        diagnostic_error(diag, "E6002", strdup(msg),
-                            stmt_file, stmt->token.line, stmt->token.column, 0);
-                        continue;
-                    }
-                }
-
-                /* Derive module name from filename/directory (strip directory and .gray) */
-                const char *mod_base = gray_path_basename(rel);
-
-                /* For directory imports the path ends with a separator so
-                 * mod_base points at the empty string after it.  Back up to
-                 * extract the actual directory name (e.g. "engine" from
-                 * "src/engine/"). */
-                if (mod_base[0] == '\0' && mod_base > rel + 1) {
-                    const char *sep = mod_base - 1;
-                    const char *prev = sep - 1;
-                    while (prev > rel && !gray_is_path_sep(*prev)) prev--;
-                    if (gray_is_path_sep(*prev)) prev++;
-                    size_t dlen = (size_t)(sep - prev);
-                    char dir_name[MSG_BUF_SIZE];
-                    memcpy(dir_name, prev, dlen);
-                    dir_name[dlen] = '\0';
-                    mod_base = arena_copy_string(arena, dir_name);
-                }
-
-                char mod_name_buf[MSG_BUF_SIZE];
-                size_t mod_len = strlen(mod_base);
-                if (mod_len > GRAY_EXT_LEN && strcmp(mod_base + mod_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
-                    memcpy(mod_name_buf, mod_base, mod_len - GRAY_EXT_LEN);
-                    mod_name_buf[mod_len - GRAY_EXT_LEN] = '\0';
-                } else {
-                    snprintf(mod_name_buf, sizeof(mod_name_buf), "%s", mod_base);
-                }
-                const char *mod_name = item->alias ? item->alias : arena_copy_string(arena, mod_name_buf);
-
-                /* Normalize import_path so diamond deps resolve to the same canonical path */
-                char norm_import[PATH_BUF_SIZE];
-                {
-                    char *rp = gray_realpath(import_path);
-                    if (rp) {
-                        strncpy(norm_import, rp, sizeof(norm_import) - 1);
-                        norm_import[sizeof(norm_import) - 1] = '\0';
-                        free(rp);
-                    } else {
-                        strncpy(norm_import, import_path, sizeof(norm_import) - 1);
-                        norm_import[sizeof(norm_import) - 1] = '\0';
-                    }
-                }
-
-                /* Module name collision detection — only for DIRECT imports from the same file.
-                 * Don't collide with the main file's own module name.
-                 * Diamond dependencies (same file via different paths) emit a warning
-                 * and are skipped rather than causing a false E6001 error. */
-                bool collision = false;
-                for (int sm = 0; sm < seen_count; sm++) {
-                    if (strcmp(seen_modules[sm], mod_name) == 0) {
-                        if (!seen_is_stdlib[sm] && strcmp(seen_paths[sm], norm_import) == 0) {
-                            /* Same file, same module name — diamond dependency.
-                             * Only warn for direct imports; transitive diamonds
-                             * (from inside directory modules) are silently deduped. */
-                            if (!item->source_dir) {
-                                char msg[MSG_BUF_SIZE];
-                                snprintf(msg, sizeof(msg),
-                                    "module '%s' is already imported; duplicate import ignored",
-                                    mod_name);
-                                diagnostic_warning(diag, "W2013", strdup(msg),
-                                    stmt_file, stmt->token.line, stmt->token.column, 0);
-                            }
-                            collision = true;
-                            break;
-                        }
-                        /* Different file, same module name — genuine collision */
-                        char msg[MSG_BUF_SIZE];
-                        snprintf(msg, sizeof(msg),
-                            "module name '%s' is already imported; use an alias to distinguish them",
-                            mod_name);
-                        diagnostic_error(diag, "E6001", strdup(msg),
-                            stmt_file, stmt->token.line, stmt->token.column, 0);
-                        collision = true;
-                        break;
-                    }
-                }
-                if (collision) continue;
-                if (seen_count >= seen_cap) {
-                    seen_cap = GROW_NEXT_CAP(seen_cap);
-                    ARENA_GROW_TO(arena, seen_modules, seen_count, seen_cap);
-                    ARENA_GROW_TO(arena, seen_paths, seen_count, seen_cap);
-                    ARENA_GROW_TO(arena, seen_is_stdlib, seen_count, seen_cap);
-                }
-                seen_modules[seen_count] = mod_name;
-                seen_paths[seen_count] = arena_copy_string(arena, norm_import);
-                seen_is_stdlib[seen_count] = false;
-                seen_count++;
-
-                /* Set the alias if not already set */
-                if (!item->alias) item->alias = mod_name;
-                if (!item->module) item->module = mod_name;
-
-                /* Process each file in the import (1 for single file, N for directory).
-                 * For directory imports, we use a two-pass approach:
-                 *   Pass 1: Parse all files, collect ALL declaration names across all files
-                 *   Pass 2: Rewrite using the combined mapping, then merge
-                 * This ensures sibling references (e.g. logic.gray referencing types.gray's
-                 * structs) get properly rewritten to their prefixed names. */
-
-                /* Storage for parsed programs in the directory */
-                AstNode **parsed_programs = arena_alloc(arena,
-                    sizeof(AstNode *) * (size_t)(file_count > 0 ? file_count : 1));
-                const char **parsed_paths = arena_alloc(arena,
-                    sizeof(const char *) * (size_t)(file_count > 0 ? file_count : 1));
-                int parsed_count = 0;
-
-                /* Parse pass: parse each file, collect names, inject transitive imports */
-                for (int fi = 0; fi < file_count; fi++) {
-                    const char *cur_file_path = file_list[fi];
-
-                    /* Normalize the path so diamond dependencies (same file
-                     * reached via different relative paths) are deduplicated. */
-                    char *norm = gray_realpath(cur_file_path);
-                    const char *norm_path = norm ? arena_copy_string(arena, norm) : cur_file_path;
-                    free(norm);
-
-                    /* The entry file is the program, not a module: its
-                     * declarations stay unmangled and are never registered
-                     * under a module name, so importing it yields an empty
-                     * namespace. Reject the import instead of letting every
-                     * qualified reference through it fail later. */
-                    if (file_count == 1 && gray_path_equal(norm_path, entry_real_path)) {
-                        char msg[MSG_BUF_LARGE];
-                        snprintf(msg, sizeof(msg),
-                            "cannot import '%s'; it is the program's entry point", item->path);
-                        diagnostic_error_help(diag, "E6005", strdup(msg),
-                            stmt_file, stmt->token.line, stmt->token.column, 0,
-                            "move the shared declarations into a third file and import that from both");
-                        continue;
-                    }
-
-                    /* Skip if already imported (handles cycles and duplicates) */
-                    if (already_imported(norm_path)) {
-                        /* If this is a transitive import from inside a directory
-                         * module referencing a sibling already pulled in by the
-                         * directory import, emit an informational warning. */
-                        if (item->source_dir && file_count == 1) {
-                            char msg[MSG_BUF_SIZE];
-                            snprintf(msg, sizeof(msg),
-                                "import of '%s' is redundant; already included by directory import",
-                                item->path);
-                            diagnostic_warning(diag, "W2014", strdup(msg),
-                                stmt_file, stmt->token.line, stmt->token.column, 0);
-                        } else if (!item->source_dir && file_count == 1) {
-                            /* Direct import of a file already pulled in by a directory import */
-                            const char *owner_mod = imported_by_module(norm_path);
-                            char msg[MSG_BUF_LARGE];
-                            if (owner_mod) {
-                                snprintf(msg, sizeof(msg),
-                                    "file '%s' was already imported as part of a directory import; "
-                                    "use the '%s' namespace (e.g. %s.%s()) instead",
-                                    item->path, owner_mod, owner_mod, mod_name_buf);
-                            } else {
-                                snprintf(msg, sizeof(msg),
-                                    "file '%s' was already imported as part of a directory import; "
-                                    "this import is redundant",
-                                    item->path);
-                            }
-                            diagnostic_warning(diag, "W2015", strdup(msg),
-                                stmt_file, stmt->token.line, stmt->token.column, 0);
-                        }
-                        continue;
-                    }
-                    mark_imported_with_module(norm_path, mod_name);
-
-                    /* Attribute this file to its module. Every file of a
-                     * directory import records the same module name, which is
-                     * what merges their declarations into one scope. */
-                    if (module_file_count >= module_file_cap) {
-                        module_file_cap = GROW_NEXT_CAP(module_file_cap);
-                        ARENA_GROW_TO(arena, module_files, module_file_count, module_file_cap);
-                        ARENA_GROW_TO(arena, module_names, module_file_count, module_file_cap);
-                    }
-                    module_files[module_file_count] = arena_copy_string(arena, cur_file_path);
-                    module_names[module_file_count] = mod_name;
-                    module_file_count++;
-
-                    /* Read and parse the imported file */
-                    char *imp_source = read_file(cur_file_path, false);
-                    if (!imp_source) {
-                        char msg[MSG_BUF_LARGE];
-                        snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", cur_file_path);
-                        diagnostic_error(diag, "E6002", strdup(msg),
-                            stmt_file, stmt->token.line, stmt->token.column, 0);
-                        continue;
-                    }
-
-                    Lexer *imp_lexer = lexer_create(arena, imp_source, cur_file_path);
-                    Parser *imp_parser = parser_create(arena, imp_lexer, cur_file_path, diag);
-                    AstNode *imp_program = parser_parse_program(imp_parser);
-
-                    if (!imp_program || diagnostic_has_errors(diag)) continue;
-
-                    /* Inject transitive import statements into the main program.
-                     * Sibling imports (pointing to other files in the same directory)
-                     * are NOT injected — instead their module alias is added to the
-                     * rewrite mapping so qualified references like types.Item get
-                     * rewritten to mylib.Item → resolves as mylib_Item. */
-                    {
-                        char cur_dir[PATH_BUF_SIZE];
-                        strncpy(cur_dir, cur_file_path, sizeof(cur_dir) - 1);
-                        cur_dir[sizeof(cur_dir) - 1] = '\0';
-                        char *cd_sep = gray_path_rsep(cur_dir);
-                        if (cd_sep) *(cd_sep + 1) = '\0';
-                        else { cur_dir[0] = '.'; cur_dir[1] = '/'; cur_dir[2] = '\0'; }
-                        const char *src_dir = arena_copy_string(arena, cur_dir);
-
-                        /* Normalize the directory being imported for sibling detection */
-                        char *norm_import_dir = gray_realpath(import_path);
-
-                        for (int ti = 0; ti < imp_program->data.program.stmt_count; ti++) {
-                            AstNode *ts = imp_program->data.program.stmts[ti];
-                            if (ts->kind != NODE_IMPORT_STMT) continue;
-
-                            bool all_sibling = true;
-                            for (int xi = 0; xi < ts->data.import_stmt.count; xi++) {
-                                ImportItem *titem = &ts->data.import_stmt.items[xi];
-                                if (titem->is_stdlib || titem->is_c_import) {
-                                    all_sibling = false;
-                                    continue;
-                                }
-                                if (!titem->path) continue;
-
-                                /* Resolve the transitive import path */
-                                const char *trel = titem->path;
-                                if (trel[0] == '.' && trel[1] == '/') trel += 2;
-                                char tres[PATH_BUF_SIZE];
-                                snprintf(tres, sizeof(tres), "%s%s", src_dir, trel);
-
-                                /* Check if it resolves to a file inside the same directory */
-                                size_t trlen = strlen(tres);
-                                bool is_sibling = false;
-                                /* Try with .gray extension if not already present */
-                                char tres_gray[PATH_BUF_SIZE];
-                                const char *tres_check = tres;
-                                if (trlen < GRAY_EXT_LEN || strcmp(tres + trlen - GRAY_EXT_LEN, GRAY_EXT) != 0) {
-                                    snprintf(tres_gray, sizeof(tres_gray), "%s.gray", tres);
-                                    tres_check = tres_gray;
-                                }
-                                char *norm_tres = gray_realpath(tres_check);
-                                if (norm_tres && norm_import_dir) {
-                                    /* Check if the file's directory matches import_path.
-                                     * Both buffers are ours to truncate in place. */
-                                    char *tsep = gray_path_rsep(norm_tres);
-                                    if (tsep) {
-                                        *tsep = '\0';
-                                        /* Strip trailing separator from norm_import_dir */
-                                        size_t imp_dir_len = strlen(norm_import_dir);
-                                        if (imp_dir_len > 0 &&
-                                            gray_is_path_sep(norm_import_dir[imp_dir_len - 1]))
-                                            norm_import_dir[imp_dir_len - 1] = '\0';
-                                        if (gray_path_equal(norm_tres, norm_import_dir)) {
-                                            is_sibling = true;
-                                        }
-                                    }
-                                }
-                                free(norm_tres);
-
-                                if (is_sibling) {
-                                    /* Collect sibling alias for compound mapping generation later */
-                                    const char *sib_alias = titem->alias;
-                                    if (!sib_alias) {
-                                        /* Derive alias from path (filename without .gray) */
-                                        const char *sib_base = gray_path_basename(trel);
-                                        char sib_buf[MSG_BUF_SIZE];
-                                        size_t sib_len = strlen(sib_base);
-                                        if (sib_len > GRAY_EXT_LEN && strcmp(sib_base + sib_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
-                                            memcpy(sib_buf, sib_base, sib_len - GRAY_EXT_LEN);
-                                            sib_buf[sib_len - GRAY_EXT_LEN] = '\0';
-                                        } else {
-                                            snprintf(sib_buf, sizeof(sib_buf), "%s", sib_base);
-                                        }
-                                        sib_alias = arena_copy_string(arena, sib_buf);
-                                    }
-                                    /* Record the sibling's own name as an alias
-                                     * of the directory module, so a qualified
-                                     * reference through it resolves. */
-                                    if (module_alias_count >= module_alias_cap) {
-                                        module_alias_cap = GROW_NEXT_CAP(module_alias_cap);
-                                        ARENA_GROW_TO(arena, module_alias_names,
-                                            module_alias_count, module_alias_cap);
-                                        ARENA_GROW_TO(arena, module_alias_targets,
-                                            module_alias_count, module_alias_cap);
-                                    }
-                                    module_alias_names[module_alias_count] = sib_alias;
-                                    module_alias_targets[module_alias_count] = mod_name;
-                                    module_alias_count++;
-                                    /* Null out the sibling import path so it's not injected */
-                                    titem->path = NULL;
-                                } else {
-                                    all_sibling = false;
-                                    if (!titem->source_dir) {
-                                        titem->source_dir = src_dir;
-                                    }
-                                }
-                            }
-
-                            /* Only inject import stmt if it has non-sibling items */
-                            if (!all_sibling) {
-                                ARENA_GROW(arena, program->data.program.stmts,
-                                    program->data.program.stmt_count, program->data.program.stmt_cap);
-                                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
-                                import_queue[iq_tail++] = ts;
-                                program->data.program.stmts[program->data.program.stmt_count++] = ts;
-                            }
-                        }
-                        free(norm_import_dir);
-                    }
-
-                    /* Store the parsed program for the merge pass */
-                    parsed_programs[parsed_count] = imp_program;
-                    parsed_paths[parsed_count] = cur_file_path;
-                    parsed_count++;
-                }
-
-                /* Merge pass */
-                for (int pi = 0; pi < parsed_count; pi++) {
-                    AstNode *imp_program = parsed_programs[pi];
-
-                /* Merge imported declarations into the main program.
-                 * Two passes: var_decls first (so they are in scope for
-                 * function bodies), then everything else.
-                 *
-                 * Names are left exactly as written. Which module a
-                 * declaration belongs to is recorded by file, and every
-                 * reference to it is resolved against the symbol table. */
-
-                /* Pass 1: variable declarations */
-                for (int mi = 0; mi < imp_program->data.program.stmt_count; mi++) {
-                    AstNode *imp_stmt = imp_program->data.program.stmts[mi];
-                    if (imp_stmt->kind != NODE_VAR_DECL) continue;
-
-                    ARENA_GROW(arena, program->data.program.stmts,
-                        program->data.program.stmt_count, program->data.program.stmt_cap);
-                    int insert_at = 0;
-                    for (int k = 0; k < program->data.program.stmt_count; k++) {
-                        if (program->data.program.stmts[k]->kind == NODE_IMPORT_STMT ||
-                            program->data.program.stmts[k]->kind == NODE_USING_STMT) {
-                            insert_at = k + 1;
-                        } else break;
-                    }
-                    memmove(&program->data.program.stmts[insert_at + 1],
-                            &program->data.program.stmts[insert_at],
-                            sizeof(AstNode *) * (program->data.program.stmt_count - insert_at));
-                    program->data.program.stmts[insert_at] = imp_stmt;
-                    program->data.program.stmt_count++;
-                }
-
-                /* Pass 2: functions, structs, enums */
-                for (int mi = 0; mi < imp_program->data.program.stmt_count; mi++) {
-                    AstNode *imp_stmt = imp_program->data.program.stmts[mi];
-                    /* Skip import/module/var declarations (vars handled in Pass 1).
-                     * Using statements are preserved so the typechecker can scope
-                     * them per-file and prevent transitive type leaking. */
-                    if (imp_stmt->kind == NODE_IMPORT_STMT ||
-                        imp_stmt->kind == NODE_MODULE_DECL ||
-                        imp_stmt->kind == NODE_VAR_DECL) continue;
-
-                    /* Insert into main program BEFORE existing declarations.
-                     * This ensures imported constants/functions are visible to all code. */
-                    ARENA_GROW(arena, program->data.program.stmts,
-                        program->data.program.stmt_count, program->data.program.stmt_cap);
-                    /* Find insertion point: after imports/using/var_decls */
-                    int insert_at = 0;
-                    for (int k = 0; k < program->data.program.stmt_count; k++) {
-                        if (program->data.program.stmts[k]->kind == NODE_IMPORT_STMT ||
-                            program->data.program.stmts[k]->kind == NODE_USING_STMT ||
-                            program->data.program.stmts[k]->kind == NODE_VAR_DECL) {
-                            insert_at = k + 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    /* Shift existing stmts to make room */
-                    memmove(&program->data.program.stmts[insert_at + 1],
-                            &program->data.program.stmts[insert_at],
-                            sizeof(AstNode *) * (program->data.program.stmt_count - insert_at));
-                    program->data.program.stmts[insert_at] = imp_stmt;
-                    program->data.program.stmt_count++;
-                }
-                } /* end for (pi: rewrite+merge pass) */
-
-                /* Mark this import item as fully processed. */
-                item->path = NULL;
-            }
-        } /* end while (iq_head < iq_tail) */
-    }
 
     /* An import that failed to resolve merged no declarations, so every
      * reference to the module it named is about to be reported undefined.
@@ -1256,12 +505,12 @@ int main(int argc, char **argv) {
     }
 
     /* Type check */
-    TypeChecker *checker = typechecker_create(diag, input_file);
-    typechecker_add_file_module(checker, input_file, NULL, true);
-    for (int i = 0; i < module_file_count; i++)
-        typechecker_add_file_module(checker, module_files[i], module_names[i], false);
-    for (int i = 0; i < module_alias_count; i++)
-        typechecker_add_module_alias(checker, module_alias_names[i], module_alias_targets[i]);
+    TypeChecker *checker = typechecker_create(diag, opts.input_file);
+    typechecker_add_file_module(checker, opts.input_file, NULL, true);
+    for (int i = 0; i < imports.count; i++)
+        typechecker_add_file_module(checker, imports.files[i], imports.modules[i], false);
+    for (int i = 0; i < imports.alias_count; i++)
+        typechecker_add_module_alias(checker, imports.alias_names[i], imports.alias_targets[i]);
     typechecker_check(checker, program);
 
     if (diagnostic_has_errors(diag)) {
@@ -1280,13 +529,13 @@ int main(int argc, char **argv) {
     }
 
     /* Check-only mode: stop after type checking */
-    if (check_only) {
+    if (opts.check_only) {
         clock_t t_end = clock();
-        if (show_time) {
+        if (opts.show_time) {
             double ms = (double)(t_end - t_start) / CLOCKS_PER_SEC * 1000.0;
             fprintf(stderr, "gray: check completed in %.1fms\n", ms);
         }
-        fprintf(stderr, "gray: %s: no errors\n", input_file);
+        fprintf(stderr, "gray: %s: no errors\n", opts.input_file);
         typechecker_free(checker);
         diagnostic_destroy(diag);
         arena_destroy(arena);
@@ -1295,30 +544,30 @@ int main(int argc, char **argv) {
     }
 
     /* Generate C code */
-    CodeGen codegen = codegen_create(input_file);
+    CodeGen codegen = codegen_create(opts.input_file);
     codegen.type_table = typechecker_get_table(checker);
     codegen.modules = typechecker_get_modules(checker);
-    codegen.arena_limit = arena_limit;
+    codegen.arena_limit = opts.arena_limit;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
 
     /* Determine output name */
     char *default_output = NULL;
-    if (run_mode && !output_file) {
+    if (opts.run_mode && !opts.output_file) {
         /* Run mode: use temp file */
         default_output = malloc(PATH_BUF_SIZE);
         gray_temp_path(default_output, PATH_BUF_SIZE, "gray_run_", GRAY_EXE_SUFFIX);
-        output_file = default_output;
-    } else if (!output_file) {
-        default_output = output_name_from_input(input_file);
-        output_file = default_output;
+        opts.output_file = default_output;
+    } else if (!opts.output_file) {
+        default_output = output_name_from_input(opts.input_file);
+        opts.output_file = default_output;
     }
 
     /* Write generated C to a temp file. The name carries the output's base name
-     * for readability under --verbose, plus a pid and counter so concurrent
+     * for readability under --opts.verbose, plus a pid and counter so concurrent
      * builds in different directories cannot collide. */
     char c_prefix[PATH_BUF_SIZE];
-    snprintf(c_prefix, sizeof(c_prefix), "gray_%s_", gray_path_basename(output_file));
+    snprintf(c_prefix, sizeof(c_prefix), "gray_%s_", gray_path_basename(opts.output_file));
     char c_file[PATH_BUF_SIZE];
     gray_temp_path(c_file, sizeof(c_file), c_prefix, ".c");
 
@@ -1331,16 +580,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (emit_c_only) {
+    if (opts.emit_c_only) {
         /* Determine C output filename */
         const char *c_out = NULL;
         char *c_out_default = NULL;
-        if (output_file && output_file != default_output) {
+        if (opts.output_file && opts.output_file != default_output) {
             /* Explicit -o provided */
-            c_out = output_file;
+            c_out = opts.output_file;
         } else {
             /* Derive from input: foo.gray -> foo.c */
-            const char *base = gray_path_basename(input_file);
+            const char *base = gray_path_basename(opts.input_file);
             size_t blen = strlen(base);
             if (blen > GRAY_EXT_LEN && strcmp(base + blen - GRAY_EXT_LEN, GRAY_EXT) == 0)
                 blen -= GRAY_EXT_LEN;
@@ -1372,7 +621,7 @@ int main(int argc, char **argv) {
 
 
     /* Pick a C compiler (skip detection when --cc overrides) */
-    const char *cc_cmd = cc_override;
+    const char *cc_cmd = opts.cc_override;
     if (!cc_cmd) {
         cc_cmd = detect_cc();
         if (!cc_cmd) {
@@ -1417,7 +666,7 @@ int main(int argc, char **argv) {
     /* The compiler is spawned with an argv array, so quoting and spaces are
      * handled for us. The one thing the C runtime cannot round-trip when it
      * re-serializes argv into a Windows command line is an embedded quote. */
-    if (strchr(runtime_dir, '"') || strchr(output_file, '"') || strchr(cc_cmd, '"')) {
+    if (strchr(runtime_dir, '"') || strchr(opts.output_file, '"') || strchr(cc_cmd, '"')) {
         fprintf(stderr, "gray: paths must not contain double quotes\n");
         codegen_destroy(&codegen);
         typechecker_free(checker);
@@ -1452,7 +701,7 @@ int main(int argc, char **argv) {
     /* Only --cc values are multi-word commands ("zig cc -target ...").
      * Detected compilers are single tokens that may contain spaces
      * (C:\Program Files\LLVM\bin\clang.exe) and must not be word-split. */
-    if (cc_override) {
+    if (opts.cc_override) {
         argv_push_command(&cc_argv, arena, cc_cmd);
     } else {
         argv_push(&cc_argv, cc_cmd);
@@ -1468,8 +717,8 @@ int main(int argc, char **argv) {
 #else
     argv_push(&cc_argv, "-std=c11");
 #endif
-    if (debug_symbols) argv_push(&cc_argv, "-g");
-    argv_push(&cc_argv, opt_level);
+    if (opts.debug_symbols) argv_push(&cc_argv, "-g");
+    argv_push(&cc_argv, opts.opt_level);
     argv_push(&cc_argv, "-Wall");
     argv_push(&cc_argv, "-Wno-unused-function");
     argv_push(&cc_argv, "-Wno-unused-variable");
@@ -1486,7 +735,7 @@ int main(int argc, char **argv) {
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
     argv_push(&cc_argv, "-o");
-    argv_push(&cc_argv, output_file);
+    argv_push(&cc_argv, opts.output_file);
     argv_push(&cc_argv, c_file);
 
     if (has_archive) {
@@ -1545,7 +794,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (verbose) {
+    if (opts.verbose) {
         fprintf(stderr, "gray: ");
         argv_print(&cc_argv, stderr);
     }
@@ -1581,9 +830,9 @@ int main(int argc, char **argv) {
         gray_remove_file(c_file);
 
         double total_ms = (double)(t_cc_end - t_start) / CLOCKS_PER_SEC * 1000.0;
-        if (!run_mode) {
-            const char *out_base = gray_path_basename(output_file);
-            if (!no_color && gray_stdout_is_tty()) {
+        if (!opts.run_mode) {
+            const char *out_base = gray_path_basename(opts.output_file);
+            if (!opts.no_color && gray_stdout_is_tty()) {
                 fprintf(stdout, "\033[32mCompiled '\033[1m%s\033[22m' in %.0fms!\033[0m\n",
                     out_base, total_ms);
             } else {
@@ -1592,7 +841,7 @@ int main(int argc, char **argv) {
             fflush(stdout);
         }
 
-        if (show_time) {
+        if (opts.show_time) {
             double frontend_ms = (double)(t_cc_start - t_start) / CLOCKS_PER_SEC * 1000.0;
             double cc_ms = (double)(t_cc_end - t_cc_start) / CLOCKS_PER_SEC * 1000.0;
             fprintf(stderr, "  frontend:  %.1fms (lex + parse + typecheck + codegen)\n", frontend_ms);
@@ -1603,14 +852,14 @@ int main(int argc, char **argv) {
     /* Run mode: execute the binary and clean up. Spawned without a shell and
      * without a PATH search — the output path comes from user-supplied CLI
      * input, and a bare name must not resolve to some unrelated binary. */
-    if (ret == 0 && run_mode) {
-        const char *run_argv[] = {output_file, NULL};
+    if (ret == 0 && opts.run_mode) {
+        const char *run_argv[] = {opts.output_file, NULL};
         ret = gray_spawn_exact(run_argv);
         if (ret < 0) {
-            fprintf(stderr, "gray: cannot execute '%s'\n", output_file);
+            fprintf(stderr, "gray: cannot execute '%s'\n", opts.output_file);
             ret = 1;
         }
-        gray_remove_file(output_file);
+        gray_remove_file(opts.output_file);
     }
 
     codegen_destroy(&codegen);

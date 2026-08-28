@@ -1,0 +1,107 @@
+/*
+ * cast_int_to_enum.gray - Test cast() to an enum type
+ *
+ * Covers: contiguous variants, explicit values, and flags combinations.
+ * Every value cast here names a declared variant; out-of-range values panic
+ * and are covered by the P0107 tests.
+ */
+
+const Direction enum {
+    NORTH
+    SOUTH
+}
+
+const Foobar enum {
+    BAZ = 10
+    QUX
+    QUUX = 50
+    CORGE
+}
+
+#flags
+const Permissions enum {
+    READ
+    WRITE
+    EXECUTE
+}
+
+do main() {
+    println("=== cast to Enum Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: contiguous variant
+    mut d Direction = cast(1, Direction)
+    if d == Direction.SOUTH {
+        println("  [PASS] cast(1, Direction) is Direction.SOUTH")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(1, Direction) mismatched")
+        failed += 1
+    }
+
+    // Test 2: the auto-incremented value after an explicit one
+    mut f Foobar = cast(11, Foobar)
+    if f == Foobar.QUX {
+        println("  [PASS] cast(11, Foobar) is Foobar.QUX")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(11, Foobar) mismatched")
+        failed += 1
+    }
+
+    // Test 3: an explicit value further along
+    mut g Foobar = cast(51, Foobar)
+    if g == Foobar.CORGE {
+        println("  [PASS] cast(51, Foobar) is Foobar.CORGE")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(51, Foobar) mismatched")
+        failed += 1
+    }
+
+    // Test 4: a flags enum accepts a combination of its bits
+    mut p Permissions = cast(3, Permissions)
+    if cast(p, int) == 3 {
+        println("  [PASS] cast(3, Permissions) keeps READ|WRITE")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(3, Permissions) gave ${cast(p, int)}")
+        failed += 1
+    }
+
+    // Test 5: a flags enum accepts the empty set
+    mut z Permissions = cast(0, Permissions)
+    if cast(z, int) == 0 {
+        println("  [PASS] cast(0, Permissions) is the empty set")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(0, Permissions) gave ${cast(z, int)}")
+        failed += 1
+    }
+
+    // Test 6: a cast value still matches in a when
+    mut w Direction = cast(0, Direction)
+    mut matched string = ""
+    when w {
+        is Direction.NORTH { matched = "north" }
+        is Direction.SOUTH { matched = "south" }
+        default { matched = "default" }
+    }
+    if matched == "north" {
+        println("  [PASS] cast value matches a when arm")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast value took the ${matched} arm")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -419,7 +419,7 @@ var langManDocs = map[string]LangManEntry{
 	"<?>": {
 		Kind:    "symbol",
 		Syntax:  "do <name>(T <?>) -> ^?",
-		Desc:    "Type-level generic parameter. Accepts a struct type name (not a value) at the call site, enabling type-aware constructors.",
+		Desc:    "Type-level generic parameter. Accepts a type name (not a value) at the call site, enabling type-aware constructors. A T{...} literal in the body constrains it to struct types.",
 		Example: "do make(T <?>) -> ^? {\n    return new(T)\n}\nmut p = make(Point)",
 	},
 

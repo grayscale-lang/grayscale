@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6011 - The same standard library module imported twice in one file
+ * Expected: "is already imported in this file"
+ */
+
+// expect-error: E6011
+// expect-error-count: 1
+// expect-not: W1002
+
+import @math, @math
+
+do main() {
+    println(math.abs(-2))
+}

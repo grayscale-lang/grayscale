@@ -15,7 +15,6 @@
 #include "atomic.h"
 
 #define GRAY_ARRAY_MIN_CAP            4
-#define GRAY_MAX_INLINE_ELEM_SIZE     64
 
 typedef struct {
     void *data;

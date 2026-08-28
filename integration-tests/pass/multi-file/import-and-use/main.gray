@@ -2,7 +2,10 @@ import and use "./lib.gray"
 
 do main() {
     mut result string = greet("Unqualified")
-    if result == "Hello, Unqualified" && VERSION == "1.0.0" {
+    // A public module variable is published under its bare name too, and the
+    // private constant beside it stays reachable only from its own file.
+    if result == "Hello, Unqualified" && VERSION == "1.0.0" &&
+       tally == 5 && bump() == 15 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")

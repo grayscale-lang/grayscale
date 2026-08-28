@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3127 - the same T{...} body form with an enum binding. An enum
+ * names a real type, so the call site accepts it; the struct literal does not.
+ * Expected: "type parameter 'T' is used as a struct literal"
+ */
+
+const Color enum {
+    RED
+    GREEN
+}
+
+do mk_stack(T <?>) -> ? {
+    return T{}
+}
+
+do main() {
+    mut x = mk_stack(Color)
+    println(x)
+}

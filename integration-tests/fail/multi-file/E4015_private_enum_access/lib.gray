@@ -1,0 +1,13 @@
+/*
+ * lib.gray - Library with a private enum
+ */
+
+private const Color enum {
+    RED
+    GREEN
+}
+
+do public_fn() -> bool {
+    mut c Color = Color.RED
+    return c == Color.RED
+}

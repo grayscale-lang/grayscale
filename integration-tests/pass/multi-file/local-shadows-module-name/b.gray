@@ -1,0 +1,26 @@
+/*
+ * b.gray - the module name is 'b', which locals below deliberately reuse.
+ */
+
+const Inner struct {
+    n int
+}
+
+const Box struct {
+    v int
+    inner Inner
+}
+
+/* A local named after this file's own module. */
+do peek() -> int {
+    mut b Box = Box{v: 5, inner: Inner{n: 2}}
+    b.v = 9
+    b.inner.n = 4
+    mut p ^Box = addr(b)
+    return b.v + b.inner.n + p^.v
+}
+
+/* A parameter named after this file's own module. */
+do via_param(b Box) -> int {
+    return b.v + b.inner.n
+}

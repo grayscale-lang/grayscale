@@ -1,0 +1,7 @@
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+alias Score = int

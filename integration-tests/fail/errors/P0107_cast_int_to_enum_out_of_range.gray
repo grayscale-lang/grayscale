@@ -1,0 +1,16 @@
+/*
+ * Panic Test: P0107 - cast an out-of-range int to an enum
+ *
+ * cast(int_val, EnumType) must panic at runtime when the value names no
+ * declared variant, rather than storing it and matching nothing afterwards.
+ */
+
+const Direction enum {
+    NORTH
+    SOUTH
+}
+
+do main() {
+    mut d Direction = cast(99, Direction)
+    println(d)
+}

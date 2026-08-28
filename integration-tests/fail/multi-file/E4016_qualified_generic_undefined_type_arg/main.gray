@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4016 - a name that is not a type at all, passed as a type
+ * argument through a module-qualified call. The qualified path once skipped
+ * type-argument validation entirely, so this compiled with no diagnostic.
+ * Expected: "undefined type 'Nonexistent'"
+ */
+// expect-error: E4016
+// expect-error-count: 1
+
+import "./utils.gray"
+
+do main() {
+    mut x = utils.new_T(Nonexistent)
+    println(x)
+}

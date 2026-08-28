@@ -1,0 +1,13 @@
+mut counter int = 0
+const LIMIT int = 5
+
+do bump() -> int {
+    mut p ^int = addr(counter)
+    p^ = p^ + 1
+    return counter
+}
+
+do limit() -> int {
+    mut p ^int = addr(LIMIT)
+    return p^
+}

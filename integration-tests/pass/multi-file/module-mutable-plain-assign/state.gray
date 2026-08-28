@@ -1,0 +1,27 @@
+/*
+ * state.gray - module-level mutable variables written with plain '='.
+ */
+
+mut counter int = 0
+mut name string = "start"
+mut flag bool = false
+
+do bump() {
+    counter = counter + 1
+}
+
+do set_all() {
+    counter = 42
+    name = "changed"
+    flag = true
+    counter += 1
+}
+
+do fresh_local() -> int {
+    made_here = 9
+    return made_here
+}
+
+do report() -> string {
+    return "${counter}-${name}-${flag}"
+}

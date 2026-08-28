@@ -39,6 +39,78 @@ do main() {
         failed += 1
     }
 
+    // Test 4: type_of reports the name the type is written with, never the
+    // module-mangled key a cross-module reference resolves to
+    if type_of(c) == "Circle" {
+        println("  [PASS] type_of on an imported struct is 'Circle'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of on an imported struct: got '${type_of(c)}'")
+        failed += 1
+    }
+
+    mut s shapes.Shade = shapes.Shade.DARK
+    if type_of(s) == "Shade" {
+        println("  [PASS] type_of on an imported enum is 'Shade'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of on an imported enum: got '${type_of(s)}'")
+        failed += 1
+    }
+
+    mut circles [shapes.Circle] = {c}
+    if type_of(circles) == "[Circle]" {
+        println("  [PASS] type_of on an array of an imported struct is '[Circle]'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of on an array of an imported struct: got '${type_of(circles)}'")
+        failed += 1
+    }
+
+    mut lookup map[string:shapes.Circle] = {:}
+    if type_of(lookup) == "map[string:Circle]" {
+        println("  [PASS] type_of on a map of an imported struct is 'map[string:Circle]'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of on a map of an imported struct: got '${type_of(lookup)}'")
+        failed += 1
+    }
+
+    mut ptr ^shapes.Rect = addr(r)
+    if type_of(ptr) == "^Rect" {
+        println("  [PASS] type_of on a pointer to an imported struct is '^Rect'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of on a pointer to an imported struct: got '${type_of(ptr)}'")
+        failed += 1
+    }
+
+    // Test 9: size_of accepts a module-qualified type name, the same way an
+    // annotation does
+    if size_of(shapes.Rect) == size_of(int) * 2 {
+        println("  [PASS] size_of on an imported struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported struct: got ${size_of(shapes.Rect)}")
+        failed += 1
+    }
+
+    if size_of(shapes.Extent) == size_of(int) {
+        println("  [PASS] size_of on an imported alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported alias: got ${size_of(shapes.Extent)}")
+        failed += 1
+    }
+
+    if size_of(shapes.Shade) > 0 {
+        println("  [PASS] size_of on an imported enum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of on an imported enum: got ${size_of(shapes.Shade)}")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

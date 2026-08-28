@@ -34,10 +34,35 @@ do main() {
     // Note: Accessing lib.internal_helper() or lib.SECRET_KEY would fail
     // Those cases are tested in fail/multi-file tests
 
+    // Test 3: a private struct and enum are usable inside their own file
+    if lib.use_private() == 3 {
+        println("  [PASS] private types usable in the declaring file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private types usable in the declaring file")
+    }
+
+    // Test 4: a public struct function may call a private one on the same struct
+    mut b lib.Box = lib.Box{v: 5}
+    if lib.Box.open(b) == 11 {
+        println("  [PASS] public struct function calls its private sibling")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] public struct function calls its private sibling")
+    }
+
+    // Test 5: private constants and variables are usable inside their own file
+    if lib.use_private_data() == 12 {
+        println("  [PASS] private data usable in the declaring file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private data usable in the declaring file")
+    }
+
     println("")
-    println("Results: ${passed}/2 passed")
-    
-    if passed == 2 {
+    println("Results: ${passed}/5 passed")
+
+    if passed == 5 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")

@@ -1,0 +1,51 @@
+import "./tag.gray"
+import "./cell.gray"
+import "./eng.gray"
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut e eng.Engine = eng.Engine.create()
+    e.registry["a"] = 1
+    if len(e.registry) == 1 {
+        println("  [PASS] cross-module map field is writable after return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected len 1, got ${len(e.registry)}")
+        failed += 1
+    }
+
+    mut ts [tag.Tag] = {}
+    arrays.append(ts, tag.Tag.create(0))
+    arrays.append(ts, tag.Tag.create(1))
+    arrays.append(ts, tag.Tag.create(2))
+    if ts[0].label == "node-0" && ts[1].label == "node-1" && ts[2].label == "node-2" {
+        println("  [PASS] cross-module string fields do not alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 'node-0' 'node-1' 'node-2', got '${ts[0].label}' '${ts[1].label}' '${ts[2].label}'")
+        failed += 1
+    }
+
+    mut cells [cell.Cell] = {}
+    arrays.append(cells, cell.Cell.create(0))
+    arrays.append(cells, cell.Cell.create(1))
+    arrays.append(cells[0].box, 100)
+    arrays.append(cells[1].box, 200)
+    if cells[0].box[0] == 100 && cells[1].box[0] == 200 {
+        println("  [PASS] cross-module array fields do not alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 100 and 200, got ${cells[0].box[0]} and ${cells[1].box[0]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

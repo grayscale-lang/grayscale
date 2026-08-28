@@ -18,5 +18,22 @@ do main() {
     mut plain int = c
     assert(plain == 42, "alias value assigns back to the underlying type")
 
+    /* An alias for a struct declared in the same module */
+    mut v lib.Vec = lib.make_vec(2, 3)
+    assert(lib.vec_sum(v) == 5, "struct alias round-trips through a module function")
+    assert(v.x == 2, "struct alias supports field access")
+
+    /* Chained through a second alias, and used as a constructor */
+    mut s lib.Spot = lib.Spot{x: 4, y: 6}
+    assert(lib.vec_sum(s) == 10, "chained struct alias builds the underlying struct")
+
+    /* An alias for an enum declared in the same module */
+    mut h lib.Hue = lib.Hue.GREEN
+    assert(h == lib.Color.GREEN, "enum alias names the same variant as the enum")
+
+    /* An alias whose target is a container of another alias */
+    mut all lib.Scores = {1, 2, 3}
+    assert(len(all) == 3, "alias for [Score] accepts an int array")
+
     println("ALL TESTS PASSED")
 }

@@ -1,5 +1,5 @@
 /* E4001: file-scope constant forward references are rejected */
-/* expect: E4001 */
+// expect-error: E4001
 
 const B int = A + 1
 const A int = 10

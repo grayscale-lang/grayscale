@@ -105,6 +105,7 @@ typedef struct {
     /* Control flow tracking */
     int loop_depth;               /* >0 means inside a loop */
     int func_depth;               /* >0 means inside a function body */
+    bool in_file_scope_init;      /* checking a file-scope declaration's initializer */
     GrayType **current_return_types; /* expected return types of current function */
     const char **current_return_type_names; /* raw declared return type names */
     int current_return_count;
@@ -202,6 +203,7 @@ typedef struct {
     /* Type alias registry (alias Name = Type) */
     const char **type_alias_names;
     const char **type_alias_targets;
+    AstNode **type_alias_nodes;
     int type_alias_count;
     int type_alias_cap;
 

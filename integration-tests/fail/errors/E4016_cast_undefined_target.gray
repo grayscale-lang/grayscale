@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4016 - cast() to a type name that does not exist
+ * Expected: "undefined type 'zag'"
+ */
+
+// expect-error: E4016
+// expect-error-count: 1
+
+do main() {
+    mut n int = 1
+    println(cast(n, zag))
+}

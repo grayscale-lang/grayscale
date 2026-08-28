@@ -1,0 +1,100 @@
+/*
+ * type_name_positions.gray - Test the positions that legitimately take a type name
+ *
+ * Covers: size_of(T), size_of(alias), type_of(T), type_of(value),
+ *         fields(instance), new(T), cast(v, T), and enum variant access.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+alias Vec2 = Point
+
+const Color enum {
+    RED
+    GREEN
+}
+
+do main() {
+    println("=== Type Name Position Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: size_of() takes a type name
+    if size_of(Point) == size_of(Vec2) {
+        println("  [PASS] size_of(Point) == size_of(Vec2)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] size_of(Point) == ${size_of(Point)}")
+        failed += 1
+    }
+
+    // Test 2: type_of() takes a primitive type name
+    if type_of(int) == "int" {
+        println("  [PASS] type_of(int) == \"int\"")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of(int) == ${type_of(int)}")
+        failed += 1
+    }
+
+    // Test 3: type_of() on an instance
+    mut p Point = Point{x: 1, y: 2}
+    if type_of(p) == "Point" {
+        println("  [PASS] type_of(instance) names the struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of(instance) == ${type_of(p)}")
+        failed += 1
+    }
+
+    // Test 4: fields() on an instance
+    mut names [string] = fields(p)
+    if names[0] == "x" {
+        println("  [PASS] fields(instance) lists the fields")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] fields(instance) gave ${names}")
+        failed += 1
+    }
+
+    // Test 5: new() takes a type name
+    mut q ^Point = new(Point)
+    q^.x = 7
+    if q^.x == 7 {
+        println("  [PASS] new(Point) allocates an instance")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Point) gave ${q^.x}")
+        failed += 1
+    }
+
+    // Test 6: cast() takes a type name as its target
+    if cast(1, Color) == Color.GREEN {
+        println("  [PASS] cast(1, Color) is Color.GREEN")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(1, Color) mismatched")
+        failed += 1
+    }
+
+    // Test 7: an enum name qualifies a variant
+    if Color.RED != Color.GREEN {
+        println("  [PASS] enum variant access")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum variant access")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

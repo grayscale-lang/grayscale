@@ -1,0 +1,19 @@
+/*
+ * msg.gray - a struct with functions taking each receiver form.
+ */
+
+const Msg struct {
+    id int
+
+    do describe(m Msg) -> string {
+        return "msg-${m.id}"
+    }
+
+    do bump(&m Msg) {
+        m.id = m.id + 1
+    }
+
+    do peek(m ^Msg) -> int {
+        return m^.id
+    }
+}

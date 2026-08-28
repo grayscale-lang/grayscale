@@ -56,7 +56,7 @@
     GRAY_ERROR("E2025", "syntax", "expected integer or constant for array size; the second value in [type, size] must be a positive integer or a const integer identifier") \
     GRAY_ERROR("E2036", "syntax", "imports must be at the top of the file, not inside a function") \
     GRAY_ERROR("E2037", "syntax", "duplicate function name in struct; each function must have a unique name") \
-    GRAY_ERROR("E2038", "syntax", "reserved name for struct or enum; this name is used by the language") \
+    GRAY_ERROR("E2038", "syntax", "reserved name; this name is used by the language") \
     GRAY_ERROR("E2039", "syntax", "required parameter '%s' cannot come after a parameter with a default value") \
     GRAY_ERROR("E2043", "syntax", "duplicate case value in when statement") \
     GRAY_ERROR("E2050", "syntax", "break and continue can only be used inside a loop") \
@@ -209,8 +209,8 @@
     GRAY_ERROR("E3124", "types", "operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or !=") \
     GRAY_ERROR("E3125", "types", "'%s' is not a compile-time integer constant; array size must be a const int/uint value") \
     GRAY_ERROR("E3126", "types", "array size must be greater than zero; '%s' resolves to %d") \
-    GRAY_ERROR("E3127", "types", "type parameter expects a struct type name, but '%s' is not a struct; only struct types can be passed as type arguments") \
-    GRAY_ERROR("E3128", "types", "type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct'") \
+    GRAY_ERROR("E3127", "types", "type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct") \
+    GRAY_ERROR("E3128", "types", "type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'int'") \
     GRAY_ERROR("E3129", "safety", "empty loop body; this will loop forever at runtime") \
     GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type") \
     GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead") \
@@ -245,7 +245,8 @@
     GRAY_ERROR("E4021", "names", "type alias '%s' is private and cannot be accessed from outside its file") \
     GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them") \
     GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'") \
-    GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'")
+    GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'") \
+    GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -292,7 +293,9 @@
     GRAY_ERROR("E6006", "imports", "module name derived from the import path is not a usable identifier") \
     GRAY_ERROR("E6007", "imports", "standard library imports cannot be aliased") \
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
-    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope")
+    GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
+    GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope") \
+    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
@@ -421,7 +424,8 @@
     GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
     GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
     GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
-    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld")
+    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld") \
+    GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
@@ -435,9 +439,7 @@
     GRAY_WARNING("W2008", "safety", "parameter shadows an enum variant name") \
     GRAY_WARNING("W2011", "safety", "named return value is declared in the signature but no matching variable exists in the function body") \
     GRAY_WARNING("W2012", "safety", "'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon'") \
-    GRAY_WARNING("W2013", "imports", "duplicate import of already-imported module") \
     GRAY_WARNING("W2014", "imports", "intra-directory import already included by directory import") \
-    GRAY_WARNING("W2015", "imports", "file already imported as part of a directory import; redundant import") \
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3004", "safety", "pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \

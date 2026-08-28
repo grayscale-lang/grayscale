@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3005 - writing a module-level constant from inside its module
+ * Expected: "cannot modify constant 'LIMIT'"
+ */
+// expect-error: E3005
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    lib.nudge()
+}

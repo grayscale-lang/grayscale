@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4016 - the same undefined type argument as the qualified test,
+ * written bare through 'using'. Both spellings must report identically.
+ * Expected: "undefined type 'Nonexistent'"
+ */
+// expect-error: E4016
+// expect-error-count: 1
+
+import "./utils.gray"
+using utils
+
+do main() {
+    mut x = new_T(Nonexistent)
+    println(x)
+}

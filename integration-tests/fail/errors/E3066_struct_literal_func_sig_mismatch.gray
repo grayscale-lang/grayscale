@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3066 - a struct literal supplying a mismatched func ref
+ * Expected: compile-time error on the field value
+ */
+
+const Handler struct {
+    callback func(int) -> int
+}
+
+do takes_float(n float) -> int { return 0 }
+
+do main() {
+    const h = Handler{callback: ()takes_float}
+    println(h.callback(1))
+}

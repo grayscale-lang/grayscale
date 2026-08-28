@@ -1,0 +1,14 @@
+/*
+ * Error Test: E6011 - A directory import and a file inside it name one module twice
+ * Expected: "is already imported in this file as part of module"
+ */
+
+// expect-error: E6011
+// expect-error-count: 1
+
+import "./lib"
+import "./lib/helper_a"
+
+do main() {
+    println(lib.w2015_helper_a() + lib.w2015_helper_b())
+}

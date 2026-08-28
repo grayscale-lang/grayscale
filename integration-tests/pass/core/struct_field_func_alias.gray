@@ -1,0 +1,62 @@
+alias Handler = func(int) -> int
+alias Chained = Handler
+
+do double(n int) -> int { return n * 2 }
+do triple(n int) -> int { return n * 3 }
+
+const Wrapper struct {
+    f Handler
+    g Chained
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const w = Wrapper{f: ()double, g: ()triple}
+    mut r int = w.f(5)
+    if r == 10 {
+        println("  [PASS] struct literal alias-typed func field call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal alias-typed func field call: expected 10, got ${r}")
+        failed += 1
+    }
+
+    mut r2 int = w.g(5)
+    if r2 == 15 {
+        println("  [PASS] struct literal chained-alias func field call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal chained-alias func field call: expected 15, got ${r2}")
+        failed += 1
+    }
+
+    mut w2 = new(Wrapper)
+    w2.f = ()double
+    w2.g = ()triple
+    mut r3 int = w2.f(5)
+    if r3 == 10 {
+        println("  [PASS] new() alias-typed func field call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new() alias-typed func field call: expected 10, got ${r3}")
+        failed += 1
+    }
+
+    mut r4 int = w2.g(5)
+    if r4 == 15 {
+        println("  [PASS] new() chained-alias func field call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new() chained-alias func field call: expected 15, got ${r4}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

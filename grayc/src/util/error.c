@@ -120,11 +120,6 @@ void diagnostic_warning(DiagnosticList *diagnostics, const char *code, const cha
     diagnostic_add(diagnostics, SEV_WARNING, code, message, file, line, col_start, end_col, NULL);
 }
 
-void diagnostic_warning_help(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col_start, int end_col, const char *help) {
-    diagnostic_add(diagnostics, SEV_WARNING, code, message, file, line, col_start, end_col, help);
-}
-
 static const char *lookup_or_placeholder(const char *code) {
     const char *msg = gray_error_message(code);
     return msg ? msg : "<unknown error code>";

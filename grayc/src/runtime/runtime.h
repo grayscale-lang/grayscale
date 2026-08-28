@@ -333,6 +333,25 @@ static inline uint64_t gray_ucast_check(int64_t v, uint64_t max_val,
     return (uint64_t)v;
 }
 
+/* Safe cast to an enum: the value must name a declared variant. A flags enum
+ * is a set, so any combination of its variant bits is one of its values;
+ * every other enum admits only the values it declares. */
+static inline int64_t gray_enum_cast_check(int64_t v, const int64_t *variants, int32_t count,
+    bool is_flags, const char *type_name, const char *file, int line) {
+    if (is_flags) {
+        int64_t mask = 0;
+        for (int32_t i = 0; i < count; i++) mask |= variants[i];
+        if (v >= 0 && (v & ~mask) == 0) return v;
+    } else {
+        for (int32_t i = 0; i < count; i++) {
+            if (variants[i] == v) return v;
+        }
+    }
+    gray_panic_code_at(file, line, "P0107", "cast to %s failed; value %lld does not match any variant of %s",
+        type_name, (long long)v, type_name);
+    return v;
+}
+
 /* Safe uint64 → int64 conversion: panics if value exceeds INT64_MAX */
 static inline int64_t gray_uint_to_int_check(uint64_t v, const char *file, int line) {
     if (v > (uint64_t)9223372036854775807LL)

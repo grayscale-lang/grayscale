@@ -185,6 +185,10 @@ struct AstNode {
             AstNode **field_values;
             int count;
             const char *wildcard_binding; /*concrete type for ? fields */
+            /* E3127 already reported for this literal. A return value is
+             * resolved twice — once for the statement, once against the
+             * declared return type — and one bad literal is one error. */
+            bool type_param_rejected;
         } struct_value;
 
         /* NODE_PREFIX_EXPR */
@@ -353,6 +357,7 @@ struct AstNode {
             int instantiation_count;
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
+            bool is_private;
         } struct_decl;
 
         /* NODE_ENUM_DECL */
@@ -365,6 +370,7 @@ struct AstNode {
             bool is_tagged;  /* true if ANY variant has a payload */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
+            bool is_private;
         } enum_decl;
 
         /* NODE_ALIAS_DECL */

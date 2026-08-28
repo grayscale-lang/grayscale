@@ -19,3 +19,10 @@ do make_rect(w int, h int) -> shapes.Rect {
 do area(r Rect) -> int {
     return r.width * r.height
 }
+
+const Shade enum {
+    LIGHT
+    DARK
+}
+
+alias Extent = int

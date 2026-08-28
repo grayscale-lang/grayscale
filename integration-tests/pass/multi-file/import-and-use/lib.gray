@@ -3,3 +3,12 @@ const VERSION string = "1.0.0"
 do greet(name string) -> string {
     return "Hello, ${name}"
 }
+
+mut tally int = 5
+
+private const HIDDEN int = 9
+
+do bump() -> int {
+    tally += 1
+    return tally + HIDDEN
+}

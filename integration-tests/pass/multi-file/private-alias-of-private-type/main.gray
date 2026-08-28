@@ -1,0 +1,32 @@
+import "./secret"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: a private alias of a private type is usable inside its own file
+    if secret.peek() == 3 {
+        println("  [PASS] private alias used inside its declaring file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] private alias used inside its declaring file")
+        failed += 1
+    }
+
+    // Test 2: a public alias of a public type crosses the module boundary
+    mut p secret.PublicAlias = secret.PublicAlias{y: 5}
+    if p.y == 5 {
+        println("  [PASS] public alias of a public type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] public alias of a public type")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

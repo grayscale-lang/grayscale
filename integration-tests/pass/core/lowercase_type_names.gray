@@ -1,0 +1,83 @@
+const b_Point struct {
+    x int
+}
+
+const bpoint struct {
+    y int
+}
+
+const b_Color enum {
+    RED
+    GREEN
+}
+
+alias b_Alias = b_Point
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p b_Point = b_Point{x: 3}
+    if p.x == 3 {
+        println("  [PASS] struct named lowercase_Uppercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct named lowercase_Uppercase: got ${p.x}")
+        failed += 1
+    }
+
+    mut q bpoint = bpoint{y: 4}
+    if q.y == 4 {
+        println("  [PASS] struct named all lowercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct named all lowercase: got ${q.y}")
+        failed += 1
+    }
+
+    mut c b_Color = b_Color.GREEN
+    if c == b_Color.GREEN {
+        println("  [PASS] enum named lowercase_Uppercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum named lowercase_Uppercase")
+        failed += 1
+    }
+
+    mut a b_Alias = b_Alias{x: 5}
+    if a.x == 5 {
+        println("  [PASS] alias named lowercase_Uppercase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias named lowercase_Uppercase: got ${a.x}")
+        failed += 1
+    }
+
+    mut flag bool = true
+    if flag {
+        println("  [PASS] lowercase name before a block is still a condition")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lowercase name before a block is still a condition")
+        failed += 1
+    }
+
+    mut n int = 0
+    while n < 2 && flag {
+        n += 1
+    }
+    if n == 2 {
+        println("  [PASS] condition ending in a bare name still opens a block")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] condition ending in a bare name still opens a block: got ${n}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E2038 - reserved type name used as an alias name
+ * Expected: "is a reserved type name and cannot be used as an alias name"
+ */
+
+// expect-error: E2038
+// expect-error-count: 1
+
+alias int = float
+
+do main() {
+    println("Should not run!")
+}

@@ -6,6 +6,16 @@
  */
 
 
+alias I = int
+alias S = string
+alias Chain = I
+
+const Hue enum {
+    RED,
+    GREEN
+}
+alias Shade = Hue
+
 do main() {
     println("=== Cast Conversion Tests ===")
     mut passed int = 0
@@ -99,6 +109,53 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] cast(variable, string) got '${s7}'")
+        failed += 1
+    }
+
+    // An alias is fully interchangeable with its underlying type, so it
+    // names the same cast target the underlying type does.
+    mut d float = 3.9
+    mut ai I = cast(d, I)
+    if ai == 3 && type_of(ai) == "int" {
+        println("  [PASS] cast(float, I) where alias I = int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(float, I) got '${ai}' of type '${type_of(ai)}'")
+        failed += 1
+    }
+
+    mut as_ S = cast(42, S)
+    if as_ == "42" {
+        println("  [PASS] cast(int, S) where alias S = string")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(int, S) got '${as_}'")
+        failed += 1
+    }
+
+    mut ac Chain = cast(d, Chain)
+    if ac == 3 {
+        println("  [PASS] cast through a chained alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast through a chained alias got '${ac}'")
+        failed += 1
+    }
+
+    mut sh Shade = cast(1, Shade)
+    if sh == Hue.GREEN {
+        println("  [PASS] cast(int, Shade) where alias Shade = Hue")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(int, Shade) did not produce Hue.GREEN")
+        failed += 1
+    }
+
+    if cast(sh, I) == 1 {
+        println("  [PASS] cast(enum, I) where alias I = int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(enum, I) got '${cast(sh, I)}'")
         failed += 1
     }
 

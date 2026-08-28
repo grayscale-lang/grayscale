@@ -1,0 +1,97 @@
+/*
+ * mem_alloc_pointer.gray - mem.alloc returns ^T for every T
+ */
+
+import @mem
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a Arena = mem.arena(4096)
+
+    mut p ^int = mem.alloc(a, 42)
+    if p^ == 42 {
+        println("  [PASS] int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] int: got ${p^}")
+        failed += 1
+    }
+
+    mut f ^float = mem.alloc(a, 3.5)
+    if f^ == 3.5 {
+        println("  [PASS] float")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] float: got ${f^}")
+        failed += 1
+    }
+
+    mut b ^bool = mem.alloc(a, true)
+    if b^ {
+        println("  [PASS] bool")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bool: got ${b^}")
+        failed += 1
+    }
+
+    mut s ^string = mem.alloc(a, "hello")
+    if s^ == "hello" {
+        println("  [PASS] string")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string: got '${s^}'")
+        failed += 1
+    }
+
+    mut arr ^[int] = mem.alloc(a, {1, 2, 3})
+    if arr^[0] == 1 && arr^[2] == 3 {
+        println("  [PASS] array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array: got ${arr^[0]} and ${arr^[2]}")
+        failed += 1
+    }
+
+    mut pt ^Point = mem.alloc(a, Point{x: 7, y: 9})
+    if pt.x == 7 && pt.y == 9 {
+        println("  [PASS] struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct: got ${pt.x} and ${pt.y}")
+        failed += 1
+    }
+
+    mut inferred = mem.alloc(a, 100)
+    if inferred^ == 100 {
+        println("  [PASS] inferred pointer type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] inferred pointer type: got ${inferred^}")
+        failed += 1
+    }
+
+    if type_of(p) == "^int" {
+        println("  [PASS] type_of is ^int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] type_of: got '${type_of(p)}'")
+        failed += 1
+    }
+
+    mem.destroy(a)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

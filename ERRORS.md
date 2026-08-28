@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 395 codes** (271 errors, 18 warnings, 106 panics)
+**Total: 397 codes** (274 errors, 16 warnings, 107 panics)
 
 ---
 
@@ -43,7 +43,7 @@
 | `E2025` | syntax | expected integer or constant for array size; the second value in [type, size] must be a positive integer or a const integer identifier |
 | `E2036` | syntax | imports must be at the top of the file, not inside a function |
 | `E2037` | syntax | duplicate function name in struct; each function must have a unique name |
-| `E2038` | syntax | reserved name for struct or enum; this name is used by the language |
+| `E2038` | syntax | reserved name; this name is used by the language |
 | `E2039` | syntax | required parameter '%s' cannot come after a parameter with a default value |
 | `E2043` | syntax | duplicate case value in when statement |
 | `E2050` | syntax | break and continue can only be used inside a loop |
@@ -193,8 +193,8 @@
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
 | `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const int/uint value |
 | `E3126` | types | array size must be greater than zero; '%s' resolves to %d |
-| `E3127` | types | type parameter expects a struct type name, but '%s' is not a struct; only struct types can be passed as type arguments |
-| `E3128` | types | type parameter expects a struct type name, but got a non-type expression; pass a struct type name like 'MyStruct' |
+| `E3127` | types | type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct |
+| `E3128` | types | type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'int' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
 | `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
@@ -227,6 +227,7 @@
 | `E4022` | names | struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them |
 | `E4023` | names | module '%s' has no function named '%s' |
 | `E4024` | names | module '%s' has no member named '%s' |
+| `E4025` | names | public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -267,7 +268,9 @@
 | `E6006` | imports | module name derived from the import path is not a usable identifier |
 | `E6007` | imports | standard library imports cannot be aliased |
 | `E6008` | imports | cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it |
+| `E6009` | imports | '%s' and '%s' produce the same compiled name; one of them would be lost |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
+| `E6011` | imports | module '%s' is already imported in this file |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -299,9 +302,7 @@
 | `W2008` | safety | parameter shadows an enum variant name |
 | `W2011` | safety | named return value is declared in the signature but no matching variable exists in the function body |
 | `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
-| `W2013` | imports | duplicate import of already-imported module |
 | `W2014` | imports | intra-directory import already included by directory import |
-| `W2015` | imports | file already imported as part of a directory import; redundant import |
 | `W3003` | safety | fixed-size array is not fully initialized; remaining elements will be zero-valued |
 | `W3004` | safety | pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
@@ -422,6 +423,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
 | `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 | `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
+| `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 
 ---
 
@@ -446,4 +448,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-26 10:47:35 UTC*
+*Generated on 2026-08-28 02:23:18 UTC*
