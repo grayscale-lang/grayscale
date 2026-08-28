@@ -1,0 +1,66 @@
+/*
+ * cast_array_narrow_element.gray - cast(arr, [T]) where T is narrower than
+ * 8 bytes (u8, u16, i16, i32, byte). The result is stored packed, so index
+ * and for_each reads must use the matching element width, not int64_t.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut ints [int] = {1, 2, 3}
+
+    // [int] -> [u8], indexed
+    mut bytes [u8] = cast(ints, [u8])
+    if len(bytes) == 3 && bytes[0] == 1 && bytes[1] == 2 && bytes[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u8] indexing: ${bytes[0]} ${bytes[1]} ${bytes[2]}")
+        failed += 1
+    }
+
+    // [int] -> [u8], for_each
+    mut sum int = 0
+    for_each x in bytes { sum += cast(x, int) }
+    if sum == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u8] for_each sum: ${sum}")
+        failed += 1
+    }
+
+    // [int] -> [u16]
+    mut words [u16] = cast(ints, [u16])
+    if words[0] == 1 && words[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u16] indexing")
+        failed += 1
+    }
+
+    // [i64] -> [i32], including a value that needs more than one byte
+    mut big [i64] = {100, 200, -300}
+    mut small [i32] = cast(big, [i32])
+    if small[0] == 100 && small[1] == 200 && small[2] == -300 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [i64] -> [i32] indexing: ${small[0]} ${small[1]} ${small[2]}")
+        failed += 1
+    }
+
+    // [int] -> [byte]
+    mut bs [byte] = cast(ints, [byte])
+    if bs[1] == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [byte] indexing: ${bs[1]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

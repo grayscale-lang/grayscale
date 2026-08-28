@@ -2925,6 +2925,11 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             else if (et->kind == TK_STRING) c_elem = "GrayString";
             else if (et->kind == TK_CHAR) c_elem = "int32_t";
             else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+            /* Sized int element types (u8/u16/i32/…) are stored packed by
+             * cast(arr, [T]); reading them with the int64_t fall-through
+             * strides past the buffer. Match the storage width. */
+            else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(elem_tn))
+                c_elem = gray_type_to_c_codegen(codegen, elem_tn);
             else if (et->kind == TK_ARRAY) c_elem = "GrayArray";
             else if (et->kind == TK_MAP) c_elem = "GrayMap";
             else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
@@ -10169,6 +10174,10 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
         else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_CHAR) c_elem = "int32_t";
         else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+        /* Sized int element types are stored packed by cast(arr, [T]); the
+         * int64_t fall-through would stride past the buffer. Match storage. */
+        else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(elem_tn))
+            c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_ENUM) {
             c_elem = codegen_enum_is_string(codegen, elem_tn)
                 ? "GrayString" : gray_type_to_c_codegen(codegen, elem_tn);
