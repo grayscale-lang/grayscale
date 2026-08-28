@@ -10,6 +10,7 @@
  */
 
 #include "platform.h"
+#include "xalloc.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -602,4 +603,62 @@ const char *gray_find_cc_fallback(void) {
 #else
     return NULL;
 #endif
+}
+
+/* `report` prints why the file could not be opened. A caller that says so
+ * itself passes false: the import path reports E6002 against the import
+ * statement, and printed both the diagnostic and a raw duplicate of it. */
+char *gray_read_file(const char *path, bool report) {
+    /* Fast path for regular (seekable) files. */
+    char *fast = read_file_to_string(path);
+    if (fast) return fast;
+
+    /* Streaming fallback for non-seekable inputs (pipes, FIFOs, /dev/stdin). */
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        if (report) {
+            fprintf(stderr, "gray: cannot open '%s': ", path);
+            perror("");
+        }
+        return NULL;
+    }
+    clearerr(f);
+    size_t cap = 4096;
+    size_t len = 0;
+    char *buf = malloc(cap);
+    if (!buf) {
+        fprintf(stderr, "gray: out of memory\n");
+        fclose(f);
+        return NULL;
+    }
+    for (;;) {
+        if (len == cap) {
+            size_t new_cap = cap * 2;
+            char *new_buf = realloc(buf, new_cap);
+            if (!new_buf) {
+                free(buf);
+                fclose(f);
+                fprintf(stderr, "gray: out of memory\n");
+                return NULL;
+            }
+            buf = new_buf;
+            cap = new_cap;
+        }
+        size_t got = fread(buf + len, 1, cap - len, f);
+        if (got == 0) break;
+        len += got;
+    }
+    if (len + 1 > cap) {
+        char *grow = realloc(buf, len + 1);
+        if (!grow) {
+            free(buf);
+            fclose(f);
+            fprintf(stderr, "gray: out of memory\n");
+            return NULL;
+        }
+        buf = grow;
+    }
+    buf[len] = '\0';
+    fclose(f);
+    return buf;
 }

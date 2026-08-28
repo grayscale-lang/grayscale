@@ -56,6 +56,7 @@ SRC = src/main.c \
       src/lexer/lexer.c \
       src/parser/ast.c \
       src/parser/parser.c \
+      src/parser/imports.c \
       src/typechecker/types.c \
       src/typechecker/scope.c \
       src/typechecker/module_table.c \

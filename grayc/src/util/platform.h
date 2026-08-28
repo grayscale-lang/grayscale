@@ -116,6 +116,12 @@ bool gray_getcwd(char *buf, size_t n);
  * Binary mode: bytes land on disk exactly as given on every platform. */
 bool gray_write_file_mode(const char *path, const void *data, size_t len);
 
+/* Read a whole file into a malloc'd NUL-terminated buffer, or NULL on failure.
+ * Handles non-seekable inputs (pipes, FIFOs, /dev/stdin) that a stat-then-read
+ * cannot. `report` prints why the file could not be opened; a caller that says
+ * so itself passes false. The caller frees the result. */
+char *gray_read_file(const char *path, bool report);
+
 /* --- Directory scanning --- */
 
 /* Callback invoked for each entry in a directory. `name` is the bare filename
