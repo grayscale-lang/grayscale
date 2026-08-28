@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 398 codes** (274 errors, 17 warnings, 107 panics)
+**Total: 400 codes** (274 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -425,6 +425,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 | `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
+| `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
+| `P0109` | threads | threads.spawn: out of memory allocating thread state |
 
 ---
 
@@ -449,4 +451,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-28 18:46:38 UTC*
+*Generated on 2026-08-28 20:12:37 UTC*

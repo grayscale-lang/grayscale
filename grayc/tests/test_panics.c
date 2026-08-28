@@ -22,11 +22,14 @@
 #include "../src/stdlib/strings.h"
 #include "../src/stdlib/io.h"
 #include "../src/stdlib/math.h"
+#include "../src/stdlib/threads.h"
 
 #include <errno.h>
 #include <signal.h>
+#include <sched.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <string.h>
 
 static GrayArena *arena;
@@ -341,6 +344,28 @@ static void trigger_P0102(void) {
 static void test_panic_P0102(void) { ASSERT_PANICS("P0102", trigger_P0102); }
 
 /* ===========================================================================
+ * Threads
+ * ===========================================================================*/
+
+static void _spin_forever(void) { for (;;) sched_yield(); }
+
+static void trigger_P0108(void) {
+    /* Force pthread_create to fail: on Linux a tight RLIMIT_NPROC makes the
+     * first spawn return EAGAIN; on macOS the per-task thread cap (~2048) is
+     * reached within the loop since the spawned threads never exit. Either
+     * way spawn_thread must surface P0108, not return a half-live handle. */
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NPROC, &rl) == 0) {
+        rl.rlim_cur = 1;
+        setrlimit(RLIMIT_NPROC, &rl);
+    }
+    for (int i = 0; i < 100000; i++) {
+        gray_threads_spawn(_spin_forever);
+    }
+}
+static void test_panic_P0108(void) { ASSERT_PANICS("P0108", trigger_P0108); }
+
+/* ===========================================================================
  * main
  * ===========================================================================*/
 
@@ -407,6 +432,9 @@ int main(void) {
 
     printf("--- Bigint Parse ---\n");
     RUN_TEST(test_panic_P0102);
+
+    printf("--- Threads ---\n");
+    RUN_TEST(test_panic_P0108);
 
     PRINT_RESULTS();
 

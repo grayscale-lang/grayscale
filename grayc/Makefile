@@ -214,7 +214,7 @@ RT_TEST_DEPS = $(RT_TEST_SRC:.c=.o) $(ATOMIC_OBJ)
 PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                   src/stdlib/encoding.o src/stdlib/arrays.o src/stdlib/builtins.o \
                   src/stdlib/strconv.o src/stdlib/random.o src/stdlib/strings.o \
-                  src/stdlib/io.o $(ATOMIC_OBJ)
+                  src/stdlib/io.o src/stdlib/threads.o $(ATOMIC_OBJ)
 
 tests/test_lexer$(EXE): tests/test_lexer.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
@@ -240,7 +240,7 @@ tests/test_runtime$(EXE): tests/test_runtime.c $(RT_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
 tests/test_panics$(EXE): tests/test_panics.c $(PANIC_TEST_DEPS)
-	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+	$(CC) $(RT_CFLAGS) -D_DARWIN_C_SOURCE -D_DEFAULT_SOURCE $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread
 
 # Objects needed by the stdlib test binary (runtime + tested stdlib modules)
 STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \

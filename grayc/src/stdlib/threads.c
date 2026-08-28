@@ -13,6 +13,7 @@
 #include <sched.h>
 #include <stdlib.h>
 #include <stdatomic.h>
+#include <string.h>
 #include <time.h>
 #include <errno.h>
 
@@ -62,27 +63,46 @@ static GrayThread spawn_thread(ThreadArg *thread_arg) {
     atomic_store(&state->alive, 1);
     atomic_store(&state->detached, 0);
     atomic_fetch_add(&gray_threads_live_count, 1);
-    pthread_create(&state->posix_thread, NULL, thread_entry, thread_arg);
+    int rc = pthread_create(&state->posix_thread, NULL, thread_entry, thread_arg);
+    if (rc != 0) {
+        /* thread_entry never runs, so unwind everything it would have owned:
+         * the live count, the alive flag, and both allocations. */
+        atomic_fetch_sub(&gray_threads_live_count, 1);
+        atomic_store(&state->alive, 0);
+        free(state);
+        free(thread_arg);
+        gray_panic_code("P0108",
+            "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached",
+            strerror(rc));
+    }
     GrayThread t;
     t._internal = state;
     return t;
 }
 
+/* malloc that panics rather than returning NULL; thread state is small and
+ * a failure here means the process is already out of memory. */
+static void *thread_alloc(size_t n) {
+    void *p = malloc(n);
+    if (!p) gray_panic_code("P0109", "threads.spawn: out of memory allocating thread state");
+    return p;
+}
+
 GrayThread gray_threads_spawn(void (*fn)(void)) {
-    ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
+    ThreadArg *thread_arg = thread_alloc(sizeof(ThreadArg));
     thread_arg->entry_no_arg = fn;
     thread_arg->entry_with_arg = NULL;
     thread_arg->arg = 0;
-    thread_arg->state = malloc(sizeof(GrayThreadInternal));
+    thread_arg->state = thread_alloc(sizeof(GrayThreadInternal));
     return spawn_thread(thread_arg);
 }
 
 GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg) {
-    ThreadArg *thread_arg = malloc(sizeof(ThreadArg));
+    ThreadArg *thread_arg = thread_alloc(sizeof(ThreadArg));
     thread_arg->entry_no_arg = NULL;
     thread_arg->entry_with_arg = fn;
     thread_arg->arg = arg;
-    thread_arg->state = malloc(sizeof(GrayThreadInternal));
+    thread_arg->state = thread_alloc(sizeof(GrayThreadInternal));
     return spawn_thread(thread_arg);
 }
 
