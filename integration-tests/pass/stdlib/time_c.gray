@@ -141,8 +141,10 @@ do main() {
         failed += 1
     }
 
-    // time.weekday(): 2024-01-01 is a Monday (0), the two following days 1 and 2
-    if time.weekday(1704067200) == 0 && time.weekday(1704153600) == 1 && time.weekday(1704240000) == 2 {
+    // time.weekday(): 0 = Sunday. 2024-01-01 is a Monday (1), the two following
+    // days Tuesday (2) and Wednesday (3). Noon-UTC timestamps so the local
+    // calendar day is stable across CI (UTC) and other timezones.
+    if time.weekday(1704110400) == 1 && time.weekday(1704196800) == 2 && time.weekday(1704283200) == 3 {
         println("  [PASS] weekday")
         passed += 1
     } otherwise {
