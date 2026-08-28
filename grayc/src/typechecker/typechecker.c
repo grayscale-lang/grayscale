@@ -7195,6 +7195,19 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
 
         /* Otherwise it's a struct field or multi-return access */
         Symbol *sym = scope_lookup(checker->current_scope, obj_name);
+        /* A bare name that names a module-level declaration is bound under
+         * that module's spelling, so a reference from inside the module has
+         * to resolve the same way — matching the NODE_LABEL value path.
+         * Without this, `addr(MODVAR.field)` inside the declaring module
+         * types as ^unknown. */
+        if (!sym) {
+            DeclEntry *entry = checker_cache_resolution(checker, obj, obj_name);
+            if (entry) {
+                char key[MSG_BUF_SIZE];
+                sym = scope_lookup(checker->current_scope,
+                                   module_mangle_into(entry, key, sizeof(key)));
+            }
+        }
         /* Multi-return .v0/.v1 access takes priority over struct field
          * lookup when the symbol has ret_types set. Without this, stdlib
          * functions returning struct types (Socket, HttpResponse, etc.)

@@ -1,0 +1,37 @@
+import "./lib"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if lib.field_ptr_annotated() == 3 {
+        println("  [PASS] addr(MODVAR.field) with a ^int annotation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] addr(MODVAR.field) with a ^int annotation")
+        failed += 1
+    }
+
+    if lib.field_ptr_inferred() == 4 {
+        println("  [PASS] addr(MODVAR.field) with an inferred type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] addr(MODVAR.field) with an inferred type")
+        failed += 1
+    }
+
+    if lib.field_write() == 99 {
+        println("  [PASS] write through addr(MODVAR.field)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write through addr(MODVAR.field)")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
