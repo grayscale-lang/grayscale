@@ -1,0 +1,61 @@
+/*
+ * lexer - tokenize a large generated source file.
+ * Exercises: char/byte scanning, string indexing, tight loops, string building.
+ */
+
+import @io
+import @os
+
+do is_alpha(c int) -> bool {
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95
+}
+
+do is_digit(c int) -> bool {
+    return c >= 48 && c <= 57
+}
+
+do is_space(c int) -> bool {
+    return c == 32 || c == 9 || c == 10 || c == 13
+}
+
+do main() {
+    mut gen string = os.get_env("BENCH_GEN")
+    mut src, err = io.read_file("${gen}/source.txt")
+    if err != nil {
+        println("lexer: cannot read fixture")
+        exit(1)
+    }
+
+    mut idents int = 0
+    mut numbers int = 0
+    mut puncts int = 0
+    mut ident_chars int = 0
+
+    for pass in range(0, 3) {
+        mut i int = 0
+        mut n int = len(src)
+        as_long_as i < n {
+            mut c int = int(src[i])
+            if is_space(c) {
+                i += 1
+            } or is_alpha(c) {
+                mut start int = i
+                as_long_as i < n && (is_alpha(int(src[i])) || is_digit(int(src[i]))) {
+                    i += 1
+                }
+                idents += 1
+                ident_chars += i - start
+            } or is_digit(c) {
+                as_long_as i < n && is_digit(int(src[i])) {
+                    i += 1
+                }
+                numbers += 1
+            } otherwise {
+                puncts += 1
+                i += 1
+            }
+        }
+    }
+
+    println("lexer idents=${idents} numbers=${numbers} puncts=${puncts} ident_chars=${ident_chars}")
+}

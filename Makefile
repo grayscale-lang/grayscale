@@ -1,10 +1,10 @@
 # Grayscale Language Build System
-.PHONY: build stubs install uninstall clean help leaks \
+.PHONY: build stubs install uninstall clean help leaks benchmark \
        test test-unit test-e2e test-integration test-go \
        test-ubsan test-asan
 
 # Reject unknown targets before running anything.
-KNOWN_TARGETS := build stubs install uninstall clean help leaks \
+KNOWN_TARGETS := build stubs install uninstall clean help leaks benchmark \
                  test test-unit test-e2e test-integration test-go \
                  test-ubsan test-asan
 UNKNOWN_TARGETS := $(filter-out $(KNOWN_TARGETS),$(MAKECMDGOALS))
@@ -48,6 +48,7 @@ help:
 	@echo "  make uninstall - Remove gray from $(INSTALL_PATH)"
 	@echo "  make clean     - Remove built binaries"
 	@echo "  make leaks     - Check compiler for memory leaks (macOS: leaks, Linux: valgrind)"
+	@echo "  make benchmark - Run the real-workload benchmark suite (POSIX only)"
 	@echo ""
 	@echo "Test targets:"
 	@echo "  make test             - Run the full test suite (unit + e2e + integration + Go)"
@@ -103,6 +104,15 @@ test-asan:
 
 leaks:
 	@"$(MAKE)" -C grayc leaks
+
+# Real-workload benchmark suite. Prints a table and writes
+# benchmarks/results.json. POSIX-only; no-op on Windows.
+benchmark: build
+ifdef WINDOWS
+	@echo "make benchmark is POSIX-only for now; skipping on Windows."
+else
+	@bash benchmarks/run.sh
+endif
 
 # Create zero-length embed stubs. go:embed directives in
 # internal/driver/embedded.go require these files to exist at `go build`

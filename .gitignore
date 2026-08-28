@@ -105,3 +105,10 @@ context/
 
 # Ignore local Grayscale playground env
 /playground
+
+# Benchmark suite. Track its sources despite the global *.gray / *.md / *.txt
+# ignores above; keep generated fixtures and the latest results out of git.
+!/benchmarks/
+!/benchmarks/**
+/benchmarks/.gen/
+/benchmarks/results.json

@@ -130,6 +130,7 @@ echo 'do main() { println("hello") }' > main.gray
 | `make uninstall` | Remove `gray` from `/usr/local/bin` |
 | `make clean` | Remove built binaries |
 | `make leaks` | Check compiler for memory leaks (macOS: `leaks`, Linux: `valgrind`) |
+| `make benchmark` | Run the real-workload benchmark suite (POSIX only); see `benchmarks/README.md` |
 | `make test` | Run the full test suite (unit + e2e + integration + Go) |
 | `make test-unit` | C unit tests (lexer, parser, typechecker) |
 | `make test-e2e` | End-to-end codegen tests |

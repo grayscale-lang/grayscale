@@ -1,0 +1,63 @@
+/*
+ * life - run N generations of Conway's Game of Life on a fixed grid.
+ * Exercises: flat integer arrays, nested loops, array copy semantics.
+ */
+
+import @arrays
+
+const W int = 72
+const H int = 72
+const GENERATIONS int = 100
+
+do idx(x int, y int) -> int {
+    return y * W + x
+}
+
+do main() {
+    mut cells [int] = {}
+    arrays.fill(cells, 0, W * H)
+
+    // Deterministic seed pattern.
+    for y in range(0, H) {
+        for x in range(0, W) {
+            if (x * x + y * y * 3 + x * y) % 7 < 3 {
+                cells[idx(x, y)] = 1
+            }
+        }
+    }
+
+    for g in range(0, GENERATIONS) {
+        mut next [int] = {}
+        arrays.fill(next, 0, W * H)
+        for y in range(0, H) {
+            for x in range(0, W) {
+                mut n int = 0
+                for dy in range(0, 3) {
+                    for dx in range(0, 3) {
+                        if dx == 1 && dy == 1 {
+                            continue
+                        }
+                        mut nx int = x + dx - 1
+                        mut ny int = y + dy - 1
+                        if nx >= 0 && nx < W && ny >= 0 && ny < H {
+                            n += cells[idx(nx, ny)]
+                        }
+                    }
+                }
+                mut alive int = cells[idx(x, y)]
+                if alive == 1 && (n == 2 || n == 3) {
+                    next[idx(x, y)] = 1
+                } or alive == 0 && n == 3 {
+                    next[idx(x, y)] = 1
+                }
+            }
+        }
+        cells = next
+    }
+
+    mut live int = 0
+    for i in range(0, W * H) {
+        live += cells[i]
+    }
+    println("life live_cells=${live}")
+}
