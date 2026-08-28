@@ -1,0 +1,57 @@
+/*
+ * cast_string_enum.gray - Test cast() between a string-backed enum and string
+ *
+ * A string-backed enum is a GrayString at runtime, so string <-> enum is a
+ * pure reinterpretation. Casts between such an enum and an integer are
+ * rejected by the typechecker (E3043) and covered by the fail tests.
+ */
+
+const Status enum {
+    OK = "ok"
+    BAD = "bad"
+}
+
+do main() {
+    println("=== cast string-backed enum Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: string -> string-backed enum
+    mut s Status = cast("ok", Status)
+    if s == Status.OK {
+        println("  [PASS] cast(\"ok\", Status) is Status.OK")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(\"ok\", Status) mismatched")
+        failed += 1
+    }
+
+    // Test 2: string-backed enum -> string
+    mut back string = cast(Status.BAD, string)
+    if back == "bad" {
+        println("  [PASS] cast(Status.BAD, string) is \"bad\"")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cast(Status.BAD, string) gave ${back}")
+        failed += 1
+    }
+
+    // Test 3: round-trip through a variable
+    mut v Status = cast(back, Status)
+    if v == Status.BAD {
+        println("  [PASS] round-trip keeps Status.BAD")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip mismatched")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

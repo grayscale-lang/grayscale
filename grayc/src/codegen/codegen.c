@@ -3148,6 +3148,15 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         return;
     }
 
+    /* string-backed enum <-> string: both are GrayString at runtime, so the
+     * cast is a pure reinterpretation with no conversion. */
+    if (codegen_enum_is_string(codegen, target) ||
+        (strcmp(target, "string") == 0 && val_t && val_t->name &&
+         codegen_enum_is_string(codegen, val_t->name))) {
+        emit_expression(codegen, val);
+        return;
+    }
+
     if (strcmp(target, "string") == 0) {
         /* any → string: use to_string functions */
         if (val_kind == TK_CHAR) {

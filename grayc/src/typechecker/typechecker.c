@@ -8544,13 +8544,23 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* String -> String (identity) */
             if (src_t->kind == TK_STRING && dst_t->kind == TK_STRING)
                 allowed = true;
-            /* Enum -> int/uint (enums are int-backed) */
-            if (src_t->kind == TK_ENUM &&
+            /* A string-backed enum is a GrayString at runtime, not an
+             * integer, so the int-backed rules below do not apply to it. */
+            bool src_str_enum = src_t->kind == TK_ENUM &&
+                typechecker_enum_is_string(checker, src_t->name);
+            bool dst_str_enum = dst_t->kind == TK_ENUM &&
+                typechecker_enum_is_string(checker, dst_t->name);
+            /* Enum -> int/uint (int-backed enums only) */
+            if (src_t->kind == TK_ENUM && !src_str_enum &&
                 (dst_t->kind == TK_INT || dst_t->kind == TK_UINT))
                 allowed = true;
-            /* int/uint -> Enum (explicit reinterpretation) */
+            /* int/uint -> Enum (explicit reinterpretation, int-backed only) */
             if ((src_t->kind == TK_INT || src_t->kind == TK_UINT) &&
-                dst_t->kind == TK_ENUM)
+                dst_t->kind == TK_ENUM && !dst_str_enum)
+                allowed = true;
+            /* string <-> string-backed enum */
+            if ((src_t->kind == TK_STRING && dst_str_enum) ||
+                (src_str_enum && dst_t->kind == TK_STRING))
                 allowed = true;
             /* Array -> Array: only when both element types are numeric */
             if (src_t->kind == TK_ARRAY && dst_t->kind == TK_ARRAY) {
