@@ -245,134 +245,154 @@ static const char *detect_cc(void) {
     return gray_find_cc_fallback();
 }
 
-int main(int argc, char **argv) {
-    /* Windows consoles need to be opted into ANSI escape handling before any
-     * colored diagnostic is written. No-op everywhere else. */
-    gray_enable_vt_mode();
+/* Command-line configuration, filled by parse_args() and read-only after. */
+typedef struct {
+    const char *input_file;
+    const char *output_file;
+    const char *opt_level;
+    const char *cc_override;
+    const char *quiet_codes_arg;  /* comma-separated W-codes from -q, or NULL */
+    size_t arena_limit;           /* 0 = let codegen use its 1 GB default */
+    bool emit_c_only;
+    bool check_only;
+    bool run_mode;
+    bool fmt_mode;
+    bool verbose;
+    bool show_time;
+    bool no_color;
+    bool debug_symbols;
+    bool quiet_all;
+} CompilerOptions;
+
+typedef enum {
+    ARGS_OK,     /* options parsed; carry on compiling */
+    ARGS_DONE,   /* the argument was the whole request (version, help); exit 0 */
+    ARGS_ERROR,  /* the arguments were unusable; exit 1 */
+} ArgsStatus;
+
+static ArgsStatus parse_args(int argc, char **argv, CompilerOptions *opts) {
+    *opts = (CompilerOptions){ .opt_level = "-O2" };
 
     if (argc < 2) {
         print_usage();
-        return 1;
+        return ARGS_ERROR;
     }
 
-    const char *input_file = NULL;
-    const char *output_file = NULL;
-    bool emit_c_only = false;
-    bool check_only = false;
-    bool run_mode = false;
-    bool fmt_mode = false;
-    bool verbose = false;
-    bool show_time = false;
-    bool no_color = false;
-    bool debug_symbols = false;
-    bool quiet_all = false;
-    const char *quiet_codes_arg = NULL;
-    const char *opt_level = "-O2";
-    const char *cc_override = NULL;
-    size_t arena_limit = 0; /* 0 = let codegen use 1 GB default */
-
-    /* Parse arguments */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "version") == 0 || strcmp(argv[i], "--version") == 0) {
             printf("gray %s\n", GRAY_VERSION);
-            return 0;
+            return ARGS_DONE;
         }
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             print_usage();
-            return 0;
+            return ARGS_DONE;
         }
         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-            output_file = argv[++i];
+            opts->output_file = argv[++i];
             continue;
         }
         if (strcmp(argv[i], "-c") == 0) {
-            emit_c_only = true;
+            opts->emit_c_only = true;
             continue;
         }
-        if (strcmp(argv[i], "-O0") == 0) { opt_level = "-O0"; continue; }
-        if (strcmp(argv[i], "-O1") == 0) { opt_level = "-O1"; continue; }
-        if (strcmp(argv[i], "-O2") == 0) { opt_level = "-O2"; continue; }
-        if (strcmp(argv[i], "-O3") == 0) { opt_level = "-O3"; continue; }
+        if (strcmp(argv[i], "-O0") == 0) { opts->opt_level = "-O0"; continue; }
+        if (strcmp(argv[i], "-O1") == 0) { opts->opt_level = "-O1"; continue; }
+        if (strcmp(argv[i], "-O2") == 0) { opts->opt_level = "-O2"; continue; }
+        if (strcmp(argv[i], "-O3") == 0) { opts->opt_level = "-O3"; continue; }
         if (strcmp(argv[i], "-g") == 0) {
-            debug_symbols = true;
+            opts->debug_symbols = true;
             continue;
         }
-        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
-            verbose = true;
+        if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--opts->verbose") == 0) {
+            opts->verbose = true;
             continue;
         }
         if (strcmp(argv[i], "--time") == 0) {
-            show_time = true;
+            opts->show_time = true;
             continue;
         }
         if (strcmp(argv[i], "--no-color") == 0) {
-            no_color = true;
+            opts->no_color = true;
             continue;
         }
         if (strcmp(argv[i], "--quiet") == 0 || strcmp(argv[i], "-q") == 0) {
             /* --quiet / -q with optional next argument for specific codes */
             if (i + 1 < argc && argv[i + 1][0] == 'W') {
-                quiet_codes_arg = argv[++i];
+                opts->quiet_codes_arg = argv[++i];
             } else if (i + 1 < argc && argv[i + 1][0] == 'E') {
                 fprintf(stderr, "gray: '-q' only accepts warning codes (W-prefixed), not error code '%s'\n", argv[i + 1]);
-                return 1;
+                return ARGS_ERROR;
             } else {
-                quiet_all = true;
+                opts->quiet_all = true;
             }
             continue;
         }
         /* Subcommands */
-        if (strcmp(argv[i], "check") == 0 && !input_file) {
-            check_only = true;
+        if (strcmp(argv[i], "check") == 0 && !opts->input_file) {
+            opts->check_only = true;
             continue;
         }
-        if (strcmp(argv[i], "build") == 0 && !input_file) {
+        if (strcmp(argv[i], "build") == 0 && !opts->input_file) {
             /* build is the default — just skip the keyword */
             continue;
         }
-        if (strcmp(argv[i], "run") == 0 && !input_file) {
-            run_mode = true;
+        if (strcmp(argv[i], "run") == 0 && !opts->input_file) {
+            opts->run_mode = true;
             continue;
         }
         if (strcmp(argv[i], "--fmt") == 0) {
-            fmt_mode = true;
+            opts->fmt_mode = true;
             continue;
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
-            arena_limit = strtoull(argv[i] + 14, NULL, 10);
+            opts->arena_limit = strtoull(argv[i] + 14, NULL, 10);
             continue;
         }
         if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
-            cc_override = argv[++i];
+            opts->cc_override = argv[++i];
             continue;
         }
         if (argv[i][0] == '-') {
             fprintf(stderr, "gray: unknown option '%s'\n", argv[i]);
-            return 1;
+            return ARGS_ERROR;
         }
-        input_file = argv[i];
+        opts->input_file = argv[i];
     }
 
-    if (!input_file) {
+    if (!opts->input_file) {
         fprintf(stderr, "gray: no input file\n");
-        return 1;
+        return ARGS_ERROR;
+    }
+    return ARGS_OK;
+}
+
+int main(int argc, char **argv) {
+    /* Windows consoles need to be opted into ANSI escape handling before any
+     * colored diagnostic is written. No-op everywhere else. */
+    gray_enable_vt_mode();
+
+    CompilerOptions opts;
+    switch (parse_args(argc, argv, &opts)) {
+    case ARGS_DONE:  return 0;
+    case ARGS_ERROR: return 1;
+    case ARGS_OK:    break;
     }
 
     /* Read source file */
-    char *source = gray_read_file(input_file, true);
+    char *source = gray_read_file(opts.input_file, true);
     if (!source) return 1;
 
     /* fmt mode: reformat and write back, then exit */
-    if (fmt_mode) {
+    if (opts.fmt_mode) {
         FILE *tmp = gray_tmpfile();
         if (!tmp) {
             fprintf(stderr, "gray: fmt: could not create temp file\n");
             free(source);
             return 1;
         }
-        int rc = gray_fmt_source(source, input_file, tmp);
+        int rc = gray_fmt_source(source, opts.input_file, tmp);
         if (rc != 0) {
-            fprintf(stderr, "gray: fmt: failed to format '%s'\n", input_file);
+            fprintf(stderr, "gray: fmt: failed to format '%s'\n", opts.input_file);
             fclose(tmp);
             free(source);
             return 1;
@@ -390,8 +410,8 @@ int main(int argc, char **argv) {
         fmt_buf[fmt_len] = '\0';
         fclose(tmp);
         /* Write back to the original file with explicit 0644 permissions */
-        if (!gray_write_file_mode(input_file, fmt_buf, (size_t)fmt_len)) {
-            fprintf(stderr, "gray: fmt: cannot write '%s'\n", input_file);
+        if (!gray_write_file_mode(opts.input_file, fmt_buf, (size_t)fmt_len)) {
+            fprintf(stderr, "gray: fmt: cannot write '%s'\n", opts.input_file);
             free(fmt_buf);
             free(source);
             return 1;
@@ -404,15 +424,15 @@ int main(int argc, char **argv) {
     /* Create compiler arena and diagnostics */
     Arena *arena = arena_create(COMPILER_ARENA_SIZE);
     DiagnosticList *diag = diagnostic_create();
-    diagnostic_set_source(diag, input_file, source);
-    if (no_color) diag->use_color = false;
+    diagnostic_set_source(diag, opts.input_file, source);
+    if (opts.no_color) diag->use_color = false;
 
     /* Configure warning suppression */
-    if (quiet_all) {
+    if (opts.quiet_all) {
         diag->suppress_all_warnings = true;
-    } else if (quiet_codes_arg) {
+    } else if (opts.quiet_codes_arg) {
         /* Parse comma-separated warning codes */
-        char *codes_buf = strdup(quiet_codes_arg);
+        char *codes_buf = strdup(opts.quiet_codes_arg);
         int code_cap = 8;
         diag->suppressed_codes = malloc(sizeof(const char *) * code_cap);
         diag->suppressed_count = 0;
@@ -448,10 +468,10 @@ int main(int argc, char **argv) {
     clock_t t_start = clock();
 
     /* Lex */
-    Lexer *lexer = lexer_create(arena, source, input_file);
+    Lexer *lexer = lexer_create(arena, source, opts.input_file);
 
     /* Parse */
-    Parser *parser = parser_create(arena, lexer, input_file, diag);
+    Parser *parser = parser_create(arena, lexer, opts.input_file, diag);
     AstNode *program = parser_parse_program(parser);
 
     if (diagnostic_has_errors(diag)) {
@@ -468,7 +488,7 @@ int main(int argc, char **argv) {
      * only record of which module a source file belongs to, so it is handed
      * to the type checker below. */
     ImportResolution imports;
-    imports_resolve(arena, diag, program, input_file, &imports);
+    imports_resolve(arena, diag, program, opts.input_file, &imports);
 
 
     /* An import that failed to resolve merged no declarations, so every
@@ -485,8 +505,8 @@ int main(int argc, char **argv) {
     }
 
     /* Type check */
-    TypeChecker *checker = typechecker_create(diag, input_file);
-    typechecker_add_file_module(checker, input_file, NULL, true);
+    TypeChecker *checker = typechecker_create(diag, opts.input_file);
+    typechecker_add_file_module(checker, opts.input_file, NULL, true);
     for (int i = 0; i < imports.count; i++)
         typechecker_add_file_module(checker, imports.files[i], imports.modules[i], false);
     for (int i = 0; i < imports.alias_count; i++)
@@ -509,13 +529,13 @@ int main(int argc, char **argv) {
     }
 
     /* Check-only mode: stop after type checking */
-    if (check_only) {
+    if (opts.check_only) {
         clock_t t_end = clock();
-        if (show_time) {
+        if (opts.show_time) {
             double ms = (double)(t_end - t_start) / CLOCKS_PER_SEC * 1000.0;
             fprintf(stderr, "gray: check completed in %.1fms\n", ms);
         }
-        fprintf(stderr, "gray: %s: no errors\n", input_file);
+        fprintf(stderr, "gray: %s: no errors\n", opts.input_file);
         typechecker_free(checker);
         diagnostic_destroy(diag);
         arena_destroy(arena);
@@ -524,30 +544,30 @@ int main(int argc, char **argv) {
     }
 
     /* Generate C code */
-    CodeGen codegen = codegen_create(input_file);
+    CodeGen codegen = codegen_create(opts.input_file);
     codegen.type_table = typechecker_get_table(checker);
     codegen.modules = typechecker_get_modules(checker);
-    codegen.arena_limit = arena_limit;
+    codegen.arena_limit = opts.arena_limit;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
 
     /* Determine output name */
     char *default_output = NULL;
-    if (run_mode && !output_file) {
+    if (opts.run_mode && !opts.output_file) {
         /* Run mode: use temp file */
         default_output = malloc(PATH_BUF_SIZE);
         gray_temp_path(default_output, PATH_BUF_SIZE, "gray_run_", GRAY_EXE_SUFFIX);
-        output_file = default_output;
-    } else if (!output_file) {
-        default_output = output_name_from_input(input_file);
-        output_file = default_output;
+        opts.output_file = default_output;
+    } else if (!opts.output_file) {
+        default_output = output_name_from_input(opts.input_file);
+        opts.output_file = default_output;
     }
 
     /* Write generated C to a temp file. The name carries the output's base name
-     * for readability under --verbose, plus a pid and counter so concurrent
+     * for readability under --opts.verbose, plus a pid and counter so concurrent
      * builds in different directories cannot collide. */
     char c_prefix[PATH_BUF_SIZE];
-    snprintf(c_prefix, sizeof(c_prefix), "gray_%s_", gray_path_basename(output_file));
+    snprintf(c_prefix, sizeof(c_prefix), "gray_%s_", gray_path_basename(opts.output_file));
     char c_file[PATH_BUF_SIZE];
     gray_temp_path(c_file, sizeof(c_file), c_prefix, ".c");
 
@@ -560,16 +580,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (emit_c_only) {
+    if (opts.emit_c_only) {
         /* Determine C output filename */
         const char *c_out = NULL;
         char *c_out_default = NULL;
-        if (output_file && output_file != default_output) {
+        if (opts.output_file && opts.output_file != default_output) {
             /* Explicit -o provided */
-            c_out = output_file;
+            c_out = opts.output_file;
         } else {
             /* Derive from input: foo.gray -> foo.c */
-            const char *base = gray_path_basename(input_file);
+            const char *base = gray_path_basename(opts.input_file);
             size_t blen = strlen(base);
             if (blen > GRAY_EXT_LEN && strcmp(base + blen - GRAY_EXT_LEN, GRAY_EXT) == 0)
                 blen -= GRAY_EXT_LEN;
@@ -601,7 +621,7 @@ int main(int argc, char **argv) {
 
 
     /* Pick a C compiler (skip detection when --cc overrides) */
-    const char *cc_cmd = cc_override;
+    const char *cc_cmd = opts.cc_override;
     if (!cc_cmd) {
         cc_cmd = detect_cc();
         if (!cc_cmd) {
@@ -646,7 +666,7 @@ int main(int argc, char **argv) {
     /* The compiler is spawned with an argv array, so quoting and spaces are
      * handled for us. The one thing the C runtime cannot round-trip when it
      * re-serializes argv into a Windows command line is an embedded quote. */
-    if (strchr(runtime_dir, '"') || strchr(output_file, '"') || strchr(cc_cmd, '"')) {
+    if (strchr(runtime_dir, '"') || strchr(opts.output_file, '"') || strchr(cc_cmd, '"')) {
         fprintf(stderr, "gray: paths must not contain double quotes\n");
         codegen_destroy(&codegen);
         typechecker_free(checker);
@@ -681,7 +701,7 @@ int main(int argc, char **argv) {
     /* Only --cc values are multi-word commands ("zig cc -target ...").
      * Detected compilers are single tokens that may contain spaces
      * (C:\Program Files\LLVM\bin\clang.exe) and must not be word-split. */
-    if (cc_override) {
+    if (opts.cc_override) {
         argv_push_command(&cc_argv, arena, cc_cmd);
     } else {
         argv_push(&cc_argv, cc_cmd);
@@ -697,8 +717,8 @@ int main(int argc, char **argv) {
 #else
     argv_push(&cc_argv, "-std=c11");
 #endif
-    if (debug_symbols) argv_push(&cc_argv, "-g");
-    argv_push(&cc_argv, opt_level);
+    if (opts.debug_symbols) argv_push(&cc_argv, "-g");
+    argv_push(&cc_argv, opts.opt_level);
     argv_push(&cc_argv, "-Wall");
     argv_push(&cc_argv, "-Wno-unused-function");
     argv_push(&cc_argv, "-Wno-unused-variable");
@@ -715,7 +735,7 @@ int main(int argc, char **argv) {
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
     argv_push(&cc_argv, "-o");
-    argv_push(&cc_argv, output_file);
+    argv_push(&cc_argv, opts.output_file);
     argv_push(&cc_argv, c_file);
 
     if (has_archive) {
@@ -774,7 +794,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (verbose) {
+    if (opts.verbose) {
         fprintf(stderr, "gray: ");
         argv_print(&cc_argv, stderr);
     }
@@ -810,9 +830,9 @@ int main(int argc, char **argv) {
         gray_remove_file(c_file);
 
         double total_ms = (double)(t_cc_end - t_start) / CLOCKS_PER_SEC * 1000.0;
-        if (!run_mode) {
-            const char *out_base = gray_path_basename(output_file);
-            if (!no_color && gray_stdout_is_tty()) {
+        if (!opts.run_mode) {
+            const char *out_base = gray_path_basename(opts.output_file);
+            if (!opts.no_color && gray_stdout_is_tty()) {
                 fprintf(stdout, "\033[32mCompiled '\033[1m%s\033[22m' in %.0fms!\033[0m\n",
                     out_base, total_ms);
             } else {
@@ -821,7 +841,7 @@ int main(int argc, char **argv) {
             fflush(stdout);
         }
 
-        if (show_time) {
+        if (opts.show_time) {
             double frontend_ms = (double)(t_cc_start - t_start) / CLOCKS_PER_SEC * 1000.0;
             double cc_ms = (double)(t_cc_end - t_cc_start) / CLOCKS_PER_SEC * 1000.0;
             fprintf(stderr, "  frontend:  %.1fms (lex + parse + typecheck + codegen)\n", frontend_ms);
@@ -832,14 +852,14 @@ int main(int argc, char **argv) {
     /* Run mode: execute the binary and clean up. Spawned without a shell and
      * without a PATH search — the output path comes from user-supplied CLI
      * input, and a bare name must not resolve to some unrelated binary. */
-    if (ret == 0 && run_mode) {
-        const char *run_argv[] = {output_file, NULL};
+    if (ret == 0 && opts.run_mode) {
+        const char *run_argv[] = {opts.output_file, NULL};
         ret = gray_spawn_exact(run_argv);
         if (ret < 0) {
-            fprintf(stderr, "gray: cannot execute '%s'\n", output_file);
+            fprintf(stderr, "gray: cannot execute '%s'\n", opts.output_file);
             ret = 1;
         }
-        gray_remove_file(output_file);
+        gray_remove_file(opts.output_file);
     }
 
     codegen_destroy(&codegen);
