@@ -5021,8 +5021,12 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
     }
     if (arg->kind == NODE_LABEL) {
         const char *vn = arg->data.label.value;
-        if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-        else emit_formatted(codegen, "&%s", vn);
+        if (is_mutable_parameter(codegen, vn)) { emit(codegen, vn); return; }
+        /* A bare name that names a module-level declaration is emitted under
+         * its mangled name; resolve it the same way emit_label() does before
+         * taking its address. */
+        const char *resolved = codegen_resolve_ref(codegen, arg, vn);
+        emit_formatted(codegen, "&%s", sanitize_name(resolved != vn ? resolved : vn));
         return;
     }
     if (arg->kind == NODE_INDEX_EXPR) {
