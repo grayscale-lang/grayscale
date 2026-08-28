@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.5.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.2...grayscale-v0.5.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **codegen:** report the written type name from type_of ([#2519](https://github.com/grayscale-lang/grayscale/issues/2519)) ([5974e27](https://github.com/grayscale-lang/grayscale/commit/5974e27c3cf3f7a83e96d08c31d6e11e58675027))
+* **codegen:** resolve a written struct name to its declaration ([#2496](https://github.com/grayscale-lang/grayscale/issues/2496)) ([5f3cbfd](https://github.com/grayscale-lang/grayscale/commit/5f3cbfd1b783132e8a858cf14eed0a23e8101f9d))
+* **codegen:** validate the value of a cast to an enum ([#2531](https://github.com/grayscale-lang/grayscale/issues/2531)) ([d618efe](https://github.com/grayscale-lang/grayscale/commit/d618efe2e62ddd8913553ee13cc03ca0f7ebd847))
+* **imports:** reject importing the same module twice in one file ([#2507](https://github.com/grayscale-lang/grayscale/issues/2507)) ([2b07b2d](https://github.com/grayscale-lang/grayscale/commit/2b07b2d8666abd79e50569d3784d661f661618c6))
+* **parser:** accept container type spellings in size_of() and cast() ([#2532](https://github.com/grayscale-lang/grayscale/issues/2532)) ([0f1e913](https://github.com/grayscale-lang/grayscale/commit/0f1e9131a549e44dda1d8fc725bf6695eaa381aa))
+* **parser:** parse a struct literal whose type name starts lowercase ([#2500](https://github.com/grayscale-lang/grayscale/issues/2500)) ([d214532](https://github.com/grayscale-lang/grayscale/commit/d2145327f0e2d6f1fde7c3712e6b01263abbe408))
+* **typechecker:** answer type-argument positions from the declaration ([#2538](https://github.com/grayscale-lang/grayscale/issues/2538)) ([ff2a0c8](https://github.com/grayscale-lang/grayscale/commit/ff2a0c861539e9fd6e755e7ff893625553d7368d))
+* **typechecker:** bind the receiver for an imported struct type ([#2492](https://github.com/grayscale-lang/grayscale/issues/2492)) ([b77c734](https://github.com/grayscale-lang/grayscale/commit/b77c73424948d6034978d0a6ad85f7b1b4aa4d7c))
+* **typechecker:** enforce private across module boundaries for structs, enums, and struct functions ([#2505](https://github.com/grayscale-lang/grayscale/issues/2505)) ([1afb08e](https://github.com/grayscale-lang/grayscale/commit/1afb08ef4a4c7a6d67c7115a4dc7987b900eae78))
+* **typechecker:** enforce private on bare names from using modules ([#2520](https://github.com/grayscale-lang/grayscale/issues/2520)) ([918edcc](https://github.com/grayscale-lang/grayscale/commit/918edcc087aa82e7e1e0b0f84326190abf960697))
+* **typechecker:** land plain assignment to a module-level mut variable ([#2508](https://github.com/grayscale-lang/grayscale/issues/2508)) ([37644f3](https://github.com/grayscale-lang/grayscale/commit/37644f3e454732e6e5dcb96a9de2dd6982a8d778))
+* **typechecker:** let a local shadow a module of the same name ([#2504](https://github.com/grayscale-lang/grayscale/issues/2504)) ([4e5d15e](https://github.com/grayscale-lang/grayscale/commit/4e5d15ed5850dbb47faf67ed7e7175c9144ccf1e))
+* **typechecker:** let a struct alias be used as a constructor ([#2518](https://github.com/grayscale-lang/grayscale/issues/2518)) ([68e4b11](https://github.com/grayscale-lang/grayscale/commit/68e4b113d318e9fbd77d2fd4c1f102e454d31e80))
+* **typechecker:** mark addr() on a module-level constant as a const source ([#2515](https://github.com/grayscale-lang/grayscale/issues/2515)) ([6d88e10](https://github.com/grayscale-lang/grayscale/commit/6d88e10f17b212fb2dd2505247382ad2e744c888))
+* **typechecker:** reject a builtin function name as an alias name ([#2530](https://github.com/grayscale-lang/grayscale/issues/2530)) ([6dd4fbf](https://github.com/grayscale-lang/grayscale/commit/6dd4fbfb4c5f400db35736d8e0c8efdc4eb864cb))
+* **typechecker:** reject a file-scope constant forward reference ([#2516](https://github.com/grayscale-lang/grayscale/issues/2516)) ([8ca6f1d](https://github.com/grayscale-lang/grayscale/commit/8ca6f1dda239bcb8d90e8d5892edeb20ca58a41f))
+* **typechecker:** reject a mismatched func ref in a struct literal ([#2543](https://github.com/grayscale-lang/grayscale/issues/2543)) ([a147c78](https://github.com/grayscale-lang/grayscale/commit/a147c7828e777c74ad187a5e6567eabaaa562a10))
+* **typechecker:** reject a public alias of a private type ([#2533](https://github.com/grayscale-lang/grayscale/issues/2533)) ([b86ef88](https://github.com/grayscale-lang/grayscale/commit/b86ef8867dd6d6cccdb1ef24aa1ea1ef7438750b))
+* **typechecker:** reject a reserved type name as an alias name ([#2522](https://github.com/grayscale-lang/grayscale/issues/2522)) ([d938222](https://github.com/grayscale-lang/grayscale/commit/d938222a095faa515d9ff1b21cb7bd5fe5b508ba))
+* **typechecker:** reject a type name used as a value wherever it appears ([#2535](https://github.com/grayscale-lang/grayscale/issues/2535)) ([9711bb4](https://github.com/grayscale-lang/grayscale/commit/9711bb4003ea95215b98347885f77369173c0af4))
+* **typechecker:** report modules whose mangled symbol names collide ([#2499](https://github.com/grayscale-lang/grayscale/issues/2499)) ([9c10989](https://github.com/grayscale-lang/grayscale/commit/9c1098968256c1c294fddaffd5e992a0f189e2d6))
+* **typechecker:** resolve a struct alias used as a call qualifier ([#2526](https://github.com/grayscale-lang/grayscale/issues/2526)) ([71762dd](https://github.com/grayscale-lang/grayscale/commit/71762ddbcb627d4c64eb29a9a00e3c5e7c3ae71c))
+* **typechecker:** resolve a struct field's type through its alias ([#2542](https://github.com/grayscale-lang/grayscale/issues/2542)) ([e39b5cd](https://github.com/grayscale-lang/grayscale/commit/e39b5cdf47266a02c9641f8b29c2df5c708e2212))
+* **typechecker:** resolve alias targets in the declaring module ([#2517](https://github.com/grayscale-lang/grayscale/issues/2517)) ([0f9e25f](https://github.com/grayscale-lang/grayscale/commit/0f9e25ffedfc744aa134b44627b843cf97fe7039))
+* **typechecker:** resolve aliases in the fields() type-name guard ([#2525](https://github.com/grayscale-lang/grayscale/issues/2525)) ([54a417a](https://github.com/grayscale-lang/grayscale/commit/54a417a3cc990689ca6131ef4ea569cc6e1db64d))
+* **typechecker:** resolve and validate the size_of type argument ([#2528](https://github.com/grayscale-lang/grayscale/issues/2528)) ([ac5d9f9](https://github.com/grayscale-lang/grayscale/commit/ac5d9f98523adecdcc566823db9dc07121fd0687))
+* **typechecker:** resolve type aliases in the cast target ([#2523](https://github.com/grayscale-lang/grayscale/issues/2523)) ([0b8f498](https://github.com/grayscale-lang/grayscale/commit/0b8f4982759b6e299d9230d8d4e7ee32f7d0d5c0))
+* **typechecker:** resolve types in a module whose name has an underscore ([#2514](https://github.com/grayscale-lang/grayscale/issues/2514)) ([ed4dab9](https://github.com/grayscale-lang/grayscale/commit/ed4dab90217c37a1e7295ec165c2a725a25a54d3))
+* **typechecker:** return a pointer from mem.alloc ([#2544](https://github.com/grayscale-lang/grayscale/issues/2544)) ([c67692a](https://github.com/grayscale-lang/grayscale/commit/c67692a5ecf81c15248e0bcf872e97df24014db9))
+* **typechecker:** skip value resolution for &lt;?&gt; type arguments ([#2539](https://github.com/grayscale-lang/grayscale/issues/2539)) ([2b9a9a5](https://github.com/grayscale-lang/grayscale/commit/2b9a9a5dd93b241f7714032cc792e1901c3d4ec4))
+* **typechecker:** validate that a cast target names a type ([#2534](https://github.com/grayscale-lang/grayscale/issues/2534)) ([2264e4a](https://github.com/grayscale-lang/grayscale/commit/2264e4a9e0a0594c9a37a13d5577f6fffe64911e))
+
+
+### Performance Improvements
+
+* **main:** parse arguments into a CompilerOptions struct ([b09cbb4](https://github.com/grayscale-lang/grayscale/commit/b09cbb4aaeca889af6ed82440852f34d8f855abd))
+* **parser:** extract the import resolver out of main() ([4df828e](https://github.com/grayscale-lang/grayscale/commit/4df828e1365228868c687149587169214a532996))
+* **runtime:** remove unused GRAY_MAX_INLINE_ELEM_SIZE ([5384391](https://github.com/grayscale-lang/grayscale/commit/53843919d6faeac77da505048aa6e65b578f5806))
+* **typechecker:** rename operator_to_string to operator_display_name ([03e84a3](https://github.com/grayscale-lang/grayscale/commit/03e84a3044bb9c1c00096b048c17956abf172800))
+* **util:** remove unused diagnostic_warning_help ([ff65f8a](https://github.com/grayscale-lang/grayscale/commit/ff65f8a31492e7737a9cfc5107c2b8ba3a86239a))
+
 ## [0.5.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.1...grayscale-v0.5.2) (2026-08-26)
 
 
