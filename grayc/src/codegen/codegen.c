@@ -2907,6 +2907,17 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* True when `left` is a map lookup (m[key], or a chained one). Such a lookup
+ * lowers to a statement-expression that yields the stored value by rvalue, so
+ * an outer index on it cannot take its address and must bind it to a temp. */
+static bool index_left_is_map_lookup(CodeGen *codegen, AstNode *left) {
+    if (!left || left->kind != NODE_INDEX_EXPR) return false;
+    GrayType *inner = codegen->type_table
+        ? typetable_get(codegen->type_table, left->data.index_expr.left)
+        : NULL;
+    return inner && inner->kind == TK_MAP;
+}
+
 static void emit_index_expr(CodeGen *codegen, AstNode *node) {
     /* Check if left side is an array (GrayArray) or string */
     GrayType *left_t = codegen->type_table
@@ -3005,7 +3016,8 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
-        } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR) {
+        } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR ||
+                   index_left_is_map_lookup(codegen, node->data.index_expr.left)) {
             emit_formatted(codegen, "({ GrayArray _ea = ");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
@@ -8556,6 +8568,54 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 } else {
                     c_elem = gray_type_to_c_codegen(codegen, left_t->element_type);
                 }
+            }
+            /* m[key][i] = v: the map lookup lowers to a statement-expression
+             * that yields the stored GrayArray by rvalue, so GRAY_ARRAY_SET_AT's
+             * &(arr) is invalid. Bind it to a temp — the GrayArray header is a
+             * view over the stored buffer, so element writes still land there. */
+            if (index_left_is_map_lookup(codegen, left)) {
+                AstNode *idx = node->data.assign.target->data.index_expr.index;
+                TokenType aop_m = node->data.assign.op;
+                bool is_compound_m = (aop_m == TOK_PLUS_ASSIGN || aop_m == TOK_MINUS_ASSIGN || aop_m == TOK_ASTERISK_ASSIGN);
+                const char *sn = left_t->element_type;
+                const char *smin = NULL, *smax = NULL;
+                bool su = false;
+                if (sn) sized_int_bounds(sn, &smin, &smax, &su);
+                const char *sized_fn = (is_compound_m && smax) ? sized_check_func(aop_m, su) : NULL;
+                emit_formatted(codegen, "{ GrayArray _ea = ");
+                emit_expression(codegen, left);
+                emit(codegen, "; ");
+                if (sized_fn) {
+                    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(_ea, %s, ", sized_fn, c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    if (su) {
+                        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                    }
+                    return;
+                }
+                emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+                emit_expression(codegen, idx);
+                emit(codegen, ", ");
+                if (is_compound_m) {
+                    const char *binop = "+";
+                    if (aop_m == TOK_MINUS_ASSIGN) binop = "-";
+                    else if (aop_m == TOK_ASTERISK_ASSIGN) binop = "*";
+                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else {
+                    emit_expression(codegen, node->data.assign.value);
+                }
+                emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+                return;
             }
             /* Check for array field through struct pointer (rvalue assignability issue).
              * b.items[i] = val where b: ^Bag — the normal member emit produces a
