@@ -3148,7 +3148,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 result = &TYPE_UNKNOWN;
             }
         } else if (strcmp(mfn, "alloc") == 0 && node->data.call.arg_count == 2) {
-            result = resolve_expression(checker, node->data.call.args[1]);
+            /* alloc(a Arena, value T) -> ^T. Typing the call as T instead
+             * disagreed with the pointer codegen emits, so reading the result
+             * produced C that does not compile, and the documented `mut p ^int
+             * = mem.alloc(a, 42)` was rejected outright. */
+            GrayType *value_t = resolve_expression(checker, node->data.call.args[1]);
+            const char *value_tn = value_t ? type_name(value_t) : NULL;
+            result = (value_t && value_t->kind != TK_UNKNOWN && value_tn)
+                ? type_pointer(value_tn) : &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "maps") == 0) {
         if (strcmp(mfn, "get_keys") == 0) {

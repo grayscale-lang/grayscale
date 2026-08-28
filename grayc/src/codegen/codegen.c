@@ -4824,12 +4824,29 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
         AstNode *value_arg = node->data.call.args[1];
         GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, value_arg) : NULL;
 
+        /* alloc(a Arena, value T) -> ^T for every T. The string and array
+         * branches below build their value in the target arena and used to
+         * hand it back directly, so the same call returned a pointer or a
+         * value depending on what it was given. Binding the arena once and
+         * boxing whatever the branch produced keeps a single return shape
+         * without evaluating the arena expression twice. */
+        int tag = codegen_next_id(codegen);
+        /* The pointer is typed from the value's Grayscale type, not deduced
+         * from the C expression: __auto_type on a literal `64` deduces C `int`,
+         * and a `^int` is int64_t *. */
+        char c_val[MSG_BUF_SIZE];
+        snprintf(c_val, sizeof(c_val), "%s",
+                 (vt && vt->kind != TK_UNKNOWN && type_name(vt))
+                     ? gray_type_to_c_codegen(codegen, type_name(vt))
+                     : (value_arg->kind == NODE_ARRAY_VALUE ? "GrayArray" : "__auto_type"));
+        emit_formatted(codegen, "({ GrayArena *_aa%d = ", tag);
+        emit_expression(codegen, arena_arg);
+        emit_formatted(codegen, "; %s _av%d = ", c_val, tag);
         if (vt && vt->kind == TK_STRING) {
-            emit(codegen, "({ GrayString _s = ");
+            emit_formatted(codegen, "({ GrayString _s%d = ", tag);
             emit_expression(codegen, value_arg);
-            emit(codegen, "; gray_string_new(");
-            emit_expression(codegen, arena_arg);
-            emit(codegen, ", _s.data, _s.len); })");
+            emit_formatted(codegen, "; gray_string_new(_aa%d, _s%d.data, _s%d.len); })",
+                           tag, tag, tag);
         } else if (value_arg->kind == NODE_ARRAY_VALUE) {
             int count = value_arg->data.array_value.count;
             GrayType *elem_t = (count > 0 && codegen->type_table)
@@ -4841,21 +4858,19 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
                 else if (elem_t->kind == TK_STRING) c_type = "GrayString";
                 else if (elem_t->kind == TK_BOOL) c_type = "bool";
             }
-            emit_formatted(codegen, "gray_array_from(");
-            emit_expression(codegen, arena_arg);
-            emit_formatted(codegen, ", (%s[]){", c_type);
+            emit_formatted(codegen, "gray_array_from(_aa%d, (%s[]){", tag, c_type);
             for (int i = 0; i < count; i++) {
                 if (i > 0) emit(codegen, ", ");
                 emit_expression(codegen, value_arg->data.array_value.elements[i]);
             }
             emit_formatted(codegen, "}, sizeof(%s), %d)", c_type, count);
         } else {
-            emit(codegen, "({ __auto_type _v = ");
             emit_expression(codegen, value_arg);
-            emit(codegen, "; __auto_type _p = gray_arena_alloc(");
-            emit_expression(codegen, arena_arg);
-            emit(codegen, ", sizeof(_v)); *(__typeof__(_v) *)_p = _v; (__typeof__(_v) *)_p; })");
         }
+        emit_formatted(codegen,
+            "; __typeof__(_av%d) *_ap%d = (__typeof__(_av%d) *)gray_arena_alloc(_aa%d, sizeof(_av%d)); "
+            "*_ap%d = _av%d; _ap%d; })",
+            tag, tag, tag, tag, tag, tag, tag, tag);
         return true;
     }
     return false;
