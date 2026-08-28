@@ -1,0 +1,122 @@
+/*
+ * raytracer - render a small fixed scene to an in-memory buffer.
+ * Exercises: float math, structs, struct functions, recursion, tight loops.
+ */
+
+import @math
+
+const Vec struct {
+    x float
+    y float
+    z float
+
+    do add(a Vec, b Vec) -> Vec {
+        return Vec{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
+    }
+
+    do sub(a Vec, b Vec) -> Vec {
+        return Vec{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
+    }
+
+    do scale(a Vec, s float) -> Vec {
+        return Vec{x: a.x * s, y: a.y * s, z: a.z * s}
+    }
+
+    do dot(a Vec, b Vec) -> float {
+        return a.x * b.x + a.y * b.y + a.z * b.z
+    }
+
+    do norm(a Vec) -> Vec {
+        mut l float = math.sqrt(Vec.dot(a, a))
+        if l == 0.0 {
+            return a
+        }
+        return Vec.scale(a, 1.0 / l)
+    }
+}
+
+const Sphere struct {
+    cx float
+    cy float
+    cz float
+    radius float
+    reflect float
+}
+
+const SPHERE_COUNT int = 3
+
+do make_scene() -> [Sphere] {
+    mut s [Sphere] = {
+        Sphere{cx: 0.0, cy: -1.0, cz: 3.0, radius: 1.0, reflect: 0.2},
+        Sphere{cx: 2.0, cy: 0.0, cz: 4.0, radius: 1.0, reflect: 0.4},
+        Sphere{cx: -2.0, cy: 0.0, cz: 4.0, radius: 1.0, reflect: 0.3}
+    }
+    return s
+}
+
+// Returns the nearest positive hit distance, or -1.0 for a miss.
+do hit_sphere(origin Vec, dir Vec, s Sphere) -> float {
+    mut oc Vec = Vec.sub(origin, Vec{x: s.cx, y: s.cy, z: s.cz})
+    mut a float = Vec.dot(dir, dir)
+    mut b float = 2.0 * Vec.dot(oc, dir)
+    mut c float = Vec.dot(oc, oc) - s.radius * s.radius
+    mut disc float = b * b - 4.0 * a * c
+    if disc < 0.0 {
+        return -1.0
+    }
+    mut t float = (0.0 - b - math.sqrt(disc)) / (2.0 * a)
+    return t
+}
+
+do trace(origin Vec, dir Vec, scene [Sphere], depth int) -> float {
+    mut best float = 1000000.0
+    mut best_idx int = -1
+    for i in range(0, SPHERE_COUNT) {
+        mut t float = hit_sphere(origin, dir, scene[i])
+        if t > 0.001 && t < best {
+            best = t
+            best_idx = i
+        }
+    }
+    if best_idx < 0 {
+        return 0.15
+    }
+
+    mut hit Vec = Vec.add(origin, Vec.scale(dir, best))
+    mut s Sphere = scene[best_idx]
+    mut normal Vec = Vec.norm(Vec.sub(hit, Vec{x: s.cx, y: s.cy, z: s.cz}))
+    mut light Vec = Vec.norm(Vec{x: 1.0, y: 1.0, z: -1.0})
+    mut diffuse float = Vec.dot(normal, light)
+    if diffuse < 0.0 {
+        diffuse = 0.0
+    }
+
+    mut color float = 0.1 + 0.9 * diffuse
+    if depth > 0 && s.reflect > 0.0 {
+        mut rd float = Vec.dot(dir, normal)
+        mut refl Vec = Vec.norm(Vec.sub(dir, Vec.scale(normal, 2.0 * rd)))
+        color = color * (1.0 - s.reflect) + s.reflect * trace(hit, refl, scene, depth - 1)
+    }
+    return color
+}
+
+const WIDTH int = 160
+const HEIGHT int = 120
+
+do main() {
+    mut scene [Sphere] = make_scene()
+    mut origin Vec = Vec{x: 0.0, y: 0.0, z: 0.0}
+    mut acc float = 0.0
+
+    for py in range(0, HEIGHT) {
+        for px in range(0, WIDTH) {
+            mut u float = (float(px) / float(WIDTH)) - 0.5
+            mut v float = 0.5 - (float(py) / float(HEIGHT))
+            mut dir Vec = Vec.norm(Vec{x: u, y: v, z: 1.0})
+            acc += trace(origin, dir, scene, 3)
+        }
+    }
+
+    mut avg float = acc / float(WIDTH * HEIGHT)
+    println("raytracer avg_luminance=${avg}")
+}

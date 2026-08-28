@@ -1,6 +1,6 @@
 /*
  * test_stdlib.c — Unit tests for the Grayscale stdlib modules:
- * strings, arrays, maps, math, fmt, encoding, strconv.
+ * strings, arrays, maps, math, fmt, encoding, strconv, json, io, regex.
  *
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -18,6 +18,9 @@
 #include "../src/stdlib/fmt.h"
 #include "../src/stdlib/encoding.h"
 #include "../src/stdlib/strconv.h"
+#include "../src/stdlib/json.h"
+#include "../src/stdlib/io.h"
+#include "../src/stdlib/regex.h"
 #include <math.h>
 #include <stdint.h>
 
@@ -974,6 +977,237 @@ static void test_strconv_is_integer(void) {
     ASSERT(!gray_strconv_is_integer(gray_string_lit("")));
 }
 
+/* ===== json module ===== */
+
+static void test_json_encode_map(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayString k = gray_string_lit("name");
+    GrayString v = gray_string_lit("Alice");
+    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    GrayString r = gray_json_encode_map(arena, &m);
+    ASSERT_GRAY_STR(r, "{\"name\":\"Alice\"}");
+}
+
+static void test_json_encode_array_int(void) {
+    GrayArray a = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
+    GrayString r = gray_json_encode_array_int(arena, &a);
+    ASSERT_GRAY_STR(r, "[1,2,3]");
+}
+
+static void test_json_encode_array_string(void) {
+    GrayArray a = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("a"), gray_string_lit("b"));
+    GrayString r = gray_json_encode_array_string(arena, &a);
+    ASSERT_GRAY_STR(r, "[\"a\",\"b\"]");
+}
+
+static void test_json_is_valid(void) {
+    ASSERT(gray_json_is_valid(gray_string_lit("{\"a\":1}")));
+    ASSERT(gray_json_is_valid(gray_string_lit("[1, 2, 3]")));
+    ASSERT(gray_json_is_valid(gray_string_lit("\"hello\"")));
+    ASSERT(gray_json_is_valid(gray_string_lit("{\"nested\":{\"k\":[1,2]}}")));
+    ASSERT(!gray_json_is_valid(gray_string_lit("{bad json}")));
+    ASSERT(!gray_json_is_valid(gray_string_lit("")));
+    ASSERT(!gray_json_is_valid(gray_string_lit("{\"a\":}")));
+}
+
+static void test_json_decode(void) {
+    GrayMap m = gray_json_decode(arena, gray_string_lit("{\"x\":\"1\",\"y\":\"two\"}"));
+    ASSERT_EQ(m.count, 2);
+    GrayString *x = (GrayString *)gray_map_get_str(&m, gray_string_lit("x"));
+    ASSERT_NOT_NULL(x);
+    ASSERT(gray_string_eq(*x, gray_string_lit("1")));
+    GrayString *y = (GrayString *)gray_map_get_str(&m, gray_string_lit("y"));
+    ASSERT_NOT_NULL(y);
+    ASSERT(gray_string_eq(*y, gray_string_lit("two")));
+}
+
+static void test_json_decode_result_ok(void) {
+    GrayResult_map r = gray_json_decode_result(arena, gray_string_lit("{\"k\":\"v\"}"));
+    ASSERT(r.v1 == NULL);
+    ASSERT_EQ(r.v0.count, 1);
+}
+
+static void test_json_decode_result_err(void) {
+    GrayResult_map r = gray_json_decode_result(arena, gray_string_lit("{not json}"));
+    ASSERT_NOT_NULL(r.v1);
+}
+
+static void test_json_roundtrip(void) {
+    GrayString text = gray_string_lit("{\"a\":\"1\",\"b\":\"2\"}");
+    GrayMap m = gray_json_decode(arena, text);
+    GrayString back = gray_json_encode_map(arena, &m);
+    ASSERT_GRAY_STR(back, "{\"a\":\"1\",\"b\":\"2\"}");
+}
+
+static void test_json_pretty_map(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayString k = gray_string_lit("k");
+    GrayString v = gray_string_lit("v");
+    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    GrayString pretty = gray_json_pretty_map(arena, &m, 2);
+    GrayString compact = gray_json_encode_map(arena, &m);
+    ASSERT_GT(pretty.len, compact.len);
+    char buf[256];
+    const char *s = gray_cstr(pretty, buf, sizeof(buf));
+    ASSERT(strstr(s, "\"k\"") != NULL);
+    ASSERT(strstr(s, "\n") != NULL);
+}
+
+static void test_json_split_array(void) {
+    GrayArray parts = gray_json_split_array(arena, gray_string_lit("[{\"a\":1},{\"b\":2},{\"c\":3}]"));
+    ASSERT_EQ(parts.len, 3);
+}
+
+/* ===== io module ===== */
+
+/* io round-trips write to a real temp directory so the suite stays portable
+ * (no assumption that /tmp exists). */
+static GrayString io_tmp_path(const char *name) {
+    GrayString parts_data[2];
+    parts_data[0] = gray_io_temp_dir(arena);
+    parts_data[1] = gray_string_lit(name);
+    GrayArray parts = gray_array_from(arena, parts_data, sizeof(GrayString), 2);
+    return gray_io_path_join(arena, parts);
+}
+
+static void test_io_write_read_roundtrip(void) {
+    GrayString path = io_tmp_path("grayc_ut_rw.txt");
+    ASSERT(gray_io_write_file(path, gray_string_lit("hello world")));
+    ASSERT(gray_io_file_exists(path));
+    ASSERT(gray_io_is_file(path));
+    GrayString content = gray_io_read_file(arena, path);
+    ASSERT_GRAY_STR(content, "hello world");
+    ASSERT_EQ(gray_io_file_size(path), 11);
+    ASSERT(gray_io_delete_file(path));
+    ASSERT(!gray_io_file_exists(path));
+}
+
+static void test_io_append_file(void) {
+    GrayString path = io_tmp_path("grayc_ut_append.txt");
+    ASSERT(gray_io_write_file(path, gray_string_lit("a")));
+    ASSERT(gray_io_append_file(path, gray_string_lit("b")));
+    GrayString content = gray_io_read_file(arena, path);
+    ASSERT_GRAY_STR(content, "ab");
+    gray_io_delete_file(path);
+}
+
+static void test_io_read_lines(void) {
+    GrayString path = io_tmp_path("grayc_ut_lines.txt");
+    ASSERT(gray_io_write_file(path, gray_string_lit("one\ntwo\nthree")));
+    GrayArray lines = gray_io_read_lines(arena, path);
+    ASSERT_EQ(lines.len, 3);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 0), gray_string_lit("one")));
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 2), gray_string_lit("three")));
+    gray_io_delete_file(path);
+}
+
+static void test_io_bytes_roundtrip(void) {
+    GrayString path = io_tmp_path("grayc_ut_bytes.bin");
+    uint8_t bytes[3] = {72, 105, 33};
+    GrayArray data = gray_array_from(arena, bytes, sizeof(uint8_t), 3);
+    ASSERT(gray_io_write_bytes(path, data));
+    GrayArray back = gray_io_read_bytes(arena, path);
+    ASSERT_EQ(back.len, 3);
+    ASSERT_EQ(GRAY_ARRAY_GET(back, uint8_t, 0), 72);
+    ASSERT_EQ(GRAY_ARRAY_GET(back, uint8_t, 2), 33);
+    gray_io_delete_file(path);
+}
+
+static void test_io_read_file_result_err(void) {
+    GrayResult_string r = gray_io_read_file_result(arena, gray_string_lit("/no/such/grayc/path/x.txt"));
+    ASSERT_NOT_NULL(r.v1);
+}
+
+static void test_io_make_remove_dir(void) {
+    GrayString path = io_tmp_path("grayc_ut_dir");
+    ASSERT(gray_io_make_dir(path));
+    ASSERT(gray_io_is_directory(path));
+    ASSERT(gray_io_remove_dir(path));
+    ASSERT(!gray_io_file_exists(path));
+}
+
+static void test_io_dirname(void) {
+    GrayString r = gray_io_dirname(arena, gray_string_lit("/usr/local/bin/gray"));
+    ASSERT_GRAY_STR(r, "/usr/local/bin");
+}
+
+static void test_io_basename(void) {
+    GrayString r = gray_io_basename(arena, gray_string_lit("/usr/local/bin/gray"));
+    ASSERT_GRAY_STR(r, "gray");
+}
+
+static void test_io_extension(void) {
+    ASSERT_GRAY_STR(gray_io_extension(arena, gray_string_lit("main.gray")), ".gray");
+    ASSERT_GRAY_STR(gray_io_extension(arena, gray_string_lit("noext")), "");
+}
+
+static void test_io_path_join(void) {
+    GrayArray parts = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("a"),
+        gray_string_lit("b"), gray_string_lit("c"));
+    GrayString r = gray_io_path_join(arena, parts);
+    ASSERT_GRAY_STR(r, "a/b/c");
+}
+
+static void test_io_is_absolute(void) {
+    ASSERT(gray_io_is_absolute(gray_string_lit("/etc/hosts")));
+    ASSERT(!gray_io_is_absolute(gray_string_lit("etc/hosts")));
+}
+
+static void test_io_normalize(void) {
+    GrayString r = gray_io_normalize(arena, gray_string_lit("a/./b/../c"));
+    ASSERT_GRAY_STR(r, "a/c");
+}
+
+/* ===== regex module ===== */
+
+static void test_regex_is_valid(void) {
+    ASSERT(gray_regex_is_valid(gray_string_lit("[a-z]+")));
+    ASSERT(gray_regex_is_valid(gray_string_lit("^[0-9]{3}$")));
+    ASSERT(!gray_regex_is_valid(gray_string_lit("[a-z")));
+    ASSERT(!gray_regex_is_valid(gray_string_lit("(unclosed")));
+}
+
+static void test_regex_match(void) {
+    ASSERT(gray_regex_match(gray_string_lit("^h.llo$"), gray_string_lit("hello")));
+    ASSERT(gray_regex_match(gray_string_lit("[0-9]+"), gray_string_lit("abc123")));
+    ASSERT(!gray_regex_match(gray_string_lit("^[0-9]+$"), gray_string_lit("abc123")));
+}
+
+static void test_regex_find(void) {
+    GrayString r = gray_regex_find(arena, gray_string_lit("[0-9]+"), gray_string_lit("ab12cd345"));
+    ASSERT_GRAY_STR(r, "12");
+}
+
+static void test_regex_find_no_match(void) {
+    GrayString r = gray_regex_find(arena, gray_string_lit("[0-9]+"), gray_string_lit("no digits"));
+    ASSERT_EQ(r.len, 0);
+}
+
+static void test_regex_find_all(void) {
+    GrayArray all = gray_regex_find_all(arena, gray_string_lit("[0-9]+"), gray_string_lit("a1b22c333"));
+    ASSERT_EQ(all.len, 3);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(all, GrayString, 1), gray_string_lit("22")));
+}
+
+static void test_regex_replace(void) {
+    GrayString r = gray_regex_replace(arena, gray_string_lit("[0-9]+"),
+        gray_string_lit("a1b2c3"), gray_string_lit("#"));
+    ASSERT_GRAY_STR(r, "a#b#c#");
+}
+
+static void test_regex_split(void) {
+    GrayArray parts = gray_regex_split(arena, gray_string_lit("[,;]"),
+        gray_string_lit("a,b;c,d"));
+    ASSERT_EQ(parts.len, 4);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(parts, GrayString, 3), gray_string_lit("d")));
+}
+
+static void test_regex_find_result_err(void) {
+    GrayResult_string r = gray_regex_find_result(arena, gray_string_lit("[a-z"),
+        gray_string_lit("text"));
+    ASSERT_NOT_NULL(r.v1);
+}
+
 /* ===== main ===== */
 
 int main(void) {
@@ -1125,6 +1359,42 @@ int main(void) {
     RUN_TEST(test_strconv_from_bool);
     RUN_TEST(test_strconv_is_numeric);
     RUN_TEST(test_strconv_is_integer);
+
+    printf("--- json ---\n");
+    RUN_TEST(test_json_encode_map);
+    RUN_TEST(test_json_encode_array_int);
+    RUN_TEST(test_json_encode_array_string);
+    RUN_TEST(test_json_is_valid);
+    RUN_TEST(test_json_decode);
+    RUN_TEST(test_json_decode_result_ok);
+    RUN_TEST(test_json_decode_result_err);
+    RUN_TEST(test_json_roundtrip);
+    RUN_TEST(test_json_pretty_map);
+    RUN_TEST(test_json_split_array);
+
+    printf("--- io ---\n");
+    RUN_TEST(test_io_write_read_roundtrip);
+    RUN_TEST(test_io_append_file);
+    RUN_TEST(test_io_read_lines);
+    RUN_TEST(test_io_bytes_roundtrip);
+    RUN_TEST(test_io_read_file_result_err);
+    RUN_TEST(test_io_make_remove_dir);
+    RUN_TEST(test_io_dirname);
+    RUN_TEST(test_io_basename);
+    RUN_TEST(test_io_extension);
+    RUN_TEST(test_io_path_join);
+    RUN_TEST(test_io_is_absolute);
+    RUN_TEST(test_io_normalize);
+
+    printf("--- regex ---\n");
+    RUN_TEST(test_regex_is_valid);
+    RUN_TEST(test_regex_match);
+    RUN_TEST(test_regex_find);
+    RUN_TEST(test_regex_find_no_match);
+    RUN_TEST(test_regex_find_all);
+    RUN_TEST(test_regex_replace);
+    RUN_TEST(test_regex_split);
+    RUN_TEST(test_regex_find_result_err);
 
     PRINT_RESULTS();
     gray_arena_destroy(arena, __FILE__, __LINE__);

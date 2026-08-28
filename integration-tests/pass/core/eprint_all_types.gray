@@ -1,3 +1,9 @@
+/*
+ * Test: eprint accepts every primitive type without a format string and
+ * returns control (output goes to stderr, so this test only asserts that
+ * the calls run to completion).
+ */
+
 do main() {
     eprint(42)
     eprint(" ")
@@ -7,6 +13,11 @@ do main() {
     eprint(" ")
     eprint(false)
     eprint(" ")
+    eprint('c')
+    eprint(" ")
     eprint("done")
     eprintln("")
+
+    println("Results: 1 passed, 0 failed")
+    println("ALL TESTS PASSED")
 }

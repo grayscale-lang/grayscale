@@ -2,9 +2,13 @@
  * tests.gray - Grayscale language verification test suite
  *
  * Covers: primitives, strings, control flow, loops, functions,
- * structs, enums, arrays, maps, casting, pointers, @math, @strings,
- * @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv,
- * @crypto, @regex, @binary, @uuid, @mem.
+ * structs, enums, arrays, maps, casting, pointers, error handling,
+ * or_return, ensure/defer, if/or/otherwise, bitwise operators,
+ * compound assignment, membership (not_in/!in), recursion, type
+ * aliases, nested composites, char<->int, scoped blocks and
+ * shadowing, const locals, higher-order functions, math, strings,
+ * arrays, maps, json, time, random, encoding, fmt, strconv, crypto,
+ * regex, binary, uuid, mem, csv, runtime.
  *
  * Every test prints [PASS] or [FAIL] with the actual value on failure.
  * Exits non-zero if any assertion fails.
@@ -14,7 +18,7 @@
  *   ./grayc/grayc cli/tests.gray -o /tmp/out && /tmp/out
  */
 
-import @math, @strings, @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv, @crypto, @regex, @binary, @uuid, @mem
+import @math, @strings, @arrays, @maps, @json, @time, @random, @encoding, @fmt, @strconv, @crypto, @regex, @binary, @uuid, @mem, @csv, @runtime
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
 
@@ -71,6 +75,73 @@ do multi() -> (n int, s string) {
     mut n int = 7
     mut s string = "seven"
     return n, s
+}
+
+// ─── Helpers for the extended sections ───────────────────────────────────────
+
+alias UserId = int
+alias Vec2 = Point
+
+const Bag struct {
+    nums [int]
+    lookup map[string:int]
+}
+
+do try_div(a int, b int) -> (int, Error) {
+    if b == 0 {
+        return 0, error("divide by ${b}")
+    }
+    return a / b, nil
+}
+
+do or_ret_bare(divisor int) -> (int, Error) {
+    mut v int = try_div(10, divisor) or_return
+    return v * 2, nil
+}
+
+do or_ret_fallback(divisor int) -> (int, Error) {
+    mut v int = try_div(10, divisor) or_return -1
+    return v, nil
+}
+
+do fib(n int) -> int {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+mut defer_log [int] = {}
+
+do note(n int) {
+    arrays.append(defer_log, n)
+}
+
+do defer_lifo() {
+    defer note(1)
+    defer note(2)
+    defer note(3)
+    note(0)
+}
+
+do ensure_on_return(early bool) -> int {
+    defer note(9)
+    if early {
+        return 1
+    }
+    return 2
+}
+
+do triple(x int) -> int {
+    return x * 3
+}
+
+do gt_two(x int) -> bool {
+    return x > 2
+}
+
+do sum2(a int, b int) -> int {
+    return a + b
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -1659,6 +1730,867 @@ do main() {
     mem.destroy(arena1)
     println("  [PASS] mem.arena → usage → reset → destroy lifecycle")
     passed++
+
+    // =========================================================================
+    println("")
+    println("=== 28. Error handling ===")
+    // =========================================================================
+
+    mut eh_v1, eh_e1 = try_div(20, 4)
+    if eh_e1 == nil && eh_v1 == 5 {
+        println("  [PASS] fallible function success: nil error, value 5")
+        passed++
+    } otherwise {
+        println("  [FAIL] try_div(20, 4): v=${eh_v1}")
+        failed++
+    }
+
+    mut eh_v2, eh_e2 = try_div(1, 0)
+    if eh_e2 != nil && eh_v2 == 0 {
+        println("  [PASS] fallible function failure: non-nil error")
+        passed++
+    } otherwise {
+        println("  [FAIL] try_div(1, 0) should return an error")
+        failed++
+    }
+
+    if "${eh_e2}" == "divide by 0" {
+        println("  [PASS] error message interpolates in a string")
+        passed++
+    } otherwise {
+        println("  [FAIL] error interpolation: got \"${eh_e2}\"")
+        failed++
+    }
+
+    mut eh_err Error = error("boom")
+    if eh_err != nil {
+        println("  [PASS] error(\"boom\") builds a non-nil Error")
+        passed++
+    } otherwise {
+        println("  [FAIL] error(\"boom\") should be non-nil")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 29. or_return ===")
+    // =========================================================================
+
+    mut or1_v, or1_e = or_ret_bare(2)
+    if or1_e == nil && or1_v == 10 {
+        println("  [PASS] bare or_return passes through on success")
+        passed++
+    } otherwise {
+        println("  [FAIL] or_ret_bare(2): v=${or1_v}")
+        failed++
+    }
+
+    mut _, or2_e = or_ret_bare(0)
+    if or2_e != nil {
+        println("  [PASS] bare or_return propagates the error")
+        passed++
+    } otherwise {
+        println("  [FAIL] or_ret_bare(0) should propagate an error")
+        failed++
+    }
+
+    mut or3_v, or3_e = or_ret_fallback(0)
+    if or3_v == -1 && or3_e != nil {
+        println("  [PASS] or_return fallback yields the fallback value and the error")
+        passed++
+    } otherwise {
+        println("  [FAIL] or_ret_fallback(0): v=${or3_v}")
+        failed++
+    }
+
+    mut or4_v, or4_e = or_ret_fallback(5)
+    if or4_v == 2 && or4_e == nil {
+        println("  [PASS] or_return fallback success path returns the real value")
+        passed++
+    } otherwise {
+        println("  [FAIL] or_ret_fallback(5): v=${or4_v}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 30. ensure / defer ===")
+    // =========================================================================
+
+    defer_log = {}
+    defer_lifo()
+    if len(defer_log) == 4 && defer_log[0] == 0 && defer_log[1] == 3 && defer_log[2] == 2 && defer_log[3] == 1 {
+        println("  [PASS] stacked defers run in LIFO order after the body")
+        passed++
+    } otherwise {
+        println("  [FAIL] defer LIFO order: got ${defer_log}")
+        failed++
+    }
+
+    defer_log = {}
+    mut ens_r int = ensure_on_return(true)
+    if ens_r == 1 && len(defer_log) == 1 && defer_log[0] == 9 {
+        println("  [PASS] ensure runs on early return")
+        passed++
+    } otherwise {
+        println("  [FAIL] ensure on early return: r=${ens_r}, log=${defer_log}")
+        failed++
+    }
+
+    defer_log = {}
+    mut ens_r2 int = ensure_on_return(false)
+    if ens_r2 == 2 && len(defer_log) == 1 {
+        println("  [PASS] ensure runs on normal exit")
+        passed++
+    } otherwise {
+        println("  [FAIL] ensure on normal exit: r=${ens_r2}, log=${defer_log}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 31. if / or / otherwise ===")
+    // =========================================================================
+
+    mut grade31 string = ""
+    mut score31 int = 82
+    if score31 >= 90 {
+        grade31 = "A"
+    } or score31 >= 80 {
+        grade31 = "B"
+    } or score31 >= 70 {
+        grade31 = "C"
+    } otherwise {
+        grade31 = "F"
+    }
+    if grade31 == "B" {
+        println("  [PASS] if / or / or / otherwise picks the first matching branch")
+        passed++
+    } otherwise {
+        println("  [FAIL] if/or chain: expected \"B\", got \"${grade}\"")
+        failed++
+    }
+
+    mut fell_through string = "start"
+    if false {
+        fell_through = "if"
+    } or false {
+        fell_through = "or"
+    } otherwise {
+        fell_through = "otherwise"
+    }
+    if fell_through == "otherwise" {
+        println("  [PASS] otherwise runs when no branch matches")
+        passed++
+    } otherwise {
+        println("  [FAIL] otherwise fallthrough: got \"${fell_through}\"")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 32. Bitwise operators ===")
+    // =========================================================================
+
+    if (0b1010 bit_and 0b1100) == 0b1000 {
+        println("  [PASS] 0b1010 bit_and 0b1100 = 0b1000")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_and")
+        failed++
+    }
+
+    if (0b1010 bit_or 0b0001) == 0b1011 {
+        println("  [PASS] 0b1010 bit_or 0b0001 = 0b1011")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_or")
+        failed++
+    }
+
+    if (0b1100 bit_xor 0b1010) == 0b0110 {
+        println("  [PASS] 0b1100 bit_xor 0b1010 = 0b0110")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_xor")
+        failed++
+    }
+
+    if bit_not 0 == -1 {
+        println("  [PASS] bit_not 0 = -1")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_not")
+        failed++
+    }
+
+    if (1 bit_shift_left 4) == 16 {
+        println("  [PASS] 1 bit_shift_left 4 = 16")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_shift_left")
+        failed++
+    }
+
+    if (256 bit_shift_right 2) == 64 {
+        println("  [PASS] 256 bit_shift_right 2 = 64")
+        passed++
+    } otherwise {
+        println("  [FAIL] bit_shift_right")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 33. Compound assignment ===")
+    // =========================================================================
+
+    mut ca int = 20
+    ca -= 5
+    ca *= 2
+    ca /= 3
+    ca %= 7
+    if ca == 3 {
+        println("  [PASS] -= *= /= %= chain: 20 → 15 → 30 → 10 → 3")
+        passed++
+    } otherwise {
+        println("  [FAIL] compound assignment chain: expected 3, got ${ca}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 34. Membership (not_in / !in) ===")
+    // =========================================================================
+
+    // not_in and !in are aliases; a file may use only one, so this section
+    // exercises not_in.
+    mut member_arr [int] = {2, 4, 6, 8}
+    if 5 not_in member_arr {
+        println("  [PASS] 5 not_in {2,4,6,8}")
+        passed++
+    } otherwise {
+        println("  [FAIL] not_in: 5 should be absent")
+        failed++
+    }
+    if 4 in member_arr && !(4 not_in member_arr) {
+        println("  [PASS] 4 in {2,4,6,8}, not (4 not_in ...)")
+        passed++
+    } otherwise {
+        println("  [FAIL] not_in negation for a present value")
+        failed++
+    }
+    mut member_map map[string:int] = {"a": 1, "b": 2}
+    if "z" not_in member_map {
+        println("  [PASS] \"z\" not_in a map")
+        passed++
+    } otherwise {
+        println("  [FAIL] not_in on a map key")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 35. Recursion ===")
+    // =========================================================================
+
+    if fib(10) == 55 {
+        println("  [PASS] fib(10) = 55 via self-recursion")
+        passed++
+    } otherwise {
+        println("  [FAIL] fib(10): expected 55, got ${fib(10)}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 36. Type aliases ===")
+    // =========================================================================
+
+    mut uid UserId = 4096
+    if type_of(uid) == "int" {
+        println("  [PASS] type_of(UserId) resolves to \"int\"")
+        passed++
+    } otherwise {
+        println("  [FAIL] alias type_of: got \"${type_of(uid)}\"")
+        failed++
+    }
+
+    mut aliased_pt Vec2 = Vec2{x: 3, y: 4}
+    if Point.sum(aliased_pt) == 7 {
+        println("  [PASS] Vec2 alias is interchangeable with Point")
+        passed++
+    } otherwise {
+        println("  [FAIL] struct alias: Point.sum(Vec2{3,4}) != 7")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 37. Nested composites ===")
+    // =========================================================================
+
+    mut people [Point] = {Point{x: 1, y: 2}, Point{x: 3, y: 4}, Point{x: 5, y: 6}}
+    mut coord_total int = 0
+    for_each p in people {
+        coord_total += p.x + p.y
+    }
+    if coord_total == 21 && people[1].y == 4 {
+        println("  [PASS] array of structs: build, iterate, index")
+        passed++
+    } otherwise {
+        println("  [FAIL] array of structs: total=${coord_total}")
+        failed++
+    }
+
+    mut bag Bag = Bag{nums: {10, 20, 30}, lookup: {"x": 1}}
+    arrays.append(bag.nums, 40)
+    bag.lookup["y"] = 2
+    if len(bag.nums) == 4 && bag.nums[3] == 40 && len(bag.lookup) == 2 && bag.lookup["y"] == 2 {
+        println("  [PASS] struct with array and map fields: mutate both")
+        passed++
+    } otherwise {
+        println("  [FAIL] struct container fields: nums=${bag.nums}")
+        failed++
+    }
+
+    mut groups map[string:[int]] = {"evens": {2, 4}, "odds": {1, 3, 5}}
+    if len(groups["odds"]) == 3 && groups["evens"][1] == 4 {
+        println("  [PASS] map of arrays: index into a value array")
+        passed++
+    } otherwise {
+        println("  [FAIL] map of arrays")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 38. char ↔ int ===")
+    // =========================================================================
+
+    if int('A') == 65 {
+        println("  [PASS] int('A') = 65")
+        passed++
+    } otherwise {
+        println("  [FAIL] int('A'): got ${int('A')}")
+        failed++
+    }
+    if char(97) == 'a' {
+        println("  [PASS] char(97) = 'a'")
+        passed++
+    } otherwise {
+        println("  [FAIL] char(97)")
+        failed++
+    }
+    mut ch_round char = char(int('Z') + 1)
+    if ch_round == '[' {
+        println("  [PASS] char(int('Z') + 1) = '['")
+        passed++
+    } otherwise {
+        println("  [FAIL] char/int round trip: got ${ch_round}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 39. Scoped blocks ===")
+    // =========================================================================
+
+    mut scope_out int = 0
+    if true {
+        mut block_local int = 41
+        scope_out = block_local + 1
+    }
+    if scope_out == 42 {
+        println("  [PASS] a value computed in an if-block escapes to the outer variable")
+        passed++
+    } otherwise {
+        println("  [FAIL] if-block escape: got ${scope_out}")
+        failed++
+    }
+
+    mut sibling_sum int = 0
+    if true {
+        mut tmp int = 10
+        sibling_sum += tmp
+    }
+    if true {
+        mut tmp int = 5
+        sibling_sum += tmp
+    }
+    if sibling_sum == 15 {
+        println("  [PASS] a local name is reusable across sibling blocks")
+        passed++
+    } otherwise {
+        println("  [FAIL] sibling block scope: got ${sibling_sum}")
+        failed++
+    }
+
+    mut last_square int = -1
+    for i in range(0, 4) {
+        mut square int = i * i
+        last_square = square
+    }
+    if last_square == 9 {
+        println("  [PASS] a loop-body local is rebound each iteration")
+        passed++
+    } otherwise {
+        println("  [FAIL] loop-body local: got ${last_square}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 40. const local declarations ===")
+    // =========================================================================
+
+    const LOCAL_LIMIT int = 10
+    const LOCAL_LABEL string = "limit"
+    mut const_acc int = 0
+    for i in range(0, LOCAL_LIMIT) {
+        const_acc += 1
+    }
+    if const_acc == 10 && LOCAL_LABEL == "limit" {
+        println("  [PASS] const locals usable as loop bound and value")
+        passed++
+    } otherwise {
+        println("  [FAIL] const locals: acc=${const_acc}")
+        failed++
+    }
+
+    const LOCAL_SIZE int = 3
+    const fixed [int, LOCAL_SIZE] = {7, 8, 9}
+    if len(fixed) == LOCAL_SIZE && fixed[2] == 9 {
+        println("  [PASS] const local sizes a fixed-length array")
+        passed++
+    } otherwise {
+        println("  [FAIL] const-sized array")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 41. Higher-order functions ===")
+    // =========================================================================
+
+    mut hof_src [int] = {1, 2, 3, 4}
+    mut hof_mapped [int] = arrays.map(hof_src, ()triple)
+    if len(hof_mapped) == 4 && hof_mapped[0] == 3 && hof_mapped[3] == 12 {
+        println("  [PASS] arrays.map with a function reference")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.map: got ${hof_mapped}")
+        failed++
+    }
+
+    mut hof_kept [int] = arrays.filter(hof_src, ()gt_two)
+    if len(hof_kept) == 2 && hof_kept[0] == 3 && hof_kept[1] == 4 {
+        println("  [PASS] arrays.filter with a predicate reference")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.filter: got ${hof_kept}")
+        failed++
+    }
+
+    mut hof_total int = arrays.reduce(hof_src, 0, ()sum2)
+    if hof_total == 10 {
+        println("  [PASS] arrays.reduce sums to 10")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.reduce: got ${hof_total}")
+        failed++
+    }
+
+    mut hof_all [int] = {3, 4, 5}
+    if arrays.any(hof_src, ()gt_two) && arrays.all(hof_all, ()gt_two) {
+        println("  [PASS] arrays.any / arrays.all with predicate references")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.any / arrays.all")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 42. @strings (extended) ===")
+    // =========================================================================
+
+    if strings.to_title("hello WORLD") == "Hello World" {
+        println("  [PASS] strings.to_title(\"hello WORLD\") = \"Hello World\"")
+        passed++
+    } otherwise {
+        println("  [FAIL] to_title: got \"${strings.to_title("hello WORLD")}\"")
+        failed++
+    }
+
+    if strings.to_snake_case("camelCase") == "camel_case" {
+        println("  [PASS] strings.to_snake_case(\"camelCase\") = \"camel_case\"")
+        passed++
+    } otherwise {
+        println("  [FAIL] to_snake_case: got \"${strings.to_snake_case("camelCase")}\"")
+        failed++
+    }
+
+    if strings.to_camel_case("user_id_value") == "userIdValue" {
+        println("  [PASS] strings.to_camel_case(\"user_id_value\") = \"userIdValue\"")
+        passed++
+    } otherwise {
+        println("  [FAIL] to_camel_case: got \"${strings.to_camel_case("user_id_value")}\"")
+        failed++
+    }
+
+    if strings.index_of("hello world", "world") == 6 && strings.last_index_of("a.b.c", ".") == 3 {
+        println("  [PASS] strings.index_of / last_index_of")
+        passed++
+    } otherwise {
+        println("  [FAIL] index_of / last_index_of")
+        failed++
+    }
+
+    if strings.count("banana", "a") == 3 {
+        println("  [PASS] strings.count(\"banana\", \"a\") = 3")
+        passed++
+    } otherwise {
+        println("  [FAIL] strings.count: got ${strings.count("banana", "a")}")
+        failed++
+    }
+
+    if strings.slice("hello world", 0, 5) == "hello" && strings.char_at("hello", 1) == 'e' {
+        println("  [PASS] strings.slice / char_at")
+        passed++
+    } otherwise {
+        println("  [FAIL] slice / char_at")
+        failed++
+    }
+
+    mut ws_parts [string] = strings.split_whitespace("  a  b   c ")
+    if len(ws_parts) == 3 && ws_parts[2] == "c" {
+        println("  [PASS] strings.split_whitespace collapses runs")
+        passed++
+    } otherwise {
+        println("  [FAIL] split_whitespace: len=${len(ws_parts)}")
+        failed++
+    }
+
+    if strings.equal_fold("Grand", "GRAND") && !strings.equal_fold("a", "b") {
+        println("  [PASS] strings.equal_fold is case-insensitive")
+        passed++
+    } otherwise {
+        println("  [FAIL] equal_fold")
+        failed++
+    }
+
+    if strings.remove_prefix("unhappy", "un") == "happy" && strings.remove_suffix("test.gray", ".gray") == "test" {
+        println("  [PASS] strings.remove_prefix / remove_suffix")
+        passed++
+    } otherwise {
+        println("  [FAIL] remove_prefix / remove_suffix")
+        failed++
+    }
+
+    if strings.is_digit('7') && strings.is_alpha('x') && strings.is_alnum('9') &&
+       strings.is_whitespace(' ') && strings.is_upper('A') && strings.is_lower('a') {
+        println("  [PASS] strings character classification helpers")
+        passed++
+    } otherwise {
+        println("  [FAIL] strings classification helpers")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 43. @arrays (extended) ===")
+    // =========================================================================
+
+    mut ax [int] = {10, 20, 30, 20}
+    if arrays.index_of(ax, 20) == 1 && arrays.count(ax, 20) == 2 {
+        println("  [PASS] arrays.index_of / count")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.index_of / count")
+        failed++
+    }
+
+    mut eq_a [int] = {1, 2, 3}
+    mut eq_b [int] = {1, 2, 3}
+    mut eq_c [int] = {1, 2, 4}
+    if arrays.is_equal(eq_a, eq_b) && !arrays.is_equal(eq_a, eq_c) {
+        println("  [PASS] arrays.is_equal")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.is_equal")
+        failed++
+    }
+
+    mut slice_src [int] = {0, 1, 2, 3, 4}
+    mut cat_a [int] = {1, 2}
+    mut cat_b [int] = {3, 4}
+    mut a_slice [int] = arrays.slice(slice_src, 1, 4)
+    mut a_cat [int] = arrays.concat(cat_a, cat_b)
+    if len(a_slice) == 3 && a_slice[0] == 1 && len(a_cat) == 4 && a_cat[3] == 4 {
+        println("  [PASS] arrays.slice / concat")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.slice / concat")
+        failed++
+    }
+
+    mut flat_src [[int]] = {{1, 2}, {3, 4}}
+    mut a_flat [int] = arrays.flatten(flat_src)
+    if len(a_flat) == 4 && a_flat[0] == 1 && a_flat[3] == 4 {
+        println("  [PASS] arrays.flatten({{1,2},{3,4}}) = {1,2,3,4}")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.flatten: got ${a_flat}")
+        failed++
+    }
+
+    mut a_mut [int] = {2, 3}
+    arrays.prepend(a_mut, 1)
+    arrays.insert_at(a_mut, 3, 9)
+    arrays.remove(a_mut, 9)
+    arrays.remove_at(a_mut, 0)
+    if a_mut[0] == 2 && a_mut[1] == 3 && len(a_mut) == 2 {
+        println("  [PASS] arrays.prepend / insert_at / remove / remove_at")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays mutation ops: got ${a_mut}")
+        failed++
+    }
+
+    if arrays.get_first(ax) == 10 && arrays.get_last(ax) == 20 {
+        println("  [PASS] arrays.get_first / get_last")
+        passed++
+    } otherwise {
+        println("  [FAIL] arrays.get_first / get_last")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 44. @maps (extended) ===")
+    // =========================================================================
+
+    mut mx map[string:int] = {"a": 1, "b": 2}
+    mut my map[string:int] = {"b": 2, "a": 1}
+    if maps.is_equal(mx, my) && maps.contains_value(mx, 2) {
+        println("  [PASS] maps.is_equal / contains_value")
+        passed++
+    } otherwise {
+        println("  [FAIL] maps.is_equal / contains_value")
+        failed++
+    }
+
+    if maps.get_or_default(mx, "a", 0) == 1 && maps.get_or_default(mx, "z", -1) == -1 {
+        println("  [PASS] maps.get_or_default")
+        passed++
+    } otherwise {
+        println("  [FAIL] maps.get_or_default")
+        failed++
+    }
+
+    mut merge_a map[string:int] = {"a": 1}
+    mut merge_b map[string:int] = {"b": 2}
+    mut mmerge map[string:int] = maps.merge(merge_a, merge_b)
+    maps.remove_key(mmerge, "a")
+    if len(mmerge) == 1 && maps.has_key(mmerge, "b") {
+        println("  [PASS] maps.merge / remove_key")
+        passed++
+    } otherwise {
+        println("  [FAIL] maps.merge / remove_key: ${mmerge}")
+        failed++
+    }
+
+    mut mclear map[string:int] = {"x": 1, "y": 2}
+    maps.clear(mclear)
+    if len(mclear) == 0 {
+        println("  [PASS] maps.clear empties the map")
+        passed++
+    } otherwise {
+        println("  [FAIL] maps.clear: len=${len(mclear)}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 45. @math (extended) ===")
+    // =========================================================================
+
+    if math.round(2.5) == 3.0 && math.trunc(2.9) == 2.0 {
+        println("  [PASS] math.round / trunc")
+        passed++
+    } otherwise {
+        println("  [FAIL] math.round / trunc")
+        failed++
+    }
+
+    if math.gcd(12, 8) == 4 && math.lcm(4, 6) == 12 {
+        println("  [PASS] math.gcd(12,8) = 4, math.lcm(4,6) = 12")
+        passed++
+    } otherwise {
+        println("  [FAIL] math.gcd / lcm")
+        failed++
+    }
+
+    if math.clamp(15, 0, 10) == 10 && math.clamp(-3, 0, 10) == 0 {
+        println("  [PASS] math.clamp bounds both ends")
+        passed++
+    } otherwise {
+        println("  [FAIL] math.clamp")
+        failed++
+    }
+
+    if math.factorial(5) == 120 && math.log2(8.0) == 3.0 {
+        println("  [PASS] math.factorial(5) = 120, math.log2(8.0) = 3.0")
+        passed++
+    } otherwise {
+        println("  [FAIL] math.factorial / log2")
+        failed++
+    }
+
+    if math.PI > 3.14159 && math.PI < 3.1416 && math.TAU > 6.28 {
+        println("  [PASS] math.PI / math.TAU constants")
+        passed++
+    } otherwise {
+        println("  [FAIL] math constants: PI=${math.PI}")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 46. @json (decode / round-trip / nested) ===")
+    // =========================================================================
+
+    mut jd_map, jd_err = json.decode("{\"x\":\"1\",\"y\":\"two\"}")
+    if jd_err == nil && jd_map["x"] == "1" && jd_map["y"] == "two" {
+        println("  [PASS] json.decode into a string-valued map")
+        passed++
+    } otherwise {
+        println("  [FAIL] json.decode: err or wrong values")
+        failed++
+    }
+
+    mut _, jd_bad_err = json.decode("{not json}")
+    if jd_bad_err != nil {
+        println("  [PASS] json.decode reports an error on malformed input")
+        passed++
+    } otherwise {
+        println("  [FAIL] json.decode should fail on \"{not json}\"")
+        failed++
+    }
+
+    mut jrt_src map[string:string] = {"name": "gray", "kind": "lang"}
+    mut jrt_txt string = json.encode(jrt_src)
+    mut jrt_back, jrt_back_err = json.decode(jrt_txt)
+    if jrt_back_err == nil && jrt_back["name"] == "gray" && jrt_back["kind"] == "lang" {
+        println("  [PASS] json encode → decode round-trip")
+        passed++
+    } otherwise {
+        println("  [FAIL] json round-trip: \"${jrt_txt}\"")
+        failed++
+    }
+
+    if json.is_valid("{\"a\":{\"b\":1},\"c\":[1,2,3]}") && !json.is_valid("{\"a\":}") {
+        println("  [PASS] json.is_valid on a nested object")
+        passed++
+    } otherwise {
+        println("  [FAIL] json.is_valid nested")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 47. @strconv (error slot) ===")
+    // =========================================================================
+
+    mut sc_n, sc_e = strconv.to_int("123")
+    if sc_e == nil && sc_n == 123 {
+        println("  [PASS] strconv.to_int(\"123\") = 123, nil error")
+        passed++
+    } otherwise {
+        println("  [FAIL] strconv.to_int valid: n=${sc_n}")
+        failed++
+    }
+
+    mut _, sc_e2 = strconv.to_int("not-a-number")
+    if sc_e2 != nil {
+        println("  [PASS] strconv.to_int reports an error on invalid input")
+        passed++
+    } otherwise {
+        println("  [FAIL] strconv.to_int(\"not-a-number\") should error")
+        failed++
+    }
+
+    mut _, sc_ef = strconv.to_float("3.5x")
+    if sc_ef != nil {
+        println("  [PASS] strconv.to_float reports an error on invalid input")
+        passed++
+    } otherwise {
+        println("  [FAIL] strconv.to_float(\"3.5x\") should error")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 48. @csv ===")
+    // =========================================================================
+
+    mut csv_rows [[string]] = csv.parse("name,age\nalice,30\nbob,25")
+    if len(csv_rows) == 3 && csv_rows[1][0] == "alice" && csv_rows[2][1] == "25" {
+        println("  [PASS] csv.parse splits rows and fields")
+        passed++
+    } otherwise {
+        println("  [FAIL] csv.parse: ${len(csv_rows)} rows")
+        failed++
+    }
+
+    mut csv_head [string] = csv.headers(csv_rows)
+    if len(csv_head) == 2 && csv_head[0] == "name" && csv_head[1] == "age" {
+        println("  [PASS] csv.headers returns the first row")
+        passed++
+    } otherwise {
+        println("  [FAIL] csv.headers: got ${csv_head}")
+        failed++
+    }
+
+    mut csv_in [[string]] = {{"a", "b"}, {"1", "2"}}
+    mut csv_out string = csv.encode(csv_in)
+    if strings.contains(csv_out, "a,b") && strings.contains(csv_out, "1,2") {
+        println("  [PASS] csv.encode joins fields with commas")
+        passed++
+    } otherwise {
+        println("  [FAIL] csv.encode: got \"${csv_out}\"")
+        failed++
+    }
+
+    // =========================================================================
+    println("")
+    println("=== 49. @runtime ===")
+    // =========================================================================
+
+    if runtime.version() != "" {
+        println("  [PASS] runtime.version() returns a non-empty build string")
+        passed++
+    } otherwise {
+        println("  [FAIL] runtime.version() is empty")
+        failed++
+    }
+
+    if runtime.call_limit() > 0 && runtime.call_depth() >= 1 {
+        println("  [PASS] runtime.call_limit / call_depth report sane values")
+        passed++
+    } otherwise {
+        println("  [FAIL] runtime.call_limit / call_depth")
+        failed++
+    }
+
+    if runtime.total_usage() == runtime.arena_usage() + runtime.heap_usage() {
+        println("  [PASS] runtime.total_usage = arena_usage + heap_usage")
+        passed++
+    } otherwise {
+        println("  [FAIL] runtime usage invariant")
+        failed++
+    }
 
     // =========================================================================
     println("")

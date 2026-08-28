@@ -1,8 +1,18 @@
+/*
+ * Test: eprintln accepts every primitive type without a format string and
+ * returns control (output goes to stderr, so this test only asserts that
+ * the calls run to completion).
+ */
+
 do main() {
     eprintln(42)
     eprintln(100)
     eprintln(3.14)
     eprintln(true)
     eprintln(false)
+    eprintln('x')
     eprintln("done")
+
+    println("Results: 1 passed, 0 failed")
+    println("ALL TESTS PASSED")
 }

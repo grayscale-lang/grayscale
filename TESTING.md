@@ -21,10 +21,11 @@ Unit tests validate individual compiler components:
 - **Lexer Tests** (`grayc/tests/test_lexer.c`): Token scanning, keyword recognition, literal formats, comment handling, attribute tokens, operator disambiguation, and edge cases.
 - **Parser Tests** (`grayc/tests/test_parser.c`): Declarations, imports, control flow, structs, enums, function references, attributes, map/array types, visibility, grouped params, compound assignments, and parser error codes.
 - **Typechecker Tests** (`grayc/tests/test_typechecker.c`): Scope management, type resolution, expression inference, built-in return types, error detection, enum/map type resolution, bigint types, and error code coverage.
+- **Module Table Tests** (`grayc/tests/test_module_table.c`): Per-module symbol table — scope creation, file-to-module attribution, qualified/unqualified resolution, visibility, aliases, and name mangling.
 - **Util Tests** (`grayc/tests/test_util.c`): Arena allocator (create, alloc, alignment, multi-block, oversized, strdup/strndup), growable buffer (create, append, growth, formatting, indentation), and scope (lookup, define/update, hash rebuild, many symbols, immutability).
 - **Runtime Tests** (`grayc/tests/test_runtime.c`): GrayArena (create, alloc, alignment, multi-block, oversized, reset, usage, scope save/restore, nested scopes), GrayString (lit, new, eq, concat, format, c_string_dup, empty), GrayArray (new, push, growth, set, from, typed macros, copy, multiple element sizes), and GrayMap (new, int/string keys, has, remove, overwrite, clear, insertion order, rehash, copy, float normalization).
 - **Panic Tests** (`grayc/tests/test_panics.c`): Fork-based tests that verify runtime panic codes (P-codes) are correctly emitted. Covers sized arithmetic overflow, encoding (base64/hex), array/string bounds, math domain errors, strconv, random, strings, builtins, IO, bigint casts, and bigint parsing.
-- **Stdlib Tests** (`grayc/tests/test_stdlib.c`): Unit tests for 7 stdlib modules — strings (case, trim, search, transform, split/join, chars, classification), arrays (modify, access, query, transform, computation, sort), maps (keys/values, membership, equality, merge), math (arithmetic, rounding, powers, logs, trig, properties, factorial/gcd/lcm/prime), fmt (padding, center, hex/binary/octal, float formatting), encoding (base64, hex, URL encode/decode with roundtrip), and strconv (parsing, result variants, formatting, query).
+- **Stdlib Tests** (`grayc/tests/test_stdlib.c`): Unit tests for 10 stdlib modules — strings (case, trim, search, transform, split/join, chars, classification), arrays (modify, access, query, transform, computation, sort), maps (keys/values, membership, equality, merge), math (arithmetic, rounding, powers, logs, trig, properties, factorial/gcd/lcm/prime), fmt (padding, center, hex/binary/octal, float formatting), encoding (base64, hex, URL encode/decode with roundtrip), strconv (parsing, result variants, formatting, query), json (encode/decode, validation, pretty-printing, result variants, roundtrip), io (file read/write, append, line/byte IO, directories, path manipulation, result variants), and regex (validation, match, find/find_all, replace, split, result variants).
 
 ### End-to-End Tests
 
@@ -34,13 +35,14 @@ E2E tests (`grayc/tests/test_codegen.c`) compile Grayscale programs, run them, a
 
 ```bash
 # From repo root
-make test-unit        # unit tests (lexer + parser + typechecker + util + runtime + panics + stdlib)
+make test-unit        # unit tests (lexer + parser + typechecker + module_table + util + runtime + panics + stdlib)
 make test-e2e         # e2e codegen tests
 
 # Individual test suites (from grayc/)
 ./grayc/tests/test_lexer
 ./grayc/tests/test_parser
 ./grayc/tests/test_typechecker
+./grayc/tests/test_module_table
 ./grayc/tests/test_util
 ./grayc/tests/test_runtime
 ./grayc/tests/test_panics

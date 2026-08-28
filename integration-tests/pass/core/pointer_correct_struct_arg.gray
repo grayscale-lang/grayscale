@@ -1,3 +1,8 @@
+/*
+ * Test: passing addr() of a struct to a `^Point` parameter lets the
+ * callee mutate the caller's struct in place.
+ */
+
 const Point struct {
     x int
     y int
@@ -5,10 +10,27 @@ const Point struct {
 
 do mutate(p ^Point) {
     p.x = 99
+    p.y = p.y + 1
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut p Point = Point{x: 1, y: 2}
     mutate(addr(p))
-    print(p.x)
+
+    if p.x == 99 && p.y == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] callee mutation not visible: x=${p.x} y=${p.y}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

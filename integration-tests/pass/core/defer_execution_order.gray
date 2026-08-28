@@ -1,0 +1,107 @@
+/*
+ * Test: defer (alias of ensure) execution semantics —
+ *  - multiple defers in one function run in last-in-first-out order
+ *  - a deferred call's arguments are evaluated when it fires, not when
+ *    it is registered
+ *  - defers fire before control returns to the caller, on both the
+ *    normal-exit and early-return paths
+ *  - each activation's defers are independent across nested calls
+ */
+
+import @arrays
+
+mut trace [int] = {}
+
+do rec(n int) {
+    arrays.append(trace, n)
+}
+
+do lifo() {
+    defer rec(1)
+    defer rec(2)
+    defer rec(3)
+    rec(0)
+}
+
+do late_capture() {
+    mut x int = 1
+    defer rec(x)
+    x = 99
+}
+
+do early(flag bool) {
+    defer rec(50)
+    if flag {
+        return
+    }
+    rec(51)
+}
+
+do nested_inner() {
+    defer rec(200)
+    rec(100)
+}
+
+do nested_outer() {
+    defer rec(300)
+    nested_inner()
+    rec(150)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    trace = {}
+    lifo()
+    if len(trace) == 4 && trace[0] == 0 && trace[1] == 3 && trace[2] == 2 && trace[3] == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] defers did not run in LIFO order")
+        failed += 1
+    }
+
+    trace = {}
+    late_capture()
+    if len(trace) == 1 && trace[0] == 99 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] deferred argument captured too early: ${trace[0]}")
+        failed += 1
+    }
+
+    trace = {}
+    early(true)
+    if len(trace) == 1 && trace[0] == 50 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] defer on early return")
+        failed += 1
+    }
+
+    trace = {}
+    early(false)
+    if len(trace) == 2 && trace[0] == 51 && trace[1] == 50 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] defer on normal exit")
+        failed += 1
+    }
+
+    trace = {}
+    nested_outer()
+    // inner: 100 then 200 (its defer), back in outer: 150, then outer defer 300
+    if len(trace) == 4 && trace[0] == 100 && trace[1] == 200 && trace[2] == 150 && trace[3] == 300 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] nested activations share a defer stack")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

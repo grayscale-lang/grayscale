@@ -1017,6 +1017,15 @@ Variables declared this way:
 - Can be reassigned after declaration
 - Are scoped to their containing block
 
+A declaration with a type annotation but no value is allowed and zero-initializes the variable (`0`, `0.0`, `""`, `false`, and so on). Because a dropped `= value` is easy to miss, the compiler emits `W1004` in that case:
+
+```gray
+count int          // warning[W1004]: 'count' declared with no value — defaults to 0
+count int = 0      // no warning; the zero value is explicit
+```
+
+Like all warnings, `W1004` can be suppressed with `-q W1004` or `-q all`. `const` declarations must always have a value (`E2011`).
+
 ### 4.2 Constant Declarations
 
 Constants are declared using the `const` keyword:

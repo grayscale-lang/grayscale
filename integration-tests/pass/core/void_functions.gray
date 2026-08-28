@@ -1,129 +1,126 @@
 /*
- * Test: Void functions
- * Tests void function behavior including early return, ensure, and nesting
+ * Test: void functions across every control-flow exit path — early
+ * return, ensure, loops, when/is, nesting, as_long_as. Each function
+ * records a side effect so the exit path is observable, not just
+ * "it compiled".
  */
 
+import @arrays
 
-do main() {
-    // Test 1: Basic void function
-    basicVoid()
+mut hits [int] = {}
 
-    // Test 2: Void with early return
-    earlyReturn(true)
-    earlyReturn(false)
-
-    // Test 3: Void with ensure
-    withEnsure()
-
-    // Test 4: Void with ensure AND early return
-    ensureWithEarlyReturn(true)
-    ensureWithEarlyReturn(false)
-
-    // Test 5: Return in for loop
-    returnInLoop()
-
-    // Test 6: Return in when/is
-    returnInWhen(1)
-    returnInWhen(2)
-    returnInWhen(99)
-
-    // Test 7: Nested void calls
-    outer()
-
-    // Test 8: Multiple return paths
-    multipleReturns(1)
-    multipleReturns(2)
-    multipleReturns(3)
-
-    // Test 9: Return in as_long_as loop
-    returnInWhile()
-
-    // Test 10: Deeply nested return
-    deeplyNested(true)
-    deeplyNested(false)
-
-    println("ALL TESTS PASSED")
+do note(n int) {
+    arrays.append(hits, n)
 }
 
-do basicVoid() {
-    mut x int = 1
+do basic_void() {
+    note(1)
 }
 
-do earlyReturn(shouldReturn bool) {
-    if shouldReturn {
+do early_return(should_return bool) {
+    if should_return {
+        note(2)
         return
     }
-    mut x int = 1
+    note(3)
 }
 
-do withEnsure() {
-    ensure cleanup()
-    mut x int = 1
+do with_ensure() {
+    ensure note(4)
+    note(5)
 }
 
-do ensureWithEarlyReturn(shouldReturn bool) {
-    ensure cleanup()
-    if shouldReturn {
+do ensure_with_early_return(should_return bool) {
+    ensure note(6)
+    if should_return {
         return
     }
-    mut x int = 1
+    note(7)
 }
 
-do returnInLoop() {
+do return_in_loop() {
     for i in range(0, 3) {
+        note(10 + i)
         if i == 1 {
             return
         }
     }
 }
 
-do returnInWhen(val int) {
+do return_in_when(val int) {
     when val {
-        is 1 { return }
-        is 2 { return }
-        default { return }
+        is 1 { note(20) return }
+        is 2 { note(21) return }
+        default { note(22) return }
     }
 }
 
-do outer() {
-    inner()
-}
-
-do inner() {
+do inner_v() {
+    note(30)
     return
 }
 
-do multipleReturns(path int) {
-    if path == 1 {
-        return
-    }
-    if path == 2 {
-        return
-    }
+do outer_v() {
+    inner_v()
+    note(31)
 }
 
-do returnInWhile() {
+do return_in_while() {
     mut count int = 0
     as_long_as count < 10 {
         if count == 2 {
+            note(40)
             return
         }
         count++
     }
 }
 
-do deeplyNested(flag bool) {
-    if flag {
-        for i in range(0, 3) {
-            if i == 1 {
-                return
-            }
-        }
-    } otherwise {
-        return
-    }
-}
+do main() {
+    mut passed int = 0
+    mut failed int = 0
 
-do cleanup() {
-    mut x int = 1
+    basic_void()
+    early_return(true)
+    early_return(false)
+    with_ensure()
+    ensure_with_early_return(true)
+    ensure_with_early_return(false)
+    return_in_loop()
+    return_in_when(1)
+    return_in_when(2)
+    return_in_when(99)
+    outer_v()
+    return_in_while()
+
+    // basic:1  early(t):2  early(f):3  ensure:5,4  ewer(t):6  ewer(f):7,6
+    // loop:10,11  when:20 21 22  outer:30,31  while:40
+    mut want [int] = {1, 2, 3, 5, 4, 6, 7, 6, 10, 11, 20, 21, 22, 30, 31, 40}
+
+    if len(hits) == len(want) {
+        passed += 1
+    } otherwise {
+        println("[FAIL] hit count: got ${len(hits)}, want ${len(want)}")
+        failed += 1
+    }
+
+    mut ordered bool = len(hits) == len(want)
+    for_each i, h in hits {
+        if i < len(want) && h != want[i] {
+            ordered = false
+        }
+    }
+    if ordered {
+        passed += 1
+    } otherwise {
+        println("[FAIL] exit-path order does not match")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

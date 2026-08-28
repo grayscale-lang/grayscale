@@ -1,18 +1,30 @@
-/* Test: Named return value with variable modification
- * Expected: passes with output "25"
- */
-
+/* Test: a named return variable can be reassigned and conditionally
+ * updated in the function body before it is returned. */
 
 do calculate() -> (result int) {
     mut result int = 10
-    result = result * 2
+    result = result * 2      // 20
     if result > 15 {
-        result = result + 5
+        result = result + 5  // 25
     }
     return result
 }
 
 do main() {
-    println(calculate())
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    if calculate() == 25 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] modified named return: ${calculate()}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

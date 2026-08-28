@@ -1,0 +1,87 @@
+/*
+ * cast_array_narrow_element.gray - cast(arr, [T]) where T is narrower than
+ * 8 bytes (u8, u16, i16, i32, byte). The result is stored packed, so index
+ * and for_each reads must use the matching element width, not int64_t.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut ints [int] = {1, 2, 3}
+
+    // [int] -> [u8], indexed
+    mut bytes [u8] = cast(ints, [u8])
+    if len(bytes) == 3 && bytes[0] == 1 && bytes[1] == 2 && bytes[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u8] indexing: ${bytes[0]} ${bytes[1]} ${bytes[2]}")
+        failed += 1
+    }
+
+    // [int] -> [u8], for_each
+    mut sum int = 0
+    for_each x in bytes { sum += cast(x, int) }
+    if sum == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u8] for_each sum: ${sum}")
+        failed += 1
+    }
+
+    // [int] -> [u16]
+    mut words [u16] = cast(ints, [u16])
+    if words[0] == 1 && words[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [u16] indexing")
+        failed += 1
+    }
+
+    // [i64] -> [i32], including a value that needs more than one byte
+    mut big [i64] = {100, 200, -300}
+    mut small [i32] = cast(big, [i32])
+    if small[0] == 100 && small[1] == 200 && small[2] == -300 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [i64] -> [i32] indexing: ${small[0]} ${small[1]} ${small[2]}")
+        failed += 1
+    }
+
+    // [int] -> [byte]
+    mut bs [byte] = cast(ints, [byte])
+    if bs[1] == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [byte] indexing: ${bs[1]}")
+        failed += 1
+    }
+
+    // compound assignment on a packed element must read it at the real width,
+    // not int64_t (which would over-read the buffer and corrupt the operand)
+    mut cnt [u8] = cast(ints, [u8])
+    cnt[2] += 10
+    cnt[0] *= 4
+    if cnt[0] == 4 && cnt[1] == 2 && cnt[2] == 13 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [u8] compound assignment: ${cnt[0]} ${cnt[1]} ${cnt[2]}")
+        failed += 1
+    }
+
+    mut ws [u16] = cast(ints, [u16])
+    ws[1] += 1000
+    if ws[0] == 1 && ws[1] == 1002 && ws[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [u16] compound assignment: ${ws[0]} ${ws[1]} ${ws[2]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

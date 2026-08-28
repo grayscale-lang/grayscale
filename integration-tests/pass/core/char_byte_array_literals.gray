@@ -1,12 +1,41 @@
+/*
+ * Test: [char] and [byte] array literals hold the expected element
+ * values and interoperate with strings.from_chars.
+ */
+
 import @strings
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut chars [char] = {'H', 'i', '!'}
-    mut s string = strings.from_chars(chars)
-    println(s)
+    if chars[0] == 'H' && chars[2] == '!' && len(chars) == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [char] literal elements")
+        failed += 1
+    }
+
+    if strings.from_chars(chars) == "Hi!" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] from_chars([char])")
+        failed += 1
+    }
 
     mut data [byte] = {0x48, 0x69, 0x21}
-    println(data[0])
-    println(data[1])
-    println(data[2])
+    if data[0] == 0x48 && data[1] == 0x69 && data[2] == 0x21 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [byte] literal elements")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

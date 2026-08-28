@@ -349,6 +349,18 @@ do main() {
         failed += 1
     }
 
+    // is_equal - order-sensitive element comparison
+    mut eq_a [int] = {1, 2, 3}
+    mut eq_b [int] = {1, 2, 3}
+    mut eq_c [int] = {1, 3, 2}
+    if arrays.is_equal(eq_a, eq_b) && !arrays.is_equal(eq_a, eq_c) {
+        println("  [PASS] is_equal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_equal")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

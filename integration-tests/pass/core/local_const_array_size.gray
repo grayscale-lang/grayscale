@@ -1,11 +1,35 @@
+/*
+ * Test: a fixed-size array can take its length from a function-local
+ * const or a file-scope const.
+ */
+
 const G int = 3
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     const N int = 5
     const arr [int, N] = {1, 2, 3, 4, 5}
-    println(arr[0])
-    println(arr[4])
+    if arr[0] == 1 && arr[4] == 5 && len(arr) == 5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] local const size")
+        failed += 1
+    }
 
     const global_arr [int, G] = {10, 20, 30}
-    println(global_arr[2])
+    if global_arr[2] == 30 && len(global_arr) == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] file-scope const size")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

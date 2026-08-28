@@ -129,6 +129,29 @@ do main() {
         failed += 1
     }
 
+    // time.tick() + time.elapsed_ms(): a short sleep registers >= 1ms
+    mut mark int = time.tick()
+    sleep_ms(5)
+    mut el int = time.elapsed_ms(mark)
+    if el >= 1 {
+        println("  [PASS] tick / elapsed_ms")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] tick / elapsed_ms: got ${el}")
+        failed += 1
+    }
+
+    // time.weekday(): 0 = Sunday. 2024-01-01 is a Monday (1), the two following
+    // days Tuesday (2) and Wednesday (3). Noon-UTC timestamps so the local
+    // calendar day is stable across CI (UTC) and other timezones.
+    if time.weekday(1704110400) == 1 && time.weekday(1704196800) == 2 && time.weekday(1704283200) == 3 {
+        println("  [PASS] weekday")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] weekday")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

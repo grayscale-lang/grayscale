@@ -1,0 +1,25 @@
+const Point struct {
+    x int
+    y int
+}
+
+mut ORIGIN Point = Point{x: 3, y: 4}
+
+// addr() on a module-level struct's field, resolved inside the declaring
+// module. The bare `ORIGIN` must resolve to its module-mangled symbol so
+// the field type comes out ^int, not ^unknown.
+do field_ptr_annotated() -> int {
+    mut p ^int = addr(ORIGIN.x)
+    return p^
+}
+
+do field_ptr_inferred() -> int {
+    mut p = addr(ORIGIN.y)
+    return p^
+}
+
+do field_write() -> int {
+    mut p ^int = addr(ORIGIN.x)
+    p^ = 99
+    return ORIGIN.x
+}

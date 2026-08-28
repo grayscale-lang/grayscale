@@ -1,15 +1,41 @@
 /*
- * Pass Test: const declarations with arithmetic expressions
- * File-scope const declarations can reference other const variables
- * in arithmetic expressions without triggering a C compilation error.
+ * Pass Test: file-scope const declarations can reference other const
+ * variables in arithmetic expressions, and the folded values are correct.
  */
 
 const BASE int = 10
 const STEP int = 3
 const NEXT int = BASE + STEP
 const PRODUCT int = BASE * STEP
+const NESTED int = (NEXT - STEP) * 2
 
 do main() {
-    println(NEXT)
-    println(PRODUCT)
+    mut passed int = 0
+    mut failed int = 0
+
+    if NEXT == 13 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] NEXT: ${NEXT}")
+        failed += 1
+    }
+    if PRODUCT == 30 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] PRODUCT: ${PRODUCT}")
+        failed += 1
+    }
+    if NESTED == 20 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] NESTED: ${NESTED}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

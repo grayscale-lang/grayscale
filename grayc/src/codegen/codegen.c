@@ -2037,13 +2037,20 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
             return;
         }
     }
-    /* bit_not → ~ ; byte operands must be masked back to 8 bits because
-     * C promotes uint8_t to int before applying ~, yielding a negative
-     * value that fails the runtime byte range check. */
+    /* bit_not → ~ ; operands narrower than C's int (byte, u8, u16) must be
+     * masked back to their width because C promotes them to int before
+     * applying ~, yielding a negative value that fails the runtime range check. */
     if (node->data.prefix.op == TOK_BIT_NOT) {
         GrayType *bn_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.prefix.right) : NULL;
+        const char *bn_mask = NULL;
         if (bn_t && bn_t->kind == TK_BYTE) {
-            emit(codegen, "((uint8_t)(~(");
+            bn_mask = "uint8_t";
+        } else if (bn_t && bn_t->name) {
+            if (strcmp(bn_t->name, "u8") == 0)  bn_mask = "uint8_t";
+            else if (strcmp(bn_t->name, "u16") == 0) bn_mask = "uint16_t";
+        }
+        if (bn_mask) {
+            emit_formatted(codegen, "((%s)(~(", bn_mask);
             emit_expression(codegen, node->data.prefix.right);
             emit(codegen, ")))");
         } else {
@@ -2900,6 +2907,17 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* True when `left` is a map lookup (m[key], or a chained one). Such a lookup
+ * lowers to a statement-expression that yields the stored value by rvalue, so
+ * an outer index on it cannot take its address and must bind it to a temp. */
+static bool index_left_is_map_lookup(CodeGen *codegen, AstNode *left) {
+    if (!left || left->kind != NODE_INDEX_EXPR) return false;
+    GrayType *inner = codegen->type_table
+        ? typetable_get(codegen->type_table, left->data.index_expr.left)
+        : NULL;
+    return inner && inner->kind == TK_MAP;
+}
+
 static void emit_index_expr(CodeGen *codegen, AstNode *node) {
     /* Check if left side is an array (GrayArray) or string */
     GrayType *left_t = codegen->type_table
@@ -2918,6 +2936,11 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             else if (et->kind == TK_STRING) c_elem = "GrayString";
             else if (et->kind == TK_CHAR) c_elem = "int32_t";
             else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+            /* Sized int element types (u8/u16/i32/…) are stored packed by
+             * cast(arr, [T]); reading them with the int64_t fall-through
+             * strides past the buffer. Match the storage width. */
+            else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(elem_tn))
+                c_elem = gray_type_to_c_codegen(codegen, elem_tn);
             else if (et->kind == TK_ARRAY) c_elem = "GrayArray";
             else if (et->kind == TK_MAP) c_elem = "GrayMap";
             else if (et->kind == TK_STRUCT) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
@@ -2993,7 +3016,8 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
-        } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR) {
+        } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR ||
+                   index_left_is_map_lookup(codegen, node->data.index_expr.left)) {
             emit_formatted(codegen, "({ GrayArray _ea = ");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
@@ -3121,6 +3145,15 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         }
 
         emit_formatted(codegen, "} _cr%d.len = _ca%d.len; _cr%d; })", id, id, id);
+        return;
+    }
+
+    /* string-backed enum <-> string: both are GrayString at runtime, so the
+     * cast is a pure reinterpretation with no conversion. */
+    if (codegen_enum_is_string(codegen, target) ||
+        (strcmp(target, "string") == 0 && val_t && val_t->name &&
+         codegen_enum_is_string(codegen, val_t->name))) {
+        emit_expression(codegen, val);
         return;
     }
 
@@ -5021,8 +5054,12 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
     }
     if (arg->kind == NODE_LABEL) {
         const char *vn = arg->data.label.value;
-        if (is_mutable_parameter(codegen, vn)) emit(codegen, vn);
-        else emit_formatted(codegen, "&%s", vn);
+        if (is_mutable_parameter(codegen, vn)) { emit(codegen, vn); return; }
+        /* A bare name that names a module-level declaration is emitted under
+         * its mangled name; resolve it the same way emit_label() does before
+         * taking its address. */
+        const char *resolved = codegen_resolve_ref(codegen, arg, vn);
+        emit_formatted(codegen, "&%s", sanitize_name(resolved != vn ? resolved : vn));
         return;
     }
     if (arg->kind == NODE_INDEX_EXPR) {
@@ -8080,6 +8117,47 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
     emit(codegen, ";\n");
 }
 
+/* Emit the C zero value for c_type (no leading " = "). Used both for
+ * value-less declarations and for file-scope globals whose real
+ * initializer is deferred into the global-init buffer. */
+static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
+    if (strcmp(c_type, "int64_t") == 0) emit(codegen, "0");
+    else if (strcmp(c_type, "double") == 0) emit(codegen, "0.0");
+    else if (strcmp(c_type, "bool") == 0) emit(codegen, "false");
+    else if (strcmp(c_type, "GrayString") == 0) emit(codegen, "(GrayString){\"\", 0}");
+    else if (strcmp(c_type, "GrayArray") == 0) emit(codegen, "(GrayArray){0}");
+    else if (strcmp(c_type, "GrayMap") == 0) emit(codegen, "(GrayMap){0}");
+    else if (strcmp(c_type, "gray_i128") == 0) emit(codegen, "GRAY_I128_ZERO");
+    else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, "GRAY_U128_ZERO");
+    else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, "GRAY_I256_ZERO");
+    else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
+    else emit(codegen, "{0}");
+}
+
+/* True when a scalar/struct variable initializer lowers to a C constant
+ * expression and is therefore legal at file scope. Anything else
+ * (runtime-checked negation, struct literals with array/map fields,
+ * string interpolation, calls, references to other globals) must be
+ * deferred into the global-init buffer, matching emit_vardecl_array()
+ * and emit_vardecl_map(). */
+static bool initializer_is_c_constant(AstNode *value) {
+    if (!value) return true;
+    switch (value->kind) {
+        case NODE_BOOL_VALUE:
+        case NODE_CHAR_VALUE:
+        case NODE_FLOAT_VALUE:
+        case NODE_STRING_VALUE:
+        case NODE_NIL_VALUE:
+            return true;
+        case NODE_INT_VALUE:
+            /* Overflowed literals lower to a from_decimal() runtime call. */
+            return !value->data.int_value.overflow &&
+                   !value->data.int_value.overflow_u64;
+        default:
+            return false;
+    }
+}
+
 static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
                                const char *c_type, const char *type_name) {
     if (node->data.var_decl.value) {
@@ -8212,17 +8290,8 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
         codegen->current_var_type = NULL;
     } else {
         /* Zero-initialize when no value is provided */
-        if (strcmp(c_type, "int64_t") == 0) emit(codegen, " = 0");
-        else if (strcmp(c_type, "double") == 0) emit(codegen, " = 0.0");
-        else if (strcmp(c_type, "bool") == 0) emit(codegen, " = false");
-        else if (strcmp(c_type, "GrayString") == 0) emit(codegen, " = (GrayString){\"\", 0}");
-        else if (strcmp(c_type, "GrayArray") == 0) emit(codegen, " = (GrayArray){0}");
-        else if (strcmp(c_type, "GrayMap") == 0) emit(codegen, " = (GrayMap){0}");
-        else if (strcmp(c_type, "gray_i128") == 0) emit(codegen, " = GRAY_I128_ZERO");
-        else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, " = GRAY_U128_ZERO");
-        else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, " = GRAY_I256_ZERO");
-        else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, " = GRAY_U256_ZERO");
-        else emit(codegen, " = {0}");
+        emit(codegen, " = ");
+        emit_c_zero_value(codegen, c_type);
     }
 
     emit(codegen, ";\n");
@@ -8388,6 +8457,30 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         register_heap_variable(codegen, node->data.var_decl.name, false);
     }
 
+    /* File-scope initializer that isn't a C constant expression: emit a
+     * zero-initialized global and defer the real initializer into the
+     * global-init buffer, the same way emit_vardecl_array/map do. C
+     * rejects non-constant file-scope initializers (runtime-checked
+     * negation, struct literals with array/map fields, string
+     * interpolation, ...). __auto_type needs its initializer inline, so
+     * leave those on the normal path. */
+    if (codegen->indent == 0 && node->data.var_decl.value &&
+        strcmp(c_type, "__auto_type") != 0 &&
+        !initializer_is_c_constant(node->data.var_decl.value)) {
+        emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
+        emit_c_zero_value(codegen, c_type);
+        emit(codegen, ";\n");
+        Buf saved = codegen->output;
+        codegen->output = codegen->global_init;
+        codegen->indent = 1;
+        emit_formatted(codegen, "    %s", sanitize_name(node->data.var_decl.name));
+        emit_vardecl_init(codegen, node, c_type, type_name);
+        codegen->global_init = codegen->output;
+        codegen->output = saved;
+        codegen->indent = 0;
+        return;
+    }
+
     if (!node->data.var_decl.mutable) {
         if (type_name && type_name[0] == '^') {
             /* const pointer: T * const p — the pointer is immutable, not the
@@ -8484,6 +8577,54 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 } else {
                     c_elem = gray_type_to_c_codegen(codegen, left_t->element_type);
                 }
+            }
+            /* m[key][i] = v: the map lookup lowers to a statement-expression
+             * that yields the stored GrayArray by rvalue, so GRAY_ARRAY_SET_AT's
+             * &(arr) is invalid. Bind it to a temp — the GrayArray header is a
+             * view over the stored buffer, so element writes still land there. */
+            if (index_left_is_map_lookup(codegen, left)) {
+                AstNode *idx = node->data.assign.target->data.index_expr.index;
+                TokenType aop_m = node->data.assign.op;
+                bool is_compound_m = (aop_m == TOK_PLUS_ASSIGN || aop_m == TOK_MINUS_ASSIGN || aop_m == TOK_ASTERISK_ASSIGN);
+                const char *sn = left_t->element_type;
+                const char *smin = NULL, *smax = NULL;
+                bool su = false;
+                if (sn) sized_int_bounds(sn, &smin, &smax, &su);
+                const char *sized_fn = (is_compound_m && smax) ? sized_check_func(aop_m, su) : NULL;
+                emit_formatted(codegen, "{ GrayArray _ea = ");
+                emit_expression(codegen, left);
+                emit(codegen, "; ");
+                if (sized_fn) {
+                    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(_ea, %s, ", sized_fn, c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    if (su) {
+                        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                    } else {
+                        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                    }
+                    return;
+                }
+                emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+                emit_expression(codegen, idx);
+                emit(codegen, ", ");
+                if (is_compound_m) {
+                    const char *binop = "+";
+                    if (aop_m == TOK_MINUS_ASSIGN) binop = "-";
+                    else if (aop_m == TOK_ASTERISK_ASSIGN) binop = "*";
+                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else {
+                    emit_expression(codegen, node->data.assign.value);
+                }
+                emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+                return;
             }
             /* Check for array field through struct pointer (rvalue assignability issue).
              * b.items[i] = val where b: ^Bag — the normal member emit produces a
@@ -8582,14 +8723,18 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (smax) {
                     const char *function_name = sized_check_func(aop, su);
                     if (function_name) {
-                        /* GRAY_ARRAY_SET_AT/GET_AT use int64_t (internal storage width) */
+                        /* GET reads sizeof(type) bytes, so it must use the real
+                         * element width — an int64_t read over-runs a packed
+                         * sub-8-byte array (from cast). SET's memcpy length is
+                         * the runtime elem_size, so the wider temp is harmless
+                         * and keeps literal arrays (8-byte slots) safe. */
                         emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
                         emit_expression(codegen, left);
                         emit(codegen, ", int64_t, ");
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(", function_name);
                         emit_expression(codegen, left);
-                        emit(codegen, ", int64_t, ");
+                        emit_formatted(codegen, ", %s, ", c_elem);
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
@@ -10102,6 +10247,10 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
         else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_CHAR) c_elem = "int32_t";
         else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+        /* Sized int element types are stored packed by cast(arr, [T]); the
+         * int64_t fall-through would stride past the buffer. Match storage. */
+        else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(elem_tn))
+            c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_ENUM) {
             c_elem = codegen_enum_is_string(codegen, elem_tn)
                 ? "GrayString" : gray_type_to_c_codegen(codegen, elem_tn);

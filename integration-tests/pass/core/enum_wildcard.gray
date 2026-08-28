@@ -1,3 +1,8 @@
+/*
+ * Test: enum values flow through wildcard (?) generic functions and keep
+ * their identity for equality, inequality, assignment, and interpolation.
+ */
+
 const Color enum {
     RED
     GREEN
@@ -16,23 +21,58 @@ do pick(a ?, b ?, flag bool) -> ? {
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     if identity(Color.RED) == Color.RED {
-        println("eq pass")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] identity preserves enum equality")
+        failed = failed + 1
     }
 
     if identity(Color.RED) != Color.BLUE {
-        println("neq pass")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] identity preserves enum inequality")
+        failed = failed + 1
     }
 
     mut c = identity(Color.GREEN)
     if c == Color.GREEN {
-        println("var pass")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] wildcard result assigned to a variable")
+        failed = failed + 1
     }
 
     if pick(Color.RED, Color.BLUE, true) == Color.RED {
-        println("pick pass")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] pick returns the selected enum")
+        failed = failed + 1
+    }
+
+    if pick(Color.RED, Color.BLUE, false) == Color.BLUE {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] pick returns the other enum")
+        failed = failed + 1
     }
 
     mut c2 = identity(Color.RED)
-    println("interp ${c2}")
+    mut c3 = identity(c2)
+    if c3 == Color.RED {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] wildcard result fed back through identity")
+        failed = failed + 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

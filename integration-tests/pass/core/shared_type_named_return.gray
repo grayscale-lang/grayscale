@@ -1,17 +1,36 @@
-/* Test: Named return values sharing a type
- * Expected: passes with output "John" and "Doe"
+/*
+ * Test: named return values that share a single type annotation
+ * `(first, last string)` are both returned correctly.
  */
 
-
-do getNames() -> (first, last string) {
+do get_names() -> (first, last string) {
     mut first string = "John"
     mut last string = "Doe"
     return first, last
 }
 
 do main() {
-    mut f string, l string = getNames()
-    println(f)
-    println(l)
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut f string, l string = get_names()
+    if f == "John" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] first: ${f}")
+        failed += 1
+    }
+    if l == "Doe" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] last: ${l}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

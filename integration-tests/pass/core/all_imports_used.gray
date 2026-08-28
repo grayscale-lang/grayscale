@@ -1,11 +1,25 @@
-/* Test file for no unused import warning
- * Expected: no warnings (all imports are used)
+/*
+ * Test: a file that uses every import produces no unused-import warning
+ * and the imported function still returns the right value.
  */
 
 import @strings
 
 do main() {
-    // Both std and strings modules are used
-    println(strings.to_upper("hello"))
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    if strings.to_upper("hello") == "HELLO" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] imported strings.to_upper")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

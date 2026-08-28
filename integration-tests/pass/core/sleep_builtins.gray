@@ -1,0 +1,48 @@
+/*
+ * Test: sleep_s / sleep_ms / sleep_ns builtins pause execution for at
+ * least the requested duration and return control to the caller.
+ */
+
+import @time
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // sleep_ms(10) must block for at least ~10ms of wall clock.
+    mut start int = time.now_ns()
+    sleep_ms(10)
+    mut elapsed int = time.now_ns() - start
+    if elapsed >= 8000000 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] sleep_ms(10) returned after only ${elapsed} ns")
+        failed += 1
+    }
+
+    // sleep_ns with a small duration returns without error.
+    mut s2 int = time.now_ns()
+    sleep_ns(500000)
+    if time.now_ns() >= s2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] clock went backwards across sleep_ns")
+        failed += 1
+    }
+
+    // sleep_s(0) is a no-op that still returns control.
+    sleep_s(0)
+    passed += 1
+
+    // A computed (non-literal) duration is accepted.
+    mut d int = 5
+    sleep_ms(d)
+    passed += 1
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

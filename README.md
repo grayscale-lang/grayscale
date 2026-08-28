@@ -135,6 +135,7 @@ Grayscale was previously known as **EZ**. The `ez update` command from older EZ 
 
 - [Language standard](STANDARD.md)
 - [Contributing guide](CONTRIBUTING.md)
+- [Benchmark suite](benchmarks/README.md) — `make benchmark` times real-shaped programs
 
 ## Tooling
 - [The Grayscale Language Server Protocol](https://github.com/grayscale-lang/grayls)

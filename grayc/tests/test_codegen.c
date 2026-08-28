@@ -1994,6 +1994,156 @@ static void test_e2e_array_of_structs(void) {
     ASSERT_STR_EQ(output, "1\n4");
 }
 
+/* ===== Feature gaps (issue #2556) ===== */
+
+static void test_e2e_bitwise_ops(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(0b1100 bit_and 0b1010)\n"
+        "  println(0b1100 bit_or 0b1010)\n"
+        "  println(0b1100 bit_xor 0b1010)\n"
+        "  println(1 bit_shift_left 4)\n"
+        "  println(64 bit_shift_right 2)\n"
+        "  mut n int = bit_not 0\n"
+        "  println(n)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "8\n14\n6\n16\n16\n-1");
+}
+
+static void test_e2e_defer_keyword(void) {
+    char *output = compile_and_run(
+        ""
+        "do log(s string) { println(s) }\n"
+        "do work() {\n"
+        "  defer log(\"c\")\n"
+        "  defer log(\"b\")\n"
+        "  log(\"a\")\n"
+        "}\n"
+        "do main() { work() }");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "a\nb\nc");
+}
+
+static void test_e2e_string_stdlib(void) {
+    char *output = compile_and_run(
+        ""
+        "import @strings\n"
+        "do main() {\n"
+        "  println(strings.to_upper(\"hi\"))\n"
+        "  println(strings.to_lower(\"Hi\"))\n"
+        "  println(strings.trim(\"  x  \"))\n"
+        "  println(strings.replace(\"aaa\", \"a\", \"b\"))\n"
+        "  println(strings.contains(\"hello\", \"ell\"))\n"
+        "  mut parts [string] = strings.split(\"a,b,c\", \",\")\n"
+        "  println(parts[1])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "HI\nhi\nx\nbbb\ntrue\nb");
+}
+
+static void test_e2e_when_multi_value(void) {
+    char *output = compile_and_run(
+        ""
+        "do classify(n int) -> string {\n"
+        "  when n {\n"
+        "    is 0 { return \"zero\" }\n"
+        "    is 1, 2, 3 { return \"small\" }\n"
+        "    default { return \"big\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(classify(0))\n"
+        "  println(classify(2))\n"
+        "  println(classify(99))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "zero\nsmall\nbig");
+}
+
+static void test_e2e_map_remove(void) {
+    char *output = compile_and_run(
+        ""
+        "import @maps\n"
+        "do main() {\n"
+        "  mut m map[string:int] = {\"a\": 1, \"b\": 2, \"c\": 3}\n"
+        "  maps.remove_key(m, \"b\")\n"
+        "  println(len(m))\n"
+        "  println(\"b\" in m)\n"
+        "  println(m[\"c\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "2\nfalse\n3");
+}
+
+static void test_e2e_tagged_enum(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "const Shape enum {\n"
+        "  Circle(int)\n"
+        "  Rect(Point)\n"
+        "  Empty\n"
+        "}\n"
+        "do area(s Shape) -> int {\n"
+        "  when s {\n"
+        "    is Shape.Circle(r) { return r * r }\n"
+        "    is Shape.Rect(p) { return p.x * p.y }\n"
+        "    is .Empty { return 0 }\n"
+        "  }\n"
+        "  return -1\n"
+        "}\n"
+        "do main() {\n"
+        "  println(area(Shape.Circle(3)))\n"
+        "  println(area(Shape.Rect(Point{x: 3, y: 4})))\n"
+        "  println(area(Shape.Empty))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "9\n12\n0");
+}
+
+static void test_e2e_struct_field_defaults(void) {
+    char *output = compile_and_run(
+        ""
+        "const Config struct {\n"
+        "  host string = \"localhost\"\n"
+        "  port int = 8080\n"
+        "}\n"
+        "do main() {\n"
+        "  mut c = new(Config)\n"
+        "  println(c^.host)\n"
+        "  println(c^.port)\n"
+        "  mut c2 Config = Config{port: 9090}\n"
+        "  println(c2.host)\n"
+        "  println(c2.port)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "localhost\n8080\nlocalhost\n9090");
+}
+
+static void test_e2e_generic_type_param(void) {
+    char *output = compile_and_run(
+        ""
+        "const Box struct {\n"
+        "  value int\n"
+        "}\n"
+        "do make_it(T <?>) -> ^? {\n"
+        "  return new(T)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut b = make_it(Box)\n"
+        "  b^.value = 7\n"
+        "  println(b^.value)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2211,6 +2361,16 @@ int main(void) {
     /* Container operations (extended) */
     RUN_TEST(test_e2e_map_int_keys);
     RUN_TEST(test_e2e_array_of_structs);
+
+    /* Feature gaps (issue #2556) */
+    RUN_TEST(test_e2e_bitwise_ops);
+    RUN_TEST(test_e2e_defer_keyword);
+    RUN_TEST(test_e2e_string_stdlib);
+    RUN_TEST(test_e2e_when_multi_value);
+    RUN_TEST(test_e2e_map_remove);
+    RUN_TEST(test_e2e_tagged_enum);
+    RUN_TEST(test_e2e_struct_field_defaults);
+    RUN_TEST(test_e2e_generic_type_param);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

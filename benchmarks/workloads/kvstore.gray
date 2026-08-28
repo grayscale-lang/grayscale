@@ -1,0 +1,59 @@
+/*
+ * kvstore - replay a generated SET/GET/DEL op log against an in-memory map.
+ * Exercises: map[string:string] insert/lookup/delete, string splitting.
+ */
+
+import @io
+import @os
+import @strings
+import @maps
+
+// The runner exports BENCH_GEN; running a workload by hand falls back to
+// benchmarks/.gen next to this file's directory.
+do fixture_dir() -> string {
+    mut env string = os.get_env("BENCH_GEN")
+    if env != "" {
+        return env
+    }
+    mut src string = here().file
+    if !io.is_absolute(src) {
+        src = io.path_join({os.current_dir(), src})
+    }
+    return io.path_join({io.dirname(io.dirname(src)), ".gen"})
+}
+
+do main() {
+    mut gen string = fixture_dir()
+    mut lines, err = io.read_lines("${gen}/ops.txt")
+    if err != nil {
+        println("kvstore: cannot read fixture")
+        exit(1)
+    }
+
+    mut store map[string:string] = {:}
+    mut gets int = 0
+    mut hits int = 0
+    mut sets int = 0
+    mut dels int = 0
+
+    for pass in range(0, 20) {
+        for_each line in lines {
+            mut parts [string] = strings.split(line, " ")
+            mut op string = parts[0]
+            if op == "SET" {
+                store[parts[1]] = parts[2]
+                sets += 1
+            } or op == "GET" {
+                gets += 1
+                if maps.has_key(store, parts[1]) {
+                    hits += 1
+                }
+            } or op == "DEL" {
+                maps.remove_key(store, parts[1])
+                dels += 1
+            }
+        }
+    }
+
+    println("kvstore sets=${sets} gets=${gets} hits=${hits} dels=${dels} size=${len(store)}")
+}

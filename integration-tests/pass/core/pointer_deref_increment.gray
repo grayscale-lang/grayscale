@@ -13,4 +13,9 @@ do main() {
     if y == 4 { passed++ } otherwise { failed++ }
 
     println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

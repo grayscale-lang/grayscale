@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3043 - cannot cast a string-backed enum to int
+ * Expected: "cannot cast"
+ *
+ * A string-backed enum is a GrayString at runtime, not an integer, so the
+ * int-backed cast rules must not apply to it.
+ */
+// expect-error: E3043
+
+const Status enum {
+    OK = "ok"
+    BAD = "bad"
+}
+
+do main() {
+    println(cast(Status.OK, int))
+}

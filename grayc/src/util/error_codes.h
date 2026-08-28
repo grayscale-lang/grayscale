@@ -425,13 +425,16 @@
     GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
     GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
     GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld") \
-    GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s")
+    GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s") \
+    GRAY_PANIC("P0108", "threads",    "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached") \
+    GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
     GRAY_WARNING("W1001", "cleanup", "variable is declared but never used; remove it or use it") \
     GRAY_WARNING("W1003", "cleanup", "function is declared but never called; remove it or call it") \
     GRAY_WARNING("W1005", "cleanup", "typed blank identifier; '_' doesn't need a type annotation, use 'mut _ = <expr>' instead") \
+    GRAY_WARNING("W1004", "cleanup", "variable is declared with a type but no value; it defaults to that type's zero value") \
     GRAY_WARNING("W1002", "cleanup", "this import is never used; remove it or use a function from the module") \
     GRAY_WARNING("W2002", "safety", "this variable shadows a variable with the same name in an outer scope") \
     GRAY_WARNING("W2003", "safety", "unreachable code; this statement will never execute because it comes after a return") \

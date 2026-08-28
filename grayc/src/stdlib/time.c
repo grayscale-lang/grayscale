@@ -9,10 +9,21 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+#ifndef _XOPEN_SOURCE
+#define _XOPEN_SOURCE 700   /* strptime — hidden by glibc without this */
+#endif
+
 #include "time.h"
 #include "../util/constants.h"
 #include <time.h>
 #include <string.h>
+
+#if defined(_WIN32)
+/* mingw-w64 implements strptime in libmingwex (linked by default) but never
+ * declares it in <time.h>, so GCC 14's -Wimplicit-function-declaration (now an
+ * error) rejects the call. Declare it ourselves. */
+char *strptime(const char *s, const char *format, struct tm *tm);
+#endif
 
 int64_t gray_time_now(void) { return (int64_t)time(NULL); }
 

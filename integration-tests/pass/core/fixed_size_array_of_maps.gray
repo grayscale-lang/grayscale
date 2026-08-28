@@ -1,11 +1,42 @@
+/*
+ * Test: a file-scope fixed-size array whose element type is a map holds
+ * each map independently and indexes both dimensions correctly.
+ */
+
 const ROUTES [map[string:string], 2] = {
     {"path": "/home", "method": "GET"},
     {"path": "/login", "method": "POST"}
 }
 
 do main() {
-    println(ROUTES[0]["path"])
-    println(ROUTES[0]["method"])
-    println(ROUTES[1]["path"])
-    println(ROUTES[1]["method"])
+    mut passed int = 0
+    mut failed int = 0
+
+    if len(ROUTES) == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] array length: ${len(ROUTES)}")
+        failed += 1
+    }
+
+    if ROUTES[0]["path"] == "/home" && ROUTES[0]["method"] == "GET" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] element 0")
+        failed += 1
+    }
+
+    if ROUTES[1]["path"] == "/login" && ROUTES[1]["method"] == "POST" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] element 1")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

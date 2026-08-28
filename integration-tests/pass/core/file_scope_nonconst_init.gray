@@ -1,0 +1,72 @@
+/*
+ * file_scope_nonconst_init.gray - file-scope variable initializers that
+ * lower to runtime calls.
+ *
+ * A negative integer constant lowers to gray_neg_check(...) and a struct
+ * literal with array/map fields lowers to gray_array_new(...) /
+ * gray_map_new_kind(...). Neither is a C constant expression, so the
+ * codegen must emit a zero-initialized global and defer the real
+ * initializer instead of inlining it at file scope.
+ */
+
+import @arrays
+
+const STOP int = -1
+mut mstop int = -2
+
+const Bag struct {
+    items [int]
+    index map[string:int]
+}
+
+mut bag Bag = Bag{}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if STOP == -1 {
+        println("  [PASS] negative const global")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative const global: got ${STOP}")
+        failed += 1
+    }
+
+    if mstop == -2 {
+        println("  [PASS] negative mut global")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative mut global: got ${mstop}")
+        failed += 1
+    }
+
+    arrays.append(bag.items, 1)
+    arrays.append(bag.items, 2)
+    bag.index["a"] = 10
+
+    if len(bag.items) == 2 && bag.items[1] == 2 {
+        println("  [PASS] struct global array field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct global array field: len ${len(bag.items)}")
+        failed += 1
+    }
+
+    if bag.index["a"] == 10 {
+        println("  [PASS] struct global map field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct global map field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

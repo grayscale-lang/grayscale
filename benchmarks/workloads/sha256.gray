@@ -1,0 +1,54 @@
+/*
+ * sha256 - hash a large generated blob in chunks, many times.
+ * Exercises: crypto, io, string slicing.
+ */
+
+import @crypto
+import @io
+import @os
+import @strings
+
+const CHUNK int = 4096
+
+// The runner exports BENCH_GEN; running a workload by hand falls back to
+// benchmarks/.gen next to this file's directory.
+do fixture_dir() -> string {
+    mut env string = os.get_env("BENCH_GEN")
+    if env != "" {
+        return env
+    }
+    mut src string = here().file
+    if !io.is_absolute(src) {
+        src = io.path_join({os.current_dir(), src})
+    }
+    return io.path_join({io.dirname(io.dirname(src)), ".gen"})
+}
+
+do main() {
+    mut gen string = fixture_dir()
+    mut blob, err = io.read_file("${gen}/blob.bin")
+    if err != nil {
+        println("sha256: cannot read fixture")
+        exit(1)
+    }
+
+    mut n int = len(blob)
+    mut rolling string = "seed"
+    mut chunks int = 0
+
+    for round in range(0, 12) {
+        mut off int = 0
+        as_long_as off < n {
+            mut end int = off + CHUNK
+            if end > n {
+                end = n
+            }
+            mut piece string = strings.slice(blob, off, end)
+            rolling = crypto.sha256("${rolling}${piece}")
+            chunks += 1
+            off = end
+        }
+    }
+
+    println("sha256 chunks=${chunks} digest=${rolling}")
+}

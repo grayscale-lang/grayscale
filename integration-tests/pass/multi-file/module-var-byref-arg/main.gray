@@ -1,0 +1,31 @@
+import "./eng.gray"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // pool.total starts at 0; peek -> 0, tick(pool, 3) -> 3, sum -> 3
+    if eng.run_worker(3) == 3 {
+        println("  [PASS] module-level var passed to a by-reference parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module-level var passed to a by-reference parameter")
+        failed += 1
+    }
+
+    // second call sees the mutation from the first: tick(pool, 4) -> 7, sum -> 10
+    if eng.run_worker(4) == 10 {
+        println("  [PASS] by-reference mutation persists on the module-level var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] by-reference mutation persists on the module-level var")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,94 @@
+/*
+ * alias_in_composite_type.gray - a type alias used inside a composite type
+ * (map key/value, fixed-size array element, func signature) must resolve to
+ * its underlying type, the same as an alias for the whole composite does.
+ */
+
+const Color enum {
+    RED
+    GREEN
+}
+
+alias I = int
+alias Hue = Color
+alias IntMap = map[string:I]
+
+do add(a I, b I) -> I { return a + b }
+
+do apply(x int, f func(I) -> I) -> int {
+    return f(x)
+}
+
+do dbl(n int) -> int { return n * 2 }
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // alias in map value position
+    mut mv map[string:I] = {"a": 1}
+    if mv["a"] == 1 {
+        println("  [PASS] alias in map value position")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in map value position")
+        failed += 1
+    }
+
+    // alias in map key position (enum alias)
+    mut mk map[Hue:int] = {Hue.RED: 7}
+    if mk[Hue.RED] == 7 {
+        println("  [PASS] alias in map key position")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in map key position")
+        failed += 1
+    }
+
+    // alias in fixed-size array element position
+    const arr [I, 3] = {1, 2, 3}
+    if arr[0] == 1 && arr[2] == 3 {
+        println("  [PASS] alias in fixed-size array element position")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in fixed-size array element position")
+        failed += 1
+    }
+
+    // alias in func signature (variable annotation)
+    const f func(I, I) -> I = ()add
+    if f(2, 3) == 5 {
+        println("  [PASS] alias in func signature (variable)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in func signature (variable)")
+        failed += 1
+    }
+
+    // alias in func signature (parameter position)
+    if apply(5, ()dbl) == 10 {
+        println("  [PASS] alias in func signature (parameter)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in func signature (parameter)")
+        failed += 1
+    }
+
+    // alias wrapping a map that itself contains an alias
+    mut mm IntMap = {"b": 2}
+    if mm["b"] == 2 {
+        println("  [PASS] alias of a map whose value is an alias")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias of a map whose value is an alias")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

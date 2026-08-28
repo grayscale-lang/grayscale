@@ -1,0 +1,77 @@
+/*
+ * map_array_value_chained_index.gray - indexing directly into a map lookup
+ * whose value is an array: m[key][i], both read and write. The lookup lowers
+ * to an rvalue statement-expression, so the outer index/assign must bind it
+ * to a temp rather than take its address.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut m map[string:[int]] = {:}
+    m["k"] = {7, 8, 9}
+
+    // read
+    if m["k"][0] == 7 && m["k"][2] == 9 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] chained read: ${m["k"][0]} ${m["k"][2]}")
+        failed += 1
+    }
+
+    // len still works
+    if len(m["k"]) == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] len(m[k])")
+        failed += 1
+    }
+
+    // for_each over the lookup
+    mut sum int = 0
+    for_each v in m["k"] { sum += v }
+    if sum == 24 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] for_each sum: ${sum}")
+        failed += 1
+    }
+
+    // plain write through the chained index
+    m["k"][1] = 100
+    if m["k"][1] == 100 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] chained write: ${m["k"][1]}")
+        failed += 1
+    }
+
+    // compound write through the chained index
+    m["k"][0] += 5
+    if m["k"][0] == 12 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] chained compound write: ${m["k"][0]}")
+        failed += 1
+    }
+
+    // map -> map -> array
+    mut mm map[string:map[string:[int]]] = {:}
+    mut inner map[string:[int]] = {:}
+    inner["a"] = {10, 20}
+    mm["x"] = inner
+    if mm["x"]["a"][1] == 20 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] map->map->array: ${mm["x"]["a"][1]}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

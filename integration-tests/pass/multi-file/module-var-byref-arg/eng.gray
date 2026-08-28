@@ -1,0 +1,20 @@
+const Engine struct {
+    total int = 0
+
+    do tick(&e Engine, n int) -> int {
+        e.total = e.total + n
+        return e.total
+    }
+
+    do peek(e Engine) -> int {
+        return e.total
+    }
+}
+
+mut pool Engine
+
+do run_worker(n int) -> int {
+    mut a int = Engine.peek(pool)     // by-value receiver
+    mut b int = Engine.tick(pool, n)  // &-receiver: pool must resolve to eng_pool
+    return a + b
+}

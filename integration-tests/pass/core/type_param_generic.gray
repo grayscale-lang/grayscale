@@ -1,8 +1,6 @@
 /*
- * type_param_generic.gray - Type-level generic parameters via <?> syntax
- *
- * passing struct type names as arguments using <?>
- * type parameters, enabling reusable constructors like make(T).
+ * type_param_generic.gray - <?> type-level parameters: a struct type name
+ * passed as an argument drives new(T) and size_of(T).
  */
 
 const Point struct {
@@ -25,22 +23,44 @@ do make_size(T <?>) -> int {
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut p = make(Point)
     p^.x = 10
     p^.y = 20
-    println(p^.x)
-    println(p^.y)
+    if p^.x == 10 && p^.y == 20 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] make(Point)")
+        failed += 1
+    }
 
     mut c = make(Color)
     c^.r = 255
     c^.g = 128
     c^.b = 0
-    println(c^.r)
-    println(c^.g)
-    println(c^.b)
+    if c^.r == 255 && c^.g == 128 && c^.b == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] make(Color)")
+        failed += 1
+    }
 
-    const ps = make_size(Point)
-    const cs = make_size(Color)
-    println(ps > 0)
-    println(cs > 0)
+    // Point has 2 int fields, Color has 3 — both positive, Color larger.
+    const ps int = make_size(Point)
+    const cs int = make_size(Color)
+    if ps > 0 && cs > 0 && cs > ps {
+        passed += 1
+    } otherwise {
+        println("[FAIL] make_size: Point=${ps} Color=${cs}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 397 codes** (274 errors, 16 warnings, 107 panics)
+**Total: 400 codes** (274 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -295,6 +295,7 @@
 | `W1001` | cleanup | variable is declared but never used; remove it or use it |
 | `W1003` | cleanup | function is declared but never called; remove it or call it |
 | `W1005` | cleanup | typed blank identifier; '_' doesn't need a type annotation, use 'mut _ = <expr>' instead |
+| `W1004` | cleanup | variable is declared with a type but no value; it defaults to that type's zero value |
 | `W1002` | cleanup | this import is never used; remove it or use a function from the module |
 | `W2002` | safety | this variable shadows a variable with the same name in an outer scope |
 | `W2003` | safety | unreachable code; this statement will never execute because it comes after a return |
@@ -424,6 +425,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
 | `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
+| `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
+| `P0109` | threads | threads.spawn: out of memory allocating thread state |
 
 ---
 
@@ -448,4 +451,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-28 02:23:18 UTC*
+*Generated on 2026-08-28 22:47:09 UTC*

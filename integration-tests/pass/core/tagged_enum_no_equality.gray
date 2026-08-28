@@ -1,3 +1,9 @@
+/*
+ * Test: a plain (untagged) enum supports == and != even when it is
+ * declared alongside a tagged enum in the same file. The tagged enum's
+ * presence must not disable equality on the plain one.
+ */
+
 const Shape enum {
     Circle(float)
     Rect(float, float)
@@ -11,12 +17,52 @@ const Color enum {
 }
 
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut c1 Color = Color.Red
     mut c2 Color = Color.Green
+
     if c1 != c2 {
-        println("plain enum != works")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] plain enum != across variants")
+        failed = failed + 1
     }
+
     if c1 == Color.Red {
-        println("plain enum == works")
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] plain enum == same variant")
+        failed = failed + 1
+    }
+
+    c1 = Color.Blue
+    if c1 == Color.Blue && c1 != Color.Red {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] plain enum comparisons after reassignment")
+        failed = failed + 1
+    }
+
+    // The tagged enum is still usable via when/is in the same file.
+    mut s Shape = Shape.Circle(2.0)
+    mut kind string = ""
+    when s {
+        is Shape.Circle { kind = "circle" }
+        default { kind = "other" }
+    }
+    if kind == "circle" {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] tagged enum when/is, got '${kind}'")
+        failed = failed + 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
     }
 }

@@ -940,6 +940,19 @@ static void test_warning_W1005_typed_blank(void) {
     diagnostic_destroy(diagnostics);
 }
 
+static void test_warning_W1004_no_value_declaration(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { foobar int\n println(foobar) }");
+    ASSERT(has_error_code(diagnostics, "W1004"));
+    diagnostic_destroy(diagnostics);
+
+    /* A value, explicit or the zero value, silences it. */
+    DiagnosticList *ok = typecheck_diagnostics(
+        "do main() { mut foobar int = 0\n println(foobar) }");
+    ASSERT(!has_error_code(ok, "W1004"));
+    diagnostic_destroy(ok);
+}
+
 static void test_warning_W2001_unused_import(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @math\n"
@@ -2267,6 +2280,7 @@ int main(void) {
 
     /* Additional warnings */
     RUN_TEST(test_warning_W1005_typed_blank);
+    RUN_TEST(test_warning_W1004_no_value_declaration);
     RUN_TEST(test_warning_W2001_unused_import);
     RUN_TEST(test_warning_W3003_partial_array_init);
 

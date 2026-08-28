@@ -1,0 +1,72 @@
+/*
+ * Test: cast() to the sized numeric types f32, f64 and u32 — value
+ * semantics, not just type_of. f32 loses precision; f64 keeps it; u32
+ * holds values up to 2^32 - 1.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // f64 preserves a value that fits a double exactly.
+    mut d f64 = cast(3.14159, f64)
+    if d == 3.14159 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] cast(3.14159, f64) lost precision: ${d}")
+        failed += 1
+    }
+
+    // f32 narrows, so the round trip through f64 is not exact.
+    mut s f32 = cast(3.14159, f32)
+    mut widened f64 = cast(s, f64)
+    if widened != 3.14159 && widened > 3.14 && widened < 3.15 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] f32 narrowing not observed: ${widened}")
+        failed += 1
+    }
+
+    // f32 represents small exact values without loss.
+    mut half f32 = cast(0.5, f32)
+    if cast(half, f64) == 0.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] cast(0.5, f32) is not exact")
+        failed += 1
+    }
+
+    // u32 holds a value above the i32 range.
+    mut u u32 = cast(4000000000, u32)
+    if u == 4000000000 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] cast(4e9, u32) got ${u}")
+        failed += 1
+    }
+
+    // u32 maximum.
+    mut umax u32 = cast(4294967295, u32)
+    if umax == 4294967295 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] cast(2^32-1, u32) got ${umax}")
+        failed += 1
+    }
+
+    // int → f64 → int round trip for a whole number.
+    mut back int = int(cast(42, f64))
+    if back == 42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] int/f64 round trip got ${back}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

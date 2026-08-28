@@ -567,9 +567,54 @@ static const char *typechecker_resolve_alias(TypeChecker *checker, const char *n
     return module_table_resolve_alias(checker->modules, name);
 }
 
+/* Position of the first `sep` in `s` that sits at bracket/paren nesting
+ * depth 0, or NULL if there is none. Used to split composite type strings
+ * (`map[K:V]`, `func(P,...)->R`, `[Elem,N]`) without tripping on separators
+ * inside nested composites. */
+static char *alias_top_level_sep(char *s, char sep) {
+    int depth = 0;
+    for (char *p = s; *p; p++) {
+        if (*p == '[' || *p == '(') depth++;
+        else if (*p == ']' || *p == ')') depth--;
+        else if (*p == sep && depth == 0) return p;
+    }
+    return NULL;
+}
+
+static const char *resolve_type_alias(TypeChecker *checker, const char *name);
+
+/* Resolve every top-level comma-separated type name in `list` (used as a
+ * mutable scratch buffer), writing the rebuilt list into `out`. A leading
+ * `&` on a segment (a mutable func parameter) is preserved. Returns 1 when
+ * at least one element resolved to a different name, 0 when nothing
+ * changed, -1 on buffer overflow (`out` unusable). */
+static int alias_resolve_type_list(TypeChecker *checker, char *list,
+                                   char *out, size_t out_sz) {
+    size_t pos = 0;
+    bool changed = false;
+    char *seg = list;
+    out[0] = '\0';
+    while (seg && *seg) {
+        char *comma = alias_top_level_sep(seg, ',');
+        if (comma) *comma = '\0';
+        const char *amp = "";
+        char *tp = seg;
+        if (*tp == '&') { amp = "&"; tp++; }
+        const char *rp = resolve_type_alias(checker, tp);
+        if (rp != tp) changed = true;
+        int n = snprintf(out + pos, out_sz - pos, "%s%s%s",
+                         pos ? "," : "", amp, rp);
+        if (n < 0 || (size_t)n >= out_sz - pos) return -1;
+        pos += (size_t)n;
+        seg = comma ? comma + 1 : NULL;
+    }
+    return changed ? 1 : 0;
+}
+
 /* Resolve a type alias name to the underlying type name.
  * Follows chains transitively with a depth limit of 32.
- * Handles pointer (^Name), array ([Name]), and map types.
+ * Handles pointer (^Name), array ([Name] / [Name,N]), map (map[K:V]) and
+ * func signature (func(P,...)->R) types, recursing into every type slot.
  * Returns the original name if it is not an alias. */
 static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
     if (!name) return name;
@@ -586,7 +631,7 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
         return name;
     }
 
-    /* Handle array types: [Alias] → [Resolved] */
+    /* Handle array types: [Alias] and fixed-size [Alias,N] → [Resolved(,N)] */
     if (name[0] == '[') {
         size_t nlen = strlen(name);
         if (nlen > 2 && name[nlen - 1] == ']') {
@@ -596,11 +641,79 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             if (inner_len < sizeof(inner_buf)) {
                 memcpy(inner_buf, name + 1, inner_len);
                 inner_buf[inner_len] = '\0';
+                /* Fixed-size array: split off the trailing ",N" size. */
+                char *size_comma = alias_top_level_sep(inner_buf, ',');
+                const char *size_suffix = "";
+                char size_buf[64];
+                if (size_comma) {
+                    snprintf(size_buf, sizeof(size_buf), ",%s", size_comma + 1);
+                    size_suffix = size_buf;
+                    *size_comma = '\0';
+                }
                 const char *resolved_inner = resolve_type_alias(checker, inner_buf);
                 if (resolved_inner != inner_buf) {
-                    size_t rlen = strlen(resolved_inner) + 3;
+                    size_t rlen = strlen(resolved_inner) + strlen(size_suffix) + 3;
                     char *buf = arena_alloc(checker->arena, rlen);
-                    snprintf(buf, rlen, "[%s]", resolved_inner);
+                    snprintf(buf, rlen, "[%s%s]", resolved_inner, size_suffix);
+                    return buf;
+                }
+            }
+        }
+        return name;
+    }
+
+    /* Handle map types: map[K:V] → map[Resolved:Resolved] */
+    if (strncmp(name, "map[", 4) == 0) {
+        size_t nlen = strlen(name);
+        if (nlen > 5 && name[nlen - 1] == ']') {
+            char inner_buf[256];
+            size_t inner_len = nlen - 5;
+            if (inner_len < sizeof(inner_buf)) {
+                memcpy(inner_buf, name + 4, inner_len);
+                inner_buf[inner_len] = '\0';
+                char *colon = alias_top_level_sep(inner_buf, ':');
+                if (colon) {
+                    *colon = '\0';
+                    const char *k = resolve_type_alias(checker, inner_buf);
+                    const char *v = resolve_type_alias(checker, colon + 1);
+                    if (k != inner_buf || v != colon + 1) {
+                        size_t blen = strlen(k) + strlen(v) + 7;
+                        char *buf = arena_alloc(checker->arena, blen);
+                        snprintf(buf, blen, "map[%s:%s]", k, v);
+                        return buf;
+                    }
+                }
+            }
+        }
+        return name;
+    }
+
+    /* Handle func signatures: func(P,...)->R → func(Resolved,...)->Resolved */
+    if (strncmp(name, "func(", 5) == 0) {
+        int depth = 0;
+        const char *close = NULL;
+        for (const char *p = name + 4; *p; p++) {
+            if (*p == '(') depth++;
+            else if (*p == ')' && --depth == 0) { close = p; break; }
+        }
+        if (close) {
+            size_t plen = (size_t)(close - (name + 5));
+            const char *tail = close + 1;
+            const char *ret = (strncmp(tail, "->", 2) == 0) ? tail + 2 : NULL;
+            char params[256];
+            char rebuilt[256];
+            if (plen < sizeof(params)) {
+                memcpy(params, name + 5, plen);
+                params[plen] = '\0';
+                int params_changed =
+                    alias_resolve_type_list(checker, params, rebuilt, sizeof(rebuilt));
+                const char *rret = ret ? resolve_type_alias(checker, ret) : NULL;
+                bool ret_changed = (ret && rret != ret);
+                if (params_changed >= 0 && (params_changed == 1 || ret_changed)) {
+                    size_t blen = strlen(rebuilt) + (rret ? strlen(rret) : 0) + 10;
+                    char *buf = arena_alloc(checker->arena, blen);
+                    if (rret) snprintf(buf, blen, "func(%s)->%s", rebuilt, rret);
+                    else snprintf(buf, blen, "func(%s)", rebuilt);
                     return buf;
                 }
             }
@@ -618,10 +731,12 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             }
         }
         if (!found) break;
-        /* A target that is itself a container — alias Counts = [Count] —
-         * has to go back through the branches above, or the alias nested
-         * inside it never gets followed. */
-        if (name[0] == '^' || name[0] == '[') return resolve_type_alias(checker, name);
+        /* A target that is itself a container — alias Counts = [Count],
+         * alias M = map[string:I] — has to go back through the branches
+         * above, or the alias nested inside it never gets followed. */
+        if (name[0] == '^' || name[0] == '[' ||
+            strncmp(name, "map[", 4) == 0 || strncmp(name, "func(", 5) == 0)
+            return resolve_type_alias(checker, name);
     }
     return name;
 }
@@ -5374,21 +5489,17 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (try_get_literal_int(node->data.call.args[0], &lit_val) && lit_val < 0) {
             diagnostic_error_code_formatted(checker->diag, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)lit_val);
         }
-        /* E3001: char() with a string literal that is not exactly one character */
+        /* E3001: char() converts an integer codepoint; reject any non-integer
+         * argument (a length-1 string still reaches codegen otherwise and
+         * emits (int32_t)(GrayString), which cc rejects). */
         GrayType *char_arg_t = resolve_expression(checker, node->data.call.args[0]);
-        if (char_arg_t->kind == TK_STRING) {
-            AstNode *arg = node->data.call.args[0];
-            if (arg->kind == NODE_STRING_VALUE) {
-                int slen = (int)strlen(arg->data.string_value.value);
-                if (slen != 1) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "'char()' requires a single-character string; got a string of length %d",
-                        slen);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-                }
-            }
+        if (!is_int_kind(char_arg_t->kind) && char_arg_t->kind != TK_CHAR) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "'char()' expects an integer codepoint, got %s",
+                type_name(char_arg_t));
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         result = &TYPE_CHAR;
     } else if ((strcmp(function_name, "int") == 0 ||
@@ -7195,6 +7306,19 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
 
         /* Otherwise it's a struct field or multi-return access */
         Symbol *sym = scope_lookup(checker->current_scope, obj_name);
+        /* A bare name that names a module-level declaration is bound under
+         * that module's spelling, so a reference from inside the module has
+         * to resolve the same way — matching the NODE_LABEL value path.
+         * Without this, `addr(MODVAR.field)` inside the declaring module
+         * types as ^unknown. */
+        if (!sym) {
+            DeclEntry *entry = checker_cache_resolution(checker, obj, obj_name);
+            if (entry) {
+                char key[MSG_BUF_SIZE];
+                sym = scope_lookup(checker->current_scope,
+                                   module_mangle_into(entry, key, sizeof(key)));
+            }
+        }
         /* Multi-return .v0/.v1 access takes priority over struct field
          * lookup when the symbol has ret_types set. Without this, stdlib
          * functions returning struct types (Socket, HttpResponse, etc.)
@@ -8420,13 +8544,23 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* String -> String (identity) */
             if (src_t->kind == TK_STRING && dst_t->kind == TK_STRING)
                 allowed = true;
-            /* Enum -> int/uint (enums are int-backed) */
-            if (src_t->kind == TK_ENUM &&
+            /* A string-backed enum is a GrayString at runtime, not an
+             * integer, so the int-backed rules below do not apply to it. */
+            bool src_str_enum = src_t->kind == TK_ENUM &&
+                typechecker_enum_is_string(checker, src_t->name);
+            bool dst_str_enum = dst_t->kind == TK_ENUM &&
+                typechecker_enum_is_string(checker, dst_t->name);
+            /* Enum -> int/uint (int-backed enums only) */
+            if (src_t->kind == TK_ENUM && !src_str_enum &&
                 (dst_t->kind == TK_INT || dst_t->kind == TK_UINT))
                 allowed = true;
-            /* int/uint -> Enum (explicit reinterpretation) */
+            /* int/uint -> Enum (explicit reinterpretation, int-backed only) */
             if ((src_t->kind == TK_INT || src_t->kind == TK_UINT) &&
-                dst_t->kind == TK_ENUM)
+                dst_t->kind == TK_ENUM && !dst_str_enum)
+                allowed = true;
+            /* string <-> string-backed enum */
+            if ((src_t->kind == TK_STRING && dst_str_enum) ||
+                (src_str_enum && dst_t->kind == TK_STRING))
                 allowed = true;
             /* Array -> Array: only when both element types are numeric */
             if (src_t->kind == TK_ARRAY && dst_t->kind == TK_ARRAY) {
@@ -9041,6 +9175,18 @@ static void check_block(TypeChecker *checker, AstNode *node) {
 
 /* --- check_statement() per-case helpers --- */
 
+/* The literal a scalar type zero-initializes to, for the W1004 message.
+ * NULL for container/struct/pointer types (no single literal to show). */
+static const char *zero_value_literal(const char *type_name) {
+    if (!type_name) return NULL;
+    if (is_any_int_type(type_name)) return "0";
+    if (strcmp(type_name, "float") == 0) return "0.0";
+    if (strcmp(type_name, "string") == 0) return "\"\"";
+    if (strcmp(type_name, "bool") == 0) return "false";
+    if (strcmp(type_name, "char") == 0) return "'\\0'";
+    return NULL;
+}
+
 static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* Resolve type aliases in the declared type name so downstream
      * checks and codegen see the underlying type. */
@@ -9209,6 +9355,25 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* const must have a value */
     if (!node->data.var_decl.mutable && !node->data.var_decl.value) {
         diagnostic_error_code_formatted(checker->diag, "E2011", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
+    }
+    /* W1004: a mut-class declaration with a type but no value silently
+     * zero-initializes. State the fact so a dropped '= value' is visible.
+     * Skip synthetic decls and '_'; guard against the generic re-check
+     * pass so it fires once. */
+    if (!checker->suppress_typetable_writes &&
+        node->data.var_decl.mutable && !node->data.var_decl.value &&
+        node->data.var_decl.type_name &&
+        strcmp(node->data.var_decl.name, "_") != 0 &&
+        strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+        strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
+        const char *zero = zero_value_literal(node->data.var_decl.type_name);
+        char *msg = zero
+            ? typechecker_format(checker, "'%s' declared with no value — defaults to %s",
+                                 VAR_DISPLAY_NAME(node), zero)
+            : typechecker_format(checker, "'%s' declared with no value — defaults to its zero value",
+                                 VAR_DISPLAY_NAME(node));
+        diagnostic_warning_message(checker->diag, "W1004", msg,
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Check for type keyword used as value: mut x = int */
     if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_LABEL) {

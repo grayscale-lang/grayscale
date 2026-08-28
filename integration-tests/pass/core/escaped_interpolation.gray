@@ -1,6 +1,36 @@
+/*
+ * Test: `\${...}` is a literal dollar-brace in a string, not an
+ * interpolation; a real `${expr}` in the same string still expands.
+ */
+
 do main() {
-    println("literal \${x}")
+    mut passed int = 0
+    mut failed int = 0
+
+    // "$" written as a hex escape so the expected strings carry no live ${}.
+    mut d string = "\x24"
+
+    mut a string = "literal \${x}"
+    if a == "literal ${d}{x}" && len(a) == 12 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] escaped only: '${a}'")
+        failed += 1
+    }
 
     mut y int = 10
-    println("escaped \${x} and ${y}")
+    mut b string = "escaped \${x} and ${y}"
+    if b == "escaped ${d}{x} and 10" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] mixed escaped/live: '${b}'")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

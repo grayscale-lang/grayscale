@@ -13,6 +13,11 @@ const b_Color enum {
 
 alias b_Alias = b_Point
 
+// A lowercase type parameter must construct with `t{}` the same as `T{}`.
+do make_default(t <?>) -> ? {
+    return t{}
+}
+
 do main() {
     mut passed int = 0
     mut failed int = 0
@@ -50,6 +55,15 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] alias named lowercase_Uppercase: got ${a.x}")
+        failed += 1
+    }
+
+    mut d bpoint = make_default(bpoint)
+    if d.y == 0 {
+        println("  [PASS] lowercase type parameter constructed with t{}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lowercase type parameter constructed with t{}: got ${d.y}")
         failed += 1
     }
 

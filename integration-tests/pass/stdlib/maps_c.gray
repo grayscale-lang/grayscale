@@ -162,6 +162,18 @@ do main() {
         failed += 1
     }
 
+    // is_equal — order-independent, value-sensitive
+    mut eq_a map[string:int] = {"x": 1, "y": 2}
+    mut eq_b map[string:int] = {"y": 2, "x": 1}
+    mut eq_c map[string:int] = {"x": 1, "y": 3}
+    if maps.is_equal(eq_a, eq_b) && !maps.is_equal(eq_a, eq_c) {
+        println("  [PASS] is_equal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_equal")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

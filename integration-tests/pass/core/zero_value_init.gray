@@ -1,32 +1,59 @@
-/* Test: Zero value initialization for different types
- * Expected: passes with output "0", "", "false", "0.0"
- */
+/* Test: named return variables initialized to each primitive's zero
+ * value and returned. */
 
-
-do getZeroInt() -> (count int) {
+do get_zero_int() -> (count int) {
     mut count int = 0
     return count
 }
 
-do getZeroString() -> (text string) {
+do get_zero_string() -> (text string) {
     mut text string = ""
     return text
 }
 
-do getZeroBool() -> (flag bool) {
+do get_zero_bool() -> (flag bool) {
     mut flag bool = false
     return flag
 }
 
-do getZeroFloat() -> (value float) {
+do get_zero_float() -> (value float) {
     mut value float = 0.0
     return value
 }
 
 do main() {
-    println(getZeroInt())
-    println(getZeroString())
-    println(getZeroBool())
-    println(getZeroFloat())
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    if get_zero_int() == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] zero int")
+        failed += 1
+    }
+    if get_zero_string() == "" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] zero string")
+        failed += 1
+    }
+    if get_zero_bool() == false {
+        passed += 1
+    } otherwise {
+        println("[FAIL] zero bool")
+        failed += 1
+    }
+    if get_zero_float() == 0.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] zero float")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }
