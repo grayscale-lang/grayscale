@@ -57,6 +57,27 @@ do main() {
         failed += 1
     }
 
+    // compound assignment on a packed element must read it at the real width,
+    // not int64_t (which would over-read the buffer and corrupt the operand)
+    mut cnt [u8] = cast(ints, [u8])
+    cnt[2] += 10
+    cnt[0] *= 4
+    if cnt[0] == 4 && cnt[1] == 2 && cnt[2] == 13 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [u8] compound assignment: ${cnt[0]} ${cnt[1]} ${cnt[2]}")
+        failed += 1
+    }
+
+    mut ws [u16] = cast(ints, [u16])
+    ws[1] += 1000
+    if ws[0] == 1 && ws[1] == 1002 && ws[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [u16] compound assignment: ${ws[0]} ${ws[1]} ${ws[2]}")
+        failed += 1
+    }
+
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {
         println("SOME TESTS FAILED")

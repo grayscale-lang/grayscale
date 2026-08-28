@@ -8714,14 +8714,18 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (smax) {
                     const char *function_name = sized_check_func(aop, su);
                     if (function_name) {
-                        /* GRAY_ARRAY_SET_AT/GET_AT use int64_t (internal storage width) */
+                        /* GET reads sizeof(type) bytes, so it must use the real
+                         * element width — an int64_t read over-runs a packed
+                         * sub-8-byte array (from cast). SET's memcpy length is
+                         * the runtime elem_size, so the wider temp is harmless
+                         * and keeps literal arrays (8-byte slots) safe. */
                         emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
                         emit_expression(codegen, left);
                         emit(codegen, ", int64_t, ");
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(", function_name);
                         emit_expression(codegen, left);
-                        emit(codegen, ", int64_t, ");
+                        emit_formatted(codegen, ", %s, ", c_elem);
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
