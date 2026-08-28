@@ -109,8 +109,8 @@ Grayscale builds with `make` on all three platforms. Start with
 make build
 
 # Verify it works — write a quick test file and run it
-echo 'do main() { println("hello") }' > /tmp/test.gray
-./gray /tmp/test.gray
+echo 'do main() { println("hello") }' > main.gray
+./gray main.gray
 ```
 
 > **Iterating on the compiler?** When `./gray` runs from a source checkout, it
@@ -124,16 +124,19 @@ echo 'do main() { println("hello") }' > /tmp/test.gray
 
 | Command | Description |
 |---------|-------------|
-| `make build` | Build the `gray` binary |
-| `make install` | Install to `/usr/local/bin` |
-| `make clean` | Remove build artifacts |
-| `make test` | Run the full test suite |
+| `make build` | Build the `gray` binary (compiler embedded) |
+| `make stubs` | Create empty embed stubs (for dev `go build`) |
+| `make install` | Install `gray` to `/usr/local/bin` |
+| `make uninstall` | Remove `gray` from `/usr/local/bin` |
+| `make clean` | Remove built binaries |
+| `make leaks` | Check compiler for memory leaks (macOS: `leaks`, Linux: `valgrind`) |
+| `make test` | Run the full test suite (unit + e2e + integration + Go) |
 | `make test-unit` | C unit tests (lexer, parser, typechecker) |
 | `make test-e2e` | End-to-end codegen tests |
 | `make test-integration` | Integration tests (pass + fail) |
 | `make test-go` | Go unit tests |
 | `make test-ubsan` | UBSan sanitizer tests |
-| `make test-asan` | ASan+UBSan tests (Linux recommended) |
+| `make test-asan` | ASan+UBSan sanitizer tests (Linux recommended) |
 
 All test targets can be run from the repo root — no need to `cd` into subdirectories.
 
@@ -258,41 +261,34 @@ The fastest way to iterate on a change:
 make build
 
 # 3. Test with a quick .gray file
-echo 'do main() { println("hello") }' > /tmp/test.gray
-./gray /tmp/test.gray
+touch main.gray
+# Inside the main.gray file:
+# do main(){
+#   println("hello")
+# }
+./gray main.gray
 ```
 
 This is a great way to quickly validate your change while developing. When your feature is working, make sure to add proper tests before submitting your PR (see [Writing Tests](#writing-tests)).
 
 ### Adding a Stdlib Function, Builtin, Constant, or Type
 
-Any time you add or modify a user-facing stdlib function, builtin, constant, or type, every item below is **required** before your PR is ready.
+Any time you add or modify a user-facing stdlib function, builtin, constant, or
+type, all of the following are **required** before your PR is ready:
 
-#### C Implementation
+- [ ] **C implementation** — declare it in `grayc/src/stdlib/<module>.h` with a
+      `@man` block, implement it in `grayc/src/stdlib/<module>.c`
+- [ ] **Typechecker** — `grayc/src/typechecker/typechecker.c` knows the
+      signature: return type, argument count and types, and fallibility
+- [ ] **Codegen** — `grayc/src/codegen/codegen.c` emits the C call
+- [ ] **`STANDARD.md`** — add it to the module's table in the language spec
+- [ ] Run `./scripts/generate_stdlib_man.sh` and commit the regenerated file
+- [ ] `make build` compiles clean with zero warnings
 
-- [ ] `grayc/src/stdlib/<module>.h` — declare the C function and add a `@man` block following the existing format
-- [ ] `grayc/src/stdlib/<module>.c` — implement it
-
-#### Typechecker (`grayc/src/typechecker/typechecker.c`) — 3 locations
-
-- [ ] **Return type block** — find the `strcmp(mod, "<module>")` section and register what the function returns
-- [ ] **`stdlib_func_meta[]`** — add a `StdlibFuncMeta` entry with arg count range, fallibility, and per-argument type checks
-- [ ] **`_using_funcs[]`** — add `{"fn", "module", TK_RETURNTYPE}` so the `using` keyword resolves this function
-
-#### Codegen (`grayc/src/codegen/codegen.c`)
-
-- [ ] Emit the C call in `emit_<module>_call()`
-
-#### Docs
-
-- [ ] `STANDARD.md` — add the function to the module's table in the language spec
-- [ ] Run `./scripts/generate_stdlib_man.sh` and commit the regenerated `cli/stdlib_man_data.go`
-
-#### Build
-
-- [ ] `make build` — must compile clean with zero warnings
-
-PRs that add user-facing functionality without completing this checklist will not be merged.
+The typechecker and codegen internals move around; don't work from a list of
+symbol names. Find an existing function in the same module, grep for every place
+its name appears, and mirror it. PRs that add user-facing functionality without
+completing this checklist will not be merged.
 
 ### Adding or Modifying Diagnostics (Errors, Warnings, Panics)
 
@@ -318,26 +314,41 @@ All compiler diagnostics are defined in a single file: `grayc/src/util/error_cod
 
 ```
 grayscale/
-├── cli/                   # Go CLI tooling wrapper
-│   ├── main.go            # Entry point, version
-│   ├── commands.go        # Subcommand definitions
-│   ├── watch.go           # File watcher
-│   ├── doc.go             # Documentation generator
-│   └── update.go          # Self-update
-├── internal/driver/        # Go wrapper for invoking grayc binary
-├── grayc/                 # Grayscale compiler (C)
-│   ├── src/lexer/         # Tokenization
-│   ├── src/parser/        # Parsing (tokens → AST)
-│   ├── src/typechecker/   # Static type checking
-│   ├── src/codegen/       # Code generation (AST → C)
-│   ├── src/runtime/       # Runtime (strings, arrays, maps, arenas)
-│   ├── src/stdlib/        # Standard library modules
-│   ├── src/util/          # Shared utilities (arena, buffer, error system)
-│   └── tests/             # C unit and e2e tests
-├── integration-tests/     # End-to-end test suite (.gray programs)
-├── scripts/               # Code generation and test runner scripts
-├── STANDARD.md            # Language specification
-└── Makefile               # Build commands (builds both gray + grayc)
+├── cli/                      # Go CLI tooling wrapper (the `gray` command)
+│   ├── main.go               # Entry point, version
+│   ├── commands.go           # Subcommand definitions (build, run, check, cross, report, ...)
+│   ├── new.go                # `gray new` project scaffolding
+│   ├── watch.go              # File watcher (`gray watch`)
+│   ├── fmt.go                # `gray fmt` driver
+│   ├── doc.go                # Documentation generator (`gray doc`)
+│   ├── verify.go             # Install / toolchain verification
+│   ├── update.go             # Self-update
+│   ├── *_man_data.go         # Generated man data (stdlib, builtins, lang) — do not hand-edit
+│   └── templates/            # Embedded project templates used by `gray new`
+├── internal/driver/          # Embeds the grayc binary and invokes it from the CLI
+├── grayc/                    # Grayscale compiler (C)
+│   ├── Makefile              # Compiler build (the root Makefile delegates here)
+│   ├── src/main.c            # Compiler entry point — drives the pipeline
+│   ├── src/lexer/            # Tokenization
+│   ├── src/parser/           # Parsing (tokens → AST) and import resolution
+│   ├── src/typechecker/      # Static type checking
+│   ├── src/codegen/          # Code generation (AST → C)
+│   ├── src/fmt/              # Source formatter backend for `gray fmt`
+│   ├── src/runtime/          # Runtime (strings, arrays, maps, arenas)
+│   ├── src/stdlib/           # Standard library modules → libgrayrt.a
+│   ├── src/util/             # Shared utilities (arena, buffer, error system)
+│   ├── src/vendor/           # Vendored third-party C (sqlite3)
+│   └── tests/                # C unit and e2e test suites
+├── integration-tests/        # End-to-end test suite (.gray programs: pass/ + fail/)
+├── scripts/                  # Code-gen and test-runner scripts (.sh + .ps1 for Windows)
+├── .github/                  # CI workflows, issue templates, PR template
+├── README.md                 # Project overview
+├── STANDARD.md               # Language specification
+├── ERRORS.md                 # Generated diagnostic registry (from error_codes.h)
+├── TESTING.md                # Test layout and conventions
+├── CHANGELOG.md              # Generated by release-please
+├── Makefile                  # Top-level build (builds both gray + grayc)
+└── LICENSE
 ```
 
 ### Key Files for Common Tasks
@@ -352,7 +363,11 @@ grayscale/
 | Add/modify error codes | `grayc/src/util/error_codes.h` + run `scripts/generate_errors.sh` |
 | Add/modify stdlib docs | `@man` block in header + run `scripts/generate_stdlib_man.sh` |
 | Add/modify builtin docs | `@man` block in header + run `scripts/generate_builtins_man.sh` |
+| Change source formatting | `grayc/src/fmt/` + `cli/fmt.go` |
+| Fix module/import resolution | `grayc/src/parser/imports.c` + `grayc/src/parser/module_table.c` |
+| Scaffold a new project type | `cli/new.go` + `cli/templates/` |
 | Improve CLI tooling | `cli/*.go` |
+| Change CI / release workflows | `.github/workflows/` |
 | Add a new language feature | Parser → Typechecker → Codegen (all in `grayc/src/`) |
 
 ---
@@ -451,7 +466,7 @@ For more details, see `TESTING.md`.
 
 ## Code Style
 
-### Go code (`cli/`, `pkg/`, `internal/`)
+### Go code (`cli/`, `internal/`)
 
 - Run `gofmt` before committing
 - Follow standard Go conventions
@@ -562,37 +577,10 @@ Keep the description short (under ~72 characters), lowercase, no period at the e
 
 ### Bug Reports
 
-**Every bug report must include the full output of `gray report`.** No exceptions. Run it and paste the complete output at the top of your issue — version, commit, install path, OS, CPU, RAM, and C compiler info are all load-bearing for triage. Bugs filed without `gray report` output will be asked for it before anything else happens.
+Open a bug issue and fill in the form — it walks you through severity, summary,
+reproduction, and expected vs. actual behavior.
 
-Use this template:
-
-```markdown
-## Severity
-Critical / High / Medium / Low — and why.
-
-## System info
-(paste full `gray report` output here)
-
-## Summary
-One paragraph. What's broken, in plain language.
-
-## Reproduction
-Minimal `.gray` program that triggers the bug. Inline the code in a fenced block.
-
-## Expected
-What should happen.
-
-## Actual
-What actually happens. Include the error message verbatim if there is one.
-
-## Where to look (optional)
-If you've poked around and have a guess at the root cause, note it. Saves triage time.
-
-## Related (optional)
-Link any related issues or recent commits that touched the same area.
-```
-
-Bugs filed in this shape get triaged quickly. One-paragraph bugs without a repro get parked.
+**Every bug report must include the full output of `gray report`.** No exceptions. Run it and paste the complete output into the issue — version, commit, install path, OS, CPU, RAM, and C compiler info are all load-bearing for triage. Bugs filed without `gray report` output, or without a minimal `.gray` repro, get parked until they have both.
 
 ### Feature Requests
 
