@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 397 codes** (274 errors, 16 warnings, 107 panics)
+**Total: 398 codes** (274 errors, 17 warnings, 107 panics)
 
 ---
 
@@ -295,6 +295,7 @@
 | `W1001` | cleanup | variable is declared but never used; remove it or use it |
 | `W1003` | cleanup | function is declared but never called; remove it or call it |
 | `W1005` | cleanup | typed blank identifier; '_' doesn't need a type annotation, use 'mut _ = <expr>' instead |
+| `W1004` | cleanup | variable is declared with a type but no value; it defaults to that type's zero value |
 | `W1002` | cleanup | this import is never used; remove it or use a function from the module |
 | `W2002` | safety | this variable shadows a variable with the same name in an outer scope |
 | `W2003` | safety | unreachable code; this statement will never execute because it comes after a return |
@@ -448,4 +449,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-28 02:23:18 UTC*
+*Generated on 2026-08-28 18:46:38 UTC*

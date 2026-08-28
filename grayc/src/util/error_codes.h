@@ -432,6 +432,7 @@
     GRAY_WARNING("W1001", "cleanup", "variable is declared but never used; remove it or use it") \
     GRAY_WARNING("W1003", "cleanup", "function is declared but never called; remove it or call it") \
     GRAY_WARNING("W1005", "cleanup", "typed blank identifier; '_' doesn't need a type annotation, use 'mut _ = <expr>' instead") \
+    GRAY_WARNING("W1004", "cleanup", "variable is declared with a type but no value; it defaults to that type's zero value") \
     GRAY_WARNING("W1002", "cleanup", "this import is never used; remove it or use a function from the module") \
     GRAY_WARNING("W2002", "safety", "this variable shadows a variable with the same name in an outer scope") \
     GRAY_WARNING("W2003", "safety", "unreachable code; this statement will never execute because it comes after a return") \

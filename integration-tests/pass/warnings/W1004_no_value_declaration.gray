@@ -1,0 +1,14 @@
+/*
+ * Warning Test: W1004 - no-value declaration
+ * Expected: warning that a typed variable declared with no value defaults
+ * to its zero value. Fires the same for implicit and explicit `mut`.
+ */
+
+do main() {
+    foobar int          // implicit mut, no value
+    mut baz string      // explicit mut, no value
+    foobar = 1
+    baz = "x"
+    println(foobar)
+    println(baz)
+}

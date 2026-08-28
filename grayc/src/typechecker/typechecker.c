@@ -9169,6 +9169,18 @@ static void check_block(TypeChecker *checker, AstNode *node) {
 
 /* --- check_statement() per-case helpers --- */
 
+/* The literal a scalar type zero-initializes to, for the W1004 message.
+ * NULL for container/struct/pointer types (no single literal to show). */
+static const char *zero_value_literal(const char *type_name) {
+    if (!type_name) return NULL;
+    if (is_any_int_type(type_name)) return "0";
+    if (strcmp(type_name, "float") == 0) return "0.0";
+    if (strcmp(type_name, "string") == 0) return "\"\"";
+    if (strcmp(type_name, "bool") == 0) return "false";
+    if (strcmp(type_name, "char") == 0) return "'\\0'";
+    return NULL;
+}
+
 static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* Resolve type aliases in the declared type name so downstream
      * checks and codegen see the underlying type. */
@@ -9337,6 +9349,25 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* const must have a value */
     if (!node->data.var_decl.mutable && !node->data.var_decl.value) {
         diagnostic_error_code_formatted(checker->diag, "E2011", NODE_FILE(checker, node), node->token.line, node->token.column, 0, VAR_DISPLAY_NAME(node));
+    }
+    /* W1004: a mut-class declaration with a type but no value silently
+     * zero-initializes. State the fact so a dropped '= value' is visible.
+     * Skip synthetic decls and '_'; guard against the generic re-check
+     * pass so it fires once. */
+    if (!checker->suppress_typetable_writes &&
+        node->data.var_decl.mutable && !node->data.var_decl.value &&
+        node->data.var_decl.type_name &&
+        strcmp(node->data.var_decl.name, "_") != 0 &&
+        strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+        strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
+        const char *zero = zero_value_literal(node->data.var_decl.type_name);
+        char *msg = zero
+            ? typechecker_format(checker, "'%s' declared with no value — defaults to %s",
+                                 VAR_DISPLAY_NAME(node), zero)
+            : typechecker_format(checker, "'%s' declared with no value — defaults to its zero value",
+                                 VAR_DISPLAY_NAME(node));
+        diagnostic_warning_message(checker->diag, "W1004", msg,
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Check for type keyword used as value: mut x = int */
     if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_LABEL) {
