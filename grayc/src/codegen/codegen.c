@@ -2037,13 +2037,20 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
             return;
         }
     }
-    /* bit_not → ~ ; byte operands must be masked back to 8 bits because
-     * C promotes uint8_t to int before applying ~, yielding a negative
-     * value that fails the runtime byte range check. */
+    /* bit_not → ~ ; operands narrower than C's int (byte, u8, u16) must be
+     * masked back to their width because C promotes them to int before
+     * applying ~, yielding a negative value that fails the runtime range check. */
     if (node->data.prefix.op == TOK_BIT_NOT) {
         GrayType *bn_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.prefix.right) : NULL;
+        const char *bn_mask = NULL;
         if (bn_t && bn_t->kind == TK_BYTE) {
-            emit(codegen, "((uint8_t)(~(");
+            bn_mask = "uint8_t";
+        } else if (bn_t && bn_t->name) {
+            if (strcmp(bn_t->name, "u8") == 0)  bn_mask = "uint8_t";
+            else if (strcmp(bn_t->name, "u16") == 0) bn_mask = "uint16_t";
+        }
+        if (bn_mask) {
+            emit_formatted(codegen, "((%s)(~(", bn_mask);
             emit_expression(codegen, node->data.prefix.right);
             emit(codegen, ")))");
         } else {
