@@ -71,23 +71,13 @@ typedef enum {
     TOK_LBRACKET,       /* [ */
     TOK_RBRACKET,       /* ] */
 
-    /* Caret (pointer type) */
-    TOK_CARET,          /* ^ */
-
-    /* Arrow */
+    /* Symbols */
+    TOK_CARET,          /* ^  — pointer type */
     TOK_ARROW,          /* -> */
-
-    /* Dot */
     TOK_DOT,            /* . */
-
-    /* At sign */
     TOK_AT,             /* @ */
-
-    /* Ampersand */
     TOK_AMPERSAND,      /* & */
-
-    /* Question mark — wildcard type placeholder */
-    TOK_QUESTION,       /* ? */
+    TOK_QUESTION,       /* ?  — wildcard type placeholder */
 
     /* Hash attributes */
     TOK_STRICT,         /* #strict */
