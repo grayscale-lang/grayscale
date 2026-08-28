@@ -567,9 +567,54 @@ static const char *typechecker_resolve_alias(TypeChecker *checker, const char *n
     return module_table_resolve_alias(checker->modules, name);
 }
 
+/* Position of the first `sep` in `s` that sits at bracket/paren nesting
+ * depth 0, or NULL if there is none. Used to split composite type strings
+ * (`map[K:V]`, `func(P,...)->R`, `[Elem,N]`) without tripping on separators
+ * inside nested composites. */
+static char *alias_top_level_sep(char *s, char sep) {
+    int depth = 0;
+    for (char *p = s; *p; p++) {
+        if (*p == '[' || *p == '(') depth++;
+        else if (*p == ']' || *p == ')') depth--;
+        else if (*p == sep && depth == 0) return p;
+    }
+    return NULL;
+}
+
+static const char *resolve_type_alias(TypeChecker *checker, const char *name);
+
+/* Resolve every top-level comma-separated type name in `list` (used as a
+ * mutable scratch buffer), writing the rebuilt list into `out`. A leading
+ * `&` on a segment (a mutable func parameter) is preserved. Returns 1 when
+ * at least one element resolved to a different name, 0 when nothing
+ * changed, -1 on buffer overflow (`out` unusable). */
+static int alias_resolve_type_list(TypeChecker *checker, char *list,
+                                   char *out, size_t out_sz) {
+    size_t pos = 0;
+    bool changed = false;
+    char *seg = list;
+    out[0] = '\0';
+    while (seg && *seg) {
+        char *comma = alias_top_level_sep(seg, ',');
+        if (comma) *comma = '\0';
+        const char *amp = "";
+        char *tp = seg;
+        if (*tp == '&') { amp = "&"; tp++; }
+        const char *rp = resolve_type_alias(checker, tp);
+        if (rp != tp) changed = true;
+        int n = snprintf(out + pos, out_sz - pos, "%s%s%s",
+                         pos ? "," : "", amp, rp);
+        if (n < 0 || (size_t)n >= out_sz - pos) return -1;
+        pos += (size_t)n;
+        seg = comma ? comma + 1 : NULL;
+    }
+    return changed ? 1 : 0;
+}
+
 /* Resolve a type alias name to the underlying type name.
  * Follows chains transitively with a depth limit of 32.
- * Handles pointer (^Name), array ([Name]), and map types.
+ * Handles pointer (^Name), array ([Name] / [Name,N]), map (map[K:V]) and
+ * func signature (func(P,...)->R) types, recursing into every type slot.
  * Returns the original name if it is not an alias. */
 static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
     if (!name) return name;
@@ -586,7 +631,7 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
         return name;
     }
 
-    /* Handle array types: [Alias] → [Resolved] */
+    /* Handle array types: [Alias] and fixed-size [Alias,N] → [Resolved(,N)] */
     if (name[0] == '[') {
         size_t nlen = strlen(name);
         if (nlen > 2 && name[nlen - 1] == ']') {
@@ -596,11 +641,79 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             if (inner_len < sizeof(inner_buf)) {
                 memcpy(inner_buf, name + 1, inner_len);
                 inner_buf[inner_len] = '\0';
+                /* Fixed-size array: split off the trailing ",N" size. */
+                char *size_comma = alias_top_level_sep(inner_buf, ',');
+                const char *size_suffix = "";
+                char size_buf[64];
+                if (size_comma) {
+                    snprintf(size_buf, sizeof(size_buf), ",%s", size_comma + 1);
+                    size_suffix = size_buf;
+                    *size_comma = '\0';
+                }
                 const char *resolved_inner = resolve_type_alias(checker, inner_buf);
                 if (resolved_inner != inner_buf) {
-                    size_t rlen = strlen(resolved_inner) + 3;
+                    size_t rlen = strlen(resolved_inner) + strlen(size_suffix) + 3;
                     char *buf = arena_alloc(checker->arena, rlen);
-                    snprintf(buf, rlen, "[%s]", resolved_inner);
+                    snprintf(buf, rlen, "[%s%s]", resolved_inner, size_suffix);
+                    return buf;
+                }
+            }
+        }
+        return name;
+    }
+
+    /* Handle map types: map[K:V] → map[Resolved:Resolved] */
+    if (strncmp(name, "map[", 4) == 0) {
+        size_t nlen = strlen(name);
+        if (nlen > 5 && name[nlen - 1] == ']') {
+            char inner_buf[256];
+            size_t inner_len = nlen - 5;
+            if (inner_len < sizeof(inner_buf)) {
+                memcpy(inner_buf, name + 4, inner_len);
+                inner_buf[inner_len] = '\0';
+                char *colon = alias_top_level_sep(inner_buf, ':');
+                if (colon) {
+                    *colon = '\0';
+                    const char *k = resolve_type_alias(checker, inner_buf);
+                    const char *v = resolve_type_alias(checker, colon + 1);
+                    if (k != inner_buf || v != colon + 1) {
+                        size_t blen = strlen(k) + strlen(v) + 7;
+                        char *buf = arena_alloc(checker->arena, blen);
+                        snprintf(buf, blen, "map[%s:%s]", k, v);
+                        return buf;
+                    }
+                }
+            }
+        }
+        return name;
+    }
+
+    /* Handle func signatures: func(P,...)->R → func(Resolved,...)->Resolved */
+    if (strncmp(name, "func(", 5) == 0) {
+        int depth = 0;
+        const char *close = NULL;
+        for (const char *p = name + 4; *p; p++) {
+            if (*p == '(') depth++;
+            else if (*p == ')' && --depth == 0) { close = p; break; }
+        }
+        if (close) {
+            size_t plen = (size_t)(close - (name + 5));
+            const char *tail = close + 1;
+            const char *ret = (strncmp(tail, "->", 2) == 0) ? tail + 2 : NULL;
+            char params[256];
+            char rebuilt[256];
+            if (plen < sizeof(params)) {
+                memcpy(params, name + 5, plen);
+                params[plen] = '\0';
+                int params_changed =
+                    alias_resolve_type_list(checker, params, rebuilt, sizeof(rebuilt));
+                const char *rret = ret ? resolve_type_alias(checker, ret) : NULL;
+                bool ret_changed = (ret && rret != ret);
+                if (params_changed >= 0 && (params_changed == 1 || ret_changed)) {
+                    size_t blen = strlen(rebuilt) + (rret ? strlen(rret) : 0) + 10;
+                    char *buf = arena_alloc(checker->arena, blen);
+                    if (rret) snprintf(buf, blen, "func(%s)->%s", rebuilt, rret);
+                    else snprintf(buf, blen, "func(%s)", rebuilt);
                     return buf;
                 }
             }
@@ -618,10 +731,12 @@ static const char *resolve_type_alias(TypeChecker *checker, const char *name) {
             }
         }
         if (!found) break;
-        /* A target that is itself a container — alias Counts = [Count] —
-         * has to go back through the branches above, or the alias nested
-         * inside it never gets followed. */
-        if (name[0] == '^' || name[0] == '[') return resolve_type_alias(checker, name);
+        /* A target that is itself a container — alias Counts = [Count],
+         * alias M = map[string:I] — has to go back through the branches
+         * above, or the alias nested inside it never gets followed. */
+        if (name[0] == '^' || name[0] == '[' ||
+            strncmp(name, "map[", 4) == 0 || strncmp(name, "func(", 5) == 0)
+            return resolve_type_alias(checker, name);
     }
     return name;
 }
