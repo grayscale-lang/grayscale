@@ -8080,6 +8080,47 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
     emit(codegen, ";\n");
 }
 
+/* Emit the C zero value for c_type (no leading " = "). Used both for
+ * value-less declarations and for file-scope globals whose real
+ * initializer is deferred into the global-init buffer. */
+static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
+    if (strcmp(c_type, "int64_t") == 0) emit(codegen, "0");
+    else if (strcmp(c_type, "double") == 0) emit(codegen, "0.0");
+    else if (strcmp(c_type, "bool") == 0) emit(codegen, "false");
+    else if (strcmp(c_type, "GrayString") == 0) emit(codegen, "(GrayString){\"\", 0}");
+    else if (strcmp(c_type, "GrayArray") == 0) emit(codegen, "(GrayArray){0}");
+    else if (strcmp(c_type, "GrayMap") == 0) emit(codegen, "(GrayMap){0}");
+    else if (strcmp(c_type, "gray_i128") == 0) emit(codegen, "GRAY_I128_ZERO");
+    else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, "GRAY_U128_ZERO");
+    else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, "GRAY_I256_ZERO");
+    else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
+    else emit(codegen, "{0}");
+}
+
+/* True when a scalar/struct variable initializer lowers to a C constant
+ * expression and is therefore legal at file scope. Anything else
+ * (runtime-checked negation, struct literals with array/map fields,
+ * string interpolation, calls, references to other globals) must be
+ * deferred into the global-init buffer, matching emit_vardecl_array()
+ * and emit_vardecl_map(). */
+static bool initializer_is_c_constant(AstNode *value) {
+    if (!value) return true;
+    switch (value->kind) {
+        case NODE_BOOL_VALUE:
+        case NODE_CHAR_VALUE:
+        case NODE_FLOAT_VALUE:
+        case NODE_STRING_VALUE:
+        case NODE_NIL_VALUE:
+            return true;
+        case NODE_INT_VALUE:
+            /* Overflowed literals lower to a from_decimal() runtime call. */
+            return !value->data.int_value.overflow &&
+                   !value->data.int_value.overflow_u64;
+        default:
+            return false;
+    }
+}
+
 static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
                                const char *c_type, const char *type_name) {
     if (node->data.var_decl.value) {
@@ -8212,17 +8253,8 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
         codegen->current_var_type = NULL;
     } else {
         /* Zero-initialize when no value is provided */
-        if (strcmp(c_type, "int64_t") == 0) emit(codegen, " = 0");
-        else if (strcmp(c_type, "double") == 0) emit(codegen, " = 0.0");
-        else if (strcmp(c_type, "bool") == 0) emit(codegen, " = false");
-        else if (strcmp(c_type, "GrayString") == 0) emit(codegen, " = (GrayString){\"\", 0}");
-        else if (strcmp(c_type, "GrayArray") == 0) emit(codegen, " = (GrayArray){0}");
-        else if (strcmp(c_type, "GrayMap") == 0) emit(codegen, " = (GrayMap){0}");
-        else if (strcmp(c_type, "gray_i128") == 0) emit(codegen, " = GRAY_I128_ZERO");
-        else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, " = GRAY_U128_ZERO");
-        else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, " = GRAY_I256_ZERO");
-        else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, " = GRAY_U256_ZERO");
-        else emit(codegen, " = {0}");
+        emit(codegen, " = ");
+        emit_c_zero_value(codegen, c_type);
     }
 
     emit(codegen, ";\n");
@@ -8386,6 +8418,30 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         register_heap_variable(codegen, node->data.var_decl.name, true);
     } else if (is_heap_variable(codegen, node->data.var_decl.name)) {
         register_heap_variable(codegen, node->data.var_decl.name, false);
+    }
+
+    /* File-scope initializer that isn't a C constant expression: emit a
+     * zero-initialized global and defer the real initializer into the
+     * global-init buffer, the same way emit_vardecl_array/map do. C
+     * rejects non-constant file-scope initializers (runtime-checked
+     * negation, struct literals with array/map fields, string
+     * interpolation, ...). __auto_type needs its initializer inline, so
+     * leave those on the normal path. */
+    if (codegen->indent == 0 && node->data.var_decl.value &&
+        strcmp(c_type, "__auto_type") != 0 &&
+        !initializer_is_c_constant(node->data.var_decl.value)) {
+        emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
+        emit_c_zero_value(codegen, c_type);
+        emit(codegen, ";\n");
+        Buf saved = codegen->output;
+        codegen->output = codegen->global_init;
+        codegen->indent = 1;
+        emit_formatted(codegen, "    %s", sanitize_name(node->data.var_decl.name));
+        emit_vardecl_init(codegen, node, c_type, type_name);
+        codegen->global_init = codegen->output;
+        codegen->output = saved;
+        codegen->indent = 0;
+        return;
     }
 
     if (!node->data.var_decl.mutable) {
