@@ -33,7 +33,7 @@ None.
 ### If adding user-facing stdlib/builtin/type
 
 - [ ] C implementation in `grayc/src/stdlib/<module>.h` and `.c` (with `@man` block)
-- [ ] Typechecker wired: return type, `stdlib_arg_table[]`, `stdlib_arg_type_table[]`, `_using_funcs[]`
-- [ ] Codegen wired: `emit_<module>_call()`
+- [ ] Typechecker wired: signature, argument types, fallibility
+- [ ] Codegen wired: emits the C call
 - [ ] `STANDARD.md` updated
 - [ ] `./scripts/generate_stdlib_man.sh` run and output committed
