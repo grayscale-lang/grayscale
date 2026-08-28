@@ -5489,21 +5489,17 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (try_get_literal_int(node->data.call.args[0], &lit_val) && lit_val < 0) {
             diagnostic_error_code_formatted(checker->diag, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)lit_val);
         }
-        /* E3001: char() with a string literal that is not exactly one character */
+        /* E3001: char() converts an integer codepoint; reject any non-integer
+         * argument (a length-1 string still reaches codegen otherwise and
+         * emits (int32_t)(GrayString), which cc rejects). */
         GrayType *char_arg_t = resolve_expression(checker, node->data.call.args[0]);
-        if (char_arg_t->kind == TK_STRING) {
-            AstNode *arg = node->data.call.args[0];
-            if (arg->kind == NODE_STRING_VALUE) {
-                int slen = (int)strlen(arg->data.string_value.value);
-                if (slen != 1) {
-                    char *msg = NULL;
-                    msg = typechecker_format(checker,
-                        "'char()' requires a single-character string; got a string of length %d",
-                        slen);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-                }
-            }
+        if (!is_int_kind(char_arg_t->kind) && char_arg_t->kind != TK_CHAR) {
+            char *msg = NULL;
+            msg = typechecker_format(checker,
+                "'char()' expects an integer codepoint, got %s",
+                type_name(char_arg_t));
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         result = &TYPE_CHAR;
     } else if ((strcmp(function_name, "int") == 0 ||

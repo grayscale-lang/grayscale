@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3001 - char() given a single-character string
+ * Expected: "char() expects an integer codepoint, got string"
+ * A length-1 string used to fall through the check and leak a cc error.
+ */
+
+do main() {
+    mut c char = char("A")
+}

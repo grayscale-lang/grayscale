@@ -1,8 +1,8 @@
 /*
- * Error Test: E3001 - char() conversion from multi-char string
- * Expected: "char() requires a single-character string"
+ * Error Test: E3001 - char() given a string argument
+ * Expected: "char() expects an integer codepoint, got string"
  */
 
 do main() {
-    mut c char = char("AB")  // Multi-character string cannot convert to char
+    mut c char = char("AB")  // char() takes an integer codepoint, not a string
 }
