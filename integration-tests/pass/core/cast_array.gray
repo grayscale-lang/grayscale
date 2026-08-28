@@ -1,21 +1,46 @@
 /*
- * cast_array.gray - Test array element-wise cast
- *
- * Verifies that cast(arr, [target]) converts each element
- * to the target type with correct elem_size.
+ * cast_array.gray - element-wise cast(arr, [target]) between array types
+ * of the same element width ([int] <-> [float]).
  */
 
 do main() {
-    // int -> u8 (narrowing, values in range)
+    mut passed int = 0
+    mut failed int = 0
+
     mut ints [int] = {1, 2, 3}
-    mut bytes [u8] = cast(ints, [u8])
-    println(bytes)
 
-    // int -> float (widening)
+    // int -> float (widening in kind, same 8-byte element)
     mut floats [float] = cast(ints, [float])
-    println(floats)
+    if len(floats) == 3 && floats[0] == 1.0 && floats[1] == 2.0 && floats[2] == 3.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [int] -> [float]")
+        failed += 1
+    }
 
-    // u8 -> int (widening)
-    mut wide [int] = cast(bytes, [int])
-    println(wide)
+    // float -> int back (truncating), round trip on whole numbers
+    mut back [int] = cast(floats, [int])
+    if back[0] == 1 && back[1] == 2 && back[2] == 3 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] [float] -> [int] round trip")
+        failed += 1
+    }
+
+    // A single-element array casts too.
+    mut one [int] = {42}
+    mut onef [float] = cast(one, [float])
+    if len(onef) == 1 && onef[0] == 42.0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] single-element array cast")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

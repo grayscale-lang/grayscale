@@ -48,8 +48,8 @@ do main() {
 
     println("keyword_alias_elif: ${passed} passed, ${failed} failed")
     if failed > 0 {
-        println("FAIL")
+        println("SOME TESTS FAILED")
     } else {
-        println("PASS")
+        println("ALL TESTS PASSED")
     }
 }

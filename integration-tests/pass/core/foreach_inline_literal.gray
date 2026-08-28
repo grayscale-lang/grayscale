@@ -51,8 +51,10 @@ do main() {
     }
 
     println("")
-    println("Results: ${passed} passed, 0 failed")
-    if passed == 3 {
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
         println("ALL TESTS PASSED")
     }
 }

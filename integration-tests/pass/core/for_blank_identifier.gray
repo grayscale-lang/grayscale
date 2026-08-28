@@ -1,9 +1,22 @@
+/*
+ * Test: `for _ in range(...)` iterates without binding the loop variable,
+ * including when nested.
+ */
+
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut count int = 0
     for _ in range(0, 5) {
         count++
     }
-    println(count)
+    if count == 5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] single blank loop: ${count}")
+        failed += 1
+    }
 
     mut total int = 0
     for _ in range(0, 3) {
@@ -11,5 +24,17 @@ do main() {
             total++
         }
     }
-    println(total)
+    if total == 12 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] nested blank loops: ${total}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

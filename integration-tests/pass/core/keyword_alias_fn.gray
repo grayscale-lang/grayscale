@@ -36,8 +36,8 @@ fn main() {
 
     println("keyword_alias_fn: ${passed} passed, ${failed} failed")
     if failed > 0 {
-        println("FAIL")
+        println("SOME TESTS FAILED")
     } otherwise {
-        println("PASS")
+        println("ALL TESTS PASSED")
     }
 }

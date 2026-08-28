@@ -53,8 +53,8 @@ do main() {
 
     println("keyword_alias_switch: ${passed} passed, ${failed} failed")
     if failed > 0 {
-        println("FAIL")
+        println("SOME TESTS FAILED")
     } otherwise {
-        println("PASS")
+        println("ALL TESTS PASSED")
     }
 }
