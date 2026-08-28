@@ -166,7 +166,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
-static const char *operator_to_string(TokenType op) {
+static const char *operator_display_name(TokenType op) {
     switch (op) {
     case TOK_PLUS: return "+";
     case TOK_MINUS: return "-";
@@ -6645,7 +6645,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
          op == TOK_LT_EQ || op == TOK_GT_EQ)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "cannot use '%s' on strings; use strings.compare() instead", operator_to_string(op));
+            "cannot use '%s' on strings; use strings.compare() instead", operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         result = &TYPE_BOOL;
@@ -6716,7 +6716,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "invalid operands: cannot use '%s' with %s and %s",
-            operator_to_string(op), type_name(left), type_name(right));
+            operator_display_name(op), type_name(left), type_name(right));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6743,7 +6743,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "invalid operands: cannot use '%s' with %s and %s; bigint types must match",
-            operator_to_string(op), type_name(left), type_name(right));
+            operator_display_name(op), type_name(left), type_name(right));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6761,7 +6761,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "cannot use nil with operator '%s'; nil is only valid for == / != against nullable types (Error, pointers)",
-            operator_to_string(op));
+            operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6796,7 +6796,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         op != TOK_IN && op != TOK_NOT_IN) {
         char *msg = NULL;
         msg = typechecker_format(checker,
-            "cannot use '%s' on string type", operator_to_string(op));
+            "cannot use '%s' on string type", operator_display_name(op));
         diagnostic_error_message(checker->diag, "E3002", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         infix_errored = true;
@@ -6813,7 +6813,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
             bad = right;
         if (bad && bad->kind != TK_UNKNOWN) {
             diagnostic_error_code_formatted(checker->diag, "E3093", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), type_display_name(checker, bad));
+                operator_display_name(op), type_display_name(checker, bad));
             infix_errored = true;
         }
     }
@@ -6870,7 +6870,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (eidx >= 0 && checker->enum_is_tagged[eidx]) {
             diagnostic_error_code_formatted(checker->diag, "E3124",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), enum_display_name(checker, left->name));
+                operator_display_name(op), enum_display_name(checker, left->name));
             infix_errored = true;
         }
     }
@@ -6894,7 +6894,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
                             (right && right->kind == TK_INT);
         if ((left_is_enum || right_is_enum) &&
             !(is_ordering && has_int_side)) {
-            diagnostic_error_code_formatted(checker->diag, "E3049", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_to_string(op));
+            diagnostic_error_code_formatted(checker->diag, "E3049", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(op));
             infix_errored = true;
         }
     }
@@ -7043,7 +7043,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (!left_ok || !right_ok) {
             diagnostic_error_code_formatted(checker->diag, "E8001",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                operator_to_string(op), type_display_name(checker, left), type_display_name(checker, right));
+                operator_display_name(op), type_display_name(checker, left), type_display_name(checker, right));
             infix_errored = true;
         } else {
             result = left;
@@ -8130,7 +8130,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (left_t->kind != TK_UNKNOWN && !type_is_integer(left_t)) {
-                diagnostic_error_code_formatted(checker->diag, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_to_string(node->data.postfix.op), type_display_name(checker, left_t));
+                diagnostic_error_code_formatted(checker->diag, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(node->data.postfix.op), type_display_name(checker, left_t));
             }
             result = left_t;
         } else {
@@ -10483,7 +10483,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if (target_t->kind == TK_BOOL || value_t->kind == TK_BOOL) {
                 char *msg = typechecker_format(checker,
                     "invalid operands: cannot use '%s' with %s and %s",
-                    operator_to_string(aop), type_name(target_t), type_name(value_t));
+                    operator_display_name(aop), type_name(target_t), type_name(value_t));
                 diagnostic_error_message(checker->diag, "E3002", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -10500,7 +10500,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
                 aop != TOK_PLUS_ASSIGN) {
                 char *msg = typechecker_format(checker,
-                    "cannot use '%s' on string type", operator_to_string(aop));
+                    "cannot use '%s' on string type", operator_display_name(aop));
                 diagnostic_error_message(checker->diag, "E3002", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -10522,7 +10522,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                                  target_t->kind == TK_STRUCT) ? target_t : value_t;
                 diagnostic_error_code_formatted(checker->diag, "E3093",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    operator_to_string(aop), type_display_name(checker, bad));
+                    operator_display_name(aop), type_display_name(checker, bad));
             }
         }
     }
