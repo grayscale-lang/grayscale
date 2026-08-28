@@ -494,7 +494,7 @@ static void test_e2e_mem_usage(void) {
         "do main() {\n"
         "    mut a = mem.arena(1024)\n"
         "    println(mem.usage(a))\n"
-        "    mut s string = mem.alloc(a, \"hello\")\n"
+        "    mut s ^string = mem.alloc(a, \"hello\")\n"
         "    mut used int = mem.usage(a)\n"
         "    if used > 0 { println(\"allocated\") }\n"
         "    mem.destroy(a)\n"
@@ -508,7 +508,7 @@ static void test_e2e_mem_reset(void) {
         "import @mem\n"
         "do main() {\n"
         "    mut a = mem.arena(1024)\n"
-        "    mut s string = mem.alloc(a, \"hello\")\n"
+        "    mut s ^string = mem.alloc(a, \"hello\")\n"
         "    if mem.usage(a) > 0 { println(\"used\") }\n"
         "    mem.reset(a)\n"
         "    println(mem.usage(a))\n"
@@ -524,8 +524,8 @@ static void test_e2e_mem_alloc_string(void) {
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut s string = mem.alloc(a, \"arena string\")\n"
-        "    println(s)\n"
+        "    mut s ^string = mem.alloc(a, \"arena string\")\n"
+        "    println(s^)\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "arena string");
@@ -537,11 +537,11 @@ static void test_e2e_mem_alloc_array(void) {
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut nums [int] = mem.alloc(a, {10, 20, 30})\n"
-        "    println(nums[0])\n"
-        "    println(nums[1])\n"
-        "    println(nums[2])\n"
-        "    println(len(nums))\n"
+        "    mut nums ^[int] = mem.alloc(a, {10, 20, 30})\n"
+        "    println(nums^[0])\n"
+        "    println(nums^[1])\n"
+        "    println(nums^[2])\n"
+        "    println(len(nums^))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "10\n20\n30\n3");
@@ -553,8 +553,8 @@ static void test_e2e_mem_ensure_cleanup(void) {
         "do work() {\n"
         "    mut a = mem.arena(1024)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut s string = mem.alloc(a, \"working\")\n"
-        "    println(s)\n"
+        "    mut s ^string = mem.alloc(a, \"working\")\n"
+        "    println(s^)\n"
         "}\n"
         "do main() {\n"
         "    work()\n"
