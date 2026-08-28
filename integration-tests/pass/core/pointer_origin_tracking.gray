@@ -65,6 +65,10 @@ do main() {
         failed = failed + 1
     }
 
-    println("passed: ${passed}")
-    println("failed: ${failed}")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

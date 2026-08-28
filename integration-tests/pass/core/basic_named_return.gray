@@ -1,14 +1,25 @@
-/* Test: Basic named return value
- * Expected: passes with output "Alice"
- */
+/* Test: a single named return value is returned by name. */
 
-
-do getUserName() -> (name string) {
+do get_user_name() -> (name string) {
     mut name string = "Alice"
     return name
 }
 
 do main() {
-    println(getUserName())
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    if get_user_name() == "Alice" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] named return value: ${get_user_name()}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

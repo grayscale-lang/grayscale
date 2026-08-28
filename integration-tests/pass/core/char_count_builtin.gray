@@ -1,0 +1,54 @@
+/*
+ * Test: char_count() builtin — counts Unicode codepoints, in contrast to
+ * len() which returns the byte length of a string.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if char_count("hello") == 5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char_count ascii")
+        failed += 1
+    }
+
+    if char_count("") == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char_count empty")
+        failed += 1
+    }
+
+    // "héllo" is 6 bytes (é is 2) but 5 codepoints.
+    if char_count("héllo") == 5 && len("héllo") == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char_count vs len on multibyte: ${char_count("héllo")} / ${len("héllo")}")
+        failed += 1
+    }
+
+    // Emoji is a single codepoint, 4 bytes.
+    if char_count("🎉") == 1 && len("🎉") == 4 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char_count vs len on emoji: ${char_count("🎉")} / ${len("🎉")}")
+        failed += 1
+    }
+
+    mut s string = "café ☕"
+    if char_count(s) == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char_count of a variable, got ${char_count(s)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

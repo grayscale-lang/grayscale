@@ -1,7 +1,42 @@
+/* Test: ++ and -- on a uint variable adjust it by one and stay in range. */
+
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut x uint = 5
     x++
     x++
     x--
-    println(x)
+    if x == 6 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] uint ++/-- net: ${x}")
+        failed += 1
+    }
+
+    mut y uint = 0
+    y++
+    if y == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] uint ++ from 0: ${y}")
+        failed += 1
+    }
+
+    mut z uint = 1
+    z--
+    if z == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] uint -- to 0: ${z}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

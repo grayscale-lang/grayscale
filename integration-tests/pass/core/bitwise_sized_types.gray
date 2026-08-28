@@ -1,0 +1,89 @@
+/*
+ * Test: bitwise operators on sized integer types (u8, u16, i16, i32) and
+ * uint. Complements bitwise_operators.gray, which covers int and byte.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Shift left on u16, result stored back into u16.
+    mut a u16 = 0x00FF
+    mut al u16 = a bit_shift_left 4
+    if al == 0x0FF0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] u16 bit_shift_left: ${al}")
+        failed += 1
+    }
+
+    // Arithmetic (sign-preserving) shift right on a negative i32.
+    mut i i32 = -8
+    mut ir i32 = i bit_shift_right 1
+    if ir == -4 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i32 bit_shift_right of a negative: ${ir}")
+        failed += 1
+    }
+
+    // i16 logical bits: 0x0F00 >> 4 == 0x00F0.
+    mut s i16 = 0x0F00
+    mut sr i16 = s bit_shift_right 4
+    if sr == 0x00F0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i16 bit_shift_right: ${sr}")
+        failed += 1
+    }
+
+    // Shift on uint stays wide.
+    mut u uint = 3
+    mut us uint = u bit_shift_left 20
+    if us == 3145728 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] uint bit_shift_left: ${us}")
+        failed += 1
+    }
+
+    // bit_and / bit_or / bit_xor on u8 operands with u8 results.
+    mut x u8 = 0b1010_1010
+    mut y u8 = 0b0101_0101
+    mut and8 u8 = x bit_and y
+    mut or8 u8 = x bit_or y
+    mut xor8 u8 = x bit_xor y
+    if and8 == 0 && or8 == 255 && xor8 == 255 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] u8 bit_and/or/xor: ${and8} ${or8} ${xor8}")
+        failed += 1
+    }
+
+    // Masking pattern: keep the low byte of a u16 with bit_and.
+    mut wide u16 = 0xABCD
+    mut low u16 = wide bit_and 0x00FF
+    if low == 0xCD {
+        passed += 1
+    } otherwise {
+        println("[FAIL] u16 low-byte mask: ${low}")
+        failed += 1
+    }
+
+    // Variable shift amount.
+    mut n int = 5
+    mut shifted u16 = a bit_shift_left n
+    if shifted == 0x1FE0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] u16 shift by a variable: ${shifted}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

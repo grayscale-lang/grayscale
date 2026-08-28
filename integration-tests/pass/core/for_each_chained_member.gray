@@ -44,5 +44,10 @@ do main() {
     }
     if idx_sum == 3 { passed = passed + 1 } otherwise { failed = failed + 1 }
 
-    println("passed: ${passed}/${passed + failed}")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

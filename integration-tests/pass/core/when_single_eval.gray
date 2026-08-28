@@ -13,17 +13,34 @@ do next_val() -> int {
 }
 
 do main() {
+    mut matched string = ""
     when next_val() {
-        is 10 { println("got 10") }
-        is 20 { println("got 20") }
-        is 30 { println("got 30") }
-        default { println("no match") }
+        is 10 { matched = "10" }
+        is 20 { matched = "20" }
+        is 30 { matched = "30" }
+        default { matched = "none" }
     }
-    if counter == 1 {
+
+    // next_val() returns 1 on its first (and only) call, so no arm matches.
+    if matched == "none" {
         passed++
     } otherwise {
+        println("[FAIL] wrong arm taken: ${matched}")
         failed++
     }
 
-    println("passed: ${passed}, failed: ${failed}")
+    // The subject expression must have run exactly once.
+    if counter == 1 {
+        passed++
+    } otherwise {
+        println("[FAIL] subject evaluated ${counter} times, expected 1")
+        failed++
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

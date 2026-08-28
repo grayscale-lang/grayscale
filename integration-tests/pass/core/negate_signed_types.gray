@@ -1,37 +1,94 @@
+/* Test: unary minus on every signed numeric type produces the arithmetic
+ * negation and keeps the operand's type. */
+
 do main() {
+    mut passed int = 0
+    mut failed int = 0
+
     mut a i8 = 10
-    mut b i8 = -a
-    println(b)
+    if -a == -10 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i8")
+        failed += 1
+    }
 
     mut c i16 = 1000
-    mut d i16 = -c
-    println(d)
+    if -c == -1000 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i16")
+        failed += 1
+    }
 
     mut e i32 = 100000
-    mut f i32 = -e
-    println(f)
+    if -e == -100000 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i32")
+        failed += 1
+    }
 
     mut g i64 = 9999999
-    mut h i64 = -g
-    println(h)
+    if -g == -9999999 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i64")
+        failed += 1
+    }
 
-    mut ii int = 42
-    mut j int = -ii
-    println(j)
+    mut i int = 42
+    if -i == -42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] int")
+        failed += 1
+    }
 
     mut k i128 = 123456789
-    mut l i128 = -k
-    println(l)
+    if -k == i128(-123456789) {
+        passed += 1
+    } otherwise {
+        println("[FAIL] i128")
+        failed += 1
+    }
 
     mut m float = 3.14
-    mut n float = -m
-    println(n)
+    if -m == -3.14 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] float")
+        failed += 1
+    }
 
     mut o f32 = 1.5
-    mut p f32 = -o
-    println(p)
+    if cast(-o, f64) == -1.5 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] f32")
+        failed += 1
+    }
 
     mut q f64 = 2.71
-    mut r f64 = -q
-    println(r)
+    if -q == -2.71 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] f64")
+        failed += 1
+    }
+
+    // Double negation is identity.
+    if -(-i) == 42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] double negation")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

@@ -1,17 +1,34 @@
-/* Test: Multiple named return values with different types
- * Expected: passes with output "25" and "Bob"
- */
+/* Test: multiple named return values of different types, destructured at
+ * the call site. */
 
-
-do getPersonInfo() -> (age int, name string) {
+do get_person_info() -> (age int, name string) {
     mut age int = 25
     mut name string = "Bob"
     return age, name
 }
 
 do main() {
-    mut a int, n string = getPersonInfo()
-    println(a)
-    println(n)
-    println("ALL TESTS PASSED")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a int, n string = get_person_info()
+    if a == 25 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] first named return: ${a}")
+        failed += 1
+    }
+    if n == "Bob" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] second named return: ${n}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
 }

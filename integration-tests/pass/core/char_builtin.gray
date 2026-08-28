@@ -1,0 +1,62 @@
+/*
+ * Test: char() builtin — converts an integer codepoint to a char value.
+ * Accepts int and byte arguments; the result compares against char literals.
+ */
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if char(65) == 'A' {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char(65) == 'A'")
+        failed += 1
+    }
+
+    mut b char = char(66)
+    if b == 'B' {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char(66) assigned to a variable")
+        failed += 1
+    }
+
+    mut n int = 67
+    if char(n) == 'C' {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char() of an int variable")
+        failed += 1
+    }
+
+    mut by byte = 68
+    if char(by) == 'D' {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char() of a byte variable")
+        failed += 1
+    }
+
+    // Codepoint outside ASCII: ☺ is U+263A. Round-trips through int().
+    if int(char(0x263A)) == 0x263A {
+        passed += 1
+    } otherwise {
+        println("[FAIL] char() of a non-ASCII codepoint round-trips")
+        failed += 1
+    }
+
+    if type_of(char(65)) == "char" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] type_of(char(...)) is 'char'")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
