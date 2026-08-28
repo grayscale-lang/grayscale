@@ -80,9 +80,6 @@ void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const 
 void diagnostic_warning(DiagnosticList *diagnostics, const char *code, const char *message,
     const char *file, int line, int col, int end_col);
 
-void diagnostic_warning_help(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col, const char *help);
-
 /* Code-aware emission. Every new emission site should pick one of:
  *
  *   diagnostic_error_code   / diagnostic_warning_code   — registry message, no args.
