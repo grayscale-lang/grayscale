@@ -129,6 +129,27 @@ do main() {
         failed += 1
     }
 
+    // time.tick() + time.elapsed_ms(): a short sleep registers >= 1ms
+    mut mark int = time.tick()
+    sleep_ms(5)
+    mut el int = time.elapsed_ms(mark)
+    if el >= 1 {
+        println("  [PASS] tick / elapsed_ms")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] tick / elapsed_ms: got ${el}")
+        failed += 1
+    }
+
+    // time.weekday(): 2024-01-01 is a Monday (0), the two following days 1 and 2
+    if time.weekday(1704067200) == 0 && time.weekday(1704153600) == 1 && time.weekday(1704240000) == 2 {
+        println("  [PASS] weekday")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] weekday")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

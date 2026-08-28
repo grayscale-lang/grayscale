@@ -39,6 +39,19 @@ do main() {
         failed += 1
     }
 
+    // set_env / unset_env round trip
+    os.set_env("GRAY_OS_C_VAR", "present")
+    mut set_ok bool = os.get_env("GRAY_OS_C_VAR") == "present"
+    os.unset_env("GRAY_OS_C_VAR")
+    mut unset_ok bool = os.get_env("GRAY_OS_C_VAR") == ""
+    if set_ok && unset_ok {
+        println("  [PASS] set_env / unset_env")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] set_env / unset_env: set=${set_ok} unset=${unset_ok}")
+        failed += 1
+    }
+
     // hostname returns a non-empty string
     mut host string = os.hostname()
     if len(host) > 0 {

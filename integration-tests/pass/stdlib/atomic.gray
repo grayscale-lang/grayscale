@@ -98,6 +98,39 @@ do main() {
     println("  [PASS] spinlock_destroy")
     passed += 1
 
+    // bitwise atomics: each returns the previous value and applies the op
+    mut bits int = 0b1100
+    mut bptr ^int = addr(bits)
+
+    mut and_prev int = atomic.and(bptr, 0b1010)
+    if and_prev == 0b1100 && atomic.load(bptr) == 0b1000 {
+        println("  [PASS] and")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] and")
+        failed += 1
+    }
+
+    bits = 0b1100
+    mut or_prev int = atomic.or(bptr, 0b0011)
+    if or_prev == 0b1100 && atomic.load(bptr) == 0b1111 {
+        println("  [PASS] or")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] or")
+        failed += 1
+    }
+
+    bits = 0b1100
+    mut xor_prev int = atomic.xor(bptr, 0b1010)
+    if xor_prev == 0b1100 && atomic.load(bptr) == 0b0110 {
+        println("  [PASS] xor")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] xor")
+        failed += 1
+    }
+
     // Summary
     println("")
     println("Results: ${passed} passed, ${failed} failed")

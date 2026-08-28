@@ -44,6 +44,38 @@ do main() {
     println("  [PASS] destroy")
     passed += 1
 
+    // raw byte ops on scalar storage
+    mut z int = 123456789
+    mem.zero(addr(z), 8)
+    if z == 0 {
+        println("  [PASS] zero")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] zero: got ${z}")
+        failed += 1
+    }
+
+    mut fbyte int = 0
+    mem.fill(addr(fbyte), 0xFF, 1)
+    if fbyte == 255 {
+        println("  [PASS] fill")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] fill: got ${fbyte}")
+        failed += 1
+    }
+
+    mut cp_src int = 777
+    mut cp_dst int = 0
+    mem.raw_copy(addr(cp_dst), addr(cp_src), 8)
+    if cp_dst == 777 {
+        println("  [PASS] raw_copy")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] raw_copy: got ${cp_dst}")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

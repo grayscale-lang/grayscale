@@ -137,6 +137,26 @@ do main() {
         failed += 1
     }
 
+    // parse — object into a string-valued map
+    mut parsed map[string:string] = json.parse("{\"x\":\"1\",\"y\":\"two\"}")
+    if parsed["x"] == "1" && parsed["y"] == "two" {
+        println("  [PASS] parse(object)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse(object)")
+        failed += 1
+    }
+
+    // pretty_print — indented output containing the keys and a newline
+    mut pretty string = json.pretty_print(parsed, 2)
+    if strings.contains(pretty, "\"x\"") && strings.contains(pretty, "\n") {
+        println("  [PASS] pretty_print")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] pretty_print: got '${pretty}'")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

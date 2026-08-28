@@ -312,6 +312,50 @@ do main() {
         failed += 1
     }
 
+    // 128-bit round trips, both byte orders, 16-byte encodings
+    mut big128 i128 = i128(1234567890123456)
+    if binary.decode_i128_be(binary.encode_i128_be(big128)) == big128 &&
+       binary.decode_i128_le(binary.encode_i128_le(big128)) == big128 &&
+       len(binary.encode_i128_be(big128)) == 16 {
+        println("  [PASS] i128 be/le round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 be/le round-trip")
+        failed += 1
+    }
+
+    mut ubig128 u128 = u128(9876543210)
+    if binary.decode_u128_be(binary.encode_u128_be(ubig128)) == ubig128 &&
+       binary.decode_u128_le(binary.encode_u128_le(ubig128)) == ubig128 {
+        println("  [PASS] u128 be/le round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u128 be/le round-trip")
+        failed += 1
+    }
+
+    // 256-bit round trips, both byte orders, 32-byte encodings
+    mut big256 i256 = i256(-42)
+    if binary.decode_i256_be(binary.encode_i256_be(big256)) == big256 &&
+       binary.decode_i256_le(binary.encode_i256_le(big256)) == big256 &&
+       len(binary.encode_i256_be(big256)) == 32 {
+        println("  [PASS] i256 be/le round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i256 be/le round-trip")
+        failed += 1
+    }
+
+    mut ubig256 u256 = u256(255)
+    if binary.decode_u256_be(binary.encode_u256_be(ubig256)) == ubig256 &&
+       binary.decode_u256_le(binary.encode_u256_le(ubig256)) == ubig256 {
+        println("  [PASS] u256 be/le round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u256 be/le round-trip")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

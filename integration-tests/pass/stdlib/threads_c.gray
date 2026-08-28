@@ -5,9 +5,17 @@
 import @threads
 import @sync
 import @channels
+import @atomic
+
+mut arg_result int = 0
 
 do worker() {
     // simple worker function
+}
+
+do worker_with_arg(n int) {
+    mut p ^int = addr(arg_result)
+    atomic.store(p, n * 10)
 }
 
 do slow_worker() {
@@ -99,6 +107,17 @@ do main() {
     threads.sleep(50)
     println("  [PASS] detach")
     passed += 1
+
+    // spawn_arg passes a single argument to the worker
+    mut ta = threads.spawn_arg(()worker_with_arg, 7)
+    threads.join(ta)
+    if arg_result == 70 {
+        println("  [PASS] spawn_arg")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] spawn_arg: got ${arg_result}")
+        failed += 1
+    }
 
     println("")
     println("Results: ${passed} passed, ${failed} failed")

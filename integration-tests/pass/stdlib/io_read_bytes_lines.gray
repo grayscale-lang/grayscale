@@ -159,6 +159,32 @@ do main() {
         failed += 1
     }
 
+    // Test 16: temp_dir / temp_file return usable non-empty paths
+    mut tdir string, tderr = io.temp_dir()
+    mut tfile string, tferr = io.temp_file()
+    if tderr == nil && tferr == nil && len(tdir) > 0 && len(tfile) > 0 {
+        println("  [PASS] temp_dir / temp_file")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] temp_dir / temp_file")
+        failed += 1
+    }
+
+    // Test 17: write_bytes then append_bytes, read back the full contents
+    mut bin_file string = "${tdir}/gray_io_bytes.bin"
+    mut w_ok bool, werr = io.write_bytes(bin_file, {72, 105})
+    mut a_ok bool, aerr = io.append_bytes(bin_file, {33})
+    mut round [byte], rerr = io.read_bytes(bin_file)
+    if werr == nil && aerr == nil && rerr == nil &&
+       w_ok && a_ok && len(round) == 3 && round[0] == 72 && round[2] == 33 {
+        println("  [PASS] write_bytes / append_bytes")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] write_bytes / append_bytes")
+        failed += 1
+    }
+    mut _, _ = io.delete_file(bin_file)
+
     // Cleanup
     mut _, _ = io.delete_file(test_file)
 
