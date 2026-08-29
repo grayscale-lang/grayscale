@@ -1,0 +1,74 @@
+/*
+ * int_literal_reassignment.gray - An in-range integer literal must reassign
+ * to a variable whose type is unsigned or narrower than `int`, matching what
+ * the initializer already allows. A literal has no inherent signedness.
+ */
+
+do main() {
+    println("=== Integer Literal Reassignment Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Unsigned target, plain reassignment
+    mut a uint = 0
+    a = 5
+    if a == 5 {
+        println("  [PASS] uint = literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] uint = literal")
+        failed += 1
+    }
+
+    // Unsigned target, compound assignment
+    a += 1
+    if a == 6 {
+        println("  [PASS] uint += literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] uint += literal")
+        failed += 1
+    }
+
+    // Unsigned target, folded literal expression
+    mut b u64 = 0
+    b = 2 + 3
+    if b == 5 {
+        println("  [PASS] u64 = folded literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u64 = folded literal")
+        failed += 1
+    }
+
+    // Narrower-than-int signed target at its max
+    mut c u8 = 0
+    c = 255
+    if c == 255 {
+        println("  [PASS] u8 = 255")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u8 = 255")
+        failed += 1
+    }
+
+    // Narrower signed target, negative literal
+    mut d i16 = 0
+    d = -50
+    if d == -50 {
+        println("  [PASS] i16 = -50")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i16 = -50")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

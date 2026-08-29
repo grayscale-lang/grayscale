@@ -10627,6 +10627,19 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
 
+    /* An in-range integer literal (or constant-folded literal expression)
+     * carries no inherent signedness or width — resolve_expression types it
+     * as plain `int`. check_integer_range (E3036) already rejects a value
+     * that does not fit the target, so the signed/unsigned and narrowing
+     * rules meant for variable sources must not fire for such a literal.
+     * A literal that overflows 64 bits is left to those rules (and E3046),
+     * so it is still rejected rather than silently truncated. */
+    int64_t reassign_lit_val;
+    bool value_is_int_literal =
+        try_get_literal_int(node->data.assign.value, &reassign_lit_val) &&
+        !(node->data.assign.value->kind == NODE_INT_VALUE &&
+          node->data.assign.value->data.int_value.overflow);
+
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
      * resolve_infix_expr() for the corresponding binary operator. */
@@ -11016,7 +11029,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
      * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_is_int_literal &&
         target_t && value_t &&
         target_t->name && value_t->name) {
         int declared_rank = int_type_name_rank(target_t->name);
@@ -11032,7 +11045,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* E3019: signed-to-unsigned on reassignment (e.g., uint_var = signed_var).
      * Only fires when narrowing did not already catch it (same rank). */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_is_int_literal &&
         target_t && value_t &&
         target_t->name && value_t->name &&
         is_unsigned_type(target_t->name) &&
