@@ -263,12 +263,11 @@ UNIT_BINS = $(addprefix tests/test_,$(addsuffix $(EXE),$(UNIT_SUITES)))
 
 test-unit: $(TEST_DEPS) $(UNIT_BINS)
 	@echo ""
-	@for suite in $(UNIT_SUITES); do \
+	@trap 'rm -f $(UNIT_BINS); rm -rf tests/*.dSYM' EXIT; \
+	for suite in $(UNIT_SUITES); do \
 		echo "=== $$suite Tests ==="; \
 		./tests/test_$$suite$(EXE) || exit 1; \
 	done
-	@rm -f $(UNIT_BINS)
-	@rm -rf tests/*.dSYM
 ifdef WINDOWS
 	@echo ""
 	@echo "Skipped on Windows: panics (fork-based)."
@@ -277,9 +276,8 @@ endif
 test-e2e: build tests/test_codegen$(EXE)
 	@echo ""
 	@echo "=== End-to-End Codegen Tests ==="
-	@./tests/test_codegen$(EXE)
-	@rm -f tests/test_codegen$(EXE)
-	@rm -rf tests/*.dSYM
+	@trap 'rm -f tests/test_codegen$(EXE); rm -rf tests/*.dSYM' EXIT; \
+	./tests/test_codegen$(EXE)
 
 ifdef WINDOWS
 test-integration: build
@@ -312,45 +310,47 @@ leaks:
 	@echo "Leak checking needs macOS 'leaks' or Linux valgrind; neither exists here."
 else
 
+SAN_BINS = tests/test_lexer_san$(EXE) tests/test_parser_san$(EXE) \
+           tests/test_typechecker_san$(EXE) tests/test_util_san$(EXE) \
+           tests/test_runtime_san$(EXE)
+
 test-ubsan:
 	@echo ""
-	@echo "=== UBSan Lexer Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_lexer_san$(EXE) tests/test_lexer.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_lexer_san$(EXE)
-	@echo "=== UBSan Parser Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_parser_san$(EXE) tests/test_parser.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_parser_san$(EXE)
-	@echo "=== UBSan Type Checker Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_typechecker_san$(EXE) tests/test_typechecker.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_typechecker_san$(EXE)
-	@echo "=== UBSan Util Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_util_san$(EXE)
-	@echo "=== UBSan Runtime Tests ==="
-	@$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS)
-	@./tests/test_runtime_san$(EXE)
-	@rm -f tests/test_lexer_san$(EXE) tests/test_parser_san$(EXE) tests/test_typechecker_san$(EXE) tests/test_util_san$(EXE) tests/test_runtime_san$(EXE)
-	@rm -rf tests/*.dSYM
+	@trap 'rm -f $(SAN_BINS); rm -rf tests/*.dSYM' EXIT; set -e; \
+	echo "=== UBSan Lexer Tests ==="; \
+	$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_lexer_san$(EXE) tests/test_lexer.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_lexer_san$(EXE); \
+	echo "=== UBSan Parser Tests ==="; \
+	$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_parser_san$(EXE) tests/test_parser.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_parser_san$(EXE); \
+	echo "=== UBSan Type Checker Tests ==="; \
+	$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_typechecker_san$(EXE) tests/test_typechecker.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_typechecker_san$(EXE); \
+	echo "=== UBSan Util Tests ==="; \
+	$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_util_san$(EXE); \
+	echo "=== UBSan Runtime Tests ==="; \
+	$(CC) $(UBSAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS); \
+	./tests/test_runtime_san$(EXE)
 	@echo ""
 	@echo "All UBSan tests passed — no undefined behavior detected."
 
 test-asan:
 	@echo ""
 	@echo "=== ASan+UBSan Tests (Linux recommended) ==="
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_lexer_san$(EXE) tests/test_lexer.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_lexer_san$(EXE)
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_parser_san$(EXE) tests/test_parser.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_parser_san$(EXE)
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_typechecker_san$(EXE) tests/test_typechecker.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_typechecker_san$(EXE)
-	@echo "=== ASan+UBSan Util Tests ==="
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS)
-	@./tests/test_util_san$(EXE)
-	@echo "=== ASan+UBSan Runtime Tests ==="
-	@$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS)
-	@./tests/test_runtime_san$(EXE)
-	@rm -f tests/test_lexer_san$(EXE) tests/test_parser_san$(EXE) tests/test_typechecker_san$(EXE) tests/test_util_san$(EXE) tests/test_runtime_san$(EXE)
-	@rm -rf tests/*.dSYM
+	@trap 'rm -f $(SAN_BINS); rm -rf tests/*.dSYM' EXIT; set -e; \
+	$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_lexer_san$(EXE) tests/test_lexer.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_lexer_san$(EXE); \
+	$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_parser_san$(EXE) tests/test_parser.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_parser_san$(EXE); \
+	$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_typechecker_san$(EXE) tests/test_typechecker.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_typechecker_san$(EXE); \
+	echo "=== ASan+UBSan Util Tests ==="; \
+	$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_util_san$(EXE) tests/test_util.c $(TEST_SRC_FILES) $(LDFLAGS); \
+	./tests/test_util_san$(EXE); \
+	echo "=== ASan+UBSan Runtime Tests ==="; \
+	$(CC) $(ASAN_FLAGS) $(INCLUDES) -o tests/test_runtime_san$(EXE) tests/test_runtime.c $(RT_TEST_SRC) $(ATOMIC_SRC) $(LDFLAGS); \
+	./tests/test_runtime_san$(EXE)
 	@echo ""
 	@echo "All ASan+UBSan tests passed — no memory errors or undefined behavior."
 

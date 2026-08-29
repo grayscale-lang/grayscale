@@ -17,6 +17,10 @@
 /grayc/tests/test_typechecker
 /grayc/tests/test_codegen
 /grayc/tests/test_util
+/grayc/tests/test_module_table
+/grayc/tests/test_runtime
+/grayc/tests/test_panics
+/grayc/tests/test_stdlib
 /grayc/tests/*_san
 /grayc/tests/*_asan
 *.dSYM/
