@@ -11,6 +11,7 @@
 #include "../util/constants.h"
 #include "../util/platform.h"
 #include "../util/xalloc.h"
+#include "../util/reserved.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -570,6 +571,22 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "byte") == 0)   return "uint8_t";
     if (strcmp(type_name, "string") == 0) return "GrayString";
     if (strcmp(type_name, "Error") == 0 || strcmp(type_name, "error") == 0) return "GrayError *";
+    /* A user struct/enum that shadows a stdlib opaque type name (Database,
+     * Router, Thread, ...) resolves to its own GrayStruct_/GrayEnum_ name, so
+     * every emit site agrees. The typechecker (E3099) still blocks declaring
+     * one of these names while its owning module is imported. */
+    if (codegen && type_name[0] >= 'A' && type_name[0] <= 'Z' &&
+        is_reserved_stdlib_struct_name(type_name)) {
+        static char user_opaque_buf[MSG_BUF_SIZE];
+        if (find_struct_declaration(codegen, type_name)) {
+            snprintf(user_opaque_buf, sizeof(user_opaque_buf), "GrayStruct_%s", type_name);
+            return user_opaque_buf;
+        }
+        if (codegen_is_enum(codegen, type_name)) {
+            snprintf(user_opaque_buf, sizeof(user_opaque_buf), "GrayEnum_%s", type_name);
+            return user_opaque_buf;
+        }
+    }
     if (strcmp(type_name, "HttpRequest") == 0) return "GrayRequest";
     if (strcmp(type_name, "HttpResponse") == 0) return "GrayResponse";
     /* Stdlib opaque types: scalar path uses __auto_type and never reaches

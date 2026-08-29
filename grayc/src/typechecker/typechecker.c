@@ -12300,20 +12300,28 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     scope_destroy(func_scope);
 }
 
+/* E3099: a user type name collides with a stdlib opaque type. codegen maps
+ * these names to internal C types (GrayRouter, GrayThread, ...), so the
+ * conflict is real only when the owning module is imported and `mod.func()`
+ * can return that opaque type under the same name. A name with no owning
+ * module (SourceLocation) is produced by a builtin with no import and stays
+ * reserved unconditionally. */
+static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *node,
+                                               const char *name) {
+    if (!is_reserved_stdlib_struct_name(name)) return;
+    const char *owner = stdlib_opaque_module(name);
+    if (!owner || typechecker_is_imported_module(checker, owner)) {
+        diagnostic_error_code_formatted(checker->diag, "E3099",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+    }
+}
+
 static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     /* E4021/E4015: a field's annotated type is private to another file */
     for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
         reject_private_type(checker, node, node->data.struct_decl.fields[field_index].type_name);
     }
-    /* E3099: struct name collides with a stdlib opaque type reserved by codegen.
-     * These names map to internal C types (GrayRouter, GrayThread, etc.) before the
-     * user-struct path, so any user struct with these names silently generates
-     * invalid C with no Grayscale diagnostic. */
-    const char *struct_name = STRUCT_DISPLAY_NAME(node);
-    if (is_reserved_stdlib_struct_name(struct_name)) {
-        diagnostic_error_code_formatted(checker->diag, "E3099",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, struct_name);
-    }
+    check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
     if (checker->func_depth > 0) {
         diagnostic_error_code_formatted(checker->diag, "E2053",
@@ -12808,6 +12816,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "enum", ENUM_DISPLAY_NAME(node));
         }
+        /* E3099: enum name collides with a stdlib opaque type */
+        check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
         break;
 
     case NODE_ALIAS_DECL:

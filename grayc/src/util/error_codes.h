@@ -181,7 +181,7 @@
     GRAY_ERROR("E3096", "types", "cannot negate unsigned type '%s'; negation of unsigned types is not defined") \
     GRAY_ERROR("E3097", "safety", "pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits") \
     GRAY_ERROR("E3098", "types", "type mismatch: cannot assign '%s' to '%s' through pointer dereference") \
-    GRAY_ERROR("E3099", "types", "'%s' is a reserved stdlib type name and cannot be used as a struct name") \
+    GRAY_ERROR("E3099", "types", "'%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import") \
     GRAY_ERROR("E3100", "types", "type name '%s' cannot be used as a value") \
     GRAY_ERROR("E3101", "types", "func reference variables must be declared with 'const', not 'mut'; func references are compile-time aliases") \
     GRAY_ERROR("E3102", "types", "function '%s' returns a func type; func references cannot be assigned from function return values. Use '()func_name' or 'ref(func_name)' to create a func reference") \

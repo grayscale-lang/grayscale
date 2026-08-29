@@ -116,10 +116,12 @@ mut          new         private     struct      use*        using
 
 **Types (reserved names):**
 ```
-bool         byte        char        Error       float
-func         int         map         nil         string
-uint
+bool         byte           char        Error       float
+func         int            map         nil         SourceLocation
+string       uint
 ```
+
+`Error` and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
 
 **Sized types (reserved names):**
 ```
