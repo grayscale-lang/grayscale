@@ -7154,8 +7154,20 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         }
         /* Unqualified call not handled by builtins; try 'using' modules.
          * We must verify the function name belongs to the module before calling
-         * the handler, since some handlers emit code for any function name. */
-        if (!module) {
+         * the handler, since some handlers emit code for any function name.
+         * A user function of the same name — the program's own or the current
+         * module's — shadows a `using`'d stdlib function, so the general call
+         * path below emits it instead (the typechecker resolves the bare name
+         * to that function the same way). */
+        bool user_shadows_using = false;
+        if (!module && func) {
+            user_shadows_using = find_function(codegen, func) != NULL;
+            if (!user_shadows_using) {
+                const char *rd = codegen_resolve_decl(codegen, func);
+                if (rd != func) user_shadows_using = find_function(codegen, rd) != NULL;
+            }
+        }
+        if (!module && !user_shadows_using) {
             for (int ui = 0; ui < codegen->using_module_count; ui++) {
                 const char *umod = codegen->using_modules[ui];
                 const char *real_mod = resolve_alias(codegen, umod);

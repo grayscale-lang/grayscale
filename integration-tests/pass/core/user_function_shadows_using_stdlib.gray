@@ -1,0 +1,48 @@
+/*
+ * user_function_shadows_using_stdlib.gray - A user function with the same name
+ * as a function of a `using`'d stdlib module wins for the bare call; the stdlib
+ * function stays reachable through its qualified name.
+ */
+
+import and use @arrays
+
+do append(xs [int], v int) -> int {
+    // Deliberately does NOT append — returns a marker instead.
+    return 777
+}
+
+do main() {
+    println("=== User Function Shadows Using Stdlib ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut xs [int] = {1, 2, 3}
+
+    // bare call resolves to the user's function
+    mut marker int = append(xs, 4)
+    if marker == 777 && len(xs) == 3 {
+        println("  [PASS] bare append() is the user's function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare append(): marker=${marker} len=${len(xs)}")
+        failed += 1
+    }
+
+    // the stdlib function is still reachable qualified
+    arrays.append(xs, 4)
+    if len(xs) == 4 && xs[3] == 4 {
+        println("  [PASS] arrays.append() still reaches the stdlib function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arrays.append(): len=${len(xs)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
