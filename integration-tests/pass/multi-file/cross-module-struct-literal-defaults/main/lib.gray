@@ -1,0 +1,15 @@
+/*
+ * lib.gray - a struct whose array/map fields have an element type declared
+ * in the same module. A `lib.Outer{}` literal written in an importing module
+ * must fill the omitted fields with the module-mangled element type.
+ */
+
+const Inner struct {
+    x int
+}
+
+const Outer struct {
+    items  [Inner]
+    lookup map[string:Inner]
+    tag    int
+}

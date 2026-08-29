@@ -1987,7 +1987,14 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Track whether an initialiser has been emitted so the separating comma
      * follows what was actually written, not the field's position. */
     bool emitted_field = (node->data.struct_value.count > 0);
-    /* Emit default values for fields not specified in the literal */
+    /* Emit default values for fields not specified in the literal.
+     * Field defaults and omitted array/map element types are written as the
+     * struct's own module spells them, so resolve them against that module
+     * rather than the one the literal appears in — otherwise a cross-module
+     * `pkg.Outer{}` emits an unmangled `GrayStruct_Inner`. */
+    const char *saved_struct_module = codegen->current_module;
+    const char *saved_struct_file = codegen->current_file;
+    if (sdecl_for_fields) codegen_enter_node(codegen, sdecl_for_fields);
     if (sdecl_for_fields) {
         for (int field_index = 0; field_index < sdecl_for_fields->data.struct_decl.field_count; field_index++) {
             StructField *sf = &sdecl_for_fields->data.struct_decl.fields[field_index];
@@ -2029,6 +2036,8 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             }
         }
     }
+    codegen->current_module = saved_struct_module;
+    codegen->current_file = saved_struct_file;
     emit(codegen, "}");
 }
 

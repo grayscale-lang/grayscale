@@ -1,0 +1,33 @@
+/*
+ * main.gray - a cross-module struct literal that omits an array-of-struct and
+ * a map-of-struct field. Codegen fills those with an empty container; the
+ * element type must be mangled against the struct's own module, not this one.
+ * Regression: it emitted a bare `GrayStruct_Inner`, an undeclared identifier.
+ */
+
+import "./lib.gray"
+import @arrays
+
+do main() {
+    println("=== Cross-Module Struct Literal Omitted Fields ===")
+
+    mut o lib.Outer = lib.Outer{tag: 3}
+
+    if len(o.items) == 0 && len(o.lookup) == 0 && o.tag == 3 {
+        println("  [PASS] omitted array/map fields start empty")
+    } otherwise {
+        println("  [FAIL] omitted array/map fields")
+    }
+
+    arrays.append(o.items, lib.Inner{x: 7})
+    o.lookup["k"] = lib.Inner{x: 9}
+
+    if o.items[0].x == 7 && o.lookup["k"].x == 9 {
+        println("  [PASS] omitted fields are usable with the right element type")
+    } otherwise {
+        println("  [FAIL] omitted fields element type")
+    }
+
+    println("")
+    println("ALL TESTS PASSED")
+}
