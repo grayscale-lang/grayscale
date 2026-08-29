@@ -2491,10 +2491,26 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, _dp_left);
             emit(codegen, ")");
         } else {
-            /* Pointer dereference: p^ → (*p) with nil check */
-            emit(codegen, "({ __auto_type _dp = ");
-            emit_expression(codegen, _dp_left);
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } *_dp; })", codegen->file, node->token.line);
+            /* Pointer dereference: p^ → (*p) with nil check. Route through
+             * gray_ptr_check so `*p` stays an lvalue — a following `.field`
+             * chain or `&` then lands on the real storage rather than a
+             * by-value statement-expression copy. */
+            GrayType *deref_t = codegen->type_table
+                ? typetable_get(codegen->type_table, _dp_left) : NULL;
+            const char *deref_pointee = (deref_t && deref_t->kind == TK_POINTER)
+                ? deref_t->element_type : NULL;
+            if (deref_pointee && deref_pointee[0] != '^' && !strchr(deref_pointee, '?')) {
+                char c_pointee[TYPE_NAME_MAX];
+                snprintf(c_pointee, sizeof(c_pointee), "%s",
+                    gray_type_to_c_codegen(codegen, deref_pointee));
+                emit_formatted(codegen, "(*(%s *)gray_ptr_check((void *)(", c_pointee);
+                emit_expression(codegen, _dp_left);
+                emit_formatted(codegen, "), \"%s\", %d))", codegen->file, node->token.line);
+            } else {
+                emit(codegen, "({ __auto_type _dp = ");
+                emit_expression(codegen, _dp_left);
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } *_dp; })", codegen->file, node->token.line);
+            }
         }
     } else if (node->data.postfix.op == TOK_INCREMENT) {
         /* Overflow-checked increment; sized types need bounds check */
@@ -2932,11 +2948,27 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, node->data.member.object);
                 emit_formatted(codegen, "->%s", sanitize_name(node->data.member.member));
             } else {
-                /* Nil-guarded pointer field access */
-                emit(codegen, "({ __auto_type _dp = ");
-                emit_expression(codegen, node->data.member.object);
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp->%s; })",
-                    codegen->file, node->token.line, sanitize_name(node->data.member.member));
+                /* Nil-guarded pointer field access. Route through
+                 * gray_ptr_check so the result stays an lvalue: a further
+                 * `.field`, an index, or `&` on a nested value-struct field
+                 * (e.g. `p.inner.items`) then lands on the real storage
+                 * rather than a by-value statement-expression copy. */
+                char c_pointee[TYPE_NAME_MAX];
+                const char *pointee_tn = obj_t->element_type;
+                if (pointee_tn && pointee_tn[0] != '^' && !strchr(pointee_tn, '?')) {
+                    const char *c = gray_type_to_c_codegen(codegen, pointee_tn);
+                    snprintf(c_pointee, sizeof(c_pointee), "%s", c);
+                    emit_formatted(codegen, "((%s *)gray_ptr_check((void *)(", c_pointee);
+                    emit_expression(codegen, node->data.member.object);
+                    emit_formatted(codegen, "), \"%s\", %d))->%s",
+                        codegen->file, node->token.line,
+                        sanitize_name(node->data.member.member));
+                } else {
+                    emit(codegen, "({ __auto_type _dp = ");
+                    emit_expression(codegen, node->data.member.object);
+                    emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp->%s; })",
+                        codegen->file, node->token.line, sanitize_name(node->data.member.member));
+                }
             }
         } else if (!obj_is_ref && obj_t && obj_t->kind == TK_ERROR) {
             emit_expression(codegen, node->data.member.object);
@@ -3380,6 +3412,71 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* True when new(Type) must run field initializers rather than a bare zeroed
+ * allocation: the struct has a map/array field, a field default, or a nested
+ * value-struct field that itself needs one. Value structs cannot be cyclic,
+ * so the recursion terminates. */
+static bool struct_needs_new_init(CodeGen *codegen, AstNode *sdecl, int depth) {
+    if (!sdecl || depth > 8) return false;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
+        const char *ft = sdecl->data.struct_decl.fields[i].type_name;
+        if (sdecl->data.struct_decl.fields[i].default_value) return true;
+        if (ft && (strncmp(ft, "map[", 4) == 0 || ft[0] == '[')) return true;
+        if (ft && ft[0] != '^') {
+            GrayType *fttype = type_from_name(ft);
+            if (fttype && fttype->kind == TK_STRUCT &&
+                struct_needs_new_init(codegen, find_struct_declaration(codegen, ft), depth + 1))
+                return true;
+        }
+    }
+    return false;
+}
+
+/* Emit the container / default initializers for one struct level reached
+ * through `access` (e.g. "_np->" or "_np->inner."), recursing into nested
+ * value-struct fields so a map/array buried inside them is still given a
+ * live header instead of the zero one new()'s allocation leaves. */
+static void emit_new_struct_init(CodeGen *codegen, AstNode *sdecl,
+                                 const char *access, int depth) {
+    if (!sdecl || depth > 8) return;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
+        const char *field_name = sdecl->data.struct_decl.fields[i].name;
+        const char *field_type = sdecl->data.struct_decl.fields[i].type_name;
+        if (field_type && strncmp(field_type, "map[", 4) == 0) {
+            GrayType *map_type = type_from_name(field_type);
+            const char *c_kt = "GrayString";
+            const char *c_vt = "int64_t";
+            if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
+            if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
+            emit_formatted(codegen, "%s%s = gray_map_new_kind(gray_heap_arena, sizeof(%s), sizeof(%s), 8, %s); ",
+                access, sanitize_name(field_name), c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+        } else if (field_type && field_type[0] == '[') {
+            GrayType *arg_type = type_from_name(field_type);
+            const char *c_elem = "int64_t";
+            if (arg_type && arg_type->element_type)
+                c_elem = gray_map_element_c_type(codegen, arg_type->element_type);
+            emit_formatted(codegen, "%s%s = gray_array_new(gray_heap_arena, sizeof(%s), 4); ",
+                access, sanitize_name(field_name), c_elem);
+        } else if (field_type && field_type[0] != '^') {
+            GrayType *fttype = type_from_name(field_type);
+            if (fttype && fttype->kind == TK_STRUCT) {
+                AstNode *nested = find_struct_declaration(codegen, field_type);
+                if (nested && struct_needs_new_init(codegen, nested, depth + 1)) {
+                    char inner_access[MSG_BUF_SIZE];
+                    snprintf(inner_access, sizeof(inner_access), "%s%s.",
+                        access, sanitize_name(field_name));
+                    emit_new_struct_init(codegen, nested, inner_access, depth + 1);
+                }
+            }
+        }
+        if (sdecl->data.struct_decl.fields[i].default_value) {
+            emit_formatted(codegen, "%s%s = ", access, sanitize_name(field_name));
+            emit_expression(codegen, sdecl->data.struct_decl.fields[i].default_value);
+            emit(codegen, "; ");
+        }
+    }
+}
+
 static void emit_new_expr(CodeGen *codegen, AstNode *node) {
     /* new(Type) → zeroed allocation on default arena, returns pointer.
      * Map and array fields need explicit initialization because a
@@ -3397,51 +3494,14 @@ static void emit_new_expr(CodeGen *codegen, AstNode *node) {
     }
     const char *c_type = gray_type_to_c_codegen(codegen, sname);
     AstNode *sdecl = find_struct_declaration(codegen, sname);
-    bool needs_init = false;
-    if (sdecl) {
-        for (int field_index = 0; field_index < sdecl->data.struct_decl.field_count; field_index++) {
-            const char *field_type = sdecl->data.struct_decl.fields[field_index].type_name;
-            if ((field_type && strncmp(field_type, "map[", 4) == 0) ||
-                (field_type && field_type[0] == '[') ||
-                sdecl->data.struct_decl.fields[field_index].default_value) {
-                needs_init = true;
-                break;
-            }
-        }
-    }
-    if (needs_init) {
+    if (sdecl && struct_needs_new_init(codegen, sdecl, 0)) {
         /* Field defaults are expressions from the struct's own file, so they
          * resolve against the struct's module, not the caller's. */
         const char *caller_module = codegen->current_module;
         codegen_enter_node(codegen, sdecl);
         emit_formatted(codegen, "({ %s *_np = (%s *)gray_arena_alloc(gray_heap_arena, sizeof(%s)); ",
             c_type, c_type, c_type);
-        for (int field_index = 0; field_index < sdecl->data.struct_decl.field_count; field_index++) {
-            const char *field_name = sdecl->data.struct_decl.fields[field_index].name;
-            const char *field_type = sdecl->data.struct_decl.fields[field_index].type_name;
-            if (field_type && strncmp(field_type, "map[", 4) == 0) {
-                GrayType *map_type = type_from_name(field_type);
-                const char *c_kt = "GrayString";
-                const char *c_vt = "int64_t";
-                if (map_type && map_type->key_type) c_kt = gray_map_element_c_type(codegen, map_type->key_type);
-                if (map_type && map_type->value_type) c_vt = gray_map_element_c_type(codegen, map_type->value_type);
-                emit_formatted(codegen, "_np->%s = gray_map_new_kind(gray_heap_arena, sizeof(%s), sizeof(%s), 8, %s); ",
-                    sanitize_name(field_name), c_kt, c_vt, gray_map_key_kind_macro(c_kt));
-            } else if (field_type && field_type[0] == '[') {
-                /* Array field — determine element C type */
-                GrayType *arg_type = type_from_name(field_type);
-                const char *c_elem = "int64_t";
-                if (arg_type && arg_type->element_type)
-                    c_elem = gray_map_element_c_type(codegen, arg_type->element_type);
-                emit_formatted(codegen, "_np->%s = gray_array_new(gray_heap_arena, sizeof(%s), 4); ",
-                    sanitize_name(field_name), c_elem);
-            }
-            if (sdecl->data.struct_decl.fields[field_index].default_value) {
-                emit_formatted(codegen, "_np->%s = ", sanitize_name(field_name));
-                emit_expression(codegen, sdecl->data.struct_decl.fields[field_index].default_value);
-                emit(codegen, "; ");
-            }
-        }
+        emit_new_struct_init(codegen, sdecl, "_np->", 0);
         emit(codegen, "_np; })");
         codegen->current_module = caller_module;
     } else if (sname[0] == '[') {
@@ -5015,21 +5075,36 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
      * pointer itself, which is already an assignable target.
      * Covers `p.field` (auto-deref), `p^.field`, and a bare `p^`. */
     AstNode *ptr_expr = NULL;      /* pointer to nil-check */
-    const char *ptr_field = NULL;  /* field to address, NULL for a bare deref */
+    /* Field path from the pointee down to the target, innermost last
+     * (["inner", "items"] for `p.inner.items`). Empty for a bare deref. */
+    #define ADDR_OF_MAX_FIELDS 16
+    const char *field_path[ADDR_OF_MAX_FIELDS];
+    int field_depth = 0;
     if (expr->kind == NODE_MEMBER_EXPR) {
-        AstNode *obj = expr->data.member.object;
-        bool obj_is_ref = (obj->kind == NODE_LABEL &&
-            is_reference_variable(codegen, obj->data.label.value));
-        GrayType *obj_t = codegen->type_table
-            ? typetable_get(codegen->type_table, obj) : NULL;
-        if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
-            ptr_expr = obj;
-            ptr_field = expr->data.member.member;
-        } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
-            /* p^.field: strip the deref, use the underlying pointer */
-            ptr_expr = obj->data.postfix.left;
-            ptr_field = expr->data.member.member;
+        /* Walk a chain of value-struct field accesses down to the first base
+         * reached through a pointer, so the whole chain is taken off that
+         * pointer as one lvalue (&_ap->inner.items) rather than off a
+         * by-value statement-expression result. */
+        AstNode *cur = expr;
+        while (cur->kind == NODE_MEMBER_EXPR && field_depth < ADDR_OF_MAX_FIELDS) {
+            AstNode *obj = cur->data.member.object;
+            field_path[field_depth++] = cur->data.member.member;
+            bool obj_is_ref = (obj->kind == NODE_LABEL &&
+                is_reference_variable(codegen, obj->data.label.value));
+            GrayType *obj_t = codegen->type_table
+                ? typetable_get(codegen->type_table, obj) : NULL;
+            if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
+                ptr_expr = obj;
+                break;
+            }
+            if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
+                /* p^.field...: strip the deref, use the underlying pointer */
+                ptr_expr = obj->data.postfix.left;
+                break;
+            }
+            cur = obj;
         }
+        if (!ptr_expr) field_depth = 0;
     } else if (expr->kind == NODE_POSTFIX_EXPR && expr->data.postfix.op == TOK_CARET) {
         /* p^: the pointer already has the type the callee wants */
         ptr_expr = expr->data.postfix.left;
@@ -5037,7 +5112,7 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
     if (ptr_expr) {
         bool raw = (ptr_expr->kind == NODE_LABEL &&
             is_raw_variable(codegen, ptr_expr->data.label.value));
-        if (raw && !ptr_field) {
+        if (raw && field_depth == 0) {
             emit_expression(codegen, ptr_expr);
             return;
         }
@@ -5050,13 +5125,18 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
             emit_formatted(codegen, "; if (!_ap%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
                 id, codegen->file, expr->token.line);
         }
-        if (ptr_field) {
-            emit_formatted(codegen, "&_ap%d->%s; })", id, sanitize_name(ptr_field));
+        if (field_depth > 0) {
+            emit_formatted(codegen, "&_ap%d", id);
+            for (int i = field_depth - 1; i >= 0; i--)
+                emit_formatted(codegen, "%s%s", i == field_depth - 1 ? "->" : ".",
+                    sanitize_name(field_path[i]));
+            emit(codegen, "; })");
         } else {
             emit_formatted(codegen, "_ap%d; })", id);
         }
         return;
     }
+    #undef ADDR_OF_MAX_FIELDS
     if (expression_is_assignable(expr)) {
         emit(codegen, "&");
         emit_expression(codegen, expr);
