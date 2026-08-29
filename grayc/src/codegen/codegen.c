@@ -2016,11 +2016,22 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             if (!ftn || sf->default_value) continue;
             bool field_is_map = strncmp(ftn, "map[", 4) == 0;
             bool field_is_array = (ftn[0] == '[');
-            if (!field_is_map && !field_is_array) continue;
+            /* A string-backed enum is a GrayString at the C level, so a
+             * zero-filled field is an empty string, not a valid variant.
+             * Seed it with the first variant, matching new(EnumType). */
+            const char *senum = codegen_resolve_type(codegen, ftn);
+            bool field_is_str_enum = codegen_enum_is_string(codegen, senum);
+            if (!field_is_map && !field_is_array && !field_is_str_enum) continue;
             if (struct_literal_specifies_field(node, sf->name)) continue;
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
             emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+            if (field_is_str_enum) {
+                int eidx = codegen_enum_index(codegen, senum);
+                const char *fv = codegen->enum_decls[eidx]->data.enum_decl.values[0].name;
+                emit_formatted(codegen, "GrayEnum_%s_%s", senum, fv);
+                continue;
+            }
             GrayType *ft = type_from_name(ftn);
             if (field_is_map) {
                 const char *c_kt = "GrayString";
@@ -3431,6 +3442,8 @@ static bool struct_needs_new_init(CodeGen *codegen, AstNode *sdecl, int depth) {
         const char *ft = sdecl->data.struct_decl.fields[i].type_name;
         if (sdecl->data.struct_decl.fields[i].default_value) return true;
         if (ft && (strncmp(ft, "map[", 4) == 0 || ft[0] == '[')) return true;
+        if (ft && codegen_enum_is_string(codegen, codegen_resolve_type(codegen, ft)))
+            return true;
         if (ft && ft[0] != '^') {
             GrayType *fttype = type_from_name(ft);
             if (fttype && fttype->kind == TK_STRUCT &&
@@ -3466,6 +3479,15 @@ static void emit_new_struct_init(CodeGen *codegen, AstNode *sdecl,
                 c_elem = gray_map_element_c_type(codegen, arg_type->element_type);
             emit_formatted(codegen, "%s%s = gray_array_new(gray_heap_arena, sizeof(%s), 4); ",
                 access, sanitize_name(field_name), c_elem);
+        } else if (field_type &&
+                   codegen_enum_is_string(codegen, codegen_resolve_type(codegen, field_type))) {
+            /* String-backed enum field: zero is an empty string, not a
+             * variant. Seed with the first variant, matching new(EnumType). */
+            const char *senum = codegen_resolve_type(codegen, field_type);
+            int eidx = codegen_enum_index(codegen, senum);
+            const char *fv = codegen->enum_decls[eidx]->data.enum_decl.values[0].name;
+            emit_formatted(codegen, "%s%s = GrayEnum_%s_%s; ",
+                access, sanitize_name(field_name), senum, fv);
         } else if (field_type && field_type[0] != '^') {
             GrayType *fttype = type_from_name(field_type);
             if (fttype && fttype->kind == TK_STRUCT) {
@@ -4009,6 +4031,17 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
     if (!type || type->kind == TK_UNKNOWN) {
         emit_indent(codegen);
         emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        return;
+    }
+
+    /* A string-backed enum is a GrayString at the C level, not an integer;
+     * casting it to long long is invalid C. Print its string value, matching
+     * how `println` renders such an enum directly. */
+    if (type->kind == TK_ENUM && type->name &&
+        codegen_enum_is_string(codegen, type->name)) {
+        emit_indent(codegen);
+        emit_formatted(codegen, "fprintf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
+               stream, c_expr, c_expr);
         return;
     }
 
