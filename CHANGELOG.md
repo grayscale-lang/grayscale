@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.5.5](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.4...grayscale-v0.5.5) (2026-08-29)
+
+
+### Bug Fixes
+
+* **codegen:** a user function shadows a 'using'd stdlib function of the same name ([#2580](https://github.com/grayscale-lang/grayscale/issues/2580)) ([1465aa6](https://github.com/grayscale-lang/grayscale/commit/1465aa6f69f18ae81fec5f3f2a0606e7e30d7a68))
+* **codegen:** build &gt;64-bit integer literals as wide values in all positions ([#2572](https://github.com/grayscale-lang/grayscale/issues/2572)) ([b52d725](https://github.com/grayscale-lang/grayscale/commit/b52d725f608bfa5f86bbd569893b69fda3355d3d))
+* **codegen:** make nested container fields usable through a ^T pointer ([#2570](https://github.com/grayscale-lang/grayscale/issues/2570)) ([86ba442](https://github.com/grayscale-lang/grayscale/commit/86ba4427b4b4a55a183329fa7abfb54da9d2144c))
+* **codegen:** mangle omitted array/map field element types in cross-module struct literals ([#2575](https://github.com/grayscale-lang/grayscale/issues/2575)) ([7a13926](https://github.com/grayscale-lang/grayscale/commit/7a1392674463505df99919b52ba5f75ab7563f22))
+* **codegen:** print string-backed enum struct fields and default them to the first variant ([#2576](https://github.com/grayscale-lang/grayscale/issues/2576)) ([fd86a00](https://github.com/grayscale-lang/grayscale/commit/fd86a006fec8660e1c83a77f67ffd68f2d8856ae))
+* **parser:** accept a module-qualified key type in long-form map[K:V] ([#2562](https://github.com/grayscale-lang/grayscale/issues/2562)) ([a55f1bc](https://github.com/grayscale-lang/grayscale/commit/a55f1bccc23acde9757c08b02c2c83dbbbd1bea8))
+* **typechecker:** allow in-range integer literal reassignment to unsigned and narrower types ([#2578](https://github.com/grayscale-lang/grayscale/issues/2578)) ([3674165](https://github.com/grayscale-lang/grayscale/commit/3674165e7d38f87253c4e8d3a9607572fd6ecdc0))
+* **typechecker:** only reserve a stdlib opaque type name while its module is imported ([#2579](https://github.com/grayscale-lang/grayscale/issues/2579)) ([cf6f7ce](https://github.com/grayscale-lang/grayscale/commit/cf6f7ce815a7bb782c469e1fb130f7e33d3e7b1b))
+* **typechecker:** reject #json struct fields with no JSON representation ([#2563](https://github.com/grayscale-lang/grayscale/issues/2563)) ([8cde7bf](https://github.com/grayscale-lang/grayscale/commit/8cde7bff8a309a15142bf58d66d5fd11a739f4d2))
+
 ## [0.5.4](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.3...grayscale-v0.5.4) (2026-08-28)
 
 
