@@ -9930,7 +9930,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         elem_type[elen] = '\0';
                     }
                 }
-                if (elem_type[0]) {
+                if (elem_type[0] && !is_bigint_type(elem_type)) {
                     AstNode *arr = node->data.var_decl.value;
                     bool elem_is_u64_like = (strcmp(elem_type, "uint") == 0 || strcmp(elem_type, "u64") == 0);
                     for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {

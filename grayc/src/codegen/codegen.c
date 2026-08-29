@@ -1154,6 +1154,14 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
             is_bigint_type(ptr_t->element_type))
             return ptr_t->element_type;
     }
+    /* Array indexing arr[i] and user-function calls: the typechecker records
+     * the resolved element / return type, so trust that when it is bigint. */
+    if (node->kind == NODE_INDEX_EXPR || node->kind == NODE_CALL_EXPR) {
+        GrayType *nt = codegen->type_table
+            ? typetable_get(codegen->type_table, node) : NULL;
+        if (nt && nt->name && is_bigint_type(nt->name))
+            return nt->name;
+    }
     return NULL;
 }
 
@@ -1214,6 +1222,19 @@ static void emit_scalar_to_bigint(CodeGen *codegen, const char *target_type,
     }
     emit_expression(codegen, value);
     emit(codegen, "))");
+}
+
+/* Coerce `value` to bigint type `bi` when it is not already a bigint, so it
+ * can be assigned / passed / returned / stored where a bigint is expected.
+ * Integer literals (including those wider than 64 bits) and other scalars are
+ * wrapped with the matching constructor. Returns true when it emitted the
+ * value; false means `bi` is not a bigint or `value` already is one, and the
+ * caller should emit `value` normally. */
+static bool emit_bigint_coerced(CodeGen *codegen, const char *bi, AstNode *value) {
+    if (!bi || !is_bigint_type(bi)) return false;
+    if (resolve_bigint_type(codegen, value)) return false;
+    emit_scalar_to_bigint(codegen, bi, value, NULL);
+    return true;
 }
 
 /* Emit a bigint operand, widening smaller integer or bigint operands so
@@ -1709,9 +1730,25 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
         : NULL;
     if (!bi_elem && elem_t && elem_t->name && is_bigint_type(elem_t->name))
         bi_elem = elem_t->name;
-    /* Also check var decl context for bigint element type */
+    /* Also check var decl context for bigint element type — either a bare
+     * bigint name (nested-array recursion) or an array type like "[i128]". */
     if (!bi_elem && codegen->current_var_type && is_bigint_type(codegen->current_var_type))
         bi_elem = codegen->current_var_type;
+    if (!bi_elem && codegen->current_var_type) {
+        const char *cvt = codegen->current_var_type;
+        size_t cvt_len = strlen(cvt);
+        if (cvt_len >= 3 && cvt[0] == '[' && cvt[cvt_len - 1] == ']') {
+            char inner[TYPE_NAME_MAX];
+            size_t ilen = cvt_len - 2;
+            if (ilen < sizeof(inner)) {
+                memcpy(inner, cvt + 1, ilen);
+                inner[ilen] = '\0';
+                char *comma = strchr(inner, ',');
+                if (comma) *comma = '\0';
+                if (is_bigint_type(inner)) bi_elem = type_from_name(inner)->name;
+            }
+        }
+    }
     /* Fall back to the declared array type when the typetable has no
      * entry for the first element (happens for module-qualified struct
      * function calls — the call's return type isn't always threaded
@@ -1793,7 +1830,10 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
     emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[]){", c_type);
     for (int i = 0; i < count; i++) {
         if (i > 0) emit(codegen, ", ");
-        emit_expression(codegen, node->data.array_value.elements[i]);
+        /* A bigint element array stores gray_i128/gray_i256 values, so every
+         * scalar / integer literal element needs the matching constructor. */
+        if (!emit_bigint_coerced(codegen, bi_elem, node->data.array_value.elements[i]))
+            emit_expression(codegen, node->data.array_value.elements[i]);
     }
     emit_formatted(codegen, "}, sizeof(%s), %d)", c_type, count);
 }
@@ -1937,7 +1977,8 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
         if (field_type) {
             const char *saved = codegen->current_var_type;
             codegen->current_var_type = field_type;
-            emit_expression(codegen, node->data.struct_value.field_values[i]);
+            if (!emit_bigint_coerced(codegen, field_type, node->data.struct_value.field_values[i]))
+                emit_expression(codegen, node->data.struct_value.field_values[i]);
             codegen->current_var_type = saved;
         } else {
             emit_expression(codegen, node->data.struct_value.field_values[i]);
@@ -7708,7 +7749,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             const char *ptn = target_func->data.func_decl.params[i].type_name;
             const char *c_ty = ptn ? gray_type_to_c_codegen(codegen, ptn) : "int64_t";
             emit_formatted(codegen, "%s %s = ", c_ty, pname ? sanitize_name(pname) : "_arg");
-            if (!emit_narrowing_cast(codegen, ptn, node->data.call.args[i], node->token.line))
+            if (!emit_bigint_coerced(codegen, ptn, node->data.call.args[i]) &&
+                !emit_narrowing_cast(codegen, ptn, node->data.call.args[i], node->token.line))
                 emit_expression(codegen, node->data.call.args[i]);
             emit(codegen, "; ");
         }
@@ -7757,7 +7799,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     param_tn = target_func->data.func_decl.params[i].type_name;
                 else if (call_typed_sig && i < call_typed_sig->param_count)
                     param_tn = call_typed_sig->param_types[i];
-                if (!emit_narrowing_cast(codegen, param_tn, node->data.call.args[i], node->token.line))
+                if (!emit_bigint_coerced(codegen, param_tn, node->data.call.args[i]) &&
+                    !emit_narrowing_cast(codegen, param_tn, node->data.call.args[i], node->token.line))
                     emit_expression(codegen, node->data.call.args[i]);
             }
         } else if (target_func && i < param_count &&
@@ -9371,7 +9414,18 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
 
     emit_expression(codegen, node->data.assign.target);
     emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.op));
-    if (node->data.assign.value->kind == NODE_LABEL &&
+    /* A plain scalar / integer literal (of any width) assigned to a bigint
+     * target must be wrapped with the matching constructor. */
+    const char *assign_bi = NULL;
+    if (node->data.assign.op == TOK_ASSIGN) {
+        GrayType *tgt_bt = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        if (tgt_bt && tgt_bt->name && is_bigint_type(tgt_bt->name))
+            assign_bi = tgt_bt->name;
+    }
+    if (assign_bi && emit_bigint_coerced(codegen, assign_bi, node->data.assign.value)) {
+        /* emitted */
+    } else if (node->data.assign.value->kind == NODE_LABEL &&
         is_reference_variable(codegen, node->data.assign.value->data.label.value)) {
         GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
         if (tgt_t && tgt_t->kind == TK_POINTER) {
@@ -9611,7 +9665,10 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit_formatted(codegen, "{ GrayMulti_%s _ret = (GrayMulti_%s){", mbn, mbn);
         for (int i = 0; i < node->data.return_stmt.count; i++) {
             if (i > 0) emit(codegen, ", ");
-            emit_expression(codegen, node->data.return_stmt.values[i]);
+            const char *rbi = (i < codegen->current_func->data.func_decl.return_type_count)
+                ? codegen->current_func->data.func_decl.return_types[i] : NULL;
+            if (!emit_bigint_coerced(codegen, rbi, node->data.return_stmt.values[i]))
+                emit_expression(codegen, node->data.return_stmt.values[i]);
         }
         emit(codegen, "}; ");
         emit_multi_function_return_escape(codegen);
@@ -9637,7 +9694,11 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             }
             emit(codegen, composite ? "{0}, " : "0, ");
         }
-        emit_expression(codegen, node->data.return_stmt.values[0]);
+        {
+            const char *rbi = codegen->current_func->data.func_decl.return_types[rc - 1];
+            if (!emit_bigint_coerced(codegen, rbi, node->data.return_stmt.values[0]))
+                emit_expression(codegen, node->data.return_stmt.values[0]);
+        }
         emit(codegen, "}; ");
         emit_multi_function_return_escape(codegen);
         emit(codegen, "gray_exit_func(); return _ret; }\n");
@@ -9656,7 +9717,11 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         /* Single return value: evaluate into temp, then exit and return */
         emit_indent(codegen);
         emit(codegen, "{ __auto_type _ret = ");
-        emit_expression(codegen, node->data.return_stmt.values[0]);
+        const char *ret_bi = (codegen->current_func &&
+            codegen->current_func->data.func_decl.return_type_count == 1)
+            ? codegen->current_func->data.func_decl.return_types[0] : NULL;
+        if (!emit_bigint_coerced(codegen, ret_bi, node->data.return_stmt.values[0]))
+            emit_expression(codegen, node->data.return_stmt.values[0]);
         emit(codegen, "; ");
         if (codegen->current_func && codegen->current_func->data.func_decl.return_type_count > 0) {
             const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];

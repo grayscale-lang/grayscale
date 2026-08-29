@@ -1,0 +1,107 @@
+/*
+ * bigint_literal_positions.gray - A >64-bit integer literal must build the
+ * correct wide value in every position, not only in a variable initializer.
+ *
+ * Covers assignment, struct-literal field, field assignment, function
+ * argument, function return, and array-literal element for i128/i256.
+ */
+
+const Box struct {
+    v i128
+}
+
+do take(x i128) -> i128 {
+    return x
+}
+
+do echo_wide() -> i256 {
+    return 123456789012345678901234567890123456789
+}
+
+do main() {
+    println("=== BigInt Literal Position Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Reference value from the position that already worked: an initializer.
+    mut want i128 = 123456789012345678901234567890
+
+    // Assignment
+    mut a i128 = 0
+    a = 123456789012345678901234567890
+    if a == want {
+        println("  [PASS] assignment")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] assignment")
+        failed += 1
+    }
+
+    // Struct-literal field
+    mut s Box = Box{v: 123456789012345678901234567890}
+    if s.v == want {
+        println("  [PASS] struct-literal field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct-literal field")
+        failed += 1
+    }
+
+    // Field assignment
+    mut s2 Box = Box{v: 0}
+    s2.v = 123456789012345678901234567890
+    if s2.v == want {
+        println("  [PASS] field assignment")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] field assignment")
+        failed += 1
+    }
+
+    // Function argument
+    mut r i128 = take(123456789012345678901234567890)
+    if r == want {
+        println("  [PASS] function argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] function argument")
+        failed += 1
+    }
+
+    // Function return
+    mut w i256 = echo_wide()
+    mut want256 i256 = 123456789012345678901234567890123456789
+    if w == want256 {
+        println("  [PASS] function return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] function return")
+        failed += 1
+    }
+
+    // Array-literal element
+    mut arr [i128] = {123456789012345678901234567890, 2}
+    if arr[0] == want {
+        println("  [PASS] array-literal element (wide)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array-literal element (wide)")
+        failed += 1
+    }
+    if arr[1] == i128(2) {
+        println("  [PASS] array-literal element (small)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array-literal element (small)")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
