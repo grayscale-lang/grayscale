@@ -9930,7 +9930,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         elem_type[elen] = '\0';
                     }
                 }
-                if (elem_type[0]) {
+                if (elem_type[0] && !is_bigint_type(elem_type)) {
                     AstNode *arr = node->data.var_decl.value;
                     bool elem_is_u64_like = (strcmp(elem_type, "uint") == 0 || strcmp(elem_type, "u64") == 0);
                     for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
@@ -10627,6 +10627,19 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
 
+    /* An in-range integer literal (or constant-folded literal expression)
+     * carries no inherent signedness or width — resolve_expression types it
+     * as plain `int`. check_integer_range (E3036) already rejects a value
+     * that does not fit the target, so the signed/unsigned and narrowing
+     * rules meant for variable sources must not fire for such a literal.
+     * A literal that overflows 64 bits is left to those rules (and E3046),
+     * so it is still rejected rather than silently truncated. */
+    int64_t reassign_lit_val;
+    bool value_is_int_literal =
+        try_get_literal_int(node->data.assign.value, &reassign_lit_val) &&
+        !(node->data.assign.value->kind == NODE_INT_VALUE &&
+          node->data.assign.value->data.int_value.overflow);
+
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
      * resolve_infix_expr() for the corresponding binary operator. */
@@ -11016,7 +11029,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
      * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_is_int_literal &&
         target_t && value_t &&
         target_t->name && value_t->name) {
         int declared_rank = int_type_name_rank(target_t->name);
@@ -11032,7 +11045,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* E3019: signed-to-unsigned on reassignment (e.g., uint_var = signed_var).
      * Only fires when narrowing did not already catch it (same rank). */
-    if (target->kind == NODE_LABEL &&
+    if (target->kind == NODE_LABEL && !value_is_int_literal &&
         target_t && value_t &&
         target_t->name && value_t->name &&
         is_unsigned_type(target_t->name) &&
@@ -12287,20 +12300,28 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     scope_destroy(func_scope);
 }
 
+/* E3099: a user type name collides with a stdlib opaque type. codegen maps
+ * these names to internal C types (GrayRouter, GrayThread, ...), so the
+ * conflict is real only when the owning module is imported and `mod.func()`
+ * can return that opaque type under the same name. A name with no owning
+ * module (SourceLocation) is produced by a builtin with no import and stays
+ * reserved unconditionally. */
+static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *node,
+                                               const char *name) {
+    if (!is_reserved_stdlib_struct_name(name)) return;
+    const char *owner = stdlib_opaque_module(name);
+    if (!owner || typechecker_is_imported_module(checker, owner)) {
+        diagnostic_error_code_formatted(checker->diag, "E3099",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+    }
+}
+
 static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     /* E4021/E4015: a field's annotated type is private to another file */
     for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
         reject_private_type(checker, node, node->data.struct_decl.fields[field_index].type_name);
     }
-    /* E3099: struct name collides with a stdlib opaque type reserved by codegen.
-     * These names map to internal C types (GrayRouter, GrayThread, etc.) before the
-     * user-struct path, so any user struct with these names silently generates
-     * invalid C with no Grayscale diagnostic. */
-    const char *struct_name = STRUCT_DISPLAY_NAME(node);
-    if (is_reserved_stdlib_struct_name(struct_name)) {
-        diagnostic_error_code_formatted(checker->diag, "E3099",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0, struct_name);
-    }
+    check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */
     if (checker->func_depth > 0) {
         diagnostic_error_code_formatted(checker->diag, "E2053",
@@ -12327,6 +12348,21 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                     STRUCT_DISPLAY_NAME(node),
                     node->data.struct_decl.fields[field_index].name);
                 diagnostic_error_message(checker->diag, "E3109", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+            /* E3140: field types the JSON serializer codegen cannot marshal.
+             * The func-typed case is already reported as E3103 above. */
+            if (ftype && strncmp(ftype, "func", 4) != 0 &&
+                strcmp(ftype, "int") != 0 && strcmp(ftype, "i64") != 0 &&
+                strcmp(ftype, "uint") != 0 && strcmp(ftype, "u64") != 0 &&
+                strcmp(ftype, "float") != 0 && strcmp(ftype, "f64") != 0 &&
+                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0) {
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' field '%s' has type '%s', which has no JSON representation; "
+                    "#json fields must be int, uint, float, string, or bool",
+                    STRUCT_DISPLAY_NAME(node),
+                    node->data.struct_decl.fields[field_index].name, ftype);
+                diagnostic_error_message(checker->diag, "E3140", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -12780,6 +12816,8 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "enum", ENUM_DISPLAY_NAME(node));
         }
+        /* E3099: enum name collides with a stdlib opaque type */
+        check_stdlib_opaque_name_collision(checker, node, ENUM_DISPLAY_NAME(node));
         break;
 
     case NODE_ALIAS_DECL:

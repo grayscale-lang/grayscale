@@ -1,15 +1,21 @@
 /*
- * Error Test: E3099 - reserved stdlib type name used as struct name
- * naming a user struct with any of the 10 reserved
- * stdlib opaque type names caused a silent C compilation failure with no Grayscale
- * diagnostic. Expected: E3099
+ * Error Test: E3099 - user type name collides with a stdlib opaque type
+ * whose owning module is imported.
+ *
+ * Naming a user struct/enum after a stdlib opaque type (Router, Database, ...)
+ * used to cause a silent C compilation failure. It is now allowed unless the
+ * module that provides that type is imported, which is a real conflict.
  */
+
+// expect-error: E3099
+
+import @server
 
 const Router struct {
     name string
 }
 
 do main() {
-    mut r = new(Router)
+    mut r Router = Router{name: "x"}
     println(r.name)
 }

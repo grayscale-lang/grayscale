@@ -2058,11 +2058,20 @@ static void test_error_E3094_array_index_assign_type(void) {
 }
 
 static void test_error_E3099_reserved_struct_name(void) {
+    /* A stdlib opaque type name conflicts only while its module is imported. */
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @server\n"
         "const Router struct { path string }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E3099"));
     diagnostic_destroy(diagnostics);
+
+    /* Without the import the name is free. */
+    DiagnosticList *ok = typecheck_diagnostics(
+        "const Router struct { path string }\n"
+        "do main() { }");
+    ASSERT(!has_error_code(ok, "E3099"));
+    diagnostic_destroy(ok);
 }
 
 static void test_error_E3100_type_as_func_arg(void) {

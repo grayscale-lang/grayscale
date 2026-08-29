@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 400 codes** (274 errors, 17 warnings, 109 panics)
+**Total: 401 codes** (275 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -165,7 +165,7 @@
 | `E3096` | types | cannot negate unsigned type '%s'; negation of unsigned types is not defined |
 | `E3097` | safety | pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits |
 | `E3098` | types | type mismatch: cannot assign '%s' to '%s' through pointer dereference |
-| `E3099` | types | '%s' is a reserved stdlib type name and cannot be used as a struct name |
+| `E3099` | types | '%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import |
 | `E3100` | types | type name '%s' cannot be used as a value |
 | `E3101` | types | func reference variables must be declared with 'const', not 'mut'; func references are compile-time aliases |
 | `E3102` | types | function '%s' returns a func type; func references cannot be assigned from function return values. Use '()func_name' or 'ref(func_name)' to create a func reference |
@@ -206,6 +206,7 @@
 | `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
 | `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
 | `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
+| `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -451,4 +452,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-28 22:47:09 UTC*
+*Generated on 2026-08-29 22:59:43 UTC*

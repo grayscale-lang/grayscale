@@ -1,0 +1,58 @@
+/*
+ * shadow_stdlib_opaque_type_name.gray - A stdlib opaque type name (Database,
+ * Router, Thread, ...) is free for a user struct or enum as long as the module
+ * that provides it is not imported, matching how stdlib function names work.
+ */
+
+const Database struct {
+    host string
+    port int
+}
+
+const Thread enum {
+    MAIN
+    WORKER
+}
+
+do main() {
+    println("=== Shadow Stdlib Opaque Type Name Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut d Database = Database{host: "localhost", port: 5432}
+    if d.host == "localhost" && d.port == 5432 {
+        println("  [PASS] user struct named Database")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] user struct named Database")
+        failed += 1
+    }
+
+    mut t Thread = Thread.WORKER
+    if t == Thread.WORKER {
+        println("  [PASS] user enum named Thread")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] user enum named Thread")
+        failed += 1
+    }
+
+    mut ds [Database] = {d}
+    mut lookup map[string:Database] = {:}
+    lookup["primary"] = d
+    if len(ds) == 1 && lookup["primary"].port == 5432 {
+        println("  [PASS] user type in array and map fields")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] user type in array and map fields")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

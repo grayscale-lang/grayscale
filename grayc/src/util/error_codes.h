@@ -181,7 +181,7 @@
     GRAY_ERROR("E3096", "types", "cannot negate unsigned type '%s'; negation of unsigned types is not defined") \
     GRAY_ERROR("E3097", "safety", "pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits") \
     GRAY_ERROR("E3098", "types", "type mismatch: cannot assign '%s' to '%s' through pointer dereference") \
-    GRAY_ERROR("E3099", "types", "'%s' is a reserved stdlib type name and cannot be used as a struct name") \
+    GRAY_ERROR("E3099", "types", "'%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import") \
     GRAY_ERROR("E3100", "types", "type name '%s' cannot be used as a value") \
     GRAY_ERROR("E3101", "types", "func reference variables must be declared with 'const', not 'mut'; func references are compile-time aliases") \
     GRAY_ERROR("E3102", "types", "function '%s' returns a func type; func references cannot be assigned from function return values. Use '()func_name' or 'ref(func_name)' to create a func reference") \
@@ -221,7 +221,8 @@
     GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
     GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308") \
-    GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'")
+    GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
+    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

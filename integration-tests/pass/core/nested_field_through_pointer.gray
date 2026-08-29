@@ -1,0 +1,93 @@
+/*
+ * nested_field_through_pointer.gray - A container field buried inside a value
+ * struct, reached through a ^T pointer, must be usable: append, index, len,
+ * map set/get, and a scalar field write, with both implicit and explicit
+ * dereference.
+ */
+
+import @arrays
+
+const Inner struct {
+    items [int]
+    table map[string:int]
+}
+
+const Outer struct {
+    inner Inner
+    tag int
+}
+
+do main() {
+    println("=== Nested Field Through Pointer Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut o ^Outer = new(Outer)
+
+    /* scalar field on the outer struct still works */
+    o.tag = 9
+    if o.tag == 9 {
+        println("  [PASS] scalar field write")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] scalar field write")
+        failed += 1
+    }
+
+    /* append into a nested array field, implicit and explicit deref */
+    arrays.append(o.inner.items, 5)
+    arrays.append(o^.inner.items, 6)
+    if len(o.inner.items) == 2 {
+        println("  [PASS] append into nested array field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] append into nested array field: ${len(o.inner.items)}")
+        failed += 1
+    }
+
+    /* read a nested array element */
+    if o.inner.items[0] == 5 {
+        if o.inner.items[1] == 6 {
+            println("  [PASS] read nested array element")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] read nested array element [1]")
+            failed += 1
+        }
+    } otherwise {
+        println("  [FAIL] read nested array element [0]")
+        failed += 1
+    }
+
+    /* nested map field: set and get, implicit and explicit deref */
+    o.inner.table["a"] = 1
+    o^.inner.table["b"] = 2
+    if o.inner.table["a"] == 1 {
+        if o.inner.table["b"] == 2 {
+            println("  [PASS] nested map field set/get")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] nested map field get [b]")
+            failed += 1
+        }
+    } otherwise {
+        println("  [FAIL] nested map field get [a]")
+        failed += 1
+    }
+
+    if len(o.inner.table) == 2 {
+        println("  [PASS] len of nested map field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len of nested map field: ${len(o.inner.table)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

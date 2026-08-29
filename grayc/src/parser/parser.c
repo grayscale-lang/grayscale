@@ -355,7 +355,9 @@ static const char *parse_complex_type(Parser *parser) {
         /* Map type: map[K:V]; V is parsed recursively to support nesting */
         next_token(parser); /* skip [ */
         next_token(parser); /* key type */
-        const char *key_type = parser->cur_token.literal;
+        /* read_type_name consumes a module-qualified key (mod.Type), matching
+         * the [K:V] shorthand path; a bare token would stop at the '.'. */
+        const char *key_type = read_type_name(parser);
         if (!expect_peek_token(parser, TOK_COLON)) return NULL;
         next_token(parser); /* value type */
         const char *val_type = parse_complex_type(parser);

@@ -175,6 +175,14 @@ void gray_panic_code(const char *code, const char *fmt, ...)
 void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...)
     __attribute__((format(printf, 4, 5), noreturn));
 
+/* Nil-check a pointer and return it, so a checked dereference stays an
+ * lvalue: `((T*)gray_ptr_check(p, f, l))->field` can be assigned, indexed,
+ * or have its address taken, unlike a statement-expression wrapper. */
+static inline void *gray_ptr_check(void *p, const char *file, int line) {
+    if (!p) gray_panic_code_at(file, line, "P0080", "nil pointer dereference");
+    return p;
+}
+
 /* --- Stack depth guard --- */
 
 #define GRAY_MAX_CALL_DEPTH 10000

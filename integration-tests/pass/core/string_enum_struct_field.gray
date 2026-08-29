@@ -1,0 +1,66 @@
+/*
+ * string_enum_struct_field.gray - A struct field whose type is a string-backed
+ * enum must print as its string value (not a cast to long long, which is a C
+ * error) and must default to its first variant on zero-init.
+ */
+
+const Type enum {
+    CHAR = "char"
+    STR  = "str"
+}
+
+const Row struct {
+    id   int
+    type Type
+}
+
+do main() {
+    println("=== String Enum Struct Field Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* omitted field defaults to the first variant */
+    mut r Row = Row{}
+    if r.type == Type.CHAR {
+        println("  [PASS] Row{}.type defaults to first variant")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Row{}.type default")
+        failed += 1
+    }
+
+    /* new() defaults the field too */
+    mut rp ^Row = new(Row)
+    if rp^.type == Type.CHAR {
+        println("  [PASS] new(Row).type defaults to first variant")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] new(Row).type default")
+        failed += 1
+    }
+
+    /* specified field is kept */
+    mut r2 Row = Row{id: 5, type: Type.STR}
+    if r2.type == Type.STR {
+        println("  [PASS] Row{type: STR} keeps the value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] Row{type: STR}")
+        failed += 1
+    }
+
+    /* printing a struct with a string-enum field must compile (it used to
+     * emit a cast of GrayString to long long and fail C compilation) */
+    println(r)
+    println(r2)
+    println("  [PASS] struct print with string-enum field compiles")
+    passed += 1
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
