@@ -76,6 +76,18 @@ do main() {
         failed += 1
     }
 
+    // Long-form map[K:V] with a module-qualified key type parses the same as
+    // the [K:V] shorthand
+    mut counts map[shapes.Shade:int] = {:}
+    counts[shapes.Shade.DARK] = 7
+    if counts[shapes.Shade.DARK] == 7 {
+        println("  [PASS] long-form map with a qualified key type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] long-form map with a qualified key type")
+        failed += 1
+    }
+
     mut ptr ^shapes.Rect = addr(r)
     if type_of(ptr) == "^Rect" {
         println("  [PASS] type_of on a pointer to an imported struct is '^Rect'")
