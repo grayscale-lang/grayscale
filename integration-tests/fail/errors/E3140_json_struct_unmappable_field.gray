@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3140 - #json struct with a field type that has no JSON mapping
+ */
+
+// expect-error: E3140
+
+const Kind enum {
+    A
+    B
+}
+
+#json
+const S struct {
+    a int
+    e Kind
+}
+
+do main() {
+    mut s S = S{a: 1, e: Kind.B}
+    println(s.a)
+}

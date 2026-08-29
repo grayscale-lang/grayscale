@@ -1,0 +1,77 @@
+/*
+ * json_struct_roundtrip.gray - #json struct serialization covers every
+ * supported primitive field type (int, uint, float, string, bool) through
+ * both json.stringify and json.parse.
+ */
+
+import @json
+
+#json
+const Record struct {
+    id int
+    count uint
+    ratio float
+    label string
+    active bool
+}
+
+do main() {
+    println("=== #json Struct Roundtrip Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut r Record = Record{id: -7, count: 42, ratio: 1.5, label: "hello", active: true}
+    mut js string = json.stringify(r)
+
+    if js == "{\"id\": -7, \"count\": 42, \"ratio\": 1.5, \"label\": \"hello\", \"active\": true}" {
+        println("  [PASS] stringify all primitive field types")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stringify: got ${js}")
+        failed += 1
+    }
+
+    mut back Record = json.parse(js)
+    if back.id == -7 {
+        println("  [PASS] parse int field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse int field: ${back.id}")
+        failed += 1
+    }
+    if back.count == 42 {
+        println("  [PASS] parse uint field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse uint field: ${back.count}")
+        failed += 1
+    }
+    if back.ratio == 1.5 {
+        println("  [PASS] parse float field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse float field: ${back.ratio}")
+        failed += 1
+    }
+    if back.label == "hello" {
+        println("  [PASS] parse string field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse string field: ${back.label}")
+        failed += 1
+    }
+    if back.active {
+        println("  [PASS] parse bool field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse bool field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("SOME TESTS FAILED")
+    }
+    println("ALL TESTS PASSED")
+}

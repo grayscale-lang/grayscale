@@ -12342,6 +12342,21 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3109", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* E3140: field types the JSON serializer codegen cannot marshal.
+             * The func-typed case is already reported as E3103 above. */
+            if (ftype && strncmp(ftype, "func", 4) != 0 &&
+                strcmp(ftype, "int") != 0 && strcmp(ftype, "i64") != 0 &&
+                strcmp(ftype, "uint") != 0 && strcmp(ftype, "u64") != 0 &&
+                strcmp(ftype, "float") != 0 && strcmp(ftype, "f64") != 0 &&
+                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0) {
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' field '%s' has type '%s', which has no JSON representation; "
+                    "#json fields must be int, uint, float, string, or bool",
+                    STRUCT_DISPLAY_NAME(node),
+                    node->data.struct_decl.fields[field_index].name, ftype);
+                diagnostic_error_message(checker->diag, "E3140", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
         }
         for (int field_index = 0; field_index < node->data.struct_decl.func_count; field_index++) {
             AstNode *fn = node->data.struct_decl.funcs[field_index].func_decl;

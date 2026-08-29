@@ -11297,7 +11297,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             if (strcmp(field->type_name, "string") == 0) {
                 emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
                 emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
-            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0) {
+            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
+                       strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
                 emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = gray_builtin_string_to_int(_sv); } }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
@@ -11325,7 +11326,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 if (j > 0) fixed += 2; /* ", " */
                 fixed += 2 + (int)strlen(field->name) + 2; /* "key": */
                 /* Value upper bound for non-string types */
-                if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0) {
+                if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
+                    strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
                     fixed += 21;
                 } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
                     fixed += 24;
@@ -11362,6 +11364,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 emit_formatted(codegen, "    json_append_escaped(_buf, &_pos, _s.%s);\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%lld\", (long long)_s.%s);\n",
+                    sanitize_name(field->name));
+            } else if (strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
+                emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%llu\", (unsigned long long)_s.%s);\n",
                     sanitize_name(field->name));
             } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%g\", _s.%s);\n",

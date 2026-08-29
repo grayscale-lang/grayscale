@@ -2041,7 +2041,7 @@ do main() {
 
 - Field names in the JSON must match the struct field names exactly.
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
-- Supported field types: `int`, `uint`, `float`, `string`, `bool`. Nested `#json` structs and arrays of `#json` structs are also supported.
+- Supported field types: `int`, `uint`, `float`, `string`, `bool`.
 
 #### 7.5.3 `#discard` Attribute
 
