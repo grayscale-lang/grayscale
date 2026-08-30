@@ -7995,6 +7995,17 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
     else if (fn->kind == NODE_MEMBER_EXPR) name = fn->data.member.member;
     if (!name) return NULL;
 
+    /* A module-qualified stdlib call (channels.send(...)) is never a user
+     * function. Matching one here by trailing name component against a
+     * same-named struct function wraps it in the caller-arena block and
+     * captures its result with __auto_type, which fails to compile when the
+     * stdlib function returns void. */
+    if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object &&
+        fn->data.member.object->kind == NODE_LABEL &&
+        codegen_module_imported(codegen, fn->data.member.object->data.label.value)) {
+        return NULL;
+    }
+
     AstNode *exact = find_function(codegen, name);
     if (exact) return exact;
 
