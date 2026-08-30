@@ -1,0 +1,7 @@
+const Thing struct {
+    id int
+
+    do bump(t Thing) -> int {
+        return t.id + 1
+    }
+}

@@ -4006,7 +4006,22 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             /* Type parameter (<?>) — binding comes from the label
              * (a struct name), not from resolve_expression. */
             if (sig->decl->data.func_decl.params[argument_index].is_type_param) {
-                if (node->data.call.args[argument_index]->kind != NODE_LABEL) {
+                AstNode *targ = node->data.call.args[argument_index];
+                /* A module-qualified type name (mod.Type) parses as a member
+                 * expression, not a label. Collapse it to a label carrying the
+                 * dotted spelling so the type-name resolution below handles it
+                 * exactly as the bare form. */
+                if (targ->kind == NODE_MEMBER_EXPR && ast_member_qualifier(targ) &&
+                    targ->data.member.member) {
+                    char qualified[MSG_BUF_SIZE];
+                    snprintf(qualified, sizeof(qualified), "%s.%s",
+                        ast_member_qualifier(targ), targ->data.member.member);
+                    if (type_arg_names_a_type(checker, qualified)) {
+                        targ->kind = NODE_LABEL;
+                        targ->data.label.value = arena_copy_string(checker->arena, qualified);
+                    }
+                }
+                if (targ->kind != NODE_LABEL) {
                     diagnostic_error_code(checker->diag, "E3128",
                         NODE_FILE(checker, node->data.call.args[argument_index]),
                         node->data.call.args[argument_index]->token.line,
