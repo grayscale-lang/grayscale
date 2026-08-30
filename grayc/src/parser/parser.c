@@ -3170,7 +3170,9 @@ static AstNode *parse_statement(Parser *parser) {
             if (ws) ws->data.when_stmt.is_strict = true;
             return ws;
         }
-        /* If not followed by when, just skip */
+        diagnostic_error_message(parser->diag, "E2002",
+            arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
+            parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         return parse_statement(parser);
     case TOK_FLAGS: {
         /* #flags; applies to the next enum declaration */
@@ -3178,6 +3180,10 @@ static AstNode *parse_statement(Parser *parser) {
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;
     }
