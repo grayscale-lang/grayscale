@@ -30,5 +30,8 @@ do main() {
     // 3. here() composes inline as a function argument
     print_loc("inline", here())
 
+    // 4. printing a SourceLocation walks its fields (not an empty struct)
+    println(loc)
+
     println("ALL TESTS PASSED")
 }

@@ -4267,6 +4267,23 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
                 GrayType *field_graytype = type_from_name(field->type_name);
                 emit_value_print(codegen, field_expr, field_graytype, stream, true);
             }
+        } else if (struct_name && strcmp(struct_name, "SourceLocation") == 0) {
+            /* Compiler-registered struct with no AST declaration: its fields
+             * are known but find_struct_declaration() returns NULL, so walk
+             * them explicitly instead of emitting an empty SourceLocation{}. */
+            const char *sl_names[3] = { "file", "line", "column" };
+            const char *sl_types[3] = { "string", "int", "int" };
+            for (int i = 0; i < 3; i++) {
+                if (i > 0) {
+                    emit_indent(codegen);
+                    emit_formatted(codegen, "fprintf(%s, \", \");\n", stream);
+                }
+                emit_indent(codegen);
+                emit_formatted(codegen, "fprintf(%s, \"%s: \");\n", stream, sl_names[i]);
+                char field_expr[MSG_BUF_SIZE];
+                snprintf(field_expr, sizeof(field_expr), "(%s).%s", c_expr, sl_names[i]);
+                emit_value_print(codegen, field_expr, type_from_name(sl_types[i]), stream, true);
+            }
         }
 
         emit_value_print_depth--;
