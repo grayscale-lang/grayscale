@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3141 - enum-variant access on a struct type reached through
+ * an alias. Same failure as the direct form; the alias is not what makes it
+ * invalid.
+ */
+
+// expect-error: E3141
+// expect-error-count: 1
+
+const Point struct {
+    x int
+}
+
+alias Vec2 = Point
+
+do main() {
+    mut p Vec2 = Vec2.RED
+    println(p.x)
+}

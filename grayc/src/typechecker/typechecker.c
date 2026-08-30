@@ -7417,6 +7417,19 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             GrayType *ft = struct_field_type(checker, resolved_obj, member);
             if (ft && ft->kind != TK_UNKNOWN) {
                 diagnostic_error_code_formatted(checker->diag, "E3044", NODE_FILE(checker, node), node->token.line, node->token.column, 0, member, resolved_obj);
+            } else {
+                /* Not a field and not a struct function: the user is accessing
+                 * a struct type as if it were an enum (Point.RED). Left
+                 * unreported, codegen emitted the name verbatim and the C
+                 * compiler failed on an undeclared identifier. */
+                char skey[MSG_BUF_SIZE], fkey[MSG_BUF_SIZE];
+                snprintf(fkey, sizeof(fkey), "%s_%s",
+                    checker_resolve_decl_into(checker, resolved_obj, skey, sizeof(skey)), member);
+                if (!find_func(checker, fkey)) {
+                    diagnostic_error_code_formatted(checker->diag, "E3141",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        struct_display_name(checker, resolved_obj), member);
+                }
             }
             result = &TYPE_UNKNOWN;
         }

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 401 codes** (275 errors, 17 warnings, 109 panics)
+**Total: 402 codes** (276 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -207,6 +207,7 @@
 | `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
 | `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
 | `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool |
+| `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -452,4 +453,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-29 22:59:43 UTC*
+*Generated on 2026-08-30 23:52:55 UTC*
