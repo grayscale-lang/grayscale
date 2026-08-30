@@ -12877,7 +12877,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name) {
  * header, not inline. `visited` is a stack of struct names on the
  * current DFS path used to short-circuit cycles that don't touch
  * `target` directly. */
-static bool struct_contains_by_value(AstNode *program, AstNode *decl,
+static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, AstNode *decl,
                                       const char *target,
                                       const char **visited, int *visited_count,
                                       int visited_cap) {
@@ -12891,6 +12891,11 @@ static bool struct_contains_by_value(AstNode *program, AstNode *decl,
     for (int i = 0; i < decl->data.struct_decl.field_count; i++) {
         const char *ftn = decl->data.struct_decl.fields[i].type_name;
         if (!ftn || !*ftn) continue;
+        /* A field whose type is written as an alias is resolved here: the
+         * enclosing struct's own fields are rewritten before this walk, but
+         * a struct reached transitively is visited with its AST field names
+         * still as written, so an alias hid the cycle. */
+        ftn = resolve_type_alias(checker, checker_resolve_type_name(checker, ftn));
         /* Pointer, array, map; heap-indirected, size doesn't propagate. */
         if (ftn[0] == '^' || ftn[0] == '[' || strncmp(ftn, "map[", 4) == 0) continue;
         if (strcmp(ftn, target) == 0) {
@@ -12898,7 +12903,7 @@ static bool struct_contains_by_value(AstNode *program, AstNode *decl,
             return true;
         }
         AstNode *child = find_struct_in_program(program, ftn);
-        if (child && struct_contains_by_value(program, child, target,
+        if (child && struct_contains_by_value(checker, program, child, target,
                                                visited, visited_count, visited_cap)) {
             (*visited_count)--;
             return true;
@@ -13426,7 +13431,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                         const char *visited[MAX_STRUCT_DEPTH];
                         int variant_count = 0;
                         is_cycle = struct_contains_by_value(
-                            program, child, self_name, visited, &variant_count, 32);
+                            checker, program, child, self_name, visited, &variant_count, 32);
                     }
                 }
                 if (is_cycle) {

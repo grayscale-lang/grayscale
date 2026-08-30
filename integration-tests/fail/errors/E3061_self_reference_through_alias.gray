@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3061 - direct struct self-reference routed through a type alias
+ *
+ * A field whose type is an alias for the enclosing struct is the same
+ * by-value cycle as naming the struct directly, and must be rejected the
+ * same way instead of leaking a C compiler error.
+ */
+
+// expect-error: E3061
+
+const Node struct {
+    next NodeAlias
+    v int
+}
+
+alias NodeAlias = Node
+
+do main() {
+    println("hi")
+}
