@@ -1,0 +1,12 @@
+const Kind enum {
+    PING
+    PONG
+}
+
+const Msg struct {
+    kind Kind
+
+    do make(k Kind) -> Msg {
+        return Msg{kind: k}
+    }
+}

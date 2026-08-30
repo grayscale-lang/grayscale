@@ -6493,7 +6493,16 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             int check_count = node->data.call.arg_count < sig->param_count
                 ? node->data.call.arg_count : sig->param_count;
             for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                /* Give an implicit enum selector (.VARIANT) the parameter's
+                 * enum type as context, matching the bare and struct-namespaced
+                 * call paths; the triple chain was the one spelling that left
+                 * expected_type unset here. */
+                GrayType *param_t = sig->param_types ? sig->param_types[argument_index] : NULL;
+                GrayType *saved_expected_ms = checker->expected_type;
+                if (param_t && param_t->kind == TK_ENUM && param_t->name)
+                    checker->expected_type = param_t;
                 resolve_expression(checker, node->data.call.args[argument_index]);
+                checker->expected_type = saved_expected_ms;
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
