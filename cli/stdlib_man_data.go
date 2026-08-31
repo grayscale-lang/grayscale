@@ -68,6 +68,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"channels.close":           {Module: "channels", Group: "Lifecycle", Kind: "func", Sig: "close(ch Channel)", Fields: "", Desc: "Close a channel.", Example: ""},
 	"channels.try_send":        {Module: "channels", Group: "Send/Receive", Kind: "func", Sig: "try_send(ch Channel, value int) -> bool", Fields: "", Desc: "Non-blocking send. Returns true if the value was sent, false if the channel is full.", Example: ""},
 	"channels.try_receive":     {Module: "channels", Group: "Send/Receive", Kind: "func", Sig: "try_receive(ch Channel) -> (int, bool)", Fields: "", Desc: "Non-blocking receive. Returns the value and true if available, or (0, false) if empty. Always use destructuring.", Example: ""},
+	"chars.to_upper":           {Module: "chars", Group: "Case", Kind: "func", Sig: "to_upper(c char) -> char", Fields: "", Desc: "Returns the ASCII uppercase form of c. Anything that is not a lowercase ASCII letter — digits, symbols, whitespace, and non-ASCII codepoints — is returned unchanged. Never fails.", Example: ""},
+	"chars.to_lower":           {Module: "chars", Group: "Case", Kind: "func", Sig: "to_lower(c char) -> char", Fields: "", Desc: "Returns the ASCII lowercase form of c. Anything that is not an uppercase ASCII letter — digits, symbols, whitespace, and non-ASCII codepoints — is returned unchanged. Never fails.", Example: ""},
 	"crypto.sha256":            {Module: "crypto", Group: "Hashing", Kind: "func", Sig: "sha256(data string) -> string", Fields: "", Desc: "Compute the SHA-256 hash of data and return it as a hex string.", Example: ""},
 	"crypto.md5":               {Module: "crypto", Group: "Hashing", Kind: "func", Sig: "md5(data string) -> string", Fields: "", Desc: "Compute the MD5 hash of data and return it as a hex string. WARNING: MD5 is cryptographically broken. Do not use for security purposes. Use sha256 instead.", Example: ""},
 	"crypto.random_hex":        {Module: "crypto", Group: "Random", Kind: "func", Sig: "random_hex(length int) -> string", Fields: "", Desc: "Generate a cryptographically random hex string of the given length.", Example: ""},
@@ -386,6 +388,7 @@ var stdlibModules = map[string][]string{
 	"arrays":   {"append", "insert_at", "prepend", "remove_at", "remove", "clear", "fill", "get_first", "get_last", "remove_first", "remove_last", "is_empty", "contains", "index_of", "count", "is_equal", "reverse", "slice", "concat", "deduplicate", "flatten", "split_every", "pair", "get_sum", "get_min", "get_max", "sort_asc", "sort_desc", "map", "filter", "reduce", "any", "all"},
 	"atomic":   {"load", "store", "add", "sub", "exchange", "cas", "and", "or", "xor", "spinlock", "spin_lock", "spin_trylock", "spin_unlock", "spinlock_destroy", "fence"},
 	"channels": {"open", "send", "receive", "close", "try_send", "try_receive"},
+	"chars":    {"to_upper", "to_lower"},
 	"crypto":   {"sha256", "md5", "random_hex"},
 	"csv":      {"parse", "encode", "headers", "read_file", "write_file"},
 	"encoding": {"base64_encode", "base64_decode", "hex_encode", "hex_decode", "url_encode", "url_decode", "from_string", "from_hex", "from_base64", "to_string", "to_hex", "to_base64"},
@@ -433,6 +436,9 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 	"channels": {
 		{Label: "Lifecycle     ", Names: []string{"open", "close"}},
 		{Label: "Send/Receive  ", Names: []string{"send", "receive", "try_send", "try_receive"}},
+	},
+	"chars": {
+		{Label: "Case          ", Names: []string{"to_upper", "to_lower"}},
 	},
 	"crypto": {
 		{Label: "Hashing       ", Names: []string{"sha256", "md5"}},

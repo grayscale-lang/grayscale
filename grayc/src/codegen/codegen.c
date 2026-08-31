@@ -6990,6 +6990,18 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *func)
     return false;
 }
 
+/* --- chars module --- */
+
+static bool emit_chars_call(CodeGen *codegen, AstNode *node, const char *func) {
+    emit_formatted(codegen, "gray_chars_%s(", func);
+    for (int i = 0; i < node->data.call.arg_count; i++) {
+        if (i > 0) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[i]);
+    }
+    emit(codegen, ")");
+    return true;
+}
+
 /* --- strconv module --- */
 
 static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func) {
@@ -7581,6 +7593,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             {"atomic",   emit_atomic_call},
             {"binary",   emit_binary_call},
             {"channels", emit_channels_call},
+            {"chars",    emit_chars_call},
             {"crypto",   emit_crypto_call},
             {"csv",      emit_csv_call},
             {"encoding", emit_encoding_call},
@@ -11243,6 +11256,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"csv",      "csv.h"},
         {"json",     "json.h"},
         {"strconv",  "strconv.h"},
+        {"chars",    "chars.h"},
         {"sqlite",   "sqlite.h"},
         {"threads",  "threads.h"},
         {"sync",     "sync.h"},

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - wrong argument type to chars.to_upper
+ * Expected: chars.to_upper() expects char, got string
+ */
+
+// expect-error: E5026
+
+import @chars
+
+do main() {
+    mut c char = chars.to_upper("x")
+    println(c)
+}

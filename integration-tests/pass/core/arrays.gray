@@ -166,8 +166,8 @@ do main() {
     }
 
     // Test 16: char in array
-    mut chars [char] = {'a', 'b', 'c'}
-    if 'b' in chars {
+    mut cs [char] = {'a', 'b', 'c'}
+    if 'b' in cs {
         println("  [PASS] 'b' in char array")
         passed += 1
     } otherwise {

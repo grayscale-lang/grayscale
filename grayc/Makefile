@@ -99,6 +99,7 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/http.c \
          src/stdlib/server.c \
          src/stdlib/strconv.c \
+         src/stdlib/chars.c \
          src/vendor/sqlite3.c
 
 RT_OBJ = $(RT_SRC:.c=.o)

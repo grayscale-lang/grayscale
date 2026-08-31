@@ -4114,6 +4114,30 @@ Read-only introspection into the compiler-managed arenas (default + heap), execu
 | `call_limit` | `() -> int` | Maximum allowed call stack depth (10,000) |
 | `uptime` | `() -> float` | Seconds elapsed since the program started |
 
+### 9.29 Chars Module (`@chars`)
+
+Scalar operations on a single `char`. `strings` already provides the char classification
+predicates (`is_alpha`, `is_upper`, `is_lower`, …); `chars` adds ASCII case folding, which
+cannot live in `strings` because `to_upper`/`to_lower` there operate on a `string`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `to_upper` | `(c char) -> char` | ASCII uppercase |
+| `to_lower` | `(c char) -> char` | ASCII lowercase |
+
+**Behavior:**
+- Only the 26 ASCII letters in the relevant case are folded. Digits, symbols, whitespace, and
+  non-ASCII codepoints (`char` is a full Unicode codepoint) are returned unchanged.
+- Neither function fails.
+
+```gray
+import @chars
+
+println(chars.to_upper('a'))   // 'A'
+println(chars.to_lower('Z'))   // 'z'
+println(chars.to_upper('5'))   // '5'
+```
+
 ---
 
 ## 10. Error Handling

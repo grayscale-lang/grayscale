@@ -1839,6 +1839,9 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"channels", "send",        2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "void"},
     {"channels", "try_receive", 1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "int"},
     {"channels", "try_send",    2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "bool"},
+    /* chars */
+    {"chars", "to_lower", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "to_upper", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     /* crypto */
     {"crypto", "md5",        1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"crypto", "random_hex", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},

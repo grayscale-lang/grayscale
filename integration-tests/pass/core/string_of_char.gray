@@ -28,9 +28,9 @@ do main() {
     }
 
     // Building strings from chars
-    mut chars [char] = strings.to_chars("42")
-    mut result string = string(chars[0])
-    result = "${result}${chars[1]}"
+    mut cs [char] = strings.to_chars("42")
+    mut result string = string(cs[0])
+    result = "${result}${cs[1]}"
     if result == "42" {
         passed += 1
     } otherwise {
