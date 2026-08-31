@@ -7110,125 +7110,9 @@ static bool emit_channels_call(CodeGen *codegen, AstNode *node, const char *func
 
 /* --- Main call dispatcher --- */
 
-static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
-    const char *module = NULL;
-    const char *func = NULL;
-
-    if (is_stdlib_call(node, &module, &func)) {
-        /* Resolve import aliases: io@std → io.println maps to std.println */
-        if (module) module = resolve_alias(codegen, module);
-
-        /* No-module builtins (println, len, type_of, etc.) */
-        /* Also handle std.println(); std module functions are builtins */
-        if (!module && emit_builtin_call(codegen, node, func)) return;
-
-        /* Module dispatch table — sorted alphabetically for binary search */
-        typedef bool (*ModuleHandler)(CodeGen *, AstNode *, const char *);
-        typedef struct { const char *name; ModuleHandler handler; } ModuleEntry;
-        static const ModuleEntry modules[] = {
-            {"arrays",   emit_arrays_call},
-            {"atomic",   emit_atomic_call},
-            {"binary",   emit_binary_call},
-            {"channels", emit_channels_call},
-            {"crypto",   emit_crypto_call},
-            {"csv",      emit_csv_call},
-            {"encoding", emit_encoding_call},
-            {"fmt",      emit_format_call},
-            {"http",     emit_http_call},
-            {"io",       emit_io_call},
-            {"json",     emit_json_call},
-            {"maps",     emit_maps_call},
-            {"math",     emit_math_call},
-            {"mem",      emit_mem_call},
-            {"net",      emit_net_call},
-            {"os",       emit_os_call},
-            {"random",   emit_random_call},
-            {"regex",    emit_regex_call},
-            {"runtime",  emit_runtime_call},
-            {"server",   emit_server_call},
-            {"sqlite",   emit_sqlite_call},
-            {"strconv",  emit_strconv_call},
-            {"strings",  emit_strings_call},
-            {"sync",     emit_sync_call},
-            {"threads",  emit_threads_call},
-            {"time",     emit_time_call},
-            {"uuid",     emit_uuid_call},
-        };
-        if (module) {
-            int low = 0, high = (int)(sizeof(modules) / sizeof(modules[0])) - 1;
-            while (low <= high) {
-                int midpoint = (low + high) / 2;
-                int cmp = strcmp(module, modules[midpoint].name);
-                if (cmp == 0) {
-                    if (modules[midpoint].handler(codegen, node, func)) return;
-                    break;
-                }
-                if (cmp < 0) high = midpoint - 1;
-                else low = midpoint + 1;
-            }
-        }
-        /* Unqualified call not handled by builtins; try 'using' modules.
-         * We must verify the function name belongs to the module before calling
-         * the handler, since some handlers emit code for any function name.
-         * A user function of the same name — the program's own or the current
-         * module's — shadows a `using`'d stdlib function, so the general call
-         * path below emits it instead (the typechecker resolves the bare name
-         * to that function the same way). */
-        bool user_shadows_using = false;
-        if (!module && func) {
-            user_shadows_using = find_function(codegen, func) != NULL;
-            if (!user_shadows_using) {
-                const char *rd = codegen_resolve_decl(codegen, func);
-                if (rd != func) user_shadows_using = find_function(codegen, rd) != NULL;
-            }
-        }
-        if (!module && !user_shadows_using) {
-            for (int ui = 0; ui < codegen->using_module_count; ui++) {
-                const char *umod = codegen->using_modules[ui];
-                const char *real_mod = resolve_alias(codegen, umod);
-                /* 1) Check stdlib table (authoritative source in typechecker) */
-                bool found = stdlib_has_func(real_mod, func);
-                if (found) {
-                    /* Dispatch to the stdlib module handler */
-                    for (int mi = 0; mi < (int)(sizeof(modules) / sizeof(modules[0])); mi++) {
-                        if (strcmp(real_mod, modules[mi].name) == 0) {
-                            if (modules[mi].handler(codegen, node, func)) return;
-                            break;
-                        }
-                    }
-                }
-                /* 2) Try user-defined module: <module>_<func> */
-                if (!found) {
-                    char prefixed[IDENT_BUF];
-                    snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, func);
-                    AstNode *uf = find_function(codegen, prefixed);
-                    /* A generic function needs its per-instantiation name,
-                     * which the general call path derives from the argument
-                     * types; this shortcut would emit the unspecialised
-                     * symbol, so leave those to it. */
-                    if (uf && func_is_generic(uf)) uf = NULL;
-                    if (uf) {
-                        int pc = uf->data.func_decl.param_count;
-                        int ac = node->data.call.arg_count;
-                        int total = ac < pc ? pc : ac;
-                        emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
-                        for (int i = 0; i < total; i++) {
-                            if (i > 0) emit(codegen, ", ");
-                            if (i < ac) {
-                                bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
-                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
-                            } else if (i < pc && uf->data.func_decl.params[i].default_value) {
-                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
-                            }
-                        }
-                        emit(codegen, ")");
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
+/* Tagged enum construction: explicit `Shape.Circle(3.14)` or implicit
+ * `.Circle(3.14)`. Returns true when it emitted the constructor. */
+static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
     /* Tagged enum construction: Shape.Circle(3.14) */
     if (ast_member_qualifier(node->data.call.function)) {
         const char *ename = ast_member_qualifier(node->data.call.function);
@@ -7257,7 +7141,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " }");
             }
             emit(codegen, " }");
-            return;
+            return true;
         }
     }
 
@@ -7282,10 +7166,16 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " }");
             }
             emit(codegen, " }");
-            return;
+            return true;
         }
     }
+    return false;
+}
 
+/* Struct-namespaced (Name.func()) calls and mod.Struct.func() chains.
+ * Returns true when it emitted the call; false to fall through to the
+ * general function-call path. */
+static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     /* Check for struct-namespaced or user-module function call: Name.func() */
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
@@ -7314,7 +7204,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
         }
         if (obj->kind == NODE_LABEL) {
@@ -7337,7 +7227,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
 
             /* The qualifier may be a struct type, which is namespaced under
@@ -7464,7 +7354,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                                     emit_expression(codegen, node->data.call.args[ai]);
                                 }
                                 emit(codegen, ")");
-                                return;
+                                return true;
                             }
                         }
                     }
@@ -7496,7 +7386,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                     }
                     emit(codegen, ")");
-                    return;
+                    return true;
                 }
             }
             if (ns_func) {
@@ -7595,10 +7485,136 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
         }
     }
+    return false;
+}
+
+static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
+    const char *module = NULL;
+    const char *func = NULL;
+
+    if (is_stdlib_call(node, &module, &func)) {
+        /* Resolve import aliases: io@std → io.println maps to std.println */
+        if (module) module = resolve_alias(codegen, module);
+
+        /* No-module builtins (println, len, type_of, etc.) */
+        /* Also handle std.println(); std module functions are builtins */
+        if (!module && emit_builtin_call(codegen, node, func)) return;
+
+        /* Module dispatch table — sorted alphabetically for binary search */
+        typedef bool (*ModuleHandler)(CodeGen *, AstNode *, const char *);
+        typedef struct { const char *name; ModuleHandler handler; } ModuleEntry;
+        static const ModuleEntry modules[] = {
+            {"arrays",   emit_arrays_call},
+            {"atomic",   emit_atomic_call},
+            {"binary",   emit_binary_call},
+            {"channels", emit_channels_call},
+            {"crypto",   emit_crypto_call},
+            {"csv",      emit_csv_call},
+            {"encoding", emit_encoding_call},
+            {"fmt",      emit_format_call},
+            {"http",     emit_http_call},
+            {"io",       emit_io_call},
+            {"json",     emit_json_call},
+            {"maps",     emit_maps_call},
+            {"math",     emit_math_call},
+            {"mem",      emit_mem_call},
+            {"net",      emit_net_call},
+            {"os",       emit_os_call},
+            {"random",   emit_random_call},
+            {"regex",    emit_regex_call},
+            {"runtime",  emit_runtime_call},
+            {"server",   emit_server_call},
+            {"sqlite",   emit_sqlite_call},
+            {"strconv",  emit_strconv_call},
+            {"strings",  emit_strings_call},
+            {"sync",     emit_sync_call},
+            {"threads",  emit_threads_call},
+            {"time",     emit_time_call},
+            {"uuid",     emit_uuid_call},
+        };
+        if (module) {
+            int low = 0, high = (int)(sizeof(modules) / sizeof(modules[0])) - 1;
+            while (low <= high) {
+                int midpoint = (low + high) / 2;
+                int cmp = strcmp(module, modules[midpoint].name);
+                if (cmp == 0) {
+                    if (modules[midpoint].handler(codegen, node, func)) return;
+                    break;
+                }
+                if (cmp < 0) high = midpoint - 1;
+                else low = midpoint + 1;
+            }
+        }
+        /* Unqualified call not handled by builtins; try 'using' modules.
+         * We must verify the function name belongs to the module before calling
+         * the handler, since some handlers emit code for any function name.
+         * A user function of the same name — the program's own or the current
+         * module's — shadows a `using`'d stdlib function, so the general call
+         * path below emits it instead (the typechecker resolves the bare name
+         * to that function the same way). */
+        bool user_shadows_using = false;
+        if (!module && func) {
+            user_shadows_using = find_function(codegen, func) != NULL;
+            if (!user_shadows_using) {
+                const char *rd = codegen_resolve_decl(codegen, func);
+                if (rd != func) user_shadows_using = find_function(codegen, rd) != NULL;
+            }
+        }
+        if (!module && !user_shadows_using) {
+            for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                const char *umod = codegen->using_modules[ui];
+                const char *real_mod = resolve_alias(codegen, umod);
+                /* 1) Check stdlib table (authoritative source in typechecker) */
+                bool found = stdlib_has_func(real_mod, func);
+                if (found) {
+                    /* Dispatch to the stdlib module handler */
+                    for (int mi = 0; mi < (int)(sizeof(modules) / sizeof(modules[0])); mi++) {
+                        if (strcmp(real_mod, modules[mi].name) == 0) {
+                            if (modules[mi].handler(codegen, node, func)) return;
+                            break;
+                        }
+                    }
+                }
+                /* 2) Try user-defined module: <module>_<func> */
+                if (!found) {
+                    char prefixed[IDENT_BUF];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, func);
+                    AstNode *uf = find_function(codegen, prefixed);
+                    /* A generic function needs its per-instantiation name,
+                     * which the general call path derives from the argument
+                     * types; this shortcut would emit the unspecialised
+                     * symbol, so leave those to it. */
+                    if (uf && func_is_generic(uf)) uf = NULL;
+                    if (uf) {
+                        int pc = uf->data.func_decl.param_count;
+                        int ac = node->data.call.arg_count;
+                        int total = ac < pc ? pc : ac;
+                        emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
+                        for (int i = 0; i < total; i++) {
+                            if (i > 0) emit(codegen, ", ");
+                            if (i < ac) {
+                                bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
+                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                            } else if (i < pc && uf->data.func_decl.params[i].default_value) {
+                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
+                            }
+                        }
+                        emit(codegen, ")");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    if (emit_tagged_enum_construction(codegen, node)) return;
+
+    /* Struct-namespaced (Name.func()) and mod.Struct.func() chains */
+    if (emit_namespaced_call(codegen, node)) return;
 
     /* Generic function call */
     const char *fn_name = NULL;
