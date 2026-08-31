@@ -4102,7 +4102,7 @@ outside 2–36 (a compile-time error when the base is a literal).
   `0x20` and `0x7f` are emitted as `\xNN`. All other bytes are copied unchanged.
 
 **`unquote` rules:**
-- Fallible: single-variable assignment panics on malformed input; destructure to inspect the error.
+- Fallible: returns `(string, Error)` and must be destructured (`mut v, err = ...` or `mut v, _ = ...`); single-variable assignment is a compile error.
 - Requires `s` to begin and end with `"`.
 - Interprets `\n \t \r \\ \" \' \0 \a \b \f \v \$` and `\xNN` (two hex digits).
 - An unescaped `"`, a trailing `\`, or an unknown escape produces an error.
