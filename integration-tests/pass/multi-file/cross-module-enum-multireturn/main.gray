@@ -1,0 +1,36 @@
+/*
+ * A module-qualified enum as a field of a multi-return tuple must use the
+ * enum's real C type in the generated GrayMulti_* struct, not an undefined
+ * GrayStruct_<Name>.
+ */
+import "./shapes.gray"
+
+do main() {
+    println("=== cross-module enum in multi-return ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut t, te = shapes.tagged(7)
+    #strict
+    when t {
+        is shapes.Tag.Leaf(v) {
+            if v == 7 && te == nil { passed += 1 } otherwise { failed += 1 }
+        }
+        is shapes.Tag.Nil { failed += 1 }
+    }
+
+    mut _, te2 = shapes.tagged(0 - 1)
+    if te2 != nil { passed += 1 } otherwise { failed += 1 }
+
+    mut p, k = shapes.plain(15)
+    #strict
+    when p {
+        is shapes.Plain.HIGH {
+            if k == 15 { passed += 1 } otherwise { failed += 1 }
+        }
+        is shapes.Plain.LOW { failed += 1 }
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

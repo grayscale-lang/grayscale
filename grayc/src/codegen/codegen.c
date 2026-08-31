@@ -11635,7 +11635,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                     break;
                 }
             }
-            if (!has_wc) emit_multi_return_typedef(codegen, stmt);
+            /* A bare return type resolves against the function's own module,
+             * so the typedef's field types must be emitted in that module —
+             * otherwise a cross-module enum falls back to an undefined
+             * GrayStruct_<Name> instead of GrayEnum_<module>_<Name>. */
+            if (!has_wc) {
+                codegen_enter_node(codegen, stmt);
+                emit_multi_return_typedef(codegen, stmt);
+            }
         }
     }
 
