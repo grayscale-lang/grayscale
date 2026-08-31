@@ -245,7 +245,7 @@ tests/test_panics$(EXE): tests/test_panics.c $(PANIC_TEST_DEPS)
 
 # Objects needed by the stdlib test binary (runtime + tested stdlib modules)
 STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
-                   src/stdlib/strings.o src/stdlib/arrays.o src/stdlib/maps.o \
+                   src/stdlib/strings.o src/stdlib/chars.o src/stdlib/arrays.o src/stdlib/maps.o \
                    src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
                    src/stdlib/strconv.o src/stdlib/json.o src/stdlib/io.o \
                    src/stdlib/regex.o src/stdlib/builtins.o $(ATOMIC_OBJ)

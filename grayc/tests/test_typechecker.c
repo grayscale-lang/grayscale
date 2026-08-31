@@ -1455,6 +1455,56 @@ static void test_error_E3051_map_no_type_annotation(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* #2374: a `mut` array/map literal of primitives infers its type with no
+ * annotation. The element (and, for a map, key and value) type names come
+ * from the literal itself. */
+
+static void test_infer_mut_array_literal_element_type(void) {
+    GrayType *type = expression_type("{1, 2, 3}");
+    ASSERT_NOT_NULL(type);
+    ASSERT_EQ(type->kind, TK_ARRAY);
+    ASSERT_STR_EQ(type->element_type, "int");
+}
+
+static void test_infer_mut_map_literal_kv_types(void) {
+    GrayType *type = expression_type("{\"a\": 1, \"b\": 2}");
+    ASSERT_NOT_NULL(type);
+    ASSERT_EQ(type->kind, TK_MAP);
+    ASSERT_STR_EQ(type->key_type, "string");
+    ASSERT_STR_EQ(type->value_type, "int");
+}
+
+static void test_infer_mut_array_literal_no_error(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut a = {1, 2, 3} }");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_infer_mut_map_literal_no_error(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut m = {\"a\": 1} }");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
+/* Inference is `mut`-only: a `const` literal with no annotation still errors. */
+static void test_infer_const_array_literal_still_E3050(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { const a = {1, 2, 3} }");
+    ASSERT(has_error_code(diagnostics, "E3050"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A non-primitive element is not inferable and still errors. */
+static void test_infer_mut_array_non_primitive_still_E3050(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const P struct { x int }\n"
+        "do main() { mut a = {P{x: 1}, P{x: 2}} }");
+    ASSERT(has_error_code(diagnostics, "E3050"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3052_fixed_array_too_many(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() { mut a [int, 2] = {1, 2, 3} }");
@@ -2370,6 +2420,12 @@ int main(void) {
     /* Batch 2: 84 untested E3xxx error codes (#2098) */
     RUN_TEST(test_error_E3050_array_no_type_annotation);
     RUN_TEST(test_error_E3051_map_no_type_annotation);
+    RUN_TEST(test_infer_mut_array_literal_element_type);
+    RUN_TEST(test_infer_mut_map_literal_kv_types);
+    RUN_TEST(test_infer_mut_array_literal_no_error);
+    RUN_TEST(test_infer_mut_map_literal_no_error);
+    RUN_TEST(test_infer_const_array_literal_still_E3050);
+    RUN_TEST(test_infer_mut_array_non_primitive_still_E3050);
     RUN_TEST(test_error_E3052_fixed_array_too_many);
     RUN_TEST(test_error_E3053_array_element_type_mismatch);
     RUN_TEST(test_error_E3054_mut_array_fixed_size);
