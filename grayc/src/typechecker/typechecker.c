@@ -4442,11 +4442,13 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         switch (spec) {
                         case 'd': case 'i':
                             expected = "int or char";
-                            ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE;
+                            ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE ||
+                                 (dt->name && is_bigint_type(dt->name));
                             break;
                         case 'u':
                             expected = "uint";
-                            ok = dt->kind == TK_UINT || dt->kind == TK_BYTE;
+                            ok = dt->kind == TK_UINT || dt->kind == TK_BYTE ||
+                                 (dt->name && is_bigint_type(dt->name));
                             break;
                         case 'x': case 'X': case 'o':
                             expected = "int or uint";
@@ -4462,7 +4464,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                             break;
                         case 'c':
                             expected = "char";
-                            ok = dt->kind == TK_CHAR || dt->kind == TK_INT;
+                            ok = dt->kind == TK_CHAR ||
+                                 (dt->kind == TK_INT && !(dt->name && is_bigint_type(dt->name)));
                             break;
                         case 'b':
                             expected = "bool";

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3088 - %c format directive rejects a bigint argument
+ * Expected: "format directive '%c' expects char but argument 1 has type 'i128'"
+ */
+
+// expect-error: E3088
+
+import @fmt
+
+do main() {
+    mut a i128 = 65
+    fmt.printfln("%c", a)
+}

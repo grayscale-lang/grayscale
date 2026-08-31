@@ -3947,25 +3947,40 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
         }
         char spec = *ptr ? *ptr++ : 0;
         if (!spec) break;
-        /* Upgrade bare %d/%i/%u to %lld/%llu when arg is Grayscale int/uint */
-        if (!has_length && (spec == 'd' || spec == 'i' || spec == 'u') &&
-            directive_index < call_node->data.call.arg_count) {
-            GrayType *directive_type = codegen->type_table ?
-                typetable_get(codegen->type_table, call_node->data.call.args[directive_index]) : NULL;
-            if (directive_type && (spec == 'd' || spec == 'i') && directive_type->kind == TK_INT) {
+        GrayType *directive_type = (directive_index < call_node->data.call.arg_count && codegen->type_table)
+            ? typetable_get(codegen->type_table, call_node->data.call.args[directive_index]) : NULL;
+        bool arg_is_bigint = directive_type && directive_type->name &&
+            is_bigint_type(directive_type->name);
+        char emit_spec = spec;
+        if (spec == 'b') {
+            /* %b isn't a real C conversion; emit_format_arguments() already
+             * stringifies bool args to "true"/"false", so %s reads them back
+             * correctly. Passing %b through verbatim hits vsnprintf as a literal
+             * 'b' and never consumes the argument, desyncing every directive
+             * after it. */
+            emit_spec = 's';
+        } else if (arg_is_bigint && (spec == 'd' || spec == 'i' || spec == 'u' ||
+                   spec == 'x' || spec == 'X' || spec == 'o')) {
+            /* i128/u128/i256/u256 are struct-backed; emit_format_arguments()
+             * converts them to a decimal/hex/octal string, read back with %s. */
+            emit_spec = 's';
+        } else if (!has_length && directive_type) {
+            /* Grayscale int/uint are 64-bit; widen the directive so the vararg
+             * read matches the (unsigned) long long emit_format_arguments casts
+             * the argument to. */
+            if ((spec == 'd' || spec == 'i') && directive_type->kind == TK_INT) {
                 append_char_to_buffer(&codegen->output, 'l');
                 append_char_to_buffer(&codegen->output, 'l');
-            } else if (directive_type && spec == 'u' && directive_type->kind == TK_UINT) {
+            } else if (spec == 'u' && directive_type->kind == TK_UINT) {
+                append_char_to_buffer(&codegen->output, 'l');
+                append_char_to_buffer(&codegen->output, 'l');
+            } else if ((spec == 'x' || spec == 'X' || spec == 'o') &&
+                       (directive_type->kind == TK_INT || directive_type->kind == TK_UINT)) {
                 append_char_to_buffer(&codegen->output, 'l');
                 append_char_to_buffer(&codegen->output, 'l');
             }
         }
-        /* %b isn't a real C conversion; emit_format_arguments() already
-         * stringifies bool args to "true"/"false", so %s reads them back
-         * correctly. Passing %b through verbatim hits vsnprintf as a literal
-         * 'b' and never consumes the argument, desyncing every directive
-         * after it. */
-        append_char_to_buffer(&codegen->output, spec == 'b' ? 's' : spec);
+        append_char_to_buffer(&codegen->output, emit_spec);
         directive_index++;
     }
     if (append_newline) { append_char_to_buffer(&codegen->output, '\\'); append_char_to_buffer(&codegen->output, 'n'); }
@@ -3976,12 +3991,60 @@ static void emit_format_string_normalized(CodeGen *codegen, const char *fmt_str,
     emit_format_string_normalized_extended(codegen, fmt_str, call_node, false);
 }
 
+/* Record the conversion spec char of each directive in fmt_str, 1:1 with the
+ * arguments that follow (matching emit_format_string_normalized's directive
+ * walk). Returns the count recorded, capped at max. */
+static int scan_format_specs(const char *fmt_str, char *specs, int max) {
+    const char *p = fmt_str;
+    int n = 0;
+    while (*p) {
+        if (*p != '%') { p++; continue; }
+        p++;
+        if (!*p) break;
+        if (*p == '%') { p++; continue; }
+        while (*p == '-' || *p == '+' || *p == ' ' || *p == '0' || *p == '#') p++;
+        while (*p >= '0' && *p <= '9') p++;
+        if (*p == '.') { p++; while (*p >= '0' && *p <= '9') p++; }
+        if (*p == 'h') { p++; if (*p == 'h') p++; }
+        else if (*p == 'l') { p++; if (*p == 'l') p++; }
+        else if (*p == 'L') p++;
+        if (!*p) break;
+        if (n < max) specs[n] = *p;
+        n++;
+        p++;
+    }
+    return n;
+}
+
 static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_idx) {
+    char specs[64];
+    int nspecs = 0;
+    AstNode *fmt0 = node->data.call.args[0];
+    if (fmt0->kind == NODE_STRING_VALUE)
+        nspecs = scan_format_specs(fmt0->data.string_value.value, specs, 64);
     for (int i = start_idx; i < node->data.call.arg_count; i++) {
         emit(codegen, ", ");
         AstNode *arg = node->data.call.args[i];
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
-        if (arg_type && arg_type->kind == TK_STRING) {
+        if (arg_type && arg_type->name && is_bigint_type(arg_type->name)) {
+            /* Struct-backed big integers cannot ride in a printf vararg slot;
+             * the directive was rewritten to %s, so pass a converted string. */
+            const char *pfx = bigint_prefix(arg_type->name);
+            char spec = (i - 1 >= 0 && i - 1 < nspecs) ? specs[i - 1] : 'd';
+            if (spec == 'x' || spec == 'X') {
+                emit_formatted(codegen, "%s_to_hex_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit_formatted(codegen, ", %s).data", spec == 'X' ? "true" : "false");
+            } else if (spec == 'o') {
+                emit_formatted(codegen, "%s_to_octal_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit(codegen, ").data");
+            } else {
+                emit_formatted(codegen, "%s_to_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit(codegen, ").data");
+            }
+        } else if (arg_type && arg_type->kind == TK_STRING) {
             emit_expression(codegen, arg);
             emit(codegen, ".data");
         } else if (arg_type && arg_type->kind == TK_BOOL) {

@@ -3939,7 +3939,7 @@ Formatted output and string formatting functions.
 | `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
 | `format` | `(format string, args [T]) -> string` | Return formatted string |
 
-One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, or `char`. Composite types are rejected.
+One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
 
 > 💡 **Tip:** `eprintln` and `eprint` are builtins, not fmt module functions. Use them without an import.
 
@@ -3956,11 +3956,12 @@ Format strings use C-style `%` specifiers:
 | `%g` | `float` | Shorter of `%f` or `%e` |
 | `%s` | `string` | String |
 | `%c` | `char` | Single character |
-| `%x` | `int` | Hexadecimal (lowercase) |
-| `%o` | `int` | Octal |
+| `%b` | `bool` | `true` / `false` |
+| `%x`, `%X` | `int` / `uint` | Hexadecimal (lowercase / uppercase) |
+| `%o` | `int` / `uint` | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d` and `%u` are automatically widened to `%lld`/`%llu` for Grayscale's 64-bit integer types. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `int`/`uint` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
@@ -3990,7 +3991,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 | `float_fixed` | `(f float, decimals int) -> string` | Format float with fixed decimal places |
 | `float_sci` | `(f float) -> string` | Format float in scientific notation |
 
-Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, or `char`. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
+Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
 ### 9.27 Strconv Module (`@strconv`)
 
