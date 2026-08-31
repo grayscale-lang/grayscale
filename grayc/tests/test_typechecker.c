@@ -1234,8 +1234,14 @@ static void test_error_E3047_enum_no_member(void) {
 }
 
 static void test_error_E3048_string_plus(void) {
-    DiagnosticList *diagnostics = typecheck_diagnostics(
+    /* string + string concatenates; mixing a string with a non-string is E3048 */
+    DiagnosticList *ok = typecheck_diagnostics(
         "do main() { mut s string = \"a\" + \"b\" }");
+    ASSERT(!has_error_code(ok, "E3048"));
+    diagnostic_destroy(ok);
+
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut s string = \"a\" + 5 }");
     ASSERT(has_error_code(diagnostics, "E3048"));
     diagnostic_destroy(diagnostics);
 }

@@ -7594,10 +7594,16 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* String + string: reject with helpful message */
-    if ((left->kind == TK_STRING || right->kind == TK_STRING) && op == TOK_PLUS) {
-        diagnostic_error_code_help(checker->diag, "E3048", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
+    /* String concatenation with '+': both operands must be strings.
+     * string + string yields a new string; a string mixed with any
+     * other type (E3048) is rejected so codegen never has to guess. */
+    if (op == TOK_PLUS &&
+        (left->kind == TK_STRING || right->kind == TK_STRING) &&
+        left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN &&
+        (left->kind != TK_STRING || right->kind != TK_STRING)) {
+        diagnostic_error_code_formatted(checker->diag, "E3048",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, left), type_display_name(checker, right));
         infix_errored = true;
     }
 
@@ -7869,7 +7875,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         result = &TYPE_BOOL;
     } else if (left->kind == TK_FLOAT || right->kind == TK_FLOAT) {
         result = &TYPE_FLOAT;
-    } else if (left->kind == TK_STRING && op == TOK_PLUS) {
+    } else if (left->kind == TK_STRING && right->kind == TK_STRING && op == TOK_PLUS) {
         result = &TYPE_STRING;
     } else if (left->kind == TK_ENUM || right->kind == TK_ENUM) {
         /* #flags enum bitwise ops produce int (combined values
@@ -11496,12 +11502,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
 
-            /* E3048: string += (concatenation) */
+            /* E3048: string += requires a string on both sides */
             if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
-                aop == TOK_PLUS_ASSIGN) {
-                diagnostic_error_code_help(checker->diag, "E3048",
+                aop == TOK_PLUS_ASSIGN &&
+                (target_t->kind != TK_STRING || value_t->kind != TK_STRING)) {
+                diagnostic_error_code_formatted(checker->diag, "E3048",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
+                    type_display_name(checker, target_t), type_display_name(checker, value_t));
             }
 
             /* E3002: string in non-plus arithmetic */

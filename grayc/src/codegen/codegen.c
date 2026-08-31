@@ -338,6 +338,14 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
     if (!tgt_t) return false;
 
+    /* String append: s += t → s = gray_string_concat(arena, s, t). */
+    if (aop == TOK_PLUS_ASSIGN && tgt_t->kind == TK_STRING) {
+        emit_formatted(codegen, "%s = gray_string_concat(gray_default_arena, %s, ", ref_str, ref_str);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+        return true;
+    }
+
     const char *type_name_str = tgt_t->name;
 
     /* Sized integers (i8/i16/i32/u8/u16/u32): gray_(u)sized_*_check */
@@ -2216,6 +2224,16 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
     }
     if ((left_is_str || right_is_str) && op == TOK_NOT_EQ) {
         emit(codegen, "!gray_string_eq(");
+        emit_expression(codegen, node->data.infix.left);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.infix.right);
+        emit(codegen, ")");
+        return;
+    }
+    /* string + string: concatenate into a new GrayString. Chained
+     * a + b + c nests naturally since '+' is left-associative. */
+    if (left_is_str && right_is_str && op == TOK_PLUS) {
+        emit(codegen, "gray_string_concat(gray_default_arena, ");
         emit_expression(codegen, node->data.infix.left);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.infix.right);
@@ -9018,7 +9036,13 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
                 emit_expression(codegen, idx);
                 emit(codegen, ", ");
-                if (is_compound_m) {
+                if (is_compound_m && strcmp(c_elem, "GrayString") == 0 && aop_m == TOK_PLUS_ASSIGN) {
+                    emit(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(_ea, GrayString, ");
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else if (is_compound_m) {
                     const char *binop = "+";
                     if (aop_m == TOK_MINUS_ASSIGN) binop = "-";
                     else if (aop_m == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -9069,7 +9093,13 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
-                    if (is_compound2) {
+                    if (is_compound2 && strcmp(c_elem, "GrayString") == 0 && aop2 == TOK_PLUS_ASSIGN) {
+                        emit_formatted(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ", my_dp, sanitize_name(_set_ptr_field));
+                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                        emit_expression(codegen, node->data.assign.value);
+                        emit(codegen, ")");
+                    } else if (is_compound2) {
                         const char *binop = "+";
                         if (aop2 == TOK_MINUS_ASSIGN) binop = "-";
                         else if (aop2 == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -9104,7 +9134,13 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
-                if (is_compound3) {
+                if (is_compound3 && strcmp(c_elem, "GrayString") == 0 && aop3 == TOK_PLUS_ASSIGN) {
+                    emit_formatted(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ", my_dp);
+                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else if (is_compound3) {
                     const char *binop = "+";
                     if (aop3 == TOK_MINUS_ASSIGN) binop = "-";
                     else if (aop3 == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -9160,7 +9196,15 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.assign.target->data.index_expr.index);
             emit(codegen, ", ");
             /* Non-sized compound assignment on array element: read-modify-write */
-            if (is_compound) {
+            if (is_compound && strcmp(c_elem, "GrayString") == 0 && aop == TOK_PLUS_ASSIGN) {
+                emit(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(");
+                emit_expression(codegen, left);
+                emit(codegen, ", GrayString, ");
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
+            } else if (is_compound) {
                 const char *binop = "+";
                 if (aop == TOK_MINUS_ASSIGN) binop = "-";
                 else if (aop == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -9304,6 +9348,10 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "%s_%s(*(%s*)_cur, ", pfx, fn, c_val);
                 emit_map_slot_value(codegen, ms_bi_val, node->data.assign.value);
                 emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+            } else if (ms_compound && ms_str_val && node->data.assign.op == TOK_PLUS_ASSIGN) {
+                emit(codegen, "gray_string_concat(gray_default_arena, *(GrayString*)_cur, ");
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
             } else if (ms_compound) {
                 emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
                 emit_expression(codegen, node->data.assign.value);
@@ -9560,6 +9608,24 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, " %s ", operator_to_c_string(node->data.assign.op));
             emit_expression(codegen, node->data.assign.value);
             emit(codegen, "; }\n");
+            return;
+        }
+    }
+
+    /* String append: s += t → s = gray_string_concat(arena, s, t).
+     * Take the target's address once so a member/index target is not
+     * re-evaluated. Inside a loop scope, build on the outer arena so the
+     * result survives the iteration arena's destruction (mirrors the
+     * plain '=' string escape below). */
+    if (node->data.assign.op == TOK_PLUS_ASSIGN) {
+        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        if (tgt_t && tgt_t->kind == TK_STRING) {
+            const char *arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
+            emit(codegen, "{ GrayString *_tgt = &(");
+            emit_expression(codegen, node->data.assign.target);
+            emit(codegen, "); GrayString _sv = ");
+            emit_expression(codegen, node->data.assign.value);
+            emit_formatted(codegen, "; *_tgt = gray_string_concat(%s, *_tgt, _sv); }\n", arena);
             return;
         }
     }

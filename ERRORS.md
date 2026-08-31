@@ -115,7 +115,7 @@
 | `E3045` | types | 'or_return' requires a function that returns (T, Error); '%s()' does not return an error |
 | `E3046` | types | integer too large for 64 bits; max is 9223372036854775807 |
 | `E3047` | types | enum '%s' has no member '%s' |
-| `E3048` | types | operator '+' is not defined for strings; use string interpolation or 'fmt.format()' instead |
+| `E3048` | types | operator '+' on strings requires both operands to be strings; got '%s' and '%s' |
 | `E3049` | types | cannot use '%s' on enum values; enums only support == and != comparisons |
 | `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3}) |
 | `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1}) |
@@ -457,4 +457,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-31 19:14:30 UTC*
+*Generated on 2026-08-31 21:59:37 UTC*

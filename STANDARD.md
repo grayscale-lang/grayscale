@@ -242,6 +242,9 @@ mut name string = "World"
 mut greeting string = "Hello, ${name}!"  // "Hello, World!"
 ```
 
+Strings may also be joined with the `+` operator (`"Hello, " + name + "!"`); see
+[Section 5.2.1](#521-arithmetic-operators).
+
 #### 2.7.4 Raw String Literals
 
 Raw string literals are enclosed in backticks and do not process escape sequences or string interpolation:
@@ -1198,6 +1201,7 @@ Point{}  // Zero-initialized
 |----------|-------------|---------------|-------------|
 | `+` | Addition | `int`, `int` | `int` |
 | `+` | Addition | `float`, `float` | `float` |
+| `+` | Concatenation | `string`, `string` | `string` |
 | `-` | Subtraction | `int`, `int` | `int` |
 | `-` | Subtraction | `float`, `float` | `float` |
 | `*` | Multiplication | `int`, `int` | `int` |
@@ -1207,6 +1211,11 @@ Point{}  // Zero-initialized
 | `%` | Modulo | `int`, `int` | `int` |
 
 Division by zero produces a runtime error.
+
+`+` also concatenates two `string` operands, producing a new `string`. Both
+operands must be strings; mixing a string with any other type is an error
+(use string interpolation or `fmt.format()` to build strings from other types).
+`+=` appends to a mutable string.
 
 #### 5.2.2 Comparison Operators
 
@@ -1258,7 +1267,7 @@ if 10 !in range(0, 10) { ... }  // Shorthand for not_in
 | Operator | Description |
 |----------|-------------|
 | `=` | Assignment |
-| `+=` | Addition assignment |
+| `+=` | Addition assignment (string append when the target is a `string`) |
 | `-=` | Subtraction assignment |
 | `*=` | Multiplication assignment |
 | `/=` | Division assignment |

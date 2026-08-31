@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3048 - '+' with a string and a non-string operand
+ *
+ * string + string concatenates, but a string mixed with any other
+ * type must be rejected rather than leaking to the C compiler.
+ *
+ * expect-error: E3048
+ */
+
+do main() {
+    mut s string = "count: " + 5
+    println(s)
+}
