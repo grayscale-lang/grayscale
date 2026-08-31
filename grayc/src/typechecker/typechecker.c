@@ -3864,7 +3864,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 result = resolve_expression(checker, node->data.call.args[0]);
             } else result = &TYPE_UNKNOWN;
         } else if (strcmp(mfn, "get_or_default") == 0) {
-            if (node->data.call.arg_count >= 3) {
+            /* get_or_default(m, key, default) -> V. Take V from the map's
+             * declared value type; the default argument's type can be a looser
+             * literal (e.g. a bare int where V is i128 or float). */
+            GrayType *map_t = node->data.call.arg_count >= 1
+                ? resolve_expression(checker, node->data.call.args[0]) : NULL;
+            if (map_t && map_t->kind == TK_MAP && map_t->value_type) {
+                result = typechecker_type_from_name(checker, map_t->value_type);
+            } else if (node->data.call.arg_count >= 3) {
                 result = resolve_expression(checker, node->data.call.args[2]);
             } else result = &TYPE_UNKNOWN;
         }
@@ -8611,6 +8618,20 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     return result;
 }
 
+/* Grayscale type name for a map-literal key/value element, used when an
+ * unannotated `mut` map infers its K/V from the first pair. A wide-integer
+ * constructor call (i128(x), u256(x), ...) is resolved as plain int/uint by
+ * the expression typechecker, so recover the width from the call itself —
+ * otherwise the inferred map is map[..:int] and the 16/32-byte value is
+ * truncated to 8 bytes in codegen. */
+static const char *map_literal_elem_type_name(AstNode *elem, GrayType *resolved) {
+    if (elem && elem->kind == NODE_CALL_EXPR &&
+        elem->data.call.function->kind == NODE_LABEL &&
+        is_bigint_type(elem->data.call.function->data.label.value))
+        return elem->data.call.function->data.label.value;
+    return resolved ? type_name(resolved) : "unknown";
+}
+
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
     if (!node) return &TYPE_UNKNOWN;
 
@@ -9156,8 +9177,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.map_value.count > 0) {
             GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(kt ? type_name(kt) : "unknown");
-            resolved_type->value_type = strdup(vt ? type_name(vt) : "unknown");
+            resolved_type->key_type = strdup(map_literal_elem_type_name(node->data.map_value.keys[0], kt));
+            resolved_type->value_type = strdup(map_literal_elem_type_name(node->data.map_value.values[0], vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types

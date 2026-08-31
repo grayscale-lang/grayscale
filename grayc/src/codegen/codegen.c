@@ -710,6 +710,8 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     return type_name;
 }
 
+static const char *bigint_prefix(const char *type_str);
+
 /* Resolve a Grayscale type to its C type for map key/value storage.
  * Uses gray_type_to_c_codegen for struct/array/map types, hardcoded for primitives.
  * Routes the input through codegen_effective_type_string so '?' inside a generic
@@ -725,6 +727,10 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_tn
     if (codegen && codegen_is_enum(codegen, gray_tn) &&
         codegen_enum_is_tagged(codegen, gray_tn))
         return gray_type_to_c_codegen(codegen, gray_tn);
+    /* Wide integers are TK_INT/TK_UINT in the type system but 16/32-byte
+     * structs in C; a map slot must use the struct type so its size and the
+     * casts on read match, just like a [i128] array element does. */
+    if (is_bigint_type(gray_tn)) return bigint_prefix(gray_tn);
     GrayType *type = type_from_name(gray_tn);
     if (!type) return "int64_t";
     switch (type->kind) {
@@ -1252,6 +1258,14 @@ static bool emit_bigint_coerced(CodeGen *codegen, const char *bi, AstNode *value
     if (resolve_bigint_type(codegen, value)) return false;
     emit_scalar_to_bigint(codegen, bi, value, NULL);
     return true;
+}
+
+/* Emit `value` for a map key or value slot whose Grayscale type is `gray_tn`:
+ * a wide-integer slot needs the scalar wrapped in its constructor, everything
+ * else emits verbatim. Safe to call with any `gray_tn`. */
+static void emit_map_slot_value(CodeGen *codegen, const char *gray_tn, AstNode *value) {
+    if (!emit_bigint_coerced(codegen, gray_tn, value))
+        emit_expression(codegen, value);
 }
 
 /* Emit a bigint operand, widening smaller integer or bigint operands so
@@ -1872,19 +1886,30 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
      * assignment, an enclosing declared type. The typechecker records the
      * element types of the context on the node itself, so use those rather
      * than defaulting to string keys and 8-byte values. */
-    if (!decl_mt && count == 0 && codegen->type_table) {
+    if (!decl_mt && codegen->type_table) {
         GrayType *node_mt = typetable_get(codegen->type_table, node);
         if (node_mt && node_mt->kind == TK_MAP && node_mt->key_type && node_mt->value_type)
             decl_mt = node_mt;
     }
-    if (decl_mt && decl_mt->key_type)
+    /* Grayscale type names for the key/value slots, tracked so a wide-integer
+     * literal element can be wrapped in its constructor below. */
+    const char *gray_key_tn = NULL;
+    const char *gray_val_tn = NULL;
+    if (decl_mt && decl_mt->key_type) {
         c_key_type = gray_map_element_c_type(codegen, decl_mt->key_type);
-    if (decl_mt && decl_mt->value_type)
+        gray_key_tn = decl_mt->key_type;
+    }
+    if (decl_mt && decl_mt->value_type) {
         c_val_type = gray_map_element_c_type(codegen, decl_mt->value_type);
+        gray_val_tn = decl_mt->value_type;
+    }
     if (count > 0) {
         GrayType *kt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.keys[0]) : NULL;
         GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.values[0]) : NULL;
-        if (!decl_mt && kt) c_key_type = gray_map_element_c_type(codegen, type_name(kt));
+        if (!decl_mt && kt) {
+            c_key_type = gray_map_element_c_type(codegen, type_name(kt));
+            gray_key_tn = type_name(kt);
+        }
         if (!decl_mt && vt && vt->kind == TK_POINTER) {
             static char map_ptr_buf[MSG_BUF_SIZE];
             const char *pointee = vt->element_type ? vt->element_type : "void";
@@ -1892,6 +1917,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
             c_val_type = map_ptr_buf;
         } else if (!decl_mt && vt) {
             c_val_type = gray_map_element_c_type(codegen, type_name(vt));
+            gray_val_tn = type_name(vt);
         }
     }
 
@@ -1914,7 +1940,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
 
     for (int i = 0; i < count; i++) {
         emit_formatted(codegen, "{ %s _mk = ", c_key_type);
-        emit_expression(codegen, node->data.map_value.keys[i]);
+        emit_map_slot_value(codegen, gray_key_tn, node->data.map_value.keys[i]);
         emit_formatted(codegen, "; %s _mv = ", c_val_type);
         if (inner_var_type) {
             const char *saved = codegen->current_var_type;
@@ -1922,7 +1948,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.map_value.values[i]);
             codegen->current_var_type = saved;
         } else {
-            emit_expression(codegen, node->data.map_value.values[i]);
+            emit_map_slot_value(codegen, gray_val_tn, node->data.map_value.values[i]);
         }
         emit_formatted(codegen, "; gray_map_set(gray_default_arena, &_ml%d, &_mk, &_mv, \"%s\", %d); } ", my_counter, codegen->file, node->token.line);
     }
@@ -2270,7 +2296,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "({ __auto_type _im%d = ", mid);
             emit_expression(codegen, node->data.infix.right);
             emit_formatted(codegen, "; %s _ik%d = ", gray_map_element_c_type(codegen, arr_t->key_type), mid);
-            emit_expression(codegen, node->data.infix.left);
+            emit_map_slot_value(codegen, arr_t->key_type, node->data.infix.left);
             emit_formatted(codegen, "; gray_maps_has_key(&_im%d, &_ik%d); })", mid, mid);
             return;
         }
@@ -3166,12 +3192,12 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "({ GrayMap _mt = ");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; %s _mk = ", c_key);
-            emit_expression(codegen, node->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&_mt, &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
             emit_formatted(codegen, "*(%s *)_mv; })", c_val);
         } else {
             emit_formatted(codegen, "({ %s _mk = ", c_key);
-            emit_expression(codegen, node->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
@@ -5331,7 +5357,7 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
             const char *c_key = "GrayString";
             if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
             emit_formatted(codegen, "({ %s _mk = ", c_key);
-            emit_expression(codegen, arg->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, arg->data.index_expr.index);
             emit(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, arg->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
@@ -5386,7 +5412,8 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _hk = ", c_key);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, (map_t && map_t->kind == TK_MAP) ? map_t->key_type : NULL,
+            node->data.call.args[1]);
         emit(codegen, "; gray_maps_has_key(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_hk); })");
@@ -5399,7 +5426,8 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _rk = ", c_key);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, (map_t && map_t->kind == TK_MAP) ? map_t->key_type : NULL,
+            node->data.call.args[1]);
         emit(codegen, "; gray_map_remove(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", &_rk, \"%s\", %d); })", codegen->file, node->token.line);
@@ -5440,29 +5468,49 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         /* Determine value type from map to ensure correct size */
         GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *c_val_type = "int64_t";
+        const char *bi_val = NULL;
         if (map_t && map_t->value_type) {
             GrayType *vt = type_from_name(map_t->value_type);
             if (vt->kind == TK_FLOAT) c_val_type = "double";
             else if (vt->kind == TK_BOOL) c_val_type = "bool";
             else if (vt->kind == TK_STRING) c_val_type = "GrayString";
+            else if (is_bigint_type(map_t->value_type)) {
+                bi_val = map_t->value_type;
+                c_val_type = bigint_prefix(bi_val);
+            }
         }
         emit_formatted(codegen, "({ %s _cv = ", c_val_type);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, bi_val, node->data.call.args[1]);
         emit(codegen, "; gray_maps_contains_value(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_cv); })");
         return true;
     }
     if (strcmp(func, "get_or_default") == 0 && node->data.call.arg_count == 3) {
-        /* get_or_default(m, key, default); lookup key, return default if missing */
-        emit(codegen, "({ __auto_type _gk = ");
-        emit_expression(codegen, node->data.call.args[1]);
+        /* get_or_default(m, key, default); lookup key, return default if missing.
+         * A wide-integer key or value needs its explicit struct type instead of
+         * __auto_type/__typeof__, which would infer a plain int from a literal. */
+        GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *bi_key = (map_t && map_t->kind == TK_MAP && map_t->key_type &&
+            is_bigint_type(map_t->key_type)) ? map_t->key_type : NULL;
+        const char *bi_val = (map_t && map_t->kind == TK_MAP && map_t->value_type &&
+            is_bigint_type(map_t->value_type)) ? map_t->value_type : NULL;
+        emit(codegen, "({ ");
+        if (bi_key) emit_formatted(codegen, "%s _gk = ", bigint_prefix(bi_key));
+        else emit(codegen, "__auto_type _gk = ");
+        emit_map_slot_value(codegen, bi_key, node->data.call.args[1]);
         emit(codegen, "; void *_gv = gray_map_get(");
         emit_address_of(codegen, node->data.call.args[0]);
-        emit(codegen, ", &_gk); _gv ? *(__typeof__(");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ") *)_gv : ");
-        emit_expression(codegen, node->data.call.args[2]);
+        emit(codegen, ", &_gk); _gv ? *(");
+        if (bi_val) {
+            emit(codegen, bigint_prefix(bi_val));
+        } else {
+            emit(codegen, "__typeof__(");
+            emit_expression(codegen, node->data.call.args[2]);
+            emit(codegen, ")");
+        }
+        emit(codegen, " *)_gv : ");
+        emit_map_slot_value(codegen, bi_val, node->data.call.args[2]);
         emit(codegen, "; })");
         return true;
     }
@@ -9153,7 +9201,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
             }
             emit_formatted(codegen, "{ %s _mk = ", c_key);
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.assign.target->data.index_expr.index);
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
                 if (ms_str_key) {
@@ -9204,13 +9252,26 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", &_mk); if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
                 }
             }
+            const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
+                ? left_t->value_type : NULL;
             emit_formatted(codegen, "%s _mv = ", c_val);
-            if (ms_compound) {
+            if (ms_compound && ms_bi_val) {
+                /* Wide-integer entries have no C arithmetic operators; route the
+                 * read-modify-write through the same helpers the infix path uses. */
+                const char *pfx = bigint_prefix(ms_bi_val);
+                const char *fn = ms_base_op[0] == '+' ? "add_checked"
+                              : ms_base_op[0] == '-' ? "sub_checked"
+                              : ms_base_op[0] == '*' ? "mul_checked"
+                              : ms_base_op[0] == '/' ? "div" : "mod";
+                emit_formatted(codegen, "%s_%s(*(%s*)_cur, ", pfx, fn, c_val);
+                emit_map_slot_value(codegen, ms_bi_val, node->data.assign.value);
+                emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+            } else if (ms_compound) {
                 emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
                 emit_expression(codegen, node->data.assign.value);
                 emit(codegen, ")");
             } else {
-                emit_expression(codegen, node->data.assign.value);
+                emit_map_slot_value(codegen, left_t->value_type, node->data.assign.value);
             }
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
