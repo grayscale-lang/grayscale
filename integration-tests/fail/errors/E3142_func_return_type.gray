@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3142 - a function declared with a func return type
+ *
+ * STANDARD 7.6.6: a returned func value cannot be called, assigned, or
+ * stored, so the declaration itself is rejected rather than every use of
+ * the result.
+ */
+
+// expect-error: E3142
+
+do inc(x int) -> int {
+    return x + 1
+}
+
+do pick() -> func(int) -> int {
+    return ()inc
+}
+
+do main() {
+    println("hi")
+}

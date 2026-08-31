@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 402 codes** (276 errors, 17 warnings, 109 panics)
+**Total: 403 codes** (277 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -208,6 +208,7 @@
 | `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
 | `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool |
 | `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
+| `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -453,4 +454,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-30 23:52:55 UTC*
+*Generated on 2026-08-31 00:16:53 UTC*

@@ -12193,6 +12193,15 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             checker->current_return_type_names[i] = node->data.func_decl.return_types[i];
             /* E4016: undefined return type */
             const char *rtn = node->data.func_decl.return_types[i];
+            /* E3142: a func return type. STANDARD 7.6.6 — a returned func
+             * value cannot be called, assigned, or stored, so a function
+             * whose return type is func has no valid use. Reject it at the
+             * declaration rather than at every downstream call site. */
+            if (rtn && (strcmp(rtn, "func") == 0 || strncmp(rtn, "func(", 5) == 0)) {
+                diagnostic_error_code_formatted(checker->diag, "E3142",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    FUNC_DISPLAY_NAME(node));
+            }
             reject_private_type(checker, node, rtn);
             char leaf[MSG_BUF_SIZE];
             const char *undefined = undefined_type_leaf(checker, rtn, leaf, sizeof(leaf));

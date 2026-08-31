@@ -2273,6 +2273,7 @@ if f != h { println("different") }  // different
 | `mut f = ()double` | ❌ must use `const` |
 | `println(f)` | ❌ func refs are not printable |
 | `copy(f)` | ❌ func refs cannot be copied |
+| `do get_fn() -> func(int) -> int` | ❌ a function cannot declare a func return type; the result is unusable |
 | `const f = get_fn()` | ❌ cannot assign func-type return value; use `()func_name` |
 | `get_fn()(5)` | ❌ cannot call a function's return value directly |
 | `[func(int)->int]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
