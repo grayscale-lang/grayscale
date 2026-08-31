@@ -255,11 +255,26 @@ line3`
 
 #### 2.7.5 Character Literals
 
-Character literals represent single character values.
+A character literal is one Unicode codepoint between single quotes — one character or one escape sequence. Its type is `char`.
 
-Examples: `'A'`, `'\n'`, `'\t'`
+```gray
+'A'   '7'   ' '   'é'   '日'   '\n'   '\u{1F600}'
+```
 
-Character literals must contain exactly one character (or escape sequence).
+Escape sequences:
+
+| Escape | Meaning |
+|--------|---------|
+| `\n` `\r` `\t` | LF, CR, tab |
+| `\\` `\'` `\"` | backslash, single quote, double quote |
+| `\0` | NUL (U+0000) |
+| `\xNN` | codepoint U+00NN — exactly two hex digits |
+| `\u{H…}` | codepoint from 1–6 hex digits (U+0000–U+10FFFF) |
+
+- A character literal must contain exactly one codepoint. `''` and `'ab'` are `E1018`.
+- The bytes between the quotes are decoded as UTF-8; a malformed sequence is `E1018`.
+- In a character literal `\xNN` is codepoint U+00NN, not a raw byte (unlike a string literal, where `\xNN` is a byte). For sub-codepoint byte values use `byte`.
+- An unterminated literal is `E1005`; an unknown escape is `E1007`; a malformed `\x` or `\u{}` is `E1006`.
 
 #### 2.7.6 Boolean Literals
 
@@ -352,14 +367,19 @@ mut result bool = 10 > 5  // true
 
 #### 3.1.6 Character Type (`char`)
 
-The `char` type represents a single character.
+The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `byte` (8-bit, 0–255) and from `int`. At the C boundary a `char` is `int32_t`.
 
 ```gray
-mut letter char = 'A'
-mut newline char = '\n'
+mut letter char = 'A'          // U+0041
+mut newline char = '\n'        // U+000A
+mut eacute char = '\u{E9}'     // U+00E9  é
+mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-Characters can be converted to their integer code point using `int()`.
+- `int(c)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
+- Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
+- `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `int`.
+- `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.
 
 #### 3.1.7 Byte Type (`byte`)
 
