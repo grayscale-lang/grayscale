@@ -1,0 +1,23 @@
+// expect-error: E3063
+// expect-error-count: 1
+/*
+ * Error Test: E3063 - a local's address buried in a struct field and then
+ * returned inside that struct value.
+ *
+ * 'local' dies when leak() returns; the Box carries a dangling pointer to it.
+ */
+
+const Box struct {
+    p ^int
+}
+
+do leak() -> Box {
+    mut local int = 7
+    mut b Box = Box{p: addr(local)}
+    return b
+}
+
+do main() {
+    mut b Box = leak()
+    println(b.p^)
+}

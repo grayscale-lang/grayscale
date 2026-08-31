@@ -28,6 +28,13 @@ typedef struct {
      * pointer variables. */
     int origin_depth;
     const char *origin_name;
+    /* Lifetime origin of a pointer stored in a *field* of this aggregate
+     * variable — a struct value initialised or updated with a pointer whose
+     * pointee is shorter-lived than the variable itself. Same +1 bias as
+     * origin_depth. Lets the escape checks (E3063) see through a struct that
+     * carries a dangling pointer field. */
+    int field_origin_depth;
+    const char *field_origin_name;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

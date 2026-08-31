@@ -266,10 +266,18 @@ static int symbol_scope_depth(Scope *scope, const char *name) {
     return 0;
 }
 
+/* Lifetime origin of a call result whose value is forwarded from one of the
+ * call's arguments (per the callee's returns_param_addr summary). Defined
+ * below register_func; forward-declared here for pointer_origin_of. */
+static int call_result_origin(TypeChecker *checker, AstNode *call,
+                              const char **out_name);
+
 /* If `value` produces a pointer with a known lifetime origin, report that
- * origin's scope depth and name. Covers both the direct form addr(x)/raw(x)
- * and a pointer variable that already carries an origin, so an address that
- * is laundered through any number of intermediates stays tracked. */
+ * origin's scope depth and name. Covers the direct form addr(x)/raw(x), a
+ * pointer variable that already carries an origin, and a call result that
+ * forwards one of its pointer arguments — so an address that is laundered
+ * through any number of intermediates or through a function call stays
+ * tracked. */
 static int pointer_origin_of(TypeChecker *checker, AstNode *value,
                              const char **out_name) {
     if (!value) return 0;
@@ -291,6 +299,8 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
             return src->origin_depth;
         }
     }
+    if (value->kind == NODE_CALL_EXPR)
+        return call_result_origin(checker, value, out_name);
     return 0;
 }
 
@@ -842,6 +852,8 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->is_generic = false;
     fs->is_discard = false;
     fs->decl = NULL;
+    fs->escape_state = 0;
+    fs->returns_param_addr = 0;
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1072,6 +1084,173 @@ static FuncSig *find_module_func(TypeChecker *checker, const char *mod,
                                  const char *name) {
     char key[MSG_BUF_SIZE];
     return find_func(checker, module_member_key(checker, mod, name, key, sizeof(key)));
+}
+
+/* The user-defined function a call targets, or NULL (builtins and stdlib
+ * keep their own registries and are not in the FuncSig table). */
+static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
+    if (!call || call->kind != NODE_CALL_EXPR) return NULL;
+    AstNode *fn = call->data.call.function;
+    if (!fn) return NULL;
+    if (fn->kind == NODE_LABEL)
+        return find_func(checker, fn->data.label.value);
+    if (fn->kind == NODE_MEMBER_EXPR &&
+        fn->data.member.object &&
+        fn->data.member.object->kind == NODE_LABEL)
+        return find_module_func(checker, fn->data.member.object->data.label.value,
+                                fn->data.member.member);
+    return NULL;
+}
+
+static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
+
+/* Structural: bitmask of `fs`'s parameters that `node` (a return value)
+ * may alias — the parameter named directly, addr()/raw() of a parameter's
+ * pointee, a member/index rooted at a parameter, or a value forwarded
+ * through another summarised call. Runs while the summary is being built,
+ * so it looks only at the AST, never at scope. */
+static unsigned long long return_expr_param_bits(TypeChecker *checker,
+                                                 FuncSig *fs, AstNode *node) {
+    if (!node || !fs->decl) return 0;
+    switch (node->kind) {
+    case NODE_LABEL: {
+        int pc = fs->decl->data.func_decl.param_count;
+        for (int i = 0; i < pc && i < 64; i++) {
+            const char *pn = fs->decl->data.func_decl.params[i].name;
+            if (pn && strcmp(pn, node->data.label.value) == 0)
+                return 1ull << i;
+        }
+        return 0;
+    }
+    case NODE_MEMBER_EXPR:
+        return return_expr_param_bits(checker, fs, node->data.member.object);
+    case NODE_INDEX_EXPR:
+        return return_expr_param_bits(checker, fs, node->data.index_expr.left);
+    case NODE_POSTFIX_EXPR:
+        return return_expr_param_bits(checker, fs, node->data.postfix.left);
+    case NODE_CALL_EXPR: {
+        AstNode *f = node->data.call.function;
+        if (f && f->kind == NODE_LABEL && node->data.call.arg_count == 1 &&
+            (strcmp(f->data.label.value, "addr") == 0 ||
+             strcmp(f->data.label.value, "raw") == 0))
+            return return_expr_param_bits(checker, fs, node->data.call.args[0]);
+        FuncSig *callee = resolve_call_sig(checker, node);
+        if (!callee || callee == fs) return 0;
+        unsigned long long callee_bits = returns_param_address(checker, callee);
+        unsigned long long out = 0;
+        for (int i = 0; i < callee->param_count &&
+                        i < node->data.call.arg_count && i < 64; i++)
+            if (callee_bits & (1ull << i))
+                out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
+        return out;
+    }
+    default:
+        return 0;
+    }
+}
+
+/* OR together the param bits of every `return` reachable in a statement
+ * subtree, without descending into a nested function declaration. */
+static unsigned long long return_stmt_param_bits(TypeChecker *checker,
+                                                 FuncSig *fs, AstNode *node) {
+    if (!node) return 0;
+    unsigned long long bits = 0;
+    switch (node->kind) {
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            bits |= return_expr_param_bits(checker, fs,
+                                           node->data.return_stmt.values[i]);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            bits |= return_stmt_param_bits(checker, fs, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.if_stmt.consequence);
+        bits |= return_stmt_param_bits(checker, fs, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            bits |= return_stmt_param_bits(checker, fs,
+                                           node->data.when_stmt.cases[i].body);
+        bits |= return_stmt_param_bits(checker, fs, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.for_stmt.body);
+        break;
+    case NODE_FOR_EACH_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.for_each.body);
+        break;
+    case NODE_WHILE_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.while_stmt.body);
+        break;
+    case NODE_LOOP_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.loop_stmt.body);
+        break;
+    default:
+        break;
+    }
+    return bits;
+}
+
+/* Lazily compute and memoise `fs`'s returns_param_addr summary. A function
+ * caught mid-computation (recursion) contributes nothing — conservative,
+ * never a false positive. */
+static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs) {
+    if (!fs) return 0;
+    if (fs->escape_state == 2) return fs->returns_param_addr;
+    if (fs->escape_state == 1) return 0;
+    fs->escape_state = 1;
+    fs->returns_param_addr = 0;
+    /* Only a function that returns a pointer can forward a parameter's
+     * address; `-> int { return p^ }` returns the pointee value, not p. */
+    bool returns_pointer = false;
+    for (int i = 0; i < fs->return_count; i++)
+        if (fs->return_types[i] && fs->return_types[i]->kind == TK_POINTER)
+            returns_pointer = true;
+    if (returns_pointer && fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
+        fs->decl->data.func_decl.body &&
+        fs->decl->data.func_decl.param_count <= 64)
+        fs->returns_param_addr =
+            return_stmt_param_bits(checker, fs, fs->decl->data.func_decl.body);
+    fs->escape_state = 2;
+    return fs->returns_param_addr;
+}
+
+static int call_result_origin(TypeChecker *checker, AstNode *call,
+                              const char **out_name) {
+    FuncSig *fs = resolve_call_sig(checker, call);
+    if (!fs) return 0;
+    unsigned long long bits = returns_param_address(checker, fs);
+    if (!bits) return 0;
+    int best = 0;
+    const char *best_name = NULL;
+    for (int i = 0; i < fs->param_count &&
+                    i < call->data.call.arg_count && i < 64; i++) {
+        if (!(bits & (1ull << i))) continue;
+        const char *nm = NULL;
+        int d = pointer_origin_of(checker, call->data.call.args[i], &nm);
+        if (d > best) { best = d; best_name = nm; }
+    }
+    if (best) *out_name = best_name;
+    return best;
+}
+
+/* Deepest pointer-origin among a struct literal's field initialisers, or 0.
+ * A struct value built with `Field{p: addr(local)}` carries the pointee's
+ * lifetime even though the address is buried in a field. */
+static int struct_literal_origin(TypeChecker *checker, AstNode *node,
+                                 const char **out_name) {
+    if (!node || node->kind != NODE_STRUCT_VALUE) return 0;
+    int best = 0;
+    const char *best_name = NULL;
+    for (int i = 0; i < node->data.struct_value.count; i++) {
+        const char *nm = NULL;
+        int d = pointer_origin_of(checker, node->data.struct_value.field_values[i], &nm);
+        if (d > best) { best = d; best_name = nm; }
+    }
+    if (best) *out_name = best_name;
+    return best;
 }
 
 /* The name the programmer wrote, never the module-prefixed internal one.
@@ -6332,6 +6511,45 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    /* E3097: an inner-scope address stored into a longer-lived array via
+     * arrays.append / arrays.prepend, laundered through a pointer variable
+     * so the address never appears syntactically at the call. The inline
+     * addr()/raw() form is already handled above; here we consult the
+     * element argument's tracked origin and compare it against the scope of
+     * the destination array. append-family functions are the one place the
+     * stored argument provably outlives the call, so this stays targeted
+     * rather than firing for any pointer passed to any function. */
+    {
+        AstNode *cfn = node->data.call.function;
+        const char *qual = ast_member_qualifier(cfn);
+        if (qual && cfn->kind == NODE_MEMBER_EXPR &&
+            node->data.call.arg_count >= 2) {
+            const char *mod = typechecker_resolve_alias(checker, qual);
+            const char *mfn = cfn->data.member.member;
+            if (mod && strcmp(mod, "arrays") == 0 && mfn &&
+                (strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0)) {
+                const char *dest = assignment_target_root_name(node->data.call.args[0]);
+                int dest_depth = dest
+                    ? symbol_scope_depth(checker->current_scope, dest) : 0;
+                for (int a = 1; a < node->data.call.arg_count; a++) {
+                    AstNode *arg = node->data.call.args[a];
+                    if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
+                        arg->data.call.function->kind == NODE_LABEL &&
+                        (strcmp(arg->data.call.function->data.label.value, "addr") == 0 ||
+                         strcmp(arg->data.call.function->data.label.value, "raw") == 0))
+                        continue; /* inline form handled above */
+                    const char *onm = NULL;
+                    int od = pointer_origin_of(checker, arg, &onm);
+                    if (od > 0 && od > dest_depth) {
+                        diagnostic_error_code_formatted(checker->diag, "E3097",
+                            NODE_FILE(checker, arg), arg->token.line,
+                            arg->token.column, 0, dest ? dest : onm, onm);
+                    }
+                }
+            }
+        }
+    }
+
     /* Resolve function return type */
     AstNode *fn = node->data.call.function;
     const char *function_name = NULL;
@@ -10550,6 +10768,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 dst_sym->origin_depth = pointer_origin_of(checker,
                     node->data.var_decl.value, &origin_name);
                 dst_sym->origin_name = origin_name;
+                const char *field_origin_name = NULL;
+                dst_sym->field_origin_depth = struct_literal_origin(checker,
+                    node->data.var_decl.value, &field_origin_name);
+                dst_sym->field_origin_name = field_origin_name;
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -11210,8 +11432,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     /* E3097: reject storing an address into a pointer that outlives it.
-     * The origin travels through intermediate pointers, so laundering the
-     * address (p = tmp where tmp = addr(local)) is caught too. */
+     * The origin travels through intermediate pointers and function calls,
+     * so laundering the address (p = tmp where tmp = addr(local), or
+     * p = forward(addr(local))) is caught too. */
     if (target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
         const char *origin_name = NULL;
@@ -11226,6 +11449,32 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if (ptr_sym) {
                 ptr_sym->origin_depth = origin_depth;
                 ptr_sym->origin_name = origin_name;
+                const char *field_origin_name = NULL;
+                ptr_sym->field_origin_depth = struct_literal_origin(checker,
+                    node->data.assign.value, &field_origin_name);
+                ptr_sym->field_origin_name = field_origin_name;
+            }
+        }
+    } else if (target->kind == NODE_MEMBER_EXPR || target->kind == NODE_INDEX_EXPR) {
+        /* A struct field or array element as the target: the E3097 guard
+         * above never reached these. Compare the stored address's origin
+         * against the scope of the root aggregate variable. */
+        const char *root = assignment_target_root_name(target);
+        if (root) {
+            const char *origin_name = NULL;
+            int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+                                                 &origin_name);
+            int root_depth = symbol_scope_depth(checker->current_scope, root);
+            if (origin_depth > root_depth) {
+                diagnostic_error_code_formatted(checker->diag, "E3097",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    root, origin_name);
+            } else if (origin_depth > 0) {
+                Symbol *root_sym = scope_lookup(checker->current_scope, root);
+                if (root_sym && origin_depth > root_sym->field_origin_depth) {
+                    root_sym->field_origin_depth = origin_depth;
+                    root_sym->field_origin_name = origin_name;
+                }
             }
         }
     }
@@ -11299,11 +11548,26 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* E3063: reject returning the address of a local; its memory is freed
      * when the function returns. The origin travels through intermediate
-     * pointers, so `mut p = addr(local); return p` is caught as well. */
+     * pointers, a function call, and a struct field, so `mut p = addr(local);
+     * return p`, `return forward(addr(local))`, and returning a struct value
+     * whose field holds `addr(local)` are all caught. */
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         AstNode *return_val = node->data.return_stmt.values[i];
         const char *origin_name = NULL;
         int origin_depth = pointer_origin_of(checker, return_val, &origin_name);
+        if (origin_depth == 0) {
+            const char *field_name = NULL;
+            int field_depth = struct_literal_origin(checker, return_val, &field_name);
+            if (field_depth == 0 && return_val->kind == NODE_LABEL) {
+                Symbol *s = scope_lookup(checker->current_scope,
+                                         return_val->data.label.value);
+                if (s && s->field_origin_depth) {
+                    field_depth = s->field_origin_depth;
+                    field_name = s->field_origin_name;
+                }
+            }
+            if (field_depth) { origin_depth = field_depth; origin_name = field_name; }
+        }
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
             diagnostic_error_code_formatted(checker->diag, "E3063",
