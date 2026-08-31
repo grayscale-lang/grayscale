@@ -19,6 +19,7 @@
 #include <time.h>
 
 #include "util/arena.h"
+#include "util/colors.h"
 #include "util/error.h"
 #include "util/platform.h"
 #include "lexer/lexer.h"
@@ -535,7 +536,11 @@ int main(int argc, char **argv) {
             double ms = (double)(t_end - t_start) / CLOCKS_PER_SEC * 1000.0;
             fprintf(stderr, "gray: check completed in %.1fms\n", ms);
         }
-        fprintf(stderr, "gray: %s: no errors\n", opts.input_file);
+        if (diag->use_color)
+            fprintf(stderr, "%s%sgray: %s: no errors!%s\n",
+                COL_BOLD, COL_GREEN, opts.input_file, COL_RESET);
+        else
+            fprintf(stderr, "gray: %s: no errors!\n", opts.input_file);
         typechecker_free(checker);
         diagnostic_destroy(diag);
         arena_destroy(arena);

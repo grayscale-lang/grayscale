@@ -127,9 +127,12 @@ func TestE2E_Check_Valid(t *testing.T) {
 	src := filepath.Join(dir, "valid.gray")
 	os.WriteFile(src, []byte("do main() {\n    println(\"hello\")\n}\n"), 0644)
 
-	_, _, code := runGray(t, "check", src)
+	_, stderr, code := runGray(t, "check", src)
 	if code != 0 {
 		t.Fatalf("gray check exited %d on valid file", code)
+	}
+	if !strings.Contains(stderr, "no errors!") {
+		t.Fatalf("gray check success message should end in %q, got: %q", "no errors!", stderr)
 	}
 }
 
