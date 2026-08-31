@@ -62,6 +62,16 @@ typedef struct {
      * Codegen emits one specialized C function per unique instantiation. */
     bool is_generic;
     AstNode *decl;                /* source NODE_FUNC_DECL for body lookup */
+
+    /* Pointer-escape summary, filled lazily by returns_param_address().
+     * escape_state: 0 = not computed, 1 = in progress, 2 = done.
+     * returns_param_addr: bit i set if a return value of this function may be
+     * the address of parameter i — returned directly, as addr()/raw() of its
+     * pointee, or forwarded through another summarised call. Lets the return
+     * and assignment escape checks (E3063, E3097) follow an address that
+     * passes through a function call. */
+    unsigned char escape_state;
+    unsigned long long returns_param_addr;
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;

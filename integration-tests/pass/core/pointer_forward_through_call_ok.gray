@@ -1,0 +1,74 @@
+/*
+ * pointer_forward_through_call_ok.gray - the pointer-lifetime checks must not
+ * flag an address that is passed through a call but never outlives its origin.
+ *
+ * - reads_through_call: addr() of a local handed to a function that only
+ *   dereferences it, result is an int -- no address escapes.
+ * - returns_safe_pointer: a call whose result is forwarded from a long-lived
+ *   pointer argument, not from a local.
+ * - wrap_param: a struct literal field initialised from a pointer parameter,
+ *   returned inside the struct -- the pointee is the caller's, still alive.
+ */
+
+const Box struct {
+    p ^int
+}
+
+do sum_at(p ^int) -> int { return p^ }
+
+do pick(a ^int, b ^int) -> ^int { return a }
+
+do wrap_param(q ^int) -> Box {
+    mut b Box = Box{p: q}
+    return b
+}
+
+do reads_through_call() -> int {
+    mut x int = 21
+    return sum_at(addr(x))
+}
+
+do returns_safe_pointer() -> ^int {
+    mut n ^int = new(int)
+    n^ = 42
+    return pick(n, n)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if reads_through_call() == 21 {
+        println("  [PASS] addr passed to a reader")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] addr passed to a reader")
+        failed += 1
+    }
+
+    mut sp ^int = returns_safe_pointer()
+    if sp^ == 42 {
+        println("  [PASS] call result forwarded from a heap pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] call result forwarded from a heap pointer")
+        failed += 1
+    }
+
+    mut y int = 7
+    mut w Box = wrap_param(addr(y))
+    if w.p^ == 7 {
+        println("  [PASS] struct field from a pointer parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct field from a pointer parameter")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
