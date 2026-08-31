@@ -3102,6 +3102,20 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 |----------|-----------|-------------|
 | `char_at` | `(s string, index int) -> char` | Character at byte index; panics if out of bounds |
 
+#### Editing Functions
+
+Each returns a **new** string (`string` is an immutable value type). `index` is a byte
+offset, matching `char_at`. A `char` argument is a codepoint and is UTF-8 encoded into the
+result.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `append_char` | `(s string, c char) -> string` | New string with `c` added at the end |
+| `prepend_char` | `(s string, c char) -> string` | New string with `c` added at the front |
+| `insert_char_at` | `(s string, index int, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
+| `remove_at` | `(s string, index int) -> string` | New string with the byte at `index` removed; panics if out of bounds |
+| `set_char_at` | `(s string, index int, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
+
 #### Query Functions
 
 | Function | Signature | Description |

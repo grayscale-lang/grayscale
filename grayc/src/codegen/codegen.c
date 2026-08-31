@@ -6805,6 +6805,9 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "to_title") == 0 || strcmp(func, "to_snake_case") == 0 ||
         strcmp(func, "to_camel_case") == 0 ||
         strcmp(func, "join") == 0 ||
+        strcmp(func, "append_char") == 0 || strcmp(func, "prepend_char") == 0 ||
+        strcmp(func, "insert_char_at") == 0 || strcmp(func, "remove_at") == 0 ||
+        strcmp(func, "set_char_at") == 0 ||
         strcmp(func, "to_chars") == 0 || strcmp(func, "from_chars") == 0);
 
     emit_formatted(codegen, "gray_strings_%s(", func);

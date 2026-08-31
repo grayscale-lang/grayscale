@@ -1,0 +1,9 @@
+/* Panic Test: P0082 - strings.insert_char_at with index past the end (index > len) */
+
+import @strings
+
+do main() {
+    mut s string = "abc"
+    mut r string = strings.insert_char_at(s, 4, 'x')  // index > len; len is the max
+    println(r)
+}
