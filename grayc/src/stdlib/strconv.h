@@ -26,24 +26,23 @@ typedef struct { double v0; GrayError *v1; } GrayResult_float;
  *@module strconv
  *@group Parsing
  *@sig to_int(s string, base int = 10) -> (int, Error)
- *@desc Parses s as a signed integer in the given base (2–36). With single-var assignment, panics on invalid input. With destructuring, returns an Error instead. Leading/trailing whitespace is not tolerated.
+ *@desc Parses s as a signed integer in the given base (2–36). Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0. Leading/trailing whitespace is not tolerated.
  *@example
  *   import @strconv
- *   mut n int = strconv.to_int("42")
+ *   mut n, err = strconv.to_int("42")
  *   mut val, err = strconv.to_int("ff", strconv.BASE_16)
  *@end
  */
-/* Panicking conversions (single-var assignment) */
 int64_t gray_strconv_to_int(GrayString s, int base);
 
 /*@man to_uint
  *@module strconv
  *@group Parsing
  *@sig to_uint(s string, base int = 10) -> (uint, Error)
- *@desc Parses s as an unsigned integer in the given base (2–36). Rejects strings with a leading minus sign. With single-var assignment, panics on invalid input. With destructuring, returns an Error instead.
+ *@desc Parses s as an unsigned integer in the given base (2–36). Rejects strings with a leading minus sign. Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0.
  *@example
  *   import @strconv
- *   mut n uint = strconv.to_uint("255")
+ *   mut n, err = strconv.to_uint("255")
  *   mut val, err = strconv.to_uint("ff", strconv.BASE_16)
  *@end
  */
@@ -53,10 +52,10 @@ uint64_t gray_strconv_to_uint(GrayString s, int base);
  *@module strconv
  *@group Parsing
  *@sig to_float(s string) -> (float, Error)
- *@desc Parses s as a floating-point number. Accepts standard decimal notation and "inf", "infinity", "nan" (case-insensitive). With single-var assignment, panics on invalid input. With destructuring, returns an Error instead.
+ *@desc Parses s as a floating-point number. Accepts standard decimal notation and "inf", "infinity", "nan" (case-insensitive). Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is 0.0.
  *@example
  *   import @strconv
- *   mut f float = strconv.to_float("3.14")
+ *   mut f, err = strconv.to_float("3.14")
  *   mut val, err = strconv.to_float("not a number")
  *@end
  */
@@ -66,16 +65,18 @@ double gray_strconv_to_float(GrayString s);
  *@module strconv
  *@group Parsing
  *@sig to_bool(s string) -> (bool, Error)
- *@desc Parses s as a boolean. Accepts "true" and "false" (case-insensitive). All other strings produce an error or panic. With single-var assignment, panics on invalid input. With destructuring, returns an Error instead.
+ *@desc Parses s as a boolean. Accepts "true" and "false" (case-insensitive); all other strings produce a non-nil error. Fallible: the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (E3089). On invalid input err is non-nil; with `_`, v is false.
  *@example
  *   import @strconv
- *   mut b bool = strconv.to_bool("true")
+ *   mut b, err = strconv.to_bool("true")
  *   mut val, err = strconv.to_bool("yes")
  *@end
  */
 bool gray_strconv_to_bool(GrayString s);
 
-/* Fallible conversions (multi-var destructuring) */
+/* Result forms — every Grayscale call compiles to one of these. The bare
+ * forms above are no longer reachable (single-var assignment of a fallible
+ * call is rejected with E3089). */
 GrayResult_int gray_strconv_to_int_result(GrayString s, int base);
 GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base);
 GrayResult_float gray_strconv_to_float_result(GrayString s);
@@ -175,7 +176,7 @@ GrayString gray_strconv_quote(GrayArena *arena, GrayString s);
  *@module strconv
  *@group Quoting
  *@sig unquote(s string) -> (string, Error)
- *@desc Removes one layer of surrounding double quotes from s and interprets the same escape sequences the lexer accepts in string literals, including two-digit hex escapes. With single-var assignment, panics on malformed input. With destructuring, returns an Error instead. The inverse of quote.
+ *@desc Removes one layer of surrounding double quotes from s and interprets the same escape sequences the lexer accepts in string literals, including two-digit hex escapes. Fallible: malformed input (unbalanced quotes, a trailing backslash, or an unknown escape) returns an Error, so the result must be destructured. The inverse of quote.
  *@example
  *   import @strconv
  *   mut s, err = strconv.unquote(quoted)
