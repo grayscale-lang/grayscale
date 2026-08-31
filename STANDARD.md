@@ -4003,7 +4003,7 @@ Format strings use C-style `%` specifiers:
 | `%o` | `int` / `uint` | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `int`/`uint` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `int`/`uint` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint argument only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt

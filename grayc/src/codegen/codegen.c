@@ -3952,23 +3952,41 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
         ptr++;
         if (!*ptr) break;
         if (*ptr == '%') { append_char_to_buffer(&codegen->output, '%'); ptr++; continue; }
-        /* Emit flags verbatim */
-        while (*ptr == '-' || *ptr == '+' || *ptr == ' ' || *ptr == '0' || *ptr == '#')
-            append_char_to_buffer(&codegen->output, *ptr++);
-        /* Emit width verbatim */
-        while (*ptr >= '0' && *ptr <= '9') append_char_to_buffer(&codegen->output, *ptr++);
-        /* Emit precision verbatim */
+        /* Buffer flags / width / precision so they can be filtered once the
+         * conversion is known — a numeric directive whose arg is a bigint is
+         * downgraded to %s, and the 0/#/+/space flags and precision are
+         * undefined behaviour (or misread as string precision) on an 's'
+         * conversion, so they are dropped rather than left to leak a
+         * -Wformat warning and produce wrong output. Width and '-' survive. */
+        char flags[8]; int flags_len = 0;
+        char width[16]; int width_len = 0;
+        char precision[16]; int precision_len = 0;
+        while (*ptr == '-' || *ptr == '+' || *ptr == ' ' || *ptr == '0' || *ptr == '#') {
+            if (flags_len < (int)sizeof(flags) - 1) flags[flags_len++] = *ptr;
+            ptr++;
+        }
+        while (*ptr >= '0' && *ptr <= '9') {
+            if (width_len < (int)sizeof(width) - 1) width[width_len++] = *ptr;
+            ptr++;
+        }
         if (*ptr == '.') {
-            append_char_to_buffer(&codegen->output, *ptr++);
-            while (*ptr >= '0' && *ptr <= '9') append_char_to_buffer(&codegen->output, *ptr++);
+            if (precision_len < (int)sizeof(precision) - 1) precision[precision_len++] = *ptr;
+            ptr++;
+            while (*ptr >= '0' && *ptr <= '9') {
+                if (precision_len < (int)sizeof(precision) - 1) precision[precision_len++] = *ptr;
+                ptr++;
+            }
         }
-        /* Check for existing length modifier */
-        bool has_length = (*ptr == 'h' || *ptr == 'l' || *ptr == 'L');
-        if (has_length) {
-            append_char_to_buffer(&codegen->output, *ptr++);
-            if ((*(ptr-1) == 'h' && *ptr == 'h') || (*(ptr-1) == 'l' && *ptr == 'l'))
-                append_char_to_buffer(&codegen->output, *ptr++);
+        flags[flags_len] = '\0'; width[width_len] = '\0'; precision[precision_len] = '\0';
+        /* Check for existing length modifier (buffered; a downgrade to %s drops it) */
+        char length_mod[4]; int length_mod_len = 0;
+        if (*ptr == 'h' || *ptr == 'l' || *ptr == 'L') {
+            length_mod[length_mod_len++] = *ptr++;
+            if ((length_mod[0] == 'h' && *ptr == 'h') || (length_mod[0] == 'l' && *ptr == 'l'))
+                length_mod[length_mod_len++] = *ptr++;
         }
+        length_mod[length_mod_len] = '\0';
+        bool has_length = length_mod_len > 0;
         char spec = *ptr ? *ptr++ : 0;
         if (!spec) break;
         GrayType *directive_type = (directive_index < call_node->data.call.arg_count && codegen->type_table)
@@ -3976,6 +3994,7 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
         bool arg_is_bigint = directive_type && directive_type->name &&
             is_bigint_type(directive_type->name);
         char emit_spec = spec;
+        bool downgraded_to_s = false;
         if (spec == 'b') {
             /* %b isn't a real C conversion; emit_format_arguments() already
              * stringifies bool args to "true"/"false", so %s reads them back
@@ -3983,12 +4002,28 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
              * 'b' and never consumes the argument, desyncing every directive
              * after it. */
             emit_spec = 's';
+            downgraded_to_s = true;
         } else if (arg_is_bigint && (spec == 'd' || spec == 'i' || spec == 'u' ||
                    spec == 'x' || spec == 'X' || spec == 'o')) {
             /* i128/u128/i256/u256 are struct-backed; emit_format_arguments()
              * converts them to a decimal/hex/octal string, read back with %s. */
             emit_spec = 's';
-        } else if (!has_length && directive_type) {
+            downgraded_to_s = true;
+        }
+        /* Emit flags/width/precision, filtered when the directive became %s. */
+        for (int fi = 0; fi < flags_len; fi++) {
+            if (downgraded_to_s && flags[fi] != '-') continue;
+            append_char_to_buffer(&codegen->output, flags[fi]);
+        }
+        for (int wi = 0; wi < width_len; wi++)
+            append_char_to_buffer(&codegen->output, width[wi]);
+        if (!downgraded_to_s) {
+            for (int pi = 0; pi < precision_len; pi++)
+                append_char_to_buffer(&codegen->output, precision[pi]);
+            for (int li = 0; li < length_mod_len; li++)
+                append_char_to_buffer(&codegen->output, length_mod[li]);
+        }
+        if (!downgraded_to_s && !has_length && directive_type) {
             /* Grayscale int/uint are 64-bit; widen the directive so the vararg
              * read matches the (unsigned) long long emit_format_arguments casts
              * the argument to. */
