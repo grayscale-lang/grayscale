@@ -315,31 +315,93 @@ static const char *read_raw_string(Lexer *lexer) {
     return str;
 }
 
+/* Length of the UTF-8 sequence a lead byte introduces, or 0 if it is not a
+ * valid lead byte (continuation byte or 0xF8+). */
+static int utf8_seq_len(unsigned char lead) {
+    if (lead < 0x80) return 1;
+    if ((lead & 0xE0) == 0xC0) return 2;
+    if ((lead & 0xF0) == 0xE0) return 3;
+    if ((lead & 0xF8) == 0xF0) return 4;
+    return 0;
+}
+
 static const char *read_char_literal(Lexer *lexer) {
     read_char(lexer); /* skip opening ' */
     int start = lexer->position;
 
-    if (lexer->ch == '\\') {
+    if (lexer->ch == '\'') {
+        /* empty literal '' */
+        lexer->error_code = "E1018";
+        lexer->error_msg = "char literal must contain exactly one codepoint; use a string for multiple characters";
+    } else if (lexer->ch == '\\') {
         read_char(lexer); /* move to escape char */
-        /* E1007: validate escape in char literal */
-        if (lexer->ch != 'n' && lexer->ch != 't' && lexer->ch != 'r' && lexer->ch != '\\' &&
-            lexer->ch != '\'' && lexer->ch != '0' && lexer->ch != 'x' && lexer->ch != 0) {
+        if (lexer->ch == 'x') {
+            /* \xNN — exactly two hex digits (codepoint U+00NN) */
+            read_char(lexer);
+            for (int i = 0; i < 2; i++) {
+                if (!isxdigit((unsigned char)lexer->ch)) {
+                    lexer->error_code = "E1006";
+                    lexer->error_msg = "malformed '\\x' escape in character literal; expected exactly two hex digits";
+                    break;
+                }
+                read_char(lexer);
+            }
+        } else if (lexer->ch == 'u') {
+            /* \u{H...} — 1 to 6 hex digits */
+            read_char(lexer);
+            if (lexer->ch != '{') {
+                lexer->error_code = "E1006";
+                lexer->error_msg = "malformed '\\u' escape in character literal; expected '\\u{...}'";
+            } else {
+                read_char(lexer); /* skip { */
+                int nhex = 0;
+                while (isxdigit((unsigned char)lexer->ch)) { read_char(lexer); nhex++; }
+                if (lexer->ch != '}' || nhex < 1 || nhex > 6) {
+                    lexer->error_code = "E1006";
+                    lexer->error_msg = "malformed '\\u{}' escape in character literal; expected 1 to 6 hex digits";
+                } else {
+                    read_char(lexer); /* skip } */
+                }
+            }
+        } else if (lexer->ch != 'n' && lexer->ch != 't' && lexer->ch != 'r' && lexer->ch != '\\' &&
+                   lexer->ch != '\'' && lexer->ch != '"' && lexer->ch != '0' && lexer->ch != 0) {
             lexer->error_code = "E1007";
             lexer->error_msg = "invalid escape sequence in character literal";
+            read_char(lexer);
+        } else {
+            read_char(lexer); /* skip simple escaped char */
         }
-        read_char(lexer); /* skip escaped char */
     } else {
-        read_char(lexer); /* skip the char */
+        /* One UTF-8 encoded codepoint: consume the lead byte and its
+         * continuation bytes so a non-ASCII character is a single literal. */
+        int seqlen = utf8_seq_len((unsigned char)lexer->ch);
+        if (seqlen == 0) {
+            lexer->error_code = "E1018";
+            lexer->error_msg = "malformed UTF-8 in character literal";
+            read_char(lexer);
+        } else {
+            read_char(lexer); /* consumed lead byte */
+            for (int i = 1; i < seqlen && !lexer->error_code; i++) {
+                if (((unsigned char)lexer->ch & 0xC0) != 0x80) {
+                    lexer->error_code = "E1018";
+                    lexer->error_msg = "malformed UTF-8 in character literal";
+                    break;
+                }
+                read_char(lexer);
+            }
+        }
     }
 
-    /* Check for multi-character char literal */
-    if (lexer->ch != '\'' && lexer->ch != 0 && !lexer->error_code) {
-        /* Consume remaining characters until closing quote or end */
+    /* Anything other than the closing quote now means more than one codepoint —
+     * unless the line or input ended first, which is an unterminated literal. */
+    if (lexer->ch != '\'' && lexer->ch != 0 && lexer->ch != '\n' && !lexer->error_code) {
         while (lexer->ch != '\'' && lexer->ch != 0 && lexer->ch != '\n') {
             read_char(lexer);
         }
-        lexer->error_code = "E1018";
-        lexer->error_msg = "char literal must contain exactly one character; use a string for multiple characters";
+        if (lexer->ch == '\'') {
+            lexer->error_code = "E1018";
+            lexer->error_msg = "char literal must contain exactly one codepoint; use a string for multiple characters";
+        }
     }
 
     const char *str = arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);

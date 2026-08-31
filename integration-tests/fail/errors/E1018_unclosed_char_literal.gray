@@ -1,8 +1,0 @@
-/*
- * Error Test: E1018 - unclosed character literal
- * Expected: "a char holds exactly one character; use a string for multiple"
- */
-
-do main() {
-    mut c char = 'a
-}

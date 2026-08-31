@@ -167,8 +167,9 @@ struct AstNode {
         /* NODE_INTERPOLATED_STRING */
         struct { AstNode **parts; int part_count; } interpolated_string;
 
-        /* NODE_CHAR_VALUE */
-        struct { char value; } char_value;
+        /* NODE_CHAR_VALUE — a full Unicode codepoint (char is int32_t at the C
+         * boundary), not a single byte. */
+        struct { int32_t value; } char_value;
 
         /* NODE_BOOL_VALUE */
         struct { bool value; } bool_value;

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E1018 - a character literal with two non-ASCII codepoints.
+ * The lexer decodes the bytes between the quotes as UTF-8 and rejects a
+ * literal that holds more than one codepoint.
+ * Expected: "exactly one codepoint"
+ */
+
+// expect-error: E1018
+
+do main() {
+    mut c char = 'éé'
+}

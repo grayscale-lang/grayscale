@@ -721,6 +721,57 @@ static AstNode *parse_string_literal(Parser *parser) {
     return node;
 }
 
+/* Decode the text between the quotes of a char literal (already validated by
+ * the lexer) into a single Unicode codepoint. Handles escape sequences and
+ * UTF-8 multibyte characters. Returns false and emits a diagnostic when a
+ * \u{} escape names a value outside U+0000–U+10FFFF. */
+static bool decode_char_literal(Parser *parser, const char *s, int32_t *out) {
+    if (s[0] == '\\') {
+        switch (s[1]) {
+        case 'n': *out = '\n'; return true;
+        case 't': *out = '\t'; return true;
+        case 'r': *out = '\r'; return true;
+        case '\\': *out = '\\'; return true;
+        case '\'': *out = '\''; return true;
+        case '"': *out = '"'; return true;
+        case '0': *out = '\0'; return true;
+        case 'x': {
+            /* \xNN — codepoint U+00NN, not a raw byte */
+            *out = (int32_t)strtol(s + 2, NULL, 16);
+            return true;
+        }
+        case 'u': {
+            /* \u{H...} */
+            long cp = strtol(s + 3, NULL, 16);
+            if (cp < 0 || cp > 0x10FFFF) {
+                diagnostic_error_message(parser->diag, "E1006",
+                    "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                *out = 0;
+                return false;
+            }
+            *out = (int32_t)cp;
+            return true;
+        }
+        default: *out = (unsigned char)s[1]; return true;
+        }
+    }
+    /* UTF-8 decode the first (only) codepoint. */
+    unsigned char c0 = (unsigned char)s[0];
+    if (c0 < 0x80) {
+        *out = c0;
+    } else if ((c0 & 0xE0) == 0xC0) {
+        *out = ((c0 & 0x1F) << 6) | ((unsigned char)s[1] & 0x3F);
+    } else if ((c0 & 0xF0) == 0xE0) {
+        *out = ((c0 & 0x0F) << 12) | (((unsigned char)s[1] & 0x3F) << 6) |
+               ((unsigned char)s[2] & 0x3F);
+    } else {
+        *out = ((c0 & 0x07) << 18) | (((unsigned char)s[1] & 0x3F) << 12) |
+               (((unsigned char)s[2] & 0x3F) << 6) | ((unsigned char)s[3] & 0x3F);
+    }
+    return true;
+}
+
 static AstNode *parse_bool_literal(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_BOOL_VALUE, parser->cur_token);
     node->data.bool_value.value = (parser->cur_token.type == TOK_TRUE);
@@ -834,18 +885,9 @@ static AstNode *parse_prefix(Parser *parser) {
     case TOK_NIL:       return parse_nil_literal(parser);
     case TOK_CHAR: {
         AstNode *node = ast_alloc(parser->arena, NODE_CHAR_VALUE, parser->cur_token);
-        node->data.char_value.value = parser->cur_token.literal[0];
-        if (parser->cur_token.literal[0] == '\\' && parser->cur_token.literal[1]) {
-            switch (parser->cur_token.literal[1]) {
-            case 'n': node->data.char_value.value = '\n'; break;
-            case 't': node->data.char_value.value = '\t'; break;
-            case 'r': node->data.char_value.value = '\r'; break;
-            case '\\': node->data.char_value.value = '\\'; break;
-            case '\'': node->data.char_value.value = '\''; break;
-            case '0': node->data.char_value.value = '\0'; break;
-            default: node->data.char_value.value = parser->cur_token.literal[1]; break;
-            }
-        }
+        int32_t cp = 0;
+        decode_char_literal(parser, parser->cur_token.literal, &cp);
+        node->data.char_value.value = cp;
         return node;
     }
     case TOK_MINUS:

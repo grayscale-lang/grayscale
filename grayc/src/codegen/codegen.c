@@ -3659,17 +3659,12 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit(codegen, node->data.bool_value.value ? "true" : "false");
         break;
 
-    case NODE_CHAR_VALUE: {
-        char ch = node->data.char_value.value;
-        if (ch == '\n') emit(codegen, "'\\n'");
-        else if (ch == '\t') emit(codegen, "'\\t'");
-        else if (ch == '\r') emit(codegen, "'\\r'");
-        else if (ch == '\\') emit(codegen, "'\\\\'");
-        else if (ch == '\'') emit(codegen, "'\\''");
-        else if (ch == '\0') emit(codegen, "'\\0'");
-        else emit_formatted(codegen, "'%c'", ch);
+    case NODE_CHAR_VALUE:
+        /* A char is a Unicode codepoint (int32_t at the C boundary), so emit
+         * the numeric value — a C char constant cannot hold codepoints above
+         * 0x7F. */
+        emit_formatted(codegen, "((int32_t)%d)", (int)node->data.char_value.value);
         break;
-    }
 
     case NODE_NIL_VALUE:
         emit(codegen, "NULL");
