@@ -1,0 +1,75 @@
+/*
+ * for_each_field_through_pointer.gray - for_each over a struct array field
+ * reached through a ^T pointer must work with both implicit (p.field) and
+ * explicit (p^.field) dereference, including a nested value-struct field.
+ */
+
+import @arrays
+
+const Bag struct {
+    items [int]
+}
+
+const Outer struct {
+    inner Bag
+}
+
+do main() {
+    println("=== for_each Field Through Pointer Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut b ^Bag = new(Bag)
+    arrays.append(b.items, 7)
+    arrays.append(b.items, 9)
+
+    /* implicit dereference */
+    mut sum int = 0
+    for_each x in b.items {
+        sum += x
+    }
+    if sum == 16 {
+        println("  [PASS] for_each over p.field (implicit deref)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each over p.field (implicit deref): ${sum}")
+        failed += 1
+    }
+
+    /* explicit dereference */
+    sum = 0
+    for_each x in b^.items {
+        sum += x
+    }
+    if sum == 16 {
+        println("  [PASS] for_each over p^.field (explicit deref)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each over p^.field (explicit deref): ${sum}")
+        failed += 1
+    }
+
+    /* nested value-struct field through the pointer */
+    mut o ^Outer = new(Outer)
+    arrays.append(o.inner.items, 2)
+    arrays.append(o.inner.items, 3)
+    sum = 0
+    for_each x in o.inner.items {
+        sum += x
+    }
+    if sum == 5 {
+        println("  [PASS] for_each over p.a.b nested field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each over p.a.b nested field: ${sum}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
