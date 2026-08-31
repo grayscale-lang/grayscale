@@ -10813,6 +10813,13 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             codegen->indent++;
             emit_block(codegen, node->data.when_stmt.default_body);
             codegen->indent--;
+        } else if (node->data.when_stmt.is_strict && node->data.when_stmt.case_count > 0) {
+            /* A #strict enum `when` is exhaustive (E3056 fired otherwise), so
+             * the fall-through is dead. Say so, or C warns that a value-
+             * returning function may fall off the end (-Wreturn-type). */
+            emit_indent(codegen);
+            emit(codegen, "} else { __builtin_unreachable(); }\n");
+            break;
         }
         emit_indent(codegen);
         emit(codegen, "}\n");

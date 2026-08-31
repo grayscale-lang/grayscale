@@ -1,0 +1,66 @@
+/*
+ * strict_when_terminating.gray - a #strict `when` whose every arm returns is
+ * a terminating statement: no `default` arm is needed and E3035 ("not all
+ * code paths return a value") must not fire. #strict has already proven the
+ * match exhaustive.
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Shape enum {
+    Circle(float)
+    Rect(float, float)
+}
+
+// plain enum
+do color_name(c Color) -> string {
+    #strict
+    when c {
+        is Color.RED   { return "r" }
+        is Color.GREEN { return "g" }
+        is Color.BLUE  { return "b" }
+    }
+}
+
+// tagged enum with payload bindings
+do area(s Shape) -> float {
+    #strict
+    when s {
+        is Shape.Circle(r)  { return 3.0 * r * r }
+        is Shape.Rect(w, h) { return w * h }
+    }
+}
+
+do main() {
+    println("=== #strict when terminating ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if color_name(Color.RED) == "r" && color_name(Color.BLUE) == "b" {
+        println("  [PASS] #strict when, all arms return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] color_name")
+        failed += 1
+    }
+
+    if area(Shape.Circle(2.0)) == 12.0 && area(Shape.Rect(2.0, 5.0)) == 10.0 {
+        println("  [PASS] #strict when over a tagged enum, all arms return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] area")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

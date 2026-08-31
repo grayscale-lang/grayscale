@@ -9087,8 +9087,14 @@ static bool all_paths_return(AstNode *node) {
                all_paths_return(node->data.if_stmt.alternative);
     }
     if (node->kind == NODE_WHEN_STMT) {
-        if (!node->data.when_stmt.default_body) return false;
-        if (!all_paths_return(node->data.when_stmt.default_body)) return false;
+        /* A `#strict` enum `when` is exhaustive by the time this runs — any
+         * uncovered variant has already produced E3056 — so it terminates
+         * when every case body does, with no `default` required. */
+        if (!node->data.when_stmt.default_body) {
+            if (!node->data.when_stmt.is_strict) return false;
+        } else if (!all_paths_return(node->data.when_stmt.default_body)) {
+            return false;
+        }
         for (int i = 0; i < node->data.when_stmt.case_count; i++) {
             if (!all_paths_return(node->data.when_stmt.cases[i].body)) return false;
         }
