@@ -750,6 +750,15 @@ static bool decode_char_literal(Parser *parser, const char *s, int32_t *out) {
                 *out = 0;
                 return false;
             }
+            if (cp >= 0xD800 && cp <= 0xDFFF) {
+                /* UTF-16 surrogate halves are not Unicode scalar values and
+                 * have no well-formed UTF-8 encoding. */
+                diagnostic_error_message(parser->diag, "E1006",
+                    "'\\u{}' codepoint U+D800 to U+DFFF is a UTF-16 surrogate, not a character",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                *out = 0;
+                return false;
+            }
             *out = (int32_t)cp;
             return true;
         }

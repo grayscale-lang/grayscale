@@ -1,0 +1,12 @@
+/*
+ * Error Test: E1006 - a \u{} escape in a character literal names a UTF-16
+ * surrogate codepoint (U+D800 to U+DFFF), which is not a Unicode scalar
+ * value and has no well-formed UTF-8 encoding.
+ * Expected: "surrogate"
+ */
+
+// expect-error: E1006
+
+do main() {
+    mut e char = '\u{D800}'
+}
