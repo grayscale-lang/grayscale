@@ -12957,7 +12957,7 @@ static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, Ast
 static void validate_field_type_recursive(TypeChecker *checker, AstNode *program,
                                           const char *type_name,
                                           const char *field_name,
-                                          AstNode *stmt) {
+                                          AstNode *stmt, bool nested) {
     if (!type_name || !*type_name) return;
 
     /* Containers recurse on what they are built from: the element of an
@@ -12967,7 +12967,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         int part_count = 0;
         if (type_name_components(type_name, parts, &part_count)) {
             for (int i = 0; i < part_count; i++)
-                validate_field_type_recursive(checker, program, parts[i], field_name, stmt);
+                validate_field_type_recursive(checker, program, parts[i], field_name, stmt, true);
             return;
         }
     }
@@ -12983,8 +12983,10 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
      * the prefix match expects. */
     typechecker_mark_type_module_used(checker, type_name);
 
-    /* Bare func: reject with guidance toward typed signature */
-    if (strcmp(type_name, "func") == 0) {
+    /* Bare func: reject only as a direct scalar field type. As a container
+     * element ([func], map[string:func]) it is the documented spelling and
+     * works the same as a local of that type. */
+    if (!nested && strcmp(type_name, "func") == 0) {
         diagnostic_error_code_help(checker->diag, "E3130",
             NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
             "use a typed signature: 'func(params) -> return_type'");
@@ -13489,7 +13491,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             }
             /* Validate all named types within the field type recursively. */
             if (ftn && *ftn)
-                validate_field_type_recursive(checker, program, ftn, fnames[j], stmt);
+                validate_field_type_recursive(checker, program, ftn, fnames[j], stmt, false);
             /* Check for duplicate field names */
             for (int k = 0; k < j; k++) {
                 if (strcmp(fnames[k], fnames[j]) == 0) {
