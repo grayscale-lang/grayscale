@@ -8618,13 +8618,13 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     return result;
 }
 
-/* Grayscale type name for a map-literal key/value element, used when an
- * unannotated `mut` map infers its K/V from the first pair. A wide-integer
- * constructor call (i128(x), u256(x), ...) is resolved as plain int/uint by
- * the expression typechecker, so recover the width from the call itself —
- * otherwise the inferred map is map[..:int] and the 16/32-byte value is
- * truncated to 8 bytes in codegen. */
-static const char *map_literal_elem_type_name(AstNode *elem, GrayType *resolved) {
+/* Grayscale type name for an array- or map-literal element, used when an
+ * unannotated `mut` array/map infers its element (or K/V) type from the first
+ * entry. A wide-integer constructor call (i128(x), u256(x), ...) is resolved
+ * as plain int/uint by the expression typechecker, so recover the width from
+ * the call itself — otherwise the inferred container is [int] / map[..:int]
+ * and the 16/32-byte value is truncated to 8 bytes in codegen. */
+static const char *literal_elem_type_name(AstNode *elem, GrayType *resolved) {
     if (elem && elem->kind == NODE_CALL_EXPR &&
         elem->data.call.function->kind == NODE_LABEL &&
         is_bigint_type(elem->data.call.function->data.label.value))
@@ -9105,7 +9105,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.array_value.count > 0) {
             GrayType *first = resolve_expression(checker, node->data.array_value.elements[0]);
             reject_multi_return_in_single_position(checker, node->data.array_value.elements[0]);
-            result = type_array(type_name(first));
+            result = type_array(literal_elem_type_name(node->data.array_value.elements[0], first));
             /* Validate all elements have the same type */
             for (int i = 1; i < node->data.array_value.count; i++) {
                 GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
@@ -9177,8 +9177,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.map_value.count > 0) {
             GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(map_literal_elem_type_name(node->data.map_value.keys[0], kt));
-            resolved_type->value_type = strdup(map_literal_elem_type_name(node->data.map_value.values[0], vt));
+            resolved_type->key_type = strdup(literal_elem_type_name(node->data.map_value.keys[0], kt));
+            resolved_type->value_type = strdup(literal_elem_type_name(node->data.map_value.values[0], vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types

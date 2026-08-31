@@ -8698,7 +8698,12 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         GrayType *vt = codegen->type_table
             ? typetable_get(codegen->type_table, node->data.var_decl.value)
             : NULL;
-        const char *bi_name = (vt && vt->name && is_bigint_type(vt->name))
+        /* An array/map type stores its element type name in ->name (e.g. an
+         * inferred [i128] has name "i128"), so gate on the kind too — the var
+         * itself is the container, not a wide integer. */
+        bool vt_is_bigint_scalar = vt && vt->name && is_bigint_type(vt->name) &&
+            (vt->kind == TK_INT || vt->kind == TK_UINT);
+        const char *bi_name = vt_is_bigint_scalar
             ? vt->name : resolve_bigint_type(codegen, node->data.var_decl.value);
         if (bi_name) {
             register_bigint_variable(codegen, node->data.var_decl.name, bi_name);
