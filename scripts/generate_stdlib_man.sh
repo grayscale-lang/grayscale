@@ -37,13 +37,14 @@ for header in "$STDLIB_DIR"/*.h; do
     in_block && /\*@end/     { in_ex = 0; next }
     in_block && in_ex {
       line = $0; sub(/^ \*   /, "", line)
+      gsub(/\\/, "\\\\", line)
       gsub(/"/, "\\\"", line)
       ex = (ex == "" ? line : ex "\\n" line); next
     }
     in_block && /\*\// {
       if (mod != "") {
         gsub(/"/, "\\\"", sig); gsub(/"/, "\\\"", desc)
-        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, mod, grp, kind, sig, fields, desc, ex
+        printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", name, mod, grp, kind, sig, fields, desc, ex
       }
       in_block = 0; next
     }

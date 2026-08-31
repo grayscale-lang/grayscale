@@ -92,6 +92,23 @@ func TestLangKeywordsAllResolvable(t *testing.T) {
 	}
 }
 
+func TestStdlibManExamplesPopulated(t *testing.T) {
+	// The generator must write the @example block through to the TSV;
+	// a regression once dropped it and left every Example empty.
+	if got := stdlibManDocs["arrays.append"].Example; got == "" {
+		t.Error("stdlibManDocs[\"arrays.append\"] has no Example")
+	}
+	withExample := 0
+	for _, e := range stdlibManDocs {
+		if e.Kind == "func" && e.Example != "" {
+			withExample++
+		}
+	}
+	if withExample == 0 {
+		t.Error("no stdlib function man entry has an Example")
+	}
+}
+
 func TestPrintBuiltinsIndex(t *testing.T) {
 	out := captureStdout(t, printBuiltinsIndex)
 	for _, expected := range []string{"println", "exit", "len", "int"} {
