@@ -10294,13 +10294,50 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             AstNode *lit = node->data.var_decl.value;
             bool is_array = lit->kind == NODE_ARRAY_VALUE;
             bool is_map = lit->kind == NODE_MAP_VALUE;
-            if ((is_array || is_map) &&
-                !(node->data.var_decl.mutable &&
-                  typechecker_literal_type_inferable(checker, lit, value_type))) {
+            bool inferred = node->data.var_decl.mutable &&
+                typechecker_literal_type_inferable(checker, lit, value_type);
+            if ((is_array || is_map) && !inferred) {
                 diagnostic_error_code_help(checker->diag, is_array ? "E3050" : "E3051",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     is_array ? "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'"
                              : "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
+            } else if (is_map && inferred) {
+                /* The inferred map type is taken from the first pair only
+                 * (typechecker_literal_type_inferable / NODE_MAP_VALUE). Every
+                 * later pair must agree with it: a non-primitive key or value
+                 * falls back to E3051, a mismatched primitive gets the same
+                 * E3053 the annotated path emits (issue #2374). */
+                GrayType *ik = typechecker_type_from_name(checker, value_type->key_type);
+                GrayType *iv = typechecker_type_from_name(checker, value_type->value_type);
+                for (int mi = 1; mi < lit->data.map_value.count; mi++) {
+                    AstNode *kn = lit->data.map_value.keys[mi];
+                    AstNode *vn = lit->data.map_value.values[mi];
+                    GrayType *kt = resolve_expression(checker, kn);
+                    GrayType *vt = resolve_expression(checker, vn);
+                    if ((kt && !typechecker_kind_is_primitive(kt->kind)) ||
+                        (vt && !typechecker_kind_is_primitive(vt->kind))) {
+                        diagnostic_error_code_help(checker->diag, "E3051",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
+                        break;
+                    }
+                    if (kt && ik && kt->kind != TK_UNKNOWN && ik->kind != TK_UNKNOWN &&
+                        !types_assignable(checker, ik, kt)) {
+                        char *msg = typechecker_format(checker,
+                            "type mismatch in map literal key; expected '%s', got '%s'",
+                            type_display_name(checker, ik), type_display_name(checker, kt));
+                        diagnostic_error_message(checker->diag, "E3053", msg,
+                            NODE_FILE(checker, kn), kn->token.line, kn->token.column, 0);
+                    }
+                    if (vt && iv && vt->kind != TK_UNKNOWN && iv->kind != TK_UNKNOWN &&
+                        !types_assignable(checker, iv, vt)) {
+                        char *msg = typechecker_format(checker,
+                            "type mismatch in map literal value; expected '%s', got '%s'",
+                            type_display_name(checker, iv), type_display_name(checker, vt));
+                        diagnostic_error_message(checker->diag, "E3053", msg,
+                            NODE_FILE(checker, vn), vn->token.line, vn->token.column, 0);
+                    }
+                }
             }
         }
         /* : when a func-pointer call returns TK_UNKNOWN but
