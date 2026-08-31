@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 403 codes** (277 errors, 17 warnings, 109 panics)
+**Total: 404 codes** (278 errors, 17 warnings, 109 panics)
 
 ---
 
@@ -263,6 +263,7 @@
 | `E5042` | usage | '#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard' |
 | `E5043` | usage | 'fields()' requires a struct instance, got '%s' |
 | `E5044` | usage | 'error()' argument must be a string, got '%s' |
+| `E5045` | arguments | constant argument is outside the valid domain for this function |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -454,4 +455,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-31 00:16:53 UTC*
+*Generated on 2026-08-31 11:25:40 UTC*

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5045 - constant argument outside a stdlib function's domain
+ * strings.repeat with a negative constant count (runtime P0072).
+ *
+ * expect-error: E5045
+ */
+
+import @strings
+
+do main() {
+    println(strings.repeat("x", -3))
+}

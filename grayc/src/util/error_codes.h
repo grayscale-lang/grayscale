@@ -284,7 +284,8 @@
     GRAY_ERROR("E5040", "usage", "constant requires a compile-time value; function calls are evaluated at runtime") \
     GRAY_ERROR("E5042", "usage", "'#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard'") \
     GRAY_ERROR("E5043", "usage", "'fields()' requires a struct instance, got '%s'") \
-    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'")
+    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'") \
+    GRAY_ERROR("E5045", "arguments", "constant argument is outside the valid domain for this function")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \

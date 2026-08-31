@@ -3491,6 +3491,84 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
     return false;
 }
 
+/* Extract a compile-time numeric value from an argument: a float literal or an
+ * integer constant (literal, const, folded arithmetic), each optionally
+ * negated. Returns false when the argument is not a decidable constant. */
+static bool typechecker_const_number(TypeChecker *checker, AstNode *n, double *out) {
+    if (!n) return false;
+    if (n->kind == NODE_FLOAT_VALUE) { *out = n->data.float_value.value; return true; }
+    if (n->kind == NODE_PREFIX_EXPR && n->data.prefix.op == TOK_MINUS &&
+        n->data.prefix.right && n->data.prefix.right->kind == NODE_FLOAT_VALUE) {
+        *out = -n->data.prefix.right->data.float_value.value;
+        return true;
+    }
+    int64_t iv; bool overflowed = false;
+    if (typechecker_fold_const_int(checker, n, &iv, &overflowed) && !overflowed) {
+        *out = (double)iv;
+        return true;
+    }
+    return false;
+}
+
+/* Reject a stdlib call whose compile-time-constant argument is provably outside
+ * the domain the implementation guards with a runtime panic. The runtime checks
+ * (P0064-P0070, P0072, P0106, P0051, P0063) stay in place for every
+ * non-constant argument; this only moves the decidable cases to compile time.
+ * Precedent: typechecker_check_strconv_base / E5009. Emits E5045. */
+static void typechecker_check_const_domain(TypeChecker *checker, const char *mod,
+    const char *fn, AstNode *node)
+{
+    int argc = node->data.call.arg_count;
+
+    /* Integer domains, [lo, hi] inclusive. */
+    static const struct {
+        const char *mod, *fn;
+        int arg;
+        int64_t lo, hi;
+        const char *needs;
+    } int_dom[] = {
+        {"math",    "factorial",         0, 0,         INT64_MAX,         "a non-negative integer"},
+        {"math",    "next_power_of_two", 0, INT64_MIN, (int64_t)1 << 62,  "a value whose next power of two fits in int"},
+        {"strings", "repeat",            1, 0,         INT64_MAX,         "a non-negative count"},
+        {"crypto",  "random_hex",        0, 0,         INT64_MAX,         "a non-negative length"},
+        {"random",  "sample",            1, 0,         INT64_MAX,         "a non-negative count"},
+    };
+    for (size_t i = 0; i < sizeof(int_dom) / sizeof(int_dom[0]); i++) {
+        if (strcmp(mod, int_dom[i].mod) != 0 || strcmp(fn, int_dom[i].fn) != 0) continue;
+        if (int_dom[i].arg >= argc) return;
+        int64_t v; bool overflowed = false;
+        if (!typechecker_fold_const_int(checker, node->data.call.args[int_dom[i].arg], &v, &overflowed)
+            || overflowed) return;
+        if (v < int_dom[i].lo || v > int_dom[i].hi) {
+            AstNode *a = node->data.call.args[int_dom[i].arg];
+            char *msg = typechecker_format(checker, "'%s.%s' requires %s; got %lld",
+                mod, fn, int_dom[i].needs, (long long)v);
+            diagnostic_error_message(checker->diag, "E5045", msg,
+                NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+        }
+        return;
+    }
+
+    /* Float domains for the math functions that accept ARG_NUMBER. */
+    if (strcmp(mod, "math") != 0 || argc < 1) return;
+    double x;
+    if (!typechecker_const_number(checker, node->data.call.args[0], &x)) return;
+    const char *needs = NULL;
+    if (strcmp(fn, "sqrt") == 0) { if (x < 0.0) needs = "a non-negative number"; }
+    else if (strcmp(fn, "log") == 0 || strcmp(fn, "log2") == 0 || strcmp(fn, "log10") == 0) {
+        if (x <= 0.0) needs = "a positive number";
+    }
+    else if (strcmp(fn, "asin") == 0 || strcmp(fn, "acos") == 0) {
+        if (x < -1.0 || x > 1.0) needs = "a value in [-1, 1]";
+    }
+    if (needs) {
+        AstNode *a = node->data.call.args[0];
+        char *msg = typechecker_format(checker, "'math.%s' requires %s; got %g", fn, needs, x);
+        diagnostic_error_message(checker->diag, "E5045", msg,
+            NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+    }
+}
+
 /* Check if a literal integer value fits in the declared sized type.
  * Returns true if an error was emitted.
  *
@@ -3722,6 +3800,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     typechecker_check_stdlib_arg_count(checker, mod, mfn, node);
     typechecker_check_stdlib_arg_types(checker, mod, mfn, node);
     typechecker_check_strconv_base(checker, mod, mfn, node);
+    typechecker_check_const_domain(checker, mod, mfn, node);
     /* Table-driven return type resolution: O(log n) bsearch */
     const StdlibFuncMeta *meta = find_stdlib_meta(mod, mfn);
     if (meta && meta->return_type) {
@@ -5682,6 +5761,34 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                     type_name(arg1));
                 diagnostic_error_message(checker->diag, "E3043", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else {
+                /* Constant index provably out of bounds — gray_builtin_to_char
+                 * panics P0049 (negative) / P0050 (past end). Dynamic indices
+                 * stay runtime-checked. The upper bound is only known when the
+                 * string is a plain literal (no escapes to expand). */
+                int64_t idx; bool ov = false;
+                if (typechecker_fold_const_int(checker, node->data.call.args[1], &idx, &ov) && !ov) {
+                    int64_t chars = -1;
+                    AstNode *s = node->data.call.args[0];
+                    if (s->kind == NODE_STRING_VALUE && s->data.string_value.value &&
+                        !strchr(s->data.string_value.value, '\\')) {
+                        chars = 0;
+                        for (const unsigned char *p = (const unsigned char *)s->data.string_value.value;
+                             *p; p++)
+                            if ((*p & 0xC0) != 0x80) chars++;
+                    }
+                    if (idx < 0 || (chars >= 0 && idx >= chars)) {
+                        AstNode *a = node->data.call.args[1];
+                        char *msg = chars >= 0
+                            ? typechecker_format(checker,
+                                "'to_char()' index %lld is out of bounds for a string of %lld characters",
+                                (long long)idx, (long long)chars)
+                            : typechecker_format(checker,
+                                "'to_char()' index cannot be negative; got %lld", (long long)idx);
+                        diagnostic_error_message(checker->diag, "E5045", msg,
+                            NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+                    }
+                }
             }
         }
         result = &TYPE_CHAR;
@@ -6599,6 +6706,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     typechecker_check_stdlib_arg_count(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_stdlib_arg_types(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_strconv_base(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_const_domain(checker, using_stdlib_mod, function_name, node);
                 }
             } else {
                 /* Check if it's a variable holding a function reference */
