@@ -1438,15 +1438,19 @@ static void test_error_E5025_invalid_assign_target(void) {
 /* --- Array/map initialization --- */
 
 static void test_error_E3050_array_no_type_annotation(void) {
+    /* A primitive `mut` array literal now infers its type (#2374); an empty
+     * literal still has nothing to infer from. */
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a = {1, 2, 3} }");
+        "do main() { mut a = {} }");
     ASSERT(has_error_code(diagnostics, "E3050"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3051_map_no_type_annotation(void) {
+    /* A primitive `mut` map literal now infers its type (#2374); an empty
+     * literal still has nothing to infer from. */
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut m = {\"a\": 1} }");
+        "do main() { mut m = {:} }");
     ASSERT(has_error_code(diagnostics, "E3051"));
     diagnostic_destroy(diagnostics);
 }
