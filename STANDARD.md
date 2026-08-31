@@ -2913,20 +2913,20 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `len` | `(collection) -> int` | Length of array, map, or string (byte length for strings, not character count) |
+| `len` | `(collection T) -> int` | Length of array, map, or string (byte length for strings, not character count) |
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> int` | Size of type in bytes |
-| `fields` | `(instance) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
+| `fields` | `(instance T) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
-| `addr` | `(variable) -> ^T` | Get memory address of a variable |
-| `raw` | `(variable) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
+| `addr` | `(variable T) -> ^T` | Get memory address of a variable |
+| `raw` | `(variable T) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
 | `error` | `(message string) -> Error` | Create error value |
-| `assert` | `(condition bool [, message string])` | Terminate with `P0075` if condition is false. Message is optional. |
+| `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code int)` | Exit program with code |
-| `range` | `(start int, end int [, step int]) -> Range` | Create integer range |
+| `range` | `(start int, end int, step int = 1) -> Range` | Create integer range; `step` defaults to 1 |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
 | `to_char` | `(s string, index int) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `int()` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
@@ -3078,11 +3078,11 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `map` | `(arr [T], ()transform) -> [T]` | Returns a new array with `transform` applied to each element. `transform` must be `(T) -> T`. |
-| `filter` | `(arr [T], ()predicate) -> [T]` | Returns a new array containing only elements for which `predicate` returns true. `predicate` must be `(T) -> bool`. |
-| `reduce` | `(arr [T], initial T, ()accumulator) -> T` | Reduces the array to a single value by applying `accumulator(acc, element)` for each element, starting with `initial`. `accumulator` must be `(T, T) -> T`. |
-| `any` | `(arr [T], ()predicate) -> bool` | Returns true if at least one element satisfies `predicate`. `predicate` must be `(T) -> bool`. Returns false on an empty array. |
-| `all` | `(arr [T], ()predicate) -> bool` | Returns true if every element satisfies `predicate`. `predicate` must be `(T) -> bool`. Returns true on an empty array. |
+| `map` | `(arr [T], transform func(T) -> T) -> [T]` | Returns a new array with `transform` applied to each element. |
+| `filter` | `(arr [T], predicate func(T) -> bool) -> [T]` | Returns a new array containing only elements for which `predicate` returns true. |
+| `reduce` | `(arr [T], initial T, accumulator func(T, T) -> T) -> T` | Reduces the array to a single value by applying `accumulator(acc, element)` for each element, starting with `initial`. |
+| `any` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if at least one element satisfies `predicate`. Returns false on an empty array. |
+| `all` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if every element satisfies `predicate`. Returns true on an empty array. |
 
 ### 9.3 Strings Module (`@strings`)
 
@@ -3373,7 +3373,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
 | `encode` | `(value T) -> string` | Encode to JSON string. Accepts int, float, bool, string, map, array. |
 | `stringify` | `(value T) -> string` | Encode to JSON string (alias for encode, supports `#json` structs) |
-| `pretty_print` | `(m map, indent int) -> string` | Pretty-print a map as indented JSON |
+| `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
 Error-returning variant: `decode`
@@ -3734,10 +3734,10 @@ An HTTP server module with dynamic handlers and path parameters.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
-| `add_route` | `(router Router, method string, path string, ()handler)` | Add a route with handler function |
+| `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
 | `listen` | `(router Router, port int)` | Start HTTP server on port (blocks until killed) |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
-| `use` | `(router Router, ()middleware)` | Register a middleware function |
+| `use` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
 #### Response Builders
 
@@ -3834,8 +3834,8 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `spawn` | `(()func) -> Thread` | Spawn a new thread running `func` |
-| `spawn` | `(()func, arg int) -> Thread` | Spawn a new thread running `func` with an int argument |
+| `spawn` | `(fn func()) -> Thread` | Spawn a new thread running `fn` |
+| `spawn` | `(fn func(int), arg int) -> Thread` | Spawn a new thread running `fn` with an int argument |
 | `join` | `(t Thread)` | Wait for a thread to finish |
 | `detach` | `(t Thread)` | Release ownership; the thread runs independently. After detach the handle must not be joined or queried |
 | `is_alive` | `(t Thread) -> bool` | True while the thread's body has not returned. Not valid after `detach` or `join` |
@@ -3931,13 +3931,15 @@ Formatted output and string formatting functions.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `printf` | `(format string, ...args T)` | Print formatted string to stdout |
-| `printfln` | `(format string, ...args T)` | Print formatted string to stdout with trailing newline |
-| `eprintf` | `(format string, ...args T)` | Print formatted string to stderr |
-| `eprintfln` | `(format string, ...args T)` | Print formatted string to stderr with trailing newline |
-| `sprintf` | `(format string, ...args T) -> string` | Return formatted string |
-| `sprintfln` | `(format string, ...args T) -> string` | Return formatted string with trailing newline |
-| `format` | `(format string, ...args T) -> string` | Return formatted string |
+| `printf` | `(format string, args [T])` | Print formatted string to stdout |
+| `printfln` | `(format string, args [T])` | Print formatted string to stdout with trailing newline |
+| `eprintf` | `(format string, args [T])` | Print formatted string to stderr |
+| `eprintfln` | `(format string, args [T])` | Print formatted string to stderr with trailing newline |
+| `sprintf` | `(format string, args [T]) -> string` | Return formatted string |
+| `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
+| `format` | `(format string, args [T]) -> string` | Return formatted string |
+
+One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, or `char`. Composite types are rejected.
 
 > 💡 **Tip:** `eprintln` and `eprint` are builtins, not fmt module functions. Use them without an import.
 
@@ -3988,7 +3990,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 | `float_fixed` | `(f float, decimals int) -> string` | Format float with fixed decimal places |
 | `float_sci` | `(f float) -> string` | Format float in scientific notation |
 
-Accepts `string`, `int`, `float`, and `bool` arguments for formatted output functions. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
+Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, or `char`. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
 ### 9.27 Strconv Module (`@strconv`)
 

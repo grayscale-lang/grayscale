@@ -427,7 +427,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
 /*@man map
  *@module arrays
  *@group Higher-Order
- *@sig map(arr [T], ()transform) -> [T]
+ *@sig map(arr [T], transform func(T) -> T) -> [T]
  *@desc Returns a new array with transform applied to each element. transform must be a function that takes T and returns T. Does not modify the original.
  *@example
  *   import @arrays
@@ -441,7 +441,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
 /*@man filter
  *@module arrays
  *@group Higher-Order
- *@sig filter(arr [T], ()predicate) -> [T]
+ *@sig filter(arr [T], predicate func(T) -> bool) -> [T]
  *@desc Returns a new array containing only elements for which predicate returns true. predicate must be a function that takes T and returns bool. Does not modify the original.
  *@example
  *   import @arrays
@@ -455,7 +455,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
 /*@man reduce
  *@module arrays
  *@group Higher-Order
- *@sig reduce(arr [T], initial T, ()accumulator) -> T
+ *@sig reduce(arr [T], initial T, accumulator func(T, T) -> T) -> T
  *@desc Reduces arr to a single value by applying accumulator(acc, element) for each element, starting with initial. accumulator must take two T parameters and return T. Does not modify the original.
  *@example
  *   import @arrays
@@ -469,7 +469,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
 /*@man any
  *@module arrays
  *@group Higher-Order
- *@sig any(arr [T], ()predicate) -> bool
+ *@sig any(arr [T], predicate func(T) -> bool) -> bool
  *@desc Returns true if predicate returns true for at least one element. predicate must be a function that takes T and returns bool.
  *@example
  *   import @arrays
@@ -482,7 +482,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
 /*@man all
  *@module arrays
  *@group Higher-Order
- *@sig all(arr [T], ()predicate) -> bool
+ *@sig all(arr [T], predicate func(T) -> bool) -> bool
  *@desc Returns true if predicate returns true for every element. predicate must be a function that takes T and returns bool.
  *@example
  *   import @arrays

@@ -22,11 +22,11 @@ typedef struct {
 /*@man spawn
  *@module threads
  *@group Lifecycle
- *@sig spawn(fn func) -> Thread
+ *@sig spawn(fn func()) -> Thread
  *@desc Spawn a new thread running fn. If a second int argument is provided, it is passed to the function.
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(my_func)
+ *   mut t Thread = threads.spawn(()my_func)
  *   threads.join(t)
  *@end
  */

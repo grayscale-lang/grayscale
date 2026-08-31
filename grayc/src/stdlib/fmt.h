@@ -25,8 +25,8 @@
 /*@man printf
  *@module fmt
  *@group Output
- *@sig printf(format string, ...args T)
- *@desc Prints a formatted string to stdout. Uses C-style format directives: %d (int), %f (float), %s (string), %b (bool), %c (char). Accepts string, int, float, and bool arguments. Composite types are not supported.
+ *@sig printf(format string, args [T])
+ *@desc Prints a formatted string to stdout. Uses C-style format directives: %d (int), %f (float), %s (string), %b (bool), %c (char). Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.printf("hello %s, you are %d years old\n", "alice", 30)
@@ -37,8 +37,8 @@
 /*@man sprintf
  *@module fmt
  *@group Output
- *@sig sprintf(format string, ...args T) -> string
- *@desc Returns a formatted string without printing it. Uses the same format directives as printf.
+ *@sig sprintf(format string, args [T]) -> string
+ *@desc Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   mut s string = fmt.sprintf("x = %d", 42)
@@ -50,8 +50,8 @@
 /*@man format
  *@module fmt
  *@group Output
- *@sig format(format string, ...args T) -> string
- *@desc Returns a formatted string. Alias for sprintf.
+ *@sig format(format string, args [T]) -> string
+ *@desc Returns a formatted string. Alias for sprintf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   mut s string = fmt.format("pi is %.2f", 3.14159)
@@ -63,8 +63,8 @@
 /*@man printfln
  *@module fmt
  *@group Output
- *@sig printfln(format string, ...args T)
- *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf.
+ *@sig printfln(format string, args [T])
+ *@desc Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.printfln("hello %s, you are %d years old", "alice", 30)
@@ -75,8 +75,8 @@
 /*@man eprintf
  *@module fmt
  *@group Output
- *@sig eprintf(format string, ...args T)
- *@desc Prints a formatted string to stderr. Uses the same format directives as printf.
+ *@sig eprintf(format string, args [T])
+ *@desc Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.eprintf("error: %s\n", "something went wrong")
@@ -87,8 +87,8 @@
 /*@man eprintfln
  *@module fmt
  *@group Output
- *@sig eprintfln(format string, ...args T)
- *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf.
+ *@sig eprintfln(format string, args [T])
+ *@desc Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   fmt.eprintfln("error: %s", "something went wrong")
@@ -99,8 +99,8 @@
 /*@man sprintfln
  *@module fmt
  *@group Output
- *@sig sprintfln(format string, ...args T) -> string
- *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf.
+ *@sig sprintfln(format string, args [T]) -> string
+ *@desc Returns a formatted string with a trailing newline. Uses the same format directives as sprintf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
  *@example
  *   import @fmt
  *   mut s string = fmt.sprintfln("x = %d", 42)

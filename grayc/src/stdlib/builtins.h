@@ -16,8 +16,8 @@
 #include "../runtime/map.h"
 
 /*@man println
- *@sig println([value])
- *@desc Prints any value to stdout followed by a newline. Called with no args prints a blank line.
+ *@sig println(value T)
+ *@desc Prints any value to stdout followed by a newline. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   println("hello, world")
  *   println(42)
@@ -34,7 +34,7 @@ void gray_builtin_println_char(int32_t c);
 void gray_builtin_println_addr(uintptr_t v);
 
 /*@man print
- *@sig print(value)
+ *@sig print(value T)
  *@desc Prints any value to stdout without a trailing newline.
  *@example
  *   print("loading... ")
@@ -50,8 +50,8 @@ void gray_builtin_print_char(int32_t c);
 void gray_builtin_print_addr(uintptr_t v);
 
 /*@man eprintln
- *@sig eprintln([value])
- *@desc Prints any value to stderr followed by a newline. Supports all types: string, int, uint, float, bool, char, and pointers. Called with no args prints a blank line.
+ *@sig eprintln(value T)
+ *@desc Prints any value to stderr followed by a newline. Supports all types: string, int, uint, float, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   eprintln("error: something went wrong")
  *   eprintln(404)
@@ -69,7 +69,7 @@ void gray_builtin_eprintln_char(int32_t c);
 void gray_builtin_eprintln_addr(uintptr_t v);
 
 /*@man eprint
- *@sig eprint(value)
+ *@sig eprint(value T)
  *@desc Prints any value to stderr without a trailing newline. Supports all types: string, int, uint, float, bool, char, and pointers.
  *@example
  *   eprint("warning: ")
@@ -98,7 +98,7 @@ void gray_builtin_eprint_addr(uintptr_t v);
 GrayString gray_builtin_input(GrayArena *arena);
 
 /*@man assert
- *@sig assert(condition bool, message string)
+ *@sig assert(condition bool, message string = "")
  *@desc Terminates the program if condition is false, printing the message and source location.
  *@example
  *   assert(x > 0, "x must be positive")
@@ -154,7 +154,7 @@ void gray_builtin_sleep_ms(int64_t ms);
 void gray_builtin_sleep_ns(int64_t ns);
 
 /*@man int
- *@sig int(value) -> int
+ *@sig int(value T) -> int
  *@desc Converts a value to int (64-bit signed). Truncates floats toward zero. char converts to codepoint.
  *@example
  *   mut x int = int(3.9)
@@ -163,7 +163,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man uint
- *@sig uint(value) -> uint
+ *@sig uint(value T) -> uint
  *@desc Converts a value to uint (64-bit unsigned integer).
  *@example
  *   mut x uint = uint(42)
@@ -171,7 +171,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man float
- *@sig float(value) -> float
+ *@sig float(value T) -> float
  *@desc Converts a value to float (64-bit double). Integer promotion is lossless within range.
  *@example
  *   mut x float = float(42)
@@ -179,7 +179,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man string
- *@sig string(value) -> string
+ *@sig string(value T) -> string
  *@desc Converts any value to its string representation.
  *@example
  *   mut s string = string(123)
@@ -197,7 +197,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man byte
- *@sig byte(value) -> byte
+ *@sig byte(value T) -> byte
  *@desc Converts a value to byte (uint8, 0-255).
  *@example
  *   mut b byte = byte(255)
@@ -205,7 +205,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man bool
- *@sig bool(value) -> bool
+ *@sig bool(value T) -> bool
  *@desc Converts a value to bool.
  *@example
  *   mut flag bool = true
@@ -214,17 +214,18 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man func
- *@sig func(...) -> ReturnType
- *@desc The function reference type. Holds a reference to a named function created with ()name or ref(name). Used as parameter types, struct fields, and in arrays/maps. References are const-only and not printable.
+ *@sig func_name(param T) -> T {}
+ *@desc The function reference type. Written with a full typed signature: parameter list and return type. Holds a reference to a named function created with ()name or ref(name). Used as parameter types, struct fields, and in arrays/maps. References are const-only and not printable.
  *@example
  *   do double(n int) -> int { return n * 2 }
- *   const f = ()double
- *   f(5)   // 10
+ *   do apply(f func(int) -> int, x int) -> int { return f(x) }
+ *   const g func(int) -> int = ()double
+ *   println(apply(()double, 5))   // 10
  *@end
  */
 
 /*@man cast
- *@sig cast(value, TargetType) -> TargetType
+ *@sig cast(value T, TargetType) -> TargetType
  *@desc Explicit type conversion. Required for sized integer types (i8, u32, etc). Truncates floats. Enforces range at runtime.
  *@example
  *   mut x int = cast(3.7, int)
@@ -236,7 +237,7 @@ void gray_builtin_sleep_ns(int64_t ns);
 
 
 /*@man i128
- *@sig i128(value) -> i128
+ *@sig i128(value T) -> i128
  *@desc 128-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
  *   mut a i128 = i128(99999999999999999999)
@@ -245,7 +246,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man u128
- *@sig u128(value) -> u128
+ *@sig u128(value T) -> u128
  *@desc 128-bit unsigned integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
  *   mut a u128 = u128(99999999999999999999)
@@ -253,7 +254,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man i256
- *@sig i256(value) -> i256
+ *@sig i256(value T) -> i256
  *@desc 256-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
  *   mut a i256 = i256(0)
@@ -261,7 +262,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man u256
- *@sig u256(value) -> u256
+ *@sig u256(value T) -> u256
  *@desc 256-bit unsigned integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
  *   mut a u256 = u256(0)
@@ -269,7 +270,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man len
- *@sig len(collection) -> int
+ *@sig len(collection T) -> int
  *@desc Returns the length of an array, map, or string. For strings returns byte length, not character count (use char_count for that).
  *@example
  *   println(len("hello"))
@@ -279,7 +280,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man type_of
- *@sig type_of(value) -> string
+ *@sig type_of(value T) -> string
  *@desc Returns the Grayscale type name of any value as a string at runtime.
  *@example
  *   println(type_of(42))
@@ -289,7 +290,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man fields
- *@sig fields(instance) -> [string]
+ *@sig fields(instance T) -> [string]
  *@desc Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs.
  *@example
  *   const Point struct { x int; y int }
@@ -318,7 +319,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man ref
- *@sig ref(variable) -> ref<T>
+ *@sig ref(variable T) -> ref<T>
  *@desc Creates a transparent alias to a variable. Reads and writes through the alias affect the original. Also used to take a function reference.
  *@example
  *   mut x int = 10
@@ -329,7 +330,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man addr
- *@sig addr(variable) -> ^T
+ *@sig addr(variable T) -> ^T
  *@desc Returns a pointer to the memory address of a variable.
  *@example
  *   mut x int = 10
@@ -339,7 +340,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man raw
- *@sig raw(variable) -> ^T
+ *@sig raw(variable T) -> ^T
  *@desc Returns a raw pointer to a variable. Unlike addr(), raw pointers are unsafe: dereferences skip nil-check panics and the compiler does not enforce const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
  *@example
  *   mut x int = 10
@@ -370,8 +371,8 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man range
- *@sig range(start int, end int [, step int]) -> Range
- *@desc Returns a Range from start (inclusive) to end (exclusive). Optional step controls the increment (default 1). Step of 0 panics at runtime.
+ *@sig range(start int, end int, step int = 1) -> Range
+ *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime.
  *@example
  *   for i in range(0, 5) { println(i) }
  *   for i in range(0, 10, 2) { println(i) }

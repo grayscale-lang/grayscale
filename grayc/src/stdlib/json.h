@@ -119,7 +119,7 @@ bool gray_json_is_valid(GrayString text);
 /*@man pretty_print
  *@module json
  *@group Formatting
- *@sig pretty_print(m map, indent int) -> string
+ *@sig pretty_print(m map[K:V], indent int) -> string
  *@desc Returns a pretty-printed JSON string from a map, indented by indent spaces per level.
  *@example
  *   import @json
