@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3048 - string concatenation with + inside a generic function,
+ * caught when the wildcard is instantiated with string.
+ *
+ * Guards a codegen assumption: emit_infix_expr has no fallback for string '+',
+ * so the typechecker must reject this on the instantiation path too — otherwise
+ * codegen would emit nothing and the user would see a raw C compiler error.
+ *
+ * expect-error: E3048
+ */
+
+do add(a ?, b ?) -> ? {
+    return a + b
+}
+
+do main() {
+    mut s string = add("foo", "bar")
+    println(s)
+}

@@ -283,7 +283,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                             snprintf(msg, sizeof(msg),
                                 "module name '%s' is already imported; use an alias to distinguish them",
                                 std_name);
-                            diagnostic_error(diag, "E6001", strdup(msg),
+                            diagnostic_error_message(diag, "E6001", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
                         } else if (same_import_file(seen_files[sm], stmt_file)) {
                             /* One file importing the same module twice. Reached
@@ -363,7 +363,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                                 char msg[MSG_BUF_LARGE];
                                 snprintf(msg, sizeof(msg),
                                     "cannot import own module directory '%s'", item->path);
-                                diagnostic_error(diag, "E6004", strdup(msg),
+                                diagnostic_error_message(diag, "E6004", strdup(msg),
                                     stmt_file, stmt->token.line, stmt->token.column, 0);
                                 free(norm_dir);
                                 free(norm_src);
@@ -377,7 +377,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         if (file_count == 0) {
                             char msg[MSG_BUF_LARGE];
                             snprintf(msg, sizeof(msg), "directory '%s' contains no .gray files", item->path);
-                            diagnostic_error(diag, "E6003", strdup(msg),
+                            diagnostic_error_message(diag, "E6003", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
                             continue;
                         }
@@ -385,7 +385,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         /* Nothing found */
                         char msg[MSG_BUF_LARGE];
                         snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", item->path);
-                        diagnostic_error(diag, "E6002", strdup(msg),
+                        diagnostic_error_message(diag, "E6002", strdup(msg),
                             stmt_file, stmt->token.line, stmt->token.column, 0);
                         continue;
                     }
@@ -471,7 +471,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                     snprintf(msg, sizeof(msg),
                         "module name '%s' is already imported; use an alias to distinguish them",
                         mod_name);
-                    diagnostic_error(diag, "E6001", strdup(msg),
+                    diagnostic_error_message(diag, "E6001", strdup(msg),
                         stmt_file, stmt->token.line, stmt->token.column, 0);
                     collision = true;
                     break;
@@ -543,7 +543,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                             snprintf(msg, sizeof(msg),
                                 "import of '%s' is redundant; already included by directory import",
                                 item->path);
-                            diagnostic_warning(diag, "W2014", strdup(msg),
+                            diagnostic_warning_message(diag, "W2014", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
                         } else if (file_count == 1 &&
                                    same_import_file(imported_by_file(norm_path), stmt_file)) {
@@ -588,7 +588,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                     if (!imp_source) {
                         char msg[MSG_BUF_LARGE];
                         snprintf(msg, sizeof(msg), "cannot find file or directory '%s'", cur_file_path);
-                        diagnostic_error(diag, "E6002", strdup(msg),
+                        diagnostic_error_message(diag, "E6002", strdup(msg),
                             stmt_file, stmt->token.line, stmt->token.column, 0);
                         continue;
                     }

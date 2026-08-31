@@ -12608,7 +12608,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "parameter '%s' shadows enum variant '%s.%s'",
                         p->name, display, p->name);
-                    diagnostic_warning(checker->diag, "W2008", msg,
+                    diagnostic_warning_message(checker->diag, "W2008", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                     found_variant = true;
                     break;
@@ -13215,7 +13215,7 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         scope_destroy(def_body);
         /* W3006: empty default branch */
         if (node->data.when_stmt.default_body->data.block.count == 0) {
-            diagnostic_warning(checker->diag, "W3006",
+            diagnostic_warning_message(checker->diag, "W3006",
                 "empty default branch in when statement; unmatched values are silently ignored",
                 NODE_FILE(checker, node->data.when_stmt.default_body),
                 node->data.when_stmt.default_body->token.line,
@@ -13335,7 +13335,7 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
         if (has_enum_case) {
-            diagnostic_warning(checker->diag, "W3005",
+            diagnostic_warning_message(checker->diag, "W3005",
                 "when statement matches on enum values without #strict and no default; exhaustiveness is not checked",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }

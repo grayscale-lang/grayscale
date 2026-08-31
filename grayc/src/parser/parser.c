@@ -55,7 +55,7 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl);
 static void next_token(Parser *parser) {
     parser->cur_token = parser->peek_token;
     parser->peek_token = lexer_next_token(parser->lexer);
-    /* Surface lexer errors (E1xxx). The lexer does not call diagnostic_error()
+    /* Surface lexer errors (E1xxx). The lexer does not call diagnostic_error_message()
      * directly — it sets error_code/error_msg on itself and returns
      * TOK_ILLEGAL. We detect that here and emit the diagnostic so the
      * lexer stays free of diagnostic dependencies. After emitting, clear
@@ -863,7 +863,7 @@ static AstNode *parse_prefix(Parser *parser) {
         if (parser->cur_token.type != TOK_IDENT) {
             char buf[256];
             snprintf(buf, sizeof(buf), "expected enum variant name after '.'");
-            diagnostic_error(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
+            diagnostic_error_message(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
                 parser->file, dot_tok.line, dot_tok.column, 0);
             return ast_alloc(parser->arena, NODE_NIL_VALUE, dot_tok);
         }
@@ -2086,7 +2086,7 @@ static AstNode *parse_import_statement(Parser *parser) {
                           (c >= '0' && c <= '9') ||
                           c == '/' || c == '.' || c == '_' || c == '-' || c == '+';
                 if (!ok) {
-                    diagnostic_error(parser->diag, "E2080",
+                    diagnostic_error_message(parser->diag, "E2080",
                         arena_copy_string(parser->arena, "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted"),
                         parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                     break;

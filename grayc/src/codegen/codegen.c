@@ -2177,11 +2177,6 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
     if (right_type && right_type->kind == TK_ENUM && right_type->name &&
         codegen_enum_is_string(codegen, right_type->name)) right_is_str = true;
 
-    if ((left_is_str || right_is_str) && op == TOK_PLUS) {
-        /* String concatenation is rejected by the typechecker (E3048).
-         * This path is unreachable but kept as a safety net. */
-        return;
-    }
     if ((left_is_str || right_is_str) && op == TOK_EQ) {
         emit(codegen, "gray_string_eq(");
         emit_expression(codegen, node->data.infix.left);

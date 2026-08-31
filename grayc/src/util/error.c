@@ -105,19 +105,9 @@ static void diagnostic_add(DiagnosticList *diagnostics, Severity sev, const char
     else if (sev == SEV_WARNING) diagnostics->warning_count++;
 }
 
-void diagnostic_error(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col_start, int end_col) {
-    diagnostic_add(diagnostics, SEV_ERROR, code, message, file, line, col_start, end_col, NULL);
-}
-
 void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const char *message,
     const char *file, int line, int col_start, int end_col, const char *help) {
     diagnostic_add(diagnostics, SEV_ERROR, code, message, file, line, col_start, end_col, help);
-}
-
-void diagnostic_warning(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col_start, int end_col) {
-    diagnostic_add(diagnostics, SEV_WARNING, code, message, file, line, col_start, end_col, NULL);
 }
 
 static const char *lookup_or_placeholder(const char *code) {

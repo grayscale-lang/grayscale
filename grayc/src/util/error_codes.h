@@ -12,7 +12,7 @@
 
 /* --- E1xxx: Reading Your Code (Lexer) ---
  *
- * NOTE: Lexer errors are NOT emitted via diagnostic_error() inside lexer.c.
+ * NOTE: Lexer errors are NOT emitted via diagnostic_error_message() inside lexer.c.
  * Instead, when the lexer encounters an invalid token it sets two fields
  * on the Lexer struct: error_code (e.g. "E1010") and error_msg, and
  * returns a TOK_ILLEGAL token. The parser's next_token() helper in

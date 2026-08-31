@@ -293,6 +293,20 @@ static void test_resolve_addr(void) {
     ASSERT_EQ(type->kind, TK_POINTER);
 }
 
+/* Composite type names render through one shared ring of static buffers; two
+ * results must stay valid at once so callers can chain them in one snprintf. */
+static void test_type_name_composite_rendering(void) {
+    ASSERT_STR_EQ(type_name(type_from_name("^Point")), "^Point");
+    ASSERT_STR_EQ(type_name(type_from_name("[int]")), "[int]");
+    ASSERT_STR_EQ(type_name(type_from_name("map[string:^Point]")), "map[string:^Point]");
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s vs %s",
+             type_name(type_from_name("[int]")),
+             type_name(type_from_name("map[string:int]")));
+    ASSERT_STR_EQ(buf, "[int] vs map[string:int]");
+}
+
 /* Helper: parse and typecheck, return diagnostics */
 static DiagnosticList *typecheck_diagnostics(const char *input) {
     DiagnosticList *diagnostics = diagnostic_create();
@@ -2176,6 +2190,7 @@ int main(void) {
     RUN_TEST(test_type_from_name_pointer);
     RUN_TEST(test_type_pointer_constructor);
     RUN_TEST(test_resolve_addr);
+    RUN_TEST(test_type_name_composite_rendering);
 
     /* Error detection tests */
     RUN_TEST(test_error_type_mismatch);

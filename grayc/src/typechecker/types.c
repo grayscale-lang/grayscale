@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 
 /* Built-in type singletons */
 GrayType TYPE_VOID    = {TK_VOID,   "void",   NULL, NULL, NULL, NULL};
@@ -29,7 +30,8 @@ GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
 
 #define TYPE_POOL_CAPACITY 4096
 
-/* Pool for dynamically created types (leak on exit, fine for a compiler) */
+/* Pool for dynamically created types. Heap-allocated names/sigs are released by
+ * type_pool_reset() during typechecker teardown. */
 static GrayType type_pool[TYPE_POOL_CAPACITY];
 static int type_pool_count = 0;
 
@@ -133,12 +135,13 @@ GrayType *type_pointer(const char *pointee_type) {
     return type;
 }
 
-/* Find the index of the matching ')' for the '(' at start. Tracks nesting
- * so that nested func(...) types (e.g. func(func(int)->int)->bool) work.
- * Returns -1 if not balanced. */
-static int find_matching_paren(const char *s, int start) {
+/* Find the index of the ')' that closes the '(' at index 4 — the parameter
+ * list of a "func(...)" type string. Tracks nesting so that nested func(...)
+ * types (e.g. func(func(int)->int)->bool) balance correctly. Returns -1 if
+ * not balanced. Precondition: the caller has verified the "func(" prefix. */
+static int find_func_signature_close_paren(const char *s) {
     int depth = 0;
-    for (int i = start; s[i]; i++) {
+    for (int i = 4; s[i]; i++) {
         if (s[i] == '(') depth++;
         else if (s[i] == ')') {
             depth--;
@@ -149,8 +152,8 @@ static int find_matching_paren(const char *s, int start) {
 }
 
 /* Split src[start..end-1] on commas at top-level depth, dup each segment.
- * Sets *out_count and allocates *out_arr (caller frees the array but the
- * dup'd strings live with the type pool — they're leaked at exit). */
+ * Sets *out_count and allocates *out_arr (caller frees the array; the dup'd
+ * strings are handed to the type pool and freed by type_pool_reset()). */
 static void split_top_commas(const char *src, int start, int end,
                               int *out_count, char ***out_arr) {
     *out_count = 0;
@@ -186,7 +189,7 @@ static void split_top_commas(const char *src, int start, int end,
  * into an GrayFuncSig. Returns NULL if the string isn't well-formed. */
 static GrayFuncSig *parse_func_sig(const char *name) {
     if (strncmp(name, "func(", 5) != 0) return NULL;
-    int rparen = find_matching_paren(name, 4);
+    int rparen = find_func_signature_close_paren(name);
     if (rparen < 0) return NULL;
     GrayFuncSig *sig = (GrayFuncSig *)xmalloc(sizeof(GrayFuncSig));
     sig->param_count = 0;
@@ -296,35 +299,33 @@ bool type_is_integer(GrayType *type) {
            type->kind == TK_CHAR || type->kind == TK_BYTE;
 }
 
+/* Render a composite type name into a small ring of static buffers, so callers
+ * can chain several type_name() results inside one snprintf() without a later
+ * call clobbering an earlier one. Each slot is bounded by TYPE_NAME_MAX. */
+static const char *type_name_fmt(const char *fmt, ...) {
+    static char bufs[4][TYPE_NAME_MAX];
+    static int slot = 0;
+    char *out = bufs[slot];
+    slot = (slot + 1) & 3;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(out, sizeof(bufs[0]), fmt, ap);
+    va_end(ap);
+    return out;
+}
+
 const char *type_name(GrayType *type) {
     if (!type) return "unknown";
     /* Pointer types store the bare pointee in type->name (and type->element_type).
-     * Render them with the leading '^' so error messages match source syntax.
-     * A small ring of static buffers lets callers chain type_name() calls
-     * inside one snprintf() without clobbering the previous result. */
+     * Render them with the leading '^' so error messages match source syntax. */
     if (type->kind == TK_POINTER && type->name) {
-        static char bufs[4][TYPE_NAME_MAX];
-        static int slot = 0;
-        char *out = bufs[slot];
-        slot = (slot + 1) & 3;
-        snprintf(out, sizeof(bufs[0]), "^%s", type->name);
-        return out;
+        return type_name_fmt("^%s", type->name);
     }
     if (type->kind == TK_ARRAY && type->element_type) {
-        static char bufs[4][TYPE_NAME_MAX];
-        static int slot = 0;
-        char *out = bufs[slot];
-        slot = (slot + 1) & 3;
-        snprintf(out, sizeof(bufs[0]), "[%s]", type->element_type);
-        return out;
+        return type_name_fmt("[%s]", type->element_type);
     }
     if (type->kind == TK_MAP && type->key_type && type->value_type) {
-        static char bufs[4][TYPE_NAME_MAX];
-        static int slot = 0;
-        char *out = bufs[slot];
-        slot = (slot + 1) & 3;
-        snprintf(out, sizeof(bufs[0]), "map[%s:%s]", type->key_type, type->value_type);
-        return out;
+        return type_name_fmt("map[%s:%s]", type->key_type, type->value_type);
     }
     return type->name;
 }
