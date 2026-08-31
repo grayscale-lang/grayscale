@@ -26,7 +26,8 @@ type DocEntry struct {
 	Kind        string // "function", "struct", "enum", "variable"
 	Signature   string
 	Description string
-	File        string
+	File        string // absolute while collecting; rewritten relative before rendering
+	Line        int    // 1-indexed line of the declaration (not the #doc line)
 }
 
 // defaultDocOutputPath is used when the caller does not pass --output.
@@ -65,6 +66,11 @@ func generateDocs(args []string, outputPath string) {
 		return
 	}
 
+	// Rewrite each entry's absolute source path to one relative to the
+	// directory DOCS.md is written to, so the file:line links resolve from
+	// there and no machine-specific absolute paths land in the output.
+	normalizeDocPaths(entries, outputPath)
+
 	output := generateMarkdown(entries)
 
 	// Warn when --output resolves to a path outside the working directory.
@@ -94,6 +100,39 @@ func generateDocs(args []string, outputPath string) {
 	fmt.Printf("Generated %s with %d documented item(s)\n", outputPath, len(entries))
 }
 
+// normalizeDocPaths rewrites each DocEntry.File from an absolute path to a
+// slash path relative to the directory that will hold outputPath, so the
+// file:line links in DOCS.md resolve from where it is written. Falls back to a
+// cwd-relative path, then the bare file name, when no relative path can be
+// formed (e.g. a different Windows volume).
+func normalizeDocPaths(entries []DocEntry, outputPath string) {
+	base := "."
+	if abs, err := filepath.Abs(outputPath); err == nil {
+		base = filepath.Dir(abs)
+	}
+	cwd, _ := os.Getwd()
+
+	for i := range entries {
+		src := entries[i].File
+		if !filepath.IsAbs(src) {
+			if abs, err := filepath.Abs(src); err == nil {
+				src = abs
+			}
+		}
+		if rel, err := filepath.Rel(base, src); err == nil {
+			entries[i].File = filepath.ToSlash(rel)
+			continue
+		}
+		if cwd != "" {
+			if rel, err := filepath.Rel(cwd, src); err == nil {
+				entries[i].File = filepath.ToSlash(rel)
+				continue
+			}
+		}
+		entries[i].File = filepath.ToSlash(filepath.Base(src))
+	}
+}
+
 // collectDocsFromFile extracts documented items from a single .gray file using text scanning.
 // Looks for #doc("description") followed by do/const struct/const enum declarations.
 func collectDocsFromFile(filename string) []DocEntry {
@@ -118,9 +157,12 @@ func collectDocsFromFile(filename string) []DocEntry {
 	var blockLines []string
 	var blockKind string
 	var blockName string
+	blockLine := 0
 	braceDepth := 0
+	lineNo := 0
 
 	for scanner.Scan() {
+		lineNo++
 		line := scanner.Text()
 		trimmed := strings.TrimSpace(line)
 
@@ -135,7 +177,8 @@ func collectDocsFromFile(filename string) []DocEntry {
 					Kind:        blockKind,
 					Signature:   strings.Join(blockLines, "\n"),
 					Description: pendingDoc,
-					File:        filename,
+					File:        absPath,
+					Line:        blockLine,
 				})
 				pendingDoc = ""
 				blockLines = nil
@@ -166,13 +209,15 @@ func collectDocsFromFile(filename string) []DocEntry {
 					Kind:        "function",
 					Signature:   sig,
 					Description: pendingDoc,
-					File:        filename,
+					File:        absPath,
+					Line:        lineNo,
 				})
 				pendingDoc = ""
 			} else if strings.Contains(trimmed, " struct ") && strings.HasPrefix(trimmed, "const ") {
 				// Struct declaration — collect until closing brace
 				blockName = extractStructEnumName(trimmed)
 				blockKind = "struct"
+				blockLine = lineNo
 				blockLines = []string{line}
 				braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
 				if braceDepth > 0 {
@@ -183,13 +228,15 @@ func collectDocsFromFile(filename string) []DocEntry {
 						Kind:        "struct",
 						Signature:   trimmed,
 						Description: pendingDoc,
-						File:        filename,
+						File:        absPath,
+						Line:        lineNo,
 					})
 					pendingDoc = ""
 				}
 			} else if strings.Contains(trimmed, " enum ") && strings.HasPrefix(trimmed, "const ") {
 				blockName = extractStructEnumName(trimmed)
 				blockKind = "enum"
+				blockLine = lineNo
 				blockLines = []string{line}
 				braceDepth = strings.Count(line, "{") - strings.Count(line, "}")
 				if braceDepth > 0 {
@@ -200,7 +247,8 @@ func collectDocsFromFile(filename string) []DocEntry {
 						Kind:        "enum",
 						Signature:   trimmed,
 						Description: pendingDoc,
-						File:        filename,
+						File:        absPath,
+						Line:        lineNo,
 					})
 					pendingDoc = ""
 				}
@@ -213,7 +261,8 @@ func collectDocsFromFile(filename string) []DocEntry {
 					Kind:        "variable",
 					Signature:   sig,
 					Description: pendingDoc,
-					File:        filename,
+					File:        absPath,
+					Line:        lineNo,
 				})
 				pendingDoc = ""
 			} else {
@@ -354,49 +403,28 @@ func generateMarkdown(entries []DocEntry) string {
 	sort.Slice(enums, func(i, j int) bool { return enums[i].Name < enums[j].Name })
 	sort.Slice(variables, func(i, j int) bool { return variables[i].Name < variables[j].Name })
 
-	if len(functions) > 0 {
-		buf.WriteString("## Functions\n\n")
-		for _, f := range functions {
-			buf.WriteString(fmt.Sprintf("### %s\n\n", f.Name))
-			buf.WriteString(fmt.Sprintf("```gray\n%s\n```\n\n", f.Signature))
-			if f.Description != "" {
-				buf.WriteString(f.Description + "\n\n")
-			}
+	writeSection := func(title string, items []DocEntry) {
+		if len(items) == 0 {
+			return
 		}
-	}
-
-	if len(structs) > 0 {
-		buf.WriteString("## Structs\n\n")
-		for _, s := range structs {
-			buf.WriteString(fmt.Sprintf("### %s\n\n", s.Name))
-			buf.WriteString(fmt.Sprintf("```gray\n%s\n```\n\n", s.Signature))
-			if s.Description != "" {
-				buf.WriteString(s.Description + "\n\n")
-			}
-		}
-	}
-
-	if len(enums) > 0 {
-		buf.WriteString("## Enums\n\n")
-		for _, e := range enums {
+		buf.WriteString("## " + title + "\n\n")
+		for _, e := range items {
 			buf.WriteString(fmt.Sprintf("### %s\n\n", e.Name))
 			buf.WriteString(fmt.Sprintf("```gray\n%s\n```\n\n", e.Signature))
+			if e.File != "" && e.Line > 0 {
+				buf.WriteString(fmt.Sprintf("*Defined in [`%s:%d`](%s#L%d)*\n\n",
+					e.File, e.Line, e.File, e.Line))
+			}
 			if e.Description != "" {
 				buf.WriteString(e.Description + "\n\n")
 			}
 		}
 	}
 
-	if len(variables) > 0 {
-		buf.WriteString("## Variables\n\n")
-		for _, v := range variables {
-			buf.WriteString(fmt.Sprintf("### %s\n\n", v.Name))
-			buf.WriteString(fmt.Sprintf("```gray\n%s\n```\n\n", v.Signature))
-			if v.Description != "" {
-				buf.WriteString(v.Description + "\n\n")
-			}
-		}
-	}
+	writeSection("Functions", functions)
+	writeSection("Structs", structs)
+	writeSection("Enums", enums)
+	writeSection("Variables", variables)
 
 	return buf.String()
 }

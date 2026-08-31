@@ -94,6 +94,48 @@ func TestGenerateDocs_RespectsCustomOutputPath(t *testing.T) {
 	}
 }
 
+func TestGenerateDocs_EmitsRelativeSourceLocation(t *testing.T) {
+	dir := t.TempDir()
+	src := writeGraySource(t, dir) // #doc on line 3, `do greet` on line 4
+	out := filepath.Join(dir, "DOCS.md")
+
+	generateDocs([]string{src}, out)
+
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	body := string(got)
+
+	// Link points at the declaration line, not the #doc line.
+	want := "[`main.gray:4`](main.gray#L4)"
+	if !strings.Contains(body, want) {
+		t.Errorf("missing source location link %q, got:\n%s", want, body)
+	}
+	// The path must be relative — no absolute path or temp-dir prefix.
+	if strings.Contains(body, dir) {
+		t.Errorf("output leaked an absolute path (%q), got:\n%s", dir, body)
+	}
+}
+
+func TestGenerateDocs_SourceLocationRelativeToNestedOutput(t *testing.T) {
+	dir := t.TempDir()
+	src := writeGraySource(t, dir)
+	out := filepath.Join(dir, "build", "docs", "API.md")
+
+	generateDocs([]string{src}, out)
+
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	// DOCS.md lives two dirs deeper than the source.
+	want := "(../../main.gray#L4)"
+	if !strings.Contains(string(got), want) {
+		t.Errorf("expected link %q relative to nested output, got:\n%s", want, got)
+	}
+}
+
 func TestGenerateDocs_CreatesParentDirectories(t *testing.T) {
 	dir := t.TempDir()
 	src := writeGraySource(t, dir)
