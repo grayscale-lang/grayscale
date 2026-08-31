@@ -27,6 +27,12 @@ typedef struct {
     int indent;
     bool has_mem;       /* Whether @mem was imported */
     bool has_fmt;       /* Whether @fmt was imported */
+    /* Whether the generated C needs a stdlib collection header — set when the
+     * `in` operator lowers to that module's helper, or the module is imported.
+     * Consulted after body emission to splice the #include into the preamble. */
+    bool needs_arrays_h;
+    bool needs_maps_h;
+    bool needs_strings_h;
     const char *file;
     char *file_owned; /* normalized copy backing `file`; freed by codegen_destroy */
 

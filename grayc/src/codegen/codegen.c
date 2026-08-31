@@ -2269,6 +2269,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
          * Bind the map to a temp so &_im works even when the map
          * expression is an rvalue (e.g. pointer field access). */
         if (arr_t && arr_t->kind == TK_MAP) {
+            codegen->needs_maps_h = true;
             int mid = codegen_next_id(codegen);
             if (negated) emit(codegen, "!");
             emit_formatted(codegen, "({ __auto_type _im%d = ", mid);
@@ -2293,6 +2294,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ".len) != NULL)");
             } else {
                 /* string in string → substring check */
+                codegen->needs_strings_h = true;
                 if (negated) emit(codegen, "!");
                 emit(codegen, "gray_strings_contains(");
                 emit_expression(codegen, node->data.infix.right);
@@ -2304,6 +2306,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
         if (negated) emit(codegen, "!");
         {
+            codegen->needs_arrays_h = true;
             const char *contains_fn = "gray_arrays_contains_int";
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 if (strcmp(arr_t->element_type, "string") == 0)
@@ -11128,13 +11131,22 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"array.h\"\n");
     emit(codegen, "#include \"map.h\"\n");
     emit(codegen, "#include \"builtins.h\"\n");
-    /* These stdlib headers are always needed: os.h for gray_os_init() in main(),
-     * and arrays/maps/strings for the `in` operator on core collection types. */
+    /* os.h is always needed — generated main() calls gray_os_init(). */
     emit(codegen, "#include \"os.h\"\n");
-    emit(codegen, "#include \"arrays.h\"\n");
-    emit(codegen, "#include \"maps.h\"\n");
-    emit(codegen, "#include \"strings.h\"\n");
+    /* arrays.h / maps.h / strings.h are spliced in here after body emission,
+     * but only when the `in` operator or an explicit import needs them. */
+    size_t collection_include_anchor = codegen->output.len;
+    /* bigint.h is always needed — i128/u128/i256/u256 are keyword types
+     * usable with no import. */
     emit(codegen, "#include \"bigint.h\"\n");
+
+    /* An explicit import of one of these modules also needs its header. */
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "arrays"))
+        codegen->needs_arrays_h = true;
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "maps"))
+        codegen->needs_maps_h = true;
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "strings"))
+        codegen->needs_strings_h = true;
 
     /* Remaining stdlib module headers: included only when imported. */
     static const struct { const char *module; const char *header; } stdlib_headers[] = {
@@ -11768,6 +11780,29 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "    gray_runtime_shutdown();\n");
     emit(codegen, "    return 0;\n");
     emit(codegen, "}\n");
+
+    /* Splice the collection headers into the preamble now that body emission
+     * has settled which ones are actually used. */
+    if (codegen->needs_arrays_h || codegen->needs_maps_h || codegen->needs_strings_h) {
+        Buf includes = buffer_create(64);
+        if (codegen->needs_arrays_h)
+            append_string_to_buffer(&includes, "#include \"arrays.h\"\n");
+        if (codegen->needs_maps_h)
+            append_string_to_buffer(&includes, "#include \"maps.h\"\n");
+        if (codegen->needs_strings_h)
+            append_string_to_buffer(&includes, "#include \"strings.h\"\n");
+
+        Buf *out = &codegen->output;
+        size_t ins_len = includes.len;
+        size_t tail_len = out->len - collection_include_anchor;
+        /* Reserve capacity and grow len by ins_len (append then shift). */
+        append_bytes_to_buffer(out, includes.data, ins_len);
+        memmove(out->data + collection_include_anchor + ins_len,
+                out->data + collection_include_anchor, tail_len);
+        memcpy(out->data + collection_include_anchor, includes.data, ins_len);
+
+        buffer_destroy(&includes);
+    }
 
     free(enum_bucket);
     free(func_bucket);
