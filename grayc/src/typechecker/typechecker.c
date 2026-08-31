@@ -7343,6 +7343,27 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                                    module_mangle_into(entry, key, sizeof(key)));
             }
         }
+        /* or_return propagation guard: `_gray_orN.verr` is the sentinel for
+         * "the call's trailing Error slot", whose index is only known now
+         * that the temp's return arity is resolved. Rewrite it to the
+         * concrete slot so the plain .vN paths below (and codegen) handle
+         * it. A source that isn't an (..., Error) tuple is already reported
+         * by E3045; leave the access unknown. */
+        if (sym && strcmp(member, OR_RETURN_ERR_SLOT) == 0 &&
+            strncmp(obj_name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0) {
+            if (sym->ret_types && sym->ret_count >= 1 &&
+                sym->ret_types[sym->ret_count - 1]->kind == TK_ERROR) {
+                char slot[16];
+                snprintf(slot, sizeof(slot), "v%d", sym->ret_count - 1);
+                member = arena_copy_string(checker->arena, slot);
+                node->data.member.member = member;
+            } else {
+                /* Source doesn't end in Error — E3045 already reports it.
+                 * Stay unknown so the guard's synthetic nil-compare and
+                 * propagated return don't cascade further diagnostics. */
+                return &TYPE_UNKNOWN;
+            }
+        }
         /* Multi-return .v0/.v1 access takes priority over struct field
          * lookup when the symbol has ret_types set. Without this, stdlib
          * functions returning struct types (Socket, HttpResponse, etc.)

@@ -1252,6 +1252,98 @@ static AstNode *parse_expression(Parser *parser, Precedence prec) {
 
 /* --- Statement Parsing --- */
 
+/* One monotonically increasing id for every or_return temp, so the
+ * `mut a = ... or_return`, `mut a, b = ... or_return`, and bare-statement
+ * spellings never collide on `_gray_orN` within a single function. */
+static int gray_or_temp_id = 0;
+static char *make_or_return_temp_name(Arena *arena) {
+    char *name = arena_alloc(arena, TMP_NAME_BUF);
+    snprintf(name, TMP_NAME_BUF, GRAY_SYNTH_OR "%d", gray_or_temp_id++);
+    return name;
+}
+
+/* After the or_return token has been consumed (parser->cur_token IS
+ * or_return), parse optional comma-separated fallback expressions written
+ * on the same line — e.g. `... or_return -1, -2`. Returns the count and
+ * fills fallback_buf, which the caller sizes at MAX_MULTI_VARS. */
+static int parse_or_return_fallbacks(Parser *parser, AstNode **fallback_buf) {
+    int or_return_line = parser->cur_token.line;
+    int fallback_count = 0;
+    if (parser->peek_token.type != TOK_EOF &&
+        parser->peek_token.type != TOK_SEMICOLON &&
+        parser->peek_token.type != TOK_RBRACE &&
+        parser->peek_token.line == or_return_line) {
+        next_token(parser); /* advance to first fallback token */
+        while (fallback_count < MAX_MULTI_VARS) {
+            fallback_buf[fallback_count++] = parse_expression(parser, PREC_LOWEST);
+            if (!peek_token_is(parser, TOK_COMMA)) break;
+            next_token(parser); /* skip comma */
+            next_token(parser); /* advance to next fallback token */
+        }
+    }
+    return fallback_count;
+}
+
+/* Build the propagation guard for or_return:
+ *
+ *     if (_tmp.verr != nil) { return <fallbacks...>, _tmp.verr }
+ *
+ * `verr` is a sentinel member the typechecker rewrites to the concrete
+ * trailing-Error slot (`v1` for `(T, Error)`, `vN` for a wider tuple) once
+ * the unwrapped call's arity is known. With no fallbacks the return
+ * propagates just the error and codegen fills {0} for the other slots. */
+static AstNode *build_or_return_guard(Parser *parser, const char *tmp_name,
+                                      AstNode **fallbacks, int fallback_count) {
+    Token tok = parser->cur_token;
+    const char *err_field = OR_RETURN_ERR_SLOT;
+
+    AstNode *if_stmt = ast_alloc(parser->arena, NODE_IF_STMT, tok);
+    AstNode *err_access = ast_alloc(parser->arena, NODE_MEMBER_EXPR, tok);
+    AstNode *tmp_label = ast_alloc(parser->arena, NODE_LABEL, tok);
+    tmp_label->data.label.value = tmp_name;
+    err_access->data.member.object = tmp_label;
+    err_access->data.member.member = err_field;
+    AstNode *nil_val = ast_alloc(parser->arena, NODE_NIL_VALUE, tok);
+    AstNode *cond = ast_alloc(parser->arena, NODE_INFIX_EXPR, tok);
+    cond->data.infix.left = err_access;
+    cond->data.infix.op = TOK_NOT_EQ;
+    cond->data.infix.right = nil_val;
+    if_stmt->data.if_stmt.condition = cond;
+
+    AstNode *ret_block = ast_alloc(parser->arena, NODE_BLOCK_STMT, tok);
+    ret_block->data.block.cap = 1;
+    ret_block->data.block.count = 0;
+    ret_block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *));
+    AstNode *ret_stmt = ast_alloc(parser->arena, NODE_RETURN_STMT, tok);
+    AstNode *err_access2 = ast_alloc(parser->arena, NODE_MEMBER_EXPR, tok);
+    AstNode *tmp_label2 = ast_alloc(parser->arena, NODE_LABEL, tok);
+    tmp_label2->data.label.value = tmp_name;
+    err_access2->data.member.object = tmp_label2;
+    err_access2->data.member.member = err_field;
+    if (fallback_count > 0) {
+        /* If the user provided enough values to cover all return slots
+         * (including the error), use them as-is; otherwise append the
+         * propagated error. */
+        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
+        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
+        int total = user_covers_error ? fallback_count : fallback_count + 1;
+        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
+        for (int i = 0; i < fallback_count; i++)
+            ret_stmt->data.return_stmt.values[i] = fallbacks[i];
+        if (!user_covers_error)
+            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
+        ret_stmt->data.return_stmt.count = total;
+    } else {
+        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *));
+        ret_stmt->data.return_stmt.values[0] = err_access2;
+        ret_stmt->data.return_stmt.count = 1;
+    }
+    ret_block->data.block.stmts[ret_block->data.block.count++] = ret_stmt;
+    if_stmt->data.if_stmt.consequence = ret_block;
+    if_stmt->data.if_stmt.alternative = NULL;
+    return if_stmt;
+}
+
 /* If peek is or_return, consume it and desugar
  *
  *     <var_decl with value = expr> or_return
@@ -1268,31 +1360,13 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     if (!peek_token_is(parser, TOK_OR_RETURN)) return NULL;
     next_token(parser); /* consume or_return */
 
-    /* Check for custom fallback values on the same line as the or_return token.
-     * e.g. `mut val = risky(fail) or_return -99` → return -99, _tmp.v1
-     * The caller provides all non-error return slots; _tmp.v1 is appended. */
-    int or_return_line = parser->cur_token.line;
-    AstNode *fallback_buf[16];
-    int fallback_count = 0;
-    if (parser->peek_token.type != TOK_EOF &&
-        parser->peek_token.type != TOK_SEMICOLON &&
-        parser->peek_token.type != TOK_RBRACE &&
-        parser->peek_token.line == or_return_line) {
-        next_token(parser); /* advance to first fallback token */
-        while (fallback_count < 16) {
-            fallback_buf[fallback_count++] = parse_expression(parser, PREC_LOWEST);
-            if (!peek_token_is(parser, TOK_COMMA)) break;
-            next_token(parser); /* skip comma */
-            next_token(parser); /* advance to next fallback token */
-        }
-    }
+    AstNode *fallback_buf[MAX_MULTI_VARS];
+    int fallback_count = parse_or_return_fallbacks(parser, fallback_buf);
 
-    static int or_return_counter = 0;
-    char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-    snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_OR "%d", or_return_counter++);
+    char *tmp_name = make_or_return_temp_name(parser->arena);
 
     AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-    block->data.block.cap = 4;
+    block->data.block.cap = 3;
     block->data.block.count = 0;
     block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
@@ -1305,54 +1379,8 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     tmp_decl->data.var_decl.value = var_decl->data.var_decl.value;
     block->data.block.stmts[block->data.block.count++] = tmp_decl;
 
-    /* if (_tmp.v1 != nil) { return _tmp.v1 } */
-    AstNode *if_stmt = ast_alloc(parser->arena, NODE_IF_STMT, parser->cur_token);
-    AstNode *err_access = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
-    AstNode *tmp_label = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
-    tmp_label->data.label.value = tmp_name;
-    err_access->data.member.object = tmp_label;
-    err_access->data.member.member = "v1";
-    AstNode *nil_val = ast_alloc(parser->arena, NODE_NIL_VALUE, parser->cur_token);
-    AstNode *cond = ast_alloc(parser->arena, NODE_INFIX_EXPR, parser->cur_token);
-    cond->data.infix.left = err_access;
-    cond->data.infix.op = TOK_NOT_EQ;
-    cond->data.infix.right = nil_val;
-    if_stmt->data.if_stmt.condition = cond;
-
-    AstNode *ret_block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-    ret_block->data.block.cap = 1;
-    ret_block->data.block.count = 0;
-    ret_block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *));
-    AstNode *ret_stmt = ast_alloc(parser->arena, NODE_RETURN_STMT, parser->cur_token);
-    /* Build _tmp.v1 node (the propagated error value) */
-    AstNode *err_access2 = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
-    AstNode *tmp_label2 = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
-    tmp_label2->data.label.value = tmp_name;
-    err_access2->data.member.object = tmp_label2;
-    err_access2->data.member.member = "v1";
-    if (fallback_count > 0) {
-        /* Custom fallback values. If the user provided enough values to
-         * cover all return slots (including the error), use them as-is.
-         * Otherwise append the propagated error (_tmp.v1). */
-        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
-        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
-        int total = user_covers_error ? fallback_count : fallback_count + 1;
-        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
-        for (int i = 0; i < fallback_count; i++)
-            ret_stmt->data.return_stmt.values[i] = fallback_buf[i];
-        if (!user_covers_error)
-            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
-        ret_stmt->data.return_stmt.count = total;
-    } else {
-        /* Bare or_return: propagate just the error; codegen fills {0} for other slots */
-        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *));
-        ret_stmt->data.return_stmt.values[0] = err_access2;
-        ret_stmt->data.return_stmt.count = 1;
-    }
-    ret_block->data.block.stmts[ret_block->data.block.count++] = ret_stmt;
-    if_stmt->data.if_stmt.consequence = ret_block;
-    if_stmt->data.if_stmt.alternative = NULL;
-    block->data.block.stmts[block->data.block.count++] = if_stmt;
+    block->data.block.stmts[block->data.block.count++] =
+        build_or_return_guard(parser, tmp_name, fallback_buf, fallback_count);
 
     /* x = _tmp.v0 */
     AstNode *var = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
@@ -1539,14 +1567,34 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             next_token(parser);
             AstNode *value = parse_expression(parser, PREC_LOWEST);
 
-            /* Generate unique temp name */
+            /* or_return on a destructuring bind: `mut a, b = two() or_return`.
+             * The N binding names are the non-error slots; the trailing Error
+             * is propagated if non-nil, otherwise control falls through and
+             * binds v0..v{N-1} as normal. */
+            AstNode *or_fallback_buf[MAX_MULTI_VARS];
+            int or_fallback_count = 0;
+            bool has_or_return = peek_token_is(parser, TOK_OR_RETURN);
+            if (has_or_return) {
+                next_token(parser); /* consume or_return */
+                or_fallback_count = parse_or_return_fallbacks(parser, or_fallback_buf);
+            }
+
+            /* Generate unique temp name. An or_return destructure uses the
+             * or_return prefix so the typechecker validates the (..., Error)
+             * tail (E3045) and skips the "fewer variables than return values"
+             * check — the trailing Error slot is consumed by the guard. */
             static int multi_var_counter = 0;
-            char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-            snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_TMP "%d", multi_var_counter++);
+            char *tmp_name;
+            if (has_or_return) {
+                tmp_name = make_or_return_temp_name(parser->arena);
+            } else {
+                tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
+                snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_TMP "%d", multi_var_counter++);
+            }
 
             /* Create a block with: __auto_type _tmp = expr; type x = _tmp.v0; ... */
             AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-            block->data.block.cap = var_count + 1;
+            block->data.block.cap = var_count + 2;
             block->data.block.count = 0;
             block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
@@ -1558,6 +1606,12 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             tmp_decl->data.var_decl.type_name = NULL;
             tmp_decl->data.var_decl.value = value;
             block->data.block.stmts[block->data.block.count++] = tmp_decl;
+
+            if (has_or_return) {
+                block->data.block.stmts[block->data.block.count++] =
+                    build_or_return_guard(parser, tmp_name,
+                                          or_fallback_buf, or_fallback_count);
+            }
 
             /* Individual declarations: type x = _tmp.v0 */
             for (int i = 0; i < var_count; i++) {
@@ -3306,6 +3360,32 @@ static AstNode *parse_statement(Parser *parser) {
             next_token(parser);
             node->data.assign.value = parse_expression(parser, PREC_LOWEST);
             return node;
+        }
+
+        /* Bare `call() or_return`: no bindings, just propagate the trailing
+         * error from the call's return tuple. */
+        if (peek_token_is(parser, TOK_OR_RETURN)) {
+            next_token(parser); /* consume or_return */
+            AstNode *fb[MAX_MULTI_VARS];
+            int fbc = parse_or_return_fallbacks(parser, fb);
+            char *tmp_name = make_or_return_temp_name(parser->arena);
+
+            AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
+            block->data.block.cap = 2;
+            block->data.block.count = 0;
+            block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
+
+            AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
+            tmp_decl->data.var_decl.mutable = true;
+            tmp_decl->data.var_decl.name = tmp_name;
+            tmp_decl->data.var_decl.synthetic = true;
+            tmp_decl->data.var_decl.type_name = NULL;
+            tmp_decl->data.var_decl.value = expr;
+            block->data.block.stmts[block->data.block.count++] = tmp_decl;
+
+            block->data.block.stmts[block->data.block.count++] =
+                build_or_return_guard(parser, tmp_name, fb, fbc);
+            return block;
         }
 
         AstNode *node = ast_alloc(parser->arena, NODE_EXPR_STMT, parser->cur_token);

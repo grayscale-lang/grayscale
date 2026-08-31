@@ -22,6 +22,11 @@
 #define GRAY_SYNTH_TMP     "_gray_tmp"
 #define GRAY_SYNTH_OR      "_gray_or"
 
+/* Sentinel member name for the or_return propagation guard's error access.
+ * The parser emits `_gray_orN.verr`; the typechecker rewrites it to the
+ * concrete trailing-Error slot (v1, v2, ...) once the call's arity is known. */
+#define OR_RETURN_ERR_SLOT "verr"
+
 typedef enum {
     /* Expressions */
     NODE_LABEL,

@@ -1631,7 +1631,7 @@ do process_file() {
 
 ### 6.7 Or-Return Statement
 
-The `or_return` keyword provides error propagation shorthand for functions that return `(T, Error)` tuples:
+The `or_return` keyword provides error propagation shorthand for a call whose return tuple ends in `Error` — `(T, Error)` or `(T, U, ..., Error)`:
 
 ```gray
 do load() -> (string, Error) {
@@ -1643,9 +1643,21 @@ do load() -> (string, Error) {
 
 // With custom fallback values:
 mut content = read_file("data.txt") or_return "", error("failed to load")
+
+// Destructuring a call that returns more than one non-error value:
+do consume() -> (int, Error) {
+    mut a, b = two() or_return   // two() -> (int, int, Error); a, b bound, error propagated
+    return a + b, nil
+}
+
+// No binding — run the call only for its error:
+do run() -> Error {
+    do_work() or_return         // propagate on error, otherwise discard the values
+    return nil
+}
 ```
 
-When the call returns a non-nil error, `or_return` immediately returns from the enclosing function. The bare form returns zero values for non-error slots plus the original error. The enclosing function must have `Error` as its last return type.
+When the call returns a non-nil error, `or_return` immediately returns from the enclosing function. Without explicit fallback values it returns zero values for the enclosing function's non-error slots plus the original error. A destructuring `or_return` binds every non-error slot the call returns; a statement with no binding discards them. Both the call and the enclosing function must have `Error` as their last return type.
 
 ---
 

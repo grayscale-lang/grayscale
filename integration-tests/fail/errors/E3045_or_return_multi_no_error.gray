@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3045 - or_return destructure on a call whose return tuple
+ * does not end in Error.
+ * Expected: "or_return requires a function that returns (T, Error)"
+ */
+
+do two() -> (int, int) {
+    return 3, 4
+}
+
+do consume() -> (int, Error) {
+    mut a, b = two() or_return
+    return a + b, nil
+}
+
+do main() {
+    mut r, e = consume()
+    println("${r} ${e != nil}")
+}

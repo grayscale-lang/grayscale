@@ -1,0 +1,120 @@
+/*
+ * or_return_multi_slot.gray - or_return on a call returning more than
+ * (T, Error): the destructuring bind names every non-error slot and the
+ * trailing Error is propagated. Previously only (T, Error) parsed.
+ */
+
+do two(fail bool) -> (int, int, Error) {
+    if fail { return 0, 0, error("boom") }
+    return 3, 4, nil
+}
+
+do three(fail bool) -> (int, string, bool, Error) {
+    if fail { return 0, "", false, error("nope") }
+    return 7, "ok", true, nil
+}
+
+do sum(fail bool) -> (int, Error) {
+    mut a, b = two(fail) or_return
+    return a + b, nil
+}
+
+do sum_fallback(fail bool) -> (int, Error) {
+    mut a, b = two(fail) or_return -1
+    return a + b, nil
+}
+
+do widen(fail bool) -> (string, Error) {
+    mut n, label, flag = three(fail) or_return
+    if flag { return label, nil }
+    return "${n}", nil
+}
+
+do bare_form(fail bool) -> Error {
+    two(fail) or_return
+    return nil
+}
+
+do discard_form(fail bool) -> Error {
+    _ = two(fail) or_return
+    return nil
+}
+
+do main() {
+    println("=== or_return multi-slot ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut r1 int, e1 Error = sum(false)
+    if r1 == 7 && e1 == nil {
+        println("  [PASS] destructure binds both non-error slots on success")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sum(false): r=${r1}")
+        failed += 1
+    }
+
+    mut r2 int, e2 Error = sum(true)
+    if e2 != nil && r2 == 0 {
+        println("  [PASS] destructure propagates the trailing error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sum(true) did not propagate")
+        failed += 1
+    }
+
+    mut r3 int, e3 Error = sum_fallback(true)
+    if r3 == -1 && e3 != nil {
+        println("  [PASS] fallback value returned alongside propagated error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sum_fallback(true): r=${r3}")
+        failed += 1
+    }
+
+    mut s4 string, e4 Error = widen(false)
+    if s4 == "ok" && e4 == nil {
+        println("  [PASS] three non-error slots bound from a 4-tuple")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] widen(false): s=${s4}")
+        failed += 1
+    }
+
+    mut s5 string, e5 Error = widen(true)
+    if e5 != nil && s5 == "" {
+        println("  [PASS] 4-tuple error propagates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] widen(true) did not propagate")
+        failed += 1
+    }
+
+    mut b6 Error = bare_form(true)
+    mut b7 Error = bare_form(false)
+    if b6 != nil && b7 == nil {
+        println("  [PASS] bare `two() or_return` propagates only on error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bare_form: err(true)=${b6 != nil} err(false)=${b7 != nil}")
+        failed += 1
+    }
+
+    mut d8 Error = discard_form(true)
+    mut d9 Error = discard_form(false)
+    if d8 != nil && d9 == nil {
+        println("  [PASS] `_ = two() or_return` propagates only on error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] discard_form: err(true)=${d8 != nil} err(false)=${d9 != nil}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
