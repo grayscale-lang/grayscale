@@ -1,10 +1,12 @@
 /*
  * generic-type-arg-spelling-parity - a <?> type argument accepts any type
  * name, not only a struct. Primitives went to the qualified and bare
- * spellings of the same call to pin that both still agree.
+ * spellings of the same call to pin that both still agree. A
+ * module-qualified type name (types.Actor) is accepted the same way.
  */
 
 import "./utils.gray"
+import "./types.gray"
 using utils
 
 const Point struct {
@@ -42,6 +44,16 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] struct type argument: got ${e.x} and ${f.x}")
+        failed += 1
+    }
+
+    mut g types.Actor = utils.new_T(types.Actor)
+    mut h types.Actor = new_T(types.Actor)
+    if g.id == 0 && h.id == 0 {
+        println("  [PASS] module-qualified type argument, both spellings")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module-qualified type argument: got ${g.id} and ${h.id}")
         failed += 1
     }
 

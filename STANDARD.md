@@ -2614,7 +2614,7 @@ do main() {
 }
 ```
 
-The type argument must be a bare type name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+The type argument may be written bare or module-qualified. A module-qualified name (`utils.make(types.Point)`) parses as a member expression, but as long as it names a real type it is accepted exactly as the bare spelling is. A qualified name that resolves to no type is still rejected with E3128.
 
 #### More restrictions
 

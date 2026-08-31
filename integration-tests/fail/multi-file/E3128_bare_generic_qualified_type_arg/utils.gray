@@ -1,3 +1,0 @@
-do new_T(t <?>) -> ? {
-    return new(t)^
-}
