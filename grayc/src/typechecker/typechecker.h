@@ -40,6 +40,11 @@ typedef struct {
     const char *deprecated_message; /* NULL if bare #deprecated */
 } StructInfo;
 
+/* Sentinels for FuncSig.param_escape_into[]. Non-negative values are
+ * parameter indices. */
+#define PARAM_ESCAPE_NONE   ((signed char)-1)
+#define PARAM_ESCAPE_GLOBAL ((signed char)-2)
+
 typedef struct {
     /* Function signature for call type checking */
     const char *name;
@@ -63,15 +68,26 @@ typedef struct {
     bool is_generic;
     AstNode *decl;                /* source NODE_FUNC_DECL for body lookup */
 
-    /* Pointer-escape summary, filled lazily by returns_param_address().
+    /* Pointer-escape summary, filled lazily by ensure_escape_summary().
      * escape_state: 0 = not computed, 1 = in progress, 2 = done.
+     *
      * returns_param_addr: bit i set if a return value of this function may be
      * the address of parameter i — returned directly, as addr()/raw() of its
-     * pointee, or forwarded through another summarised call. Lets the return
-     * and assignment escape checks (E3063, E3097) follow an address that
-     * passes through a function call. */
+     * pointee, buried in a returned struct field, or forwarded through another
+     * summarised call.
+     *
+     * param_escape_into[i]: where an address reaching this function through
+     * parameter i ends up living — PARAM_ESCAPE_NONE, PARAM_ESCAPE_GLOBAL, or
+     * the index of the parameter whose container/aggregate receives it (a
+     * by-reference container/struct parameter, a module-level variable, a
+     * stdlib container insert, or transitively another escaping call).
+     *
+     * Together these let the return and assignment escape checks (E3063,
+     * E3097) follow an address through a function call and through a helper
+     * that stashes it in caller-visible memory. */
     unsigned char escape_state;
     unsigned long long returns_param_addr;
+    signed char param_escape_into[64];
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;

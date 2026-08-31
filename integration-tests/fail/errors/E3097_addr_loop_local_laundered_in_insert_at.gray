@@ -1,0 +1,21 @@
+// expect-error: E3097
+// expect-error-count: 1
+/*
+ * Error Test: E3097 - a block-local's address laundered through a pointer
+ * variable and stored into a longer-lived array via arrays.insert_at.
+ *
+ * Same class as the append case, on a different container-mutating stdlib
+ * function.
+ */
+
+import @arrays
+
+do main() {
+    mut ptrs [^int] = {}
+    if true {
+        mut inner int = 3
+        mut t ^int = addr(inner)
+        arrays.insert_at(ptrs, 0, t)
+    }
+    println(ptrs[0]^)
+}

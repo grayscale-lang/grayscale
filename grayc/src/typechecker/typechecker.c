@@ -854,6 +854,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->decl = NULL;
     fs->escape_state = 0;
     fs->returns_param_addr = 0;
+    memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1103,12 +1104,54 @@ static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
 }
 
 static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
+static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs);
 
-/* Structural: bitmask of `fs`'s parameters that `node` (a return value)
- * may alias — the parameter named directly, addr()/raw() of a parameter's
- * pointee, a member/index rooted at a parameter, or a value forwarded
- * through another summarised call. Runs while the summary is being built,
- * so it looks only at the AST, never at scope. */
+/* The value a local named `name` was declared with, searched anywhere in
+ * `node`, or NULL. Lets the param-bit walk follow `mut b = Box{p: q};
+ * return b`. Local declarations form a DAG (Grayscale forbids forward
+ * references), so following initialisers terminates. */
+static AstNode *local_initializer(AstNode *node, const char *name) {
+    if (!node || !name) return NULL;
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        if (node->data.var_decl.name &&
+            strcmp(node->data.var_decl.name, name) == 0)
+            return node->data.var_decl.value;
+        return local_initializer(node->data.var_decl.value, name);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++) {
+            AstNode *r = local_initializer(node->data.block.stmts[i], name);
+            if (r) return r;
+        }
+        return NULL;
+    case NODE_IF_STMT: {
+        AstNode *r = local_initializer(node->data.if_stmt.consequence, name);
+        return r ? r : local_initializer(node->data.if_stmt.alternative, name);
+    }
+    case NODE_WHEN_STMT: {
+        for (int i = 0; i < node->data.when_stmt.case_count; i++) {
+            AstNode *r = local_initializer(node->data.when_stmt.cases[i].body, name);
+            if (r) return r;
+        }
+        return local_initializer(node->data.when_stmt.default_body, name);
+    }
+    case NODE_FOR_STMT:      return local_initializer(node->data.for_stmt.body, name);
+    case NODE_FOR_EACH_STMT: return local_initializer(node->data.for_each.body, name);
+    case NODE_WHILE_STMT:    return local_initializer(node->data.while_stmt.body, name);
+    case NODE_LOOP_STMT:     return local_initializer(node->data.loop_stmt.body, name);
+    default:                 return NULL;
+    }
+}
+
+/* Structural: bitmask of `fs`'s parameters whose address `node` may carry —
+ * the parameter named directly, addr()/raw() of a parameter's pointee, a
+ * field/element read through a parameter, a value buried in a struct or
+ * array literal, a local initialised from any of those, or a value
+ * forwarded through another summarised call. Runs while the summary is
+ * being built, so it looks only at the AST, never at scope.
+ *
+ * A bare `p^` yields the pointee *value*, so it carries nothing; `p^.field`
+ * reaches into the pointee and can. */
 static unsigned long long return_expr_param_bits(TypeChecker *checker,
                                                  FuncSig *fs, AstNode *node) {
     if (!node || !fs->decl) return 0;
@@ -1120,14 +1163,43 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
             if (pn && strcmp(pn, node->data.label.value) == 0)
                 return 1ull << i;
         }
+        AstNode *init = local_initializer(fs->decl->data.func_decl.body,
+                                          node->data.label.value);
+        if (init && init != node)
+            return return_expr_param_bits(checker, fs, init);
         return 0;
     }
-    case NODE_MEMBER_EXPR:
-        return return_expr_param_bits(checker, fs, node->data.member.object);
-    case NODE_INDEX_EXPR:
-        return return_expr_param_bits(checker, fs, node->data.index_expr.left);
+    case NODE_MEMBER_EXPR: {
+        AstNode *o = node->data.member.object;
+        while (o && o->kind == NODE_POSTFIX_EXPR &&
+               o->data.postfix.op == TOK_CARET)
+            o = o->data.postfix.left;
+        return return_expr_param_bits(checker, fs, o);
+    }
+    case NODE_INDEX_EXPR: {
+        AstNode *l = node->data.index_expr.left;
+        while (l && l->kind == NODE_POSTFIX_EXPR &&
+               l->data.postfix.op == TOK_CARET)
+            l = l->data.postfix.left;
+        return return_expr_param_bits(checker, fs, l);
+    }
     case NODE_POSTFIX_EXPR:
+        if (node->data.postfix.op == TOK_CARET) return 0;
         return return_expr_param_bits(checker, fs, node->data.postfix.left);
+    case NODE_STRUCT_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.struct_value.count; i++)
+            out |= return_expr_param_bits(checker, fs,
+                                          node->data.struct_value.field_values[i]);
+        return out;
+    }
+    case NODE_ARRAY_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.array_value.count; i++)
+            out |= return_expr_param_bits(checker, fs,
+                                          node->data.array_value.elements[i]);
+        return out;
+    }
     case NODE_CALL_EXPR: {
         AstNode *f = node->data.call.function;
         if (f && f->kind == NODE_LABEL && node->data.call.arg_count == 1 &&
@@ -1193,27 +1265,260 @@ static unsigned long long return_stmt_param_bits(TypeChecker *checker,
     return bits;
 }
 
-/* Lazily compute and memoise `fs`'s returns_param_addr summary. A function
- * caught mid-computation (recursion) contributes nothing — conservative,
- * never a false positive. */
-static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs) {
-    if (!fs) return 0;
-    if (fs->escape_state == 2) return fs->returns_param_addr;
-    if (fs->escape_state == 1) return 0;
+/* --- param_escape_into: where a parameter's address ends up living --- */
+
+/* Root name of an assignment/insert target, seeing *through* a pointer
+ * dereference (unlike assignment_target_root_name, which stops at `^`):
+ * writing to `dst^.field` stores into the pointee, which for a pointer
+ * parameter is the caller's memory. */
+static const char *escape_root_name(AstNode *e) {
+    while (e) {
+        switch (e->kind) {
+        case NODE_LABEL:       return e->data.label.value;
+        case NODE_MEMBER_EXPR: e = e->data.member.object; break;
+        case NODE_INDEX_EXPR:  e = e->data.index_expr.left; break;
+        case NODE_POSTFIX_EXPR:
+            if (e->data.postfix.op != TOK_CARET) return NULL;
+            e = e->data.postfix.left;
+            break;
+        default: return NULL;
+        }
+    }
+    return NULL;
+}
+
+/* Is `name` declared as a local anywhere in `node`? */
+static bool declared_in_subtree(AstNode *node, const char *name) {
+    if (!node || !name) return false;
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        if (node->data.var_decl.name &&
+            strcmp(node->data.var_decl.name, name) == 0)
+            return true;
+        return declared_in_subtree(node->data.var_decl.value, name);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            if (declared_in_subtree(node->data.block.stmts[i], name)) return true;
+        return false;
+    case NODE_IF_STMT:
+        return declared_in_subtree(node->data.if_stmt.consequence, name) ||
+               declared_in_subtree(node->data.if_stmt.alternative, name);
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            if (declared_in_subtree(node->data.when_stmt.cases[i].body, name)) return true;
+        return declared_in_subtree(node->data.when_stmt.default_body, name);
+    case NODE_FOR_STMT:
+        if (node->data.for_stmt.var_name &&
+            strcmp(node->data.for_stmt.var_name, name) == 0) return true;
+        return declared_in_subtree(node->data.for_stmt.body, name);
+    case NODE_FOR_EACH_STMT:
+        if ((node->data.for_each.var_name &&
+             strcmp(node->data.for_each.var_name, name) == 0) ||
+            (node->data.for_each.index_name &&
+             strcmp(node->data.for_each.index_name, name) == 0)) return true;
+        return declared_in_subtree(node->data.for_each.body, name);
+    case NODE_WHILE_STMT: return declared_in_subtree(node->data.while_stmt.body, name);
+    case NODE_LOOP_STMT:  return declared_in_subtree(node->data.loop_stmt.body, name);
+    default: return false;
+    }
+}
+
+/* Is `name` a module-level variable of the program being checked? Only
+ * returns true when it can prove it, so an unknown name is treated as a
+ * local (a conservative miss, never a false E3097). */
+static bool is_module_level_var(TypeChecker *checker, const char *name) {
+    if (!checker->program || !name ||
+        checker->program->kind != NODE_PROGRAM) return false;
+    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
+        AstNode *s = checker->program->data.program.stmts[i];
+        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name &&
+            strcmp(s->data.var_decl.name, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* Classify a store target's root: a parameter index, PARAM_ESCAPE_GLOBAL, or
+ * PARAM_ESCAPE_NONE (a local — an in-function concern the direct E3097
+ * checks already cover). */
+static signed char escape_dest_for_root(TypeChecker *checker, FuncSig *fs,
+                                        const char *root, AstNode *body) {
+    if (!root) return PARAM_ESCAPE_NONE;
+    int pc = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < pc && i < 64; i++) {
+        const char *pn = fs->decl->data.func_decl.params[i].name;
+        if (pn && strcmp(pn, root) == 0) return (signed char)i;
+    }
+    if (declared_in_subtree(body, root)) return PARAM_ESCAPE_NONE;
+    if (is_module_level_var(checker, root)) return PARAM_ESCAPE_GLOBAL;
+    return PARAM_ESCAPE_NONE;
+}
+
+/* stdlib functions that store an argument into a container argument. */
+typedef struct {
+    const char *mod;
+    const char *fn;
+    int value_arg;
+    int container_arg;
+} ContainerSink;
+
+static const ContainerSink container_sinks[] = {
+    {"arrays", "append",    1, 0},
+    {"arrays", "prepend",   1, 0},
+    {"arrays", "insert_at", 2, 0},
+    {"arrays", "fill",      2, 0},
+};
+
+static const ContainerSink *find_container_sink(TypeChecker *checker, AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return NULL;
+    const char *qual = ast_member_qualifier(fn);
+    if (!qual) return NULL;
+    const char *mod = typechecker_resolve_alias(checker, qual);
+    const char *mfn = fn->data.member.member;
+    if (!mod || !mfn) return NULL;
+    for (size_t i = 0; i < sizeof container_sinks / sizeof container_sinks[0]; i++)
+        if (strcmp(container_sinks[i].mod, mod) == 0 &&
+            strcmp(container_sinks[i].fn, mfn) == 0)
+            return &container_sinks[i];
+    return NULL;
+}
+
+static void record_param_escape(FuncSig *fs, unsigned long long bits,
+                                signed char dest) {
+    for (int i = 0; i < fs->param_count && i < 64; i++) {
+        if (!(bits & (1ull << i))) continue;
+        if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE ||
+            dest == PARAM_ESCAPE_GLOBAL)
+            fs->param_escape_into[i] = dest;
+    }
+}
+
+/* Scan a function body for places a parameter's address is stored into
+ * caller-visible memory: an assignment whose target roots at another
+ * parameter or a module-level variable, a stdlib container insert, or a
+ * call that itself escapes the argument. */
+static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
+                        AstNode *node) {
+    if (!node) return;
+    switch (node->kind) {
+    case NODE_ASSIGN_STMT: {
+        signed char dest = escape_dest_for_root(checker, fs,
+            escape_root_name(node->data.assign.target), body);
+        if (dest != PARAM_ESCAPE_NONE)
+            record_param_escape(fs, return_expr_param_bits(checker, fs,
+                node->data.assign.value), dest);
+        escape_walk(checker, fs, body, node->data.assign.value);
+        break;
+    }
+    case NODE_CALL_EXPR: {
+        const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && node->data.call.arg_count > sink->value_arg &&
+            node->data.call.arg_count > sink->container_arg) {
+            signed char dest = escape_dest_for_root(checker, fs,
+                escape_root_name(node->data.call.args[sink->container_arg]), body);
+            if (dest != PARAM_ESCAPE_NONE)
+                record_param_escape(fs, return_expr_param_bits(checker, fs,
+                    node->data.call.args[sink->value_arg]), dest);
+        }
+        FuncSig *callee = resolve_call_sig(checker, node);
+        if (callee && callee != fs) {
+            ensure_escape_summary(checker, callee);
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < 64; k++) {
+                signed char cdest = callee->param_escape_into[k];
+                if (cdest == PARAM_ESCAPE_NONE) continue;
+                unsigned long long bits = return_expr_param_bits(checker, fs,
+                    node->data.call.args[k]);
+                if (!bits) continue;
+                if (cdest == PARAM_ESCAPE_GLOBAL) {
+                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL);
+                } else if (cdest < node->data.call.arg_count) {
+                    signed char dest = escape_dest_for_root(checker, fs,
+                        escape_root_name(node->data.call.args[cdest]), body);
+                    if (dest != PARAM_ESCAPE_NONE)
+                        record_param_escape(fs, bits, dest);
+                }
+            }
+        }
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            escape_walk(checker, fs, body, node->data.call.args[i]);
+        break;
+    }
+    case NODE_VAR_DECL:
+        escape_walk(checker, fs, body, node->data.var_decl.value);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            escape_walk(checker, fs, body, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        escape_walk(checker, fs, body, node->data.if_stmt.consequence);
+        escape_walk(checker, fs, body, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            escape_walk(checker, fs, body, node->data.when_stmt.cases[i].body);
+        escape_walk(checker, fs, body, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:
+        escape_walk(checker, fs, body, node->data.for_stmt.body);
+        break;
+    case NODE_FOR_EACH_STMT:
+        escape_walk(checker, fs, body, node->data.for_each.body);
+        break;
+    case NODE_WHILE_STMT:
+        escape_walk(checker, fs, body, node->data.while_stmt.body);
+        break;
+    case NODE_LOOP_STMT:
+        escape_walk(checker, fs, body, node->data.loop_stmt.body);
+        break;
+    case NODE_EXPR_STMT:
+        escape_walk(checker, fs, body, node->data.expr_stmt.expr);
+        break;
+    case NODE_ENSURE_STMT:
+        escape_walk(checker, fs, body, node->data.ensure_stmt.expr);
+        break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            escape_walk(checker, fs, body, node->data.return_stmt.values[i]);
+        break;
+    default:
+        break;
+    }
+}
+
+/* Lazily compute and memoise `fs`'s escape summary (returns_param_addr and
+ * param_escape_into). A function caught mid-computation (recursion) is left
+ * with whatever partial summary it has — conservative, never a false
+ * positive. */
+static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
+    if (!fs || fs->escape_state != 0) return;
     fs->escape_state = 1;
     fs->returns_param_addr = 0;
-    /* Only a function that returns a pointer can forward a parameter's
-     * address; `-> int { return p^ }` returns the pointee value, not p. */
-    bool returns_pointer = false;
-    for (int i = 0; i < fs->return_count; i++)
-        if (fs->return_types[i] && fs->return_types[i]->kind == TK_POINTER)
-            returns_pointer = true;
-    if (returns_pointer && fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
-        fs->decl->data.func_decl.body &&
-        fs->decl->data.func_decl.param_count <= 64)
-        fs->returns_param_addr =
-            return_stmt_param_bits(checker, fs, fs->decl->data.func_decl.body);
+    memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
+    AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
+                    ? fs->decl->data.func_decl.body : NULL;
+    if (body && fs->decl->data.func_decl.param_count <= 64) {
+        /* returns_param_addr matters only when the return value can carry a
+         * pointer: a pointer, or an aggregate that may hold one. */
+        bool escapable_ret = false;
+        for (int i = 0; i < fs->return_count; i++) {
+            GrayType *rt = fs->return_types[i];
+            if (rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                       rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+                escapable_ret = true;
+        }
+        if (escapable_ret)
+            fs->returns_param_addr = return_stmt_param_bits(checker, fs, body);
+        escape_walk(checker, fs, body, body);
+    }
     fs->escape_state = 2;
+}
+
+static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs) {
+    if (!fs) return 0;
+    ensure_escape_summary(checker, fs);
     return fs->returns_param_addr;
 }
 
@@ -6477,8 +6782,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
      * where x is loop/if/while-local.  We fire only when another argument in
      * the same call comes from an outer scope (scope_lookup_local returns null
      * for it) — that indicates the address is being stored in something that
-     * outlives the inner variable's arena. */
-    for (int i = 0; i < node->data.call.arg_count; i++) {
+     * outlives the inner variable's arena. `reported_arg` records which
+     * argument positions this heuristic already flagged so the summary-driven
+     * check below does not report the same store twice. */
+    unsigned long long reported_arg = 0;
+    for (int i = 0; i < node->data.call.arg_count && i < 64; i++) {
         AstNode *arg = node->data.call.args[i];
         if (arg->kind == NODE_CALL_EXPR &&
             arg->data.call.function &&
@@ -6507,45 +6815,64 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3097",
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
                     addr_var, addr_var);
+                reported_arg |= 1ull << i;
             }
         }
     }
 
-    /* E3097: an inner-scope address stored into a longer-lived array via
-     * arrays.append / arrays.prepend, laundered through a pointer variable
-     * so the address never appears syntactically at the call. The inline
-     * addr()/raw() form is already handled above; here we consult the
-     * element argument's tracked origin and compare it against the scope of
-     * the destination array. append-family functions are the one place the
-     * stored argument provably outlives the call, so this stays targeted
-     * rather than firing for any pointer passed to any function. */
+    /* E3097: an inner-scope address that reaches longer-lived memory through
+     * a call — stored into a container by a stdlib insert, or stashed into a
+     * caller-visible parameter or global by a helper function (its
+     * param_escape_into summary). Covers both the inline addr()/raw() form
+     * and an address laundered through a variable first. The origin is
+     * compared against the lifetime of wherever it lands. */
     {
-        AstNode *cfn = node->data.call.function;
-        const char *qual = ast_member_qualifier(cfn);
-        if (qual && cfn->kind == NODE_MEMBER_EXPR &&
-            node->data.call.arg_count >= 2) {
-            const char *mod = typechecker_resolve_alias(checker, qual);
-            const char *mfn = cfn->data.member.member;
-            if (mod && strcmp(mod, "arrays") == 0 && mfn &&
-                (strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0)) {
-                const char *dest = assignment_target_root_name(node->data.call.args[0]);
-                int dest_depth = dest
-                    ? symbol_scope_depth(checker->current_scope, dest) : 0;
-                for (int a = 1; a < node->data.call.arg_count; a++) {
-                    AstNode *arg = node->data.call.args[a];
-                    if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
-                        arg->data.call.function->kind == NODE_LABEL &&
-                        (strcmp(arg->data.call.function->data.label.value, "addr") == 0 ||
-                         strcmp(arg->data.call.function->data.label.value, "raw") == 0))
-                        continue; /* inline form handled above */
-                    const char *onm = NULL;
-                    int od = pointer_origin_of(checker, arg, &onm);
-                    if (od > 0 && od > dest_depth) {
-                        diagnostic_error_code_formatted(checker->diag, "E3097",
-                            NODE_FILE(checker, arg), arg->token.line,
-                            arg->token.column, 0, dest ? dest : onm, onm);
-                    }
+        int argc = node->data.call.arg_count;
+        /* stdlib container inserts (arrays.append/prepend/insert_at/fill) */
+        const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && argc > sink->value_arg && argc > sink->container_arg &&
+            !((reported_arg >> sink->value_arg) & 1)) {
+            const char *dest =
+                assignment_target_root_name(node->data.call.args[sink->container_arg]);
+            int dest_depth = dest
+                ? symbol_scope_depth(checker->current_scope, dest) : 0;
+            AstNode *arg = node->data.call.args[sink->value_arg];
+            const char *onm = NULL;
+            int od = pointer_origin_of(checker, arg, &onm);
+            if (od > 0 && od > dest_depth)
+                diagnostic_error_code_formatted(checker->diag, "E3097",
+                    NODE_FILE(checker, arg), arg->token.line,
+                    arg->token.column, 0, dest ? dest : onm, onm);
+        }
+        /* user helper whose summary escapes one of its parameters */
+        FuncSig *csig = resolve_call_sig(checker, node);
+        if (csig) {
+            ensure_escape_summary(checker, csig);
+            for (int a = 0; a < argc && a < csig->param_count && a < 64; a++) {
+                signed char pe = csig->param_escape_into[a];
+                if (pe == PARAM_ESCAPE_NONE) continue;
+                if ((reported_arg >> a) & 1) continue;
+                AstNode *arg = node->data.call.args[a];
+                const char *onm = NULL;
+                int od = pointer_origin_of(checker, arg, &onm);
+                if (od <= 0) continue;
+                int sink_depth;
+                const char *sink_name;
+                if (pe == PARAM_ESCAPE_GLOBAL) {
+                    sink_depth = 0;
+                    sink_name = onm;
+                } else {
+                    const char *droot = (pe < argc)
+                        ? assignment_target_root_name(node->data.call.args[pe])
+                        : NULL;
+                    sink_depth = droot
+                        ? symbol_scope_depth(checker->current_scope, droot) : 0;
+                    sink_name = droot ? droot : onm;
                 }
+                if (od > sink_depth)
+                    diagnostic_error_code_formatted(checker->diag, "E3097",
+                        NODE_FILE(checker, arg), arg->token.line,
+                        arg->token.column, 0, sink_name, onm);
             }
         }
     }
