@@ -92,6 +92,24 @@ func TestLangKeywordsAllResolvable(t *testing.T) {
 	}
 }
 
+func TestLangTypesAllResolvable(t *testing.T) {
+	// Every name in the types category must resolve to a man page.
+	for _, g := range langCategories["types"] {
+		for _, name := range g.Names {
+			_, lang := langManDocs[name]
+			_, langType := langManDocs[name+"_type"]
+			_, builtin := builtinManDocs[name]
+			if !lang && !langType && !builtin {
+				t.Errorf("type %q is listed in 'gray man types' but has no man page", name)
+			}
+		}
+	}
+	// 'map' must resolve as the container type, not arrays.map().
+	if _, ok := langManDocs["map"]; !ok {
+		t.Error("langManDocs missing container-type entry for \"map\"")
+	}
+}
+
 func TestStdlibManExamplesPopulated(t *testing.T) {
 	// The generator must write the @example block through to the TSV;
 	// a regression once dropped it and left every Example empty.

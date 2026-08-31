@@ -414,6 +414,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "64-bit IEEE 754 double-precision float. Identical to 'float'. Maps to C double.",
 		Example: "mut x f64 = 3.14",
 	},
+	"map": {
+		Kind:    "type",
+		Syntax:  "[K:V]  |  map[K:V]",
+		Desc:    "Unordered collection of key-value pairs. The 'map' prefix is optional: '[K:V]' and 'map[K:V]' are identical. Keys may be any comparable primitive. The empty map literal is '{:}' (not '{}', which is an empty array).",
+		Example: "mut ages [string:int] = {\"alice\": 30, \"bob\": 25}\nmut empty [string:int] = {:}\nprintln(ages[\"alice\"])",
+	},
 	"Error_type": {
 		Kind:    "type",
 		Syntax:  "Error",
@@ -519,7 +525,8 @@ var langCategories = map[string][]langGroup{
 		{Label: "Unsigned", Names: []string{"u8", "u16", "u32", "u64"}},
 		{Label: "Wide   ", Names: []string{"i128", "u128", "i256", "u256"}},
 		{Label: "Float  ", Names: []string{"f32", "f64"}},
-		{Label: "Error  ", Names: []string{"Error"}},
+		{Label: "Container", Names: []string{"map"}},
+		{Label: "Special", Names: []string{"func", "Error", "SourceLocation"}},
 	},
 	"symbols": {
 		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#", "?", "<?>"}},
