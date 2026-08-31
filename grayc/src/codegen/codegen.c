@@ -1151,12 +1151,15 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS)
         return resolve_bigint_type(codegen, node->data.prefix.right);
     /* If this is an infix expression, check left operand.
-     * Comparison operators return bool, not bigint, so skip those. */
+     * Operators that yield bool never yield a bigint, whatever their operands
+     * are — mirrors the bool-result set in resolve_infix_expression. */
     if (node->kind == NODE_INFIX_EXPR) {
         TokenType op = node->data.infix.op;
         if (op == TOK_EQ || op == TOK_NOT_EQ ||
             op == TOK_LT || op == TOK_GT ||
-            op == TOK_LT_EQ || op == TOK_GT_EQ)
+            op == TOK_LT_EQ || op == TOK_GT_EQ ||
+            op == TOK_AND || op == TOK_OR ||
+            op == TOK_IN || op == TOK_NOT_IN)
             return NULL;
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
