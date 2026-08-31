@@ -431,7 +431,10 @@
     GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld") \
     GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s") \
     GRAY_PANIC("P0108", "threads",    "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached") \
-    GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state")
+    GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \
+    GRAY_PANIC("P0110", "strconv",    "strconv.format_int: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0111", "strconv",    "strconv.format_uint: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

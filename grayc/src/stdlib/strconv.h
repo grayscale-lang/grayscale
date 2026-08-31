@@ -12,6 +12,7 @@
 #define GRAY_STRCONV_H
 
 #include "../runtime/runtime.h"
+#include "io.h" /* GrayResult_string */
 
 /* Result types for fallible conversions */
 #ifndef GRAY_RESULT_BOOL_DEFINED
@@ -109,6 +110,31 @@ GrayString gray_strconv_from_int(GrayArena *arena, int64_t n);
  */
 GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t n);
 
+/*@man format_int
+ *@module strconv
+ *@group Formatting
+ *@sig format_int(n int, base int) -> string
+ *@desc Converts a signed integer to its string representation in the given base (2–36). Negative values are prefixed with '-'. Digits above 9 use lowercase letters 'a'–'z'. Panics if base is out of range. Never fails otherwise.
+ *@example
+ *   import @strconv
+ *   println(strconv.format_int(255, 16))
+ *   println(strconv.format_int(-10, 2))
+ *@end
+ */
+GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base);
+
+/*@man format_uint
+ *@module strconv
+ *@group Formatting
+ *@sig format_uint(n uint, base int) -> string
+ *@desc Converts an unsigned integer to its string representation in the given base (2–36). Digits above 9 use lowercase letters 'a'–'z'. Panics if base is out of range. Never fails otherwise.
+ *@example
+ *   import @strconv
+ *   println(strconv.format_uint(255, 16))
+ *@end
+ */
+GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t n, int64_t base);
+
 /*@man from_float
  *@module strconv
  *@group Formatting
@@ -132,6 +158,31 @@ GrayString gray_strconv_from_float(GrayArena *arena, double f);
  *@end
  */
 GrayString gray_strconv_from_bool(bool b);
+
+/*@man quote
+ *@module strconv
+ *@group Quoting
+ *@sig quote(s string) -> string
+ *@desc Returns s wrapped in double quotes with backslash, double-quote, newline, carriage return, and tab escaped, and other control bytes emitted as hex escapes. The inverse of unquote. Never fails.
+ *@example
+ *   import @strconv
+ *   println(strconv.quote(raw_text))
+ *@end
+ */
+GrayString gray_strconv_quote(GrayArena *arena, GrayString s);
+
+/*@man unquote
+ *@module strconv
+ *@group Quoting
+ *@sig unquote(s string) -> (string, Error)
+ *@desc Removes one layer of surrounding double quotes from s and interprets the same escape sequences the lexer accepts in string literals, including two-digit hex escapes. With single-var assignment, panics on malformed input. With destructuring, returns an Error instead. The inverse of quote.
+ *@example
+ *   import @strconv
+ *   mut s, err = strconv.unquote(quoted)
+ *@end
+ */
+GrayString gray_strconv_unquote(GrayArena *arena, GrayString s);
+GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString s);
 
 /*@man is_numeric
  *@module strconv
@@ -165,7 +216,7 @@ bool gray_strconv_is_integer(GrayString s);
  *@group Constants
  *@kind const
  *@sig 2
- *@desc Base constant for binary. Pass to to_int() or to_uint() as the base argument.
+ *@desc Base constant for binary. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
  *@end
  */
 
@@ -174,7 +225,7 @@ bool gray_strconv_is_integer(GrayString s);
  *@group Constants
  *@kind const
  *@sig 8
- *@desc Base constant for octal. Pass to to_int() or to_uint() as the base argument.
+ *@desc Base constant for octal. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
  *@end
  */
 
@@ -183,7 +234,7 @@ bool gray_strconv_is_integer(GrayString s);
  *@group Constants
  *@kind const
  *@sig 10
- *@desc Base constant for decimal (the default). Pass to to_int() or to_uint() as the base argument.
+ *@desc Base constant for decimal (the default for to_int()/to_uint()). Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
  *@end
  */
 
@@ -192,7 +243,7 @@ bool gray_strconv_is_integer(GrayString s);
  *@group Constants
  *@kind const
  *@sig 16
- *@desc Base constant for hexadecimal. Pass to to_int() or to_uint() as the base argument.
+ *@desc Base constant for hexadecimal. Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
  *@end
  */
 
@@ -201,7 +252,7 @@ bool gray_strconv_is_integer(GrayString s);
  *@group Constants
  *@kind const
  *@sig 36
- *@desc Base constant for base-36 (digits 0-9 and letters A-Z). Pass to to_int() or to_uint() as the base argument.
+ *@desc Base constant for base-36 (digits 0-9 and letters A-Z). Pass as the base argument to to_int(), to_uint(), format_int(), or format_uint().
  *@end
  */
 

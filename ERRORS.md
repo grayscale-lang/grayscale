@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 404 codes** (278 errors, 17 warnings, 109 panics)
+**Total: 407 codes** (278 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -431,6 +431,9 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 | `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
+| `P0110` | strconv | strconv.format_int: invalid base %lld; must be between 2 and 36 |
+| `P0111` | strconv | strconv.format_uint: invalid base %lld; must be between 2 and 36 |
+| `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
 
 ---
 
@@ -455,4 +458,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-31 11:25:40 UTC*
+*Generated on 2026-08-31 11:50:49 UTC*

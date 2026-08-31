@@ -4033,8 +4033,37 @@ String-to-type and type-to-string conversion functions with proper error handlin
 | `from_uint` | `(n uint) -> string` | Convert unsigned integer to decimal string |
 | `from_float` | `(f float) -> string` | Convert float to string (shortest representation) |
 | `from_bool` | `(b bool) -> string` | Convert boolean to `"true"` or `"false"` |
+| `format_int` | `(n int, base int) -> string` | Convert signed integer to a string in any base 2–36 |
+| `format_uint` | `(n uint, base int) -> string` | Convert unsigned integer to a string in any base 2–36 |
 
-These functions never fail.
+These functions never fail, except `format_int` / `format_uint` panic when `base` is
+outside 2–36 (a compile-time error when the base is a literal).
+
+**`format_int` / `format_uint` rules:**
+- `base` must be an integer between **2 and 36** (inclusive).
+- Digits above 9 are lowercase letters `a`–`z`.
+- `format_int` prefixes negative values with `-`; `format_uint` treats its argument as unsigned.
+- The inverse of `to_int` / `to_uint`: `to_int(format_int(n, b), b) == n`.
+- `fmt.int_to_hex` / `fmt.int_to_binary` / `fmt.int_to_octal` remain available; they format the raw
+  two's-complement bit pattern for their fixed base, whereas `format_int` produces a signed representation.
+
+#### Quoting (string ↔ quoted literal)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `quote` | `(s string) -> string` | Wrap `s` in double quotes, escaping special characters |
+| `unquote` | `(s string) -> (string, Error)` | Remove surrounding double quotes from `s` and interpret escapes |
+
+**`quote` rules:**
+- Wraps the result in `"` and escapes `\`, `"`, newline, carriage return, and tab; other bytes below
+  `0x20` and `0x7f` are emitted as `\xNN`. All other bytes are copied unchanged.
+
+**`unquote` rules:**
+- Fallible: single-variable assignment panics on malformed input; destructure to inspect the error.
+- Requires `s` to begin and end with `"`.
+- Interprets `\n \t \r \\ \" \' \0 \a \b \f \v \$` and `\xNN` (two hex digits).
+- An unescaped `"`, a trailing `\`, or an unknown escape produces an error.
+- The inverse of `quote`: `unquote(quote(s))` returns `s`.
 
 #### Query Functions
 

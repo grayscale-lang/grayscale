@@ -2056,16 +2056,20 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
     {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map]"},
     /* strconv */
+    {"strconv", "format_int",  2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
+    {"strconv", "format_uint", 2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
     {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}, "string"},
     {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}, "string"},
     {"strconv", "from_int",   1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
     {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
     {"strconv", "is_integer", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "is_numeric", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
+    {"strconv", "quote",      1, 1, false, FT_NONE,   1, {{0, ARG_STRING}}, "string"},
     {"strconv", "to_bool",    1, 1, true,  FT_BOOL,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "to_float",   1, 1, true,  FT_FLOAT, 1, {{0, ARG_STRING}}, "float"},
     {"strconv", "to_int",     1, 2, true,  FT_INT,   2, {{0, ARG_STRING}, {1, ARG_INT}}, "int"},
     {"strconv", "to_uint",    1, 2, true,  FT_UINT,  2, {{0, ARG_STRING}, {1, ARG_INT}}, "uint"},
+    {"strconv", "unquote",    1, 1, true,  FT_STRING, 1, {{0, ARG_STRING}}, "string"},
     /* strings */
     {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
     {"strings", "compare",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
@@ -2247,13 +2251,14 @@ static void typechecker_check_stdlib_arg_count(TypeChecker *checker, const char 
 }
 
 /* Compile-time validation for strconv base parameter.
- * When the second arg to to_int/to_uint is a literal integer, verify it's
- * in the valid range [2, 36]. */
+ * When the second arg to to_int/to_uint/format_int/format_uint is a literal
+ * integer, verify it's in the valid range [2, 36]. */
 static void typechecker_check_strconv_base(TypeChecker *checker, const char *mod,
     const char *fn, AstNode *node)
 {
     if (strcmp(mod, "strconv") != 0) return;
-    if (strcmp(fn, "to_int") != 0 && strcmp(fn, "to_uint") != 0) return;
+    if (strcmp(fn, "to_int") != 0 && strcmp(fn, "to_uint") != 0 &&
+        strcmp(fn, "format_int") != 0 && strcmp(fn, "format_uint") != 0) return;
     if (node->data.call.arg_count < 2) return;
     AstNode *base_arg = node->data.call.args[1];
     if (base_arg->kind != NODE_INT_VALUE) return;

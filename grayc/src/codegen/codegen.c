@@ -6933,12 +6933,17 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func)
     bool is_fallible = (strcmp(func, "to_int") == 0 ||
         strcmp(func, "to_uint") == 0 ||
         strcmp(func, "to_float") == 0 ||
-        strcmp(func, "to_bool") == 0);
+        strcmp(func, "to_bool") == 0 ||
+        strcmp(func, "unquote") == 0);
     bool has_base = (strcmp(func, "to_int") == 0 ||
         strcmp(func, "to_uint") == 0);
     bool needs_arena = (strcmp(func, "from_int") == 0 ||
         strcmp(func, "from_uint") == 0 ||
-        strcmp(func, "from_float") == 0);
+        strcmp(func, "from_float") == 0 ||
+        strcmp(func, "format_int") == 0 ||
+        strcmp(func, "format_uint") == 0 ||
+        strcmp(func, "quote") == 0 ||
+        strcmp(func, "unquote") == 0);
 
     if (is_fallible) {
         bool is_multi_var = is_result_temporary(codegen->current_var_name);
@@ -6947,6 +6952,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func)
         } else {
             emit_formatted(codegen, "gray_strconv_%s(", func);
         }
+        if (needs_arena) emit(codegen, "gray_default_arena, ");
         for (int i = 0; i < node->data.call.arg_count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.call.args[i]);
