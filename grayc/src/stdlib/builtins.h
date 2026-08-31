@@ -389,11 +389,12 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man to_char
- *@sig to_char(s string, index int) -> int
- *@desc Returns the Unicode codepoint at character position index (not byte position) in a UTF-8 string. Panics if out of bounds.
+ *@sig to_char(s string, index int) -> char
+ *@desc Returns the char at character position index (not byte position) in a UTF-8 string. The char is a 32-bit Unicode codepoint; apply int() to the result for its numeric value. Panics if out of bounds.
  *@example
- *   mut cp int = to_char("hello", 0)
- *   println(cp)
+ *   mut c char = to_char("hello", 0)
+ *   println(c)
+ *   println(int(c))
  *@end
  */
 

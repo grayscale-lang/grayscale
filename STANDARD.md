@@ -224,8 +224,15 @@ Escape sequences:
 - `\n` - line feed (U+000A)
 - `\r` - carriage return (U+000D)
 - `\t` - horizontal tab (U+0009)
+- `\a` - bell (U+0007)
+- `\b` - backspace (U+0008)
+- `\f` - form feed (U+000C)
+- `\v` - vertical tab (U+000B)
+- `\0` - NUL byte (U+0000)
 - `\\` - backslash
 - `\"` - double quote
+- `\'` - single quote
+- `\$` - literal `$` (suppresses string interpolation, e.g. `"\${x}"` is the text `${x}`)
 - `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline)
 
 String interpolation allows embedding expressions within strings:
@@ -4483,6 +4490,7 @@ The `gray` command-line tool provides the following commands:
 | `gray new <name>` | Scaffold a new project |
 | `gray man <name>` | Show documentation for builtins, stdlib, and language reference |
 | `gray report` | Print system info for bug reports |
+| `gray verify` | Run the built-in language verification test suite |
 | `gray update` | Check for updates and upgrade |
 | `gray install <version>` | Install a specific version by exact semver |
 | `gray version` | Show version information |
@@ -4735,7 +4743,17 @@ Show the installed version, build commit, build timestamp, and whether newer ver
 gray version
 ```
 
-### 13.13 `gray cross build`
+### 13.13 `gray verify`
+
+Run the built-in language verification suite. Compiles and runs an embedded Grayscale test program to confirm the toolchain (compiler, runtime, C backend) is working. Exits non-zero on failure.
+
+```
+gray verify
+```
+
+Not available on Windows, which has no runtime yet.
+
+### 13.14 `gray cross build`
 
 Cross-compile a Grayscale source file for another platform using Zig as the C cross-compiler backend.
 
@@ -4772,7 +4790,7 @@ gray cross build main.gray --target windows-amd64 -o myapp.exe
 gray cross build main.gray --target linux-arm64 --emit-c
 ```
 
-### 13.14 `gray cross targets`
+### 13.15 `gray cross targets`
 
 List all supported cross-compilation targets and their corresponding Zig triples.
 
