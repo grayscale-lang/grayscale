@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3051 - mut map inference requires both key and value to be
+ * primitive; a struct value still needs an explicit annotation.
+ * Expected: "map needs a type annotation"
+ */
+
+// expect-error: E3051
+
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut m = {"origin": Point{x: 0, y: 0}}
+}

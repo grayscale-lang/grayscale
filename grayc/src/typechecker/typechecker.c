@@ -9920,6 +9920,34 @@ static const char *zero_value_literal(const char *type_name) {
     return NULL;
 }
 
+/* The seven primitive value types eligible for `mut` array/map literal type
+ * inference (issue #2374). */
+static bool typechecker_kind_is_primitive(TypeKind k) {
+    return k == TK_INT || k == TK_UINT || k == TK_FLOAT || k == TK_BOOL ||
+           k == TK_CHAR || k == TK_BYTE || k == TK_STRING;
+}
+
+/* True when `lit` (an already-resolved array or map literal, type `t`) is a
+ * non-empty literal whose element types — for a map, both key and value — are
+ * all primitive, so its type can be inferred without an annotation. Empty
+ * literals and non-primitive elements return false. */
+static bool typechecker_literal_type_inferable(TypeChecker *checker, AstNode *lit, GrayType *t) {
+    if (!t) return false;
+    if (t->kind == TK_ARRAY) {
+        if (lit->data.array_value.count == 0 || !t->element_type) return false;
+        GrayType *et = typechecker_type_from_name(checker, t->element_type);
+        return et && typechecker_kind_is_primitive(et->kind);
+    }
+    if (t->kind == TK_MAP) {
+        if (lit->data.map_value.count == 0 || !t->key_type || !t->value_type) return false;
+        GrayType *kt = typechecker_type_from_name(checker, t->key_type);
+        GrayType *vt = typechecker_type_from_name(checker, t->value_type);
+        return kt && vt && typechecker_kind_is_primitive(kt->kind) &&
+               typechecker_kind_is_primitive(vt->kind);
+    }
+    return false;
+}
+
 static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* Resolve type aliases in the declared type name so downstream
      * checks and codegen see the underlying type. */
@@ -10117,21 +10145,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E3050/E3051: array/map literals require explicit type annotations */
-    if (!node->data.var_decl.type_name && node->data.var_decl.value &&
-        strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
-        strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
-        if (node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
-            diagnostic_error_code_help(checker->diag, "E3050",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'");
-        } else if (node->data.var_decl.value->kind == NODE_MAP_VALUE) {
-            diagnostic_error_code_help(checker->diag, "E3051",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
-        }
-    }
-
     /* E3131: file-scope and struct-scope const of primitive types must
      * have an explicit type annotation.  Struct instances and func
      * references are exempt because the type is visible in the
@@ -10268,6 +10281,28 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);
         checker->in_file_scope_init = saved_file_scope_init;
         checker->expected_type = saved_expected;
+
+        /* E3050/E3051: an array or map literal with no type annotation needs
+         * one — unless this is a `mut` declaration whose literal is built only
+         * from primitives, in which case the element (and, for a map, key and
+         * value) types are inferred from the literal (issue #2374). Empty
+         * literals and non-primitive elements stay rejected, as do `const`
+         * declarations. */
+        if (!node->data.var_decl.type_name &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
+            AstNode *lit = node->data.var_decl.value;
+            bool is_array = lit->kind == NODE_ARRAY_VALUE;
+            bool is_map = lit->kind == NODE_MAP_VALUE;
+            if ((is_array || is_map) &&
+                !(node->data.var_decl.mutable &&
+                  typechecker_literal_type_inferable(checker, lit, value_type))) {
+                diagnostic_error_code_help(checker->diag, is_array ? "E3050" : "E3051",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    is_array ? "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'"
+                             : "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
+            }
+        }
         /* : when a func-pointer call returns TK_UNKNOWN but
          * the assignment target has a concrete declared type,
          * push the declared type onto the call node's typetable

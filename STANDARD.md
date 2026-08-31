@@ -862,8 +862,13 @@ Type inference works with:
 3. **Struct literals** - The type is known from the struct name
 4. **Built-in constructors** - `new(Type)` (returns `^Type`) and `copy(value)`
 5. **Multiple return values** - Each variable's type is inferred from the corresponding return type
+6. **`mut` array and map literals of primitives** - `[T]` is inferred from the element type, `map[K:V]` from the first pair
 
-> 💡 **Tip:** Array and map literals do **not** support type inference. You must always provide an explicit type annotation (e.g., `mut arr [int] = {1, 2, 3}`, `mut m map[string:int] = {"a": 1}`).
+> 💡 **Tip:** Array and map literal inference applies only to `mut` declarations whose elements
+> are all primitives (`int`, `uint`, `float`, `string`, `bool`, `char`, `byte`) — for maps, both
+> keys and values must be primitive. Empty literals (`{}`, `{:}`), `const` declarations, and
+> literals containing structs, enums, pointers, or nested containers still require an explicit
+> annotation (e.g. `mut arr [Point] = {Point{x: 1, y: 2}}`).
 
 > ⚠️ **File-scope `const` declarations** of primitive types and arrays require explicit type annotations. Type inference for `const` is only supported inside function bodies. For example, `const MAX_SIZE int = 100` is required at file scope, while `const x = 42` is valid inside a function.
 
@@ -891,8 +896,11 @@ const p = Point{x: 1, y: 2}    // Inferred: Point
 mut val = new(Person)         // Inferred: ^Person (pointer)
 mut dup = copy(val^)          // Inferred: Person (copy() needs a value, not a pointer)
 
-// Arrays and maps always require explicit type annotations
-mut arr [int] = {1, 2, 3}           // Explicit: [int]
+// mut array/map literals of primitives are inferred
+mut arr = {1, 2, 3}                 // Inferred: [int]
+mut letters = {'a', 'b', 'c'}       // Inferred: [char]
+mut scores = {"alice": 10, "bob": 7} // Inferred: map[string:int]
+mut fixed [Point] = {Point{x: 1, y: 2}}  // Explicit: non-primitive elements
 
 // Multiple return values
 do divide(a, b int) -> (int, int) {
@@ -901,7 +909,7 @@ do divide(a, b int) -> (int, int) {
 mut quotient, remainder = divide(10, 3)  // Both inferred: int
 ```
 
-Explicit type annotations are generally optional but can be used for clarity or documentation. The exceptions are file-scope `const` declarations of primitive types and arrays, which always require explicit type annotations.
+Explicit type annotations are generally optional but can be used for clarity or documentation. The exceptions are file-scope `const` declarations of primitive types and arrays, and any `const` or non-primitive array/map literal, which always require explicit type annotations.
 
 > 💡 **Tip:** You don't need to write the type if the compiler can figure it out, but adding it never hurts for readability. At file scope, `const` declarations of primitives and arrays always need the type.
 

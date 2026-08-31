@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3050 - array literal inference is `mut` only; `const` still
+ * needs an explicit type annotation.
+ * Expected: "array needs a type annotation"
+ */
+
+// expect-error: E3050
+
+do main() {
+    const c = {1, 2, 3}
+}

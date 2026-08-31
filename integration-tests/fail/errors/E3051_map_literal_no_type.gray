@@ -1,8 +1,10 @@
 /*
- * Error Test: E3051 - map literal without type annotation
- * Expected: "map literal requires a type annotation" error
+ * Error Test: E3051 - empty map literal has no pair to infer a type from
+ * Expected: "map needs a type annotation"
  */
 
+// expect-error: E3051
+
 do main() {
-    mut m = {"a": 1, "b": 2}
+    mut m = {:}
 }
