@@ -127,7 +127,7 @@ static void test_keywords(void) {
 }
 
 static void test_more_keywords(void) {
-    Lexer *lexer = create_test_lexer("import using struct enum nil new true false when is default cast ensure module private");
+    Lexer *lexer = create_test_lexer("import using struct enum nil new true false when is default cast ensure private");
     ASSERT_EQ(next_token(lexer).type, TOK_IMPORT);
     ASSERT_EQ(next_token(lexer).type, TOK_USING);
     ASSERT_EQ(next_token(lexer).type, TOK_STRUCT);
@@ -141,7 +141,6 @@ static void test_more_keywords(void) {
     ASSERT_EQ(next_token(lexer).type, TOK_DEFAULT);
     ASSERT_EQ(next_token(lexer).type, TOK_CAST);
     ASSERT_EQ(next_token(lexer).type, TOK_ENSURE);
-    ASSERT_EQ(next_token(lexer).type, TOK_MODULE);
     ASSERT_EQ(next_token(lexer).type, TOK_PRIVATE);
 }
 

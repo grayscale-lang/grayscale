@@ -117,7 +117,6 @@ typedef enum {
     TOK_OR_RETURN,
 
     /* Module system keywords */
-    TOK_MODULE,
     TOK_PRIVATE,
     TOK_USE,
 

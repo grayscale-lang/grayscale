@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 407 codes** (278 errors, 17 warnings, 112 panics)
+**Total: 406 codes** (277 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -54,7 +54,6 @@
 | `E2058` | syntax | cannot declare a struct or enum inside %s '%s'; define it at the file scope |
 | `E2059` | syntax | empty when block; add at least one 'is' branch |
 | `E2060` | syntax | too many return values; a function can return at most %d values |
-| `E2061` | syntax | 'module' declarations are not supported; imported files are identified by their file path |
 | `E2062` | syntax | too many variables in multi-variable declaration; maximum is %d |
 | `E2063` | syntax | duplicate or conflicting named return value; each name must be unique and not collide with parameters |
 | `E2064` | syntax | function '%s' conflicts with field '%s' in struct '%s' |
@@ -458,4 +457,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-31 11:50:49 UTC*
+*Generated on 2026-08-31 19:14:30 UTC*

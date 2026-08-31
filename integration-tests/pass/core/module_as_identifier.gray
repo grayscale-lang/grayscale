@@ -1,0 +1,53 @@
+/*
+ * module_as_identifier.gray - 'module' is not a reserved keyword and works as an identifier
+ */
+
+
+do module_path(name string) -> string {
+    return "src/${name}"
+}
+
+do main() {
+    println("=== module Identifier Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: 'module' as a variable name
+    mut module int = 5
+    if module == 5 {
+        println("  [PASS] module usable as variable name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module variable: expected 5, got ${module}")
+        failed += 1
+    }
+
+    // Test 2: reassignment
+    module = 42
+    if module == 42 {
+        println("  [PASS] module variable reassignable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module reassign: expected 42, got ${module}")
+        failed += 1
+    }
+
+    // Test 3: 'module' inside a function/param name
+    mut p string = module_path("lexer.gray")
+    if p == "src/lexer.gray" {
+        println("  [PASS] module usable in function names")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] module_path: expected \"src/lexer.gray\", got ${p}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

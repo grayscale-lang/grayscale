@@ -49,7 +49,6 @@ static const KeywordEntry keywords[] = {
     {"in",          TOK_IN},
     {"is",          TOK_IS},
     {"loop",        TOK_LOOP},
-    {"module",      TOK_MODULE},
     {"mut",         TOK_MUT},
     {"new",         TOK_NEW},
     {"nil",         TOK_NIL},
@@ -204,7 +203,6 @@ const char *token_type_name(TokenType type) {
     case TOK_BLANK:          return "_";
     case TOK_ENSURE:         return "ensure";
     case TOK_OR_RETURN:      return "or_return";
-    case TOK_MODULE:         return "module";
     case TOK_PRIVATE:        return "private";
     case TOK_USE:            return "use";
     case TOK_WHEN:           return "when";

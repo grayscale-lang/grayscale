@@ -67,7 +67,6 @@
     GRAY_ERROR("E2058", "syntax", "cannot declare a struct or enum inside %s '%s'; define it at the file scope") \
     GRAY_ERROR("E2059", "syntax", "empty when block; add at least one 'is' branch") \
     GRAY_ERROR("E2060", "syntax", "too many return values; a function can return at most %d values") \
-    GRAY_ERROR("E2061", "syntax", "'module' declarations are not supported; imported files are identified by their file path") \
     GRAY_ERROR("E2062", "syntax", "too many variables in multi-variable declaration; maximum is %d") \
     GRAY_ERROR("E2063", "syntax", "duplicate or conflicting named return value; each name must be unique and not collide with parameters") \
     GRAY_ERROR("E2064", "syntax", "function '%s' conflicts with field '%s' in struct '%s'") \

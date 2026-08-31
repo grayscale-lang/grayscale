@@ -101,7 +101,7 @@ static bool is_keyword_token(TokenType type) {
     case TOK_IMPORT: case TOK_USING: case TOK_STRUCT: case TOK_ENUM:
     case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
     case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
-    case TOK_MODULE: case TOK_PRIVATE: case TOK_ALIAS:
+    case TOK_PRIVATE: case TOK_ALIAS:
     case TOK_IS: case TOK_DEFAULT:
         return true;
     default:
@@ -3241,10 +3241,6 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_func_declaration(parser);
     case TOK_RETURN:
         return parse_return_statement(parser);
-    case TOK_MODULE:
-        diagnostic_error_code(parser->diag, "E2061", parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-        next_token(parser); /* consume module name */
-        return NULL;
     case TOK_IMPORT:
         return parse_import_statement(parser);
     case TOK_USING:
