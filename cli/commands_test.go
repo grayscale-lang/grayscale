@@ -73,6 +73,25 @@ func TestPrintManUsage(t *testing.T) {
 	}
 }
 
+func TestLangKeywordsAllResolvable(t *testing.T) {
+	// Every name listed in the keywords category must resolve to a man
+	// page, either as a language reference entry or a builtin.
+	for _, g := range langCategories["keywords"] {
+		for _, name := range g.Names {
+			_, lang := langManDocs[name]
+			_, builtin := builtinManDocs[name]
+			if !lang && !builtin {
+				t.Errorf("keyword %q is listed in 'gray man keywords' but has no man page", name)
+			}
+		}
+	}
+	for _, name := range []string{"bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "use"} {
+		if _, ok := langManDocs[name]; !ok {
+			t.Errorf("langManDocs missing entry for %q", name)
+		}
+	}
+}
+
 func TestPrintBuiltinsIndex(t *testing.T) {
 	out := captureStdout(t, printBuiltinsIndex)
 	for _, expected := range []string{"println", "exit", "len", "int"} {

@@ -191,6 +191,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Brings module members into scope for unqualified access. Can appear at file scope or function scope.",
 		Example: "import @strings\nusing strings\nprintln(to_upper(\"hello\"))",
 	},
+	"use": {
+		Kind:    "keyword",
+		Syntax:  "import and use @<module>[, @<module>...]",
+		Desc:    "Reserved for the 'import and use' statement, which imports a module and brings its members into scope for unqualified access in one step. Has no other syntactic role.",
+		Example: "import and use @strings\nprintln(to_upper(\"hello\"))",
+	},
 	// "new" is a builtin; reachable via gray man keywords listing
 	"new": {
 		Kind:    "keyword",
@@ -223,6 +229,42 @@ var langManDocs = map[string]LangManEntry{
 		Syntax:  "<value> not_in <collection>",
 		Desc:    "Non-membership test. Returns true if value is not in the collection or range. Alias: '!in'.",
 		Example: "if \"key\" not_in m { println(\"missing\") }",
+	},
+	"bit_and": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_and <b>",
+		Desc:    "Bitwise AND. Infix operator on int, uint, byte, char, and sized integer types. Keyword syntax is used because '&' denotes mutable parameters.",
+		Example: "println(12 bit_and 10)  // 8",
+	},
+	"bit_or": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_or <b>",
+		Desc:    "Bitwise OR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(12 bit_or 10)  // 14",
+	},
+	"bit_xor": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_xor <b>",
+		Desc:    "Bitwise XOR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(12 bit_xor 10)  // 6",
+	},
+	"bit_not": {
+		Kind:    "keyword",
+		Syntax:  "bit_not <a>",
+		Desc:    "Bitwise NOT (complement). Prefix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(bit_not 10)  // -11",
+	},
+	"bit_shift_left": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_shift_left <n>",
+		Desc:    "Left shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(1 bit_shift_left 3)  // 8",
+	},
+	"bit_shift_right": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_shift_right <n>",
+		Desc:    "Right shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(16 bit_shift_right 1)  // 8",
 	},
 
 	// ── Keywords: Literals ──────────────────────────────────────────────
@@ -467,8 +509,8 @@ var langCategories = map[string][]langGroup{
 	"keywords": {
 		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
 		{Label: "Error handling", Names: []string{"ensure", "defer", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "new", "private"}},
-		{Label: "Operators     ", Names: []string{"in", "not_in"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "use", "new", "private"}},
+		{Label: "Operators     ", Names: []string{"in", "not_in", "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "cast", "range"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},
 	"types": {
