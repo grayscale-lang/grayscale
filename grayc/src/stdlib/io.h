@@ -336,7 +336,7 @@ GrayString gray_io_temp_dir(GrayArena *arena);
  *@desc Joins path segments into a single path. An absolute segment replaces everything accumulated so far.
  *@example
  *   import @io
- *   println(io.path_join(["/home", "user", "docs"]))
+ *   println(io.path_join({"/home", "user", "docs"}))
  *@end
  */
 GrayString gray_io_path_join(GrayArena *arena, GrayArray parts);

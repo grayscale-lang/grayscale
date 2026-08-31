@@ -23,7 +23,7 @@
  *@desc Appends value to the end of arr. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   arrays.append(nums, 4)
  *   println(nums)
  *@end
@@ -37,7 +37,7 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value);
  *@desc Inserts value at the given index, shifting subsequent elements right. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   arrays.insert_at(nums, 1, 99)
  *   println(nums)
  *@end
@@ -51,7 +51,7 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, cons
  *@desc Inserts value at the front of arr, shifting all elements right. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [2, 3, 4]
+ *   mut nums [int] = {2, 3, 4}
  *   arrays.prepend(nums, 1)
  *   println(nums)
  *@end
@@ -65,7 +65,7 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value);
  *@desc Removes the element at the given index, shifting subsequent elements left. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   arrays.remove_at(nums, 1)
  *   println(nums)
  *@end
@@ -79,7 +79,7 @@ void gray_arrays_remove_at(GrayArray *arr, int32_t index);
  *@desc Removes the first occurrence of value from arr. Modifies the array in place. Does nothing if value is not found.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3, 2]
+ *   mut nums [int] = {1, 2, 3, 2}
  *   arrays.remove(nums, 2)
  *   println(nums)
  *@end
@@ -95,7 +95,7 @@ void gray_arrays_remove_str(GrayArray *arr, GrayString value);
  *@desc Removes all elements from arr, leaving it empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   arrays.clear(nums)
  *   println(nums)
  *@end
@@ -109,7 +109,7 @@ void gray_arrays_clear(GrayArray *arr);
  *@desc Appends count copies of value to arr. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = []
+ *   mut nums [int] = {}
  *   arrays.fill(nums, 0, 5)
  *   println(nums)
  *@end
@@ -125,7 +125,7 @@ void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int32
  *@desc Returns the first element of arr. Panics if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30]
+ *   mut nums [int] = {10, 20, 30}
  *   println(arrays.get_first(nums))
  *@end
  */
@@ -138,7 +138,7 @@ void *gray_arrays_first_ptr(GrayArray *arr);
  *@desc Returns the last element of arr. Panics if arr is empty.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30]
+ *   mut nums [int] = {10, 20, 30}
  *   println(arrays.get_last(nums))
  *@end
  */
@@ -151,7 +151,7 @@ void *gray_arrays_last_ptr(GrayArray *arr);
  *@desc Removes and returns the first element of arr. Panics if arr is empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30]
+ *   mut nums [int] = {10, 20, 30}
  *   mut val int = arrays.remove_first(nums)
  *   println(val)
  *@end
@@ -165,7 +165,7 @@ void  gray_arrays_remove_first_raw(GrayArray *arr, void *out);
  *@desc Removes and returns the last element of arr. Panics if arr is empty. Modifies the array in place.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30]
+ *   mut nums [int] = {10, 20, 30}
  *   mut val int = arrays.remove_last(nums)
  *   println(val)
  *@end
@@ -187,7 +187,7 @@ int64_t gray_arrays_remove_first(GrayArray *arr);
  *@desc Returns true if arr has no elements.
  *@example
  *   import @arrays
- *   mut nums [int] = []
+ *   mut nums [int] = {}
  *   println(arrays.is_empty(nums))
  *@end
  */
@@ -200,7 +200,7 @@ bool gray_arrays_is_empty(GrayArray *arr);
  *@desc Returns true if arr contains value.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   println(arrays.contains(nums, 2))
  *@end
  */
@@ -217,7 +217,7 @@ bool gray_arrays_contains_str(GrayArray *arr, GrayString value);
  *@desc Returns the index of the first occurrence of value in arr, or -1 if not found.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30]
+ *   mut nums [int] = {10, 20, 30}
  *   println(arrays.index_of(nums, 20))
  *@end
  */
@@ -231,7 +231,7 @@ int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value);
  *@desc Returns the number of times value appears in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 2, 3]
+ *   mut nums [int] = {1, 2, 2, 3}
  *   println(arrays.count(nums, 2))
  *@end
  */
@@ -244,8 +244,8 @@ int64_t gray_arrays_count(GrayArray *arr, int64_t value);
  *@desc Returns true if a and b have the same length and identical elements. T must be a primitive or string. Use this instead of == which is not allowed on arrays.
  *@example
  *   import @arrays
- *   mut a [int] = [1, 2, 3]
- *   mut b [int] = [1, 2, 3]
+ *   mut a [int] = {1, 2, 3}
+ *   mut b [int] = {1, 2, 3}
  *   println(arrays.is_equal(a, b))
  *@end
  */
@@ -261,7 +261,7 @@ bool gray_arrays_is_equal_str(GrayArray *a, GrayArray *b);
  *@desc Returns a new array with elements in reverse order. Does not modify the original.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   println(arrays.reverse(nums))
  *@end
  */
@@ -274,7 +274,7 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr);
  *@desc Returns a new array containing elements from index start (inclusive) to end (exclusive). Does not modify the original.
  *@example
  *   import @arrays
- *   mut nums [int] = [10, 20, 30, 40]
+ *   mut nums [int] = {10, 20, 30, 40}
  *   println(arrays.slice(nums, 1, 3))
  *@end
  */
@@ -287,8 +287,8 @@ GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int
  *@desc Returns a new array containing all elements of a followed by all elements of b.
  *@example
  *   import @arrays
- *   mut a [int] = [1, 2]
- *   mut b [int] = [3, 4]
+ *   mut a [int] = {1, 2}
+ *   mut b [int] = {3, 4}
  *   println(arrays.concat(a, b))
  *@end
  */
@@ -301,7 +301,7 @@ GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *a, GrayArray *b);
  *@desc Returns a new array with duplicate values removed, preserving the order of first occurrence.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 2, 3, 1]
+ *   mut nums [int] = {1, 2, 2, 3, 1}
  *   println(arrays.deduplicate(nums))
  *@end
  */
@@ -314,7 +314,7 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr);
  *@desc Flattens one level of nesting, returning a single array of all inner elements.
  *@example
  *   import @arrays
- *   mut nested [[int]] = [[1, 2], [3, 4]]
+ *   mut nested [[int]] = {{1, 2}, {3, 4}}
  *   println(arrays.flatten(nested))
  *@end
  */
@@ -327,7 +327,7 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr);
  *@desc Splits arr into sub-arrays of at most size elements each. The last chunk may be smaller.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3, 4, 5]
+ *   mut nums [int] = {1, 2, 3, 4, 5}
  *   println(arrays.split_every(nums, 2))
  *@end
  */
@@ -340,8 +340,8 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size
  *@desc Returns an array of two-element arrays, pairing each element of a with the corresponding element of b. Length is determined by the shorter array.
  *@example
  *   import @arrays
- *   mut keys [int] = [1, 2, 3]
- *   mut vals [int] = [10, 20, 30]
+ *   mut keys [int] = {1, 2, 3}
+ *   mut vals [int] = {10, 20, 30}
  *   println(arrays.pair(keys, vals))
  *@end
  */
@@ -356,7 +356,7 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *a, GrayArray *b);
  *@desc Returns the sum of all elements. Accepts int, float, or sized numeric types.
  *@example
  *   import @arrays
- *   mut nums [int] = [1, 2, 3, 4]
+ *   mut nums [int] = {1, 2, 3, 4}
  *   println(arrays.get_sum(nums))
  *@end
  */
@@ -369,7 +369,7 @@ int64_t gray_arrays_get_sum(GrayArray *arr);
  *@desc Returns the smallest element in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = [3, 1, 4, 1, 5]
+ *   mut nums [int] = {3, 1, 4, 1, 5}
  *   println(arrays.get_min(nums))
  *@end
  */
@@ -382,7 +382,7 @@ int64_t gray_arrays_get_min(GrayArray *arr);
  *@desc Returns the largest element in arr.
  *@example
  *   import @arrays
- *   mut nums [int] = [3, 1, 4, 1, 5]
+ *   mut nums [int] = {3, 1, 4, 1, 5}
  *   println(arrays.get_max(nums))
  *@end
  */
@@ -397,7 +397,7 @@ int64_t gray_arrays_get_max(GrayArray *arr);
  *@desc Sorts arr in ascending order in place. Works on int, float, and string arrays.
  *@example
  *   import @arrays
- *   mut nums [int] = [3, 1, 4, 1, 5]
+ *   mut nums [int] = {3, 1, 4, 1, 5}
  *   arrays.sort_asc(nums)
  *   println(nums)
  *@end
@@ -413,7 +413,7 @@ void gray_arrays_sort_asc_str(GrayArray *arr);
  *@desc Sorts arr in descending order in place. Works on int, float, and string arrays.
  *@example
  *   import @arrays
- *   mut nums [int] = [3, 1, 4, 1, 5]
+ *   mut nums [int] = {3, 1, 4, 1, 5}
  *   arrays.sort_desc(nums)
  *   println(nums)
  *@end
@@ -432,7 +432,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@example
  *   import @arrays
  *   do double_it(x int) -> int { return x * 2 }
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   mut result [int] = arrays.map(nums, ()double_it)
  *   println(result)
  *@end
@@ -446,7 +446,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@example
  *   import @arrays
  *   do is_even(x int) -> bool { return x % 2 == 0 }
- *   mut nums [int] = [1, 2, 3, 4]
+ *   mut nums [int] = {1, 2, 3, 4}
  *   mut result [int] = arrays.filter(nums, ()is_even)
  *   println(result)
  *@end
@@ -460,7 +460,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@example
  *   import @arrays
  *   do add(a int, b int) -> int { return a + b }
- *   mut nums [int] = [1, 2, 3, 4]
+ *   mut nums [int] = {1, 2, 3, 4}
  *   mut total int = arrays.reduce(nums, 0, ()add)
  *   println(total)
  *@end
@@ -474,7 +474,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@example
  *   import @arrays
  *   do is_negative(x int) -> bool { return x < 0 }
- *   mut nums [int] = [1, -2, 3]
+ *   mut nums [int] = {1, -2, 3}
  *   println(arrays.any(nums, ()is_negative))
  *@end
  */
@@ -487,7 +487,7 @@ void gray_arrays_sort_desc_str(GrayArray *arr);
  *@example
  *   import @arrays
  *   do is_positive(x int) -> bool { return x > 0 }
- *   mut nums [int] = [1, 2, 3]
+ *   mut nums [int] = {1, 2, 3}
  *   println(arrays.all(nums, ()is_positive))
  *@end
  */

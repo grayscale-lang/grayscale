@@ -220,7 +220,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *   do double(n int) -> int { return n * 2 }
  *   do apply(f func(int) -> int, x int) -> int { return f(x) }
  *   const g func(int) -> int = ()double
- *   println(apply(()double, 5))   // 10
+ *   println(apply(g, 5))   // 10
  *@end
  */
 
@@ -241,7 +241,8 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@desc 128-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
  *   mut a i128 = i128(99999999999999999999)
- *   mut b int = int(a)
+ *   mut b i128 = a * i128(2)
+ *   println(b)
  *@end
  */
 
@@ -293,7 +294,10 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig fields(instance T) -> [string]
  *@desc Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs.
  *@example
- *   const Point struct { x int; y int }
+ *   const Point struct {
+ *       x int
+ *       y int
+ *   }
  *   mut p = Point{x: 1, y: 2}
  *   println(fields(p))
  *@end
@@ -319,8 +323,8 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man ref
- *@sig ref(variable T) -> ref<T>
- *@desc Creates a transparent alias to a variable. Reads and writes through the alias affect the original. Also used to take a function reference.
+ *@sig ref(variable T) -> T
+ *@desc Creates a transparent alias to a variable; the alias has the same type as the variable and cannot be explicitly annotated. Reads and writes through the alias affect the original. Also used to take a function reference.
  *@example
  *   mut x int = 10
  *   mut r = ref(x)

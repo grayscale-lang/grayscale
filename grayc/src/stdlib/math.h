@@ -629,7 +629,9 @@ typedef struct { double v0; double v1; } GrayMathModf;
  *@desc Splits x into its integer and fractional parts, both carrying the sign of x.
  *@example
  *   import @math
- *   mut whole float, mut frac float = math.modf(3.75)
+ *   mut whole, frac = math.modf(3.75)
+ *   println(whole)
+ *   println(frac)
  *@end
  */
 GrayMathModf gray_math_modf(double x);

@@ -4306,7 +4306,7 @@ The `new()` function allocates a zero-initialized value of any type on the heap 
 | `char` | `'\0'` |
 | `byte` | `0` |
 | `[T]` | Empty array (valid for append) |
-| `map[K:V]` | `{}` |
+| `map[K:V]` | Empty map (`{:}`) |
 | enum | First variant |
 | struct | All fields zero-initialized |
 
