@@ -1,0 +1,11 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #discard on a top-level function.
+
+#discard
+#discard
+do produce() -> int {
+    return 1
+}
+
+do main() {}

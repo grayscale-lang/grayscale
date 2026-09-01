@@ -1,0 +1,104 @@
+/*
+ * attribute_single_use.gray - each #attribute used once per declaration still
+ * compiles and behaves, at top level and inside a struct body.
+ */
+
+import @json
+
+#flags
+const Perm enum {
+    READ
+    WRITE
+    EXEC
+}
+
+#json
+#doc("a 2D point")
+const Point struct {
+    x int
+    y int
+}
+
+#deprecated("use compute_v2")
+do compute() -> int {
+    return 41
+}
+
+#discard
+do noisy() -> int {
+    return 7
+}
+
+const Calc struct {
+    _pad int
+
+    #doc("adds two numbers")
+    do add(a int, b int) -> int {
+        return a + b
+    }
+
+    #discard
+    do log_value(v int) -> int {
+        return v
+    }
+
+    #deprecated("use scale")
+    do double(v int) -> int {
+        return v * 2
+    }
+}
+
+do main() {
+    println("=== Attribute Single Use Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut c Calc = Calc{_pad: 0}
+
+    mut p Point = Point{x: 1, y: 2}
+    if len(json.stringify(p)) > 0 {
+        println("  [PASS] #json struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] #json struct")
+        failed += 1
+    }
+
+    if c.add(3, 4) == 7 {
+        println("  [PASS] #doc struct fn")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] #doc struct fn")
+        failed += 1
+    }
+
+    noisy()
+    c.log_value(9)
+    println("  [PASS] #discard top-level and struct fn")
+    passed += 1
+
+    if compute() == 41 && c.double(21) == 42 {
+        println("  [PASS] #deprecated top-level and struct fn")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] #deprecated top-level and struct fn")
+        failed += 1
+    }
+
+    mut x int = int(Perm.WRITE)
+    #strict
+    when x {
+        is 1 { println("  [PASS] #strict when") passed += 1 }
+        is 2 { println("  [PASS] #strict when") passed += 1 }
+        is 4 { println("  [PASS] #strict when") passed += 1 }
+        default { println("  [FAIL] #strict when") failed += 1 }
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

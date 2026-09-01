@@ -1,0 +1,13 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #strict on a when statement.
+
+do main() {
+    mut x int = 1
+    #strict
+    #strict
+    when x {
+        is 1 { println("one") }
+        default { println("other") }
+    }
+}

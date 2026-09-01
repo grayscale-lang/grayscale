@@ -2034,6 +2034,7 @@ const Person struct {
 
 - One attribute per line, stacked before the declaration. Same-line multi-attribute (`#doc("x") #json`) is not supported.
 - Order is irrelevant. `#doc` then `#json` and `#json` then `#doc` produce identical results.
+- A given attribute may appear at most once per declaration; a repeat is rejected (E2090).
 - Blank lines between attributes and the declaration are allowed.
 - Each attribute applies to the immediately following declaration only. It does not skip ahead to find a compatible declaration further down the file.
 - Misapplied attributes are rejected. For example, `#json` on a function produces an error; `#json` can only be applied to struct declarations.

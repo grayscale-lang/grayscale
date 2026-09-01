@@ -1,0 +1,12 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #flags on an enum declaration.
+
+#flags
+#flags
+const Perm enum {
+    READ
+    WRITE
+}
+
+do main() {}

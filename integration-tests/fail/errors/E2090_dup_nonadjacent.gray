@@ -1,0 +1,12 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Non-adjacent duplicate: #test repeated with #discard in between.
+
+#test
+#discard
+#test
+do check_thing() -> int {
+    return 0
+}
+
+do main() {}

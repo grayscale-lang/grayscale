@@ -1,0 +1,10 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #test on a top-level function.
+
+#test
+#test
+do check_thing() {
+}
+
+do main() {}

@@ -18,12 +18,6 @@ const Math struct {
     do sub(a int, b int) -> int {
         return a - b
     }
-
-    #doc("Multiplies")
-    #doc("Two numbers")
-    do mul(a int, b int) -> int {
-        return a * b
-    }
 }
 
 do main() {
@@ -44,14 +38,6 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] sub")
-        failed += 1
-    }
-
-    if Math.mul(6, 7) == 42 {
-        println("  [PASS] stacked #doc on struct fn")
-        passed += 1
-    } otherwise {
-        println("  [FAIL] mul")
         failed += 1
     }
 

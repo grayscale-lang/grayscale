@@ -92,7 +92,8 @@
     GRAY_ERROR("E2086", "syntax", "'%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range") \
     GRAY_ERROR("E2087", "syntax", "type parameters (<?>) cannot be mixed with value parameters in the same function") \
     GRAY_ERROR("E2088", "syntax", "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d") \
-    GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields")
+    GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields") \
+    GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \

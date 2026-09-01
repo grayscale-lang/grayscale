@@ -1,0 +1,10 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #deprecated on a top-level function.
+
+#deprecated("FIRST")
+#deprecated("SECOND")
+do old_api() {
+}
+
+do main() {}

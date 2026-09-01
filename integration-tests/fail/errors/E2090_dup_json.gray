@@ -1,0 +1,14 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #json on a struct declaration.
+
+import @json
+
+#json
+#json
+const Point struct {
+    x int
+    y int
+}
+
+do main() {}
