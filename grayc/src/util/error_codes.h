@@ -227,7 +227,8 @@
     GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
     GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
-    GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored")
+    GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
+    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

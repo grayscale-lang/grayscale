@@ -754,6 +754,8 @@ const Permissions enum {
 }
 ```
 
+A `#flags` enum may have at most 63 variants — one per usable bit of `int64` (bit 63 is the sign bit). More is rejected (E3143).
+
 Enum values are accessed using dot notation:
 
 ```gray

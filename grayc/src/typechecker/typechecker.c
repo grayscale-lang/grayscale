@@ -14251,6 +14251,13 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
+        /* E3143: flags enum with more than 63 variants. Codegen assigns each
+         * unvalued variant `1LL << j`; bit 63 is int64's sign bit and bits
+         * 64+ are undefined shifts in C. */
+        if (stmt->data.enum_decl.is_flags && variant_count > 63) {
+            diagnostic_error_code_formatted(checker->diag, "E3143", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                en, variant_count);
+        }
         DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
                             stmt->data.enum_decl.is_private);
         /* A name declared twice in one module resolves to the first
