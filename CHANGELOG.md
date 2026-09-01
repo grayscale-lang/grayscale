@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.6.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.5...grayscale-v0.6.0) (2026-09-01)
+
+
+### Features
+
+* **cli:** add #test attribute and gray test command ([#2092](https://github.com/grayscale-lang/grayscale/issues/2092)) ([b582cec](https://github.com/grayscale-lang/grayscale/commit/b582cec1d2fcf3784ccc1384f7ebd1a91a025a11))
+* **fmt:** support i128/u128/i256/u256 in format directives ([#2586](https://github.com/grayscale-lang/grayscale/issues/2586)) ([79767a3](https://github.com/grayscale-lang/grayscale/commit/79767a321b76fd66c972689c81074f8992f1e07a))
+* **parser:** single-line attribute lists via #[...] container syntax ([#2599](https://github.com/grayscale-lang/grayscale/issues/2599)) ([88c6ffe](https://github.com/grayscale-lang/grayscale/commit/88c6ffe7719bc2dbd0bc31715b9660a797b51764))
+* **stdlib:** add char-editing functions to strings module ([#2560](https://github.com/grayscale-lang/grayscale/issues/2560)) ([3051efa](https://github.com/grayscale-lang/grayscale/commit/3051efae14baeaa792595ac90bb3cc830ed6335f))
+* **stdlib:** add chars module with to_upper/to_lower ([#2559](https://github.com/grayscale-lang/grayscale/issues/2559)) ([1a49060](https://github.com/grayscale-lang/grayscale/commit/1a490602866032f8be4d77709c775722415f2a62))
+* **stdlib:** add strconv format_int, format_uint, quote, unquote ([#2434](https://github.com/grayscale-lang/grayscale/issues/2434)) ([edcdbaf](https://github.com/grayscale-lang/grayscale/commit/edcdbaf1bce69734be719b06fa285ea02b9c19d5))
+* **typechecker:** infer type for mut array/map literals of primitives ([#2374](https://github.com/grayscale-lang/grayscale/issues/2374)) ([f6c6024](https://github.com/grayscale-lang/grayscale/commit/f6c60244c7a706ddad917bfa9cbf750b6e30f725))
+* **typechecker:** support + and += for string concatenation ([#2383](https://github.com/grayscale-lang/grayscale/issues/2383)) ([14524b8](https://github.com/grayscale-lang/grayscale/commit/14524b8f40a06a792b38c523d570e3a7e6a89414))
+
+
+### Bug Fixes
+
+* **build:** link builtins.o into the stdlib unit test binary ([70e2bec](https://github.com/grayscale-lang/grayscale/commit/70e2beccb1b97a348c70d3d6de220c1d8ee10023))
+* **cli:** discover #[test] list-form functions in gray test prescan ([c0223bf](https://github.com/grayscale-lang/grayscale/commit/c0223bfad963566e0ab9ce3b7f8d076809c0cc06))
+* **cli:** don't treat #test inside a string as a test function ([77740ee](https://github.com/grayscale-lang/grayscale/commit/77740ee0adb90e318707d03ac746adab8999c5be))
+* **cli:** drain test binary stdout with a growable reader ([3e95638](https://github.com/grayscale-lang/grayscale/commit/3e95638fe7763a0e6116664d372c38bba4a10f2c))
+* **cli:** emit stdlib man examples in generator TSV ([13baf0f](https://github.com/grayscale-lang/grayscale/commit/13baf0fc84e986cceb031dff12531b5e94360f42))
+* **cli:** find the test protocol nonce anywhere in a line ([c0da050](https://github.com/grayscale-lang/grayscale/commit/c0da05031d9066357e41a652e2d4731520c81c01))
+* **cli:** gray check success message green and ending in '!' ([#2594](https://github.com/grayscale-lang/grayscale/issues/2594)) ([fd2674d](https://github.com/grayscale-lang/grayscale/commit/fd2674d3301b7905115ad9b9e9a96d3ba1c640ed))
+* **cli:** nonce-guard gray test result protocol against stdout forgery ([f28dc6a](https://github.com/grayscale-lang/grayscale/commit/f28dc6ae647d760ee70522cc1e1bf126cebd23e8))
+* **codegen:** allocate string array element += result in the outer loop arena ([e0c8ad5](https://github.com/grayscale-lang/grayscale/commit/e0c8ad595b44d04930522b34428655c310e2676a))
+* **codegen:** deep-copy plain string array element assignment to the outer loop arena ([6c041f4](https://github.com/grayscale-lang/grayscale/commit/6c041f4711e52090f55059ea29cbf20fd0e3e7b7))
+* **codegen:** escape string struct-field assignment to the outer loop arena ([450c7f1](https://github.com/grayscale-lang/grayscale/commit/450c7f1118449f9e0ee3a2770e43418412ea728e))
+* **codegen:** filter incompatible flags off bigint fmt directives ([34a93a4](https://github.com/grayscale-lang/grayscale/commit/34a93a424a9f9902d5f2cc20700cf27c38949130))
+* **codegen:** module-qualified enum in a multi-return tuple uses its real C type ([#2573](https://github.com/grayscale-lang/grayscale/issues/2573)) ([8a59a2c](https://github.com/grayscale-lang/grayscale/commit/8a59a2cbcf6751b08191768e7768170217b30347))
+* **codegen:** module-qualified stdlib calls no longer resolve to same-named struct functions ([#2561](https://github.com/grayscale-lang/grayscale/issues/2561)) ([5ea3b8e](https://github.com/grayscale-lang/grayscale/commit/5ea3b8eeda0386ea629d405ee4b65b3f446d479a))
+* **codegen:** println of a SourceLocation walks its fields ([#2585](https://github.com/grayscale-lang/grayscale/issues/2585)) ([3963971](https://github.com/grayscale-lang/grayscale/commit/3963971a4a7dc857c5406a8e1436761d36326b91))
+* **codegen:** store wide integers in map key/value slots as their real C type ([af05adc](https://github.com/grayscale-lang/grayscale/commit/af05adc53512a10ccb05d16b2eb41e5f94575340))
+* **codegen:** strip imported files' #test functions from a test build ([d721b80](https://github.com/grayscale-lang/grayscale/commit/d721b8023e231e0b737fd0f238a99a1b1187ce62))
+* **codegen:** treat 'in', '&&', '||' as bool-valued for wide-int operands ([2ccee07](https://github.com/grayscale-lang/grayscale/commit/2ccee07d1e920dfebd65d371a764cb7f47ae48f8))
+* **lexer:** 'module' is no longer a reserved keyword ([#2595](https://github.com/grayscale-lang/grayscale/issues/2595)) ([13361d2](https://github.com/grayscale-lang/grayscale/commit/13361d25da18949f71bd5c0bff87421c6806db17))
+* **lexer:** decode non-ASCII and escaped codepoints in char literals ([6261b77](https://github.com/grayscale-lang/grayscale/commit/6261b77e3bed203c26baf2df691125a515cd226a))
+* **parser:** #strict and #flags error on wrong target ([#2566](https://github.com/grayscale-lang/grayscale/issues/2566)) ([eb98f54](https://github.com/grayscale-lang/grayscale/commit/eb98f54e5164a2694f552a6e069ffe995e8670d9))
+* **parser:** count duplicate entries in #[...] toward list length ([8805f07](https://github.com/grayscale-lang/grayscale/commit/8805f07d845ef4ec05a5bdc3c536de09ee3082b3))
+* **parser:** or_return works for calls returning (T, ..., Error) ([#2571](https://github.com/grayscale-lang/grayscale/issues/2571)) ([be65b6f](https://github.com/grayscale-lang/grayscale/commit/be65b6fb4d4a1785378079d4dd96ba31d4c56a3d))
+* **parser:** reject #[...] whose closing ']' is on a later line ([8b746f2](https://github.com/grayscale-lang/grayscale/commit/8b746f23e9eb1ba1c6a0a37cbdd23ba4a58922f1))
+* **parser:** reject duplicate attribute usage ([#2600](https://github.com/grayscale-lang/grayscale/issues/2600)) ([0ea6280](https://github.com/grayscale-lang/grayscale/commit/0ea62803a0a133f7d936437185570a4479b98ac0))
+* **parser:** reject UTF-16 surrogate codepoints in char literal escapes ([94f5c68](https://github.com/grayscale-lang/grayscale/commit/94f5c68801681b3dac00136af6324f4ad74a297a))
+* **parser:** validate #[...] entry arguments like the stacked form ([7fc231f](https://github.com/grayscale-lang/grayscale/commit/7fc231f38e6e4f3f809ccdd1eec99dd069babc6d))
+* **runtime:** restore gray_call_depth around each #test run ([7a0eb6a](https://github.com/grayscale-lang/grayscale/commit/7a0eb6ac666d5cda7b5a9efaaca48f33bdf2d6cd))
+* **stdlib:** harden csv.read_file against non-seekable input ([#2607](https://github.com/grayscale-lang/grayscale/issues/2607)) ([81b9f51](https://github.com/grayscale-lang/grayscale/commit/81b9f5199bd459897c8bb197c5530f653326a292))
+* **stdlib:** remove fmt.format, threads.current, and uuid.generate_hyphenated aliases ([#2602](https://github.com/grayscale-lang/grayscale/issues/2602)) ([e264a42](https://github.com/grayscale-lang/grayscale/commit/e264a423f4cbdfb23667b1d3bc81d5adb5037df1))
+* **typechecker:** #strict when with all arms returning is terminating ([#2565](https://github.com/grayscale-lang/grayscale/issues/2565)) ([26a7fa1](https://github.com/grayscale-lang/grayscale/commit/26a7fa10721269887d6ab00f61d5ccde0cde088f))
+* **typechecker:** allow a container of func refs as a struct field type ([#2495](https://github.com/grayscale-lang/grayscale/issues/2495)) ([a62e832](https://github.com/grayscale-lang/grayscale/commit/a62e832c0d0eedb7bbafe2947440030a8fe9abc4))
+* **typechecker:** E3061 catches recursive structs cycled through a type alias ([#2529](https://github.com/grayscale-lang/grayscale/issues/2529)) ([718e891](https://github.com/grayscale-lang/grayscale/commit/718e891dc17d16045b9fc6c513cefcc00743e081))
+* **typechecker:** implicit enum selector keeps type context in module-qualified struct calls ([#2493](https://github.com/grayscale-lang/grayscale/issues/2493)) ([bce8e53](https://github.com/grayscale-lang/grayscale/commit/bce8e532093e14b2123d2f7bde7692468df09750))
+* **typechecker:** imported struct type passable as a generic type argument ([#2494](https://github.com/grayscale-lang/grayscale/issues/2494)) ([85618f0](https://github.com/grayscale-lang/grayscale/commit/85618f099c8412832d298d881f1fd564c93e43c9))
+* **typechecker:** infer wide-int element type for mut array literals ([3124562](https://github.com/grayscale-lang/grayscale/commit/3124562f5465374d9257219d92a5ac262d9a4572))
+* **typechecker:** reject #flags enum with more than 63 variants ([cb5af06](https://github.com/grayscale-lang/grayscale/commit/cb5af0670de67bd316308aef744798621f4fe42a))
+* **typechecker:** reject #test on main as program entry point ([7b22d61](https://github.com/grayscale-lang/grayscale/commit/7b22d61be5c3b1d5d646939576d2f563c2c35baf))
+* **typechecker:** reject a func return type at the declaration ([#2568](https://github.com/grayscale-lang/grayscale/issues/2568)) ([0d34528](https://github.com/grayscale-lang/grayscale/commit/0d345283eb2006e6fc04dff48d1e16b08b73368c))
+* **typechecker:** reject addr/raw/ref on a dynamic array element ([#2604](https://github.com/grayscale-lang/grayscale/issues/2604)) ([d2b7f2e](https://github.com/grayscale-lang/grayscale/commit/d2b7f2ee4515be6e05bb5d351d7ab57ce89af736))
+* **typechecker:** reject enum-variant access on a struct type name ([#2521](https://github.com/grayscale-lang/grayscale/issues/2521)) ([0a6df1c](https://github.com/grayscale-lang/grayscale/commit/0a6df1c8e3bc91781e8f78daa1462787fd27158a))
+* **typechecker:** reject fallible stdlib calls in expression position ([#2450](https://github.com/grayscale-lang/grayscale/issues/2450)) ([dafe7c2](https://github.com/grayscale-lang/grayscale/commit/dafe7c29ba5fae61db54ff5a47df17f10e0486c6))
+* **typechecker:** require import [@json](https://github.com/json) for #json structs ([#2601](https://github.com/grayscale-lang/grayscale/issues/2601)) ([4cca074](https://github.com/grayscale-lang/grayscale/commit/4cca0745452e4df6d1c969e6d74fe25ae09dbf0e))
+* **typechecker:** reserve 'main' for the entry-point function ([71a8460](https://github.com/grayscale-lang/grayscale/commit/71a8460b936409da3420499b6abb5e76b022aa26))
+* **typechecker:** scope string += E3048 to string targets ([c8193f3](https://github.com/grayscale-lang/grayscale/commit/c8193f3881bf2d8841e16e107032d0dd533df905))
+* **typechecker:** track addr() laundered through array/map/struct literals ([#2605](https://github.com/grayscale-lang/grayscale/issues/2605)) ([1d6c017](https://github.com/grayscale-lang/grayscale/commit/1d6c0174d9fe66a65a32907fc7a6cde6391ba243))
+* **typechecker:** type sqlite.query rows as map[string:string] ([1f25b58](https://github.com/grayscale-lang/grayscale/commit/1f25b58f5283d7baba50f4017accc5a174ba3996))
+* **typechecker:** validate all pairs in inferred mut map literals ([bea5a7f](https://github.com/grayscale-lang/grayscale/commit/bea5a7f978973e0234b72988d02fd3bbc1ea707b))
+
 ## [0.5.5](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.5.4...grayscale-v0.5.5) (2026-08-29)
 
 
