@@ -1,0 +1,11 @@
+// expect-error: E4026
+// expect-error-count: 1
+// A function parameter cannot be named 'main'.
+
+do scale(main int) -> int {
+    return main * 2
+}
+
+do main() {
+    println("${scale(3)}")
+}

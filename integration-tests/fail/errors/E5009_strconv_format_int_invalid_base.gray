@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5009 - invalid base for strconv.format_int
+ * Expected: "invalid base" error at compile time
+ */
+
+// expect-error: E5009
+
+import @strconv
+
+do main() {
+    mut s string = strconv.format_int(255, 99)
+    println(s)
+}

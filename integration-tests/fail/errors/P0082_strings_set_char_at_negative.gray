@@ -1,0 +1,9 @@
+/* Panic Test: P0082 - negative string index via strings.set_char_at */
+
+import @strings
+
+do main() {
+    mut s string = "abc"
+    mut r string = strings.set_char_at(s, -1, 'x')  // negative index
+    println(r)
+}

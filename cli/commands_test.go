@@ -73,6 +73,60 @@ func TestPrintManUsage(t *testing.T) {
 	}
 }
 
+func TestLangKeywordsAllResolvable(t *testing.T) {
+	// Every name listed in the keywords category must resolve to a man
+	// page, either as a language reference entry or a builtin.
+	for _, g := range langCategories["keywords"] {
+		for _, name := range g.Names {
+			_, lang := langManDocs[name]
+			_, builtin := builtinManDocs[name]
+			if !lang && !builtin {
+				t.Errorf("keyword %q is listed in 'gray man keywords' but has no man page", name)
+			}
+		}
+	}
+	for _, name := range []string{"bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "use"} {
+		if _, ok := langManDocs[name]; !ok {
+			t.Errorf("langManDocs missing entry for %q", name)
+		}
+	}
+}
+
+func TestLangTypesAllResolvable(t *testing.T) {
+	// Every name in the types category must resolve to a man page.
+	for _, g := range langCategories["types"] {
+		for _, name := range g.Names {
+			_, lang := langManDocs[name]
+			_, langType := langManDocs[name+"_type"]
+			_, builtin := builtinManDocs[name]
+			if !lang && !langType && !builtin {
+				t.Errorf("type %q is listed in 'gray man types' but has no man page", name)
+			}
+		}
+	}
+	// 'map' must resolve as the container type, not arrays.map().
+	if _, ok := langManDocs["map"]; !ok {
+		t.Error("langManDocs missing container-type entry for \"map\"")
+	}
+}
+
+func TestStdlibManExamplesPopulated(t *testing.T) {
+	// The generator must write the @example block through to the TSV;
+	// a regression once dropped it and left every Example empty.
+	if got := stdlibManDocs["arrays.append"].Example; got == "" {
+		t.Error("stdlibManDocs[\"arrays.append\"] has no Example")
+	}
+	withExample := 0
+	for _, e := range stdlibManDocs {
+		if e.Kind == "func" && e.Example != "" {
+			withExample++
+		}
+	}
+	if withExample == 0 {
+		t.Error("no stdlib function man entry has an Example")
+	}
+}
+
 func TestPrintBuiltinsIndex(t *testing.T) {
 	out := captureStdout(t, printBuiltinsIndex)
 	for _, expected := range []string{"println", "exit", "len", "int"} {

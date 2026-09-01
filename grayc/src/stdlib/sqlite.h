@@ -78,7 +78,7 @@
  *   mut rows, err = sqlite.query(db, "SELECT * FROM users")
  *   if err != nil { println("query failed: ${err}") }
  *   for_each row in rows {
- *       println(row)
+ *       println(row["name"])
  *   }
  *@end
  */
@@ -94,7 +94,7 @@
  *   mut rows, err = sqlite.query_params(db, "SELECT * FROM users WHERE name = ?", {"Alice"})
  *   if err != nil { println("query failed: ${err}") }
  *   for_each row in rows {
- *       println(row)
+ *       println(row["name"])
  *   }
  *@end
  */

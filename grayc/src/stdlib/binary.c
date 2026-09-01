@@ -29,6 +29,19 @@ static GrayArray make_bytes_reversed(GrayArena *arena, const void *data, int32_t
     return arr;
 }
 
+/* Every decode_* reads a fixed number of bytes from `bytes->data` starting
+ * at offset 0; nothing about that memcpy stops it from reading past
+ * `bytes->len`. Panic P0113 instead of silently exposing whatever
+ * uninitialized or stale arena memory follows a too-short array. */
+static void gray_binary_check_len(GrayArray *bytes, int32_t need, const char *fn,
+                                  const char *file, int line) {
+    if (bytes->len < need) {
+        gray_panic_code_at(file, line, "P0113",
+            "binary.%s: byte array too short to decode; need %d bytes but have %d",
+            fn, (int)need, (int)bytes->len);
+    }
+}
+
 /* --- Codec macros for encode/decode generation --- */
 
 #define BINARY_ENCODE_LE(NAME, TYPE, SIZE)                                          \
@@ -42,12 +55,14 @@ static GrayArray make_bytes_reversed(GrayArena *arena, const void *data, int32_t
     }
 
 #define BINARY_DECODE_LE(NAME, TYPE, SIZE)                                          \
-    TYPE gray_binary_decode_##NAME##_le(GrayArray *bytes) {                          \
+    TYPE gray_binary_decode_##NAME##_le(GrayArray *bytes, const char *file, int line) { \
+        gray_binary_check_len(bytes, SIZE, "decode_" #NAME "_le", file, line);       \
         TYPE v; memcpy(&v, bytes->data, SIZE); return v;                             \
     }
 
 #define BINARY_DECODE_BE(NAME, TYPE, SIZE)                                          \
-    TYPE gray_binary_decode_##NAME##_be(GrayArray *bytes) {                          \
+    TYPE gray_binary_decode_##NAME##_be(GrayArray *bytes, const char *file, int line) { \
+        gray_binary_check_len(bytes, SIZE, "decode_" #NAME "_be", file, line);       \
         uint8_t *d = (uint8_t *)bytes->data;                                         \
         uint8_t rev[SIZE];                                                           \
         for (int32_t _i = 0; _i < SIZE; _i++) rev[_i] = d[SIZE - 1 - _i];          \
@@ -63,8 +78,14 @@ static GrayArray make_bytes_reversed(GrayArena *arena, const void *data, int32_t
 /* --- 8-bit (no endianness) --- */
 GrayArray gray_binary_encode_i8(GrayArena *arena, int8_t val) { return make_bytes(arena, &val, 1); }
 GrayArray gray_binary_encode_u8(GrayArena *arena, uint8_t val) { return make_bytes(arena, &val, 1); }
-int8_t gray_binary_decode_i8(GrayArray *bytes) { return *(int8_t *)bytes->data; }
-uint8_t gray_binary_decode_u8(GrayArray *bytes) { return *(uint8_t *)bytes->data; }
+int8_t gray_binary_decode_i8(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 1, "decode_i8", file, line);
+    return *(int8_t *)bytes->data;
+}
+uint8_t gray_binary_decode_u8(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 1, "decode_u8", file, line);
+    return *(uint8_t *)bytes->data;
+}
 
 /* --- 16 through 64-bit integers + floats --- */
 BINARY_CODEC(i16, int16_t, 2)
@@ -80,7 +101,8 @@ BINARY_CODEC(f64, double, 8)
 BINARY_ENCODE_LE(i128, gray_i128, 16)
 BINARY_ENCODE_BE(i128, gray_i128, 16)
 BINARY_DECODE_LE(i128, gray_i128, 16)
-gray_i128 gray_binary_decode_i128_be(GrayArray *bytes) {
+gray_i128 gray_binary_decode_i128_be(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 16, "decode_i128_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_i128 v;
     uint64_t high = 0, low = 0;
@@ -94,7 +116,8 @@ gray_i128 gray_binary_decode_i128_be(GrayArray *bytes) {
 BINARY_ENCODE_LE(u128, gray_u128, 16)
 BINARY_ENCODE_BE(u128, gray_u128, 16)
 BINARY_DECODE_LE(u128, gray_u128, 16)
-gray_u128 gray_binary_decode_u128_be(GrayArray *bytes) {
+gray_u128 gray_binary_decode_u128_be(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 16, "decode_u128_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_u128 v;
     uint64_t high = 0, low = 0;
@@ -109,7 +132,8 @@ gray_u128 gray_binary_decode_u128_be(GrayArray *bytes) {
 BINARY_ENCODE_LE(i256, gray_i256, 32)
 BINARY_ENCODE_BE(i256, gray_i256, 32)
 BINARY_DECODE_LE(i256, gray_i256, 32)
-gray_i256 gray_binary_decode_i256_be(GrayArray *bytes) {
+gray_i256 gray_binary_decode_i256_be(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 32, "decode_i256_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_i256 v;
     for (int w = 3; w >= 0; w--) {
@@ -123,7 +147,8 @@ gray_i256 gray_binary_decode_i256_be(GrayArray *bytes) {
 BINARY_ENCODE_LE(u256, gray_u256, 32)
 BINARY_ENCODE_BE(u256, gray_u256, 32)
 BINARY_DECODE_LE(u256, gray_u256, 32)
-gray_u256 gray_binary_decode_u256_be(GrayArray *bytes) {
+gray_u256 gray_binary_decode_u256_be(GrayArray *bytes, const char *file, int line) {
+    gray_binary_check_len(bytes, 32, "decode_u256_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_u256 v;
     for (int w = 3; w >= 0; w--) {

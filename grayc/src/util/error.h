@@ -71,26 +71,17 @@ DiagnosticList *diagnostic_create(void);
 void diagnostic_destroy(DiagnosticList *diagnostics);
 
 /* Add diagnostics */
-void diagnostic_error(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col);
-
 void diagnostic_error_help(DiagnosticList *diagnostics, const char *code, const char *message,
     const char *file, int line, int col, int end_col, const char *help);
-
-void diagnostic_warning(DiagnosticList *diagnostics, const char *code, const char *message,
-    const char *file, int line, int col, int end_col);
 
 /* Code-aware emission. Every new emission site should pick one of:
  *
  *   diagnostic_error_code   / diagnostic_warning_code   — registry message, no args.
  *   diagnostic_error_code_formatted  / diagnostic_warning_code_formatted  — registry template + args.
- *   diagnostic_error_message    / diagnostic_warning_message    — intentional custom message
- *                                             (same shape as the old
- *                                             diagnostic_error; used when the
- *                                             code is categorical and
- *                                             the site adds context,
- *                                             e.g. most parser syntax
- *                                             errors). */
+ *   diagnostic_error_message    / diagnostic_warning_message    — intentional custom message,
+ *                                             used when the code is categorical
+ *                                             and the site adds context,
+ *                                             e.g. most parser syntax errors. */
 void diagnostic_error_code(DiagnosticList *diagnostics, const char *code,
     const char *file, int line, int col, int end_col);
 

@@ -1,0 +1,14 @@
+/*
+ * Panic Test: P0113 - binary.decode_i128_le on a byte array shorter than
+ * 16 bytes must panic. Also exercises decode_i128_* correctly codegen-ing
+ * as i128-returning rather than crashing the C compile.
+ */
+
+import @binary
+import @encoding
+
+do main() {
+    mut short [byte] = encoding.from_string("Xy")
+    mut v i128 = binary.decode_i128_le(short)
+    println("${v}")
+}

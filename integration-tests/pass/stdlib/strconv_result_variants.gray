@@ -134,6 +134,28 @@ do main() {
         failed += 1
     }
 
+    // Test 11: to_int invalid runtime base returns an error, not a panic
+    mut bad_base int = 99
+    mut val11, err11 = strconv.to_int("42", bad_base)
+    if err11 != nil {
+        println("  [PASS] to_int(\"42\", 99) returned error (invalid base)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_int(\"42\", 99) no error, val=${val11}")
+        failed += 1
+    }
+
+    // Test 12: to_uint invalid runtime base returns an error, not a panic
+    mut zero_base int = 0
+    mut val12, err12 = strconv.to_uint("42", zero_base)
+    if err12 != nil {
+        println("  [PASS] to_uint(\"42\", 0) returned error (invalid base)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_uint(\"42\", 0) no error, val=${val12}")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

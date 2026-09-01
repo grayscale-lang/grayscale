@@ -1,0 +1,50 @@
+/*
+ * char_literal_unicode.gray - non-ASCII character literals.
+ *
+ * A char is a full Unicode codepoint (int32_t at the C boundary), but the
+ * literal path was single-byte at every stage: the lexer advanced one byte
+ * and hit E1018 on the second byte of a UTF-8 sequence, the AST stored one
+ * C char, and codegen emitted a one-byte C char constant. 'é' and '日' now
+ * lex, and \xNN / \u{...} escapes decode to codepoints.
+ */
+
+do want(label string, cond bool) -> int {
+    if cond { return 1 }
+    println("  [FAIL] ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 10
+
+    mut e char = 'é'
+    passed += want("latin-1 codepoint", int(e) == 233)
+
+    mut ja char = '日'
+    passed += want("CJK codepoint", int(ja) == 26085)
+
+    mut emoji char = '\u{1F600}'
+    passed += want("astral \\u{} escape", int(emoji) == 128512)
+
+    mut low char = '\u{E9}'
+    passed += want("\\u{} equals literal", low == e)
+
+    mut hx char = '\x41'
+    passed += want("\\xNN is a codepoint", hx == 'A')
+
+    passed += want("ASCII still works", int('A') == 65)
+    passed += want("newline escape", int('\n') == 10)
+    passed += want("quote escapes", int('\'') == 39 && int('"') == 34)
+    passed += want("nul escape", int('\0') == 0)
+
+    // char values compare and order by codepoint
+    passed += want("codepoint ordering", 'A' < ja && e < ja)
+
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -1,0 +1,73 @@
+/*
+ * map_wide_int_values.gray - wide integers (i128/u128/i256/u256) as map
+ * VALUES.
+ *
+ * Wide ints are TK_INT/TK_UINT in the type system but 16/32-byte structs in
+ * C. Codegen sized every map value slot as sizeof(int64_t) and cast reads as
+ * *(int64_t *), so an annotated map[K:i128] leaked a C compiler error on read
+ * and silently truncated 128-bit values to 64 bits on store. Wired every map
+ * slot site (literal, read, assign, compound assign, get_or_default,
+ * contains_value, in/has_key) through the wide-int C type.
+ */
+
+import @maps
+
+do want(label string, cond bool) -> int {
+    if cond { return 1 }
+    println("  [FAIL] ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 14
+
+    // literal + read
+    mut m map[string:i128] = {"a": 1, "b": 2}
+    passed += want("literal + read", m["b"] == 2)
+
+    // 128-bit value is not truncated to 64 bits
+    mut big map[string:i128] = {"x": 170141183460469231731687303715884105727}
+    passed += want("no truncation", string(big["x"]) == "170141183460469231731687303715884105727")
+
+    // plain assignment
+    m["c"] = 30
+    passed += want("plain assign", m["c"] == 30)
+
+    // compound assignment routes through the wide-int helpers
+    m["c"] += 5
+    passed += want("compound +=", m["c"] == 35)
+    m["c"] -= 10
+    passed += want("compound -=", m["c"] == 25)
+    m["c"] *= 2
+    passed += want("compound *=", m["c"] == 50)
+
+    // negative values
+    mut neg map[string:i128] = {"n": 0}
+    neg["n"] -= 5
+    passed += want("negative value", string(neg["n"]) == "-5")
+
+    // u256 value
+    mut u map[string:u256] = {"big": 999999999999999999999999999999}
+    passed += want("u256 value", string(u["big"]) == "999999999999999999999999999999")
+
+    // maps module: has_key / get_or_default / contains_value / get_values
+    passed += want("has_key", maps.has_key(m, "a"))
+    passed += want("get_or_default hit", maps.get_or_default(m, "a", 0) == 1)
+    passed += want("get_or_default miss", maps.get_or_default(m, "z", 42) == 42)
+    passed += want("contains_value", maps.contains_value(m, 2))
+
+    mut vals [i128] = maps.get_values(m)
+    passed += want("get_values", len(vals) == 3)
+
+    // inferred: mut m = { ... } with wide-int constructor values
+    mut inf = {1: i128(5), 2: i128(9)}
+    passed += want("inferred wide-int value map", inf[2] == 9)
+
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

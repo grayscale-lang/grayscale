@@ -1,0 +1,11 @@
+// expect-error: E2092
+// expect-error-count: 1
+// A #[...] attribute list may not span more than one physical line.
+
+#[test,
+  discard]
+do something() -> int {
+    return 1
+}
+
+do main() {}

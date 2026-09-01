@@ -1,0 +1,11 @@
+/*
+ * Error Test: E1006 - a \u{} escape in a character literal names a codepoint
+ * above U+10FFFF.
+ * Expected: "outside the valid range U+0000 to U+10FFFF"
+ */
+
+// expect-error: E1006
+
+do main() {
+    mut c char = '\u{110000}'
+}

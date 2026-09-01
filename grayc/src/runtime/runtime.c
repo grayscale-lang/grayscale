@@ -276,6 +276,11 @@ void gray_runtime_shutdown(void) {
 
 static _Noreturn void gray_panic_impl(const char *code, const char *file,
     int line, const char *fmt, va_list args) {
+    /* Under `gray test`, a panic inside a test is a test failure, not a
+     * process-ending event — hand it to the runner (never returns). */
+    if (gray_test_active) {
+        gray_test_vfail(code, file, line, fmt, args);
+    }
     fflush(stdout);
     int use_color = panic_use_color();
 

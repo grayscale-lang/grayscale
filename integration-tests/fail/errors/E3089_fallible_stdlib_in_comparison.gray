@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot appear as an operand of a
+ * binary expression; the caller must destructure first.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do main() {
+    mut ok bool = strconv.to_int("1") == 1
+    println(ok)
+}

@@ -1,0 +1,10 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #doc on a top-level function.
+
+#doc("first")
+#doc("second")
+do described() {
+}
+
+do main() {}

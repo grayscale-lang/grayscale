@@ -72,7 +72,7 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m);
  *@module json
  *@group Decoding
  *@sig decode(text string) -> (map[string:string], Error)
- *@desc Parses a JSON object string into a map[string:string]. All values are returned as strings. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Parses a JSON object string into a map[string:string]. All values are returned as strings. Always use destructuring (`mut m, err = ...` or `mut m, _ = ...`) — single-variable assignment is a compile error; on invalid input err is non-nil and, with `_`, the map is empty.
  *@example
  *   import @json
  *   mut m, err = json.decode("{\"key\": \"value\"}")
@@ -119,7 +119,7 @@ bool gray_json_is_valid(GrayString text);
 /*@man pretty_print
  *@module json
  *@group Formatting
- *@sig pretty_print(m map, indent int) -> string
+ *@sig pretty_print(m map[K:V], indent int) -> string
  *@desc Returns a pretty-printed JSON string from a map, indented by indent spaces per level.
  *@example
  *   import @json

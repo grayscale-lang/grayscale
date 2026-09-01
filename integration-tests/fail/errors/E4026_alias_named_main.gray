@@ -1,0 +1,7 @@
+// expect-error: E4026
+// expect-error-count: 1
+// A type alias cannot be named 'main'.
+
+alias main = int
+
+do main() {}

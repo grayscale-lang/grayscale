@@ -1,0 +1,82 @@
+/*
+ * string_struct_field_of_array_element_assign_in_loop.gray - `arr[i].field =
+ * <string>` inside a loop must not dangle after the iteration ends.
+ *
+ * The plain '=' string escape into _gray_outer_arena only fired for a plain
+ * variable target (NODE_LABEL). A struct-field target (arr[i].name, p.name)
+ * fell through to a raw assignment, so a RHS allocated in the per-iteration
+ * arena (a concat, an interpolation, a call return) was stored into the array
+ * backing store and freed when the loop advanced.
+ *
+ * Fix: the escape now also covers NODE_MEMBER_EXPR string targets, taking the
+ * field's address once and deep-copying the value into the outer arena.
+ */
+
+import @arrays
+
+const Node struct {
+    name string
+}
+
+do decorate(s string) -> string {
+    return s + "-fn"
+}
+
+do main() {
+    println("=== String Struct Field Of Array Element = In Loop ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Self-referential concat, single loop. */
+    mut nodes [Node] = {}
+    arrays.append(nodes, Node{name: "n0"})
+    arrays.append(nodes, Node{name: "n1"})
+    for i in range(0, len(nodes)) {
+        nodes[i].name = nodes[i].name + "-done"
+    }
+    if nodes[0].name == "n0-done" && nodes[1].name == "n1-done" {
+        println("  [PASS] self-referential concat, single loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${nodes[0].name} / ${nodes[1].name}")
+        failed += 1
+    }
+
+    /* Function-return RHS, nested loop. */
+    mut grid [Node] = {Node{name: ""}, Node{name: ""}}
+    for r in range(0, 4) {
+        for i in range(0, 2) {
+            grid[i].name = decorate("g${i}")
+        }
+    }
+    if grid[0].name == "g0-fn" && grid[1].name == "g1-fn" {
+        println("  [PASS] function-return RHS, nested loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${grid[0].name} / ${grid[1].name}")
+        failed += 1
+    }
+
+    /* Interpolation RHS, nested loop. */
+    mut tags [Node] = {Node{name: ""}, Node{name: ""}}
+    for r in range(0, 3) {
+        for i in range(0, 2) {
+            tags[i].name = "row-${i}"
+        }
+    }
+    if tags[0].name == "row-0" && tags[1].name == "row-1" {
+        println("  [PASS] interpolation RHS, nested loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${tags[0].name} / ${tags[1].name}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

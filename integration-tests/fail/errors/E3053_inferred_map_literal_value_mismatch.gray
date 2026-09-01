@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3053 - inferred `mut` map literal, later pair disagrees with
+ * the type inferred from the first pair.
+ *
+ * The type is inferred from the first pair only; a later pair whose value
+ * type does not match used to skip the typechecker and leak a C compiler
+ * error. Now it gets the same E3053 the annotated form emits.
+ * Expected: "type mismatch in map literal value; expected 'int', got 'string'"
+ */
+
+// expect-error: E3053
+
+do main() {
+    mut m = {"a": 1, "b": "two"}
+    println(m["a"])
+}

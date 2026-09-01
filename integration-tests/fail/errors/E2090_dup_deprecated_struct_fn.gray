@@ -1,0 +1,15 @@
+// expect-error: E2090
+// expect-error-count: 1
+// Duplicate #deprecated on a struct function.
+
+const Calc struct {
+    _pad int
+
+    #deprecated("a")
+    #deprecated("b")
+    do sub(a int, b int) -> int {
+        return a - b
+    }
+}
+
+do main() {}

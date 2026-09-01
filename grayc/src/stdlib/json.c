@@ -52,22 +52,44 @@ void json_append_escaped(char *buf, int *pos, GrayString s) {
     buf[(*pos)++] = '"';
 }
 
-/* Helper: byte length of a map[string:string] value in JSON output.
- * All string values are always quoted — never infer JSON types from content. */
-static size_t json_map_val_len(GrayString *val) {
-    return json_escaped_len(*val);
-}
+/* Value kind for the shared map encoder. map[string:string] values are always
+ * quoted (STRING) — never infer JSON types from string content. */
+typedef enum {
+    JSON_MAP_VAL_STRING,
+    JSON_MAP_VAL_INT,
+    JSON_MAP_VAL_FLOAT,
+    JSON_MAP_VAL_BOOL,
+} JsonMapValKind;
 
-GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
-    /* Pass 1: size the buffer (one comma of slack for the last entry) */
+/* Two-pass encoder shared by every gray_json_encode_map* entry point. The only
+ * per-type variation is the value's byte budget (pass 1) and how it is written
+ * (pass 2); everything else — order walk, tombstone skip, key escaping, comma
+ * and brace framing — is identical.
+ *
+ * The per-type budgets below are worst-case exact, with one comma of slack for
+ * the final entry, so pass 1 and pass 2 must stay in step for each kind:
+ *   STRING  json_escaped_len(*val)   quoted + escaped
+ *   INT     21   "-9223372036854775808" + NUL
+ *   FLOAT   24   %g
+ *   BOOL    4 or 5   "true" / "false"
+ * The INT/FLOAT snprintf never truncates given those budgets; the else branch
+ * is defensive, and clamps pos so the closing brace and NUL stay in bounds. */
+static GrayString json_encode_map_typed(GrayArena *arena, GrayMap *m, JsonMapValKind kind) {
+    /* Pass 1: size */
     size_t need = 2; /* { } */
     for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
         int32_t i = m->order[order_index];
         if (i < 0) continue;
         need += 1; /* comma */
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        GrayString *val = (GrayString *)((char *)m->values + (size_t)i * (size_t)m->value_size);
-        need += json_escaped_len(*key) + 1 /* colon */ + json_map_val_len(val);
+        void *val = (char *)m->values + (size_t)i * (size_t)m->value_size;
+        need += json_escaped_len(*key) + 1 /* colon */;
+        switch (kind) {
+            case JSON_MAP_VAL_STRING: need += json_escaped_len(*(GrayString *)val); break;
+            case JSON_MAP_VAL_INT:    need += 21; break;
+            case JSON_MAP_VAL_FLOAT:  need += 24; break;
+            case JSON_MAP_VAL_BOOL:   need += *(bool *)val ? 4 : 5; break;
+        }
     }
     /* Pass 2: write */
     char *buf = gray_arena_alloc_uninitialized(arena, need + 1);
@@ -80,15 +102,40 @@ GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
         if (!json_first) { buf[pos++] = ','; }
         json_first = false;
         GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        GrayString *val = (GrayString *)((char *)m->values + (size_t)i * (size_t)m->value_size);
+        void *val = (char *)m->values + (size_t)i * (size_t)m->value_size;
         json_append_escaped(buf, &pos, *key);
         buf[pos++] = ':';
-        json_append_escaped(buf, &pos, *val);
+        bool truncated = false;
+        switch (kind) {
+            case JSON_MAP_VAL_STRING:
+                json_append_escaped(buf, &pos, *(GrayString *)val);
+                break;
+            case JSON_MAP_VAL_INT: {
+                int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, *(int64_t *)val);
+                if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
+                else truncated = true;
+                break;
+            }
+            case JSON_MAP_VAL_FLOAT: {
+                int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", *(double *)val);
+                if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
+                else truncated = true;
+                break;
+            }
+            case JSON_MAP_VAL_BOOL:
+                if (*(bool *)val) { memcpy(buf + pos, "true", 4); pos += 4; }
+                else { memcpy(buf + pos, "false", 5); pos += 5; }
+                break;
+        }
+        if (truncated) { pos = (int)need - 1; break; }
     }
     buf[pos++] = '}';
     buf[pos] = '\0';
-    GrayString r = { buf, (int32_t)pos };
-    return r;
+    return (GrayString){ buf, (int32_t)pos };
+}
+
+GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m) {
+    return json_encode_map_typed(arena, m, JSON_MAP_VAL_STRING);
 }
 
 /* --- Array Encoders --- */
@@ -104,7 +151,8 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr) {
         int64_t val = *(int64_t *)((char *)arr->data + (size_t)i * (size_t)arr->elem_size);
         int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, val);
         if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
-        else { pos = (int)need; break; }
+        /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
+        else { pos = (int)need - 1; break; }
     }
     buf[pos++] = ']';
     buf[pos] = '\0';
@@ -122,7 +170,8 @@ GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr) {
         double val = *(double *)((char *)arr->data + (size_t)i * (size_t)arr->elem_size);
         int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", val);
         if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
-        else { pos = (int)need; break; }
+        /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
+        else { pos = (int)need - 1; break; }
     }
     buf[pos++] = ']';
     buf[pos] = '\0';
@@ -177,102 +226,15 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr) {
 /* --- Typed Map Encoders --- */
 
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m) {
-    /* Pass 1: size — key (escaped) + colon + int (max 21), one comma slack */
-    size_t need = 2;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        need += 1;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        need += json_escaped_len(*key) + 1 + 21;
-    }
-    /* Pass 2: write */
-    char *buf = gray_arena_alloc_uninitialized(arena, need + 1);
-    int pos = 0;
-    buf[pos++] = '{';
-    bool json_first = true;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        if (!json_first) { buf[pos++] = ','; }
-        json_first = false;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        int64_t *val = (int64_t *)((char *)m->values + (size_t)i * (size_t)m->value_size);
-        json_append_escaped(buf, &pos, *key);
-        buf[pos++] = ':';
-        int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, *val);
-        if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
-        else { pos = (int)need; break; }
-    }
-    buf[pos++] = '}';
-    buf[pos] = '\0';
-    return (GrayString){ buf, (int32_t)pos };
+    return json_encode_map_typed(arena, m, JSON_MAP_VAL_INT);
 }
 
 GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m) {
-    /* Pass 1: size — key (escaped) + colon + float (max 24), one comma slack */
-    size_t need = 2;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        need += 1;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        need += json_escaped_len(*key) + 1 + 24;
-    }
-    /* Pass 2: write */
-    char *buf = gray_arena_alloc_uninitialized(arena, need + 1);
-    int pos = 0;
-    buf[pos++] = '{';
-    bool json_first = true;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        if (!json_first) { buf[pos++] = ','; }
-        json_first = false;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        double *val = (double *)((char *)m->values + (size_t)i * (size_t)m->value_size);
-        json_append_escaped(buf, &pos, *key);
-        buf[pos++] = ':';
-        int w = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", *val);
-        if (w > 0 && (size_t)w < need + 1 - (size_t)pos) pos += w;
-        else { pos = (int)need; break; }
-    }
-    buf[pos++] = '}';
-    buf[pos] = '\0';
-    return (GrayString){ buf, (int32_t)pos };
+    return json_encode_map_typed(arena, m, JSON_MAP_VAL_FLOAT);
 }
 
 GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m) {
-    /* Pass 1: size the buffer (one comma of slack for the last entry) */
-    size_t need = 2;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        need += 1;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        bool *val = (bool *)((char *)m->values + (size_t)i * (size_t)m->value_size);
-        need += json_escaped_len(*key) + 1 + (*val ? 4 : 5);
-    }
-    /* Pass 2: write */
-    char *buf = gray_arena_alloc_uninitialized(arena, need + 1);
-    int pos = 0;
-    buf[pos++] = '{';
-    bool json_first = true;
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0) continue;
-        if (!json_first) { buf[pos++] = ','; }
-        json_first = false;
-        GrayString *key = (GrayString *)((char *)m->keys + (size_t)i * (size_t)m->key_size);
-        bool *val = (bool *)((char *)m->values + (size_t)i * (size_t)m->value_size);
-        json_append_escaped(buf, &pos, *key);
-        buf[pos++] = ':';
-        if (*val) { memcpy(buf + pos, "true", 4); pos += 4; }
-        else { memcpy(buf + pos, "false", 5); pos += 5; }
-    }
-    buf[pos++] = '}';
-    buf[pos] = '\0';
-    return (GrayString){ buf, (int32_t)pos };
+    return json_encode_map_typed(arena, m, JSON_MAP_VAL_BOOL);
 }
 
 /* --- Decoder --- */

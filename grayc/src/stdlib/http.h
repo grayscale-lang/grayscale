@@ -23,7 +23,8 @@
  *@desc The response object returned by all http request functions. Also available when the server module is imported.
  *@example
  *   import @http
- *   mut resp, err = http.get("http://example.com")
+ *   mut headers map[string:string] = {:}
+ *   mut resp, err = http.get("http://example.com", headers)
  *   println(resp.status)
  *   println(resp.body)
  *@end
@@ -39,7 +40,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig get(url string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP GET request to url with optional custom headers. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP GET request to url with optional custom headers. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Authorization": "Bearer token"}
@@ -53,7 +54,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig post(url string, body string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP POST request to url with the given body and optional custom headers. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP POST request to url with the given body and optional custom headers. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Content-Type": "application/json"}
@@ -66,7 +67,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig put(url string, body string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP PUT request to url with the given body and optional custom headers. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP PUT request to url with the given body and optional custom headers. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Content-Type": "application/json"}
@@ -79,7 +80,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig patch(url string, body string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP PATCH request to url with the given body and optional custom headers. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP PATCH request to url with the given body and optional custom headers. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Content-Type": "application/json"}
@@ -92,7 +93,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig delete(url string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP DELETE request to url with optional custom headers. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP DELETE request to url with optional custom headers. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Authorization": "Bearer token"}
@@ -105,7 +106,7 @@ typedef struct {
  *@module http
  *@group Requests
  *@sig head(url string, headers map[string:string]) -> (HttpResponse, Error)
- *@desc Sends an HTTP HEAD request to url with optional custom headers. Returns only headers with no body. Panics on single-var assignment; use destructuring to receive the Error instead.
+ *@desc Sends an HTTP HEAD request to url with optional custom headers. Returns only headers with no body. Always use destructuring (`mut resp, err = ...` or `mut resp, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @http
  *   mut headers map[string:string] = {"Authorization": "Bearer token"}

@@ -338,6 +338,14 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
     if (!tgt_t) return false;
 
+    /* String append: s += t → s = gray_string_concat(arena, s, t). */
+    if (aop == TOK_PLUS_ASSIGN && tgt_t->kind == TK_STRING) {
+        emit_formatted(codegen, "%s = gray_string_concat(gray_default_arena, %s, ", ref_str, ref_str);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+        return true;
+    }
+
     const char *type_name_str = tgt_t->name;
 
     /* Sized integers (i8/i16/i32/u8/u16/u32): gray_(u)sized_*_check */
@@ -710,6 +718,8 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     return type_name;
 }
 
+static const char *bigint_prefix(const char *type_str);
+
 /* Resolve a Grayscale type to its C type for map key/value storage.
  * Uses gray_type_to_c_codegen for struct/array/map types, hardcoded for primitives.
  * Routes the input through codegen_effective_type_string so '?' inside a generic
@@ -725,6 +735,10 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_tn
     if (codegen && codegen_is_enum(codegen, gray_tn) &&
         codegen_enum_is_tagged(codegen, gray_tn))
         return gray_type_to_c_codegen(codegen, gray_tn);
+    /* Wide integers are TK_INT/TK_UINT in the type system but 16/32-byte
+     * structs in C; a map slot must use the struct type so its size and the
+     * casts on read match, just like a [i128] array element does. */
+    if (is_bigint_type(gray_tn)) return bigint_prefix(gray_tn);
     GrayType *type = type_from_name(gray_tn);
     if (!type) return "int64_t";
     switch (type->kind) {
@@ -1145,12 +1159,15 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     if (node->kind == NODE_PREFIX_EXPR && node->data.prefix.op == TOK_MINUS)
         return resolve_bigint_type(codegen, node->data.prefix.right);
     /* If this is an infix expression, check left operand.
-     * Comparison operators return bool, not bigint, so skip those. */
+     * Operators that yield bool never yield a bigint, whatever their operands
+     * are — mirrors the bool-result set in resolve_infix_expression. */
     if (node->kind == NODE_INFIX_EXPR) {
         TokenType op = node->data.infix.op;
         if (op == TOK_EQ || op == TOK_NOT_EQ ||
             op == TOK_LT || op == TOK_GT ||
-            op == TOK_LT_EQ || op == TOK_GT_EQ)
+            op == TOK_LT_EQ || op == TOK_GT_EQ ||
+            op == TOK_AND || op == TOK_OR ||
+            op == TOK_IN || op == TOK_NOT_IN)
             return NULL;
         const char *left_type = resolve_bigint_type(codegen, node->data.infix.left);
         if (left_type) return left_type;
@@ -1252,6 +1269,14 @@ static bool emit_bigint_coerced(CodeGen *codegen, const char *bi, AstNode *value
     if (resolve_bigint_type(codegen, value)) return false;
     emit_scalar_to_bigint(codegen, bi, value, NULL);
     return true;
+}
+
+/* Emit `value` for a map key or value slot whose Grayscale type is `gray_tn`:
+ * a wide-integer slot needs the scalar wrapped in its constructor, everything
+ * else emits verbatim. Safe to call with any `gray_tn`. */
+static void emit_map_slot_value(CodeGen *codegen, const char *gray_tn, AstNode *value) {
+    if (!emit_bigint_coerced(codegen, gray_tn, value))
+        emit_expression(codegen, value);
 }
 
 /* Emit a bigint operand, widening smaller integer or bigint operands so
@@ -1872,19 +1897,30 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
      * assignment, an enclosing declared type. The typechecker records the
      * element types of the context on the node itself, so use those rather
      * than defaulting to string keys and 8-byte values. */
-    if (!decl_mt && count == 0 && codegen->type_table) {
+    if (!decl_mt && codegen->type_table) {
         GrayType *node_mt = typetable_get(codegen->type_table, node);
         if (node_mt && node_mt->kind == TK_MAP && node_mt->key_type && node_mt->value_type)
             decl_mt = node_mt;
     }
-    if (decl_mt && decl_mt->key_type)
+    /* Grayscale type names for the key/value slots, tracked so a wide-integer
+     * literal element can be wrapped in its constructor below. */
+    const char *gray_key_tn = NULL;
+    const char *gray_val_tn = NULL;
+    if (decl_mt && decl_mt->key_type) {
         c_key_type = gray_map_element_c_type(codegen, decl_mt->key_type);
-    if (decl_mt && decl_mt->value_type)
+        gray_key_tn = decl_mt->key_type;
+    }
+    if (decl_mt && decl_mt->value_type) {
         c_val_type = gray_map_element_c_type(codegen, decl_mt->value_type);
+        gray_val_tn = decl_mt->value_type;
+    }
     if (count > 0) {
         GrayType *kt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.keys[0]) : NULL;
         GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.values[0]) : NULL;
-        if (!decl_mt && kt) c_key_type = gray_map_element_c_type(codegen, type_name(kt));
+        if (!decl_mt && kt) {
+            c_key_type = gray_map_element_c_type(codegen, type_name(kt));
+            gray_key_tn = type_name(kt);
+        }
         if (!decl_mt && vt && vt->kind == TK_POINTER) {
             static char map_ptr_buf[MSG_BUF_SIZE];
             const char *pointee = vt->element_type ? vt->element_type : "void";
@@ -1892,6 +1928,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
             c_val_type = map_ptr_buf;
         } else if (!decl_mt && vt) {
             c_val_type = gray_map_element_c_type(codegen, type_name(vt));
+            gray_val_tn = type_name(vt);
         }
     }
 
@@ -1914,7 +1951,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
 
     for (int i = 0; i < count; i++) {
         emit_formatted(codegen, "{ %s _mk = ", c_key_type);
-        emit_expression(codegen, node->data.map_value.keys[i]);
+        emit_map_slot_value(codegen, gray_key_tn, node->data.map_value.keys[i]);
         emit_formatted(codegen, "; %s _mv = ", c_val_type);
         if (inner_var_type) {
             const char *saved = codegen->current_var_type;
@@ -1922,7 +1959,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.map_value.values[i]);
             codegen->current_var_type = saved;
         } else {
-            emit_expression(codegen, node->data.map_value.values[i]);
+            emit_map_slot_value(codegen, gray_val_tn, node->data.map_value.values[i]);
         }
         emit_formatted(codegen, "; gray_map_set(gray_default_arena, &_ml%d, &_mk, &_mv, \"%s\", %d); } ", my_counter, codegen->file, node->token.line);
     }
@@ -2177,11 +2214,6 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
     if (right_type && right_type->kind == TK_ENUM && right_type->name &&
         codegen_enum_is_string(codegen, right_type->name)) right_is_str = true;
 
-    if ((left_is_str || right_is_str) && op == TOK_PLUS) {
-        /* String concatenation is rejected by the typechecker (E3048).
-         * This path is unreachable but kept as a safety net. */
-        return;
-    }
     if ((left_is_str || right_is_str) && op == TOK_EQ) {
         emit(codegen, "gray_string_eq(");
         emit_expression(codegen, node->data.infix.left);
@@ -2192,6 +2224,16 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
     }
     if ((left_is_str || right_is_str) && op == TOK_NOT_EQ) {
         emit(codegen, "!gray_string_eq(");
+        emit_expression(codegen, node->data.infix.left);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.infix.right);
+        emit(codegen, ")");
+        return;
+    }
+    /* string + string: concatenate into a new GrayString. Chained
+     * a + b + c nests naturally since '+' is left-associative. */
+    if (left_is_str && right_is_str && op == TOK_PLUS) {
+        emit(codegen, "gray_string_concat(gray_default_arena, ");
         emit_expression(codegen, node->data.infix.left);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.infix.right);
@@ -2269,12 +2311,13 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
          * Bind the map to a temp so &_im works even when the map
          * expression is an rvalue (e.g. pointer field access). */
         if (arr_t && arr_t->kind == TK_MAP) {
+            codegen->needs_maps_h = true;
             int mid = codegen_next_id(codegen);
             if (negated) emit(codegen, "!");
             emit_formatted(codegen, "({ __auto_type _im%d = ", mid);
             emit_expression(codegen, node->data.infix.right);
             emit_formatted(codegen, "; %s _ik%d = ", gray_map_element_c_type(codegen, arr_t->key_type), mid);
-            emit_expression(codegen, node->data.infix.left);
+            emit_map_slot_value(codegen, arr_t->key_type, node->data.infix.left);
             emit_formatted(codegen, "; gray_maps_has_key(&_im%d, &_ik%d); })", mid, mid);
             return;
         }
@@ -2293,6 +2336,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ".len) != NULL)");
             } else {
                 /* string in string → substring check */
+                codegen->needs_strings_h = true;
                 if (negated) emit(codegen, "!");
                 emit(codegen, "gray_strings_contains(");
                 emit_expression(codegen, node->data.infix.right);
@@ -2304,6 +2348,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
         if (negated) emit(codegen, "!");
         {
+            codegen->needs_arrays_h = true;
             const char *contains_fn = "gray_arrays_contains_int";
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 if (strcmp(arr_t->element_type, "string") == 0)
@@ -3168,12 +3213,12 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             emit_formatted(codegen, "({ GrayMap _mt = ");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; %s _mk = ", c_key);
-            emit_expression(codegen, node->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&_mt, &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
             emit_formatted(codegen, "*(%s *)_mv; })", c_val);
         } else {
             emit_formatted(codegen, "({ %s _mk = ", c_key);
-            emit_expression(codegen, node->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
@@ -3635,17 +3680,12 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         emit(codegen, node->data.bool_value.value ? "true" : "false");
         break;
 
-    case NODE_CHAR_VALUE: {
-        char ch = node->data.char_value.value;
-        if (ch == '\n') emit(codegen, "'\\n'");
-        else if (ch == '\t') emit(codegen, "'\\t'");
-        else if (ch == '\r') emit(codegen, "'\\r'");
-        else if (ch == '\\') emit(codegen, "'\\\\'");
-        else if (ch == '\'') emit(codegen, "'\\''");
-        else if (ch == '\0') emit(codegen, "'\\0'");
-        else emit_formatted(codegen, "'%c'", ch);
+    case NODE_CHAR_VALUE:
+        /* A char is a Unicode codepoint (int32_t at the C boundary), so emit
+         * the numeric value — a C char constant cannot hold codepoints above
+         * 0x7F. */
+        emit_formatted(codegen, "((int32_t)%d)", (int)node->data.char_value.value);
         break;
-    }
 
     case NODE_NIL_VALUE:
         emit(codegen, "NULL");
@@ -3930,44 +3970,94 @@ static void emit_format_string_normalized_extended(CodeGen *codegen, const char 
         ptr++;
         if (!*ptr) break;
         if (*ptr == '%') { append_char_to_buffer(&codegen->output, '%'); ptr++; continue; }
-        /* Emit flags verbatim */
-        while (*ptr == '-' || *ptr == '+' || *ptr == ' ' || *ptr == '0' || *ptr == '#')
-            append_char_to_buffer(&codegen->output, *ptr++);
-        /* Emit width verbatim */
-        while (*ptr >= '0' && *ptr <= '9') append_char_to_buffer(&codegen->output, *ptr++);
-        /* Emit precision verbatim */
+        /* Buffer flags / width / precision so they can be filtered once the
+         * conversion is known — a numeric directive whose arg is a bigint is
+         * downgraded to %s, and the 0/#/+/space flags and precision are
+         * undefined behaviour (or misread as string precision) on an 's'
+         * conversion, so they are dropped rather than left to leak a
+         * -Wformat warning and produce wrong output. Width and '-' survive. */
+        char flags[8]; int flags_len = 0;
+        char width[16]; int width_len = 0;
+        char precision[16]; int precision_len = 0;
+        while (*ptr == '-' || *ptr == '+' || *ptr == ' ' || *ptr == '0' || *ptr == '#') {
+            if (flags_len < (int)sizeof(flags) - 1) flags[flags_len++] = *ptr;
+            ptr++;
+        }
+        while (*ptr >= '0' && *ptr <= '9') {
+            if (width_len < (int)sizeof(width) - 1) width[width_len++] = *ptr;
+            ptr++;
+        }
         if (*ptr == '.') {
-            append_char_to_buffer(&codegen->output, *ptr++);
-            while (*ptr >= '0' && *ptr <= '9') append_char_to_buffer(&codegen->output, *ptr++);
+            if (precision_len < (int)sizeof(precision) - 1) precision[precision_len++] = *ptr;
+            ptr++;
+            while (*ptr >= '0' && *ptr <= '9') {
+                if (precision_len < (int)sizeof(precision) - 1) precision[precision_len++] = *ptr;
+                ptr++;
+            }
         }
-        /* Check for existing length modifier */
-        bool has_length = (*ptr == 'h' || *ptr == 'l' || *ptr == 'L');
-        if (has_length) {
-            append_char_to_buffer(&codegen->output, *ptr++);
-            if ((*(ptr-1) == 'h' && *ptr == 'h') || (*(ptr-1) == 'l' && *ptr == 'l'))
-                append_char_to_buffer(&codegen->output, *ptr++);
+        flags[flags_len] = '\0'; width[width_len] = '\0'; precision[precision_len] = '\0';
+        /* Check for existing length modifier (buffered; a downgrade to %s drops it) */
+        char length_mod[4]; int length_mod_len = 0;
+        if (*ptr == 'h' || *ptr == 'l' || *ptr == 'L') {
+            length_mod[length_mod_len++] = *ptr++;
+            if ((length_mod[0] == 'h' && *ptr == 'h') || (length_mod[0] == 'l' && *ptr == 'l'))
+                length_mod[length_mod_len++] = *ptr++;
         }
+        length_mod[length_mod_len] = '\0';
+        bool has_length = length_mod_len > 0;
         char spec = *ptr ? *ptr++ : 0;
         if (!spec) break;
-        /* Upgrade bare %d/%i/%u to %lld/%llu when arg is Grayscale int/uint */
-        if (!has_length && (spec == 'd' || spec == 'i' || spec == 'u') &&
-            directive_index < call_node->data.call.arg_count) {
-            GrayType *directive_type = codegen->type_table ?
-                typetable_get(codegen->type_table, call_node->data.call.args[directive_index]) : NULL;
-            if (directive_type && (spec == 'd' || spec == 'i') && directive_type->kind == TK_INT) {
+        GrayType *directive_type = (directive_index < call_node->data.call.arg_count && codegen->type_table)
+            ? typetable_get(codegen->type_table, call_node->data.call.args[directive_index]) : NULL;
+        bool arg_is_bigint = directive_type && directive_type->name &&
+            is_bigint_type(directive_type->name);
+        char emit_spec = spec;
+        bool downgraded_to_s = false;
+        if (spec == 'b') {
+            /* %b isn't a real C conversion; emit_format_arguments() already
+             * stringifies bool args to "true"/"false", so %s reads them back
+             * correctly. Passing %b through verbatim hits vsnprintf as a literal
+             * 'b' and never consumes the argument, desyncing every directive
+             * after it. */
+            emit_spec = 's';
+            downgraded_to_s = true;
+        } else if (arg_is_bigint && (spec == 'd' || spec == 'i' || spec == 'u' ||
+                   spec == 'x' || spec == 'X' || spec == 'o')) {
+            /* i128/u128/i256/u256 are struct-backed; emit_format_arguments()
+             * converts them to a decimal/hex/octal string, read back with %s. */
+            emit_spec = 's';
+            downgraded_to_s = true;
+        }
+        /* Emit flags/width/precision, filtered when the directive became %s. */
+        for (int fi = 0; fi < flags_len; fi++) {
+            if (downgraded_to_s && flags[fi] != '-') continue;
+            append_char_to_buffer(&codegen->output, flags[fi]);
+        }
+        for (int wi = 0; wi < width_len; wi++)
+            append_char_to_buffer(&codegen->output, width[wi]);
+        if (!downgraded_to_s) {
+            for (int pi = 0; pi < precision_len; pi++)
+                append_char_to_buffer(&codegen->output, precision[pi]);
+            for (int li = 0; li < length_mod_len; li++)
+                append_char_to_buffer(&codegen->output, length_mod[li]);
+        }
+        if (!downgraded_to_s && !has_length && directive_type) {
+            /* Grayscale int/uint are 64-bit; widen the directive so the vararg
+             * read matches the (unsigned) long long emit_format_arguments casts
+             * the argument to. */
+            if ((spec == 'd' || spec == 'i') && directive_type->kind == TK_INT) {
                 append_char_to_buffer(&codegen->output, 'l');
                 append_char_to_buffer(&codegen->output, 'l');
-            } else if (directive_type && spec == 'u' && directive_type->kind == TK_UINT) {
+            } else if (spec == 'u' && directive_type->kind == TK_UINT) {
+                append_char_to_buffer(&codegen->output, 'l');
+                append_char_to_buffer(&codegen->output, 'l');
+            } else if ((spec == 'x' || spec == 'X' || spec == 'o') &&
+                       (directive_type->kind == TK_INT || directive_type->kind == TK_UINT)) {
                 append_char_to_buffer(&codegen->output, 'l');
                 append_char_to_buffer(&codegen->output, 'l');
             }
         }
-        /* %b isn't a real C conversion; emit_format_arguments() already
-         * stringifies bool args to "true"/"false", so %s reads them back
-         * correctly. Passing %b through verbatim hits vsnprintf as a literal
-         * 'b' and never consumes the argument, desyncing every directive
-         * after it. */
-        append_char_to_buffer(&codegen->output, spec == 'b' ? 's' : spec);
+        append_char_to_buffer(&codegen->output, emit_spec);
         directive_index++;
     }
     if (append_newline) { append_char_to_buffer(&codegen->output, '\\'); append_char_to_buffer(&codegen->output, 'n'); }
@@ -3978,12 +4068,60 @@ static void emit_format_string_normalized(CodeGen *codegen, const char *fmt_str,
     emit_format_string_normalized_extended(codegen, fmt_str, call_node, false);
 }
 
+/* Record the conversion spec char of each directive in fmt_str, 1:1 with the
+ * arguments that follow (matching emit_format_string_normalized's directive
+ * walk). Returns the count recorded, capped at max. */
+static int scan_format_specs(const char *fmt_str, char *specs, int max) {
+    const char *p = fmt_str;
+    int n = 0;
+    while (*p) {
+        if (*p != '%') { p++; continue; }
+        p++;
+        if (!*p) break;
+        if (*p == '%') { p++; continue; }
+        while (*p == '-' || *p == '+' || *p == ' ' || *p == '0' || *p == '#') p++;
+        while (*p >= '0' && *p <= '9') p++;
+        if (*p == '.') { p++; while (*p >= '0' && *p <= '9') p++; }
+        if (*p == 'h') { p++; if (*p == 'h') p++; }
+        else if (*p == 'l') { p++; if (*p == 'l') p++; }
+        else if (*p == 'L') p++;
+        if (!*p) break;
+        if (n < max) specs[n] = *p;
+        n++;
+        p++;
+    }
+    return n;
+}
+
 static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_idx) {
+    char specs[64];
+    int nspecs = 0;
+    AstNode *fmt0 = node->data.call.args[0];
+    if (fmt0->kind == NODE_STRING_VALUE)
+        nspecs = scan_format_specs(fmt0->data.string_value.value, specs, 64);
     for (int i = start_idx; i < node->data.call.arg_count; i++) {
         emit(codegen, ", ");
         AstNode *arg = node->data.call.args[i];
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
-        if (arg_type && arg_type->kind == TK_STRING) {
+        if (arg_type && arg_type->name && is_bigint_type(arg_type->name)) {
+            /* Struct-backed big integers cannot ride in a printf vararg slot;
+             * the directive was rewritten to %s, so pass a converted string. */
+            const char *pfx = bigint_prefix(arg_type->name);
+            char spec = (i - 1 >= 0 && i - 1 < nspecs) ? specs[i - 1] : 'd';
+            if (spec == 'x' || spec == 'X') {
+                emit_formatted(codegen, "%s_to_hex_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit_formatted(codegen, ", %s).data", spec == 'X' ? "true" : "false");
+            } else if (spec == 'o') {
+                emit_formatted(codegen, "%s_to_octal_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit(codegen, ").data");
+            } else {
+                emit_formatted(codegen, "%s_to_string(gray_default_arena, ", pfx);
+                emit_expression(codegen, arg);
+                emit(codegen, ").data");
+            }
+        } else if (arg_type && arg_type->kind == TK_STRING) {
             emit_expression(codegen, arg);
             emit(codegen, ".data");
         } else if (arg_type && arg_type->kind == TK_BOOL) {
@@ -4266,6 +4404,23 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
                 snprintf(field_expr, sizeof(field_expr), "(%s).%s", c_expr, field->name);
                 GrayType *field_graytype = type_from_name(field->type_name);
                 emit_value_print(codegen, field_expr, field_graytype, stream, true);
+            }
+        } else if (struct_name && strcmp(struct_name, "SourceLocation") == 0) {
+            /* Compiler-registered struct with no AST declaration: its fields
+             * are known but find_struct_declaration() returns NULL, so walk
+             * them explicitly instead of emitting an empty SourceLocation{}. */
+            const char *sl_names[3] = { "file", "line", "column" };
+            const char *sl_types[3] = { "string", "int", "int" };
+            for (int i = 0; i < 3; i++) {
+                if (i > 0) {
+                    emit_indent(codegen);
+                    emit_formatted(codegen, "fprintf(%s, \", \");\n", stream);
+                }
+                emit_indent(codegen);
+                emit_formatted(codegen, "fprintf(%s, \"%s: \");\n", stream, sl_names[i]);
+                char field_expr[MSG_BUF_SIZE];
+                snprintf(field_expr, sizeof(field_expr), "(%s).%s", c_expr, sl_names[i]);
+                emit_value_print(codegen, field_expr, type_from_name(sl_types[i]), stream, true);
             }
         }
 
@@ -5253,7 +5408,7 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
             const char *c_key = "GrayString";
             if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
             emit_formatted(codegen, "({ %s _mk = ", c_key);
-            emit_expression(codegen, arg->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, arg->data.index_expr.index);
             emit(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, arg->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
@@ -5308,7 +5463,8 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _hk = ", c_key);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, (map_t && map_t->kind == TK_MAP) ? map_t->key_type : NULL,
+            node->data.call.args[1]);
         emit(codegen, "; gray_maps_has_key(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_hk); })");
@@ -5321,7 +5477,8 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _rk = ", c_key);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, (map_t && map_t->kind == TK_MAP) ? map_t->key_type : NULL,
+            node->data.call.args[1]);
         emit(codegen, "; gray_map_remove(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", &_rk, \"%s\", %d); })", codegen->file, node->token.line);
@@ -5362,29 +5519,49 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         /* Determine value type from map to ensure correct size */
         GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *c_val_type = "int64_t";
+        const char *bi_val = NULL;
         if (map_t && map_t->value_type) {
             GrayType *vt = type_from_name(map_t->value_type);
             if (vt->kind == TK_FLOAT) c_val_type = "double";
             else if (vt->kind == TK_BOOL) c_val_type = "bool";
             else if (vt->kind == TK_STRING) c_val_type = "GrayString";
+            else if (is_bigint_type(map_t->value_type)) {
+                bi_val = map_t->value_type;
+                c_val_type = bigint_prefix(bi_val);
+            }
         }
         emit_formatted(codegen, "({ %s _cv = ", c_val_type);
-        emit_expression(codegen, node->data.call.args[1]);
+        emit_map_slot_value(codegen, bi_val, node->data.call.args[1]);
         emit(codegen, "; gray_maps_contains_value(");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ", &_cv); })");
         return true;
     }
     if (strcmp(func, "get_or_default") == 0 && node->data.call.arg_count == 3) {
-        /* get_or_default(m, key, default); lookup key, return default if missing */
-        emit(codegen, "({ __auto_type _gk = ");
-        emit_expression(codegen, node->data.call.args[1]);
+        /* get_or_default(m, key, default); lookup key, return default if missing.
+         * A wide-integer key or value needs its explicit struct type instead of
+         * __auto_type/__typeof__, which would infer a plain int from a literal. */
+        GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *bi_key = (map_t && map_t->kind == TK_MAP && map_t->key_type &&
+            is_bigint_type(map_t->key_type)) ? map_t->key_type : NULL;
+        const char *bi_val = (map_t && map_t->kind == TK_MAP && map_t->value_type &&
+            is_bigint_type(map_t->value_type)) ? map_t->value_type : NULL;
+        emit(codegen, "({ ");
+        if (bi_key) emit_formatted(codegen, "%s _gk = ", bigint_prefix(bi_key));
+        else emit(codegen, "__auto_type _gk = ");
+        emit_map_slot_value(codegen, bi_key, node->data.call.args[1]);
         emit(codegen, "; void *_gv = gray_map_get(");
         emit_address_of(codegen, node->data.call.args[0]);
-        emit(codegen, ", &_gk); _gv ? *(__typeof__(");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ") *)_gv : ");
-        emit_expression(codegen, node->data.call.args[2]);
+        emit(codegen, ", &_gk); _gv ? *(");
+        if (bi_val) {
+            emit(codegen, bigint_prefix(bi_val));
+        } else {
+            emit(codegen, "__typeof__(");
+            emit_expression(codegen, node->data.call.args[2]);
+            emit(codegen, ")");
+        }
+        emit(codegen, " *)_gv : ");
+        emit_map_slot_value(codegen, bi_val, node->data.call.args[2]);
         emit(codegen, "; })");
         return true;
     }
@@ -5434,7 +5611,7 @@ static bool emit_runtime_call(CodeGen *codegen, AstNode *node, const char *func)
 /* --- @uuid module --- */
 
 static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
-    if (strcmp(func, "generate") == 0 || strcmp(func, "generate_hyphenated") == 0) {
+    if (strcmp(func, "generate") == 0) {
         emit(codegen, "gray_uuid_generate(gray_default_arena)"); return true;
     }
     if (strcmp(func, "generate_compact") == 0) {
@@ -5795,6 +5972,7 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (is_encode) emit(codegen, "gray_default_arena, ");
     if (is_decode) {
         emit_address_of(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, ", \"%s\", %d", codegen->file, node->token.line);
     } else {
         emit_expression(codegen, node->data.call.args[0]);
     }
@@ -6727,6 +6905,9 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "to_title") == 0 || strcmp(func, "to_snake_case") == 0 ||
         strcmp(func, "to_camel_case") == 0 ||
         strcmp(func, "join") == 0 ||
+        strcmp(func, "append_char") == 0 || strcmp(func, "prepend_char") == 0 ||
+        strcmp(func, "insert_char_at") == 0 || strcmp(func, "remove_at") == 0 ||
+        strcmp(func, "set_char_at") == 0 ||
         strcmp(func, "to_chars") == 0 || strcmp(func, "from_chars") == 0);
 
     emit_formatted(codegen, "gray_strings_%s(", func);
@@ -6771,7 +6952,6 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         {"eprintf",    "fprintf(stderr, ",                       false},
         {"eprintfln",  "fprintf(stderr, ",                       true},
         {"sprintf",    "gray_string_format(gray_default_arena, ", false},
-        {"format",     "gray_string_format(gray_default_arena, ", false},
         {"sprintfln",  "gray_string_format(gray_default_arena, ", true},
     };
     for (int i = 0; i < (int)(sizeof(fmt_variants) / sizeof(fmt_variants[0])); i++) {
@@ -6891,10 +7071,6 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *func)
         emit(codegen, "gray_threads_id()");
         return true;
     }
-    if (strcmp(func, "current") == 0) {
-        emit(codegen, "gray_threads_current()");
-        return true;
-    }
     if (strcmp(func, "yield") == 0) {
         emit(codegen, "gray_threads_yield()");
         return true;
@@ -6912,18 +7088,35 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *func)
     return false;
 }
 
+/* --- chars module --- */
+
+static bool emit_chars_call(CodeGen *codegen, AstNode *node, const char *func) {
+    emit_formatted(codegen, "gray_chars_%s(", func);
+    for (int i = 0; i < node->data.call.arg_count; i++) {
+        if (i > 0) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[i]);
+    }
+    emit(codegen, ")");
+    return true;
+}
+
 /* --- strconv module --- */
 
 static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool is_fallible = (strcmp(func, "to_int") == 0 ||
         strcmp(func, "to_uint") == 0 ||
         strcmp(func, "to_float") == 0 ||
-        strcmp(func, "to_bool") == 0);
+        strcmp(func, "to_bool") == 0 ||
+        strcmp(func, "unquote") == 0);
     bool has_base = (strcmp(func, "to_int") == 0 ||
         strcmp(func, "to_uint") == 0);
     bool needs_arena = (strcmp(func, "from_int") == 0 ||
         strcmp(func, "from_uint") == 0 ||
-        strcmp(func, "from_float") == 0);
+        strcmp(func, "from_float") == 0 ||
+        strcmp(func, "format_int") == 0 ||
+        strcmp(func, "format_uint") == 0 ||
+        strcmp(func, "quote") == 0 ||
+        strcmp(func, "unquote") == 0);
 
     if (is_fallible) {
         bool is_multi_var = is_result_temporary(codegen->current_var_name);
@@ -6932,6 +7125,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func)
         } else {
             emit_formatted(codegen, "gray_strconv_%s(", func);
         }
+        if (needs_arena) emit(codegen, "gray_default_arena, ");
         for (int i = 0; i < node->data.call.arg_count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.call.args[i]);
@@ -7095,125 +7289,9 @@ static bool emit_channels_call(CodeGen *codegen, AstNode *node, const char *func
 
 /* --- Main call dispatcher --- */
 
-static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
-    const char *module = NULL;
-    const char *func = NULL;
-
-    if (is_stdlib_call(node, &module, &func)) {
-        /* Resolve import aliases: io@std → io.println maps to std.println */
-        if (module) module = resolve_alias(codegen, module);
-
-        /* No-module builtins (println, len, type_of, etc.) */
-        /* Also handle std.println(); std module functions are builtins */
-        if (!module && emit_builtin_call(codegen, node, func)) return;
-
-        /* Module dispatch table — sorted alphabetically for binary search */
-        typedef bool (*ModuleHandler)(CodeGen *, AstNode *, const char *);
-        typedef struct { const char *name; ModuleHandler handler; } ModuleEntry;
-        static const ModuleEntry modules[] = {
-            {"arrays",   emit_arrays_call},
-            {"atomic",   emit_atomic_call},
-            {"binary",   emit_binary_call},
-            {"channels", emit_channels_call},
-            {"crypto",   emit_crypto_call},
-            {"csv",      emit_csv_call},
-            {"encoding", emit_encoding_call},
-            {"fmt",      emit_format_call},
-            {"http",     emit_http_call},
-            {"io",       emit_io_call},
-            {"json",     emit_json_call},
-            {"maps",     emit_maps_call},
-            {"math",     emit_math_call},
-            {"mem",      emit_mem_call},
-            {"net",      emit_net_call},
-            {"os",       emit_os_call},
-            {"random",   emit_random_call},
-            {"regex",    emit_regex_call},
-            {"runtime",  emit_runtime_call},
-            {"server",   emit_server_call},
-            {"sqlite",   emit_sqlite_call},
-            {"strconv",  emit_strconv_call},
-            {"strings",  emit_strings_call},
-            {"sync",     emit_sync_call},
-            {"threads",  emit_threads_call},
-            {"time",     emit_time_call},
-            {"uuid",     emit_uuid_call},
-        };
-        if (module) {
-            int low = 0, high = (int)(sizeof(modules) / sizeof(modules[0])) - 1;
-            while (low <= high) {
-                int midpoint = (low + high) / 2;
-                int cmp = strcmp(module, modules[midpoint].name);
-                if (cmp == 0) {
-                    if (modules[midpoint].handler(codegen, node, func)) return;
-                    break;
-                }
-                if (cmp < 0) high = midpoint - 1;
-                else low = midpoint + 1;
-            }
-        }
-        /* Unqualified call not handled by builtins; try 'using' modules.
-         * We must verify the function name belongs to the module before calling
-         * the handler, since some handlers emit code for any function name.
-         * A user function of the same name — the program's own or the current
-         * module's — shadows a `using`'d stdlib function, so the general call
-         * path below emits it instead (the typechecker resolves the bare name
-         * to that function the same way). */
-        bool user_shadows_using = false;
-        if (!module && func) {
-            user_shadows_using = find_function(codegen, func) != NULL;
-            if (!user_shadows_using) {
-                const char *rd = codegen_resolve_decl(codegen, func);
-                if (rd != func) user_shadows_using = find_function(codegen, rd) != NULL;
-            }
-        }
-        if (!module && !user_shadows_using) {
-            for (int ui = 0; ui < codegen->using_module_count; ui++) {
-                const char *umod = codegen->using_modules[ui];
-                const char *real_mod = resolve_alias(codegen, umod);
-                /* 1) Check stdlib table (authoritative source in typechecker) */
-                bool found = stdlib_has_func(real_mod, func);
-                if (found) {
-                    /* Dispatch to the stdlib module handler */
-                    for (int mi = 0; mi < (int)(sizeof(modules) / sizeof(modules[0])); mi++) {
-                        if (strcmp(real_mod, modules[mi].name) == 0) {
-                            if (modules[mi].handler(codegen, node, func)) return;
-                            break;
-                        }
-                    }
-                }
-                /* 2) Try user-defined module: <module>_<func> */
-                if (!found) {
-                    char prefixed[IDENT_BUF];
-                    snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, func);
-                    AstNode *uf = find_function(codegen, prefixed);
-                    /* A generic function needs its per-instantiation name,
-                     * which the general call path derives from the argument
-                     * types; this shortcut would emit the unspecialised
-                     * symbol, so leave those to it. */
-                    if (uf && func_is_generic(uf)) uf = NULL;
-                    if (uf) {
-                        int pc = uf->data.func_decl.param_count;
-                        int ac = node->data.call.arg_count;
-                        int total = ac < pc ? pc : ac;
-                        emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
-                        for (int i = 0; i < total; i++) {
-                            if (i > 0) emit(codegen, ", ");
-                            if (i < ac) {
-                                bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
-                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
-                            } else if (i < pc && uf->data.func_decl.params[i].default_value) {
-                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
-                            }
-                        }
-                        emit(codegen, ")");
-                        return;
-                    }
-                }
-            }
-        }
-    }
-
+/* Tagged enum construction: explicit `Shape.Circle(3.14)` or implicit
+ * `.Circle(3.14)`. Returns true when it emitted the constructor. */
+static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
     /* Tagged enum construction: Shape.Circle(3.14) */
     if (ast_member_qualifier(node->data.call.function)) {
         const char *ename = ast_member_qualifier(node->data.call.function);
@@ -7242,7 +7320,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " }");
             }
             emit(codegen, " }");
-            return;
+            return true;
         }
     }
 
@@ -7267,10 +7345,16 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, " }");
             }
             emit(codegen, " }");
-            return;
+            return true;
         }
     }
+    return false;
+}
 
+/* Struct-namespaced (Name.func()) calls and mod.Struct.func() chains.
+ * Returns true when it emitted the call; false to fall through to the
+ * general function-call path. */
+static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     /* Check for struct-namespaced or user-module function call: Name.func() */
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
@@ -7299,7 +7383,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
         }
         if (obj->kind == NODE_LABEL) {
@@ -7322,7 +7406,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
 
             /* The qualifier may be a struct type, which is namespaced under
@@ -7449,7 +7533,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                                     emit_expression(codegen, node->data.call.args[ai]);
                                 }
                                 emit(codegen, ")");
-                                return;
+                                return true;
                             }
                         }
                     }
@@ -7481,7 +7565,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                     }
                     emit(codegen, ")");
-                    return;
+                    return true;
                 }
             }
             if (ns_func) {
@@ -7580,10 +7664,137 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 emit(codegen, ")");
-                return;
+                return true;
             }
         }
     }
+    return false;
+}
+
+static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
+    const char *module = NULL;
+    const char *func = NULL;
+
+    if (is_stdlib_call(node, &module, &func)) {
+        /* Resolve import aliases: io@std → io.println maps to std.println */
+        if (module) module = resolve_alias(codegen, module);
+
+        /* No-module builtins (println, len, type_of, etc.) */
+        /* Also handle std.println(); std module functions are builtins */
+        if (!module && emit_builtin_call(codegen, node, func)) return;
+
+        /* Module dispatch table — sorted alphabetically for binary search */
+        typedef bool (*ModuleHandler)(CodeGen *, AstNode *, const char *);
+        typedef struct { const char *name; ModuleHandler handler; } ModuleEntry;
+        static const ModuleEntry modules[] = {
+            {"arrays",   emit_arrays_call},
+            {"atomic",   emit_atomic_call},
+            {"binary",   emit_binary_call},
+            {"channels", emit_channels_call},
+            {"chars",    emit_chars_call},
+            {"crypto",   emit_crypto_call},
+            {"csv",      emit_csv_call},
+            {"encoding", emit_encoding_call},
+            {"fmt",      emit_format_call},
+            {"http",     emit_http_call},
+            {"io",       emit_io_call},
+            {"json",     emit_json_call},
+            {"maps",     emit_maps_call},
+            {"math",     emit_math_call},
+            {"mem",      emit_mem_call},
+            {"net",      emit_net_call},
+            {"os",       emit_os_call},
+            {"random",   emit_random_call},
+            {"regex",    emit_regex_call},
+            {"runtime",  emit_runtime_call},
+            {"server",   emit_server_call},
+            {"sqlite",   emit_sqlite_call},
+            {"strconv",  emit_strconv_call},
+            {"strings",  emit_strings_call},
+            {"sync",     emit_sync_call},
+            {"threads",  emit_threads_call},
+            {"time",     emit_time_call},
+            {"uuid",     emit_uuid_call},
+        };
+        if (module) {
+            int low = 0, high = (int)(sizeof(modules) / sizeof(modules[0])) - 1;
+            while (low <= high) {
+                int midpoint = (low + high) / 2;
+                int cmp = strcmp(module, modules[midpoint].name);
+                if (cmp == 0) {
+                    if (modules[midpoint].handler(codegen, node, func)) return;
+                    break;
+                }
+                if (cmp < 0) high = midpoint - 1;
+                else low = midpoint + 1;
+            }
+        }
+        /* Unqualified call not handled by builtins; try 'using' modules.
+         * We must verify the function name belongs to the module before calling
+         * the handler, since some handlers emit code for any function name.
+         * A user function of the same name — the program's own or the current
+         * module's — shadows a `using`'d stdlib function, so the general call
+         * path below emits it instead (the typechecker resolves the bare name
+         * to that function the same way). */
+        bool user_shadows_using = false;
+        if (!module && func) {
+            user_shadows_using = find_function(codegen, func) != NULL;
+            if (!user_shadows_using) {
+                const char *rd = codegen_resolve_decl(codegen, func);
+                if (rd != func) user_shadows_using = find_function(codegen, rd) != NULL;
+            }
+        }
+        if (!module && !user_shadows_using) {
+            for (int ui = 0; ui < codegen->using_module_count; ui++) {
+                const char *umod = codegen->using_modules[ui];
+                const char *real_mod = resolve_alias(codegen, umod);
+                /* 1) Check stdlib table (authoritative source in typechecker) */
+                bool found = stdlib_has_func(real_mod, func);
+                if (found) {
+                    /* Dispatch to the stdlib module handler */
+                    for (int mi = 0; mi < (int)(sizeof(modules) / sizeof(modules[0])); mi++) {
+                        if (strcmp(real_mod, modules[mi].name) == 0) {
+                            if (modules[mi].handler(codegen, node, func)) return;
+                            break;
+                        }
+                    }
+                }
+                /* 2) Try user-defined module: <module>_<func> */
+                if (!found) {
+                    char prefixed[IDENT_BUF];
+                    snprintf(prefixed, sizeof(prefixed), "%s_%s", real_mod, func);
+                    AstNode *uf = find_function(codegen, prefixed);
+                    /* A generic function needs its per-instantiation name,
+                     * which the general call path derives from the argument
+                     * types; this shortcut would emit the unspecialised
+                     * symbol, so leave those to it. */
+                    if (uf && func_is_generic(uf)) uf = NULL;
+                    if (uf) {
+                        int pc = uf->data.func_decl.param_count;
+                        int ac = node->data.call.arg_count;
+                        int total = ac < pc ? pc : ac;
+                        emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
+                        for (int i = 0; i < total; i++) {
+                            if (i > 0) emit(codegen, ", ");
+                            if (i < ac) {
+                                bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
+                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                            } else if (i < pc && uf->data.func_decl.params[i].default_value) {
+                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
+                            }
+                        }
+                        emit(codegen, ")");
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    if (emit_tagged_enum_construction(codegen, node)) return;
+
+    /* Struct-namespaced (Name.func()) and mod.Struct.func() chains */
+    if (emit_namespaced_call(codegen, node)) return;
 
     /* Generic function call */
     const char *fn_name = NULL;
@@ -7977,6 +8188,17 @@ static AstNode *resolve_called_function(CodeGen *codegen, AstNode *node) {
     if (fn->kind == NODE_LABEL) name = fn->data.label.value;
     else if (fn->kind == NODE_MEMBER_EXPR) name = fn->data.member.member;
     if (!name) return NULL;
+
+    /* A module-qualified stdlib call (channels.send(...)) is never a user
+     * function. Matching one here by trailing name component against a
+     * same-named struct function wraps it in the caller-arena block and
+     * captures its result with __auto_type, which fails to compile when the
+     * stdlib function returns void. */
+    if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object &&
+        fn->data.member.object->kind == NODE_LABEL &&
+        codegen_module_imported(codegen, fn->data.member.object->data.label.value)) {
+        return NULL;
+    }
 
     AstNode *exact = find_function(codegen, name);
     if (exact) return exact;
@@ -8525,7 +8747,12 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
         GrayType *vt = codegen->type_table
             ? typetable_get(codegen->type_table, node->data.var_decl.value)
             : NULL;
-        const char *bi_name = (vt && vt->name && is_bigint_type(vt->name))
+        /* An array/map type stores its element type name in ->name (e.g. an
+         * inferred [i128] has name "i128"), so gate on the kind too — the var
+         * itself is the container, not a wide integer. */
+        bool vt_is_bigint_scalar = vt && vt->name && is_bigint_type(vt->name) &&
+            (vt->kind == TK_INT || vt->kind == TK_UINT);
+        const char *bi_name = vt_is_bigint_scalar
             ? vt->name : resolve_bigint_type(codegen, node->data.var_decl.value);
         if (bi_name) {
             register_bigint_variable(codegen, node->data.var_decl.name, bi_name);
@@ -8805,7 +9032,17 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
                 emit_expression(codegen, idx);
                 emit(codegen, ", ");
-                if (is_compound_m) {
+                if (is_compound_m && strcmp(c_elem, "GrayString") == 0 && aop_m == TOK_PLUS_ASSIGN) {
+                    /* The concat result must outlive the loop iteration that
+                     * produced it — inside a nested loop that means the outer
+                     * arena, not the per-iteration gray_default_arena. */
+                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_ea, GrayString, ",
+                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
+                    emit_expression(codegen, idx);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else if (is_compound_m) {
                     const char *binop = "+";
                     if (aop_m == TOK_MINUS_ASSIGN) binop = "-";
                     else if (aop_m == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -8856,7 +9093,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
-                    if (is_compound2) {
+                    if (is_compound2 && strcmp(c_elem, "GrayString") == 0 && aop2 == TOK_PLUS_ASSIGN) {
+                        emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
+                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp, sanitize_name(_set_ptr_field));
+                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                        emit_expression(codegen, node->data.assign.value);
+                        emit(codegen, ")");
+                    } else if (is_compound2) {
                         const char *binop = "+";
                         if (aop2 == TOK_MINUS_ASSIGN) binop = "-";
                         else if (aop2 == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -8891,7 +9135,14 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
-                if (is_compound3) {
+                if (is_compound3 && strcmp(c_elem, "GrayString") == 0 && aop3 == TOK_PLUS_ASSIGN) {
+                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
+                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp);
+                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_expression(codegen, node->data.assign.value);
+                    emit(codegen, ")");
+                } else if (is_compound3) {
                     const char *binop = "+";
                     if (aop3 == TOK_MINUS_ASSIGN) binop = "-";
                     else if (aop3 == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -8941,13 +9192,39 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                 }
             }
+            /* Plain assignment of a string to a string array element inside a
+             * loop: the RHS (a concat, a call return, ...) may live in the
+             * per-iteration arena, which is torn down before the array is read
+             * again. Deep-copy into the outer arena — the same escape the
+             * plain-variable and += paths use. */
+            if (!is_compound && strcmp(c_elem, "GrayString") == 0 &&
+                codegen->loop_scope_depth > 0) {
+                emit(codegen, "{ GrayString _esc_v = ");
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, "; GRAY_ARRAY_SET_AT(");
+                emit_expression(codegen, left);
+                emit(codegen, ", GrayString, ");
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len), \"%s\", %d); }\n",
+                    codegen->file, node->token.line);
+                return;
+            }
             emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
             emit_expression(codegen, left);
             emit_formatted(codegen, ", %s, ", c_elem);
             emit_expression(codegen, node->data.assign.target->data.index_expr.index);
             emit(codegen, ", ");
             /* Non-sized compound assignment on array element: read-modify-write */
-            if (is_compound) {
+            if (is_compound && strcmp(c_elem, "GrayString") == 0 && aop == TOK_PLUS_ASSIGN) {
+                emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(",
+                    codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
+                emit_expression(codegen, left);
+                emit(codegen, ", GrayString, ");
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
+            } else if (is_compound) {
                 const char *binop = "+";
                 if (aop == TOK_MINUS_ASSIGN) binop = "-";
                 else if (aop == TOK_ASTERISK_ASSIGN) binop = "*";
@@ -9026,7 +9303,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
             }
             emit_formatted(codegen, "{ %s _mk = ", c_key);
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+            emit_map_slot_value(codegen, left_t->key_type, node->data.assign.target->data.index_expr.index);
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
                 if (ms_str_key) {
@@ -9077,13 +9354,30 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", &_mk); if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
                 }
             }
+            const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
+                ? left_t->value_type : NULL;
             emit_formatted(codegen, "%s _mv = ", c_val);
-            if (ms_compound) {
+            if (ms_compound && ms_bi_val) {
+                /* Wide-integer entries have no C arithmetic operators; route the
+                 * read-modify-write through the same helpers the infix path uses. */
+                const char *pfx = bigint_prefix(ms_bi_val);
+                const char *fn = ms_base_op[0] == '+' ? "add_checked"
+                              : ms_base_op[0] == '-' ? "sub_checked"
+                              : ms_base_op[0] == '*' ? "mul_checked"
+                              : ms_base_op[0] == '/' ? "div" : "mod";
+                emit_formatted(codegen, "%s_%s(*(%s*)_cur, ", pfx, fn, c_val);
+                emit_map_slot_value(codegen, ms_bi_val, node->data.assign.value);
+                emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+            } else if (ms_compound && ms_str_val && node->data.assign.op == TOK_PLUS_ASSIGN) {
+                emit(codegen, "gray_string_concat(gray_default_arena, *(GrayString*)_cur, ");
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
+            } else if (ms_compound) {
                 emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
                 emit_expression(codegen, node->data.assign.value);
                 emit(codegen, ")");
             } else {
-                emit_expression(codegen, node->data.assign.value);
+                emit_map_slot_value(codegen, left_t->value_type, node->data.assign.value);
             }
             emit(codegen, "; ");
             if (codegen->loop_scope_depth > 0) {
@@ -9338,6 +9632,24 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
+    /* String append: s += t → s = gray_string_concat(arena, s, t).
+     * Take the target's address once so a member/index target is not
+     * re-evaluated. Inside a loop scope, build on the outer arena so the
+     * result survives the iteration arena's destruction (mirrors the
+     * plain '=' string escape below). */
+    if (node->data.assign.op == TOK_PLUS_ASSIGN) {
+        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        if (tgt_t && tgt_t->kind == TK_STRING) {
+            const char *arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
+            emit(codegen, "{ GrayString *_tgt = &(");
+            emit_expression(codegen, node->data.assign.target);
+            emit(codegen, "); GrayString _sv = ");
+            emit_expression(codegen, node->data.assign.value);
+            emit_formatted(codegen, "; *_tgt = gray_string_concat(%s, *_tgt, _sv); }\n", arena);
+            return;
+        }
+    }
+
     /* Compound assignment overflow checks. The direct form (x = x OP y)
      * routes through the checked helpers; the compound form must do the
      * same so a OP= b never wraps where a = a OP b would panic. */
@@ -9534,6 +9846,26 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     }
 
     /* Default assignment; suppress ref auto-deref when assigning to a pointer target */
+
+    /* Plain '=' of a string to a struct field (arr[i].field, p.field, ...)
+     * inside a loop: the RHS — a concat, an interpolation, a call return —
+     * may live in the per-iteration arena, which is destroyed before the
+     * field is read again. Take the field's address once, then deep-copy the
+     * value into the outer arena (mirrors the plain-variable escape below and
+     * the += path above). Pointer-object fields already returned earlier. */
+    if (codegen->loop_scope_depth > 0 && node->data.assign.op == TOK_ASSIGN &&
+        node->data.assign.target->kind == NODE_MEMBER_EXPR) {
+        GrayType *tgt_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        if (tgt_t && tgt_t->kind == TK_STRING) {
+            emit(codegen, "{ GrayString *_tgt = &(");
+            emit_expression(codegen, node->data.assign.target);
+            emit(codegen, "); GrayString _esc_v = ");
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, "; *_tgt = gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len); }\n");
+            return;
+        }
+    }
 
     /* : when inside a loop scope and assigning a string/container
      * value to a plain variable with =, escape the value to the outer
@@ -10785,6 +11117,13 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
             codegen->indent++;
             emit_block(codegen, node->data.when_stmt.default_body);
             codegen->indent--;
+        } else if (node->data.when_stmt.is_strict && node->data.when_stmt.case_count > 0) {
+            /* A #strict enum `when` is exhaustive (E3056 fired otherwise), so
+             * the fall-through is dead. Say so, or C warns that a value-
+             * returning function may fall off the end (-Wreturn-type). */
+            emit_indent(codegen);
+            emit(codegen, "} else { __builtin_unreachable(); }\n");
+            break;
         }
         emit_indent(codegen);
         emit(codegen, "}\n");
@@ -11079,6 +11418,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         } else if (stmt->kind == NODE_ENUM_DECL) {
             BUCKET_PUSH(enum_bucket, enum_bucket_count, enum_bucket_cap, stmt);
         } else if (stmt->kind == NODE_FUNC_DECL) {
+            if (stmt->data.func_decl.is_test) {
+                /* #test functions exist only for `gray test`; a normal build
+                 * drops them entirely (no forward decl, no definition, no
+                 * call). A --test build keeps only the ones declared in the
+                 * file being compiled — a #test reached through an import
+                 * belongs to that module's own test run, not this one. */
+                bool keep = codegen->test_mode;
+                if (keep && stmt->token.file && codegen->file) {
+                    char *nf = normalize_path_separators(stmt->token.file);
+                    if (nf && strcmp(nf, codegen->file) != 0) keep = false;
+                    free(nf);
+                }
+                if (!keep) continue;
+            }
             BUCKET_PUSH(func_bucket, func_bucket_count, func_bucket_cap, stmt);
         } else if (stmt->kind == NODE_VAR_DECL) {
             BUCKET_PUSH(var_bucket, var_bucket_count, var_bucket_cap, stmt);
@@ -11093,13 +11446,26 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"array.h\"\n");
     emit(codegen, "#include \"map.h\"\n");
     emit(codegen, "#include \"builtins.h\"\n");
-    /* These stdlib headers are always needed: os.h for gray_os_init() in main(),
-     * and arrays/maps/strings for the `in` operator on core collection types. */
+    /* os.h is always needed — generated main() calls gray_os_init(). */
     emit(codegen, "#include \"os.h\"\n");
-    emit(codegen, "#include \"arrays.h\"\n");
-    emit(codegen, "#include \"maps.h\"\n");
-    emit(codegen, "#include \"strings.h\"\n");
+    /* test.h declares the test-runner entry points used by the generated
+     * main() when compiling with --test. */
+    if (codegen->test_mode)
+        emit(codegen, "#include \"test.h\"\n");
+    /* arrays.h / maps.h / strings.h are spliced in here after body emission,
+     * but only when the `in` operator or an explicit import needs them. */
+    size_t collection_include_anchor = codegen->output.len;
+    /* bigint.h is always needed — i128/u128/i256/u256 are keyword types
+     * usable with no import. */
     emit(codegen, "#include \"bigint.h\"\n");
+
+    /* An explicit import of one of these modules also needs its header. */
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "arrays"))
+        codegen->needs_arrays_h = true;
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "maps"))
+        codegen->needs_maps_h = true;
+    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "strings"))
+        codegen->needs_strings_h = true;
 
     /* Remaining stdlib module headers: included only when imported. */
     static const struct { const char *module; const char *header; } stdlib_headers[] = {
@@ -11116,6 +11482,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"csv",      "csv.h"},
         {"json",     "json.h"},
         {"strconv",  "strconv.h"},
+        {"chars",    "chars.h"},
         {"sqlite",   "sqlite.h"},
         {"threads",  "threads.h"},
         {"sync",     "sync.h"},
@@ -11600,7 +11967,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                     break;
                 }
             }
-            if (!has_wc) emit_multi_return_typedef(codegen, stmt);
+            /* A bare return type resolves against the function's own module,
+             * so the typedef's field types must be emitted in that module —
+             * otherwise a cross-module enum falls back to an undefined
+             * GrayStruct_<Name> instead of GrayEnum_<module>_<Name>. */
+            if (!has_wc) {
+                codegen_enter_node(codegen, stmt);
+                emit_multi_return_typedef(codegen, stmt);
+            }
         }
     }
 
@@ -11722,10 +12096,52 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (codegen->global_init.len > 0) {
         append_string_to_buffer(&codegen->output, codegen->global_init.data);
     }
-    emit(codegen, "    gray_fn_main();\n");
-    emit(codegen, "    gray_runtime_shutdown();\n");
-    emit(codegen, "    return 0;\n");
-    emit(codegen, "}\n");
+    if (codegen->test_mode) {
+        /* Test runner: call each #test function under the runner's recovery
+         * point so a failed assert/panic is recorded, not fatal. */
+        emit(codegen, "    gray_test_begin();\n");
+        for (int i = 0; i < func_bucket_count; i++) {
+            AstNode *fn = func_bucket[i];
+            if (fn->kind != NODE_FUNC_DECL || !fn->data.func_decl.is_test) continue;
+            const char *name = fn->data.func_decl.original_name
+                ? fn->data.func_decl.original_name : fn->data.func_decl.name;
+            emit_formatted(codegen,
+                "    gray_test_run(\"%s\", gray_fn_%s, \"%s\", %d);\n",
+                name, fn->data.func_decl.name, codegen->file, fn->token.line);
+        }
+        emit(codegen, "    int _gray_test_rc = gray_test_end();\n");
+        emit(codegen, "    gray_runtime_shutdown();\n");
+        emit(codegen, "    return _gray_test_rc;\n");
+        emit(codegen, "}\n");
+    } else {
+        emit(codegen, "    gray_fn_main();\n");
+        emit(codegen, "    gray_runtime_shutdown();\n");
+        emit(codegen, "    return 0;\n");
+        emit(codegen, "}\n");
+    }
+
+    /* Splice the collection headers into the preamble now that body emission
+     * has settled which ones are actually used. */
+    if (codegen->needs_arrays_h || codegen->needs_maps_h || codegen->needs_strings_h) {
+        Buf includes = buffer_create(64);
+        if (codegen->needs_arrays_h)
+            append_string_to_buffer(&includes, "#include \"arrays.h\"\n");
+        if (codegen->needs_maps_h)
+            append_string_to_buffer(&includes, "#include \"maps.h\"\n");
+        if (codegen->needs_strings_h)
+            append_string_to_buffer(&includes, "#include \"strings.h\"\n");
+
+        Buf *out = &codegen->output;
+        size_t ins_len = includes.len;
+        size_t tail_len = out->len - collection_include_anchor;
+        /* Reserve capacity and grow len by ins_len (append then shift). */
+        append_bytes_to_buffer(out, includes.data, ins_len);
+        memmove(out->data + collection_include_anchor + ins_len,
+                out->data + collection_include_anchor, tail_len);
+        memcpy(out->data + collection_include_anchor, includes.data, ins_len);
+
+        buffer_destroy(&includes);
+    }
 
     free(enum_bucket);
     free(func_bucket);

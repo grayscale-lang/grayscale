@@ -205,7 +205,7 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
  *@module time
  *@group Parsing
  *@sig parse(s string, layout string) -> (int, Error)
- *@desc Parses a time string into a Unix timestamp using a layout string with strftime-style directives (%Y, %m, %d, %H, %M, %S). Panics if s does not match layout unless the result is destructured, in which case an Error is returned instead.
+ *@desc Parses a time string into a Unix timestamp using a layout string with strftime-style directives (%Y, %m, %d, %H, %M, %S). Always use destructuring (`mut ts, err = ...` or `mut ts, _ = ...`) — single-variable assignment is a compile error. When s does not match layout, err is non-nil and, with `_`, ts is 0.
  *@example
  *   import @time
  *   mut ts, _ = time.parse("2025-06-01", "%Y-%m-%d")

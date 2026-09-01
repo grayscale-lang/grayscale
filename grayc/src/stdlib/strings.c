@@ -9,6 +9,7 @@
  */
 
 #include "strings.h"
+#include "builtins.h" /* gray_builtin_char_to_utf8 */
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -379,6 +380,52 @@ char gray_strings_char_at(GrayString s, int64_t index) {
                       (int)index, (int)s.len);
     }
     return s.data[index];
+}
+
+/* Build a new string: bytes [0,cut) of s, then ins, then bytes [cut+drop,s.len) of s.
+   `drop` is 0 for insertions and 1 for a replacement. */
+static GrayString strings_splice(GrayArena *arena, GrayString s, int32_t cut,
+                                 int32_t drop, GrayString ins) {
+    int32_t tail = s.len - cut - drop;
+    int32_t new_len = cut + ins.len + tail;
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    memcpy(buf, s.data, (size_t)cut);
+    memcpy(buf + cut, ins.data, (size_t)ins.len);
+    memcpy(buf + cut + ins.len, s.data + cut + drop, (size_t)tail);
+    buf[new_len] = '\0';
+    return (GrayString){ buf, new_len };
+}
+
+GrayString gray_strings_append_char(GrayArena *arena, GrayString s, int32_t c) {
+    return strings_splice(arena, s, s.len, 0, gray_builtin_char_to_utf8(arena, c));
+}
+
+GrayString gray_strings_prepend_char(GrayArena *arena, GrayString s, int32_t c) {
+    return strings_splice(arena, s, 0, 0, gray_builtin_char_to_utf8(arena, c));
+}
+
+GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString s, int64_t index, int32_t c) {
+    if (index < 0 || index > s.len) {
+        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
+                      (int)index, (int)s.len);
+    }
+    return strings_splice(arena, s, (int32_t)index, 0, gray_builtin_char_to_utf8(arena, c));
+}
+
+GrayString gray_strings_remove_at(GrayArena *arena, GrayString s, int64_t index) {
+    if (index < 0 || index >= s.len) {
+        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
+                      (int)index, (int)s.len);
+    }
+    return strings_splice(arena, s, (int32_t)index, 1, gray_string_lit(""));
+}
+
+GrayString gray_strings_set_char_at(GrayArena *arena, GrayString s, int64_t index, int32_t c) {
+    if (index < 0 || index >= s.len) {
+        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
+                      (int)index, (int)s.len);
+    }
+    return strings_splice(arena, s, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, c));
 }
 
 bool gray_strings_is_alpha(char c)      { return isalpha((unsigned char)c) != 0; }

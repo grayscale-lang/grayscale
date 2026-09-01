@@ -1,0 +1,79 @@
+/*
+ * string_array_element_plus_assign_nested_loop.gray - `arr[i] += "..."` on a
+ * string array element must survive the loop iteration that produced it.
+ *
+ * The four array-element branches of emit_assign_statement emitted
+ * gray_string_concat(gray_default_arena, ...) unconditionally. Inside a nested
+ * loop that arena is torn down between outer iterations, so the accumulated
+ * string became a use-after-free (first bytes turned to garbage).
+ *
+ * Fix: those branches now select _gray_outer_arena when loop_scope_depth > 0,
+ * the same way the plain-variable and map-value += paths already did.
+ */
+
+do main() {
+    println("=== String Array Element += In Nested Loop ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* Single element, two nested loops. */
+    mut acc [string] = {""}
+    for round in range(0, 4) {
+        for i in range(0, 1) {
+            acc[i] += "x"
+        }
+    }
+    if acc[0] == "xxxx" {
+        println("  [PASS] single element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected xxxx, got ${acc[0]}")
+        failed += 1
+    }
+
+    /* Multiple elements, each accumulated independently. */
+    mut parts [string] = {"", "", ""}
+    for round in range(0, 3) {
+        for i in range(0, 3) {
+            parts[i] += "ab"
+        }
+    }
+    mut all_ok bool = true
+    for_each s in parts {
+        if s != "ababab" {
+            all_ok = false
+        }
+    }
+    if all_ok {
+        println("  [PASS] multiple elements")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected ababab in every slot, got ${parts[0]} ${parts[1]} ${parts[2]}")
+        failed += 1
+    }
+
+    /* Three nested loops. */
+    mut deep [string] = {""}
+    for a in range(0, 2) {
+        for b in range(0, 2) {
+            for c in range(0, 2) {
+                deep[0] += "z"
+            }
+        }
+    }
+    if deep[0] == "zzzzzzzz" {
+        println("  [PASS] triple-nested loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 8 z's, got ${deep[0]}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

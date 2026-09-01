@@ -1,0 +1,64 @@
+/*
+ * Test: type inference for `mut` array/map declarations with primitive literals.
+ * Arrays infer [T] from the element type; maps infer map[K:V] from the first pair.
+ */
+
+import @arrays
+
+do want(label string, cond bool) -> int {
+    if cond {
+        return 1
+    }
+    println("  [FAIL] ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 14
+
+    // arrays, one per primitive type
+    mut ai = {1, 2, 3}
+    mut au = {cast(1, uint), cast(2, uint)}
+    mut af = {1.5, 2.5}
+    mut ac = {'a', 'b', 'c'}
+    mut astr = {"x", "y"}
+    mut ab = {true, false}
+    mut aby = {cast(1, byte), cast(2, byte)}
+
+    passed += want("int array", ai[2] == 3)
+    passed += want("uint array", au[0] == 1)
+    passed += want("float array", af[1] > 2.4)
+    passed += want("char array", ac[0] == 'a')
+    passed += want("string array", astr[1] == "y")
+    passed += want("bool array", ab[0] == true)
+    passed += want("byte array", aby[1] == 2)
+
+    arrays.append(ai, 4)
+    passed += want("append to inferred array", len(ai) == 4)
+
+    // maps: primitive key x primitive value
+    mut m_si = {"a": 1, "b": 2}
+    mut m_ci = {'x': 10, 'y': 20}
+    mut m_ib = {1: true, 2: false}
+    mut m_is = {1: "one", 2: "two"}
+
+    passed += want("map string:int", m_si["b"] == 2)
+    passed += want("map char:int", m_ci['x'] == 10)
+    passed += want("map int:bool", m_ib[2] == false)
+    passed += want("map int:string", m_is[1] == "one")
+
+    m_si["c"] = 3
+    passed += want("insert into inferred map", m_si["c"] == 3)
+
+    // nested inference: value literal inside a map key/value works through
+    // the same first-pair inference
+    passed += want("bool value true lookup", m_ib[1] == true)
+
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

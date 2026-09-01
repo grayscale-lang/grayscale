@@ -114,7 +114,7 @@ GrayRouter gray_server_router(void);
 /*@man add_route
  *@module server
  *@group Routing
- *@sig add_route(router Router, method string, path string, handler func)
+ *@sig add_route(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)
  *@desc Registers a route on the router. method is an HTTP verb ("GET", "POST", etc.). path may contain :param segments for dynamic matching. handler is a function that takes HttpRequest and returns HttpResponse.
  *@example
  *   import @server
@@ -162,8 +162,8 @@ void gray_server_cors(GrayRouter *r, GrayString origin);
 /*@man use
  *@module server
  *@group Routing
- *@sig use(router Router, middleware func)
- *@desc Registers a middleware function on the router. Middleware runs before each handler and can inspect or modify the request and response.
+ *@sig use(router Router, middleware func(^HttpRequest, ^HttpResponse))
+ *@desc Registers a middleware function on the router. Middleware runs before each handler and receives pointers to the request and response so it can inspect or modify either.
  *@example
  *   import @server
  *   mut r = server.add_router()

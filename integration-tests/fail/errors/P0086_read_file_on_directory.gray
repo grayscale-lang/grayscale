@@ -1,7 +1,0 @@
-/* Panic Test: P0086 - io.read_file cannot read a directory */
-import @io
-
-do main() {
-    mut content string = io.read_file("/tmp")
-    println(content)
-}

@@ -1,0 +1,42 @@
+/*
+ * strict_switch_terminating.gray - the `switch`/`case` keyword aliases go
+ * through the same control-flow analysis: a #strict `switch` whose every arm
+ * returns terminates the function without a `default` arm (no E3035).
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do color_code(c Color) -> int {
+    #strict
+    switch c {
+        case Color.RED   { return 0 }
+        case Color.GREEN { return 1 }
+        case Color.BLUE  { return 2 }
+    }
+}
+
+do main() {
+    println("=== #strict switch terminating ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if color_code(Color.RED) == 0 && color_code(Color.GREEN) == 1 && color_code(Color.BLUE) == 2 {
+        println("  [PASS] #strict switch/case, all arms return")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] color_code")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

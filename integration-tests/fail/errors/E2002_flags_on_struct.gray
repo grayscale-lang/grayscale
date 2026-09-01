@@ -1,0 +1,17 @@
+/*
+ * Error Test: E2002 - #flags on a struct declaration instead of an enum declaration
+ */
+
+// expect-error: E2002
+// expect-error-count: 1
+
+#flags
+const Point struct {
+    x int
+    y int
+}
+
+do main() {
+    mut p Point = Point{ x: 1, y: 2 }
+    println("${p.x}")
+}

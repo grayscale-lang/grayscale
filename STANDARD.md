@@ -86,6 +86,7 @@ Identifiers must:
 - Contain only ASCII letters, digits, and underscores
 - Not be a reserved keyword
 - Not use the reserved prefixes `gray_`, `_gray_`, or `Gray` (reserved for the compiler)
+- Not be `main`, except as the name of the top-level entry-point function (E4026)
 
 The standalone `_` is the blank identifier (see §4.5) and is not a valid variable or function name.
 
@@ -224,8 +225,15 @@ Escape sequences:
 - `\n` - line feed (U+000A)
 - `\r` - carriage return (U+000D)
 - `\t` - horizontal tab (U+0009)
+- `\a` - bell (U+0007)
+- `\b` - backspace (U+0008)
+- `\f` - form feed (U+000C)
+- `\v` - vertical tab (U+000B)
+- `\0` - NUL byte (U+0000)
 - `\\` - backslash
 - `\"` - double quote
+- `\'` - single quote
+- `\$` - literal `$` (suppresses string interpolation, e.g. `"\${x}"` is the text `${x}`)
 - `\xNN` - hex byte value (e.g., `\x48` = 'H', `\x0a` = newline)
 
 String interpolation allows embedding expressions within strings:
@@ -234,6 +242,9 @@ String interpolation allows embedding expressions within strings:
 mut name string = "World"
 mut greeting string = "Hello, ${name}!"  // "Hello, World!"
 ```
+
+Strings may also be joined with the `+` operator (`"Hello, " + name + "!"`); see
+[Section 5.2.1](#521-arithmetic-operators).
 
 #### 2.7.4 Raw String Literals
 
@@ -255,11 +266,26 @@ line3`
 
 #### 2.7.5 Character Literals
 
-Character literals represent single character values.
+A character literal is one Unicode codepoint between single quotes — one character or one escape sequence. Its type is `char`.
 
-Examples: `'A'`, `'\n'`, `'\t'`
+```gray
+'A'   '7'   ' '   'é'   '日'   '\n'   '\u{1F600}'
+```
 
-Character literals must contain exactly one character (or escape sequence).
+Escape sequences:
+
+| Escape | Meaning |
+|--------|---------|
+| `\n` `\r` `\t` | LF, CR, tab |
+| `\\` `\'` `\"` | backslash, single quote, double quote |
+| `\0` | NUL (U+0000) |
+| `\xNN` | codepoint U+00NN — exactly two hex digits |
+| `\u{H…}` | codepoint from 1–6 hex digits (U+0000–U+10FFFF) |
+
+- A character literal must contain exactly one codepoint. `''` and `'ab'` are `E1018`.
+- The bytes between the quotes are decoded as UTF-8; a malformed sequence is `E1018`.
+- In a character literal `\xNN` is codepoint U+00NN, not a raw byte (unlike a string literal, where `\xNN` is a byte). For sub-codepoint byte values use `byte`.
+- An unterminated literal is `E1005`; an unknown escape is `E1007`; a malformed `\x` or `\u{}` is `E1006`.
 
 #### 2.7.6 Boolean Literals
 
@@ -352,14 +378,19 @@ mut result bool = 10 > 5  // true
 
 #### 3.1.6 Character Type (`char`)
 
-The `char` type represents a single character.
+The `char` type is a 32-bit integer holding a single Unicode codepoint in the range U+0000–U+10FFFF. It is distinct from `byte` (8-bit, 0–255) and from `int`. At the C boundary a `char` is `int32_t`.
 
 ```gray
-mut letter char = 'A'
-mut newline char = '\n'
+mut letter char = 'A'          // U+0041
+mut newline char = '\n'        // U+000A
+mut eacute char = '\u{E9}'     // U+00E9  é
+mut cjk    char = char(26085)  // U+65E5  日
 ```
 
-Characters can be converted to their integer code point using `int()`.
+- `int(c)` yields the numeric codepoint; `char(n)` converts an integer codepoint to a `char`. A value of `n` outside U+0000–U+10FFFF is a compile-time error for a constant argument and a runtime panic otherwise.
+- Byte-indexing a string (`s[i]`) yields the raw byte as a `char` in 0–255. Use `to_char(s, i)` for the codepoint at codepoint index `i`.
+- `char` values compare and order by codepoint. Arithmetic on `char` is evaluated as `int`.
+- `char` is a primitive, hashable type: valid as a map key, in `when`, and for `mut` array/map literal inference.
 
 #### 3.1.7 Byte Type (`byte`)
 
@@ -488,7 +519,7 @@ p1^ = 99
 println(p2^)    // 99 — p1 and p2 point to the same variable
 ```
 
-**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
+**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index or a dynamic `[T]` array element.
 
 ```gray
 const x int = 42
@@ -724,6 +755,8 @@ const Permissions enum {
 }
 ```
 
+A `#flags` enum may have at most 63 variants — one per usable bit of `int64` (bit 63 is the sign bit). More is rejected (E3143).
+
 Enum values are accessed using dot notation:
 
 ```gray
@@ -862,8 +895,13 @@ Type inference works with:
 3. **Struct literals** - The type is known from the struct name
 4. **Built-in constructors** - `new(Type)` (returns `^Type`) and `copy(value)`
 5. **Multiple return values** - Each variable's type is inferred from the corresponding return type
+6. **`mut` array and map literals of primitives** - `[T]` is inferred from the element type, `map[K:V]` from the first pair
 
-> 💡 **Tip:** Array and map literals do **not** support type inference. You must always provide an explicit type annotation (e.g., `mut arr [int] = {1, 2, 3}`, `mut m map[string:int] = {"a": 1}`).
+> 💡 **Tip:** Array and map literal inference applies only to `mut` declarations whose elements
+> are all primitives (`int`, `uint`, `float`, `string`, `bool`, `char`, `byte`) — for maps, both
+> keys and values must be primitive. Empty literals (`{}`, `{:}`), `const` declarations, and
+> literals containing structs, enums, pointers, or nested containers still require an explicit
+> annotation (e.g. `mut arr [Point] = {Point{x: 1, y: 2}}`).
 
 > ⚠️ **File-scope `const` declarations** of primitive types and arrays require explicit type annotations. Type inference for `const` is only supported inside function bodies. For example, `const MAX_SIZE int = 100` is required at file scope, while `const x = 42` is valid inside a function.
 
@@ -891,8 +929,11 @@ const p = Point{x: 1, y: 2}    // Inferred: Point
 mut val = new(Person)         // Inferred: ^Person (pointer)
 mut dup = copy(val^)          // Inferred: Person (copy() needs a value, not a pointer)
 
-// Arrays and maps always require explicit type annotations
-mut arr [int] = {1, 2, 3}           // Explicit: [int]
+// mut array/map literals of primitives are inferred
+mut arr = {1, 2, 3}                 // Inferred: [int]
+mut letters = {'a', 'b', 'c'}       // Inferred: [char]
+mut scores = {"alice": 10, "bob": 7} // Inferred: map[string:int]
+mut fixed [Point] = {Point{x: 1, y: 2}}  // Explicit: non-primitive elements
 
 // Multiple return values
 do divide(a, b int) -> (int, int) {
@@ -901,7 +942,7 @@ do divide(a, b int) -> (int, int) {
 mut quotient, remainder = divide(10, 3)  // Both inferred: int
 ```
 
-Explicit type annotations are generally optional but can be used for clarity or documentation. The exceptions are file-scope `const` declarations of primitive types and arrays, which always require explicit type annotations.
+Explicit type annotations are generally optional but can be used for clarity or documentation. The exceptions are file-scope `const` declarations of primitive types and arrays, and any `const` or non-primitive array/map literal, which always require explicit type annotations.
 
 > 💡 **Tip:** You don't need to write the type if the compiler can figure it out, but adding it never hurts for readability. At file scope, `const` declarations of primitives and arrays always need the type.
 
@@ -1163,6 +1204,7 @@ Point{}  // Zero-initialized
 |----------|-------------|---------------|-------------|
 | `+` | Addition | `int`, `int` | `int` |
 | `+` | Addition | `float`, `float` | `float` |
+| `+` | Concatenation | `string`, `string` | `string` |
 | `-` | Subtraction | `int`, `int` | `int` |
 | `-` | Subtraction | `float`, `float` | `float` |
 | `*` | Multiplication | `int`, `int` | `int` |
@@ -1172,6 +1214,11 @@ Point{}  // Zero-initialized
 | `%` | Modulo | `int`, `int` | `int` |
 
 Division by zero produces a runtime error.
+
+`+` also concatenates two `string` operands, producing a new `string`. Both
+operands must be strings; mixing a string with any other type is an error
+(use string interpolation or `fmt.format()` to build strings from other types).
+`+=` appends to a mutable string.
 
 #### 5.2.2 Comparison Operators
 
@@ -1223,7 +1270,7 @@ if 10 !in range(0, 10) { ... }  // Shorthand for not_in
 | Operator | Description |
 |----------|-------------|
 | `=` | Assignment |
-| `+=` | Addition assignment |
+| `+=` | Addition assignment (string append when the target is a `string`) |
 | `-=` | Subtraction assignment |
 | `*=` | Multiplication assignment |
 | `/=` | Division assignment |
@@ -1631,7 +1678,7 @@ do process_file() {
 
 ### 6.7 Or-Return Statement
 
-The `or_return` keyword provides error propagation shorthand for functions that return `(T, Error)` tuples:
+The `or_return` keyword provides error propagation shorthand for a call whose return tuple ends in `Error` — `(T, Error)` or `(T, U, ..., Error)`:
 
 ```gray
 do load() -> (string, Error) {
@@ -1643,9 +1690,21 @@ do load() -> (string, Error) {
 
 // With custom fallback values:
 mut content = read_file("data.txt") or_return "", error("failed to load")
+
+// Destructuring a call that returns more than one non-error value:
+do consume() -> (int, Error) {
+    mut a, b = two() or_return   // two() -> (int, int, Error); a, b bound, error propagated
+    return a + b, nil
+}
+
+// No binding — run the call only for its error:
+do run() -> Error {
+    do_work() or_return         // propagate on error, otherwise discard the values
+    return nil
+}
 ```
 
-When the call returns a non-nil error, `or_return` immediately returns from the enclosing function. The bare form returns zero values for non-error slots plus the original error. The enclosing function must have `Error` as its last return type.
+When the call returns a non-nil error, `or_return` immediately returns from the enclosing function. Without explicit fallback values it returns zero values for the enclosing function's non-error slots plus the original error. A destructuring `or_return` binds every non-error slot the call returns; a statement with no binding discards them. Both the call and the enclosing function must have `Error` as their last return type.
 
 ---
 
@@ -1963,7 +2022,7 @@ mathlib.factorial(5)          // OK - public
 
 ### 7.5 Attributes
 
-Attributes are annotations prefixed with `#` that modify declaration behavior. Attributes are placed on the line(s) immediately before a declaration, one attribute per line:
+Attributes are annotations prefixed with `#` that modify declaration behavior. Attributes are placed on the line(s) immediately before a declaration, either stacked one per line or grouped into a single-line `#[...]` list:
 
 ```gray
 #doc("A person with a name and age")
@@ -1972,12 +2031,20 @@ const Person struct {
     name string
     age int
 }
+
+// Equivalent, using the single-line container form:
+#[doc("A person with a name and age"), json]
+const Person struct {
+    name string
+    age int
+}
 ```
 
 **Rules:**
 
-- One attribute per line, stacked before the declaration. Same-line multi-attribute (`#doc("x") #json`) is not supported.
+- Attributes may be stacked one per line, or written as a single-line `#[a, b, c]` list (see 7.5.6). The stacked and container forms are equivalent and may be mixed on the same declaration. Same-line stacking without the container (`#doc("x") #json`) is not supported.
 - Order is irrelevant. `#doc` then `#json` and `#json` then `#doc` produce identical results.
+- A given attribute may appear at most once per declaration; a repeat is rejected (E2090).
 - Blank lines between attributes and the declaration are allowed.
 - Each attribute applies to the immediately following declaration only. It does not skip ahead to find a compatible declaration further down the file.
 - Misapplied attributes are rejected. For example, `#json` on a function produces an error; `#json` can only be applied to struct declarations.
@@ -1992,6 +2059,7 @@ const Person struct {
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 | `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
+| `#test` | functions | Marks a test function, run by `gray test` and stripped from normal builds |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -2042,6 +2110,7 @@ do main() {
 **Rules:**
 
 - Field names in the JSON must match the struct field names exactly.
+- A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `int`, `uint`, `float`, `string`, `bool`.
 
@@ -2132,6 +2201,91 @@ const Container struct {
 - Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
 - `#deprecated` can be stacked with other attributes (including `#discard`) on the same declaration, in any order.
 - Like all warnings, `W3007` can be suppressed with `-q W3007` or `-q all`.
+
+#### 7.5.5 `#test` Attribute
+
+The `#test` attribute marks a function as a test. Test functions are run by the
+`gray test` command and are stripped entirely from `gray build` / `gray run`
+output — they add no code and no overhead to a normal binary.
+
+```gray
+do add(a int, b int) -> int {
+    return a + b
+}
+
+#test
+do test_add() {
+    assert(add(2, 3) == 5)
+    assert(add(-1, 1) == 0)
+}
+
+#doc("Verifies the zero case")
+#test
+do test_add_zero() {
+    assert(add(0, 0) == 0)
+}
+```
+
+Running tests:
+
+```
+gray test                Run every #test function in .gray files under the current directory (recursive)
+gray test file.gray      Run the #test functions in one file
+gray test ./src          Run the #test functions under a directory
+```
+
+A failed `assert` — or any runtime panic — inside a `#test` function is
+reported as a test failure; the runner records it and continues with the
+remaining tests rather than aborting. `gray test` exits non-zero if any test
+fails or any file fails to compile.
+
+**Rules:**
+
+- `#test` can only be applied to top-level function declarations. Applying it to
+  a struct function, enum, variable, or anything else is a parse error (E2002).
+- A `#test` function must take no parameters and declare no return type (E5046).
+- A `#test` function cannot be called or referenced from other code (E5047) —
+  it is invoked only by the test runner. Factor shared logic into a normal
+  helper function.
+- `#test` can be stacked with `#doc` in either order.
+- `#test` functions are type-checked in every build (so mistakes surface during
+  `gray build`), but only compiled and executed by `gray test`.
+
+#### 7.5.6 `#[...]` Attribute Lists
+
+Several attributes on one declaration can be grouped into a single-line
+container instead of stacking them:
+
+```gray
+#doc("This is a really long explanation of what this function does")
+#test
+#discard
+do something() { }
+```
+
+becomes:
+
+```gray
+#[doc("This is a really long explanation of what this function does"), test, discard]
+do something() { }
+```
+
+**Rules:**
+
+- Entries are bare attribute names separated by commas — no per-item `#`.
+  Parentheses appear only on attributes that take arguments (`doc("...")`,
+  `deprecated("...")`).
+- A one-element list (`#[test]`) is legal and equivalent to the bare `#test`
+  line.
+- The list must sit on a single physical line (E2092). It cannot be empty, carry
+  a trailing comma, or contain an inner `#` (E2093). An unrecognized name is
+  E2091.
+- Every entry is validated against the following declaration exactly as if it
+  had been stacked: order is irrelevant, a repeated attribute is E2090, and a
+  misapplied attribute produces the same error the stacked form would (e.g.
+  `#[json]` on a function is E2002).
+- The container and the stacked form may be mixed on the same declaration.
+- Not supported on struct functions yet — stack the attributes there (E2002).
 
 ### 7.6 Function References
 
@@ -2273,6 +2427,7 @@ if f != h { println("different") }  // different
 | `mut f = ()double` | ❌ must use `const` |
 | `println(f)` | ❌ func refs are not printable |
 | `copy(f)` | ❌ func refs cannot be copied |
+| `do get_fn() -> func(int) -> int` | ❌ a function cannot declare a func return type; the result is unusable |
 | `const f = get_fn()` | ❌ cannot assign func-type return value; use `()func_name` |
 | `get_fn()(5)` | ❌ cannot call a function's return value directly |
 | `[func(int)->int]` | ❌ typed func signature as array type; use `[func]` or `[func, N]` |
@@ -2557,7 +2712,7 @@ do main() {
 }
 ```
 
-The type argument must be a bare type name in scope. A module-qualified type name (`utils.make(types.Point)`) is a member expression, not a type name, and is rejected with E3128 — bring the type's module in with `using` so the name can be written bare.
+The type argument may be written bare or module-qualified. A module-qualified name (`utils.make(types.Point)`) parses as a member expression, but as long as it names a real type it is accepted exactly as the bare spelling is. A qualified name that resolves to no type is still rejected with E3128.
 
 #### More restrictions
 
@@ -2900,20 +3055,20 @@ All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `len` | `(collection) -> int` | Length of array, map, or string (byte length for strings, not character count) |
+| `len` | `(collection T) -> int` | Length of array, map, or string (byte length for strings, not character count) |
 | `type_of` | `(value T) -> string` | Returns the Grayscale type name as a string (e.g. `"int"`, `"uint"`, `"float"`, `"string"`, `"i128"`, `"u256"`). Accepts any type. |
 | `size_of` | `(Type) -> int` | Size of type in bytes |
-| `fields` | `(instance) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
+| `fields` | `(instance T) -> [string]` | Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs. |
 | `copy` | `(value T) -> T` | Create deep copy. Accepts any type. |
 | `new` | `(Type) -> ^Type` | Allocate zero-initialized value of any type on the heap arena |
 | `ref` | `(variable T) -> T` | Create a transparent reference (alias) to a variable. The return type is inferred and cannot be explicitly annotated. Reads and writes through the reference affect the original. Mutability is determined by the declaration (`mut` or `const`). |
-| `addr` | `(variable) -> ^T` | Get memory address of a variable |
-| `raw` | `(variable) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
+| `addr` | `(variable T) -> ^T` | Get memory address of a variable |
+| `raw` | `(variable T) -> ^T` | Get unchecked pointer — skips nil-check panics and const-source write protection |
 | `error` | `(message string) -> Error` | Create error value |
-| `assert` | `(condition bool [, message string])` | Terminate with `P0075` if condition is false. Message is optional. |
+| `assert` | `(condition bool, message string = "")` | Terminate with `P0075` if condition is false. Message is optional. |
 | `panic` | `(message string)` | Terminate with error message |
 | `exit` | `(code int)` | Exit program with code |
-| `range` | `(start int, end int [, step int]) -> Range` | Create integer range |
+| `range` | `(start int, end int, step int = 1) -> Range` | Create integer range; `step` defaults to 1 |
 | `cast` | `(value T, Type) -> Type` | Explicit type conversion |
 | `to_char` | `(s string, index int) -> char` | Return the `char` at character position `index` (not byte position). The `char` is a 32-bit Unicode codepoint; use `int()` on the result for its numeric value. Panics if index is out of bounds. |
 | `char_count` | `(s string) -> int` | Return the number of Unicode characters (codepoints) in a string. Unlike `len()`, which returns byte count, `char_count()` counts decoded UTF-8 characters. |
@@ -2951,7 +3106,7 @@ println(r2[4])        // Prints 6 - r2 sees the change
 | `const r = ref(x)`    | `const` | yes |
 | `mut r = ref(x)`      | `const` | **no**; you cannot get a mutable reference to a const source. Use `copy(x)` to obtain an independent mutable instance. |
 
-**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
+**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` is validated end-to-end. Indexing a dynamic `[T]` array is also rejected for all three (`addr(arr[i])`, `raw(arr[i])`, `ref(arr[i])`) — the backing store relocates when the array grows, leaving the pointer dangling. A fixed-size `[T,N]` array element is allowed, since its storage never moves.
 
 **`assert()` — runtime assertion**
 
@@ -3065,11 +3220,11 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `map` | `(arr [T], ()transform) -> [T]` | Returns a new array with `transform` applied to each element. `transform` must be `(T) -> T`. |
-| `filter` | `(arr [T], ()predicate) -> [T]` | Returns a new array containing only elements for which `predicate` returns true. `predicate` must be `(T) -> bool`. |
-| `reduce` | `(arr [T], initial T, ()accumulator) -> T` | Reduces the array to a single value by applying `accumulator(acc, element)` for each element, starting with `initial`. `accumulator` must be `(T, T) -> T`. |
-| `any` | `(arr [T], ()predicate) -> bool` | Returns true if at least one element satisfies `predicate`. `predicate` must be `(T) -> bool`. Returns false on an empty array. |
-| `all` | `(arr [T], ()predicate) -> bool` | Returns true if every element satisfies `predicate`. `predicate` must be `(T) -> bool`. Returns true on an empty array. |
+| `map` | `(arr [T], transform func(T) -> T) -> [T]` | Returns a new array with `transform` applied to each element. |
+| `filter` | `(arr [T], predicate func(T) -> bool) -> [T]` | Returns a new array containing only elements for which `predicate` returns true. |
+| `reduce` | `(arr [T], initial T, accumulator func(T, T) -> T) -> T` | Reduces the array to a single value by applying `accumulator(acc, element)` for each element, starting with `initial`. |
+| `any` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if at least one element satisfies `predicate`. Returns false on an empty array. |
+| `all` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if every element satisfies `predicate`. Returns true on an empty array. |
 
 ### 9.3 Strings Module (`@strings`)
 
@@ -3088,6 +3243,20 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `char_at` | `(s string, index int) -> char` | Character at byte index; panics if out of bounds |
+
+#### Editing Functions
+
+Each returns a **new** string (`string` is an immutable value type). `index` is a byte
+offset, matching `char_at`. A `char` argument is a codepoint and is UTF-8 encoded into the
+result.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `append_char` | `(s string, c char) -> string` | New string with `c` added at the end |
+| `prepend_char` | `(s string, c char) -> string` | New string with `c` added at the front |
+| `insert_char_at` | `(s string, index int, c char) -> string` | New string with `c` inserted at byte `index`; `index == len` appends; panics if `index < 0` or `index > len` |
+| `remove_at` | `(s string, index int) -> string` | New string with the byte at `index` removed; panics if out of bounds |
+| `set_char_at` | `(s string, index int, c char) -> string` | New string with the byte at `index` replaced by `c`; panics if out of bounds |
 
 #### Query Functions
 
@@ -3317,8 +3486,6 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 - `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
 - `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
-Error-returning variant: `parse`
-
 #### Arithmetic
 
 | Function | Signature | Description |
@@ -3356,14 +3523,14 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `decode` | `(text string) -> map[string:string]` | Decode JSON string to map |
+| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
 | `encode` | `(value T) -> string` | Encode to JSON string. Accepts int, float, bool, string, map, array. |
-| `stringify` | `(value T) -> string` | Encode to JSON string (alias for encode, supports `#json` structs) |
-| `pretty_print` | `(m map, indent int) -> string` | Pretty-print a map as indented JSON |
+| `stringify` | `(value T) -> string` | Encode a `#json` struct to a JSON string |
+| `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
-Error-returning variant: `decode`
+`decode` is fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut m, err = ...` or `mut m, _ = ...`).
 
 ### 9.9 IO Module (`@io`)
 
@@ -3391,7 +3558,7 @@ Error-returning variant: `decode`
 | `file_exists` | `(path string) -> bool` | Check if file exists |
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
-| `file_size` | `(path string) -> int` | Get file size in bytes; returns `-1` on error |
+| `file_size` | `(path string) -> int` | Get file size in bytes (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `rename_file` | `(old_path string, new_path string) -> bool` | Rename file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
@@ -3432,12 +3599,12 @@ mut p string = io.path_join({"/home", "user", "docs"})  // "/home/user/docs"
 mut q string = io.path_join({"a/b", "/abs"})            // "/abs", absolute replaces
 ```
 
-#### Error-Returning Variants
+#### Fallible Functions
 
-Most functions that can fail have an error-returning variant usable via multi-variable destructuring. The plain form panics on hard errors; the error form returns `(T, Error)`.
+The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (`E3089`). See [Section 4.5](#45-return-value-handling).
 
-| Function | Error-returning variant returns |
-|----------|---------------------------------|
+| Function | Full signature returns |
+|----------|------------------------|
 | `read_file` | `(string, Error)` |
 | `read_bytes` | `([byte], Error)` |
 | `read_lines` | `([string], Error)` |
@@ -3556,14 +3723,14 @@ HTTP client for making requests. Currently supports HTTP only.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get` | `(url string, headers map[string:string]) -> HttpResponse` | GET request |
-| `post` | `(url string, body string, headers map[string:string]) -> HttpResponse` | POST request |
-| `put` | `(url string, body string, headers map[string:string]) -> HttpResponse` | PUT request |
-| `patch` | `(url string, body string, headers map[string:string]) -> HttpResponse` | PATCH request |
-| `delete` | `(url string, headers map[string:string]) -> HttpResponse` | DELETE request |
-| `head` | `(url string, headers map[string:string]) -> HttpResponse` | HEAD request |
+| `get` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | GET request — always use destructuring |
+| `post` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | POST request — always use destructuring |
+| `put` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | PUT request — always use destructuring |
+| `patch` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | PATCH request — always use destructuring |
+| `delete` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | DELETE request — always use destructuring |
+| `head` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | HEAD request — always use destructuring |
 
-Error-returning variants: `get`, `post`, `put`, `delete`, `head`, `patch`
+`get`, `post`, `put`, `patch`, `delete`, and `head` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut resp, err = ...` or `mut resp, _ = ...`).
 
 #### HttpResponse Type
 
@@ -3612,7 +3779,6 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `generate` | `() -> UUID` | Generate UUID v4 (hyphenated, 36 chars) |
-| `generate_hyphenated` | `() -> UUID` | Alias for `generate` |
 | `generate_random` | `() -> UUID` | RFC 4122 v4 (random), hyphenated, lowercase |
 | `generate_time_ordered` | `() -> UUID` | RFC 9562 v7 (time-ordered), hyphenated, lowercase. Sorts by creation time |
 | `generate_compact` | `(id UUID) -> string` | Strip hyphens from a UUID, returning a 32-char hex string |
@@ -3688,11 +3854,13 @@ SQLite database access for persistent storage.
 | `open` | `(path string) -> (Database, Error)` | Open or create a SQLite database |
 | `close` | `(db Database)` | Close database connection |
 | `exec` | `(db Database, sql string) -> (bool, Error)` | Execute a SQL statement (no rows returned) |
+| `exec_params` | `(db Database, sql string, params [string]) -> (bool, Error)` | Execute a parameterized SQL statement; bind values for `?` placeholders |
 | `query` | `(db Database, sql string) -> ([map[string:string]], Error)` | Execute a SELECT query, returns array of row maps |
+| `query_params` | `(db Database, sql string, params [string]) -> ([map[string:string]], Error)` | Execute a parameterized SELECT query; bind values for `?` placeholders |
 
-Error-returning variants: `open`, `exec`, `query` — always use destructuring.
+`open`, `exec`, `exec_params`, `query`, and `query_params` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
-> 💡 **Tip:** Parameterized queries (`?` placeholders) are not supported. Build your SQL strings directly. Always sanitize any user-supplied values before interpolating them into SQL.
+> 💡 **Tip:** For any user-supplied value, use `exec_params` / `query_params` with `?` placeholders rather than interpolating into the SQL string — parameter binding prevents SQL injection.
 
 ```gray
 import @sqlite
@@ -3706,7 +3874,7 @@ mut ok, _ = sqlite.exec(db, "INSERT INTO users (name) VALUES ('Alice')")
 mut rows, err = sqlite.query(db, "SELECT * FROM users")
 if err != nil { println("query failed: ${err}") }
 for_each row in rows {
-    println(row)
+    println(row["name"])
 }
 
 sqlite.close(db)
@@ -3721,10 +3889,10 @@ An HTTP server module with dynamic handlers and path parameters.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `add_router` | `() -> Router` | Create a new router |
-| `add_route` | `(router Router, method string, path string, ()handler)` | Add a route with handler function |
+| `add_route` | `(router Router, method string, path string, handler func(HttpRequest) -> HttpResponse)` | Add a route with handler function |
 | `listen` | `(router Router, port int)` | Start HTTP server on port (blocks until killed) |
 | `cors` | `(router Router, origin string)` | Enable CORS with the given origin |
-| `use` | `(router Router, ()middleware)` | Register a middleware function |
+| `use` | `(router Router, middleware func(^HttpRequest, ^HttpResponse))` | Register a middleware function |
 
 #### Response Builders
 
@@ -3779,12 +3947,12 @@ Regular expression operations using POSIX extended regex syntax.
 |----------|-----------|-------------|
 | `is_valid` | `(pattern string) -> bool` | Check if pattern is valid regex |
 | `is_match` | `(pattern string, text string) -> bool` | Check if pattern matches text |
-| `find` | `(pattern string, text string) -> string` | First match |
-| `find_all` | `(pattern string, text string) -> [string]` | All matches |
-| `replace` | `(pattern string, text string, replacement string) -> string` | Replace matches |
-| `split` | `(pattern string, text string) -> [string]` | Split by pattern |
+| `find` | `(pattern string, text string) -> (string, Error)` | First match — always use destructuring |
+| `find_all` | `(pattern string, text string) -> ([string], Error)` | All matches — always use destructuring |
+| `replace` | `(pattern string, text string, replacement string) -> (string, Error)` | Replace matches — always use destructuring |
+| `split` | `(pattern string, text string) -> ([string], Error)` | Split by pattern — always use destructuring |
 
-Error-returning variants: `find`, `find_all`, `replace`, `split`
+`find`, `find_all`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.19 CSV Module (`@csv`)
 
@@ -3804,16 +3972,16 @@ TCP sockets and DNS resolution.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `connect` | `(host string, port int) -> Socket` | Connect to a remote host |
-| `listen` | `(port int) -> Listener` | Listen for incoming connections on a port |
-| `accept` | `(listener Listener) -> Socket` | Accept an incoming connection |
-| `send` | `(sock Socket, data string) -> int` | Send data over a socket, returns bytes sent |
-| `receive` | `(sock Socket, max_bytes int) -> string` | Receive up to `max_bytes` bytes from a socket |
+| `connect` | `(host string, port int) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
+| `listen` | `(port int) -> (Listener, Error)` | Listen for incoming connections on a port — always use destructuring |
+| `accept` | `(listener Listener) -> (Socket, Error)` | Accept an incoming connection — always use destructuring |
+| `send` | `(sock Socket, data string) -> (int, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
+| `receive` | `(sock Socket, max_bytes int) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
 | `close` | `(sock Socket)` | Close a socket or listener |
 | `set_timeout` | `(sock Socket, ms int)` | Set read/write timeout in milliseconds |
-| `resolve` | `(hostname string) -> string` | Resolve a hostname to an IP address |
+| `resolve` | `(hostname string) -> (string, Error)` | Resolve a hostname to an IP address — always use destructuring |
 
-Error-returning variants: `connect`, `listen`, `accept`, `send`, `receive`, `resolve`
+`connect`, `listen`, `accept`, `send`, `receive`, and `resolve` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.21 Threads Module (`@threads`)
 
@@ -3821,13 +3989,12 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `spawn` | `(()func) -> Thread` | Spawn a new thread running `func` |
-| `spawn` | `(()func, arg int) -> Thread` | Spawn a new thread running `func` with an int argument |
+| `spawn` | `(fn func()) -> Thread` | Spawn a new thread running `fn` |
+| `spawn_arg` | `(fn func(int), arg int) -> Thread` | Spawn a new thread running `fn`, passing `arg` as its int parameter. `spawn` with a second int argument forwards here |
 | `join` | `(t Thread)` | Wait for a thread to finish |
 | `detach` | `(t Thread)` | Release ownership; the thread runs independently. After detach the handle must not be joined or queried |
 | `is_alive` | `(t Thread) -> bool` | True while the thread's body has not returned. Not valid after `detach` or `join` |
 | `get_id` | `() -> int` | Get the current thread's ID |
-| `current` | `() -> int` | Same as `get_id`; alternate spelling |
 | `yield` | `()` | Hint the scheduler to run another runnable thread |
 | `sleep` | `(ms int)` | Sleep the current thread for `ms` milliseconds |
 | `thread_count` | `() -> int` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
@@ -3903,6 +4070,7 @@ All pointer arguments must be `^int` (pointer to int).
 | `spin_lock` | `(lk SpinLock)` | Acquire a spinlock (spins until acquired) |
 | `spin_trylock` | `(lk SpinLock) -> bool` | Try to acquire; returns true if acquired |
 | `spin_unlock` | `(lk SpinLock)` | Release a spinlock |
+| `spinlock_destroy` | `(lk SpinLock)` | Destroy a spinlock and free its resources |
 
 #### Memory Barrier
 
@@ -3918,13 +4086,14 @@ Formatted output and string formatting functions.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `printf` | `(format string, ...args T)` | Print formatted string to stdout |
-| `printfln` | `(format string, ...args T)` | Print formatted string to stdout with trailing newline |
-| `eprintf` | `(format string, ...args T)` | Print formatted string to stderr |
-| `eprintfln` | `(format string, ...args T)` | Print formatted string to stderr with trailing newline |
-| `sprintf` | `(format string, ...args T) -> string` | Return formatted string |
-| `sprintfln` | `(format string, ...args T) -> string` | Return formatted string with trailing newline |
-| `format` | `(format string, ...args T) -> string` | Return formatted string |
+| `printf` | `(format string, args [T])` | Print formatted string to stdout |
+| `printfln` | `(format string, args [T])` | Print formatted string to stdout with trailing newline |
+| `eprintf` | `(format string, args [T])` | Print formatted string to stderr |
+| `eprintfln` | `(format string, args [T])` | Print formatted string to stderr with trailing newline |
+| `sprintf` | `(format string, args [T]) -> string` | Return formatted string |
+| `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
+
+One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
 
 > 💡 **Tip:** `eprintln` and `eprint` are builtins, not fmt module functions. Use them without an import.
 
@@ -3941,11 +4110,12 @@ Format strings use C-style `%` specifiers:
 | `%g` | `float` | Shorter of `%f` or `%e` |
 | `%s` | `string` | String |
 | `%c` | `char` | Single character |
-| `%x` | `int` | Hexadecimal (lowercase) |
-| `%o` | `int` | Octal |
+| `%b` | `bool` | `true` / `false` |
+| `%x`, `%X` | `int` / `uint` | Hexadecimal (lowercase / uppercase) |
+| `%o` | `int` / `uint` | Octal |
 | `%%` | — | Literal `%` |
 
-Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d` and `%u` are automatically widened to `%lld`/`%llu` for Grayscale's 64-bit integer types. Composite types (structs, arrays, maps) are not supported — use `println` for those.
+Width, precision, and flags (`-`, `+`, `0`, `#`) follow standard C printf conventions. `%d`, `%i`, `%u`, `%x`, `%X`, and `%o` are automatically widened to their 64-bit form for Grayscale's `int`/`uint` types. The same directives also accept `i128`, `u128`, `i256`, and `u256`, which are rendered from their raw bit pattern (like C printf: `%x`/`%o` on a negative value show its two's-complement form); for a bigint argument only width and `-` apply — the `0`, `#`, `+`, and space flags and precision are ignored. `%f`, `%c`, and `%b` reject bigints. Composite types (structs, arrays, maps) are not supported — use `println` for those.
 
 ```gray
 import @fmt
@@ -3975,7 +4145,7 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 | `float_fixed` | `(f float, decimals int) -> string` | Format float with fixed decimal places |
 | `float_sci` | `(f float) -> string` | Format float in scientific notation |
 
-Accepts `string`, `int`, `float`, and `bool` arguments for formatted output functions. Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
+Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 
 ### 9.27 Strconv Module (`@strconv`)
 
@@ -4018,8 +4188,37 @@ String-to-type and type-to-string conversion functions with proper error handlin
 | `from_uint` | `(n uint) -> string` | Convert unsigned integer to decimal string |
 | `from_float` | `(f float) -> string` | Convert float to string (shortest representation) |
 | `from_bool` | `(b bool) -> string` | Convert boolean to `"true"` or `"false"` |
+| `format_int` | `(n int, base int) -> string` | Convert signed integer to a string in any base 2–36 |
+| `format_uint` | `(n uint, base int) -> string` | Convert unsigned integer to a string in any base 2–36 |
 
-These functions never fail.
+These functions never fail, except `format_int` / `format_uint` panic when `base` is
+outside 2–36 (a compile-time error when the base is a literal).
+
+**`format_int` / `format_uint` rules:**
+- `base` must be an integer between **2 and 36** (inclusive).
+- Digits above 9 are lowercase letters `a`–`z`.
+- `format_int` prefixes negative values with `-`; `format_uint` treats its argument as unsigned.
+- The inverse of `to_int` / `to_uint`: `to_int(format_int(n, b), b) == n`.
+- `fmt.int_to_hex` / `fmt.int_to_binary` / `fmt.int_to_octal` remain available; they format the raw
+  two's-complement bit pattern for their fixed base, whereas `format_int` produces a signed representation.
+
+#### Quoting (string ↔ quoted literal)
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `quote` | `(s string) -> string` | Wrap `s` in double quotes, escaping special characters |
+| `unquote` | `(s string) -> (string, Error)` | Remove surrounding double quotes from `s` and interpret escapes |
+
+**`quote` rules:**
+- Wraps the result in `"` and escapes `\`, `"`, newline, carriage return, and tab; other bytes below
+  `0x20` and `0x7f` are emitted as `\xNN`. All other bytes are copied unchanged.
+
+**`unquote` rules:**
+- Fallible: returns `(string, Error)` and must be destructured (`mut v, err = ...` or `mut v, _ = ...`); single-variable assignment is a compile error.
+- Requires `s` to begin and end with `"`.
+- Interprets `\n \t \r \\ \" \' \0 \a \b \f \v \$` and `\xNN` (two hex digits).
+- An unescaped `"`, a trailing `\`, or an unknown escape produces an error.
+- The inverse of `quote`: `unquote(quote(s))` returns `s`.
 
 #### Query Functions
 
@@ -4068,6 +4267,30 @@ Read-only introspection into the compiler-managed arenas (default + heap), execu
 | `call_depth` | `() -> int` | Current call stack depth |
 | `call_limit` | `() -> int` | Maximum allowed call stack depth (10,000) |
 | `uptime` | `() -> float` | Seconds elapsed since the program started |
+
+### 9.29 Chars Module (`@chars`)
+
+Scalar operations on a single `char`. `strings` already provides the char classification
+predicates (`is_alpha`, `is_upper`, `is_lower`, …); `chars` adds ASCII case folding, which
+cannot live in `strings` because `to_upper`/`to_lower` there operate on a `string`.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `to_upper` | `(c char) -> char` | ASCII uppercase |
+| `to_lower` | `(c char) -> char` | ASCII lowercase |
+
+**Behavior:**
+- Only the 26 ASCII letters in the relevant case are folded. Digits, symbols, whitespace, and
+  non-ASCII codepoints (`char` is a full Unicode codepoint) are returned unchanged.
+- Neither function fails.
+
+```gray
+import @chars
+
+println(chars.to_upper('a'))   // 'A'
+println(chars.to_lower('Z'))   // 'z'
+println(chars.to_upper('5'))   // '5'
+```
 
 ---
 
@@ -4188,7 +4411,7 @@ The `new()` function allocates a zero-initialized value of any type on the heap 
 | `char` | `'\0'` |
 | `byte` | `0` |
 | `[T]` | Empty array (valid for append) |
-| `map[K:V]` | `{}` |
+| `map[K:V]` | Empty map (`{:}`) |
 | enum | First variant |
 | struct | All fields zero-initialized |
 
@@ -4227,6 +4450,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Returning address of local variable | `return addr(local)` is rejected. Only the direct form is detected; see the pointer escape limitation below |
 | Cross-scope pointer assignment | Assigning `addr()` of an inner-scope value directly to an outer-scope pointer is rejected. Only the direct form is detected; see the pointer escape limitation below |
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
+| Dangling pointer into a relocated container | `addr()`, `raw()`, or `ref()` on a dynamic `[T]` array element or a map value is rejected; the backing store relocates when the array grows or the map rehashes. Fixed-size `[T,N]` array elements are allowed — their storage never moves |
 | Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
 
 **Prevented by ASBAM:**
@@ -4366,12 +4590,14 @@ The `gray` command-line tool provides the following commands:
 | `gray <file.gray>` | Compile and run a source file |
 | `gray build <file.gray>` | Compile to a distributable binary |
 | `gray check <file.gray>` | Type-check without compiling |
+| `gray test [path...]` | Compile and run `#test` functions |
 | `gray watch <file.gray>` | Watch for changes and re-run on save |
 | `gray fmt <path>` | Format source files |
 | `gray doc <path>` | Generate documentation from `#doc` attributes |
 | `gray new <name>` | Scaffold a new project |
 | `gray man <name>` | Show documentation for builtins, stdlib, and language reference |
 | `gray report` | Print system info for bug reports |
+| `gray verify` | Run the built-in language verification test suite |
 | `gray update` | Check for updates and upgrade |
 | `gray install <version>` | Install a specific version by exact semver |
 | `gray version` | Show version information |
@@ -4446,7 +4672,34 @@ gray check main.gray
 gray check src/
 ```
 
-### 13.4 `gray watch`
+### 13.4 `gray test`
+
+Compile and run every function marked with the `#test` attribute.
+
+```
+gray test [path...] [flags]
+```
+
+With no path, `gray test` scans the current directory recursively for `.gray`
+files containing a `#test` function. A path may be a single file or a
+directory (scanned recursively). Each source file is compiled to its own
+temporary test binary and run.
+
+| Flag | Description |
+|------|-------------|
+| `--no-color` | Disable colored output. |
+
+A failed `assert` or runtime panic inside a `#test` function is reported as a
+failure and the runner continues. The exit code is non-zero if any test fails
+or any file fails to compile.
+
+```bash
+gray test
+gray test math_test.gray
+gray test ./src
+```
+
+### 13.5 `gray watch`
 
 Watch a file or directory for changes and re-run on save. Automatically discovers and watches imported files.
 
@@ -4466,7 +4719,7 @@ gray watch main.gray
 gray watch src/
 ```
 
-### 13.5 `gray fmt`
+### 13.6 `gray fmt`
 
 Format `.gray` source files in place. Normalizes indentation to 4 spaces, removes trailing whitespace, ensures a final newline, and collapses runs of more than 2 blank lines.
 
@@ -4493,7 +4746,7 @@ gray fmt ./...
 gray fmt --check ./...
 ```
 
-### 13.6 `gray doc`
+### 13.7 `gray doc`
 
 Generate markdown documentation from `#doc` attributes in source files.
 
@@ -4513,7 +4766,7 @@ gray doc ./...
 gray doc src/ -o API.md
 ```
 
-### 13.7 `gray new`
+### 13.8 `gray new`
 
 Scaffold a new Grayscale project.
 
@@ -4538,7 +4791,7 @@ gray new myapp -t basic -c
 gray new                          # interactive mode
 ```
 
-### 13.8 `gray man`
+### 13.9 `gray man`
 
 Show documentation for builtin functions, stdlib modules, stdlib types, and language reference (keywords, types, symbols, attributes).
 
@@ -4576,7 +4829,7 @@ gray man flags
 
 > 💡 **Tip:** For attributes, omit the `#` prefix — the shell treats `#` as a comment. Use `gray man flags`, not `gray man #flags`.
 
-### 13.9 `gray report`
+### 13.10 `gray report`
 
 Print system information for filing bug reports.
 
@@ -4586,7 +4839,7 @@ gray report
 
 Output includes Grayscale version, commit hash, OS, CPU, RAM, C compiler version, and target triple.
 
-### 13.10 `gray update`
+### 13.11 `gray update`
 
 Check for updates and upgrade to a newer version.
 
@@ -4603,7 +4856,7 @@ gray update
 gray update --pre
 ```
 
-### 13.11 `gray install`
+### 13.12 `gray install`
 
 Install a specific Grayscale version by exact semver, replacing the current installation. Supports downgrades and pre-release tags.
 
@@ -4616,7 +4869,7 @@ gray install 3.0.0
 gray install 3.1.0-beta.2
 ```
 
-### 13.12 `gray version`
+### 13.13 `gray version`
 
 Show the installed version, build commit, build timestamp, and whether newer versions are available.
 
@@ -4624,7 +4877,17 @@ Show the installed version, build commit, build timestamp, and whether newer ver
 gray version
 ```
 
-### 13.13 `gray cross build`
+### 13.14 `gray verify`
+
+Run the built-in language verification suite. Compiles and runs an embedded Grayscale test program to confirm the toolchain (compiler, runtime, C backend) is working. Exits non-zero on failure.
+
+```
+gray verify
+```
+
+Not available on Windows, which has no runtime yet.
+
+### 13.15 `gray cross build`
 
 Cross-compile a Grayscale source file for another platform using Zig as the C cross-compiler backend.
 
@@ -4661,7 +4924,7 @@ gray cross build main.gray --target windows-amd64 -o myapp.exe
 gray cross build main.gray --target linux-arm64 --emit-c
 ```
 
-### 13.14 `gray cross targets`
+### 13.16 `gray cross targets`
 
 List all supported cross-compilation targets and their corresponding Zig triples.
 

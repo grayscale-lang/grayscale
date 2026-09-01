@@ -878,4 +878,84 @@ static inline GrayString gray_i256_to_string(GrayArena *arena, gray_i256 val) {
     return gray_u256_to_string(arena, uval);
 }
 
+/* --- Hex / octal rendering ---
+ * Used by the fmt module for %x / %X / %o directives. The value is rendered
+ * from its raw bit pattern (like C printf), so the signed variants forward
+ * to the unsigned ones without taking absolute value. Longest output is
+ * 256-bit octal: 86 digits. */
+#define GRAY_BIGINT_RADIX_BUF 96
+
+static inline GrayString gray_u128_to_radix_string(GrayArena *arena, gray_u128 val,
+                                                   unsigned base, bool upper) {
+    const char *digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    char buf[GRAY_BIGINT_RADIX_BUF];
+    int pos = GRAY_BIGINT_RADIX_BUF;
+    gray_u128 b = { base, 0 };
+    gray_u128 v = val;
+    if (v.lo == 0 && v.hi == 0) buf[--pos] = '0';
+    while (v.lo != 0 || v.hi != 0) {
+        gray_u128 q, rem;
+        gray_u128_divmod(v, b, &q, &rem, __FILE__, __LINE__);
+        buf[--pos] = digits[rem.lo];
+        v = q;
+    }
+    size_t len = (size_t)(GRAY_BIGINT_RADIX_BUF - pos);
+    char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
+    memcpy(s, buf + pos, len);
+    s[len] = '\0';
+    return (GrayString){ s, (int32_t)len };
+}
+
+static inline GrayString gray_u256_to_radix_string(GrayArena *arena, gray_u256 val,
+                                                   unsigned base, bool upper) {
+    const char *digits = upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    char buf[GRAY_BIGINT_RADIX_BUF];
+    int pos = GRAY_BIGINT_RADIX_BUF;
+    gray_u256 b = GRAY_U256_ZERO;
+    b.w[0] = base;
+    gray_u256 v = val;
+    if (v.w[0] == 0 && v.w[1] == 0 && v.w[2] == 0 && v.w[3] == 0) buf[--pos] = '0';
+    while (v.w[0] != 0 || v.w[1] != 0 || v.w[2] != 0 || v.w[3] != 0) {
+        gray_u256 q, rem;
+        gray_u256_divmod(v, b, &q, &rem, __FILE__, __LINE__);
+        buf[--pos] = digits[rem.w[0]];
+        v = q;
+    }
+    size_t len = (size_t)(GRAY_BIGINT_RADIX_BUF - pos);
+    char *s = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
+    memcpy(s, buf + pos, len);
+    s[len] = '\0';
+    return (GrayString){ s, (int32_t)len };
+}
+
+static inline GrayString gray_u128_to_hex_string(GrayArena *arena, gray_u128 val, bool upper) {
+    return gray_u128_to_radix_string(arena, val, 16, upper);
+}
+static inline GrayString gray_u128_to_octal_string(GrayArena *arena, gray_u128 val) {
+    return gray_u128_to_radix_string(arena, val, 8, false);
+}
+static inline GrayString gray_i128_to_hex_string(GrayArena *arena, gray_i128 val, bool upper) {
+    gray_u128 u = { val.lo, (uint64_t)val.hi };
+    return gray_u128_to_radix_string(arena, u, 16, upper);
+}
+static inline GrayString gray_i128_to_octal_string(GrayArena *arena, gray_i128 val) {
+    gray_u128 u = { val.lo, (uint64_t)val.hi };
+    return gray_u128_to_radix_string(arena, u, 8, false);
+}
+
+static inline GrayString gray_u256_to_hex_string(GrayArena *arena, gray_u256 val, bool upper) {
+    return gray_u256_to_radix_string(arena, val, 16, upper);
+}
+static inline GrayString gray_u256_to_octal_string(GrayArena *arena, gray_u256 val) {
+    return gray_u256_to_radix_string(arena, val, 8, false);
+}
+static inline GrayString gray_i256_to_hex_string(GrayArena *arena, gray_i256 val, bool upper) {
+    gray_u256 u; memcpy(&u, &val, sizeof(u));
+    return gray_u256_to_radix_string(arena, u, 16, upper);
+}
+static inline GrayString gray_i256_to_octal_string(GrayArena *arena, gray_i256 val) {
+    gray_u256 u; memcpy(&u, &val, sizeof(u));
+    return gray_u256_to_radix_string(arena, u, 8, false);
+}
+
 #endif /* GRAY_BIGINT_H */

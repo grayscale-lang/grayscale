@@ -191,6 +191,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Brings module members into scope for unqualified access. Can appear at file scope or function scope.",
 		Example: "import @strings\nusing strings\nprintln(to_upper(\"hello\"))",
 	},
+	"use": {
+		Kind:    "keyword",
+		Syntax:  "import and use @<module>[, @<module>...]",
+		Desc:    "Reserved for the 'import and use' statement, which imports a module and brings its members into scope for unqualified access in one step. Has no other syntactic role.",
+		Example: "import and use @strings\nprintln(to_upper(\"hello\"))",
+	},
 	// "new" is a builtin; reachable via gray man keywords listing
 	"new": {
 		Kind:    "keyword",
@@ -223,6 +229,42 @@ var langManDocs = map[string]LangManEntry{
 		Syntax:  "<value> not_in <collection>",
 		Desc:    "Non-membership test. Returns true if value is not in the collection or range. Alias: '!in'.",
 		Example: "if \"key\" not_in m { println(\"missing\") }",
+	},
+	"bit_and": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_and <b>",
+		Desc:    "Bitwise AND. Infix operator on int, uint, byte, char, and sized integer types. Keyword syntax is used because '&' denotes mutable parameters.",
+		Example: "println(12 bit_and 10)  // 8",
+	},
+	"bit_or": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_or <b>",
+		Desc:    "Bitwise OR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(12 bit_or 10)  // 14",
+	},
+	"bit_xor": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_xor <b>",
+		Desc:    "Bitwise XOR. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(12 bit_xor 10)  // 6",
+	},
+	"bit_not": {
+		Kind:    "keyword",
+		Syntax:  "bit_not <a>",
+		Desc:    "Bitwise NOT (complement). Prefix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(bit_not 10)  // -11",
+	},
+	"bit_shift_left": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_shift_left <n>",
+		Desc:    "Left shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(1 bit_shift_left 3)  // 8",
+	},
+	"bit_shift_right": {
+		Kind:    "keyword",
+		Syntax:  "<a> bit_shift_right <n>",
+		Desc:    "Right shift of 'a' by 'n' bits. Infix operator on int, uint, byte, char, and sized integer types.",
+		Example: "println(16 bit_shift_right 1)  // 8",
 	},
 
 	// ── Keywords: Literals ──────────────────────────────────────────────
@@ -372,6 +414,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "64-bit IEEE 754 double-precision float. Identical to 'float'. Maps to C double.",
 		Example: "mut x f64 = 3.14",
 	},
+	"map": {
+		Kind:    "type",
+		Syntax:  "[K:V]  |  map[K:V]",
+		Desc:    "Unordered collection of key-value pairs. The 'map' prefix is optional: '[K:V]' and 'map[K:V]' are identical. Keys may be any comparable primitive. The empty map literal is '{:}' (not '{}', which is an empty array).",
+		Example: "mut ages [string:int] = {\"alice\": 30, \"bob\": 25}\nmut empty [string:int] = {:}\nprintln(ages[\"alice\"])",
+	},
 	"Error_type": {
 		Kind:    "type",
 		Syntax:  "Error",
@@ -454,6 +502,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).",
 		Example: "#discard\ndo tryInsert(value int) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
 	},
+	"#test": {
+		Kind:    "attribute",
+		Syntax:  "#test",
+		Desc:    "Marks a test function, run by 'gray test' and stripped from normal builds. Must take no parameters and no return type (E5046).",
+		Example: "#test\ndo test_add() {\n    assert(add(2, 3) == 5)\n}",
+	},
 }
 
 // langGroup is one labeled group of names within a language category index.
@@ -467,8 +521,8 @@ var langCategories = map[string][]langGroup{
 	"keywords": {
 		{Label: "Control flow  ", Names: []string{"if", "else", "otherwise", "or", "elif", "for", "for_each", "while", "as_long_as", "loop", "when", "switch", "is", "case", "break", "continue", "default", "return"}},
 		{Label: "Error handling", Names: []string{"ensure", "defer", "or_return"}},
-		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "new", "private"}},
-		{Label: "Operators     ", Names: []string{"in", "not_in"}},
+		{Label: "Declarations  ", Names: []string{"mut", "const", "do", "fn", "struct", "enum", "alias", "import", "using", "use", "new", "private"}},
+		{Label: "Operators     ", Names: []string{"in", "not_in", "bit_and", "bit_or", "bit_xor", "bit_not", "bit_shift_left", "bit_shift_right", "cast", "range"}},
 		{Label: "Literals      ", Names: []string{"true", "false", "nil"}},
 	},
 	"types": {
@@ -477,13 +531,14 @@ var langCategories = map[string][]langGroup{
 		{Label: "Unsigned", Names: []string{"u8", "u16", "u32", "u64"}},
 		{Label: "Wide   ", Names: []string{"i128", "u128", "i256", "u256"}},
 		{Label: "Float  ", Names: []string{"f32", "f64"}},
-		{Label: "Error  ", Names: []string{"Error"}},
+		{Label: "Container", Names: []string{"map"}},
+		{Label: "Special", Names: []string{"func", "Error", "SourceLocation"}},
 	},
 	"symbols": {
 		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#", "?", "<?>"}},
 	},
 	"attributes": {
-		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard"}},
+		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard", "#test"}},
 	},
 }
 
@@ -503,6 +558,7 @@ var langSymbolAliases = map[string]string{
 	"flags":   "#flags",
 	"strict":  "#strict",
 	"discard": "#discard",
+	"test":    "#test",
 }
 
 // langDisplayName strips the _type suffix used to avoid builtin key collisions.

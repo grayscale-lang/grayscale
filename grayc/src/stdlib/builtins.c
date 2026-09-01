@@ -151,17 +151,26 @@ GrayString gray_builtin_input(GrayArena *arena) {
 /* --- assert --- */
 
 void gray_builtin_assert(bool condition, GrayString message, const char *file, int line) {
-    (void)file; (void)line;
-    if (!condition) {
-        fflush(stdout);
-        fprintf(stderr, "panic[P0075]: assertion failed");
-        if (message.len > 0) {
-            fprintf(stderr, ": ");
-            fwrite(message.data, 1, (size_t)message.len, stderr);
-        }
-        fputc('\n', stderr);
-        exit(1);
+    if (condition) return;
+
+    /* Under `gray test`, a failed assert is a test failure — record it and
+     * longjmp back to the runner instead of ending the process. */
+    if (gray_test_active) {
+        if (message.len > 0)
+            gray_test_fail("P0075", file, line, "assertion failed: %.*s",
+                           (int)message.len, message.data);
+        else
+            gray_test_fail("P0075", file, line, "assertion failed");
     }
+
+    fflush(stdout);
+    fprintf(stderr, "panic[P0075]: assertion failed");
+    if (message.len > 0) {
+        fprintf(stderr, ": ");
+        fwrite(message.data, 1, (size_t)message.len, stderr);
+    }
+    fputc('\n', stderr);
+    exit(1);
 }
 
 /* --- panic --- */

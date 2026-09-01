@@ -12,6 +12,7 @@
 #include "../src/runtime/array.h"
 #include "../src/runtime/map.h"
 #include "../src/stdlib/strings.h"
+#include "../src/stdlib/chars.h"
 #include "../src/stdlib/arrays.h"
 #include "../src/stdlib/maps.h"
 #include "../src/stdlib/math.h"
@@ -298,6 +299,53 @@ static void test_strings_classification(void) {
     ASSERT(!gray_strings_is_upper('a'));
     ASSERT(gray_strings_is_lower('a'));
     ASSERT(!gray_strings_is_lower('A'));
+}
+
+/* --- char editing (#2560): each returns a new string, input untouched --- */
+
+static void test_strings_append_char(void) {
+    ASSERT_GRAY_STR(gray_strings_append_char(arena, gray_string_lit("hell"), 'o'), "hello");
+    ASSERT_GRAY_STR(gray_strings_append_char(arena, gray_string_lit(""), 'x'), "x");
+}
+
+static void test_strings_prepend_char(void) {
+    ASSERT_GRAY_STR(gray_strings_prepend_char(arena, gray_string_lit("ello"), 'h'), "hello");
+    ASSERT_GRAY_STR(gray_strings_prepend_char(arena, gray_string_lit(""), 'x'), "x");
+}
+
+static void test_strings_insert_char_at(void) {
+    ASSERT_GRAY_STR(gray_strings_insert_char_at(arena, gray_string_lit("helo"), 3, 'l'), "hello");
+    ASSERT_GRAY_STR(gray_strings_insert_char_at(arena, gray_string_lit("bc"), 0, 'a'), "abc");
+    /* an index equal to the length appends */
+    ASSERT_GRAY_STR(gray_strings_insert_char_at(arena, gray_string_lit("ab"), 2, 'c'), "abc");
+}
+
+static void test_strings_remove_at(void) {
+    ASSERT_GRAY_STR(gray_strings_remove_at(arena, gray_string_lit("hello!"), 5), "hello");
+    ASSERT_GRAY_STR(gray_strings_remove_at(arena, gray_string_lit("abc"), 0), "bc");
+}
+
+static void test_strings_set_char_at(void) {
+    ASSERT_GRAY_STR(gray_strings_set_char_at(arena, gray_string_lit("hello"), 0, 'H'), "Hello");
+    ASSERT_GRAY_STR(gray_strings_set_char_at(arena, gray_string_lit("cat"), 1, 'u'), "cut");
+}
+
+/* ===== chars module (#2559) ===== */
+
+static void test_chars_to_upper(void) {
+    ASSERT_EQ(gray_chars_to_upper('a'), 'A');
+    ASSERT_EQ(gray_chars_to_upper('z'), 'Z');
+    ASSERT_EQ(gray_chars_to_upper('A'), 'A');           /* already uppercase */
+    ASSERT_EQ(gray_chars_to_upper('5'), '5');           /* digit unchanged */
+    ASSERT_EQ(gray_chars_to_upper(0x00E9), 0x00E9);     /* non-ASCII 'é' unchanged */
+}
+
+static void test_chars_to_lower(void) {
+    ASSERT_EQ(gray_chars_to_lower('Z'), 'z');
+    ASSERT_EQ(gray_chars_to_lower('A'), 'a');
+    ASSERT_EQ(gray_chars_to_lower('a'), 'a');           /* already lowercase */
+    ASSERT_EQ(gray_chars_to_lower('#'), '#');           /* symbol unchanged */
+    ASSERT_EQ(gray_chars_to_lower(0x00C9), 0x00C9);     /* non-ASCII 'É' unchanged */
 }
 
 /* ===== arrays module ===== */
@@ -977,6 +1025,55 @@ static void test_strconv_is_integer(void) {
     ASSERT(!gray_strconv_is_integer(gray_string_lit("")));
 }
 
+/* --- format_int / format_uint / quote / unquote (#2434) --- */
+
+static void test_strconv_format_int(void) {
+    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 255, 16), "ff");
+    ASSERT_GRAY_STR(gray_strconv_format_int(arena, -10, 2), "-1010");
+    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 0, 10), "0");
+    ASSERT_GRAY_STR(gray_strconv_format_int(arena, 35, 36), "z");   /* digits above 9 are a-z */
+}
+
+static void test_strconv_format_uint(void) {
+    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 255, 16), "ff");
+    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 8, 8), "10");
+    ASSERT_GRAY_STR(gray_strconv_format_uint(arena, 0, 2), "0");
+}
+
+/* STANDARD: to_int(format_int(n, b), b) == n */
+static void test_strconv_format_int_roundtrip(void) {
+    GrayString s = gray_strconv_format_int(arena, -12345, 16);
+    ASSERT_EQ(gray_strconv_to_int(s, 16), -12345);
+}
+
+static void test_strconv_quote(void) {
+    ASSERT_GRAY_STR(gray_strconv_quote(arena, gray_string_lit("hi")), "\"hi\"");
+    ASSERT_GRAY_STR(gray_strconv_quote(arena, gray_string_lit("a\tb\nc")), "\"a\\tb\\nc\"");
+    ASSERT_GRAY_STR(gray_strconv_quote(arena, gray_string_lit("say \"hi\"")), "\"say \\\"hi\\\"\"");
+    /* a control byte with no named escape becomes \xNN */
+    ASSERT_GRAY_STR(gray_strconv_quote(arena, gray_string_lit("\x01")), "\"\\x01\"");
+}
+
+static void test_strconv_unquote_ok(void) {
+    GrayResult_string r = gray_strconv_unquote_result(arena, gray_string_lit("\"a\\tb\""));
+    ASSERT(r.v1 == NULL);
+    ASSERT_GRAY_STR(r.v0, "a\tb");
+}
+
+static void test_strconv_unquote_err(void) {
+    /* no surrounding double quotes */
+    GrayResult_string r = gray_strconv_unquote_result(arena, gray_string_lit("nope"));
+    ASSERT_NOT_NULL(r.v1);
+}
+
+/* STANDARD: unquote(quote(s)) returns s */
+static void test_strconv_quote_unquote_roundtrip(void) {
+    GrayString original = gray_string_lit("tab\there\nand \"quotes\"");
+    GrayResult_string r = gray_strconv_unquote_result(arena, gray_strconv_quote(arena, original));
+    ASSERT(r.v1 == NULL);
+    ASSERT(gray_string_eq(r.v0, original));
+}
+
 /* ===== json module ===== */
 
 static void test_json_encode_map(void) {
@@ -986,6 +1083,47 @@ static void test_json_encode_map(void) {
     gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
     GrayString r = gray_json_encode_map(arena, &m);
     ASSERT_GRAY_STR(r, "{\"name\":\"Alice\"}");
+}
+
+/* Every typed map encoder shares one two-pass implementation; each is checked
+ * with a key that requires escaping and a worst-case value. */
+
+static void test_json_encode_map_string_escaped_key(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+    GrayString k = gray_string_lit("a\"b");
+    GrayString v = gray_string_lit("v\\x");
+    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    GrayString r = gray_json_encode_map(arena, &m);
+    ASSERT_GRAY_STR(r, "{\"a\\\"b\":\"v\\\\x\"}");
+}
+
+static void test_json_encode_map_int_escaped_key(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(int64_t), 0);
+    GrayString k = gray_string_lit("a\"b");
+    int64_t v = INT64_MIN; /* longest int64 output: -9223372036854775808 */
+    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    GrayString r = gray_json_encode_map_int(arena, &m);
+    ASSERT_GRAY_STR(r, "{\"a\\\"b\":-9223372036854775808}");
+}
+
+static void test_json_encode_map_float_escaped_key(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(double), 0);
+    GrayString k = gray_string_lit("k\ny");
+    double v = 3.5;
+    gray_map_set_str(arena, &m, k, &v, __FILE__, __LINE__);
+    GrayString r = gray_json_encode_map_float(arena, &m);
+    ASSERT_GRAY_STR(r, "{\"k\\ny\":3.5}");
+}
+
+static void test_json_encode_map_bool_escaped_key(void) {
+    GrayMap m = gray_map_new(arena, sizeof(GrayString), sizeof(bool), 0);
+    GrayString k1 = gray_string_lit("t\"1");
+    GrayString k2 = gray_string_lit("f\"2");
+    bool v1 = true, v2 = false;
+    gray_map_set_str(arena, &m, k1, &v1, __FILE__, __LINE__);
+    gray_map_set_str(arena, &m, k2, &v2, __FILE__, __LINE__);
+    GrayString r = gray_json_encode_map_bool(arena, &m);
+    ASSERT_GRAY_STR(r, "{\"t\\\"1\":true,\"f\\\"2\":false}");
 }
 
 static void test_json_encode_array_int(void) {
@@ -1255,6 +1393,15 @@ int main(void) {
     RUN_TEST(test_strings_to_chars);
     RUN_TEST(test_strings_from_chars);
     RUN_TEST(test_strings_classification);
+    RUN_TEST(test_strings_append_char);
+    RUN_TEST(test_strings_prepend_char);
+    RUN_TEST(test_strings_insert_char_at);
+    RUN_TEST(test_strings_remove_at);
+    RUN_TEST(test_strings_set_char_at);
+
+    printf("--- chars ---\n");
+    RUN_TEST(test_chars_to_upper);
+    RUN_TEST(test_chars_to_lower);
 
     printf("--- arrays ---\n");
     RUN_TEST(test_arrays_append);
@@ -1359,9 +1506,20 @@ int main(void) {
     RUN_TEST(test_strconv_from_bool);
     RUN_TEST(test_strconv_is_numeric);
     RUN_TEST(test_strconv_is_integer);
+    RUN_TEST(test_strconv_format_int);
+    RUN_TEST(test_strconv_format_uint);
+    RUN_TEST(test_strconv_format_int_roundtrip);
+    RUN_TEST(test_strconv_quote);
+    RUN_TEST(test_strconv_unquote_ok);
+    RUN_TEST(test_strconv_unquote_err);
+    RUN_TEST(test_strconv_quote_unquote_roundtrip);
 
     printf("--- json ---\n");
     RUN_TEST(test_json_encode_map);
+    RUN_TEST(test_json_encode_map_string_escaped_key);
+    RUN_TEST(test_json_encode_map_int_escaped_key);
+    RUN_TEST(test_json_encode_map_float_escaped_key);
+    RUN_TEST(test_json_encode_map_bool_escaped_key);
     RUN_TEST(test_json_encode_array_int);
     RUN_TEST(test_json_encode_array_string);
     RUN_TEST(test_json_is_valid);

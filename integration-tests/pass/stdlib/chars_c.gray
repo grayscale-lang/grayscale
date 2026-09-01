@@ -1,0 +1,57 @@
+/*
+ * Test: chars module - scalar ASCII case folding
+ * Verifies chars.to_upper / chars.to_lower fold ASCII letters and
+ * pass everything else (digits, symbols, non-ASCII bytes) through.
+ */
+
+import and use @chars
+
+do check(label string, got char, want char) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // ASCII letters fold
+    passed += check("to_upper('a')", chars.to_upper('a'), 'A')
+    passed += check("to_upper('z')", chars.to_upper('z'), 'Z')
+    passed += check("to_lower('Z')", chars.to_lower('Z'), 'z')
+    passed += check("to_lower('A')", chars.to_lower('A'), 'a')
+
+    // already-cased is a no-op
+    passed += check("to_upper('A')", chars.to_upper('A'), 'A')
+    passed += check("to_lower('a')", chars.to_lower('a'), 'a')
+
+    // digits pass through
+    passed += check("to_upper('5')", chars.to_upper('5'), '5')
+    passed += check("to_lower('9')", chars.to_lower('9'), '9')
+
+    // symbols and whitespace pass through
+    passed += check("to_lower('#')", chars.to_lower('#'), '#')
+    passed += check("to_upper(' ')", chars.to_upper(' '), ' ')
+
+    // non-ASCII codepoint passes through unchanged
+    mut hi char = char(0xC3)
+    passed += check("to_upper(0xC3)", chars.to_upper(hi), hi)
+    mut hi2 char = char(0xFF)
+    passed += check("to_lower(0xFF)", chars.to_lower(hi2), hi2)
+
+    // bare-call form after `import and use`
+    passed += check("bare to_upper('q')", to_upper('q'), 'Q')
+    passed += check("bare to_lower('Q')", to_lower('Q'), 'q')
+
+    println("")
+    println("Results: ${passed}/14 passed")
+    if passed == 14 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

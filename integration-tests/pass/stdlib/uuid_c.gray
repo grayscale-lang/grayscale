@@ -29,14 +29,14 @@ do main() {
         failed += 1
     }
 
-    // generate_hyphenated also yields a valid 36-char UUID
-    mut hy UUID = uuid.generate_hyphenated()
+    // generate_random also yields a valid 36-char UUID
+    mut hy UUID = uuid.generate_random()
     mut hs string = uuid.to_string(hy)
     if len(hs) == 36 && uuid.is_valid(hs) {
-        println("  [PASS] generate_hyphenated")
+        println("  [PASS] generate_random")
         passed += 1
     } otherwise {
-        println("  [FAIL] generate_hyphenated: len=${len(hs)}")
+        println("  [FAIL] generate_random: len=${len(hs)}")
         failed += 1
     }
 

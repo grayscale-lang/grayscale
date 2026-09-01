@@ -1,0 +1,16 @@
+/*
+ * Error Test: '+=' with a string onto an array target
+ *
+ * `arr += "c"` on a [string] is arithmetic on an array (E3093), not a
+ * string concatenation. E3048 (string concat operand mismatch) must not
+ * also fire just because the right operand happens to be a string.
+ *
+ * expect-error: E3093
+ * expect-not: E3048
+ */
+
+do main() {
+    mut arr [string] = {"a", "b"}
+    arr += "c"
+    println(arr[0])
+}

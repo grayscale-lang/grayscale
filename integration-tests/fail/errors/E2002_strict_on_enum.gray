@@ -1,0 +1,17 @@
+/*
+ * Error Test: E2002 - #strict on an enum declaration instead of a when statement
+ */
+
+// expect-error: E2002
+// expect-error-count: 1
+
+#strict
+const Color enum {
+    RED
+    GREEN
+}
+
+do main() {
+    mut c Color = Color.RED
+    println("${c}")
+}

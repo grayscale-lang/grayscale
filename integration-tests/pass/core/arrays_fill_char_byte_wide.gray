@@ -5,9 +5,9 @@ do main() {
     mut failed int = 0
 
     // char fill
-    mut chars [char] = {}
-    arrays.fill(chars, 'X', 3)
-    if len(chars) == 3 {
+    mut cs [char] = {}
+    arrays.fill(cs, 'X', 3)
+    if len(cs) == 3 {
         passed = passed + 1
     } otherwise {
         failed = failed + 1

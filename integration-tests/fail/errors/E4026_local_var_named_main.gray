@@ -1,0 +1,8 @@
+// expect-error: E4026
+// expect-error-count: 1
+// A local variable cannot be named 'main'.
+
+do main() {
+    mut main int = 5
+    println("${main}")
+}

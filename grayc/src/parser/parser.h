@@ -29,6 +29,7 @@ typedef struct {
     bool no_struct_literal; /* suppress struct literal parsing (RHS of in/not_in) */
     bool in_interp;         /* true when parsing a ${...} sub-expression */
     AstNode *current_func;  /* enclosing function node (for or_return) */
+    uint32_t attr_seen_mask; /* attributes already applied to the declaration being parsed */
 } Parser;
 
 Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticList *diag);

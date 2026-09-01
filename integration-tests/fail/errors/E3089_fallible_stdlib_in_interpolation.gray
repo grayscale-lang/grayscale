@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot appear inside a string
+ * interpolation; the caller must destructure first.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @time
+
+do main() {
+    println("parsed: ${time.parse("2023-02-29", "%Y-%m-%d")}")
+}

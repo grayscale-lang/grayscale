@@ -12,7 +12,7 @@
 
 /* --- E1xxx: Reading Your Code (Lexer) ---
  *
- * NOTE: Lexer errors are NOT emitted via diagnostic_error() inside lexer.c.
+ * NOTE: Lexer errors are NOT emitted via diagnostic_error_message() inside lexer.c.
  * Instead, when the lexer encounters an invalid token it sets two fields
  * on the Lexer struct: error_code (e.g. "E1010") and error_msg, and
  * returns a TOK_ILLEGAL token. The parser's next_token() helper in
@@ -67,7 +67,6 @@
     GRAY_ERROR("E2058", "syntax", "cannot declare a struct or enum inside %s '%s'; define it at the file scope") \
     GRAY_ERROR("E2059", "syntax", "empty when block; add at least one 'is' branch") \
     GRAY_ERROR("E2060", "syntax", "too many return values; a function can return at most %d values") \
-    GRAY_ERROR("E2061", "syntax", "'module' declarations are not supported; imported files are identified by their file path") \
     GRAY_ERROR("E2062", "syntax", "too many variables in multi-variable declaration; maximum is %d") \
     GRAY_ERROR("E2063", "syntax", "duplicate or conflicting named return value; each name must be unique and not collide with parameters") \
     GRAY_ERROR("E2064", "syntax", "function '%s' conflicts with field '%s' in struct '%s'") \
@@ -93,7 +92,11 @@
     GRAY_ERROR("E2086", "syntax", "'%s' requires a value on the left side; '%s' checks whether a value belongs to a collection or range") \
     GRAY_ERROR("E2087", "syntax", "type parameters (<?>) cannot be mixed with value parameters in the same function") \
     GRAY_ERROR("E2088", "syntax", "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d") \
-    GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields")
+    GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields") \
+    GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration") \
+    GRAY_ERROR("E2091", "syntax", "unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test") \
+    GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
+    GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -132,7 +135,7 @@
     GRAY_ERROR("E3045", "types", "'or_return' requires a function that returns (T, Error); '%s()' does not return an error") \
     GRAY_ERROR("E3046", "types", "integer too large for 64 bits; max is 9223372036854775807") \
     GRAY_ERROR("E3047", "types", "enum '%s' has no member '%s'") \
-    GRAY_ERROR("E3048", "types", "operator '+' is not defined for strings; use string interpolation or 'fmt.format()' instead") \
+    GRAY_ERROR("E3048", "types", "operator '+' on strings requires both operands to be strings; got '%s' and '%s'") \
     GRAY_ERROR("E3049", "types", "cannot use '%s' on enum values; enums only support == and != comparisons") \
     GRAY_ERROR("E3050", "types", "array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3})") \
     GRAY_ERROR("E3051", "types", "map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1})") \
@@ -222,7 +225,10 @@
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
     GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308") \
     GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
-    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool")
+    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool") \
+    GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
+    GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
+    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -247,7 +253,8 @@
     GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them") \
     GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'") \
     GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'") \
-    GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public")
+    GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public") \
+    GRAY_ERROR("E4026", "names", "'main' is reserved for the program entry point; it can only name a top-level 'do main()' function")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -282,7 +289,10 @@
     GRAY_ERROR("E5040", "usage", "constant requires a compile-time value; function calls are evaluated at runtime") \
     GRAY_ERROR("E5042", "usage", "'#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard'") \
     GRAY_ERROR("E5043", "usage", "'fields()' requires a struct instance, got '%s'") \
-    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'")
+    GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'") \
+    GRAY_ERROR("E5045", "arguments", "constant argument is outside the valid domain for this function") \
+    GRAY_ERROR("E5046", "usage", "'#test' function '%s' must take no parameters and have no return type") \
+    GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -296,7 +306,8 @@
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
     GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope") \
-    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file")
+    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file") \
+    GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
@@ -428,7 +439,12 @@
     GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld") \
     GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s") \
     GRAY_PANIC("P0108", "threads",    "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached") \
-    GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state")
+    GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \
+    GRAY_PANIC("P0110", "strconv",    "strconv.format_int: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0111", "strconv",    "strconv.format_uint: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'") \
+    GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d") \
+    GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

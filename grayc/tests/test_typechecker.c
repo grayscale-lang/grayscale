@@ -293,6 +293,20 @@ static void test_resolve_addr(void) {
     ASSERT_EQ(type->kind, TK_POINTER);
 }
 
+/* Composite type names render through one shared ring of static buffers; two
+ * results must stay valid at once so callers can chain them in one snprintf. */
+static void test_type_name_composite_rendering(void) {
+    ASSERT_STR_EQ(type_name(type_from_name("^Point")), "^Point");
+    ASSERT_STR_EQ(type_name(type_from_name("[int]")), "[int]");
+    ASSERT_STR_EQ(type_name(type_from_name("map[string:^Point]")), "map[string:^Point]");
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s vs %s",
+             type_name(type_from_name("[int]")),
+             type_name(type_from_name("map[string:int]")));
+    ASSERT_STR_EQ(buf, "[int] vs map[string:int]");
+}
+
 /* Helper: parse and typecheck, return diagnostics */
 static DiagnosticList *typecheck_diagnostics(const char *input) {
     DiagnosticList *diagnostics = diagnostic_create();
@@ -301,6 +315,19 @@ static DiagnosticList *typecheck_diagnostics(const char *input) {
     Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
     AstNode *program = parser_parse_program(parser);
     TypeChecker *checker =typechecker_create(diagnostics, "test.gray");
+    typechecker_check(checker, program);
+    return diagnostics;
+}
+
+/* Helper: parse and typecheck in --test mode (main() not required). */
+static DiagnosticList *typecheck_diagnostics_test_mode(const char *input) {
+    DiagnosticList *diagnostics = diagnostic_create();
+    diagnostics->use_color = false;
+    Lexer *lexer = lexer_create(arena, input, "test.gray");
+    Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
+    AstNode *program = parser_parse_program(parser);
+    TypeChecker *checker = typechecker_create(diagnostics, "test.gray");
+    typechecker_set_test_mode(checker, true);
     typechecker_check(checker, program);
     return diagnostics;
 }
@@ -1220,10 +1247,64 @@ static void test_error_E3047_enum_no_member(void) {
 }
 
 static void test_error_E3048_string_plus(void) {
-    DiagnosticList *diagnostics = typecheck_diagnostics(
+    /* string + string concatenates; mixing a string with a non-string is E3048 */
+    DiagnosticList *ok = typecheck_diagnostics(
         "do main() { mut s string = \"a\" + \"b\" }");
+    ASSERT(!has_error_code(ok, "E3048"));
+    diagnostic_destroy(ok);
+
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut s string = \"a\" + 5 }");
     ASSERT(has_error_code(diagnostics, "E3048"));
     diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E5046_test_fn_signature(void) {
+    /* #test function must take no params and no return type */
+    DiagnosticList *with_param = typecheck_diagnostics_test_mode(
+        "#test\ndo test_x(a int) { assert(a == 1) }");
+    ASSERT(has_error_code(with_param, "E5046"));
+    diagnostic_destroy(with_param);
+
+    DiagnosticList *with_ret = typecheck_diagnostics_test_mode(
+        "#test\ndo test_y() -> int { return 1 }");
+    ASSERT(has_error_code(with_ret, "E5046"));
+    diagnostic_destroy(with_ret);
+
+    DiagnosticList *ok = typecheck_diagnostics_test_mode(
+        "#test\ndo test_z() { assert(1 == 1) }");
+    ASSERT(!has_error_code(ok, "E5046"));
+    ASSERT(!diagnostic_has_errors(ok));
+    diagnostic_destroy(ok);
+}
+
+static void test_error_E5047_calling_test_fn(void) {
+    /* a #test function cannot be called or referenced from other code */
+    DiagnosticList *called = typecheck_diagnostics(
+        "#test\ndo test_helper() { assert(1 == 1) }\n"
+        "do main() { test_helper() }");
+    ASSERT(has_error_code(called, "E5047"));
+    diagnostic_destroy(called);
+
+    DiagnosticList *referenced = typecheck_diagnostics(
+        "#test\ndo test_helper() { assert(1 == 1) }\n"
+        "do main() { const f = ref(test_helper) }");
+    ASSERT(has_error_code(referenced, "E5047"));
+    diagnostic_destroy(referenced);
+}
+
+static void test_test_mode_skips_no_main_error(void) {
+    /* --test build: a file with only #test functions and no main() is valid */
+    DiagnosticList *test_mode = typecheck_diagnostics_test_mode(
+        "#test\ndo test_a() { assert(1 == 1) }");
+    ASSERT(!has_error_code(test_mode, "E4005"));
+    diagnostic_destroy(test_mode);
+
+    /* normal build: no main() is still E4005 */
+    DiagnosticList *normal = typecheck_diagnostics(
+        "#test\ndo test_a() { assert(1 == 1) }");
+    ASSERT(has_error_code(normal, "E4005"));
+    diagnostic_destroy(normal);
 }
 
 static void test_error_E3057_invalid_map_key(void) {
@@ -1424,16 +1505,70 @@ static void test_error_E5025_invalid_assign_target(void) {
 /* --- Array/map initialization --- */
 
 static void test_error_E3050_array_no_type_annotation(void) {
+    /* A primitive `mut` array literal now infers its type (#2374); an empty
+     * literal still has nothing to infer from. */
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a = {1, 2, 3} }");
+        "do main() { mut a = {} }");
     ASSERT(has_error_code(diagnostics, "E3050"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3051_map_no_type_annotation(void) {
+    /* A primitive `mut` map literal now infers its type (#2374); an empty
+     * literal still has nothing to infer from. */
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut m = {:} }");
+    ASSERT(has_error_code(diagnostics, "E3051"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* #2374: a `mut` array/map literal of primitives infers its type with no
+ * annotation. The element (and, for a map, key and value) type names come
+ * from the literal itself. */
+
+static void test_infer_mut_array_literal_element_type(void) {
+    GrayType *type = expression_type("{1, 2, 3}");
+    ASSERT_NOT_NULL(type);
+    ASSERT_EQ(type->kind, TK_ARRAY);
+    ASSERT_STR_EQ(type->element_type, "int");
+}
+
+static void test_infer_mut_map_literal_kv_types(void) {
+    GrayType *type = expression_type("{\"a\": 1, \"b\": 2}");
+    ASSERT_NOT_NULL(type);
+    ASSERT_EQ(type->kind, TK_MAP);
+    ASSERT_STR_EQ(type->key_type, "string");
+    ASSERT_STR_EQ(type->value_type, "int");
+}
+
+static void test_infer_mut_array_literal_no_error(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { mut a = {1, 2, 3} }");
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_infer_mut_map_literal_no_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() { mut m = {\"a\": 1} }");
-    ASSERT(has_error_code(diagnostics, "E3051"));
+    ASSERT(!diagnostic_has_errors(diagnostics));
+    diagnostic_destroy(diagnostics);
+}
+
+/* Inference is `mut`-only: a `const` literal with no annotation still errors. */
+static void test_infer_const_array_literal_still_E3050(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "do main() { const a = {1, 2, 3} }");
+    ASSERT(has_error_code(diagnostics, "E3050"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A non-primitive element is not inferable and still errors. */
+static void test_infer_mut_array_non_primitive_still_E3050(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const P struct { x int }\n"
+        "do main() { mut a = {P{x: 1}, P{x: 2}} }");
+    ASSERT(has_error_code(diagnostics, "E3050"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -1826,6 +1961,7 @@ static void test_error_E3070_nested_ensure(void) {
 
 static void test_error_E3103_json_struct_func_field(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  callback func(int) -> int\n"
@@ -1837,6 +1973,7 @@ static void test_error_E3103_json_struct_func_field(void) {
 
 static void test_error_E3104_json_struct_method(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  name string\n"
@@ -1849,6 +1986,7 @@ static void test_error_E3104_json_struct_method(void) {
 
 static void test_error_E3109_json_struct_default_value(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  name string = \"default\"\n"
@@ -2176,6 +2314,7 @@ int main(void) {
     RUN_TEST(test_type_from_name_pointer);
     RUN_TEST(test_type_pointer_constructor);
     RUN_TEST(test_resolve_addr);
+    RUN_TEST(test_type_name_composite_rendering);
 
     /* Error detection tests */
     RUN_TEST(test_error_type_mismatch);
@@ -2332,6 +2471,9 @@ int main(void) {
     RUN_TEST(test_error_E2067_empty_struct);
     RUN_TEST(test_error_E3047_enum_no_member);
     RUN_TEST(test_error_E3048_string_plus);
+    RUN_TEST(test_error_E5046_test_fn_signature);
+    RUN_TEST(test_error_E5047_calling_test_fn);
+    RUN_TEST(test_test_mode_skips_no_main_error);
     RUN_TEST(test_error_E3057_invalid_map_key);
     RUN_TEST(test_error_E3059_const_map);
     RUN_TEST(test_error_E3061_recursive_struct);
@@ -2351,6 +2493,12 @@ int main(void) {
     /* Batch 2: 84 untested E3xxx error codes (#2098) */
     RUN_TEST(test_error_E3050_array_no_type_annotation);
     RUN_TEST(test_error_E3051_map_no_type_annotation);
+    RUN_TEST(test_infer_mut_array_literal_element_type);
+    RUN_TEST(test_infer_mut_map_literal_kv_types);
+    RUN_TEST(test_infer_mut_array_literal_no_error);
+    RUN_TEST(test_infer_mut_map_literal_no_error);
+    RUN_TEST(test_infer_const_array_literal_still_E3050);
+    RUN_TEST(test_infer_mut_array_non_primitive_still_E3050);
     RUN_TEST(test_error_E3052_fixed_array_too_many);
     RUN_TEST(test_error_E3053_array_element_type_mismatch);
     RUN_TEST(test_error_E3054_mut_array_fixed_size);

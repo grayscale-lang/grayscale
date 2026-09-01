@@ -124,25 +124,14 @@ GrayArray gray_csv_headers(GrayArena *arena, GrayArray *data) {
     return gray_array_new(arena, sizeof(GrayString), 0);
 }
 
-/* Read and parse CSV from an already-opened FILE handle.
- * Caller is responsible for fclose. */
-static GrayArray csv_read_from(GrayArena *arena, FILE *f) {
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *content = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
-    size_t n = fread(content, 1, (size_t)size, f);
-    content[n] = '\0';
-    GrayString s = { content, (int32_t)n };
-    return gray_csv_parse(arena, s);
-}
-
 GrayArray gray_csv_read(GrayArena *arena, GrayString path) {
     FILE *f = fopen(path.data, "rb");
     if (!f) return gray_array_new(arena, sizeof(GrayArray), 1);
-    GrayArray result = csv_read_from(arena, f);
+    GrayString content = gray_io_read_file_impl(arena, f);
     fclose(f);
-    return result;
+    if (content.data == NULL)
+        gray_panic_code("P0114", "csv.read_file: input exceeds maximum string length");
+    return gray_csv_parse(arena, content);
 }
 
 bool gray_csv_write(GrayArena *arena, GrayString path, GrayArray *data) {
@@ -164,8 +153,15 @@ GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read CSV file '%s'", path.data));
         return r;
     }
-    r.v0 = csv_read_from(arena, f);
+    GrayString content = gray_io_read_file_impl(arena, f);
     fclose(f);
+    if (content.data == NULL) {
+        r.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
+        r.v1 = gray_error_new(arena, gray_string_format(arena,
+            "cannot read '%s': file exceeds maximum string length", path.data));
+        return r;
+    }
+    r.v0 = gray_csv_parse(arena, content);
     r.v1 = NULL;
     return r;
 }

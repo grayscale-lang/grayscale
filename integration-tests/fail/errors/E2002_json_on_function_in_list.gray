@@ -1,0 +1,11 @@
+// expect-error: E2002
+// expect-error-count: 1
+// A misapplied attribute inside a #[...] list is rejected exactly as if it
+// had been stacked: #json only applies to struct declarations.
+
+#[json]
+do something() -> int {
+    return 1
+}
+
+do main() {}

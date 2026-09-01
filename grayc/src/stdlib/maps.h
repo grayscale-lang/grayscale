@@ -65,7 +65,7 @@ bool gray_maps_has_key(GrayMap *m, const void *key);
  *@desc Returns true if m has no entries.
  *@example
  *   import @maps
- *   mut m map[string:int] = {}
+ *   mut m map[string:int] = {:}
  *   println(maps.is_empty(m))
  *@end
  */

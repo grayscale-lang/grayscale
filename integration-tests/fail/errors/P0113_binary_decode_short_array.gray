@@ -1,0 +1,14 @@
+/*
+ * Panic Test: P0113 - binary.decode_i64_be reads past the end of a byte
+ * array shorter than the decoded type's width. Must panic instead of
+ * silently reading uninitialized/stale arena memory past bytes.len.
+ */
+
+import @binary
+import @encoding
+
+do main() {
+    mut short [byte] = encoding.from_string("Xy")
+    mut leaked int = binary.decode_i64_be(short)
+    println("${leaked}")
+}

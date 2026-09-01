@@ -1,0 +1,61 @@
+/*
+ * in_operator_all_collections.gray - `in` on an array, a map, and a string
+ * within one program.
+ *
+ * Regression guard: arrays.h / maps.h / strings.h are no longer force-included
+ * in every generated C file — they are spliced into the preamble only when the
+ * `in` operator lowers to that module's helper. This exercises the case where
+ * all three must be spliced at once.
+ */
+
+do main() {
+    println("=== in operator on all collection kinds ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Array membership -> gray_arrays_contains_* (arrays.h)
+    mut nums [int] = {1, 2, 3}
+    if 2 in nums {
+        println("  [PASS] 2 in nums")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] 2 in nums")
+        failed += 1
+    }
+
+    // Map membership -> gray_maps_has_key (maps.h)
+    mut ages map[string:int] = {"ada": 36}
+    if "ada" in ages {
+        println("  [PASS] \"ada\" in ages")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] \"ada\" in ages")
+        failed += 1
+    }
+    if "grace" !in ages {
+        println("  [PASS] \"grace\" !in ages")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] \"grace\" !in ages")
+        failed += 1
+    }
+
+    // Substring membership -> gray_strings_contains (strings.h)
+    mut phrase string = "hello world"
+    if "lo wo" in phrase {
+        println("  [PASS] \"lo wo\" in phrase")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] \"lo wo\" in phrase")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

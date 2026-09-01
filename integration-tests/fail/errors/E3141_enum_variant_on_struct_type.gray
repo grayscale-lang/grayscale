@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3141 - enum-variant access on a struct type name
+ *
+ * `Point` is a struct, not an enum, and `RED` is neither a field nor a
+ * struct function. This used to pass the typechecker and leak a C compiler
+ * error on an undeclared identifier.
+ */
+
+// expect-error: E3141
+// expect-error-count: 1
+
+const Point struct {
+    x int
+}
+
+do main() {
+    mut p Point = Point.RED
+    println(p.x)
+}

@@ -1,0 +1,77 @@
+/*
+ * Test: fmt format directives with i128 / u128 / i256 / u256
+ * %d %i %u %x %X %o convert the struct-backed bigint to a string and
+ * format it with %s. No cc warnings, correct values.
+ */
+
+import @fmt
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    mut a i128 = 255
+    passed += check("i128 %d", fmt.sprintf("%d", a), "255")
+    passed += check("i128 %i", fmt.sprintf("%i", a), "255")
+    passed += check("i128 %x", fmt.sprintf("%x", a), "ff")
+    passed += check("i128 %X", fmt.sprintf("%X", a), "FF")
+    passed += check("i128 %o", fmt.sprintf("%o", a), "377")
+
+    mut neg i128 = -1
+    passed += check("i128 neg %d", fmt.sprintf("%d", neg), "-1")
+    passed += check("i128 neg %x", fmt.sprintf("%x", neg), "ffffffffffffffffffffffffffffffff")
+
+    mut b u128 = 4096
+    passed += check("u128 %u", fmt.sprintf("%u", b), "4096")
+    passed += check("u128 %x", fmt.sprintf("%x", b), "1000")
+
+    mut bmax u128 = 340282366920938463463374607431768211455
+    passed += check("u128 max %d", fmt.sprintf("%d", bmax), "340282366920938463463374607431768211455")
+
+    mut c i256 = 12345
+    passed += check("i256 %d", fmt.sprintf("%d", c), "12345")
+    passed += check("i256 %o", fmt.sprintf("%o", c), "30071")
+
+    mut d u256 = 0
+    passed += check("u256 zero %d", fmt.sprintf("%d", d), "0")
+    passed += check("u256 zero %x", fmt.sprintf("%x", d), "0")
+
+    // multiple bigint directives in one call, mixed with a plain int
+    mut s string = fmt.sprintf("%d as %d/%x and %d plain", a, a, a, 7)
+    passed += check("mixed", s, "255 as 255/ff and 7 plain")
+
+    // regular int %x / %o still work without warnings
+    passed += check("plain int %x", fmt.sprintf("%x", 255), "ff")
+    passed += check("plain int %o", fmt.sprintf("%o", 255), "377")
+
+    // flags / width / precision on a bigint directive. The directive is
+    // rewritten to %s, so 0/#/+/space and precision are dropped rather than
+    // left to leak a -Wformat UB warning; width and '-' still apply.
+    passed += check("i128 width", fmt.sprintf("[%10x]", a), "[        ff]")
+    passed += check("i128 left-justify", fmt.sprintf("[%-10x]", a), "[ff        ]")
+    passed += check("i128 zero flag dropped", fmt.sprintf("[%08x]", a), "[      ff]")
+    passed += check("i128 hash flag dropped", fmt.sprintf("[%#x]", a), "[ff]")
+    passed += check("i128 plus flag dropped", fmt.sprintf("[%+d]", a), "[255]")
+    passed += check("i128 precision dropped", fmt.sprintf("[%.5d]", a), "[255]")
+    // plain-int flags are untouched
+    passed += check("plain int zero flag kept", fmt.sprintf("[%08x]", 255), "[000000ff]")
+    passed += check("plain int plus flag kept", fmt.sprintf("[%+d]", 255), "[+255]")
+
+    mut total int = 25
+    println("")
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

@@ -1,0 +1,43 @@
+/*
+ * The compile-time domain check (E5045) fires only on constant arguments.
+ * Non-constant arguments must still compile and be caught at runtime.
+ */
+
+import @math
+import @strings
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Valid constants are untouched.
+    if math.sqrt(9.0) == 3.0 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sqrt(9.0)")
+        failed += 1
+    }
+    if strings.repeat("ab", 3) == "ababab" {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] repeat")
+        failed += 1
+    }
+
+    // A negative value in a variable is not constant-folded here, so it
+    // compiles and reaches the runtime path.
+    mut n int = 2
+    if strings.repeat("x", n) == "xx" {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] repeat(var)")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,40 @@
+/*
+ * channels_send_vs_struct_func_c.gray - a void stdlib call inside a loop whose
+ * trailing name matches a value-returning struct function with a caller-arena
+ * (&) parameter must not be wrapped in the caller-arena swap block. Codegen
+ * used to bind the void `channels.send` result with __auto_type and leak a C
+ * compiler error.
+ */
+
+import @channels
+
+const Box struct {
+    n int
+
+    do send(&b Box, v int) -> bool {
+        b.n = b.n + v
+        return true
+    }
+}
+
+do main() {
+    mut ch channels.Channel = channels.open(8)
+    for i in range(0, 3) {
+        channels.send(ch, i)
+    }
+
+    mut box Box = Box{ n: 0 }
+    for i in range(0, 3) {
+        _ = box.send(i)
+    }
+
+    mut total int = 0
+    for _ in range(0, 3) {
+        total = total + channels.receive(ch)
+    }
+    channels.close(ch)
+
+    assert(total == 3, "channel received every queued value")
+    assert(box.n == 3, "struct function still ran in the caller arena")
+    println("[PASS] void stdlib call and same-named struct function coexist in loops")
+}

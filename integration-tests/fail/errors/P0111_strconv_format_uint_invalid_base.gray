@@ -1,0 +1,13 @@
+/* Panic Test: P0111 - strconv.format_uint with invalid base at runtime */
+import @strconv
+
+do get_base() -> int {
+    return 99
+}
+
+do main() {
+    mut n uint = 255
+    mut base int = get_base()
+    mut s string = strconv.format_uint(n, base)
+    println(s)
+}

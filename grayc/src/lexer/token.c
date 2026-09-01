@@ -49,7 +49,6 @@ static const KeywordEntry keywords[] = {
     {"in",          TOK_IN},
     {"is",          TOK_IS},
     {"loop",        TOK_LOOP},
-    {"module",      TOK_MODULE},
     {"mut",         TOK_MUT},
     {"new",         TOK_NEW},
     {"nil",         TOK_NIL},
@@ -171,12 +170,14 @@ const char *token_type_name(TokenType type) {
     case TOK_CARET:          return "^";
     case TOK_AMPERSAND:      return "&";
     case TOK_QUESTION:       return "?";
+    case TOK_HASH_LBRACKET:  return "#[";
     case TOK_STRICT:         return "#strict";
     case TOK_FLAGS:          return "#flags";
     case TOK_DOC:            return "#doc";
     case TOK_JSON_ATTR:      return "#json";
     case TOK_DISCARD:        return "#discard";
     case TOK_DEPRECATED:     return "#deprecated";
+    case TOK_TEST:           return "#test";
     case TOK_MUT:            return "mut";
     case TOK_CONST:          return "const";
     case TOK_DO:             return "do";
@@ -204,7 +205,6 @@ const char *token_type_name(TokenType type) {
     case TOK_BLANK:          return "_";
     case TOK_ENSURE:         return "ensure";
     case TOK_OR_RETURN:      return "or_return";
-    case TOK_MODULE:         return "module";
     case TOK_PRIVATE:        return "private";
     case TOK_USE:            return "use";
     case TOK_WHEN:           return "when";

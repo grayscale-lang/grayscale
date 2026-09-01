@@ -371,6 +371,66 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep);
  */
 char gray_strings_char_at(GrayString s, int64_t index);
 
+/*@man append_char
+ *@module strings
+ *@group Editing
+ *@sig append_char(s string, c char) -> string
+ *@desc Returns a new string with c (UTF-8 encoded) added at the end. s is unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.append_char("hell", 'o'))
+ *@end
+ */
+GrayString gray_strings_append_char(GrayArena *arena, GrayString s, int32_t c);
+
+/*@man prepend_char
+ *@module strings
+ *@group Editing
+ *@sig prepend_char(s string, c char) -> string
+ *@desc Returns a new string with c (UTF-8 encoded) added at the front. s is unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.prepend_char("ello", 'h'))
+ *@end
+ */
+GrayString gray_strings_prepend_char(GrayArena *arena, GrayString s, int32_t c);
+
+/*@man insert_char_at
+ *@module strings
+ *@group Editing
+ *@sig insert_char_at(s string, index int, c char) -> string
+ *@desc Returns a new string with c (UTF-8 encoded) inserted at byte index. An index equal to the length appends; panics if the index is negative or greater than the length. s is unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.insert_char_at("helo", 3, 'l'))
+ *@end
+ */
+GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString s, int64_t index, int32_t c);
+
+/*@man remove_at
+ *@module strings
+ *@group Editing
+ *@sig remove_at(s string, index int) -> string
+ *@desc Returns a new string with the byte at byte index removed. Panics if the index is out of bounds. s is unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.remove_at("hello!", 5))
+ *@end
+ */
+GrayString gray_strings_remove_at(GrayArena *arena, GrayString s, int64_t index);
+
+/*@man set_char_at
+ *@module strings
+ *@group Editing
+ *@sig set_char_at(s string, index int, c char) -> string
+ *@desc Returns a new string with the byte at byte index replaced by c (UTF-8 encoded). Panics if the index is out of bounds. s is unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.set_char_at("hello", 0, 'H'))
+ *@end
+ */
+GrayString gray_strings_set_char_at(GrayArena *arena, GrayString s, int64_t index, int32_t c);
+
 /*@man to_chars
  *@module strings
  *@group Conversion

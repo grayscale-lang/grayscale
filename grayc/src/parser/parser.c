@@ -52,10 +52,116 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl);
 
 /* --- Helpers --- */
 
+/* One bit per attribute, tracked in parser->attr_seen_mask for the
+ * declaration currently being parsed so a repeat can be rejected (E2090). */
+typedef enum {
+    ATTR_STRICT     = 1u << 0,
+    ATTR_FLAGS      = 1u << 1,
+    ATTR_JSON       = 1u << 2,
+    ATTR_DISCARD    = 1u << 3,
+    ATTR_TEST       = 1u << 4,
+    ATTR_DEPRECATED = 1u << 5,
+    ATTR_DOC        = 1u << 6,
+} AttrBit;
+
+/* Returns true when this attribute was already applied to the current
+ * declaration, emitting E2090 at the current token in that case. */
+static bool note_dup_attr(Parser *parser, AttrBit bit, const char *name) {
+    if (parser->attr_seen_mask & bit) {
+        diagnostic_error_code_formatted(parser->diag, "E2090",
+            parser->file, parser->cur_token.line, parser->cur_token.column, 0, name);
+        return true;
+    }
+    parser->attr_seen_mask |= bit;
+    return false;
+}
+
+/* Maps a bare attribute name (as written inside a `#[...]` list) to its
+ * AttrBit. Returns 0 for an unrecognised name. */
+static AttrBit attr_bit_for_name(const char *name) {
+    if (strcmp(name, "strict") == 0)     return ATTR_STRICT;
+    if (strcmp(name, "flags") == 0)      return ATTR_FLAGS;
+    if (strcmp(name, "json") == 0)       return ATTR_JSON;
+    if (strcmp(name, "discard") == 0)    return ATTR_DISCARD;
+    if (strcmp(name, "test") == 0)       return ATTR_TEST;
+    if (strcmp(name, "deprecated") == 0) return ATTR_DEPRECATED;
+    if (strcmp(name, "doc") == 0)        return ATTR_DOC;
+    return (AttrBit)0;
+}
+
+/* Applies one attribute (identified by its bare name) to the declaration that
+ * follows a `#[...]` list, emitting the same E2002 misapplied-attribute message
+ * the stacked `#attr` form uses when the declaration kind does not accept it.
+ * `dep_msg` is the optional #deprecated string (NULL otherwise); `where`
+ * locates the diagnostic. */
+static void apply_named_attribute(Parser *parser, AstNode *stmt,
+                                  const char *name, const char *dep_msg,
+                                  Token where) {
+    if (strcmp(name, "test") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_test = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "discard") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_discard = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "json") == 0) {
+        if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_json = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "flags") == 0) {
+        if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_flags = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "strict") == 0) {
+        if (stmt && stmt->kind == NODE_WHEN_STMT) {
+            stmt->data.when_stmt.is_strict = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "deprecated") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_deprecated = true;
+            stmt->data.func_decl.deprecated_message = dep_msg;
+        } else if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_deprecated = true;
+            stmt->data.struct_decl.deprecated_message = dep_msg;
+        } else if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_deprecated = true;
+            stmt->data.enum_decl.deprecated_message = dep_msg;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    }
+    /* "doc": the parser discards #doc metadata today, so there is nothing to
+     * attach here — the entry is still validated for name and duplication. */
+}
+
 static void next_token(Parser *parser) {
     parser->cur_token = parser->peek_token;
     parser->peek_token = lexer_next_token(parser->lexer);
-    /* Surface lexer errors (E1xxx). The lexer does not call diagnostic_error()
+    /* Surface lexer errors (E1xxx). The lexer does not call diagnostic_error_message()
      * directly — it sets error_code/error_msg on itself and returns
      * TOK_ILLEGAL. We detect that here and emit the diagnostic so the
      * lexer stays free of diagnostic dependencies. After emitting, clear
@@ -101,7 +207,7 @@ static bool is_keyword_token(TokenType type) {
     case TOK_IMPORT: case TOK_USING: case TOK_STRUCT: case TOK_ENUM:
     case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
     case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
-    case TOK_MODULE: case TOK_PRIVATE: case TOK_ALIAS:
+    case TOK_PRIVATE: case TOK_ALIAS:
     case TOK_IS: case TOK_DEFAULT:
         return true;
     default:
@@ -721,6 +827,66 @@ static AstNode *parse_string_literal(Parser *parser) {
     return node;
 }
 
+/* Decode the text between the quotes of a char literal (already validated by
+ * the lexer) into a single Unicode codepoint. Handles escape sequences and
+ * UTF-8 multibyte characters. Returns false and emits a diagnostic when a
+ * \u{} escape names a value outside U+0000–U+10FFFF. */
+static bool decode_char_literal(Parser *parser, const char *s, int32_t *out) {
+    if (s[0] == '\\') {
+        switch (s[1]) {
+        case 'n': *out = '\n'; return true;
+        case 't': *out = '\t'; return true;
+        case 'r': *out = '\r'; return true;
+        case '\\': *out = '\\'; return true;
+        case '\'': *out = '\''; return true;
+        case '"': *out = '"'; return true;
+        case '0': *out = '\0'; return true;
+        case 'x': {
+            /* \xNN — codepoint U+00NN, not a raw byte */
+            *out = (int32_t)strtol(s + 2, NULL, 16);
+            return true;
+        }
+        case 'u': {
+            /* \u{H...} */
+            long cp = strtol(s + 3, NULL, 16);
+            if (cp < 0 || cp > 0x10FFFF) {
+                diagnostic_error_message(parser->diag, "E1006",
+                    "'\\u{}' codepoint is outside the valid range U+0000 to U+10FFFF",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                *out = 0;
+                return false;
+            }
+            if (cp >= 0xD800 && cp <= 0xDFFF) {
+                /* UTF-16 surrogate halves are not Unicode scalar values and
+                 * have no well-formed UTF-8 encoding. */
+                diagnostic_error_message(parser->diag, "E1006",
+                    "'\\u{}' codepoint U+D800 to U+DFFF is a UTF-16 surrogate, not a character",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                *out = 0;
+                return false;
+            }
+            *out = (int32_t)cp;
+            return true;
+        }
+        default: *out = (unsigned char)s[1]; return true;
+        }
+    }
+    /* UTF-8 decode the first (only) codepoint. */
+    unsigned char c0 = (unsigned char)s[0];
+    if (c0 < 0x80) {
+        *out = c0;
+    } else if ((c0 & 0xE0) == 0xC0) {
+        *out = ((c0 & 0x1F) << 6) | ((unsigned char)s[1] & 0x3F);
+    } else if ((c0 & 0xF0) == 0xE0) {
+        *out = ((c0 & 0x0F) << 12) | (((unsigned char)s[1] & 0x3F) << 6) |
+               ((unsigned char)s[2] & 0x3F);
+    } else {
+        *out = ((c0 & 0x07) << 18) | (((unsigned char)s[1] & 0x3F) << 12) |
+               (((unsigned char)s[2] & 0x3F) << 6) | ((unsigned char)s[3] & 0x3F);
+    }
+    return true;
+}
+
 static AstNode *parse_bool_literal(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_BOOL_VALUE, parser->cur_token);
     node->data.bool_value.value = (parser->cur_token.type == TOK_TRUE);
@@ -834,18 +1000,9 @@ static AstNode *parse_prefix(Parser *parser) {
     case TOK_NIL:       return parse_nil_literal(parser);
     case TOK_CHAR: {
         AstNode *node = ast_alloc(parser->arena, NODE_CHAR_VALUE, parser->cur_token);
-        node->data.char_value.value = parser->cur_token.literal[0];
-        if (parser->cur_token.literal[0] == '\\' && parser->cur_token.literal[1]) {
-            switch (parser->cur_token.literal[1]) {
-            case 'n': node->data.char_value.value = '\n'; break;
-            case 't': node->data.char_value.value = '\t'; break;
-            case 'r': node->data.char_value.value = '\r'; break;
-            case '\\': node->data.char_value.value = '\\'; break;
-            case '\'': node->data.char_value.value = '\''; break;
-            case '0': node->data.char_value.value = '\0'; break;
-            default: node->data.char_value.value = parser->cur_token.literal[1]; break;
-            }
-        }
+        int32_t cp = 0;
+        decode_char_literal(parser, parser->cur_token.literal, &cp);
+        node->data.char_value.value = cp;
         return node;
     }
     case TOK_MINUS:
@@ -863,7 +1020,7 @@ static AstNode *parse_prefix(Parser *parser) {
         if (parser->cur_token.type != TOK_IDENT) {
             char buf[256];
             snprintf(buf, sizeof(buf), "expected enum variant name after '.'");
-            diagnostic_error(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
+            diagnostic_error_message(parser->diag, "E2001", arena_copy_string(parser->arena, buf),
                 parser->file, dot_tok.line, dot_tok.column, 0);
             return ast_alloc(parser->arena, NODE_NIL_VALUE, dot_tok);
         }
@@ -1252,6 +1409,98 @@ static AstNode *parse_expression(Parser *parser, Precedence prec) {
 
 /* --- Statement Parsing --- */
 
+/* One monotonically increasing id for every or_return temp, so the
+ * `mut a = ... or_return`, `mut a, b = ... or_return`, and bare-statement
+ * spellings never collide on `_gray_orN` within a single function. */
+static int gray_or_temp_id = 0;
+static char *make_or_return_temp_name(Arena *arena) {
+    char *name = arena_alloc(arena, TMP_NAME_BUF);
+    snprintf(name, TMP_NAME_BUF, GRAY_SYNTH_OR "%d", gray_or_temp_id++);
+    return name;
+}
+
+/* After the or_return token has been consumed (parser->cur_token IS
+ * or_return), parse optional comma-separated fallback expressions written
+ * on the same line — e.g. `... or_return -1, -2`. Returns the count and
+ * fills fallback_buf, which the caller sizes at MAX_MULTI_VARS. */
+static int parse_or_return_fallbacks(Parser *parser, AstNode **fallback_buf) {
+    int or_return_line = parser->cur_token.line;
+    int fallback_count = 0;
+    if (parser->peek_token.type != TOK_EOF &&
+        parser->peek_token.type != TOK_SEMICOLON &&
+        parser->peek_token.type != TOK_RBRACE &&
+        parser->peek_token.line == or_return_line) {
+        next_token(parser); /* advance to first fallback token */
+        while (fallback_count < MAX_MULTI_VARS) {
+            fallback_buf[fallback_count++] = parse_expression(parser, PREC_LOWEST);
+            if (!peek_token_is(parser, TOK_COMMA)) break;
+            next_token(parser); /* skip comma */
+            next_token(parser); /* advance to next fallback token */
+        }
+    }
+    return fallback_count;
+}
+
+/* Build the propagation guard for or_return:
+ *
+ *     if (_tmp.verr != nil) { return <fallbacks...>, _tmp.verr }
+ *
+ * `verr` is a sentinel member the typechecker rewrites to the concrete
+ * trailing-Error slot (`v1` for `(T, Error)`, `vN` for a wider tuple) once
+ * the unwrapped call's arity is known. With no fallbacks the return
+ * propagates just the error and codegen fills {0} for the other slots. */
+static AstNode *build_or_return_guard(Parser *parser, const char *tmp_name,
+                                      AstNode **fallbacks, int fallback_count) {
+    Token tok = parser->cur_token;
+    const char *err_field = OR_RETURN_ERR_SLOT;
+
+    AstNode *if_stmt = ast_alloc(parser->arena, NODE_IF_STMT, tok);
+    AstNode *err_access = ast_alloc(parser->arena, NODE_MEMBER_EXPR, tok);
+    AstNode *tmp_label = ast_alloc(parser->arena, NODE_LABEL, tok);
+    tmp_label->data.label.value = tmp_name;
+    err_access->data.member.object = tmp_label;
+    err_access->data.member.member = err_field;
+    AstNode *nil_val = ast_alloc(parser->arena, NODE_NIL_VALUE, tok);
+    AstNode *cond = ast_alloc(parser->arena, NODE_INFIX_EXPR, tok);
+    cond->data.infix.left = err_access;
+    cond->data.infix.op = TOK_NOT_EQ;
+    cond->data.infix.right = nil_val;
+    if_stmt->data.if_stmt.condition = cond;
+
+    AstNode *ret_block = ast_alloc(parser->arena, NODE_BLOCK_STMT, tok);
+    ret_block->data.block.cap = 1;
+    ret_block->data.block.count = 0;
+    ret_block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *));
+    AstNode *ret_stmt = ast_alloc(parser->arena, NODE_RETURN_STMT, tok);
+    AstNode *err_access2 = ast_alloc(parser->arena, NODE_MEMBER_EXPR, tok);
+    AstNode *tmp_label2 = ast_alloc(parser->arena, NODE_LABEL, tok);
+    tmp_label2->data.label.value = tmp_name;
+    err_access2->data.member.object = tmp_label2;
+    err_access2->data.member.member = err_field;
+    if (fallback_count > 0) {
+        /* If the user provided enough values to cover all return slots
+         * (including the error), use them as-is; otherwise append the
+         * propagated error. */
+        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
+        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
+        int total = user_covers_error ? fallback_count : fallback_count + 1;
+        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
+        for (int i = 0; i < fallback_count; i++)
+            ret_stmt->data.return_stmt.values[i] = fallbacks[i];
+        if (!user_covers_error)
+            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
+        ret_stmt->data.return_stmt.count = total;
+    } else {
+        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *));
+        ret_stmt->data.return_stmt.values[0] = err_access2;
+        ret_stmt->data.return_stmt.count = 1;
+    }
+    ret_block->data.block.stmts[ret_block->data.block.count++] = ret_stmt;
+    if_stmt->data.if_stmt.consequence = ret_block;
+    if_stmt->data.if_stmt.alternative = NULL;
+    return if_stmt;
+}
+
 /* If peek is or_return, consume it and desugar
  *
  *     <var_decl with value = expr> or_return
@@ -1268,31 +1517,13 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     if (!peek_token_is(parser, TOK_OR_RETURN)) return NULL;
     next_token(parser); /* consume or_return */
 
-    /* Check for custom fallback values on the same line as the or_return token.
-     * e.g. `mut val = risky(fail) or_return -99` → return -99, _tmp.v1
-     * The caller provides all non-error return slots; _tmp.v1 is appended. */
-    int or_return_line = parser->cur_token.line;
-    AstNode *fallback_buf[16];
-    int fallback_count = 0;
-    if (parser->peek_token.type != TOK_EOF &&
-        parser->peek_token.type != TOK_SEMICOLON &&
-        parser->peek_token.type != TOK_RBRACE &&
-        parser->peek_token.line == or_return_line) {
-        next_token(parser); /* advance to first fallback token */
-        while (fallback_count < 16) {
-            fallback_buf[fallback_count++] = parse_expression(parser, PREC_LOWEST);
-            if (!peek_token_is(parser, TOK_COMMA)) break;
-            next_token(parser); /* skip comma */
-            next_token(parser); /* advance to next fallback token */
-        }
-    }
+    AstNode *fallback_buf[MAX_MULTI_VARS];
+    int fallback_count = parse_or_return_fallbacks(parser, fallback_buf);
 
-    static int or_return_counter = 0;
-    char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-    snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_OR "%d", or_return_counter++);
+    char *tmp_name = make_or_return_temp_name(parser->arena);
 
     AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-    block->data.block.cap = 4;
+    block->data.block.cap = 3;
     block->data.block.count = 0;
     block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
@@ -1305,54 +1536,8 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     tmp_decl->data.var_decl.value = var_decl->data.var_decl.value;
     block->data.block.stmts[block->data.block.count++] = tmp_decl;
 
-    /* if (_tmp.v1 != nil) { return _tmp.v1 } */
-    AstNode *if_stmt = ast_alloc(parser->arena, NODE_IF_STMT, parser->cur_token);
-    AstNode *err_access = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
-    AstNode *tmp_label = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
-    tmp_label->data.label.value = tmp_name;
-    err_access->data.member.object = tmp_label;
-    err_access->data.member.member = "v1";
-    AstNode *nil_val = ast_alloc(parser->arena, NODE_NIL_VALUE, parser->cur_token);
-    AstNode *cond = ast_alloc(parser->arena, NODE_INFIX_EXPR, parser->cur_token);
-    cond->data.infix.left = err_access;
-    cond->data.infix.op = TOK_NOT_EQ;
-    cond->data.infix.right = nil_val;
-    if_stmt->data.if_stmt.condition = cond;
-
-    AstNode *ret_block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-    ret_block->data.block.cap = 1;
-    ret_block->data.block.count = 0;
-    ret_block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *));
-    AstNode *ret_stmt = ast_alloc(parser->arena, NODE_RETURN_STMT, parser->cur_token);
-    /* Build _tmp.v1 node (the propagated error value) */
-    AstNode *err_access2 = ast_alloc(parser->arena, NODE_MEMBER_EXPR, parser->cur_token);
-    AstNode *tmp_label2 = ast_alloc(parser->arena, NODE_LABEL, parser->cur_token);
-    tmp_label2->data.label.value = tmp_name;
-    err_access2->data.member.object = tmp_label2;
-    err_access2->data.member.member = "v1";
-    if (fallback_count > 0) {
-        /* Custom fallback values. If the user provided enough values to
-         * cover all return slots (including the error), use them as-is.
-         * Otherwise append the propagated error (_tmp.v1). */
-        int func_ret = parser->current_func ? parser->current_func->data.func_decl.return_type_count : 0;
-        bool user_covers_error = (func_ret > 0 && fallback_count >= func_ret);
-        int total = user_covers_error ? fallback_count : fallback_count + 1;
-        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *) * total);
-        for (int i = 0; i < fallback_count; i++)
-            ret_stmt->data.return_stmt.values[i] = fallback_buf[i];
-        if (!user_covers_error)
-            ret_stmt->data.return_stmt.values[fallback_count] = err_access2;
-        ret_stmt->data.return_stmt.count = total;
-    } else {
-        /* Bare or_return: propagate just the error; codegen fills {0} for other slots */
-        ret_stmt->data.return_stmt.values = arena_alloc(parser->arena, sizeof(AstNode *));
-        ret_stmt->data.return_stmt.values[0] = err_access2;
-        ret_stmt->data.return_stmt.count = 1;
-    }
-    ret_block->data.block.stmts[ret_block->data.block.count++] = ret_stmt;
-    if_stmt->data.if_stmt.consequence = ret_block;
-    if_stmt->data.if_stmt.alternative = NULL;
-    block->data.block.stmts[block->data.block.count++] = if_stmt;
+    block->data.block.stmts[block->data.block.count++] =
+        build_or_return_guard(parser, tmp_name, fallback_buf, fallback_count);
 
     /* x = _tmp.v0 */
     AstNode *var = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
@@ -1539,14 +1724,34 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             next_token(parser);
             AstNode *value = parse_expression(parser, PREC_LOWEST);
 
-            /* Generate unique temp name */
+            /* or_return on a destructuring bind: `mut a, b = two() or_return`.
+             * The N binding names are the non-error slots; the trailing Error
+             * is propagated if non-nil, otherwise control falls through and
+             * binds v0..v{N-1} as normal. */
+            AstNode *or_fallback_buf[MAX_MULTI_VARS];
+            int or_fallback_count = 0;
+            bool has_or_return = peek_token_is(parser, TOK_OR_RETURN);
+            if (has_or_return) {
+                next_token(parser); /* consume or_return */
+                or_fallback_count = parse_or_return_fallbacks(parser, or_fallback_buf);
+            }
+
+            /* Generate unique temp name. An or_return destructure uses the
+             * or_return prefix so the typechecker validates the (..., Error)
+             * tail (E3045) and skips the "fewer variables than return values"
+             * check — the trailing Error slot is consumed by the guard. */
             static int multi_var_counter = 0;
-            char *tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
-            snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_TMP "%d", multi_var_counter++);
+            char *tmp_name;
+            if (has_or_return) {
+                tmp_name = make_or_return_temp_name(parser->arena);
+            } else {
+                tmp_name = arena_alloc(parser->arena, TMP_NAME_BUF);
+                snprintf(tmp_name, TMP_NAME_BUF, GRAY_SYNTH_TMP "%d", multi_var_counter++);
+            }
 
             /* Create a block with: __auto_type _tmp = expr; type x = _tmp.v0; ... */
             AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
-            block->data.block.cap = var_count + 1;
+            block->data.block.cap = var_count + 2;
             block->data.block.count = 0;
             block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
@@ -1558,6 +1763,12 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             tmp_decl->data.var_decl.type_name = NULL;
             tmp_decl->data.var_decl.value = value;
             block->data.block.stmts[block->data.block.count++] = tmp_decl;
+
+            if (has_or_return) {
+                block->data.block.stmts[block->data.block.count++] =
+                    build_or_return_guard(parser, tmp_name,
+                                          or_fallback_buf, or_fallback_count);
+            }
 
             /* Individual declarations: type x = _tmp.v0 */
             for (int i = 0; i < var_count; i++) {
@@ -1645,6 +1856,7 @@ static AstNode *parse_block_statement(Parser *parser) {
     next_token(parser); /* skip { */
 
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
+        parser->attr_seen_mask = 0;
         AstNode *stmt = parse_statement(parser);
         if (stmt) {
             ARENA_GROW(parser->arena, node->data.block.stmts,
@@ -2032,7 +2244,7 @@ static AstNode *parse_import_statement(Parser *parser) {
                           (c >= '0' && c <= '9') ||
                           c == '/' || c == '.' || c == '_' || c == '-' || c == '+';
                 if (!ok) {
-                    diagnostic_error(parser->diag, "E2080",
+                    diagnostic_error_message(parser->diag, "E2080",
                         arena_copy_string(parser->arena, "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted"),
                         parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                     break;
@@ -2217,10 +2429,34 @@ static AstNode *parse_struct_declaration(Parser *parser) {
     bool pending_deprecated = false;
     const char *pending_deprecated_message = NULL;
     while (!current_token_is(parser, TOK_RBRACE) && !current_token_is(parser, TOK_EOF)) {
+        /* A non-attribute token starts the next struct member; clear the
+         * per-declaration attribute set so duplicates are scoped to one member
+         * ('private' and '#test' are not real starts, so they don't reset). */
+        if (!current_token_is(parser, TOK_DOC) && !current_token_is(parser, TOK_DISCARD)
+            && !current_token_is(parser, TOK_DEPRECATED) && !current_token_is(parser, TOK_TEST)
+            && !current_token_is(parser, TOK_PRIVATE)) {
+            parser->attr_seen_mask = 0;
+        }
+        /* `#[...]` attribute lists are not supported on struct functions yet;
+         * stack the attributes instead. Emit one error and skip the list so the
+         * body keeps parsing. */
+        if (current_token_is(parser, TOK_HASH_LBRACKET)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)
+                   && !current_token_is(parser, TOK_RBRACE)) {
+                next_token(parser);
+            }
+            if (current_token_is(parser, TOK_RBRACKET)) next_token(parser);
+            continue;
+        }
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
          * the next token (do/private do) is handled normally. */
         if (current_token_is(parser, TOK_DOC)) {
+            note_dup_attr(parser, ATTR_DOC, "#doc");
             if (peek_token_is(parser, TOK_LPAREN)) {
                 next_token(parser);
                 while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF))
@@ -2232,20 +2468,32 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* #discard inside struct body: set pending flag, then the
          * next iteration will attach it to the parsed function. */
         if (current_token_is(parser, TOK_DISCARD)) {
+            note_dup_attr(parser, ATTR_DISCARD, "#discard");
             pending_discard = true;
+            next_token(parser);
+            continue;
+        }
+        /* #test is not allowed on struct functions — a test function must be
+         * a top-level 'do' so the runner can call it directly. */
+        if (current_token_is(parser, TOK_TEST)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#test attribute can only be applied to top-level function declarations, not struct functions"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
             continue;
         }
         /* #deprecated inside struct body: same pending-flag treatment,
          * independent of pending_discard so both can stack on one function. */
         if (current_token_is(parser, TOK_DEPRECATED)) {
+            bool dup = note_dup_attr(parser, ATTR_DEPRECATED, "#deprecated");
             next_token(parser); /* consume #deprecated */
             pending_deprecated = true;
-            pending_deprecated_message = NULL;
+            if (!dup) pending_deprecated_message = NULL;
             if (current_token_is(parser, TOK_LPAREN)) {
                 next_token(parser); /* consume ( */
                 if (current_token_is(parser, TOK_STRING)) {
-                    pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
+                    if (!dup) pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
                     next_token(parser); /* consume string */
                 } else {
                     diagnostic_error_message(parser->diag, "E2002",
@@ -2492,6 +2740,14 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             diagnostic_error_message(parser->diag, "E2089",
                 arena_copy_string(parser->arena,
                     "#discard attribute can only be applied to function declarations, not enum variants"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser);
+            continue;
+        }
+        if (current_token_is(parser, TOK_TEST)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#test attribute can only be applied to function declarations, not enum variants"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
             continue;
@@ -3136,10 +3392,6 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_func_declaration(parser);
     case TOK_RETURN:
         return parse_return_statement(parser);
-    case TOK_MODULE:
-        diagnostic_error_code(parser->diag, "E2061", parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-        next_token(parser); /* consume module name */
-        return NULL;
     case TOK_IMPORT:
         return parse_import_statement(parser);
     case TOK_USING:
@@ -3162,27 +3414,37 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_when_statement(parser);
     case TOK_ALIAS:
         return parse_alias_declaration(parser);
-    case TOK_STRICT:
+    case TOK_STRICT: {
         /* #strict; applies to the next when statement */
+        bool dup = note_dup_attr(parser, ATTR_STRICT, "#strict");
         next_token(parser);
-        if (current_token_is(parser, TOK_WHEN)) {
-            AstNode *ws = parse_when_statement(parser);
-            if (ws) ws->data.when_stmt.is_strict = true;
-            return ws;
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_WHEN_STMT) {
+            stmt->data.when_stmt.is_strict = true;
+        } else if (!dup) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
-        /* If not followed by when, just skip */
-        return parse_statement(parser);
+        return stmt;
+    }
     case TOK_FLAGS: {
         /* #flags; applies to the next enum declaration */
+        note_dup_attr(parser, ATTR_FLAGS, "#flags");
         next_token(parser); /* skip #flags */
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;
     }
     case TOK_JSON_ATTR: {
         /* #json; applies to the next struct declaration () */
+        note_dup_attr(parser, ATTR_JSON, "#json");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_STRUCT_DECL) {
@@ -3196,6 +3458,7 @@ static AstNode *parse_statement(Parser *parser) {
     }
     case TOK_DISCARD: {
         /* #discard; applies to the next function declaration */
+        note_dup_attr(parser, ATTR_DISCARD, "#discard");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
@@ -3207,9 +3470,24 @@ static AstNode *parse_statement(Parser *parser) {
         }
         return stmt;
     }
+    case TOK_TEST: {
+        /* #test; applies to the next function declaration */
+        note_dup_attr(parser, ATTR_TEST, "#test");
+        next_token(parser);
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_test = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
     case TOK_DEPRECATED: {
         /* #deprecated or #deprecated("message"); applies to the next
          * function, struct, or enum declaration. */
+        bool dup = note_dup_attr(parser, ATTR_DEPRECATED, "#deprecated");
         next_token(parser); /* consume #deprecated */
         const char *message = NULL;
         if (current_token_is(parser, TOK_LPAREN)) {
@@ -3234,14 +3512,14 @@ static AstNode *parse_statement(Parser *parser) {
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_deprecated = true;
-            stmt->data.func_decl.deprecated_message = message;
+            if (!dup) stmt->data.func_decl.deprecated_message = message;
         } else if (stmt && stmt->kind == NODE_STRUCT_DECL) {
             stmt->data.struct_decl.is_deprecated = true;
-            stmt->data.struct_decl.deprecated_message = message;
+            if (!dup) stmt->data.struct_decl.deprecated_message = message;
         } else if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_deprecated = true;
-            stmt->data.enum_decl.deprecated_message = message;
-        } else {
+            if (!dup) stmt->data.enum_decl.deprecated_message = message;
+        } else if (!dup) {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena,
                     "#deprecated attribute can only be applied to function, struct, or enum declarations"),
@@ -3251,6 +3529,7 @@ static AstNode *parse_statement(Parser *parser) {
     }
     case TOK_DOC:
         /* Skip #doc attribute tokens; consume args if present */
+        note_dup_attr(parser, ATTR_DOC, "#doc");
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
@@ -3259,6 +3538,176 @@ static AstNode *parse_statement(Parser *parser) {
         }
         next_token(parser);
         return parse_statement(parser);
+    case TOK_HASH_LBRACKET: {
+        /* Single-line attribute list: `#[a, b, c("arg")]`. Additive sugar for
+         * the stacked `#attr` form — each entry is validated against the
+         * following declaration exactly as if it had been stacked.
+         *
+         * The list must stay on one physical line for now. If the attribute
+         * set ever grows enough that one line becomes unwieldy, a multi-line
+         * form can be permitted here. */
+        Token open = parser->cur_token;
+        next_token(parser); /* consume '#[' */
+
+        const char *names[7];
+        const char *dep_msgs[7];
+        Token sites[7];
+        int count = 0;
+        int seen = 0;
+        bool malformed = false;
+
+        while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)) {
+            /* `#[#test]` — an inner '#' on an entry. */
+            if (current_token_is(parser, TOK_STRICT) || current_token_is(parser, TOK_FLAGS) ||
+                current_token_is(parser, TOK_DOC)    || current_token_is(parser, TOK_JSON_ATTR) ||
+                current_token_is(parser, TOK_DISCARD)|| current_token_is(parser, TOK_DEPRECATED) ||
+                current_token_is(parser, TOK_TEST)) {
+                diagnostic_error_code_help(parser->diag, "E2093",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                    "write attributes without '#' inside '#[...]'");
+                malformed = true;
+                break;
+            }
+            if (!current_token_is(parser, TOK_IDENT)) {
+                diagnostic_error_code_help(parser->diag, "E2093",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                    "expected an attribute name");
+                malformed = true;
+                break;
+            }
+            if (parser->cur_token.line != open.line) {
+                diagnostic_error_code(parser->diag, "E2092",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                malformed = true;
+                break;
+            }
+
+            Token site = parser->cur_token;
+            const char *nm = parser->cur_token.literal;
+            AttrBit bit = attr_bit_for_name(nm);
+            if (bit == (AttrBit)0) {
+                diagnostic_error_code_formatted(parser->diag, "E2091",
+                    parser->file, site.line, site.column, 0, nm);
+                malformed = true;
+                break;
+            }
+            next_token(parser); /* consume the name */
+
+            const char *dep_msg = NULL;
+            if (current_token_is(parser, TOK_LPAREN)) {
+                /* Entry arguments are validated exactly as the stacked form
+                 * does: only 'deprecated' and 'doc' accept a '(...)', and
+                 * 'deprecated' requires exactly one string literal. */
+                if (strcmp(nm, "deprecated") == 0) {
+                    next_token(parser); /* consume '(' */
+                    if (!current_token_is(parser, TOK_STRING)) {
+                        diagnostic_error_code_help(parser->diag, "E2093",
+                            parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                            "'deprecated' takes exactly one string literal, e.g. deprecated(\"use x() instead\")");
+                        malformed = true;
+                        break;
+                    }
+                    dep_msg = arena_copy_string(parser->arena, parser->cur_token.literal);
+                    next_token(parser); /* consume the string */
+                    if (!current_token_is(parser, TOK_RPAREN)) {
+                        diagnostic_error_code_help(parser->diag, "E2093",
+                            parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                            "'deprecated' takes exactly one string literal");
+                        malformed = true;
+                        break;
+                    }
+                    next_token(parser); /* consume ')' */
+                } else if (strcmp(nm, "doc") == 0) {
+                    /* doc() args are accepted and discarded, as in the stacked form. */
+                    next_token(parser); /* consume '(' */
+                    while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
+                        next_token(parser);
+                    }
+                    if (current_token_is(parser, TOK_RPAREN)) {
+                        next_token(parser); /* consume ')' */
+                    }
+                } else {
+                    char help[48];
+                    snprintf(help, sizeof(help), "'%s' takes no arguments", nm);
+                    diagnostic_error_code_help(parser->diag, "E2093",
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        arena_copy_string(parser->arena, help));
+                    malformed = true;
+                    break;
+                }
+            }
+
+            seen++;
+
+            char canon[24];
+            snprintf(canon, sizeof(canon), "#%s", nm);
+            if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canon)) && count < 7) {
+                names[count]    = arena_copy_string(parser->arena, nm);
+                dep_msgs[count] = dep_msg;
+                sites[count]    = site;
+                count++;
+            }
+
+            if (current_token_is(parser, TOK_COMMA)) {
+                next_token(parser); /* consume ',' */
+                if (current_token_is(parser, TOK_RBRACKET)) {
+                    diagnostic_error_code_help(parser->diag, "E2093",
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        "remove the trailing ',' before ']'");
+                    malformed = true;
+                    break;
+                }
+                continue;
+            }
+            if (current_token_is(parser, TOK_RBRACKET)) {
+                break;
+            }
+            diagnostic_error_code_help(parser->diag, "E2093",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                "expected ',' or ']' after an attribute");
+            malformed = true;
+            break;
+        }
+
+        /* The closing ']' must sit on the opening line too — the in-loop check
+         * only sees attribute-name tokens, so `#[flags\n]` and `#[a, b\n]`
+         * would otherwise slip through. */
+        if (!malformed && current_token_is(parser, TOK_RBRACKET) &&
+            parser->cur_token.line != open.line) {
+            diagnostic_error_code(parser->diag, "E2092",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            malformed = true;
+        }
+
+        if (!malformed && seen == 0 && current_token_is(parser, TOK_RBRACKET)) {
+            diagnostic_error_code_help(parser->diag, "E2093",
+                parser->file, open.line, open.column, 0,
+                "'#[...]' cannot be empty; list at least one attribute");
+            malformed = true;
+        }
+
+        if (current_token_is(parser, TOK_RBRACKET)) {
+            next_token(parser); /* consume ']' */
+        }
+
+        /* On a malformed list, skip ahead to the declaration keyword so the
+         * rest of the file still parses without a diagnostic cascade. */
+        if (malformed) {
+            while (!current_token_is(parser, TOK_EOF) &&
+                   !current_token_is(parser, TOK_DO) &&
+                   !current_token_is(parser, TOK_CONST) &&
+                   !current_token_is(parser, TOK_WHEN) &&
+                   !current_token_is(parser, TOK_MUT)) {
+                next_token(parser);
+            }
+        }
+
+        AstNode *stmt = parse_statement(parser);
+        for (int i = 0; i < count; i++) {
+            apply_named_attribute(parser, stmt, names[i], dep_msgs[i], sites[i]);
+        }
+        return stmt;
+    }
     case TOK_ENSURE:
         return parse_ensure_statement(parser);
     case TOK_BLANK:
@@ -3302,6 +3751,32 @@ static AstNode *parse_statement(Parser *parser) {
             return node;
         }
 
+        /* Bare `call() or_return`: no bindings, just propagate the trailing
+         * error from the call's return tuple. */
+        if (peek_token_is(parser, TOK_OR_RETURN)) {
+            next_token(parser); /* consume or_return */
+            AstNode *fb[MAX_MULTI_VARS];
+            int fbc = parse_or_return_fallbacks(parser, fb);
+            char *tmp_name = make_or_return_temp_name(parser->arena);
+
+            AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
+            block->data.block.cap = 2;
+            block->data.block.count = 0;
+            block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
+
+            AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
+            tmp_decl->data.var_decl.mutable = true;
+            tmp_decl->data.var_decl.name = tmp_name;
+            tmp_decl->data.var_decl.synthetic = true;
+            tmp_decl->data.var_decl.type_name = NULL;
+            tmp_decl->data.var_decl.value = expr;
+            block->data.block.stmts[block->data.block.count++] = tmp_decl;
+
+            block->data.block.stmts[block->data.block.count++] =
+                build_or_return_guard(parser, tmp_name, fb, fbc);
+            return block;
+        }
+
         AstNode *node = ast_alloc(parser->arena, NODE_EXPR_STMT, parser->cur_token);
         node->data.expr_stmt.expr = expr;
         return node;
@@ -3321,6 +3796,7 @@ Parser *parser_create(Arena *arena, Lexer *lexer, const char *file, DiagnosticLi
     parser->no_struct_literal = false;
     parser->in_interp = false;
     parser->current_func = NULL;
+    parser->attr_seen_mask = 0;
 
     /* Read two tokens to fill cur and peek */
     next_token(parser);
@@ -3341,6 +3817,7 @@ AstNode *parser_parse_program(Parser *parser) {
         sizeof(AstNode *) * program->data.program.stmt_cap);
 
     while (!current_token_is(parser, TOK_EOF)) {
+        parser->attr_seen_mask = 0;
         AstNode *stmt = parse_statement(parser);
         if (stmt) {
             ARENA_GROW(parser->arena, program->data.program.stmts,

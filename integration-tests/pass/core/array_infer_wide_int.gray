@@ -1,0 +1,56 @@
+/*
+ * array_infer_wide_int.gray - an unannotated `mut` array literal of wide
+ * integers infers [i128] / [u256] etc., not [int].
+ *
+ * typechecker_kind_is_primitive accepts TK_INT/TK_UINT, and a bigint
+ * constructor call (i128(x)) is resolved as plain int, so `mut a = {i128(1),
+ * i128(2)}` inferred [int] and stored every element in a 64-bit slot -
+ * 128/256-bit values wrapped with no diagnostic. The map paths were fixed
+ * for this; the array path resolves the element type the same way now.
+ */
+
+do want(label string, cond bool) -> int {
+    if cond { return 1 }
+    println("  [FAIL] ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 8
+
+    // 128-bit value survives inference intact
+    mut a = {i128(1), i128(200000000000000000000)}
+    passed += want("i128 element not truncated",
+        string(a[1]) == "200000000000000000000")
+    passed += want("inferred as [i128]", type_of(a) == "[i128]")
+
+    // u256
+    mut u = {u256(0), u256(999999999999999999999999999999)}
+    passed += want("u256 element not truncated",
+        string(u[1]) == "999999999999999999999999999999")
+
+    // plain element assignment keeps the wide slot
+    mut b = {i128(10), i128(20)}
+    b[0] = i128(30)
+    passed += want("plain element assign", b[0] == 30 && b[1] == 20)
+
+    // a plain int literal mixed in is widened, not a type error
+    mut c = {i128(1), 5}
+    passed += want("mixed plain-int element", c[1] == 5 && type_of(c) == "[i128]")
+
+    // non-bigint inference is unchanged
+    mut p = {1, 2, 3}
+    passed += want("plain int array still [int]", type_of(p) == "[int]")
+    mut f = {1.5, 2.5}
+    passed += want("float array still [float]", f[0] == 1.5)
+    mut s = {"x", "y"}
+    passed += want("string array still [string]", s[1] == "y")
+
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

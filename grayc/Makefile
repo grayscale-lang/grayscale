@@ -71,6 +71,7 @@ BIN = grayc$(EXE)
 RT_SRC = src/runtime/runtime.c \
          src/runtime/array.c \
          src/runtime/map.c \
+         src/runtime/test.c \
          src/stdlib/builtins.c \
          src/stdlib/mem.c \
          src/stdlib/fmt.c \
@@ -99,6 +100,7 @@ RT_SRC = src/runtime/runtime.c \
          src/stdlib/http.c \
          src/stdlib/server.c \
          src/stdlib/strconv.c \
+         src/stdlib/chars.c \
          src/vendor/sqlite3.c
 
 RT_OBJ = $(RT_SRC:.c=.o)
@@ -207,11 +209,12 @@ TEST_DEPS = src/util/arena.o src/util/buf.o src/util/error.o src/util/error_code
 # Runtime sources needed by the runtime test binary. The sanitizer targets
 # compile these directly rather than linking objects, so both forms are
 # derived from one list — a source added here reaches every target.
-RT_TEST_SRC = src/runtime/runtime.c src/runtime/array.c src/runtime/map.c
+RT_TEST_SRC = src/runtime/runtime.c src/runtime/array.c src/runtime/map.c src/runtime/test.c
 RT_TEST_DEPS = $(RT_TEST_SRC:.c=.o) $(ATOMIC_OBJ)
 
 # Objects needed by the panic test binary (runtime + stdlib modules that emit panics)
 PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
+                  src/runtime/test.o \
                   src/stdlib/encoding.o src/stdlib/arrays.o src/stdlib/builtins.o \
                   src/stdlib/strconv.o src/stdlib/random.o src/stdlib/strings.o \
                   src/stdlib/io.o src/stdlib/threads.o $(ATOMIC_OBJ)
@@ -244,10 +247,11 @@ tests/test_panics$(EXE): tests/test_panics.c $(PANIC_TEST_DEPS)
 
 # Objects needed by the stdlib test binary (runtime + tested stdlib modules)
 STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
-                   src/stdlib/strings.o src/stdlib/arrays.o src/stdlib/maps.o \
+                   src/runtime/test.o \
+                   src/stdlib/strings.o src/stdlib/chars.o src/stdlib/arrays.o src/stdlib/maps.o \
                    src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
                    src/stdlib/strconv.o src/stdlib/json.o src/stdlib/io.o \
-                   src/stdlib/regex.o $(ATOMIC_OBJ)
+                   src/stdlib/regex.o src/stdlib/builtins.o $(ATOMIC_OBJ)
 
 tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
 	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)

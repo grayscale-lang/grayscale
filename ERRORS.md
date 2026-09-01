@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 401 codes** (275 errors, 17 warnings, 109 panics)
+**Total: 417 codes** (286 errors, 17 warnings, 114 panics)
 
 ---
 
@@ -54,7 +54,6 @@
 | `E2058` | syntax | cannot declare a struct or enum inside %s '%s'; define it at the file scope |
 | `E2059` | syntax | empty when block; add at least one 'is' branch |
 | `E2060` | syntax | too many return values; a function can return at most %d values |
-| `E2061` | syntax | 'module' declarations are not supported; imported files are identified by their file path |
 | `E2062` | syntax | too many variables in multi-variable declaration; maximum is %d |
 | `E2063` | syntax | duplicate or conflicting named return value; each name must be unique and not collide with parameters |
 | `E2064` | syntax | function '%s' conflicts with field '%s' in struct '%s' |
@@ -81,6 +80,10 @@
 | `E2087` | syntax | type parameters (<?>) cannot be mixed with value parameters in the same function |
 | `E2088` | syntax | mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d |
 | `E2089` | syntax | #discard attribute can only be applied to function declarations, not struct fields |
+| `E2090` | syntax | duplicate '%s' attribute; each attribute may appear at most once per declaration |
+| `E2091` | syntax | unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test |
+| `E2092` | syntax | '#[...]' attribute list must be on a single line |
+| `E2093` | syntax | malformed '#[...]' attribute list |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -116,7 +119,7 @@
 | `E3045` | types | 'or_return' requires a function that returns (T, Error); '%s()' does not return an error |
 | `E3046` | types | integer too large for 64 bits; max is 9223372036854775807 |
 | `E3047` | types | enum '%s' has no member '%s' |
-| `E3048` | types | operator '+' is not defined for strings; use string interpolation or 'fmt.format()' instead |
+| `E3048` | types | operator '+' on strings requires both operands to be strings; got '%s' and '%s' |
 | `E3049` | types | cannot use '%s' on enum values; enums only support == and != comparisons |
 | `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3}) |
 | `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1}) |
@@ -207,6 +210,9 @@
 | `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
 | `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
 | `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool |
+| `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
+| `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
+| `E3143` | types | #flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64 |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -229,6 +235,7 @@
 | `E4023` | names | module '%s' has no function named '%s' |
 | `E4024` | names | module '%s' has no member named '%s' |
 | `E4025` | names | public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public |
+| `E4026` | names | 'main' is reserved for the program entry point; it can only name a top-level 'do main()' function |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -261,6 +268,9 @@
 | `E5042` | usage | '#discard' attribute is not allowed on void function '%s'; only functions that return a value can use '#discard' |
 | `E5043` | usage | 'fields()' requires a struct instance, got '%s' |
 | `E5044` | usage | 'error()' argument must be a string, got '%s' |
+| `E5045` | arguments | constant argument is outside the valid domain for this function |
+| `E5046` | usage | '#test' function '%s' must take no parameters and have no return type |
+| `E5047` | usage | '#test' function '%s' cannot be called directly; it runs only under 'gray test' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -272,6 +282,7 @@
 | `E6009` | imports | '%s' and '%s' produce the same compiled name; one of them would be lost |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E6011` | imports | module '%s' is already imported in this file |
+| `E6012` | imports | #json struct '%s' requires 'import @json' in the same file |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -428,6 +439,11 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 | `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
+| `P0110` | strconv | strconv.format_int: invalid base %lld; must be between 2 and 36 |
+| `P0111` | strconv | strconv.format_uint: invalid base %lld; must be between 2 and 36 |
+| `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
+| `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
+| `P0114` | io | csv.read_file: input exceeds maximum string length |
 
 ---
 
@@ -452,4 +468,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-29 22:59:43 UTC*
+*Generated on 2026-09-01 16:09:21 UTC*

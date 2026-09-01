@@ -112,6 +112,7 @@ static const char *const gray_stdlib_module_names[] = {
     "atomic",
     "binary",
     "channels",
+    "chars",
     "crypto",
     "csv",
     "encoding",

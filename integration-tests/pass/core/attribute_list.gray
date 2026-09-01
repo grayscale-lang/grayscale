@@ -1,0 +1,76 @@
+/*
+ * attribute_list.gray - the single-line `#[...]` attribute container. Covers
+ * multi-attribute lists, a one-element list, argument-carrying entries, mixed
+ * stacked + container on one declaration, and `#[strict]` on a when statement.
+ */
+
+import @json
+
+#[flags]
+const Perm enum {
+    READ
+    WRITE
+    EXEC
+}
+
+#[json, doc("a 2D point")]
+const Point struct {
+    x int
+    y int
+}
+
+#[doc("adds two integers"), deprecated("use add_v2")]
+do add(a int, b int) -> int {
+    return a + b
+}
+
+// Mixed: a stacked attribute above a container on the same declaration.
+#doc("returns a noisy value the caller may ignore")
+#[discard]
+do noisy() -> int {
+    return 7
+}
+
+do main() {
+    println("=== Attribute List Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if add(3, 4) == 7 {
+        println("  [PASS] #[doc, deprecated] on function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] #[doc, deprecated] on function")
+        failed += 1
+    }
+
+    noisy()
+    println("  [PASS] #doc stacked with #[discard]")
+    passed += 1
+
+    mut x int = int(Perm.WRITE)
+    #[strict]
+    when x {
+        is 1 { println("  [PASS] #[strict] when") passed += 1 }
+        is 2 { println("  [PASS] #[strict] when") passed += 1 }
+        is 4 { println("  [PASS] #[strict] when") passed += 1 }
+        default { println("  [FAIL] #[strict] when") failed += 1 }
+    }
+
+    mut p Point = Point{x: 1, y: 2}
+    if len(json.stringify(p)) > 0 {
+        println("  [PASS] #[json, doc] on struct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] #[json, doc] on struct")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

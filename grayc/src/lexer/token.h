@@ -80,12 +80,14 @@ typedef enum {
     TOK_QUESTION,       /* ?  — wildcard type placeholder */
 
     /* Hash attributes */
+    TOK_HASH_LBRACKET,  /* #[ — opens a single-line attribute list */
     TOK_STRICT,         /* #strict */
     TOK_FLAGS,          /* #flags */
     TOK_DOC,            /* #doc */
     TOK_JSON_ATTR,      /* #json */
     TOK_DISCARD,        /* #discard */
     TOK_DEPRECATED,     /* #deprecated */
+    TOK_TEST,           /* #test */
 
     /* Keywords */
     TOK_MUT,
@@ -117,7 +119,6 @@ typedef enum {
     TOK_OR_RETURN,
 
     /* Module system keywords */
-    TOK_MODULE,
     TOK_PRIVATE,
     TOK_USE,
 

@@ -2043,6 +2043,85 @@ static void test_e2e_string_stdlib(void) {
     ASSERT_STR_EQ(output, "HI\nhi\nx\nbbb\ntrue\nb");
 }
 
+/* chars module: scalar ASCII case folding (#2559) */
+static void test_e2e_chars_stdlib(void) {
+    char *output = compile_and_run(
+        ""
+        "import @chars\n"
+        "do main() {\n"
+        "  println(chars.to_upper('a'))\n"
+        "  println(chars.to_lower('Z'))\n"
+        "  println(chars.to_upper('5'))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "A\nz\n5");
+}
+
+/* strings char-editing functions (#2560) */
+static void test_e2e_strings_char_editing(void) {
+    char *output = compile_and_run(
+        ""
+        "import @strings\n"
+        "do main() {\n"
+        "  mut s string = \"helo\"\n"
+        "  s = strings.insert_char_at(s, 3, 'l')\n"
+        "  s = strings.append_char(s, '!')\n"
+        "  s = strings.prepend_char(s, '>')\n"
+        "  s = strings.remove_at(s, 0)\n"
+        "  s = strings.set_char_at(s, 0, 'H')\n"
+        "  println(s)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "Hello!");
+}
+
+/* strconv arbitrary-base formatting and quoted-literal round-trip (#2434) */
+static void test_e2e_strconv_format_quote(void) {
+    char *output = compile_and_run(
+        ""
+        "import @strconv\n"
+        "do main() {\n"
+        "  println(strconv.format_int(255, 16))\n"
+        "  println(strconv.format_int(-10, 2))\n"
+        "  println(strconv.format_uint(8, 8))\n"
+        "  println(strconv.quote(\"a\\tb\"))\n"
+        "  mut v, _ = strconv.unquote(\"\\\"hi\\\"\")\n"
+        "  println(v)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "ff\n-1010\n10\n\"a\\tb\"\nhi");
+}
+
+/* `mut` array/map literal type inference for primitives (#2374) */
+static void test_e2e_infer_mut_literals(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a = {10, 20, 30}\n"
+        "  mut m = {\"a\": 1, \"b\": 2}\n"
+        "  println(a[2])\n"
+        "  println(m[\"b\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "30\n2");
+}
+
+/* fmt format directives on i128/u128/i256/u256 operands (#2586) */
+static void test_e2e_fmt_bigint_directives(void) {
+    char *output = compile_and_run(
+        ""
+        "import @fmt\n"
+        "do main() {\n"
+        "  mut a i128 = 255\n"
+        "  println(fmt.sprintf(\"%d\", a))\n"
+        "  println(fmt.sprintf(\"%x\", a))\n"
+        "  mut b u256 = 4096\n"
+        "  println(fmt.sprintf(\"%o\", b))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "255\nff\n10000");
+}
+
 static void test_e2e_when_multi_value(void) {
     char *output = compile_and_run(
         ""
@@ -2366,6 +2445,11 @@ int main(void) {
     RUN_TEST(test_e2e_bitwise_ops);
     RUN_TEST(test_e2e_defer_keyword);
     RUN_TEST(test_e2e_string_stdlib);
+    RUN_TEST(test_e2e_chars_stdlib);
+    RUN_TEST(test_e2e_strings_char_editing);
+    RUN_TEST(test_e2e_strconv_format_quote);
+    RUN_TEST(test_e2e_infer_mut_literals);
+    RUN_TEST(test_e2e_fmt_bigint_directives);
     RUN_TEST(test_e2e_when_multi_value);
     RUN_TEST(test_e2e_map_remove);
     RUN_TEST(test_e2e_tagged_enum);

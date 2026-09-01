@@ -1,0 +1,19 @@
+const Tag enum {
+    Leaf(int)
+    Nil
+}
+
+const Plain enum {
+    LOW
+    HIGH
+}
+
+do tagged(n int) -> (Tag, Error) {
+    if n < 0 { return Tag.Nil, error("neg") }
+    return Tag.Leaf(n), nil
+}
+
+do plain(n int) -> (Plain, int) {
+    if n > 10 { return Plain.HIGH, n }
+    return Plain.LOW, n
+}

@@ -1,7 +1,0 @@
-/* Panic Test: P0059 - strconv.to_float cannot convert invalid string */
-import @strconv
-
-do main() {
-    mut val, mut err = strconv.to_float("xyz")
-    println(val)
-}

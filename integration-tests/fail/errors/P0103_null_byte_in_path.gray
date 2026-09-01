@@ -1,7 +1,0 @@
-/* Panic Test: P0103 - file path contains embedded null byte */
-import @io
-
-do main() {
-    mut content string = io.read_file("test\x00file.txt")
-    println(content)
-}

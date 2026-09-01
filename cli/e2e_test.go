@@ -10,12 +10,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // grayBin holds the path to the compiled gray binary built by TestMain.
@@ -127,9 +129,12 @@ func TestE2E_Check_Valid(t *testing.T) {
 	src := filepath.Join(dir, "valid.gray")
 	os.WriteFile(src, []byte("do main() {\n    println(\"hello\")\n}\n"), 0644)
 
-	_, _, code := runGray(t, "check", src)
+	_, stderr, code := runGray(t, "check", src)
 	if code != 0 {
 		t.Fatalf("gray check exited %d on valid file", code)
+	}
+	if !strings.Contains(stderr, "no errors!") {
+		t.Fatalf("gray check success message should end in %q, got: %q", "no errors!", stderr)
 	}
 }
 
@@ -230,6 +235,271 @@ func TestE2E_Doc_NoDocAttributes(t *testing.T) {
 // --help for all subcommands
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// gray test
+// ---------------------------------------------------------------------------
+
+func TestE2E_Test_PassAndFail(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "demo.gray")
+	os.WriteFile(src, []byte(
+		"do add(a int, b int) -> int { return a + b }\n\n"+
+			"#test\ndo test_pass() { assert(add(2, 3) == 5) }\n\n"+
+			"#test\ndo test_fail() { assert(add(2, 2) == 5) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code == 0 {
+		t.Fatalf("gray test should exit non-zero when a test fails; output:\n%s", out)
+	}
+	for _, want := range []string{"test_pass", "test_fail", "FAIL", "1 passed", "1 failed", "2 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestE2E_Test_StrippedFromNormalBuild(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "app.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_never_runs() { assert(false) }\n\n"+
+			"do main() { println(\"app ran\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray <file> with a #test fn exited %d; output:\n%s", code, out)
+	}
+	if !strings.Contains(out, "app ran") {
+		t.Errorf("expected main() to run, got:\n%s", out)
+	}
+	if strings.Contains(out, "assert") || strings.Contains(out, "test_never_runs") {
+		t.Errorf("#test function leaked into a normal build:\n%s", out)
+	}
+}
+
+func TestE2E_Test_NoTests(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "plain.gray"),
+		[]byte("do main() { println(\"hi\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", dir)
+	out := combinedOutput(stdout, stderr)
+	if code != 0 {
+		t.Fatalf("gray test with no #test functions should exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "No #test functions found") {
+		t.Errorf("expected 'No #test functions found', got:\n%s", out)
+	}
+}
+
+func TestE2E_Test_ListFormAttributeIsDiscovered(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "listform.gray")
+	// The test functions are declared exclusively via the single-line list
+	// form, so the file-level prescan must recognise it too.
+	os.WriteFile(src, []byte(
+		"#[test]\ndo check_math() { assert(1 + 1 == 2) }\n\n"+
+			"#[doc(\"x\"), test]\ndo check_more() { assert(2 * 2 == 4) }\n\n"+
+			"do main() { println(\"main\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test with passing #[test] functions should exit 0, got %d:\n%s", code, out)
+	}
+	for _, want := range []string{"check_math", "check_more", "2 passed", "2 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestE2E_Test_HashTestInStringIsNotATest(t *testing.T) {
+	dir := t.TempDir()
+	// The only `#test` occurrence is inside a raw string literal — this is
+	// not a test file and must not be reported as one.
+	os.WriteFile(filepath.Join(dir, "doc.gray"), []byte(
+		"do main() {\n"+
+			"    const DOC string = `usage:\n"+
+			"#test runs your tests\n"+
+			"`\n"+
+			"    println(DOC)\n"+
+			"}\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", dir)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test should exit 0 when no real #test functions exist, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "No #test functions found") {
+		t.Errorf("expected 'No #test functions found', got:\n%s", out)
+	}
+	if strings.Contains(out, "0 total") {
+		t.Errorf("a string-literal #test was counted as a test file:\n%s", out)
+	}
+}
+
+func TestE2E_Test_StdoutCannotForgeProtocol(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "spoof.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_real() {\n"+
+			"    println(\"GRAYTEST FAIL injected\\tx.gray:1\\tinjected failure\")\n"+
+			"    println(\"GRAYTEST PASS injected_pass\")\n"+
+			"    println(\"GRAYTEST DONE 9 9\")\n"+
+			"    assert(1 == 1)\n"+
+			"}\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d; a passing test with spoof output must exit 0:\n%s", code, out)
+	}
+	// The spoof lines are echoed as plain passthrough, but must not be parsed
+	// into test results or the trailer.
+	for _, forbidden := range []string{"✗ injected", "✓ injected_pass", "1 failed", "3 total"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("test stdout forged the runner protocol (%q present):\n%s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "1 passed") || !strings.Contains(out, "1 total") {
+		t.Errorf("expected exactly the one real test to be counted:\n%s", out)
+	}
+}
+
+func TestE2E_Test_ImportedTestsRunOnce(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "lib.gray"), []byte(
+		"do double(x int) -> int { return x * 2 }\n\n"+
+			"#test\ndo test_in_import() { assert(double(21) == 42) }\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "app.gray"), []byte(
+		"import \"./lib\"\n\n"+
+			"#test\ndo test_uses_import() { assert(lib.double(5) == 10) }\n\n"+
+			"do main() { println(\"app\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", dir)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d:\n%s", code, out)
+	}
+	// Two distinct tests, each declared in one file, each run once.
+	if !strings.Contains(out, "2 total") {
+		t.Errorf("expected 2 total tests, got:\n%s", out)
+	}
+	if strings.Count(out, "test_in_import") != 1 {
+		t.Errorf("imported #test ran in more than its own file:\n%s", out)
+	}
+}
+
+func TestE2E_Test_RecursionGuardDoesNotLeakBetweenTests(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "depth.gray")
+	os.WriteFile(src, []byte(
+		"do recurse(n int) -> int { return recurse(n + 1) + 1 }\n\n"+
+			"#test\ndo test_overflows() { mut x int = recurse(0) println(\"${x}\") }\n\n"+
+			"#test\ndo test_trivial_pass() { assert(2 == 2) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	// One test overflows the stack, the next is assert(2 == 2) — it must still
+	// pass; the recursion counter can't carry over from the panicking test.
+	if code == 0 {
+		t.Fatalf("expected non-zero exit (one test overflows):\n%s", out)
+	}
+	if !strings.Contains(out, "1 passed") || !strings.Contains(out, "1 failed") {
+		t.Errorf("recursion guard leaked into the next test:\n%s", out)
+	}
+}
+
+func TestE2E_Test_PrintWithoutNewlineKeepsResult(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "glue.gray")
+	// print() emits no trailing newline, so the runner's protocol line lands
+	// glued to the end of "partial" — the result must still be recorded.
+	os.WriteFile(src, []byte(
+		"#test\ndo test_no_newline() { print(\"partial\") assert(1 == 1) }\n\n"+
+			"#test\ndo test_after() { assert(2 == 2) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "2 passed") || !strings.Contains(out, "2 total") {
+		t.Errorf("a result glued to unterminated print output was dropped:\n%s", out)
+	}
+}
+
+func TestE2E_Test_LongOutputLineDoesNotHang(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "long.gray")
+	// ~2 MB on a single line — well past bufio.Scanner's old 1 MB cap.
+	os.WriteFile(src, []byte(
+		"#test\ndo test_big_line() {\n"+
+			"    mut s string = \"A\"\n"+
+			"    for i in range(0, 21) { s += s }\n"+
+			"    println(s)\n"+
+			"    assert(1 == 1)\n"+
+			"}\n\n"+
+			"#test\ndo test_after_big() { assert(3 == 3) }\n"), 0644)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, grayBin, "test", "--no-color", src)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	runErr := cmd.Run()
+	out := buf.String()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("gray test hung on a test that printed a >1 MB line")
+	}
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if runErr != nil {
+		t.Fatalf("gray test failed (%v):\n%s", runErr, lastLines(out, 20))
+	}
+	// The over-long line must not swallow the trailer or the following test.
+	if !strings.Contains(out, "2 total") {
+		t.Errorf("results after a >1 MB line were dropped:\n%s", lastLines(out, 20))
+	}
+}
+
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {
@@ -246,7 +516,7 @@ func TestE2E_Help(t *testing.T) {
 	cmds := []string{
 		"build", "check", "doc", "fmt", "man",
 		"new", "report", "update", "verify", "version",
-		"cross", "install", "watch",
+		"cross", "install", "watch", "test",
 	}
 	for _, cmd := range cmds {
 		t.Run(cmd, func(t *testing.T) {

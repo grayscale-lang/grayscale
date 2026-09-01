@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3088 - %f format directive rejects a bigint argument
+ * Expected: "format directive '%f' expects float but argument 1 has type 'u256'"
+ */
+
+// expect-error: E3088
+
+import @fmt
+
+do main() {
+    mut d u256 = 10
+    fmt.printfln("%f", d)
+}

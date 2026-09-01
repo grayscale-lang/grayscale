@@ -1,6 +1,6 @@
 /*
  * Test: strconv module - string/type conversions
- * Verifies all 10 strconv functions work correctly.
+ * Verifies the strconv conversion and query functions work correctly.
  */
 
 import @strconv
@@ -9,7 +9,7 @@ do main() {
     mut passed int = 0
     mut failed int = 0
 
-    // Test 1: to_int (single-var, panicking)
+    // Test 1: to_int (discard the error)
     mut n, _ = strconv.to_int("42")
     if n == 42 {
         println("  [PASS] to_int(\"42\") = 42")

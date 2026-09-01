@@ -3,6 +3,8 @@
  * Expected: E3104 error, compilation fails
  */
 
+import @json
+
 #json
 const User struct {
     name string

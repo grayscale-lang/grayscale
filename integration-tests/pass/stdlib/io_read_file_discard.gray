@@ -1,0 +1,74 @@
+/*
+ * io_read_file_discard.gray - Test io.read_file with the error-discard form
+ *
+ * io.read_file is fallible; single-variable assignment is a compile error.
+ * This verifies the `mut content, _ = io.read_file(...)` form and that the
+ * returned string is usable in len(), interpolation, and equality.
+ * Writes its own fixture file: a hardcoded system path like /etc/hosts
+ * does not exist on every platform.
+ */
+
+import @io
+
+do main() {
+    println("=== IO read_file error-discard tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    const fixture string = "io_read_file_discard_fixture.txt"
+    mut _, _ = io.write_file(fixture, "error-discard fixture content\n")
+
+    // Test 1: io.read_file with the error discarded
+    mut hosts, _ = io.read_file(fixture)
+    if len(hosts) > 0 {
+        println("  [PASS] io.read_file with discarded error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] io.read_file returned empty")
+        failed += 1
+    }
+
+    // Test 2: read_file result used in len()
+    mut data, _ = io.read_file(fixture)
+    if len(data) > 10 {
+        println("  [PASS] len(io.read_file(...)) > 10")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len got ${len(data)}")
+        failed += 1
+    }
+
+    // Test 3: read_file result used in interpolation
+    mut file_data, _ = io.read_file(fixture)
+    mut msg string = "read ${len(file_data)} bytes"
+    if len(msg) > 0 {
+        println("  [PASS] io.read_file result in interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] interpolation empty")
+        failed += 1
+    }
+
+    // Test 4: multiple reads in same function are consistent
+    mut read1, _ = io.read_file(fixture)
+    mut read2, _ = io.read_file(fixture)
+    if read1 == read2 {
+        println("  [PASS] multiple reads consistent")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reads returned different content")
+        failed += 1
+    }
+
+    mut _, _ = io.delete_file(fixture)
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

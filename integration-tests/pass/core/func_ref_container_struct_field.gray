@@ -1,0 +1,53 @@
+/*
+ * func_ref_container_struct_field.gray - a container of func references is a
+ * valid struct field type, the same as it is for a local.
+ *
+ * `[func]` and `map[string:func]` fields were rejected with E3130 because the
+ * field-type check treated the whole type as a bare `func` rather than a
+ * container whose element type is `func`.
+ */
+
+import @arrays
+
+do double(n int) -> int { return n * 2 }
+do triple(n int) -> int { return n * 3 }
+
+const Dispatch struct {
+    table [func]
+    named map[string:func]
+}
+
+do main() {
+    println("=== func-ref container struct fields ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut d Dispatch = Dispatch{}
+
+    arrays.append(d.table, ()double)
+    arrays.append(d.table, ()triple)
+    if d.table[0](5) == 10 && d.table[1](5) == 15 {
+        println("  [PASS] [func] array field append + index-call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [func] array field")
+        failed += 1
+    }
+
+    d.named["x2"] = ()double
+    if d.named["x2"](7) == 14 {
+        println("  [PASS] map[string:func] field assign + call")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[string:func] field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

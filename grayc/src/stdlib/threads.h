@@ -22,11 +22,23 @@ typedef struct {
 /*@man spawn
  *@module threads
  *@group Lifecycle
- *@sig spawn(fn func) -> Thread
- *@desc Spawn a new thread running fn. If a second int argument is provided, it is passed to the function.
+ *@sig spawn(fn func()) -> Thread
+ *@desc Spawn a new thread running fn. To pass an int argument to fn, use spawn_arg (or call spawn with a second int argument, which forwards to spawn_arg).
  *@example
  *   import @threads
- *   mut t Thread = threads.spawn(my_func)
+ *   mut t Thread = threads.spawn(()my_func)
+ *   threads.join(t)
+ *@end
+ */
+
+/*@man spawn_arg
+ *@module threads
+ *@group Lifecycle
+ *@sig spawn_arg(fn func(int), arg int) -> Thread
+ *@desc Spawn a new thread running fn, passing arg to it as its single int parameter.
+ *@example
+ *   import @threads
+ *   mut t Thread = threads.spawn_arg(()worker, 7)
  *   threads.join(t)
  *@end
  */
@@ -92,21 +104,8 @@ bool gray_threads_is_alive(GrayThread t);
  *   println("thread ${id}")
  *@end
  */
-/*@man current
- *@module threads
- *@group Query
- *@sig current() -> int
- *@desc Get the current thread's ID. Alias for get_id.
- *@example
- *   import @threads
- *   mut id int = threads.current()
- *@end
- */
-/* Get current thread id (for debugging). Identical to `current()`; both
- * names exist so callers can pick whichever reads better at the call
- * site. */
+/* Get current thread id (for debugging). */
 int64_t gray_threads_id(void);
-int64_t gray_threads_current(void);
 
 /*@man yield
  *@module threads

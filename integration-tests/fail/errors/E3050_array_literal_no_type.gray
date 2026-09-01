@@ -1,8 +1,10 @@
 /*
- * Error Test: E3050 - array literal without type annotation
- * Expected: "array literal requires a type annotation" error
+ * Error Test: E3050 - empty array literal has no elements to infer a type from
+ * Expected: "array needs a type annotation"
  */
 
+// expect-error: E3050
+
 do main() {
-    mut x = {1, 2, 3}
+    mut x = {}
 }

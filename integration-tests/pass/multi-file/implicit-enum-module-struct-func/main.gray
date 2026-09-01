@@ -1,0 +1,16 @@
+/*
+ * Test: an implicit enum selector (.VARIANT) keeps its type context when the
+ * argument goes to a struct function reached through a module qualifier.
+ * module.Struct.func(.VARIANT) was the one call form that dropped it (E3110).
+ */
+import "./defs.gray"
+
+do main() {
+    mut m defs.Msg = defs.Msg.make(.PING)
+    assert(m.kind == defs.Kind.PING, "selector resolved to the parameter's enum type")
+
+    mut n defs.Msg = defs.Msg.make(.PONG)
+    assert(n.kind == defs.Kind.PONG, "second variant resolves too")
+
+    println("ALL TESTS PASSED")
+}

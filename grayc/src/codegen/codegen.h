@@ -27,6 +27,12 @@ typedef struct {
     int indent;
     bool has_mem;       /* Whether @mem was imported */
     bool has_fmt;       /* Whether @fmt was imported */
+    /* Whether the generated C needs a stdlib collection header — set when the
+     * `in` operator lowers to that module's helper, or the module is imported.
+     * Consulted after body emission to splice the #include into the preamble. */
+    bool needs_arrays_h;
+    bool needs_maps_h;
+    bool needs_strings_h;
     const char *file;
     char *file_owned; /* normalized copy backing `file`; freed by codegen_destroy */
 
@@ -161,6 +167,10 @@ typedef struct {
 
     /* Arena growth limit in bytes (0 = use 1 GB default) */
     size_t arena_limit;
+
+    /* --test mode: emit a test runner main() that calls every #test
+     * function; in normal builds #test functions are not emitted at all. */
+    bool test_mode;
 
     /* Monotonic counter for generating unique temporary variable names.
      * Every emitter that needs a unique C identifier draws from this

@@ -1,0 +1,10 @@
+// expect-error: E2093
+// expect-error-count: 1
+// An empty #[] attribute list must contain at least one attribute.
+
+#[]
+do something() -> int {
+    return 1
+}
+
+do main() {}

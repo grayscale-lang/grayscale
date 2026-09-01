@@ -10,6 +10,7 @@
 
 import "./vutils.gray"
 import "./utils.gray"
+import and use "./models.gray"
 using vutils
 
 const Actor struct {
@@ -68,6 +69,26 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] utils.new_T_ptr(Actor): expected id 0, got ${d^.id}")
+        failed += 1
+    }
+
+    // Type parameter, qualified, imported struct
+    mut e models.Thing = utils.new_T(models.Thing)
+    if models.Thing.bump(e) == 1 {
+        println("  [PASS] utils.new_T(models.Thing) on an imported struct type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] utils.new_T(models.Thing): got ${models.Thing.bump(e)}")
+        failed += 1
+    }
+
+    // Type parameter, imported struct named bare through 'import and use'
+    mut f Thing = utils.new_T(Thing)
+    if Thing.bump(f) == 1 {
+        println("  [PASS] utils.new_T(Thing) with the bare imported name")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] utils.new_T(Thing): got ${Thing.bump(f)}")
         failed += 1
     }
 

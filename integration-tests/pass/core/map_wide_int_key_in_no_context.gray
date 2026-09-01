@@ -1,0 +1,50 @@
+/*
+ * map_wide_int_key_in_no_context.gray - 'in' / '!in' on a wide-integer-keyed
+ * map, used where nothing supplies an expected type of bool.
+ *
+ * codegen's resolve_bigint_type walked an infix node's left operand for
+ * every operator except the six comparisons, so 'k in m' with a wide-int
+ * key was treated as a wide-int expression: println(k in m) emitted
+ * gray_i128_to_string over the _Bool result (C error) and an inferred
+ * array literal of 'in' results came out as [i128] with wrong values.
+ */
+
+do want(label string, cond bool) -> int {
+    if cond { return 1 }
+    println("  [FAIL] ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 6
+
+    mut m map[i128:int] = {i128(5): 7, i128(9): 11}
+
+    // println of a bare 'in' expression - no expected type
+    passed += want("in present, no context", (i128(5) in m) == true)
+    passed += want("in absent, no context", (i128(99) in m) == false)
+    passed += want("!in absent, no context", (i128(99) !in m) == true)
+
+    // inferred array literal of 'in' results must be [bool] with real values
+    mut hits = {i128(5) in m, i128(99) in m, i128(9) in m}
+    passed += want("inferred array is bool-valued", hits[0] == true && hits[1] == false && hits[2] == true)
+
+    // u256 key
+    mut u map[u256:string] = {u256(100): "a"}
+    passed += want("u256 key in", (u256(100) in u) == true && (u256(3) in u) == false)
+
+    // still fine in a bool context
+    if i128(5) in m {
+        passed += want("bool-context still works", true)
+    } otherwise {
+        passed += want("bool-context still works", false)
+    }
+
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

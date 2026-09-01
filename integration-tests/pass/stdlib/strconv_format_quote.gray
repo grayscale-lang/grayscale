@@ -1,0 +1,151 @@
+/*
+ * Test: strconv format_int / format_uint / quote / unquote
+ * Verifies arbitrary-base formatting and quoted-literal round-tripping.
+ */
+
+import @strconv
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: format_int base 16
+    mut h string = strconv.format_int(255, 16)
+    if h == "ff" {
+        println("  [PASS] format_int(255, 16) = ff")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format_int(255, 16) = ${h}")
+        failed += 1
+    }
+
+    // Test 2: format_int negative, base 2
+    mut b string = strconv.format_int(-10, 2)
+    if b == "-1010" {
+        println("  [PASS] format_int(-10, 2) = -1010")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format_int(-10, 2) = ${b}")
+        failed += 1
+    }
+
+    // Test 3: format_int base 36
+    mut z string = strconv.format_int(35, 36)
+    if z == "z" {
+        println("  [PASS] format_int(35, 36) = z")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format_int(35, 36) = ${z}")
+        failed += 1
+    }
+
+    // Test 4: format_int zero
+    mut zero string = strconv.format_int(0, 10)
+    if zero == "0" {
+        println("  [PASS] format_int(0, 10) = 0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format_int(0, 10) = ${zero}")
+        failed += 1
+    }
+
+    // Test 5: format_uint base 16
+    mut u uint = 255
+    mut uh string = strconv.format_uint(u, 16)
+    if uh == "ff" {
+        println("  [PASS] format_uint(255, 16) = ff")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] format_uint(255, 16) = ${uh}")
+        failed += 1
+    }
+
+    // Test 6: format_int round-trips through to_int
+    mut back, _ = strconv.to_int(strconv.format_int(-12345, 16), 16)
+    if back == -12345 {
+        println("  [PASS] to_int(format_int(-12345, 16), 16) = -12345")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip = ${back}")
+        failed += 1
+    }
+
+    // Test 7: quote plain string
+    mut q string = strconv.quote("hello")
+    if q == "\"hello\"" {
+        println("  [PASS] quote(\"hello\")")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quote(\"hello\") = ${q}")
+        failed += 1
+    }
+
+    // Test 8: quote escapes special characters
+    mut q2 string = strconv.quote("a\tb\"c")
+    if q2 == "\"a\\tb\\\"c\"" {
+        println("  [PASS] quote escapes tab and quote")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quote special = ${q2}")
+        failed += 1
+    }
+
+    // Test 9: unquote round-trips quote (multi-var)
+    mut orig string = "line\none\ttwo \"quoted\""
+    mut round, err9 = strconv.unquote(strconv.quote(orig))
+    if err9 == nil {
+        if round == orig {
+            println("  [PASS] unquote(quote(s)) == s")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] round-trip mismatch: ${round}")
+            failed += 1
+        }
+    } otherwise {
+        println("  [FAIL] unquote returned error")
+        failed += 1
+    }
+
+    // Test 10: unquote malformed input returns error
+    mut bad, err10 = strconv.unquote("no quotes here")
+    if err10 != nil {
+        println("  [PASS] unquote(\"no quotes here\") returned error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] unquote malformed no error, val=${bad}")
+        failed += 1
+    }
+
+    // Test 11: unquote with discarded error on valid input
+    mut ok, _ = strconv.unquote("\"plain\"")
+    if ok == "plain" {
+        println("  [PASS] unquote discard-error on valid input")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] unquote discard-error = ${ok}")
+        failed += 1
+    }
+
+    // Test 12: unquote interprets hex escape
+    mut hx, err12 = strconv.unquote("\"\\x41\"")
+    if err12 == nil {
+        if hx == "A" {
+            println("  [PASS] unquote hex escape = A")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] unquote hex escape = ${hx}")
+            failed += 1
+        }
+    } otherwise {
+        println("  [FAIL] unquote hex escape returned error")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

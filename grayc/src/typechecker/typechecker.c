@@ -266,10 +266,18 @@ static int symbol_scope_depth(Scope *scope, const char *name) {
     return 0;
 }
 
+/* Lifetime origin of a call result whose value is forwarded from one of the
+ * call's arguments (per the callee's returns_param_addr summary). Defined
+ * below register_func; forward-declared here for pointer_origin_of. */
+static int call_result_origin(TypeChecker *checker, AstNode *call,
+                              const char **out_name);
+
 /* If `value` produces a pointer with a known lifetime origin, report that
- * origin's scope depth and name. Covers both the direct form addr(x)/raw(x)
- * and a pointer variable that already carries an origin, so an address that
- * is laundered through any number of intermediates stays tracked. */
+ * origin's scope depth and name. Covers the direct form addr(x)/raw(x), a
+ * pointer variable that already carries an origin, and a call result that
+ * forwards one of its pointer arguments — so an address that is laundered
+ * through any number of intermediates or through a function call stays
+ * tracked. */
 static int pointer_origin_of(TypeChecker *checker, AstNode *value,
                              const char **out_name) {
     if (!value) return 0;
@@ -291,6 +299,25 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
             return src->origin_depth;
         }
     }
+    /* An element/field read *out of* a container that was built from a
+     * literal holding addr(local) — `a[0]`, `b.p`. The container's buried
+     * origin travels with the value that comes back out, but only when the
+     * slot is itself a pointer; a copied scalar field is safe. */
+    if (value->kind == NODE_INDEX_EXPR || value->kind == NODE_MEMBER_EXPR) {
+        const char *root = assignment_target_root_name(value);
+        if (root) {
+            Symbol *s = scope_lookup(checker->current_scope, root);
+            if (s && s->field_origin_depth) {
+                GrayType *vt = resolve_expression(checker, value);
+                if (vt && vt->kind == TK_POINTER) {
+                    *out_name = s->field_origin_name;
+                    return s->field_origin_depth;
+                }
+            }
+        }
+    }
+    if (value->kind == NODE_CALL_EXPR)
+        return call_result_origin(checker, value, out_name);
     return 0;
 }
 
@@ -842,6 +869,9 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->is_generic = false;
     fs->is_discard = false;
     fs->decl = NULL;
+    fs->escape_state = 0;
+    fs->returns_param_addr = 0;
+    memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1074,6 +1104,528 @@ static FuncSig *find_module_func(TypeChecker *checker, const char *mod,
     return find_func(checker, module_member_key(checker, mod, name, key, sizeof(key)));
 }
 
+/* The user-defined function a call targets, or NULL (builtins and stdlib
+ * keep their own registries and are not in the FuncSig table). */
+static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
+    if (!call || call->kind != NODE_CALL_EXPR) return NULL;
+    AstNode *fn = call->data.call.function;
+    if (!fn) return NULL;
+    if (fn->kind == NODE_LABEL)
+        return find_func(checker, fn->data.label.value);
+    if (fn->kind == NODE_MEMBER_EXPR &&
+        fn->data.member.object &&
+        fn->data.member.object->kind == NODE_LABEL)
+        return find_module_func(checker, fn->data.member.object->data.label.value,
+                                fn->data.member.member);
+    return NULL;
+}
+
+static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
+static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs);
+
+/* The value a local named `name` was declared with, searched anywhere in
+ * `node`, or NULL. Lets the param-bit walk follow `mut b = Box{p: q};
+ * return b`. Local declarations form a DAG (Grayscale forbids forward
+ * references), so following initialisers terminates. */
+static AstNode *local_initializer(AstNode *node, const char *name) {
+    if (!node || !name) return NULL;
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        if (node->data.var_decl.name &&
+            strcmp(node->data.var_decl.name, name) == 0)
+            return node->data.var_decl.value;
+        return local_initializer(node->data.var_decl.value, name);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++) {
+            AstNode *r = local_initializer(node->data.block.stmts[i], name);
+            if (r) return r;
+        }
+        return NULL;
+    case NODE_IF_STMT: {
+        AstNode *r = local_initializer(node->data.if_stmt.consequence, name);
+        return r ? r : local_initializer(node->data.if_stmt.alternative, name);
+    }
+    case NODE_WHEN_STMT: {
+        for (int i = 0; i < node->data.when_stmt.case_count; i++) {
+            AstNode *r = local_initializer(node->data.when_stmt.cases[i].body, name);
+            if (r) return r;
+        }
+        return local_initializer(node->data.when_stmt.default_body, name);
+    }
+    case NODE_FOR_STMT:      return local_initializer(node->data.for_stmt.body, name);
+    case NODE_FOR_EACH_STMT: return local_initializer(node->data.for_each.body, name);
+    case NODE_WHILE_STMT:    return local_initializer(node->data.while_stmt.body, name);
+    case NODE_LOOP_STMT:     return local_initializer(node->data.loop_stmt.body, name);
+    default:                 return NULL;
+    }
+}
+
+/* Structural: bitmask of `fs`'s parameters whose address `node` may carry —
+ * the parameter named directly, addr()/raw() of a parameter's pointee, a
+ * field/element read through a parameter, a value buried in a struct or
+ * array literal, a local initialised from any of those, or a value
+ * forwarded through another summarised call. Runs while the summary is
+ * being built, so it looks only at the AST, never at scope.
+ *
+ * A bare `p^` yields the pointee *value*, so it carries nothing; `p^.field`
+ * reaches into the pointee and can. */
+static unsigned long long return_expr_param_bits(TypeChecker *checker,
+                                                 FuncSig *fs, AstNode *node) {
+    if (!node || !fs->decl) return 0;
+    switch (node->kind) {
+    case NODE_LABEL: {
+        int pc = fs->decl->data.func_decl.param_count;
+        for (int i = 0; i < pc && i < 64; i++) {
+            const char *pn = fs->decl->data.func_decl.params[i].name;
+            if (pn && strcmp(pn, node->data.label.value) == 0)
+                return 1ull << i;
+        }
+        AstNode *init = local_initializer(fs->decl->data.func_decl.body,
+                                          node->data.label.value);
+        if (init && init != node)
+            return return_expr_param_bits(checker, fs, init);
+        return 0;
+    }
+    case NODE_MEMBER_EXPR: {
+        AstNode *o = node->data.member.object;
+        while (o && o->kind == NODE_POSTFIX_EXPR &&
+               o->data.postfix.op == TOK_CARET)
+            o = o->data.postfix.left;
+        return return_expr_param_bits(checker, fs, o);
+    }
+    case NODE_INDEX_EXPR: {
+        AstNode *l = node->data.index_expr.left;
+        while (l && l->kind == NODE_POSTFIX_EXPR &&
+               l->data.postfix.op == TOK_CARET)
+            l = l->data.postfix.left;
+        return return_expr_param_bits(checker, fs, l);
+    }
+    case NODE_POSTFIX_EXPR:
+        if (node->data.postfix.op == TOK_CARET) return 0;
+        return return_expr_param_bits(checker, fs, node->data.postfix.left);
+    case NODE_STRUCT_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.struct_value.count; i++)
+            out |= return_expr_param_bits(checker, fs,
+                                          node->data.struct_value.field_values[i]);
+        return out;
+    }
+    case NODE_ARRAY_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.array_value.count; i++)
+            out |= return_expr_param_bits(checker, fs,
+                                          node->data.array_value.elements[i]);
+        return out;
+    }
+    case NODE_MAP_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.map_value.count; i++) {
+            out |= return_expr_param_bits(checker, fs, node->data.map_value.keys[i]);
+            out |= return_expr_param_bits(checker, fs, node->data.map_value.values[i]);
+        }
+        return out;
+    }
+    case NODE_CALL_EXPR: {
+        AstNode *f = node->data.call.function;
+        if (f && f->kind == NODE_LABEL && node->data.call.arg_count == 1 &&
+            (strcmp(f->data.label.value, "addr") == 0 ||
+             strcmp(f->data.label.value, "raw") == 0))
+            return return_expr_param_bits(checker, fs, node->data.call.args[0]);
+        FuncSig *callee = resolve_call_sig(checker, node);
+        if (!callee || callee == fs) return 0;
+        unsigned long long callee_bits = returns_param_address(checker, callee);
+        unsigned long long out = 0;
+        for (int i = 0; i < callee->param_count &&
+                        i < node->data.call.arg_count && i < 64; i++)
+            if (callee_bits & (1ull << i))
+                out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
+        return out;
+    }
+    default:
+        return 0;
+    }
+}
+
+/* OR together the param bits of every `return` reachable in a statement
+ * subtree, without descending into a nested function declaration. */
+static unsigned long long return_stmt_param_bits(TypeChecker *checker,
+                                                 FuncSig *fs, AstNode *node) {
+    if (!node) return 0;
+    unsigned long long bits = 0;
+    switch (node->kind) {
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            bits |= return_expr_param_bits(checker, fs,
+                                           node->data.return_stmt.values[i]);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            bits |= return_stmt_param_bits(checker, fs, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.if_stmt.consequence);
+        bits |= return_stmt_param_bits(checker, fs, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            bits |= return_stmt_param_bits(checker, fs,
+                                           node->data.when_stmt.cases[i].body);
+        bits |= return_stmt_param_bits(checker, fs, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.for_stmt.body);
+        break;
+    case NODE_FOR_EACH_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.for_each.body);
+        break;
+    case NODE_WHILE_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.while_stmt.body);
+        break;
+    case NODE_LOOP_STMT:
+        bits |= return_stmt_param_bits(checker, fs, node->data.loop_stmt.body);
+        break;
+    default:
+        break;
+    }
+    return bits;
+}
+
+/* --- param_escape_into: where a parameter's address ends up living --- */
+
+/* Root name of an assignment/insert target, seeing *through* a pointer
+ * dereference (unlike assignment_target_root_name, which stops at `^`):
+ * writing to `dst^.field` stores into the pointee, which for a pointer
+ * parameter is the caller's memory. */
+static const char *escape_root_name(AstNode *e) {
+    while (e) {
+        switch (e->kind) {
+        case NODE_LABEL:       return e->data.label.value;
+        case NODE_MEMBER_EXPR: e = e->data.member.object; break;
+        case NODE_INDEX_EXPR:  e = e->data.index_expr.left; break;
+        case NODE_POSTFIX_EXPR:
+            if (e->data.postfix.op != TOK_CARET) return NULL;
+            e = e->data.postfix.left;
+            break;
+        default: return NULL;
+        }
+    }
+    return NULL;
+}
+
+/* Is `name` declared as a local anywhere in `node`? */
+static bool declared_in_subtree(AstNode *node, const char *name) {
+    if (!node || !name) return false;
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        if (node->data.var_decl.name &&
+            strcmp(node->data.var_decl.name, name) == 0)
+            return true;
+        return declared_in_subtree(node->data.var_decl.value, name);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            if (declared_in_subtree(node->data.block.stmts[i], name)) return true;
+        return false;
+    case NODE_IF_STMT:
+        return declared_in_subtree(node->data.if_stmt.consequence, name) ||
+               declared_in_subtree(node->data.if_stmt.alternative, name);
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            if (declared_in_subtree(node->data.when_stmt.cases[i].body, name)) return true;
+        return declared_in_subtree(node->data.when_stmt.default_body, name);
+    case NODE_FOR_STMT:
+        if (node->data.for_stmt.var_name &&
+            strcmp(node->data.for_stmt.var_name, name) == 0) return true;
+        return declared_in_subtree(node->data.for_stmt.body, name);
+    case NODE_FOR_EACH_STMT:
+        if ((node->data.for_each.var_name &&
+             strcmp(node->data.for_each.var_name, name) == 0) ||
+            (node->data.for_each.index_name &&
+             strcmp(node->data.for_each.index_name, name) == 0)) return true;
+        return declared_in_subtree(node->data.for_each.body, name);
+    case NODE_WHILE_STMT: return declared_in_subtree(node->data.while_stmt.body, name);
+    case NODE_LOOP_STMT:  return declared_in_subtree(node->data.loop_stmt.body, name);
+    default: return false;
+    }
+}
+
+/* Is `name` a module-level variable of the program being checked? Only
+ * returns true when it can prove it, so an unknown name is treated as a
+ * local (a conservative miss, never a false E3097). */
+static bool is_module_level_var(TypeChecker *checker, const char *name) {
+    if (!checker->program || !name ||
+        checker->program->kind != NODE_PROGRAM) return false;
+    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
+        AstNode *s = checker->program->data.program.stmts[i];
+        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name &&
+            strcmp(s->data.var_decl.name, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* Classify a store target's root: a parameter index, PARAM_ESCAPE_GLOBAL, or
+ * PARAM_ESCAPE_NONE (a local — an in-function concern the direct E3097
+ * checks already cover). */
+static signed char escape_dest_for_root(TypeChecker *checker, FuncSig *fs,
+                                        const char *root, AstNode *body) {
+    if (!root) return PARAM_ESCAPE_NONE;
+    int pc = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < pc && i < 64; i++) {
+        const char *pn = fs->decl->data.func_decl.params[i].name;
+        if (pn && strcmp(pn, root) == 0) return (signed char)i;
+    }
+    if (declared_in_subtree(body, root)) return PARAM_ESCAPE_NONE;
+    if (is_module_level_var(checker, root)) return PARAM_ESCAPE_GLOBAL;
+    return PARAM_ESCAPE_NONE;
+}
+
+/* stdlib functions that store an argument into a container argument. */
+typedef struct {
+    const char *mod;
+    const char *fn;
+    int value_arg;
+    int container_arg;
+} ContainerSink;
+
+static const ContainerSink container_sinks[] = {
+    {"arrays", "append",    1, 0},
+    {"arrays", "prepend",   1, 0},
+    {"arrays", "insert_at", 2, 0},
+    {"arrays", "fill",      2, 0},
+};
+
+static const ContainerSink *find_container_sink(TypeChecker *checker, AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return NULL;
+    const char *qual = ast_member_qualifier(fn);
+    if (!qual) return NULL;
+    const char *mod = typechecker_resolve_alias(checker, qual);
+    const char *mfn = fn->data.member.member;
+    if (!mod || !mfn) return NULL;
+    for (size_t i = 0; i < sizeof container_sinks / sizeof container_sinks[0]; i++)
+        if (strcmp(container_sinks[i].mod, mod) == 0 &&
+            strcmp(container_sinks[i].fn, mfn) == 0)
+            return &container_sinks[i];
+    return NULL;
+}
+
+static void record_param_escape(FuncSig *fs, unsigned long long bits,
+                                signed char dest) {
+    for (int i = 0; i < fs->param_count && i < 64; i++) {
+        if (!(bits & (1ull << i))) continue;
+        if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE ||
+            dest == PARAM_ESCAPE_GLOBAL)
+            fs->param_escape_into[i] = dest;
+    }
+}
+
+/* Scan a function body for places a parameter's address is stored into
+ * caller-visible memory: an assignment whose target roots at another
+ * parameter or a module-level variable, a stdlib container insert, or a
+ * call that itself escapes the argument. */
+static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
+                        AstNode *node) {
+    if (!node) return;
+    switch (node->kind) {
+    case NODE_ASSIGN_STMT: {
+        signed char dest = escape_dest_for_root(checker, fs,
+            escape_root_name(node->data.assign.target), body);
+        if (dest != PARAM_ESCAPE_NONE)
+            record_param_escape(fs, return_expr_param_bits(checker, fs,
+                node->data.assign.value), dest);
+        escape_walk(checker, fs, body, node->data.assign.value);
+        break;
+    }
+    case NODE_CALL_EXPR: {
+        const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && node->data.call.arg_count > sink->value_arg &&
+            node->data.call.arg_count > sink->container_arg) {
+            signed char dest = escape_dest_for_root(checker, fs,
+                escape_root_name(node->data.call.args[sink->container_arg]), body);
+            if (dest != PARAM_ESCAPE_NONE)
+                record_param_escape(fs, return_expr_param_bits(checker, fs,
+                    node->data.call.args[sink->value_arg]), dest);
+        }
+        FuncSig *callee = resolve_call_sig(checker, node);
+        if (callee && callee != fs) {
+            ensure_escape_summary(checker, callee);
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < 64; k++) {
+                signed char cdest = callee->param_escape_into[k];
+                if (cdest == PARAM_ESCAPE_NONE) continue;
+                unsigned long long bits = return_expr_param_bits(checker, fs,
+                    node->data.call.args[k]);
+                if (!bits) continue;
+                if (cdest == PARAM_ESCAPE_GLOBAL) {
+                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL);
+                } else if (cdest < node->data.call.arg_count) {
+                    signed char dest = escape_dest_for_root(checker, fs,
+                        escape_root_name(node->data.call.args[cdest]), body);
+                    if (dest != PARAM_ESCAPE_NONE)
+                        record_param_escape(fs, bits, dest);
+                }
+            }
+        }
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            escape_walk(checker, fs, body, node->data.call.args[i]);
+        break;
+    }
+    case NODE_VAR_DECL:
+        escape_walk(checker, fs, body, node->data.var_decl.value);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            escape_walk(checker, fs, body, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        escape_walk(checker, fs, body, node->data.if_stmt.consequence);
+        escape_walk(checker, fs, body, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            escape_walk(checker, fs, body, node->data.when_stmt.cases[i].body);
+        escape_walk(checker, fs, body, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:
+        escape_walk(checker, fs, body, node->data.for_stmt.body);
+        break;
+    case NODE_FOR_EACH_STMT:
+        escape_walk(checker, fs, body, node->data.for_each.body);
+        break;
+    case NODE_WHILE_STMT:
+        escape_walk(checker, fs, body, node->data.while_stmt.body);
+        break;
+    case NODE_LOOP_STMT:
+        escape_walk(checker, fs, body, node->data.loop_stmt.body);
+        break;
+    case NODE_EXPR_STMT:
+        escape_walk(checker, fs, body, node->data.expr_stmt.expr);
+        break;
+    case NODE_ENSURE_STMT:
+        escape_walk(checker, fs, body, node->data.ensure_stmt.expr);
+        break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            escape_walk(checker, fs, body, node->data.return_stmt.values[i]);
+        break;
+    default:
+        break;
+    }
+}
+
+/* Lazily compute and memoise `fs`'s escape summary (returns_param_addr and
+ * param_escape_into). A function caught mid-computation (recursion) is left
+ * with whatever partial summary it has — conservative, never a false
+ * positive. */
+static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
+    if (!fs || fs->escape_state != 0) return;
+    fs->escape_state = 1;
+    fs->returns_param_addr = 0;
+    memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
+    AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
+                    ? fs->decl->data.func_decl.body : NULL;
+    if (body && fs->decl->data.func_decl.param_count <= 64) {
+        /* returns_param_addr matters only when the return value can carry a
+         * pointer: a pointer, or an aggregate that may hold one. */
+        bool escapable_ret = false;
+        for (int i = 0; i < fs->return_count; i++) {
+            GrayType *rt = fs->return_types[i];
+            if (rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                       rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+                escapable_ret = true;
+        }
+        if (escapable_ret)
+            fs->returns_param_addr = return_stmt_param_bits(checker, fs, body);
+        escape_walk(checker, fs, body, body);
+    }
+    fs->escape_state = 2;
+}
+
+static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs) {
+    if (!fs) return 0;
+    ensure_escape_summary(checker, fs);
+    return fs->returns_param_addr;
+}
+
+static int call_result_origin(TypeChecker *checker, AstNode *call,
+                              const char **out_name) {
+    FuncSig *fs = resolve_call_sig(checker, call);
+    if (!fs) return 0;
+    unsigned long long bits = returns_param_address(checker, fs);
+    if (!bits) return 0;
+    int best = 0;
+    const char *best_name = NULL;
+    for (int i = 0; i < fs->param_count &&
+                    i < call->data.call.arg_count && i < 64; i++) {
+        if (!(bits & (1ull << i))) continue;
+        const char *nm = NULL;
+        int d = pointer_origin_of(checker, call->data.call.args[i], &nm);
+        if (d > best) { best = d; best_name = nm; }
+    }
+    if (best) *out_name = best_name;
+    return best;
+}
+
+static int container_literal_origin(TypeChecker *checker, AstNode *node,
+                                    const char **out_name);
+
+/* Deepest lifetime origin an expression carries: a tracked pointer (the
+ * direct addr()/raw() form, one laundered through a variable, or one read
+ * back out of a container) combined with an address buried inside a
+ * struct / array / map literal. */
+static int expression_origin(TypeChecker *checker, AstNode *value,
+                             const char **out_name) {
+    const char *na = NULL, *nb = NULL;
+    int a = pointer_origin_of(checker, value, &na);
+    int b = container_literal_origin(checker, value, &nb);
+    if (b > a) { *out_name = nb; return b; }
+    if (a) { *out_name = na; return a; }
+    return 0;
+}
+
+/* Deepest pointer-origin buried in a struct / array / map literal, or 0.
+ * A container built with `Field{p: addr(local)}`, `{addr(local)}`, or
+ * `{"k": addr(local)}` carries the pointee's lifetime even though the
+ * address sits inside an element. Recurses through nested literals. */
+static int container_literal_origin(TypeChecker *checker, AstNode *node,
+                                    const char **out_name) {
+    if (!node) return 0;
+    int best = 0;
+    const char *best_name = NULL;
+    switch (node->kind) {
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < node->data.struct_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker,
+                        node->data.struct_value.field_values[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < node->data.array_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker,
+                        node->data.array_value.elements[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < node->data.map_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker, node->data.map_value.values[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+            nm = NULL;
+            d = expression_origin(checker, node->data.map_value.keys[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    default:
+        return 0;
+    }
+    if (best) *out_name = best_name;
+    return best;
+}
+
 /* The name the programmer wrote, never the module-prefixed internal one.
  * FuncSig.name is the flattened lookup key (e.g. "mod_size" for `size`
  * imported from module `mod`); the user-facing name lives on the decl.
@@ -1117,6 +1669,17 @@ static void warn_if_func_deprecated(TypeChecker *checker, AstNode *node, FuncSig
      * own (never-prefixed) .name field instead. */
     const char *display = sig->decl ? FUNC_DISPLAY_NAME(sig->decl) : func_display_name(sig);
     warn_deprecated(checker, node, "function", display, sig->deprecated_message);
+}
+
+/* E5047: a #test function is an entry point for `gray test`; a normal build
+ * strips it, so any call or reference from other code would dangle. Called
+ * from every path that resolves a bare/qualified function to a FuncSig. */
+static void reject_test_fn_reference(TypeChecker *checker, AstNode *node, FuncSig *sig) {
+    if (!sig || !sig->decl || sig->decl->kind != NODE_FUNC_DECL) return;
+    if (!sig->decl->data.func_decl.is_test) return;
+    diagnostic_error_code_formatted(checker->diag, "E5047",
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        func_display_name(sig));
 }
 
 /* Exempt references to a deprecated struct's own type from within its own
@@ -1293,23 +1856,23 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"binary", "decode_f32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
     {"binary", "decode_f64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
     {"binary", "decode_f64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
-    {"binary", "decode_i128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_i128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i128"},
+    {"binary", "decode_i128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i128"},
     {"binary", "decode_i16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_i16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_i256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_i256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_i256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i256"},
+    {"binary", "decode_i256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "i256"},
     {"binary", "decode_i32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_i32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_i64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_i64_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_i8",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_u128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_u128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u128_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u128"},
+    {"binary", "decode_u128_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u128"},
     {"binary", "decode_u16_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_u16_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_u256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
-    {"binary", "decode_u256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"binary", "decode_u256_be", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u256"},
+    {"binary", "decode_u256_le", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "u256"},
     {"binary", "decode_u32_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_u32_le",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"binary", "decode_u64_be",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
@@ -1355,6 +1918,9 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"channels", "send",        2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "void"},
     {"channels", "try_receive", 1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "int"},
     {"channels", "try_send",    2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "bool"},
+    /* chars */
+    {"chars", "to_lower", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "to_upper", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     /* crypto */
     {"crypto", "md5",        1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"crypto", "random_hex", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -1378,7 +1944,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}, "string"},
     {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}, "string"},
-    {"fmt", "format",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"fmt", "int_to_binary", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_hex",    1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -1569,20 +2134,25 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sqlite", "exec",         2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
     {"sqlite", "exec_params",  3, 3,  true,  FT_BOOL,            1, {{2, ARG_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
-    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
-    {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map]"},
+    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
+    {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map[string:string]]"},
     /* strconv */
+    {"strconv", "format_int",  2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
+    {"strconv", "format_uint", 2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
     {"strconv", "from_bool",  1, 1, false, FT_NONE,  1, {{0, ARG_BOOL}}, "string"},
     {"strconv", "from_float", 1, 1, false, FT_NONE,  1, {{0, ARG_FLOAT}}, "string"},
     {"strconv", "from_int",   1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
     {"strconv", "from_uint",  1, 1, false, FT_NONE,  1, {{0, ARG_INT}}, "string"},
     {"strconv", "is_integer", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "is_numeric", 1, 1, false, FT_NONE,  1, {{0, ARG_STRING}}, "bool"},
+    {"strconv", "quote",      1, 1, false, FT_NONE,   1, {{0, ARG_STRING}}, "string"},
     {"strconv", "to_bool",    1, 1, true,  FT_BOOL,  1, {{0, ARG_STRING}}, "bool"},
     {"strconv", "to_float",   1, 1, true,  FT_FLOAT, 1, {{0, ARG_STRING}}, "float"},
     {"strconv", "to_int",     1, 2, true,  FT_INT,   2, {{0, ARG_STRING}, {1, ARG_INT}}, "int"},
     {"strconv", "to_uint",    1, 2, true,  FT_UINT,  2, {{0, ARG_STRING}, {1, ARG_INT}}, "uint"},
+    {"strconv", "unquote",    1, 1, true,  FT_STRING, 1, {{0, ARG_STRING}}, "string"},
     /* strings */
+    {"strings", "append_char",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_CHAR}}, "string"},
     {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
     {"strings", "compare",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -1592,6 +2162,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "equal_fold",    2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"strings", "from_chars",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
     {"strings", "index_of",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"strings", "insert_char_at", 3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
     {"strings", "is_alnum",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"strings", "is_alpha",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"strings", "is_digit",      1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
@@ -1601,11 +2172,14 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "is_whitespace", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"strings", "join",          2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_STRING}}, "string"},
     {"strings", "last_index_of", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"strings", "prepend_char",  2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_CHAR}}, "string"},
+    {"strings", "remove_at",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
     {"strings", "remove_prefix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
     {"strings", "remove_suffix", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
     {"strings", "repeat",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
     {"strings", "replace",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}, "string"},
     {"strings", "reverse",       1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "set_char_at",   3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
     {"strings", "slice",         3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_INT}}, "string"},
     {"strings", "split",         2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
     {"strings", "split_n",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_INT}}, "[string]"},
@@ -1627,7 +2201,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sync", "try_lock", 1, 1, false, FT_NONE, 0, {{0}},"bool"},
     {"sync", "unlock",   1, 1, false, FT_NONE, 0, {{0}},"void"},
     /* threads */
-    {"threads", "current",      0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"threads", "detach",       1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"threads", "get_id",       0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"threads", "is_alive",     1, 1, false, FT_NONE, 0, {{0}},"bool"},
@@ -1661,7 +2234,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     /* uuid */
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
-    {"uuid", "generate_hyphenated",   0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
@@ -1729,7 +2301,7 @@ static GrayType *typechecker_get_fallible_stdlib_type(const char *mod, const cha
     case FT_ARRAY_STRING:        return type_array("string");
     case FT_NESTED_ARRAY_STRING: return type_array("[string]");
     case FT_ARRAY_BYTE:          return type_array("byte");
-    case FT_ARRAY_MAP:           return type_array("map");
+    case FT_ARRAY_MAP:           return type_array("map[string:string]");
     case FT_STRUCT_DATABASE:     return type_struct("Database");
     case FT_STRUCT_SOCKET:       return type_struct("Socket");
     case FT_STRUCT_LISTENER:     return type_struct("Listener");
@@ -1763,13 +2335,14 @@ static void typechecker_check_stdlib_arg_count(TypeChecker *checker, const char 
 }
 
 /* Compile-time validation for strconv base parameter.
- * When the second arg to to_int/to_uint is a literal integer, verify it's
- * in the valid range [2, 36]. */
+ * When the second arg to to_int/to_uint/format_int/format_uint is a literal
+ * integer, verify it's in the valid range [2, 36]. */
 static void typechecker_check_strconv_base(TypeChecker *checker, const char *mod,
     const char *fn, AstNode *node)
 {
     if (strcmp(mod, "strconv") != 0) return;
-    if (strcmp(fn, "to_int") != 0 && strcmp(fn, "to_uint") != 0) return;
+    if (strcmp(fn, "to_int") != 0 && strcmp(fn, "to_uint") != 0 &&
+        strcmp(fn, "format_int") != 0 && strcmp(fn, "format_uint") != 0) return;
     if (node->data.call.arg_count < 2) return;
     AstNode *base_arg = node->data.call.args[1];
     if (base_arg->kind != NODE_INT_VALUE) return;
@@ -3007,6 +3580,84 @@ static bool typechecker_fold_const_int(TypeChecker *checker, AstNode *node,
     return false;
 }
 
+/* Extract a compile-time numeric value from an argument: a float literal or an
+ * integer constant (literal, const, folded arithmetic), each optionally
+ * negated. Returns false when the argument is not a decidable constant. */
+static bool typechecker_const_number(TypeChecker *checker, AstNode *n, double *out) {
+    if (!n) return false;
+    if (n->kind == NODE_FLOAT_VALUE) { *out = n->data.float_value.value; return true; }
+    if (n->kind == NODE_PREFIX_EXPR && n->data.prefix.op == TOK_MINUS &&
+        n->data.prefix.right && n->data.prefix.right->kind == NODE_FLOAT_VALUE) {
+        *out = -n->data.prefix.right->data.float_value.value;
+        return true;
+    }
+    int64_t iv; bool overflowed = false;
+    if (typechecker_fold_const_int(checker, n, &iv, &overflowed) && !overflowed) {
+        *out = (double)iv;
+        return true;
+    }
+    return false;
+}
+
+/* Reject a stdlib call whose compile-time-constant argument is provably outside
+ * the domain the implementation guards with a runtime panic. The runtime checks
+ * (P0064-P0070, P0072, P0106, P0051, P0063) stay in place for every
+ * non-constant argument; this only moves the decidable cases to compile time.
+ * Precedent: typechecker_check_strconv_base / E5009. Emits E5045. */
+static void typechecker_check_const_domain(TypeChecker *checker, const char *mod,
+    const char *fn, AstNode *node)
+{
+    int argc = node->data.call.arg_count;
+
+    /* Integer domains, [lo, hi] inclusive. */
+    static const struct {
+        const char *mod, *fn;
+        int arg;
+        int64_t lo, hi;
+        const char *needs;
+    } int_dom[] = {
+        {"math",    "factorial",         0, 0,         INT64_MAX,         "a non-negative integer"},
+        {"math",    "next_power_of_two", 0, INT64_MIN, (int64_t)1 << 62,  "a value whose next power of two fits in int"},
+        {"strings", "repeat",            1, 0,         INT64_MAX,         "a non-negative count"},
+        {"crypto",  "random_hex",        0, 0,         INT64_MAX,         "a non-negative length"},
+        {"random",  "sample",            1, 0,         INT64_MAX,         "a non-negative count"},
+    };
+    for (size_t i = 0; i < sizeof(int_dom) / sizeof(int_dom[0]); i++) {
+        if (strcmp(mod, int_dom[i].mod) != 0 || strcmp(fn, int_dom[i].fn) != 0) continue;
+        if (int_dom[i].arg >= argc) return;
+        int64_t v; bool overflowed = false;
+        if (!typechecker_fold_const_int(checker, node->data.call.args[int_dom[i].arg], &v, &overflowed)
+            || overflowed) return;
+        if (v < int_dom[i].lo || v > int_dom[i].hi) {
+            AstNode *a = node->data.call.args[int_dom[i].arg];
+            char *msg = typechecker_format(checker, "'%s.%s' requires %s; got %lld",
+                mod, fn, int_dom[i].needs, (long long)v);
+            diagnostic_error_message(checker->diag, "E5045", msg,
+                NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+        }
+        return;
+    }
+
+    /* Float domains for the math functions that accept ARG_NUMBER. */
+    if (strcmp(mod, "math") != 0 || argc < 1) return;
+    double x;
+    if (!typechecker_const_number(checker, node->data.call.args[0], &x)) return;
+    const char *needs = NULL;
+    if (strcmp(fn, "sqrt") == 0) { if (x < 0.0) needs = "a non-negative number"; }
+    else if (strcmp(fn, "log") == 0 || strcmp(fn, "log2") == 0 || strcmp(fn, "log10") == 0) {
+        if (x <= 0.0) needs = "a positive number";
+    }
+    else if (strcmp(fn, "asin") == 0 || strcmp(fn, "acos") == 0) {
+        if (x < -1.0 || x > 1.0) needs = "a value in [-1, 1]";
+    }
+    if (needs) {
+        AstNode *a = node->data.call.args[0];
+        char *msg = typechecker_format(checker, "'math.%s' requires %s; got %g", fn, needs, x);
+        diagnostic_error_message(checker->diag, "E5045", msg,
+            NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+    }
+}
+
 /* Check if a literal integer value fits in the declared sized type.
  * Returns true if an error was emitted.
  *
@@ -3092,27 +3743,56 @@ static void reject_void_in_context(TypeChecker *checker, AstNode *expr,
         NODE_FILE(checker, expr), expr->token.line, expr->token.column, 0);
 }
 
-/* E3040: reject multi-return calls in single-value positions (array
- * elements, map values, return expressions, etc.). Shared helper to
- * avoid duplicating the lookup logic at each call site. */
-static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr) {
-    if (!expr || expr->kind != NODE_CALL_EXPR) return;
-    AstNode *fn = expr->data.call.function;
-    const char *qualifier = ast_member_qualifier(fn);
-    FuncSig *sig = NULL;
+/* Classify a call whose result is multiple values and emit the right
+ * diagnostic anchored at `at`: E3040 for a user-defined multi-return or a
+ * non-fallible multi-value stdlib function, E3089 for a fallible stdlib
+ * function's (T, Error). No-op for a single-value call. Shared by the
+ * var-decl single-variable check and the single-value position guard. */
+static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expr,
+                                    AstNode *at) {
+    if (!call_expr || call_expr->kind != NODE_CALL_EXPR) return;
+    AstNode *fn = call_expr->data.call.function;
+    if (!fn) return;
     const char *name = NULL;
-    if (fn && fn->kind == NODE_LABEL) {
+    const char *mod = NULL;
+    FuncSig *sig = NULL;
+    if (fn->kind == NODE_LABEL) {
         name = fn->data.label.value;
         sig = find_func(checker, name);
-    } else if (qualifier) {
+        /* A bare call carries no module qualifier; resolve it through the
+         * using-modules so the stdlib checks below consult the module that
+         * actually supplies it. */
+        if (!sig) mod = find_using_stdlib_module(checker, name);
+    } else if (ast_member_qualifier(fn)) {
+        const char *mod_raw = ast_member_qualifier(fn);
+        mod = typechecker_resolve_alias(checker, mod_raw);
         name = fn->data.member.member;
-        sig = find_module_func(checker, qualifier, name);
+        sig = find_module_func(checker, mod_raw, name);
     }
+    const char *file = NODE_FILE(checker, at);
+    int line = at->token.line;
+    int col = at->token.column;
     if (sig && sig->return_count > 1) {
-        diagnostic_error_code_formatted(checker->diag, "E3040",
-            NODE_FILE(checker, expr), expr->token.line, expr->token.column, 0,
+        diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
             name, sig->return_count, name);
+    } else if (name && !sig) {
+        if (typechecker_is_fallible_stdlib(mod, name)) {
+            diagnostic_error_code_formatted(checker->diag, "E3089", file, line, col, 0,
+                name, name, name);
+        } else {
+            const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, name);
+            if (mr) {
+                diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
+                    name, mr->count, name);
+            }
+        }
     }
+}
+
+/* E3040/E3089: reject a multi-value call in a single-value position (call
+ * argument, operand, array element, map value, return/if/when position). */
+static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr) {
+    reject_multi_value_call(checker, expr, expr);
 }
 
 /* : emit E4005 at a stdlib call site where the function name
@@ -3238,6 +3918,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     typechecker_check_stdlib_arg_count(checker, mod, mfn, node);
     typechecker_check_stdlib_arg_types(checker, mod, mfn, node);
     typechecker_check_strconv_base(checker, mod, mfn, node);
+    typechecker_check_const_domain(checker, mod, mfn, node);
     /* Table-driven return type resolution: O(log n) bsearch */
     const StdlibFuncMeta *meta = find_stdlib_meta(mod, mfn);
     if (meta && meta->return_type) {
@@ -3288,7 +3969,14 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 result = resolve_expression(checker, node->data.call.args[0]);
             } else result = &TYPE_UNKNOWN;
         } else if (strcmp(mfn, "get_or_default") == 0) {
-            if (node->data.call.arg_count >= 3) {
+            /* get_or_default(m, key, default) -> V. Take V from the map's
+             * declared value type; the default argument's type can be a looser
+             * literal (e.g. a bare int where V is i128 or float). */
+            GrayType *map_t = node->data.call.arg_count >= 1
+                ? resolve_expression(checker, node->data.call.args[0]) : NULL;
+            if (map_t && map_t->kind == TK_MAP && map_t->value_type) {
+                result = typechecker_type_from_name(checker, map_t->value_type);
+            } else if (node->data.call.arg_count >= 3) {
                 result = resolve_expression(checker, node->data.call.args[2]);
             } else result = &TYPE_UNKNOWN;
         }
@@ -3798,8 +4486,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                              strcmp(mfn, "eprintf") == 0 ||
                              strcmp(mfn, "eprintfln") == 0 ||
                              strcmp(mfn, "sprintf") == 0 ||
-                             strcmp(mfn, "sprintfln") == 0 ||
-                             strcmp(mfn, "format") == 0;
+                             strcmp(mfn, "sprintfln") == 0;
             if (is_fmt_fn && node->data.call.arg_count >= 1) {
                 AstNode *fmt_arg = node->data.call.args[0];
                 if (fmt_arg->kind != NODE_STRING_VALUE) {
@@ -3874,11 +4561,13 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         switch (spec) {
                         case 'd': case 'i':
                             expected = "int or char";
-                            ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE;
+                            ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE ||
+                                 (dt->name && is_bigint_type(dt->name));
                             break;
                         case 'u':
                             expected = "uint";
-                            ok = dt->kind == TK_UINT || dt->kind == TK_BYTE;
+                            ok = dt->kind == TK_UINT || dt->kind == TK_BYTE ||
+                                 (dt->name && is_bigint_type(dt->name));
                             break;
                         case 'x': case 'X': case 'o':
                             expected = "int or uint";
@@ -3894,7 +4583,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                             break;
                         case 'c':
                             expected = "char";
-                            ok = dt->kind == TK_CHAR || dt->kind == TK_INT;
+                            ok = dt->kind == TK_CHAR ||
+                                 (dt->kind == TK_INT && !(dt->name && is_bigint_type(dt->name)));
                             break;
                         case 'b':
                             expected = "bool";
@@ -4006,7 +4696,22 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
             /* Type parameter (<?>) — binding comes from the label
              * (a struct name), not from resolve_expression. */
             if (sig->decl->data.func_decl.params[argument_index].is_type_param) {
-                if (node->data.call.args[argument_index]->kind != NODE_LABEL) {
+                AstNode *targ = node->data.call.args[argument_index];
+                /* A module-qualified type name (mod.Type) parses as a member
+                 * expression, not a label. Collapse it to a label carrying the
+                 * dotted spelling so the type-name resolution below handles it
+                 * exactly as the bare form. */
+                if (targ->kind == NODE_MEMBER_EXPR && ast_member_qualifier(targ) &&
+                    targ->data.member.member) {
+                    char qualified[MSG_BUF_SIZE];
+                    snprintf(qualified, sizeof(qualified), "%s.%s",
+                        ast_member_qualifier(targ), targ->data.member.member);
+                    if (type_arg_names_a_type(checker, qualified)) {
+                        targ->kind = NODE_LABEL;
+                        targ->data.label.value = arena_copy_string(checker->arena, qualified);
+                    }
+                }
+                if (targ->kind != NODE_LABEL) {
                     diagnostic_error_code(checker->diag, "E3128",
                         NODE_FILE(checker, node->data.call.args[argument_index]),
                         node->data.call.args[argument_index]->token.line,
@@ -4876,6 +5581,62 @@ static const char *size_of_type_spelling(TypeChecker *checker, AstNode *arg) {
     return NULL;
 }
 
+/* True when an array-type spelling carries a ",N" size at bracket depth 1
+ * ([int,4], [int,N]) — a fixed-size array, whose storage never moves. A
+ * bare [int] is dynamic: its backing store is reallocated on grow. */
+static bool array_spelling_is_fixed(const char *s) {
+    if (!s || s[0] != '[') return false;
+    int depth = 0;
+    for (const char *c = s; *c; c++) {
+        if (*c == '[') depth++;
+        else if (*c == ']') { if (--depth == 0) break; }
+        else if (*c == ',' && depth == 1) return true;
+    }
+    return false;
+}
+
+/* True when `left` indexes a dynamic '[T]' array. A dynamic array's
+ * backing store relocates on grow (append / prepend / insert_at), so a
+ * raw pointer to an element dangles after any such call — the same
+ * hazard the map-index guard covers. Fixed-size '[T,N]' storage never
+ * moves. Only a plain variable reference is inspected for its written
+ * type; any other index target is treated as dynamic. */
+static bool array_index_left_is_dynamic(TypeChecker *checker, AstNode *left) {
+    GrayType *lt = resolve_expression(checker, left);
+    if (!lt || lt->kind != TK_ARRAY) return false;
+    if (left && left->kind == NODE_LABEL) {
+        Symbol *sym = scope_lookup(checker->current_scope, left->data.label.value);
+        if (!sym) {
+            char key[MSG_BUF_SIZE];
+            DeclEntry *entry = checker_resolve_entry(checker, left->data.label.value);
+            if (entry)
+                sym = scope_lookup(checker->current_scope,
+                                   module_mangle_into(entry, key, sizeof(key)));
+        }
+        if (sym && array_spelling_is_fixed(sym->declared_type)) return false;
+    }
+    return true;
+}
+
+/* True if the access path contains an index into a dynamic '[T]' array,
+ * e.g. addr(a[i]) or ref(rows[i].cells[j]). Mirrors
+ * path_contains_map_index. */
+static bool path_contains_dynamic_array_index(TypeChecker *checker, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_MEMBER_EXPR:
+        return path_contains_dynamic_array_index(checker, e->data.member.object);
+    case NODE_INDEX_EXPR:
+        if (array_index_left_is_dynamic(checker, e->data.index_expr.left))
+            return true;
+        return path_contains_dynamic_array_index(checker, e->data.index_expr.left);
+    case NODE_POSTFIX_EXPR:
+        return path_contains_dynamic_array_index(checker, e->data.postfix.left);
+    default:
+        return false;
+    }
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -4901,6 +5662,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "'addr()' cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        if (path_contains_dynamic_array_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'addr()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "'addr()' requires a variable, field, or index expression; cannot take address of a literal or expression",
@@ -4913,6 +5679,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (path_contains_map_index(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3013",
                 "'raw()' cannot take the address of a map index expression; map values may relocate on rehash",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        if (path_contains_dynamic_array_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'raw()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (!is_assignment_target(checker, arg)) {
@@ -4943,6 +5714,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
             warn_if_func_deprecated(checker, node, rfs);
+            reject_test_fn_reference(checker, node, rfs);
             /* Build typed function reference: "func(int,string)->int" */
             char sig[MSG_BUF_SIZE];
             int pos = 0;
@@ -4965,6 +5737,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (path_contains_map_index(checker, arg)) {
                 diagnostic_error_message(checker->diag, "E3013",
                     "'ref()' cannot take a reference to a map index expression; map values may relocate on rehash",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+            if (path_contains_dynamic_array_index(checker, arg)) {
+                diagnostic_error_message(checker->diag, "E3013",
+                    "'ref()' cannot take a reference to a dynamic array index expression; the backing store may relocate when the array grows",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             if (!is_assignment_target(checker, arg)) {
@@ -5183,6 +5960,34 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                     type_name(arg1));
                 diagnostic_error_message(checker->diag, "E3043", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else {
+                /* Constant index provably out of bounds — gray_builtin_to_char
+                 * panics P0049 (negative) / P0050 (past end). Dynamic indices
+                 * stay runtime-checked. The upper bound is only known when the
+                 * string is a plain literal (no escapes to expand). */
+                int64_t idx; bool ov = false;
+                if (typechecker_fold_const_int(checker, node->data.call.args[1], &idx, &ov) && !ov) {
+                    int64_t chars = -1;
+                    AstNode *s = node->data.call.args[0];
+                    if (s->kind == NODE_STRING_VALUE && s->data.string_value.value &&
+                        !strchr(s->data.string_value.value, '\\')) {
+                        chars = 0;
+                        for (const unsigned char *p = (const unsigned char *)s->data.string_value.value;
+                             *p; p++)
+                            if ((*p & 0xC0) != 0x80) chars++;
+                    }
+                    if (idx < 0 || (chars >= 0 && idx >= chars)) {
+                        AstNode *a = node->data.call.args[1];
+                        char *msg = chars >= 0
+                            ? typechecker_format(checker,
+                                "'to_char()' index %lld is out of bounds for a string of %lld characters",
+                                (long long)idx, (long long)chars)
+                            : typechecker_format(checker,
+                                "'to_char()' index cannot be negative; got %lld", (long long)idx);
+                        diagnostic_error_message(checker->diag, "E5045", msg,
+                            NODE_FILE(checker, node), a->token.line, a->token.column, 0);
+                    }
+                }
             }
         }
         result = &TYPE_CHAR;
@@ -5624,6 +6429,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     if (sig) {
         sig->used = true;
         warn_if_func_deprecated(checker, node, sig);
+        reject_test_fn_reference(checker, node, sig);
         /* Use the user-facing name in error messages, never
          * the module-prefixed internal key. */
         function_name = func_display_name(sig);
@@ -6100,6 +6906,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     typechecker_check_stdlib_arg_count(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_stdlib_arg_types(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_strconv_base(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_const_domain(checker, using_stdlib_mod, function_name, node);
                 }
             } else {
                 /* Check if it's a variable holding a function reference */
@@ -6283,8 +7090,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
      * where x is loop/if/while-local.  We fire only when another argument in
      * the same call comes from an outer scope (scope_lookup_local returns null
      * for it) — that indicates the address is being stored in something that
-     * outlives the inner variable's arena. */
-    for (int i = 0; i < node->data.call.arg_count; i++) {
+     * outlives the inner variable's arena. `reported_arg` records which
+     * argument positions this heuristic already flagged so the summary-driven
+     * check below does not report the same store twice. */
+    unsigned long long reported_arg = 0;
+    for (int i = 0; i < node->data.call.arg_count && i < 64; i++) {
         AstNode *arg = node->data.call.args[i];
         if (arg->kind == NODE_CALL_EXPR &&
             arg->data.call.function &&
@@ -6313,6 +7123,64 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3097",
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
                     addr_var, addr_var);
+                reported_arg |= 1ull << i;
+            }
+        }
+    }
+
+    /* E3097: an inner-scope address that reaches longer-lived memory through
+     * a call — stored into a container by a stdlib insert, or stashed into a
+     * caller-visible parameter or global by a helper function (its
+     * param_escape_into summary). Covers both the inline addr()/raw() form
+     * and an address laundered through a variable first. The origin is
+     * compared against the lifetime of wherever it lands. */
+    {
+        int argc = node->data.call.arg_count;
+        /* stdlib container inserts (arrays.append/prepend/insert_at/fill) */
+        const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && argc > sink->value_arg && argc > sink->container_arg &&
+            !((reported_arg >> sink->value_arg) & 1)) {
+            const char *dest =
+                assignment_target_root_name(node->data.call.args[sink->container_arg]);
+            int dest_depth = dest
+                ? symbol_scope_depth(checker->current_scope, dest) : 0;
+            AstNode *arg = node->data.call.args[sink->value_arg];
+            const char *onm = NULL;
+            int od = pointer_origin_of(checker, arg, &onm);
+            if (od > 0 && od > dest_depth)
+                diagnostic_error_code_formatted(checker->diag, "E3097",
+                    NODE_FILE(checker, arg), arg->token.line,
+                    arg->token.column, 0, dest ? dest : onm, onm);
+        }
+        /* user helper whose summary escapes one of its parameters */
+        FuncSig *csig = resolve_call_sig(checker, node);
+        if (csig) {
+            ensure_escape_summary(checker, csig);
+            for (int a = 0; a < argc && a < csig->param_count && a < 64; a++) {
+                signed char pe = csig->param_escape_into[a];
+                if (pe == PARAM_ESCAPE_NONE) continue;
+                if ((reported_arg >> a) & 1) continue;
+                AstNode *arg = node->data.call.args[a];
+                const char *onm = NULL;
+                int od = pointer_origin_of(checker, arg, &onm);
+                if (od <= 0) continue;
+                int sink_depth;
+                const char *sink_name;
+                if (pe == PARAM_ESCAPE_GLOBAL) {
+                    sink_depth = 0;
+                    sink_name = onm;
+                } else {
+                    const char *droot = (pe < argc)
+                        ? assignment_target_root_name(node->data.call.args[pe])
+                        : NULL;
+                    sink_depth = droot
+                        ? symbol_scope_depth(checker->current_scope, droot) : 0;
+                    sink_name = droot ? droot : onm;
+                }
+                if (od > sink_depth)
+                    diagnostic_error_code_formatted(checker->diag, "E3097",
+                        NODE_FILE(checker, arg), arg->token.line,
+                        arg->token.column, 0, sink_name, onm);
             }
         }
     }
@@ -6493,7 +7361,16 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             int check_count = node->data.call.arg_count < sig->param_count
                 ? node->data.call.arg_count : sig->param_count;
             for (int argument_index = 0; argument_index < check_count; argument_index++) {
+                /* Give an implicit enum selector (.VARIANT) the parameter's
+                 * enum type as context, matching the bare and struct-namespaced
+                 * call paths; the triple chain was the one spelling that left
+                 * expected_type unset here. */
+                GrayType *param_t = sig->param_types ? sig->param_types[argument_index] : NULL;
+                GrayType *saved_expected_ms = checker->expected_type;
+                if (param_t && param_t->kind == TK_ENUM && param_t->name)
+                    checker->expected_type = param_t;
                 resolve_expression(checker, node->data.call.args[argument_index]);
+                checker->expected_type = saved_expected_ms;
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
                 for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
@@ -6894,10 +7771,16 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* String + string: reject with helpful message */
-    if ((left->kind == TK_STRING || right->kind == TK_STRING) && op == TOK_PLUS) {
-        diagnostic_error_code_help(checker->diag, "E3048", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
+    /* String concatenation with '+': both operands must be strings.
+     * string + string yields a new string; a string mixed with any
+     * other type (E3048) is rejected so codegen never has to guess. */
+    if (op == TOK_PLUS &&
+        (left->kind == TK_STRING || right->kind == TK_STRING) &&
+        left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN &&
+        (left->kind != TK_STRING || right->kind != TK_STRING)) {
+        diagnostic_error_code_formatted(checker->diag, "E3048",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, left), type_display_name(checker, right));
         infix_errored = true;
     }
 
@@ -7169,7 +8052,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         result = &TYPE_BOOL;
     } else if (left->kind == TK_FLOAT || right->kind == TK_FLOAT) {
         result = &TYPE_FLOAT;
-    } else if (left->kind == TK_STRING && op == TOK_PLUS) {
+    } else if (left->kind == TK_STRING && right->kind == TK_STRING && op == TOK_PLUS) {
         result = &TYPE_STRING;
     } else if (left->kind == TK_ENUM || right->kind == TK_ENUM) {
         /* #flags enum bitwise ops produce int (combined values
@@ -7319,6 +8202,27 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                                    module_mangle_into(entry, key, sizeof(key)));
             }
         }
+        /* or_return propagation guard: `_gray_orN.verr` is the sentinel for
+         * "the call's trailing Error slot", whose index is only known now
+         * that the temp's return arity is resolved. Rewrite it to the
+         * concrete slot so the plain .vN paths below (and codegen) handle
+         * it. A source that isn't an (..., Error) tuple is already reported
+         * by E3045; leave the access unknown. */
+        if (sym && strcmp(member, OR_RETURN_ERR_SLOT) == 0 &&
+            strncmp(obj_name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0) {
+            if (sym->ret_types && sym->ret_count >= 1 &&
+                sym->ret_types[sym->ret_count - 1]->kind == TK_ERROR) {
+                char slot[16];
+                snprintf(slot, sizeof(slot), "v%d", sym->ret_count - 1);
+                member = arena_copy_string(checker->arena, slot);
+                node->data.member.member = member;
+            } else {
+                /* Source doesn't end in Error — E3045 already reports it.
+                 * Stay unknown so the guard's synthetic nil-compare and
+                 * propagated return don't cascade further diagnostics. */
+                return &TYPE_UNKNOWN;
+            }
+        }
         /* Multi-return .v0/.v1 access takes priority over struct field
          * lookup when the symbol has ret_types set. Without this, stdlib
          * functions returning struct types (Socket, HttpResponse, etc.)
@@ -7393,6 +8297,19 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             GrayType *ft = struct_field_type(checker, resolved_obj, member);
             if (ft && ft->kind != TK_UNKNOWN) {
                 diagnostic_error_code_formatted(checker->diag, "E3044", NODE_FILE(checker, node), node->token.line, node->token.column, 0, member, resolved_obj);
+            } else {
+                /* Not a field and not a struct function: the user is accessing
+                 * a struct type as if it were an enum (Point.RED). Left
+                 * unreported, codegen emitted the name verbatim and the C
+                 * compiler failed on an undeclared identifier. */
+                char skey[MSG_BUF_SIZE], fkey[MSG_BUF_SIZE];
+                snprintf(fkey, sizeof(fkey), "%s_%s",
+                    checker_resolve_decl_into(checker, resolved_obj, skey, sizeof(skey)), member);
+                if (!find_func(checker, fkey)) {
+                    diagnostic_error_code_formatted(checker->diag, "E3141",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        struct_display_name(checker, resolved_obj), member);
+                }
             }
             result = &TYPE_UNKNOWN;
         }
@@ -7784,6 +8701,7 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     if (ref_sig) {
         ref_sig->used = true;
         warn_if_func_deprecated(checker, node, ref_sig);
+        reject_test_fn_reference(checker, node, ref_sig);
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
@@ -7882,6 +8800,20 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
         result = type_from_name("func");
     }
     return result;
+}
+
+/* Grayscale type name for an array- or map-literal element, used when an
+ * unannotated `mut` array/map infers its element (or K/V) type from the first
+ * entry. A wide-integer constructor call (i128(x), u256(x), ...) is resolved
+ * as plain int/uint by the expression typechecker, so recover the width from
+ * the call itself — otherwise the inferred container is [int] / map[..:int]
+ * and the 16/32-byte value is truncated to 8 bytes in codegen. */
+static const char *literal_elem_type_name(AstNode *elem, GrayType *resolved) {
+    if (elem && elem->kind == NODE_CALL_EXPR &&
+        elem->data.call.function->kind == NODE_LABEL &&
+        is_bigint_type(elem->data.call.function->data.label.value))
+        return elem->data.call.function->data.label.value;
+    return resolved ? type_name(resolved) : "unknown";
 }
 
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
@@ -8357,7 +9289,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.array_value.count > 0) {
             GrayType *first = resolve_expression(checker, node->data.array_value.elements[0]);
             reject_multi_return_in_single_position(checker, node->data.array_value.elements[0]);
-            result = type_array(type_name(first));
+            result = type_array(literal_elem_type_name(node->data.array_value.elements[0], first));
             /* Validate all elements have the same type */
             for (int i = 1; i < node->data.array_value.count; i++) {
                 GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
@@ -8429,8 +9361,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.map_value.count > 0) {
             GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
             GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(kt ? type_name(kt) : "unknown");
-            resolved_type->value_type = strdup(vt ? type_name(vt) : "unknown");
+            resolved_type->key_type = strdup(literal_elem_type_name(node->data.map_value.keys[0], kt));
+            resolved_type->value_type = strdup(literal_elem_type_name(node->data.map_value.values[0], vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types
@@ -8663,6 +9595,17 @@ static void check_reserved_name(TypeChecker *checker, const char *name, const ch
         strncmp(name, GRAY_SYNTH_PREFIX, sizeof(GRAY_SYNTH_PREFIX) - 1) == 0 ||
         strncmp(name, "Gray", 4) == 0) {
         diagnostic_error_code_formatted(checker->diag, "E4006", file, line, col, 0, name);
+    }
+}
+
+/* Reject `main` as the name of anything but the top-level entry-point
+ * function. Without this a `const main`, `mut main`, struct/enum/alias/param
+ * named `main` either collides silently or surfaces as a misleading
+ * "program has no main() function" (E4005). */
+static void check_reserved_main(TypeChecker *checker, const char *name, const char *file, int line, int col) {
+    if (name && strcmp(name, "main") == 0) {
+        diagnostic_error_code(checker->diag, "E4026", file, line, col, 0);
+        checker->main_name_misused = true;
     }
 }
 
@@ -9029,8 +9972,14 @@ static bool all_paths_return(AstNode *node) {
                all_paths_return(node->data.if_stmt.alternative);
     }
     if (node->kind == NODE_WHEN_STMT) {
-        if (!node->data.when_stmt.default_body) return false;
-        if (!all_paths_return(node->data.when_stmt.default_body)) return false;
+        /* A `#strict` enum `when` is exhaustive by the time this runs — any
+         * uncovered variant has already produced E3056 — so it terminates
+         * when every case body does, with no `default` required. */
+        if (!node->data.when_stmt.default_body) {
+            if (!node->data.when_stmt.is_strict) return false;
+        } else if (!all_paths_return(node->data.when_stmt.default_body)) {
+            return false;
+        }
         for (int i = 0; i < node->data.when_stmt.case_count; i++) {
             if (!all_paths_return(node->data.when_stmt.cases[i].body)) return false;
         }
@@ -9187,6 +10136,34 @@ static const char *zero_value_literal(const char *type_name) {
     return NULL;
 }
 
+/* The seven primitive value types eligible for `mut` array/map literal type
+ * inference (issue #2374). */
+static bool typechecker_kind_is_primitive(TypeKind k) {
+    return k == TK_INT || k == TK_UINT || k == TK_FLOAT || k == TK_BOOL ||
+           k == TK_CHAR || k == TK_BYTE || k == TK_STRING;
+}
+
+/* True when `lit` (an already-resolved array or map literal, type `t`) is a
+ * non-empty literal whose element types — for a map, both key and value — are
+ * all primitive, so its type can be inferred without an annotation. Empty
+ * literals and non-primitive elements return false. */
+static bool typechecker_literal_type_inferable(TypeChecker *checker, AstNode *lit, GrayType *t) {
+    if (!t) return false;
+    if (t->kind == TK_ARRAY) {
+        if (lit->data.array_value.count == 0 || !t->element_type) return false;
+        GrayType *et = typechecker_type_from_name(checker, t->element_type);
+        return et && typechecker_kind_is_primitive(et->kind);
+    }
+    if (t->kind == TK_MAP) {
+        if (lit->data.map_value.count == 0 || !t->key_type || !t->value_type) return false;
+        GrayType *kt = typechecker_type_from_name(checker, t->key_type);
+        GrayType *vt = typechecker_type_from_name(checker, t->value_type);
+        return kt && vt && typechecker_kind_is_primitive(kt->kind) &&
+               typechecker_kind_is_primitive(vt->kind);
+    }
+    return false;
+}
+
 static void check_var_decl(TypeChecker *checker, AstNode *node) {
     /* Resolve type aliases in the declared type name so downstream
      * checks and codegen see the underlying type. */
@@ -9315,6 +10292,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         diagnostic_error_message(checker->diag, "E5035", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
+    /* E4026: 'main' is reserved for the entry-point function */
+    check_reserved_main(checker, node->data.var_decl.name,
+        NODE_FILE(checker, node), node->token.line, node->token.column);
     /* E3045: or_return on non-error-returning function */
     if (strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0 &&
         node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
@@ -9381,21 +10361,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (is_reserved_type_name(vname)) {
             diagnostic_error_code_formatted(checker->diag, "E3011", NODE_FILE(checker, node->data.var_decl.value), node->data.var_decl.value->token.line,
                 node->data.var_decl.value->token.column, 0, vname, vname);
-        }
-    }
-
-    /* E3050/E3051: array/map literals require explicit type annotations */
-    if (!node->data.var_decl.type_name && node->data.var_decl.value &&
-        strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
-        strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
-        if (node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
-            diagnostic_error_code_help(checker->diag, "E3050",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'");
-        } else if (node->data.var_decl.value->kind == NODE_MAP_VALUE) {
-            diagnostic_error_code_help(checker->diag, "E3051",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
         }
     }
 
@@ -9535,6 +10500,65 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         GrayType *value_type = resolve_expression(checker, node->data.var_decl.value);
         checker->in_file_scope_init = saved_file_scope_init;
         checker->expected_type = saved_expected;
+
+        /* E3050/E3051: an array or map literal with no type annotation needs
+         * one — unless this is a `mut` declaration whose literal is built only
+         * from primitives, in which case the element (and, for a map, key and
+         * value) types are inferred from the literal (issue #2374). Empty
+         * literals and non-primitive elements stay rejected, as do `const`
+         * declarations. */
+        if (!node->data.var_decl.type_name &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
+            strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
+            AstNode *lit = node->data.var_decl.value;
+            bool is_array = lit->kind == NODE_ARRAY_VALUE;
+            bool is_map = lit->kind == NODE_MAP_VALUE;
+            bool inferred = node->data.var_decl.mutable &&
+                typechecker_literal_type_inferable(checker, lit, value_type);
+            if ((is_array || is_map) && !inferred) {
+                diagnostic_error_code_help(checker->diag, is_array ? "E3050" : "E3051",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    is_array ? "add a type annotation, e.g. 'mut x [int] = {1, 2, 3}'"
+                             : "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
+            } else if (is_map && inferred) {
+                /* The inferred map type is taken from the first pair only
+                 * (typechecker_literal_type_inferable / NODE_MAP_VALUE). Every
+                 * later pair must agree with it: a non-primitive key or value
+                 * falls back to E3051, a mismatched primitive gets the same
+                 * E3053 the annotated path emits (issue #2374). */
+                GrayType *ik = typechecker_type_from_name(checker, value_type->key_type);
+                GrayType *iv = typechecker_type_from_name(checker, value_type->value_type);
+                for (int mi = 1; mi < lit->data.map_value.count; mi++) {
+                    AstNode *kn = lit->data.map_value.keys[mi];
+                    AstNode *vn = lit->data.map_value.values[mi];
+                    GrayType *kt = resolve_expression(checker, kn);
+                    GrayType *vt = resolve_expression(checker, vn);
+                    if ((kt && !typechecker_kind_is_primitive(kt->kind)) ||
+                        (vt && !typechecker_kind_is_primitive(vt->kind))) {
+                        diagnostic_error_code_help(checker->diag, "E3051",
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                            "add a type annotation, e.g. 'mut x [string:int] = {\"a\": 1}'");
+                        break;
+                    }
+                    if (kt && ik && kt->kind != TK_UNKNOWN && ik->kind != TK_UNKNOWN &&
+                        !types_assignable(checker, ik, kt)) {
+                        char *msg = typechecker_format(checker,
+                            "type mismatch in map literal key; expected '%s', got '%s'",
+                            type_display_name(checker, ik), type_display_name(checker, kt));
+                        diagnostic_error_message(checker->diag, "E3053", msg,
+                            NODE_FILE(checker, kn), kn->token.line, kn->token.column, 0);
+                    }
+                    if (vt && iv && vt->kind != TK_UNKNOWN && iv->kind != TK_UNKNOWN &&
+                        !types_assignable(checker, iv, vt)) {
+                        char *msg = typechecker_format(checker,
+                            "type mismatch in map literal value; expected '%s', got '%s'",
+                            type_display_name(checker, iv), type_display_name(checker, vt));
+                        diagnostic_error_message(checker->diag, "E3053", msg,
+                            NODE_FILE(checker, vn), vn->token.line, vn->token.column, 0);
+                    }
+                }
+            }
+        }
         /* : when a func-pointer call returns TK_UNKNOWN but
          * the assignment target has a concrete declared type,
          * push the declared type onto the call node's typetable
@@ -9582,47 +10606,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (node->data.var_decl.value->kind == NODE_CALL_EXPR &&
             strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
             strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
-            AstNode *call_fn = node->data.var_decl.value->data.call.function;
-            const char *call_name = NULL;
-            const char *call_mod = NULL;
-            FuncSig *sig = NULL;
-            if (call_fn->kind == NODE_LABEL) {
-                call_name = call_fn->data.label.value;
-                sig = find_func(checker, call_name);
-                /* A bare call carries no module qualifier; resolve it through
-                 * the using-modules so the checks below consult the module
-                 * that actually supplies it rather than matching the name
-                 * against every stdlib module. */
-                if (!sig) call_mod = find_using_stdlib_module(checker, call_name);
-            } else if (ast_member_qualifier(call_fn)) {
-                const char *mod_raw = ast_member_qualifier(call_fn);
-                call_mod = typechecker_resolve_alias(checker, mod_raw);
-                const char *mfn = call_fn->data.member.member;
-                sig = find_module_func(checker, mod_raw, mfn);
-                call_name = mfn;
-            }
-            if (sig && sig->return_count > 1) {
-                diagnostic_error_code_formatted(checker->diag, "E3040", NODE_FILE(checker, node), node->token.line, node->token.column, 0, call_name, sig->return_count, call_name);
-            } else if (call_name && !sig) {
-                bool is_fallible = typechecker_is_fallible_stdlib(call_mod, call_name);
-                if (is_fallible) {
-                    diagnostic_error_code_formatted(checker->diag, "E3089", NODE_FILE(checker, node),
-                        node->token.line, node->token.column, 0,
-                        call_name, call_name, call_name);
-                } else if (call_name) {
-                    /* Non-fallible stdlib functions returning several values;
-                     * capturing one slot silently drops the rest. Bare calls
-                     * have no module qualifier, so fall back to the
-                     * using-modules for those. */
-                    const StdlibMultiReturn *mr =
-                        find_stdlib_multi_return(call_mod, call_name);
-                    if (mr) {
-                        diagnostic_error_code_formatted(checker->diag, "E3040",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            call_name, mr->count, call_name);
-                    }
-                }
-            }
+            reject_multi_value_call(checker, node->data.var_decl.value, node);
         }
         /* Reject nil on non-nullable types */
         if (value_type->kind == TK_NIL && declared->kind != TK_UNKNOWN &&
@@ -10202,6 +11186,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        /* A variable named `main` was already rejected with E4026; the
+         * shadow checks below would only pile a second, vaguer error on top. */
+        if (strcmp(node->data.var_decl.name, "main") != 0) {
         /* E4012: shadows a type — only when the variable name matches a
          * type usable by that same name. is_struct_name/is_enum_name key
          * on the flattened (module-prefixed) name, so a legitimate local
@@ -10250,6 +11237,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        } /* end: name != "main" */
         if (declared->kind == TK_UNKNOWN &&
             !(node->data.var_decl.value &&
               (node->data.var_decl.value->kind == NODE_CALL_EXPR ||
@@ -10486,6 +11474,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 dst_sym->origin_depth = pointer_origin_of(checker,
                     node->data.var_decl.value, &origin_name);
                 dst_sym->origin_name = origin_name;
+                const char *field_origin_name = NULL;
+                dst_sym->field_origin_depth = container_literal_origin(checker,
+                    node->data.var_decl.value, &field_origin_name);
+                dst_sym->field_origin_name = field_origin_name;
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -10666,12 +11658,16 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
 
-            /* E3048: string += (concatenation) */
-            if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
+            /* E3048: appending a non-string to a string. Only a string
+             * target makes '+=' a concatenation; a non-string target
+             * (array, map, struct, int, ...) is left to the arithmetic
+             * checks below and the assignment type check, so E3048 does
+             * not pile onto E3093 / E3001. */
+            if (target_t->kind == TK_STRING && value_t->kind != TK_STRING &&
                 aop == TOK_PLUS_ASSIGN) {
-                diagnostic_error_code_help(checker->diag, "E3048",
+                diagnostic_error_code_formatted(checker->diag, "E3048",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "use string interpolation \"${a}${b}\" or 'fmt.format()' to combine strings");
+                    type_display_name(checker, target_t), type_display_name(checker, value_t));
             }
 
             /* E3002: string in non-plus arithmetic */
@@ -11146,12 +12142,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     /* E3097: reject storing an address into a pointer that outlives it.
-     * The origin travels through intermediate pointers, so laundering the
-     * address (p = tmp where tmp = addr(local)) is caught too. */
+     * The origin travels through intermediate pointers and function calls,
+     * so laundering the address (p = tmp where tmp = addr(local), or
+     * p = forward(addr(local))) is caught too. */
     if (target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
         const char *origin_name = NULL;
-        int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+        int origin_depth = expression_origin(checker, node->data.assign.value,
                                              &origin_name);
         if (origin_depth > symbol_scope_depth(checker->current_scope, ptr_name)) {
             diagnostic_error_code_formatted(checker->diag, "E3097",
@@ -11160,8 +12157,36 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         } else {
             Symbol *ptr_sym = scope_lookup(checker->current_scope, ptr_name);
             if (ptr_sym) {
-                ptr_sym->origin_depth = origin_depth;
-                ptr_sym->origin_name = origin_name;
+                const char *direct_origin_name = NULL;
+                ptr_sym->origin_depth = pointer_origin_of(checker,
+                    node->data.assign.value, &direct_origin_name);
+                ptr_sym->origin_name = direct_origin_name;
+                const char *field_origin_name = NULL;
+                ptr_sym->field_origin_depth = container_literal_origin(checker,
+                    node->data.assign.value, &field_origin_name);
+                ptr_sym->field_origin_name = field_origin_name;
+            }
+        }
+    } else if (target->kind == NODE_MEMBER_EXPR || target->kind == NODE_INDEX_EXPR) {
+        /* A struct field or array element as the target: the E3097 guard
+         * above never reached these. Compare the stored address's origin
+         * against the scope of the root aggregate variable. */
+        const char *root = assignment_target_root_name(target);
+        if (root) {
+            const char *origin_name = NULL;
+            int origin_depth = expression_origin(checker, node->data.assign.value,
+                                                 &origin_name);
+            int root_depth = symbol_scope_depth(checker->current_scope, root);
+            if (origin_depth > root_depth) {
+                diagnostic_error_code_formatted(checker->diag, "E3097",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    root, origin_name);
+            } else if (origin_depth > 0) {
+                Symbol *root_sym = scope_lookup(checker->current_scope, root);
+                if (root_sym && origin_depth > root_sym->field_origin_depth) {
+                    root_sym->field_origin_depth = origin_depth;
+                    root_sym->field_origin_name = origin_name;
+                }
             }
         }
     }
@@ -11235,11 +12260,23 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* E3063: reject returning the address of a local; its memory is freed
      * when the function returns. The origin travels through intermediate
-     * pointers, so `mut p = addr(local); return p` is caught as well. */
+     * pointers, a function call, a struct field, and a container literal
+     * (array/map/struct) or an element read back out of one, so
+     * `mut p = addr(local); return p`, `return forward(addr(local))`,
+     * `return {addr(local)}`, and `mut a [^int] = {addr(local)}; return a[0]`
+     * are all caught. */
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         AstNode *return_val = node->data.return_stmt.values[i];
         const char *origin_name = NULL;
-        int origin_depth = pointer_origin_of(checker, return_val, &origin_name);
+        int origin_depth = expression_origin(checker, return_val, &origin_name);
+        if (origin_depth == 0 && return_val->kind == NODE_LABEL) {
+            Symbol *s = scope_lookup(checker->current_scope,
+                                     return_val->data.label.value);
+            if (s && s->field_origin_depth) {
+                origin_depth = s->field_origin_depth;
+                origin_name = s->field_origin_name;
+            }
+        }
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
             diagnostic_error_code_formatted(checker->diag, "E3063",
@@ -11935,6 +12972,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E5035", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, p->name, NODE_FILE(checker, node), node->token.line, node->token.column);
         /* Check for duplicate parameter name */
         for (int j = 0; j < i; j++) {
             if (strcmp(node->data.func_decl.params[j].name, p->name) == 0) {
@@ -11953,7 +12992,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "parameter '%s' shadows enum variant '%s.%s'",
                         p->name, display, p->name);
-                    diagnostic_warning(checker->diag, "W2008", msg,
+                    diagnostic_warning_message(checker->diag, "W2008", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                     found_variant = true;
                     break;
@@ -12156,6 +13195,15 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             checker->current_return_type_names[i] = node->data.func_decl.return_types[i];
             /* E4016: undefined return type */
             const char *rtn = node->data.func_decl.return_types[i];
+            /* E3142: a func return type. STANDARD 7.6.6 — a returned func
+             * value cannot be called, assigned, or stored, so a function
+             * whose return type is func has no valid use. Reject it at the
+             * declaration rather than at every downstream call site. */
+            if (rtn && (strcmp(rtn, "func") == 0 || strncmp(rtn, "func(", 5) == 0)) {
+                diagnostic_error_code_formatted(checker->diag, "E3142",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    FUNC_DISPLAY_NAME(node));
+            }
             reject_private_type(checker, node, rtn);
             char leaf[MSG_BUF_SIZE];
             const char *undefined = undefined_type_leaf(checker, rtn, leaf, sizeof(leaf));
@@ -12330,6 +13378,15 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     }
     /* E3103/E3104: #json structs are data-only */
     if (node->data.struct_decl.is_json) {
+        /* E6012: the generated serializer helpers call into the json runtime,
+         * whose declarations only reach the C output when @json is imported.
+         * Without the import the helper references undeclared symbols and the
+         * C compiler fails instead of the typechecker. */
+        if (!typechecker_is_imported_module(checker, "json")) {
+            diagnostic_error_code_formatted_help(checker->diag, "E6012",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
+        }
         for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
             const char *ftype = node->data.struct_decl.fields[field_index].type_name;
             if (ftype && strncmp(ftype, "func", 4) == 0) {
@@ -12551,7 +13608,7 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         scope_destroy(def_body);
         /* W3006: empty default branch */
         if (node->data.when_stmt.default_body->data.block.count == 0) {
-            diagnostic_warning(checker->diag, "W3006",
+            diagnostic_warning_message(checker->diag, "W3006",
                 "empty default branch in when statement; unmatched values are silently ignored",
                 NODE_FILE(checker, node->data.when_stmt.default_body),
                 node->data.when_stmt.default_body->token.line,
@@ -12671,7 +13728,7 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
         if (has_enum_case) {
-            diagnostic_warning(checker->diag, "W3005",
+            diagnostic_warning_message(checker->diag, "W3005",
                 "when statement matches on enum values without #strict and no default; exhaustiveness is not checked",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -12877,7 +13934,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name) {
  * header, not inline. `visited` is a stack of struct names on the
  * current DFS path used to short-circuit cycles that don't touch
  * `target` directly. */
-static bool struct_contains_by_value(AstNode *program, AstNode *decl,
+static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, AstNode *decl,
                                       const char *target,
                                       const char **visited, int *visited_count,
                                       int visited_cap) {
@@ -12891,6 +13948,11 @@ static bool struct_contains_by_value(AstNode *program, AstNode *decl,
     for (int i = 0; i < decl->data.struct_decl.field_count; i++) {
         const char *ftn = decl->data.struct_decl.fields[i].type_name;
         if (!ftn || !*ftn) continue;
+        /* A field whose type is written as an alias is resolved here: the
+         * enclosing struct's own fields are rewritten before this walk, but
+         * a struct reached transitively is visited with its AST field names
+         * still as written, so an alias hid the cycle. */
+        ftn = resolve_type_alias(checker, checker_resolve_type_name(checker, ftn));
         /* Pointer, array, map; heap-indirected, size doesn't propagate. */
         if (ftn[0] == '^' || ftn[0] == '[' || strncmp(ftn, "map[", 4) == 0) continue;
         if (strcmp(ftn, target) == 0) {
@@ -12898,7 +13960,7 @@ static bool struct_contains_by_value(AstNode *program, AstNode *decl,
             return true;
         }
         AstNode *child = find_struct_in_program(program, ftn);
-        if (child && struct_contains_by_value(program, child, target,
+        if (child && struct_contains_by_value(checker, program, child, target,
                                                visited, visited_count, visited_cap)) {
             (*visited_count)--;
             return true;
@@ -12915,7 +13977,7 @@ static bool struct_contains_by_value(AstNode *program, AstNode *decl,
 static void validate_field_type_recursive(TypeChecker *checker, AstNode *program,
                                           const char *type_name,
                                           const char *field_name,
-                                          AstNode *stmt) {
+                                          AstNode *stmt, bool nested) {
     if (!type_name || !*type_name) return;
 
     /* Containers recurse on what they are built from: the element of an
@@ -12925,7 +13987,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
         int part_count = 0;
         if (type_name_components(type_name, parts, &part_count)) {
             for (int i = 0; i < part_count; i++)
-                validate_field_type_recursive(checker, program, parts[i], field_name, stmt);
+                validate_field_type_recursive(checker, program, parts[i], field_name, stmt, true);
             return;
         }
     }
@@ -12941,8 +14003,10 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
      * the prefix match expects. */
     typechecker_mark_type_module_used(checker, type_name);
 
-    /* Bare func: reject with guidance toward typed signature */
-    if (strcmp(type_name, "func") == 0) {
+    /* Bare func: reject only as a direct scalar field type. As a container
+     * element ([func], map[string:func]) it is the documented spelling and
+     * works the same as a local of that type. */
+    if (!nested && strcmp(type_name, "func") == 0) {
         diagnostic_error_code_help(checker->diag, "E3130",
             NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
             "use a typed signature: 'func(params) -> return_type'");
@@ -13125,6 +14189,11 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             goto next_alias;
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        if (strcmp(aname, "main") == 0) {
+            check_reserved_main(checker, aname, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+            goto next_alias;
+        }
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, aname, stmt) ||
             is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
@@ -13221,6 +14290,8 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as an enum name", en);
             diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, stmt->data.enum_decl.name, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
         /* E2016: empty enum */
         if (stmt->data.enum_decl.value_count == 0) {
             diagnostic_error_code_formatted(checker->diag, "E2016", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
@@ -13293,10 +14364,12 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
                 break;
             }
         }
-        /* E4007: duplicate enum name */
-        if (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
+        /* E4007: duplicate enum name. An enum named `main` collides with the
+         * entry point, but E4026 already says so — don't pile on. */
+        if (strcmp(stmt->data.enum_decl.name, "main") != 0 &&
+            (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
             is_enum_name(checker, stmt->data.enum_decl.name) ||
-            is_struct_name(checker, stmt->data.enum_decl.name)) {
+            is_struct_name(checker, stmt->data.enum_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "a type named '%s' is already declared",
@@ -13336,6 +14409,13 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
         /* E3112: flags enum with payloads */
         if (stmt->data.enum_decl.is_flags && has_tagged) {
             diagnostic_error_code(checker->diag, "E3112", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
+        }
+        /* E3143: flags enum with more than 63 variants. Codegen assigns each
+         * unvalued variant `1LL << j`; bit 63 is int64's sign bit and bits
+         * 64+ are undefined shifts in C. */
+        if (stmt->data.enum_decl.is_flags && variant_count > 63) {
+            diagnostic_error_code_formatted(checker->diag, "E3143", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                en, variant_count);
         }
         DeclEntry *entry = module_register(checker, stmt, DECL_ENUM, ENUM_DISPLAY_NAME(stmt),
                             stmt->data.enum_decl.is_private);
@@ -13426,7 +14506,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                         const char *visited[MAX_STRUCT_DEPTH];
                         int variant_count = 0;
                         is_cycle = struct_contains_by_value(
-                            program, child, self_name, visited, &variant_count, 32);
+                            checker, program, child, self_name, visited, &variant_count, 32);
                     }
                 }
                 if (is_cycle) {
@@ -13447,7 +14527,7 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             }
             /* Validate all named types within the field type recursively. */
             if (ftn && *ftn)
-                validate_field_type_recursive(checker, program, ftn, fnames[j], stmt);
+                validate_field_type_recursive(checker, program, ftn, fnames[j], stmt, false);
             /* Check for duplicate field names */
             for (int k = 0; k < j; k++) {
                 if (strcmp(fnames[k], fnames[j]) == 0) {
@@ -13483,10 +14563,14 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as a struct name", sn);
             diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        /* E4007: duplicate struct name */
-        if (type_name_already_declared(checker, stmt->data.struct_decl.name, stmt) ||
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, stmt->data.struct_decl.name, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+        /* E4007: duplicate struct name. A struct named `main` collides with
+         * the entry point, but E4026 already says so — don't pile on. */
+        if (strcmp(stmt->data.struct_decl.name, "main") != 0 &&
+            (type_name_already_declared(checker, stmt->data.struct_decl.name, stmt) ||
             is_struct_name(checker, stmt->data.struct_decl.name) ||
-            is_enum_name(checker, stmt->data.struct_decl.name)) {
+            is_enum_name(checker, stmt->data.struct_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "a type named '%s' is already declared",
@@ -13643,6 +14727,13 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
                     NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             }
         }
+        /* E5046: #test functions take no parameters and return nothing */
+        if (stmt->data.func_decl.is_test &&
+            (parameter_count > 0 || return_count > 0)) {
+            diagnostic_error_code_formatted(checker->diag, "E5046",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                FUNC_DISPLAY_NAME(stmt));
+        }
         /* Check for reserved prefix */
         check_reserved_name(checker, stmt->data.func_decl.name,
             NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
@@ -13650,9 +14741,12 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         if (find_func(checker, stmt->data.func_decl.name)) {
             diagnostic_error_code_formatted(checker->diag, "E4004", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, FUNC_DISPLAY_NAME(stmt));
         }
-        /* E4007: function name conflicts with a type */
-        if (is_struct_name(checker, stmt->data.func_decl.name) ||
-            is_enum_name(checker, stmt->data.func_decl.name)) {
+        /* E4007: function name conflicts with a type. `do main()` paired with
+         * a type named `main` already produced E4026 on the type — the real
+         * entry point is not the problem, so don't flag it here. */
+        if (strcmp(stmt->data.func_decl.name, "main") != 0 &&
+            (is_struct_name(checker, stmt->data.func_decl.name) ||
+            is_enum_name(checker, stmt->data.func_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "function '%s' conflicts with a type of the same name",
@@ -14149,6 +15243,10 @@ void typechecker_add_file_module(TypeChecker *checker, const char *file,
     module_table_map_file(checker->modules, file, module_name, is_entry);
 }
 
+void typechecker_set_test_mode(TypeChecker *checker, bool enabled) {
+    checker->test_mode = enabled;
+}
+
 void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
                                   const char *module_name) {
     module_table_add_alias(checker->modules, alias, module_name);
@@ -14510,8 +15608,14 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     } /* end while (new_instantiations) */
     free(inst_cursors);
 
-    /* Verify main() exists */
-    if (!find_func(checker, "main")) {
+    /* Verify main() exists (not required when building a test runner). A
+     * #test-attributed main is stripped from a normal build, so it does not
+     * count as an entry point here. */
+    FuncSig *main_sig = find_func(checker, "main");
+    bool main_is_test = main_sig && main_sig->decl &&
+                        main_sig->decl->kind == NODE_FUNC_DECL &&
+                        main_sig->decl->data.func_decl.is_test;
+    if (!checker->test_mode && !checker->main_name_misused && (!main_sig || main_is_test)) {
         /* Point at the last statement or line 1 if empty */
         int err_line = 1;
         if (program->data.program.stmt_count > 0) {
@@ -14541,9 +15645,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     /* Warn about unused functions (skip main and struct-namespaced) */
     for (int i = 0; i < checker->func_count; i++) {
         FuncSig *fs = &checker->funcs[i];
+        bool is_test_fn = fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
+                          fs->decl->data.func_decl.is_test;
         if (!fs->used && fs->def_line > 0 &&
             strcmp(fs->name, "main") != 0 &&
-            !fs->is_private &&
+            !fs->is_private && !is_test_fn &&
             !(fs->name[0] >= 'A' && fs->name[0] <= 'Z' && strchr(fs->name, '_'))) {
             const char *display = func_display_name(fs);
             char *msg = NULL;

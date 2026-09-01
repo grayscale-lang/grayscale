@@ -22,6 +22,11 @@
 #define GRAY_SYNTH_TMP     "_gray_tmp"
 #define GRAY_SYNTH_OR      "_gray_or"
 
+/* Sentinel member name for the or_return propagation guard's error access.
+ * The parser emits `_gray_orN.verr`; the typechecker rewrites it to the
+ * concrete trailing-Error slot (v1, v2, ...) once the call's arity is known. */
+#define OR_RETURN_ERR_SLOT "verr"
+
 typedef enum {
     /* Expressions */
     NODE_LABEL,
@@ -162,8 +167,9 @@ struct AstNode {
         /* NODE_INTERPOLATED_STRING */
         struct { AstNode **parts; int part_count; } interpolated_string;
 
-        /* NODE_CHAR_VALUE */
-        struct { char value; } char_value;
+        /* NODE_CHAR_VALUE — a full Unicode codepoint (char is int32_t at the C
+         * boundary), not a single byte. */
+        struct { int32_t value; } char_value;
 
         /* NODE_BOOL_VALUE */
         struct { bool value; } bool_value;
@@ -320,6 +326,7 @@ struct AstNode {
             AstNode *body;
             bool is_private;
             bool is_discard;
+            bool is_test;                    /* #test attribute — test-only fn */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             /* Wildcard generics concrete type bindings recorded

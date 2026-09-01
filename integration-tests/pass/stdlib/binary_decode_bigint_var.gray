@@ -1,0 +1,51 @@
+/*
+ * binary_decode_bigint_var.gray - the bigint binary decoders (i128, u128,
+ * i256, u256; both endiannesses) must codegen as returning their bigint
+ * type directly when assigned to a declared bigint variable, not get
+ * wrapped as int64-returning, which previously produced uncompilable C.
+ */
+
+import @binary
+
+do main() {
+    println("=== binary.decode_* bigint variable assignment ===")
+
+    mut a i128 = i128(-123456789012345)
+    mut a_bytes [byte] = binary.encode_i128_le(a)
+    mut a_back i128 = binary.decode_i128_le(a_bytes)
+    if a_back == a {
+        println("  [PASS] decode_i128_le into declared i128 variable")
+    } else {
+        println("  [FAIL] decode_i128_le into declared i128 variable")
+    }
+
+    mut b u128 = u128(987654321098765)
+    mut b_bytes [byte] = binary.encode_u128_be(b)
+    mut b_back u128 = binary.decode_u128_be(b_bytes)
+    if b_back == b {
+        println("  [PASS] decode_u128_be into declared u128 variable")
+    } else {
+        println("  [FAIL] decode_u128_be into declared u128 variable")
+    }
+
+    mut c i256 = i256(-42)
+    mut c_bytes [byte] = binary.encode_i256_le(c)
+    mut c_back i256 = binary.decode_i256_le(c_bytes)
+    if c_back == c {
+        println("  [PASS] decode_i256_le into declared i256 variable")
+    } else {
+        println("  [FAIL] decode_i256_le into declared i256 variable")
+    }
+
+    mut d u256 = u256(255)
+    mut d_bytes [byte] = binary.encode_u256_be(d)
+    mut d_back u256 = binary.decode_u256_be(d_bytes)
+    if d_back == d {
+        println("  [PASS] decode_u256_be into declared u256 variable")
+    } else {
+        println("  [FAIL] decode_u256_be into declared u256 variable")
+    }
+
+    // decode_i128_* result used directly inside string interpolation
+    println("  [PASS] interpolated decode: ${binary.decode_i128_le(a_bytes)}")
+}

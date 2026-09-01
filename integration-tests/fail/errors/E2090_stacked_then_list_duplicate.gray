@@ -1,0 +1,11 @@
+// expect-error: E2090
+// expect-error-count: 1
+// A stacked `#test` followed by a single-entry `#[test]` list: the list's
+// only entry is a duplicate. It must report E2090 alone, not a bogus
+// "'#[...]' cannot be empty" — the list is not empty.
+
+#test
+#[test]
+do a() {}
+
+do main() {}

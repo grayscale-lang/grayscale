@@ -9,15 +9,15 @@ do main() {
     mut passed int = 0
     mut failed int = 0
 
-    mut chars [char] = {'H', 'i', '!'}
-    if chars[0] == 'H' && chars[2] == '!' && len(chars) == 3 {
+    mut cs [char] = {'H', 'i', '!'}
+    if cs[0] == 'H' && cs[2] == '!' && len(cs) == 3 {
         passed += 1
     } otherwise {
         println("[FAIL] [char] literal elements")
         failed += 1
     }
 
-    if strings.from_chars(chars) == "Hi!" {
+    if strings.from_chars(cs) == "Hi!" {
         passed += 1
     } otherwise {
         println("[FAIL] from_chars([char])")

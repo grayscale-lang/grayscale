@@ -1,0 +1,9 @@
+// expect-error: E2093
+// expect-error-count: 1
+// 'deprecated' in a #[...] list requires exactly one string literal, matching
+// the stacked form. A non-string argument is rejected.
+
+#[deprecated(123)]
+do a() {}
+
+do main() {}

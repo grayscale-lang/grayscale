@@ -1,0 +1,9 @@
+// expect-error: E2093
+// expect-error-count: 1
+// test, json, flags, strict and discard take no arguments in a #[...] list,
+// just as in the stacked form. A parenthesized argument is rejected.
+
+#[test(5)]
+do a() {}
+
+do main() {}

@@ -1,0 +1,63 @@
+/*
+ * Fallible stdlib calls are rejected in expression position (E3089), but the
+ * three real forms — handle, discard, or_return — must still compile and run,
+ * and a destructured value must be usable everywhere a plain value is.
+ */
+import @strconv
+
+do double(s string) -> (int, Error) {
+    mut n = strconv.to_int(s) or_return
+    return n * 2, nil
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Form 1: handle the error
+    mut a, err = strconv.to_int("42")
+    if err == nil && a == 42 {
+        println("  [PASS] handle form")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] handle form")
+        failed += 1
+    }
+
+    // Form 2: discard the error (zero value on failure)
+    mut b, _ = strconv.to_int("nope")
+    if b == 0 {
+        println("  [PASS] discard form yields zero value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] discard form")
+        failed += 1
+    }
+
+    // Form 3: or_return propagation through a helper
+    mut c, cerr = double("21")
+    if cerr == nil && c == 42 {
+        println("  [PASS] or_return form")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] or_return form")
+        failed += 1
+    }
+
+    // A destructured value is a plain value: usable as an argument and operand
+    mut n, _ = strconv.to_int("10")
+    if n + 5 == 15 {
+        println("  [PASS] destructured value used as operand")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] destructured value used as operand")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

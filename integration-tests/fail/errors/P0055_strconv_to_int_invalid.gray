@@ -1,7 +1,0 @@
-/* Panic Test: P0055 - strconv.to_int cannot convert invalid string */
-import @strconv
-
-do main() {
-    mut val, mut err = strconv.to_int("xyz", 10)
-    println(val)
-}

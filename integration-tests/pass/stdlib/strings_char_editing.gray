@@ -1,0 +1,64 @@
+/*
+ * Test: strings char-editing functions
+ * append_char / prepend_char / insert_char_at / remove_at / set_char_at.
+ * Each returns a new string; the char argument is a codepoint, UTF-8 encoded.
+ */
+
+import @strings
+import @chars
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // Issue's worked example
+    mut s string = "helo"
+    s = strings.insert_char_at(s, 3, 'l')
+    passed += check("insert_char_at mid", s, "hello")
+    s = strings.append_char(s, '!')
+    passed += check("append_char", s, "hello!")
+    s = strings.prepend_char(s, '>')
+    passed += check("prepend_char", s, ">hello!")
+    s = strings.remove_at(s, 0)
+    passed += check("remove_at front", s, "hello!")
+    s = strings.set_char_at(s, 0, 'H')
+    passed += check("set_char_at front", s, "Hello!")
+
+    // empty string
+    passed += check("append_char on empty", strings.append_char("", 'x'), "x")
+    passed += check("prepend_char on empty", strings.prepend_char("", 'x'), "x")
+
+    // insert boundaries
+    passed += check("insert at 0", strings.insert_char_at("bc", 0, 'a'), "abc")
+    passed += check("insert at len (append)", strings.insert_char_at("ab", 2, 'c'), "abc")
+
+    // remove / set at last index
+    passed += check("remove_at last", strings.remove_at("abcd", 3), "abc")
+    passed += check("set_char_at last", strings.set_char_at("abcX", 3, 'd'), "abcd")
+
+    // codepoint is UTF-8 encoded into the result
+    passed += check("append non-ASCII codepoint", strings.append_char("caf", char(0xE9)), "café")
+    passed += check("insert non-ASCII codepoint", strings.insert_char_at("ab", 1, char(0xE9)), "aéb")
+
+    // a char produced by another stdlib function round-trips
+    mut up char = chars.to_upper('h')
+    passed += check("set_char_at with chars.to_upper", strings.set_char_at("hi", 0, up), "Hi")
+
+    mut total int = 14
+    println("")
+    println("Results: ${passed}/${total} passed")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

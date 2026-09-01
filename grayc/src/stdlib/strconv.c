@@ -230,6 +230,156 @@ GrayString gray_strconv_from_bool(bool b) {
     return gray_string_lit("false");
 }
 
+/* --- Arbitrary-base integer formatting --- */
+
+/* Write the base-`base` digits of `v` into buf (which must hold at least 64
+   bytes), most significant first. Returns the number of digits written. */
+static int strconv_format_digits(char *buf, uint64_t v, int base) {
+    static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
+    char tmp[64];
+    int pos = (int)sizeof(tmp);
+    if (v == 0) tmp[--pos] = '0';
+    while (v > 0) {
+        tmp[--pos] = digits[v % (uint64_t)base];
+        v /= (uint64_t)base;
+    }
+    int len = (int)sizeof(tmp) - pos;
+    memcpy(buf, tmp + pos, (size_t)len);
+    return len;
+}
+
+GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base) {
+    if (base < 2 || base > 36)
+        gray_panic_code("P0110", "strconv.format_int: invalid base %lld; must be between 2 and 36",
+            (long long)base);
+    bool neg = n < 0;
+    /* Negate in unsigned space so INT64_MIN does not overflow. */
+    uint64_t v = neg ? ~(uint64_t)n + 1 : (uint64_t)n;
+    char tmp[65];
+    int off = 0;
+    if (neg) tmp[off++] = '-';
+    off += strconv_format_digits(tmp + off, v, (int)base);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)off + 1);
+    memcpy(data, tmp, (size_t)off);
+    data[off] = '\0';
+    return (GrayString){data, (int32_t)off};
+}
+
+GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t n, int64_t base) {
+    if (base < 2 || base > 36)
+        gray_panic_code("P0111", "strconv.format_uint: invalid base %lld; must be between 2 and 36",
+            (long long)base);
+    char tmp[64];
+    int len = strconv_format_digits(tmp, n, (int)base);
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
+    memcpy(data, tmp, (size_t)len);
+    data[len] = '\0';
+    return (GrayString){data, (int32_t)len};
+}
+
+/* --- Quoting --- */
+
+GrayString gray_strconv_quote(GrayArena *arena, GrayString s) {
+    static const char hex[] = "0123456789abcdef";
+    /* Worst case: every byte becomes \xNN (4x), plus the two surrounding
+       quotes and a null terminator. */
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)s.len * 4 + 3);
+    int32_t j = 0;
+    buf[j++] = '"';
+    for (int i = 0; i < s.len; i++) {
+        unsigned char c = (unsigned char)s.data[i];
+        switch (c) {
+        case '"':  buf[j++] = '\\'; buf[j++] = '"';  break;
+        case '\\': buf[j++] = '\\'; buf[j++] = '\\'; break;
+        case '\n': buf[j++] = '\\'; buf[j++] = 'n';  break;
+        case '\r': buf[j++] = '\\'; buf[j++] = 'r';  break;
+        case '\t': buf[j++] = '\\'; buf[j++] = 't';  break;
+        default:
+            if (c < 0x20 || c == 0x7f) {
+                buf[j++] = '\\'; buf[j++] = 'x';
+                buf[j++] = hex[c >> 4]; buf[j++] = hex[c & 0xf];
+            } else {
+                buf[j++] = (char)c;
+            }
+        }
+    }
+    buf[j++] = '"';
+    buf[j] = '\0';
+    return (GrayString){buf, j};
+}
+
+static int strconv_hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* Unquote s into a freshly allocated string. Returns true on success; on
+   failure returns false and leaves *out untouched. */
+static bool strconv_unquote_into(GrayArena *arena, GrayString s, GrayString *out) {
+    if (s.len < 2 || s.data[0] != '"' || s.data[s.len - 1] != '"')
+        return false;
+    /* Output is never longer than the quoted interior. */
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)s.len);
+    int32_t j = 0;
+    int end = s.len - 1;
+    for (int i = 1; i < end; i++) {
+        char c = s.data[i];
+        if (c == '"') return false; /* unescaped quote */
+        if (c != '\\') { buf[j++] = c; continue; }
+        if (++i >= end) return false; /* trailing backslash */
+        char e = s.data[i];
+        switch (e) {
+        case 'n':  buf[j++] = '\n'; break;
+        case 't':  buf[j++] = '\t'; break;
+        case 'r':  buf[j++] = '\r'; break;
+        case '\\': buf[j++] = '\\'; break;
+        case '"':  buf[j++] = '"';  break;
+        case '\'': buf[j++] = '\''; break;
+        case '0':  buf[j++] = '\0'; break;
+        case 'a':  buf[j++] = '\a'; break;
+        case 'b':  buf[j++] = '\b'; break;
+        case 'f':  buf[j++] = '\f'; break;
+        case 'v':  buf[j++] = '\v'; break;
+        case '$':  buf[j++] = '$';  break;
+        case 'x': {
+            if (i + 2 >= end) return false;
+            int hi = strconv_hex_digit(s.data[i + 1]);
+            int lo = strconv_hex_digit(s.data[i + 2]);
+            if (hi < 0 || lo < 0) return false;
+            buf[j++] = (char)((hi << 4) | lo);
+            i += 2;
+            break;
+        }
+        default: return false;
+        }
+    }
+    buf[j] = '\0';
+    *out = (GrayString){buf, j};
+    return true;
+}
+
+GrayString gray_strconv_unquote(GrayArena *arena, GrayString s) {
+    GrayString out;
+    if (!strconv_unquote_into(arena, s, &out)) {
+        char buf[STRCONV_BUF_SIZE];
+        strconv_prepare(s, buf, sizeof(buf));
+        gray_panic_code("P0112", "strconv.unquote: cannot unquote '%s'", buf);
+    }
+    return out;
+}
+
+GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString s) {
+    GrayString out;
+    if (!strconv_unquote_into(arena, s, &out)) {
+        GrayString msg = gray_string_lit("cannot unquote string");
+        GrayError *err = gray_error_new(gray_default_arena, msg);
+        return (GrayResult_string){{"", 0}, err};
+    }
+    return (GrayResult_string){out, NULL};
+}
+
 /* --- Query functions --- */
 
 bool gray_strconv_is_numeric(GrayString s) {

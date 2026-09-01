@@ -1,0 +1,31 @@
+/*
+ * addr_fixed_array_index.gray - addr(), ref(), and raw() are allowed on a
+ * fixed-size [T,N] array element. Fixed-size storage never relocates, so
+ * the pointer stays valid (unlike a dynamic [T] array, which is rejected
+ * with E3013).
+ */
+
+do main() {
+    const fixed [int, 4] = {10, 20, 30, 40}
+
+    mut p ^int = addr(fixed[1])
+    if p^ == 20 {
+        println("  [PASS] addr(fixed[i])")
+    } else {
+        println("  [FAIL] addr(fixed[i]): ${p^}")
+    }
+
+    mut r = ref(fixed[2])
+    if r == 30 {
+        println("  [PASS] ref(fixed[i])")
+    } else {
+        println("  [FAIL] ref(fixed[i]): ${r}")
+    }
+
+    mut q ^int = raw(fixed[3])
+    if q^ == 40 {
+        println("  [PASS] raw(fixed[i])")
+    } else {
+        println("  [FAIL] raw(fixed[i]): ${q^}")
+    }
+}

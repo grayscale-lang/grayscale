@@ -1,0 +1,82 @@
+/*
+ * pointer_escape_helpers_ok.gray - the escape-summary analysis must not
+ * flag helper calls that don't actually outlive their pointer argument.
+ *
+ * - add_ptr / set_box: a by-reference parameter receives a pointer whose
+ *   pointee (outer_val) lives exactly as long as the container -- no escape.
+ * - deref_sum: a helper that only reads its pointer parameters.
+ * - make_box: returns a struct built from a freshly allocated pointer, not
+ *   from any caller-supplied local.
+ */
+
+import @arrays
+
+const Box struct {
+    p ^int
+}
+
+do add_ptr(&c [^int], p ^int) {
+    arrays.append(c, p)
+}
+
+do set_box(&b Box, q ^int) {
+    b.p = q
+}
+
+do deref_sum(a ^int, b ^int) -> int {
+    return a^ + b^
+}
+
+do make_box() -> Box {
+    mut n ^int = new(int)
+    n^ = 7
+    return Box{p: n}
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut outer_val int = 100
+    mut op ^int = addr(outer_val)
+
+    mut ptrs [^int] = {}
+    add_ptr(ptrs, op)
+    if len(ptrs) == 1 && ptrs[0]^ == 100 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] add_ptr")
+        failed += 1
+    }
+
+    if deref_sum(op, op) == 200 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] deref_sum")
+        failed += 1
+    }
+
+    mut mb Box = make_box()
+    if mb.p^ == 7 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] make_box")
+        failed += 1
+    }
+
+    mut b2 Box = Box{p: nil}
+    set_box(b2, op)
+    if b2.p^ == 100 {
+        passed += 1
+    } otherwise {
+        println("  [FAIL] set_box")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

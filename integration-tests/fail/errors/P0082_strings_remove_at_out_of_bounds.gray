@@ -1,0 +1,9 @@
+/* Panic Test: P0082 - string index out of bounds via strings.remove_at */
+
+import @strings
+
+do main() {
+    mut s string = "abc"
+    mut r string = strings.remove_at(s, 5)  // index out of bounds
+    println(r)
+}
