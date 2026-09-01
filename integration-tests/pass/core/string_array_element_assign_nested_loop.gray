@@ -1,0 +1,76 @@
+/*
+ * string_array_element_assign_nested_loop.gray - `arr[i] = <string>` where the
+ * RHS is allocated in the current arena (a concat or a function return) must
+ * survive the loop iteration that produced it.
+ *
+ * The plain string-array-element assignment path stored the RHS GrayString by
+ * value without deep-copying, so when the statement ran directly inside a
+ * nested loop the value pointed into the per-iteration arena and was torn down
+ * when the inner loop advanced (length correct, bytes garbage).
+ *
+ * Fix: that path now deep-copies the RHS into _gray_outer_arena when
+ * loop_scope_depth > 0, the same escape the plain-variable and += paths use.
+ */
+
+do make_greeting() -> string {
+    return "hello world"
+}
+
+do main() {
+    println("=== String Array Element = In Nested Loop ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    /* RHS is a function return value. */
+    mut names [string] = {"", ""}
+    for r in range(0, 4) {
+        for i in range(0, 2) {
+            names[i] = make_greeting()
+        }
+    }
+    if names[0] == "hello world" && names[1] == "hello world" {
+        println("  [PASS] function-return RHS")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${names[0]} / ${names[1]}")
+        failed += 1
+    }
+
+    /* RHS is a concatenation. */
+    mut parts [string] = {""}
+    for r in range(0, 3) {
+        for i in range(0, 2) {
+            parts[0] = "a" + "b" + "c"
+        }
+    }
+    if parts[0] == "abc" {
+        println("  [PASS] concat RHS")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected abc, got ${parts[0]}")
+        failed += 1
+    }
+
+    /* RHS reads the element itself, so the copy must not alias freed storage. */
+    mut acc [string] = {""}
+    for r in range(0, 3) {
+        for i in range(0, 2) {
+            acc[0] = acc[0] + "z"
+        }
+    }
+    if acc[0] == "zzzzzz" {
+        println("  [PASS] self-referential concat RHS")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected 6 z's, got ${acc[0]}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -9196,6 +9196,23 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                 }
             }
+            /* Plain assignment of a string to a string array element inside a
+             * loop: the RHS (a concat, a call return, ...) may live in the
+             * per-iteration arena, which is torn down before the array is read
+             * again. Deep-copy into the outer arena — the same escape the
+             * plain-variable and += paths use. */
+            if (!is_compound && strcmp(c_elem, "GrayString") == 0 &&
+                codegen->loop_scope_depth > 0) {
+                emit(codegen, "{ GrayString _esc_v = ");
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, "; GRAY_ARRAY_SET_AT(");
+                emit_expression(codegen, left);
+                emit(codegen, ", GrayString, ");
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len), \"%s\", %d); }\n",
+                    codegen->file, node->token.line);
+                return;
+            }
             emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
             emit_expression(codegen, left);
             emit_formatted(codegen, ", %s, ", c_elem);
