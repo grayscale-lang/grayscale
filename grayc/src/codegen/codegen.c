@@ -9037,7 +9037,11 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, idx);
                 emit(codegen, ", ");
                 if (is_compound_m && strcmp(c_elem, "GrayString") == 0 && aop_m == TOK_PLUS_ASSIGN) {
-                    emit(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(_ea, GrayString, ");
+                    /* The concat result must outlive the loop iteration that
+                     * produced it — inside a nested loop that means the outer
+                     * arena, not the per-iteration gray_default_arena. */
+                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_ea, GrayString, ",
+                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
                     emit_expression(codegen, idx);
                     emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                     emit_expression(codegen, node->data.assign.value);
@@ -9094,7 +9098,8 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
                     if (is_compound2 && strcmp(c_elem, "GrayString") == 0 && aop2 == TOK_PLUS_ASSIGN) {
-                        emit_formatted(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ", my_dp, sanitize_name(_set_ptr_field));
+                        emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
+                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp, sanitize_name(_set_ptr_field));
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
@@ -9135,7 +9140,8 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
                 if (is_compound3 && strcmp(c_elem, "GrayString") == 0 && aop3 == TOK_PLUS_ASSIGN) {
-                    emit_formatted(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ", my_dp);
+                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
+                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp);
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                     emit_expression(codegen, node->data.assign.value);
@@ -9197,7 +9203,8 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit(codegen, ", ");
             /* Non-sized compound assignment on array element: read-modify-write */
             if (is_compound && strcmp(c_elem, "GrayString") == 0 && aop == TOK_PLUS_ASSIGN) {
-                emit(codegen, "gray_string_concat(gray_default_arena, GRAY_ARRAY_GET_AT(");
+                emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(",
+                    codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
                 emit_expression(codegen, left);
                 emit(codegen, ", GrayString, ");
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
