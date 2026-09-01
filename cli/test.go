@@ -81,12 +81,12 @@ func runTest(cmd *cobra.Command, args []string) error {
 
 	totalPass, totalFail := 0, 0
 	buildFailed := false
+	var noTestFiles []string
 
 	for i, file := range files {
-		fmt.Printf("\n  %s\n", c.bold(file))
-
 		binPath := filepath.Join(tmpDir, "t"+strconv.Itoa(i)+testExeSuffix())
 		if out, err := buildTestBinary(graycPath, file, binPath); err != nil {
+			fmt.Printf("\n  %s\n", c.bold(file))
 			buildFailed = true
 			fmt.Printf("    %s could not compile\n", c.red("✗"))
 			for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
@@ -98,6 +98,17 @@ func runTest(cmd *cobra.Command, args []string) error {
 		}
 
 		results, passthrough := runTestBinary(binPath)
+
+		// The prescan only checks for a `#test` line; it also matches one
+		// inside a string literal or comment. Such a file compiles to a
+		// runner with no tests — it isn't a test file, so don't report it
+		// as an empty entry.
+		if len(results) == 0 {
+			noTestFiles = append(noTestFiles, file)
+			continue
+		}
+
+		fmt.Printf("\n  %s\n", c.bold(file))
 		for _, line := range passthrough {
 			fmt.Printf("      %s\n", c.dim(line))
 		}
@@ -120,6 +131,15 @@ func runTest(cmd *cobra.Command, args []string) error {
 				fmt.Printf("      %s\n", c.dim(src))
 			}
 		}
+	}
+
+	// Files that passed the prescan but hold no real #test functions.
+	if len(noTestFiles) > 0 && totalPass+totalFail == 0 && !buildFailed {
+		fmt.Println("No #test functions found.")
+		return nil
+	}
+	for _, file := range noTestFiles {
+		fmt.Printf("\n  %s\n    no #test functions\n", c.bold(file))
 	}
 
 	fmt.Printf("\n  Results: %s, %s, %d total\n",

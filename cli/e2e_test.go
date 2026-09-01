@@ -298,6 +298,34 @@ func TestE2E_Test_NoTests(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_HashTestInStringIsNotATest(t *testing.T) {
+	dir := t.TempDir()
+	// The only `#test` occurrence is inside a raw string literal — this is
+	// not a test file and must not be reported as one.
+	os.WriteFile(filepath.Join(dir, "doc.gray"), []byte(
+		"do main() {\n"+
+			"    const DOC string = `usage:\n"+
+			"#test runs your tests\n"+
+			"`\n"+
+			"    println(DOC)\n"+
+			"}\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", dir)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test should exit 0 when no real #test functions exist, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "No #test functions found") {
+		t.Errorf("expected 'No #test functions found', got:\n%s", out)
+	}
+	if strings.Contains(out, "0 total") {
+		t.Errorf("a string-literal #test was counted as a test file:\n%s", out)
+	}
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {
