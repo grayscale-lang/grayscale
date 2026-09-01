@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3013 - raw() rejects a dynamic array index expression;
+ * the backing store relocates when the array grows.
+ */
+// expect-error: E3013
+// expect-error-count: 1
+
+do main() {
+    mut a [int] = {10, 20, 30, 40}
+    mut p ^int = raw(a[2])
+}

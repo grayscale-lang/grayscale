@@ -5513,6 +5513,62 @@ static const char *size_of_type_spelling(TypeChecker *checker, AstNode *arg) {
     return NULL;
 }
 
+/* True when an array-type spelling carries a ",N" size at bracket depth 1
+ * ([int,4], [int,N]) — a fixed-size array, whose storage never moves. A
+ * bare [int] is dynamic: its backing store is reallocated on grow. */
+static bool array_spelling_is_fixed(const char *s) {
+    if (!s || s[0] != '[') return false;
+    int depth = 0;
+    for (const char *c = s; *c; c++) {
+        if (*c == '[') depth++;
+        else if (*c == ']') { if (--depth == 0) break; }
+        else if (*c == ',' && depth == 1) return true;
+    }
+    return false;
+}
+
+/* True when `left` indexes a dynamic '[T]' array. A dynamic array's
+ * backing store relocates on grow (append / prepend / insert_at), so a
+ * raw pointer to an element dangles after any such call — the same
+ * hazard the map-index guard covers. Fixed-size '[T,N]' storage never
+ * moves. Only a plain variable reference is inspected for its written
+ * type; any other index target is treated as dynamic. */
+static bool array_index_left_is_dynamic(TypeChecker *checker, AstNode *left) {
+    GrayType *lt = resolve_expression(checker, left);
+    if (!lt || lt->kind != TK_ARRAY) return false;
+    if (left && left->kind == NODE_LABEL) {
+        Symbol *sym = scope_lookup(checker->current_scope, left->data.label.value);
+        if (!sym) {
+            char key[MSG_BUF_SIZE];
+            DeclEntry *entry = checker_resolve_entry(checker, left->data.label.value);
+            if (entry)
+                sym = scope_lookup(checker->current_scope,
+                                   module_mangle_into(entry, key, sizeof(key)));
+        }
+        if (sym && array_spelling_is_fixed(sym->declared_type)) return false;
+    }
+    return true;
+}
+
+/* True if the access path contains an index into a dynamic '[T]' array,
+ * e.g. addr(a[i]) or ref(rows[i].cells[j]). Mirrors
+ * path_contains_map_index. */
+static bool path_contains_dynamic_array_index(TypeChecker *checker, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_MEMBER_EXPR:
+        return path_contains_dynamic_array_index(checker, e->data.member.object);
+    case NODE_INDEX_EXPR:
+        if (array_index_left_is_dynamic(checker, e->data.index_expr.left))
+            return true;
+        return path_contains_dynamic_array_index(checker, e->data.index_expr.left);
+    case NODE_POSTFIX_EXPR:
+        return path_contains_dynamic_array_index(checker, e->data.postfix.left);
+    default:
+        return false;
+    }
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -5538,6 +5594,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "'addr()' cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        if (path_contains_dynamic_array_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'addr()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "'addr()' requires a variable, field, or index expression; cannot take address of a literal or expression",
@@ -5550,6 +5611,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (path_contains_map_index(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3013",
                 "'raw()' cannot take the address of a map index expression; map values may relocate on rehash",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        if (path_contains_dynamic_array_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'raw()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (!is_assignment_target(checker, arg)) {
@@ -5603,6 +5669,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (path_contains_map_index(checker, arg)) {
                 diagnostic_error_message(checker->diag, "E3013",
                     "'ref()' cannot take a reference to a map index expression; map values may relocate on rehash",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+            if (path_contains_dynamic_array_index(checker, arg)) {
+                diagnostic_error_message(checker->diag, "E3013",
+                    "'ref()' cannot take a reference to a dynamic array index expression; the backing store may relocate when the array grows",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             if (!is_assignment_target(checker, arg)) {

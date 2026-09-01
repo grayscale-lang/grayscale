@@ -519,7 +519,7 @@ p1^ = 99
 println(p2^)    // 99 — p1 and p2 point to the same variable
 ```
 
-**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index.
+**Raw pointers with `raw()`:** `raw()` takes the address of a variable just like `addr()`, but returns a **raw pointer** — an unsafe pointer with no safety guards. Dereferences skip the nil-check panic, and the compiler does not enforce const-source write protection. The same argument rules apply — `raw()` requires a variable, field, or index expression (not a literal or call result), and cannot take the address of a map index or a dynamic `[T]` array element.
 
 ```gray
 const x int = 42
@@ -3106,7 +3106,7 @@ println(r2[4])        // Prints 6 - r2 sees the change
 | `const r = ref(x)`    | `const` | yes |
 | `mut r = ref(x)`      | `const` | **no**; you cannot get a mutable reference to a const source. Use `copy(x)` to obtain an independent mutable instance. |
 
-**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` and `addr(arr[0])` are validated end-to-end.
+**Argument requirement:** `ref()` requires a variable, struct field, array index, or pointer dereference; anything with a stable address. Literals, call results, and arithmetic expressions are rejected. The same rule applies to `addr()` and `raw()`, and the check recurses through member/index chains, so `ref(some_call().field)` is validated end-to-end. Indexing a dynamic `[T]` array is also rejected for all three (`addr(arr[i])`, `raw(arr[i])`, `ref(arr[i])`) — the backing store relocates when the array grows, leaving the pointer dangling. A fixed-size `[T,N]` array element is allowed, since its storage never moves.
 
 **`assert()` — runtime assertion**
 
@@ -4450,6 +4450,7 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Returning address of local variable | `return addr(local)` is rejected. Only the direct form is detected; see the pointer escape limitation below |
 | Cross-scope pointer assignment | Assigning `addr()` of an inner-scope value directly to an outer-scope pointer is rejected. Only the direct form is detected; see the pointer escape limitation below |
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
+| Dangling pointer into a relocated container | `addr()`, `raw()`, or `ref()` on a dynamic `[T]` array element or a map value is rejected; the backing store relocates when the array grows or the map rehashes. Fixed-size `[T,N]` array elements are allowed — their storage never moves |
 | Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
 
 **Prevented by ASBAM:**
