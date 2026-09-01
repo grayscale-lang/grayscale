@@ -9851,6 +9851,26 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
 
     /* Default assignment; suppress ref auto-deref when assigning to a pointer target */
 
+    /* Plain '=' of a string to a struct field (arr[i].field, p.field, ...)
+     * inside a loop: the RHS — a concat, an interpolation, a call return —
+     * may live in the per-iteration arena, which is destroyed before the
+     * field is read again. Take the field's address once, then deep-copy the
+     * value into the outer arena (mirrors the plain-variable escape below and
+     * the += path above). Pointer-object fields already returned earlier. */
+    if (codegen->loop_scope_depth > 0 && node->data.assign.op == TOK_ASSIGN &&
+        node->data.assign.target->kind == NODE_MEMBER_EXPR) {
+        GrayType *tgt_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        if (tgt_t && tgt_t->kind == TK_STRING) {
+            emit(codegen, "{ GrayString *_tgt = &(");
+            emit_expression(codegen, node->data.assign.target);
+            emit(codegen, "); GrayString _esc_v = ");
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, "; *_tgt = gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len); }\n");
+            return;
+        }
+    }
+
     /* : when inside a loop scope and assigning a string/container
      * value to a plain variable with =, escape the value to the outer
      * arena so it survives the iteration arena's destruction. */
