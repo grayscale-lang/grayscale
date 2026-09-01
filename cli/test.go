@@ -273,10 +273,16 @@ func runTestBinary(binPath, nonce string) (results []testResult, passthrough []s
 		chunk, readErr := reader.ReadString('\n')
 		if len(chunk) > 0 {
 			line := strings.TrimRight(chunk, "\r\n")
-			if !strings.HasPrefix(line, nonce) {
-				passthrough = append(passthrough, line)
-			} else {
-				msg := strings.TrimPrefix(line, nonce)
+			// A test that writes with print() (no trailing newline) leaves the
+			// runner's protocol line glued to the end of that output, so the
+			// nonce is mid-line, not at the start. Split on it: the text before
+			// is passthrough, the text from the nonce on is the protocol line
+			// (always newline-terminated by the runner, so nothing trails it).
+			if idx := strings.Index(line, nonce); idx >= 0 {
+				if idx > 0 {
+					passthrough = append(passthrough, line[:idx])
+				}
+				msg := line[idx+len(nonce):]
 				switch {
 				case strings.HasPrefix(msg, "GRAYTEST PASS "):
 					results = append(results, testResult{
@@ -290,6 +296,8 @@ func runTestBinary(binPath, nonce string) (results []testResult, passthrough []s
 				default:
 					passthrough = append(passthrough, line)
 				}
+			} else {
+				passthrough = append(passthrough, line)
 			}
 		}
 		if readErr != nil {

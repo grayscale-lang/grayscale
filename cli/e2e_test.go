@@ -409,6 +409,28 @@ func TestE2E_Test_RecursionGuardDoesNotLeakBetweenTests(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_PrintWithoutNewlineKeepsResult(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "glue.gray")
+	// print() emits no trailing newline, so the runner's protocol line lands
+	// glued to the end of "partial" — the result must still be recorded.
+	os.WriteFile(src, []byte(
+		"#test\ndo test_no_newline() { print(\"partial\") assert(1 == 1) }\n\n"+
+			"#test\ndo test_after() { assert(2 == 2) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "2 passed") || !strings.Contains(out, "2 total") {
+		t.Errorf("a result glued to unterminated print output was dropped:\n%s", out)
+	}
+}
+
 func TestE2E_Test_LongOutputLineDoesNotHang(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "long.gray")
