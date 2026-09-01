@@ -442,7 +442,8 @@
     GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \
     GRAY_PANIC("P0110", "strconv",    "strconv.format_int: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0111", "strconv",    "strconv.format_uint: invalid base %lld; must be between 2 and 36") \
-    GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'")
+    GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'") \
+    GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

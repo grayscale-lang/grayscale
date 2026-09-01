@@ -5972,6 +5972,7 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (is_encode) emit(codegen, "gray_default_arena, ");
     if (is_decode) {
         emit_address_of(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, ", \"%s\", %d", codegen->file, node->token.line);
     } else {
         emit_expression(codegen, node->data.call.args[0]);
     }
