@@ -2067,8 +2067,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sqlite", "exec",         2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
     {"sqlite", "exec_params",  3, 3,  true,  FT_BOOL,            1, {{2, ARG_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
-    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map]"},
-    {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map]"},
+    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
+    {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_int",  2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
     {"strconv", "format_uint", 2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
@@ -2236,7 +2236,7 @@ static GrayType *typechecker_get_fallible_stdlib_type(const char *mod, const cha
     case FT_ARRAY_STRING:        return type_array("string");
     case FT_NESTED_ARRAY_STRING: return type_array("[string]");
     case FT_ARRAY_BYTE:          return type_array("byte");
-    case FT_ARRAY_MAP:           return type_array("map");
+    case FT_ARRAY_MAP:           return type_array("map[string:string]");
     case FT_STRUCT_DATABASE:     return type_struct("Database");
     case FT_STRUCT_SOCKET:       return type_struct("Socket");
     case FT_STRUCT_LISTENER:     return type_struct("Listener");

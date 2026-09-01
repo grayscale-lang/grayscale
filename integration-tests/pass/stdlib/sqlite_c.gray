@@ -38,12 +38,35 @@ do main() {
     mut _, _ = sqlite.exec(db, "INSERT INTO test (id, name) VALUES (2, 'Bob')")
 
     // query
-    mut rows, _ = sqlite.query(db, "SELECT * FROM test")
+    mut rows, _ = sqlite.query(db, "SELECT * FROM test ORDER BY id")
     if len(rows) == 2 {
         println("  [PASS] query returns 2 rows")
         passed += 1
     } otherwise {
         println("  [FAIL] query: expected 2 rows, got ${len(rows)}")
+        failed += 1
+    }
+
+    // read a column value out of an iterated row
+    mut names_seen string = ""
+    for_each row in rows {
+        names_seen = names_seen + row["name"]
+    }
+    if names_seen == "AliceBob" {
+        println("  [PASS] read column via for_each row")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each column read: got ${names_seen}")
+        failed += 1
+    }
+
+    // index a row directly and read a column
+    mut first map[string:string] = rows[0]
+    if first["name"] == "Alice" {
+        println("  [PASS] index row then read column")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] rows[0][\"name\"]: got ${first["name"]}")
         failed += 1
     }
 

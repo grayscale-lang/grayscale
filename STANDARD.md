@@ -3829,7 +3829,7 @@ mut ok, _ = sqlite.exec(db, "INSERT INTO users (name) VALUES ('Alice')")
 mut rows, err = sqlite.query(db, "SELECT * FROM users")
 if err != nil { println("query failed: ${err}") }
 for_each row in rows {
-    println(row)
+    println(row["name"])
 }
 
 sqlite.close(db)

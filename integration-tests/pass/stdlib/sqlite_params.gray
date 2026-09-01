@@ -45,6 +45,13 @@ do main() {
             println("  [FAIL] query_params: expected 1 row, got ${len(rows)}")
             failed += 1
         }
+        if len(rows) == 1 && rows[0]["age"] == "30" {
+            println("  [PASS] query_params row column read")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] query_params column read: expected age 30")
+            failed += 1
+        }
     }
 
     // query_params: SQL injection attempt returns no rows
