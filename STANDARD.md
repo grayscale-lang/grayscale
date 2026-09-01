@@ -3809,11 +3809,13 @@ SQLite database access for persistent storage.
 | `open` | `(path string) -> (Database, Error)` | Open or create a SQLite database |
 | `close` | `(db Database)` | Close database connection |
 | `exec` | `(db Database, sql string) -> (bool, Error)` | Execute a SQL statement (no rows returned) |
+| `exec_params` | `(db Database, sql string, params [string]) -> (bool, Error)` | Execute a parameterized SQL statement; bind values for `?` placeholders |
 | `query` | `(db Database, sql string) -> ([map[string:string]], Error)` | Execute a SELECT query, returns array of row maps |
+| `query_params` | `(db Database, sql string, params [string]) -> ([map[string:string]], Error)` | Execute a parameterized SELECT query; bind values for `?` placeholders |
 
-Error-returning variants: `open`, `exec`, `query` — always use destructuring.
+Error-returning variants: `open`, `exec`, `exec_params`, `query`, `query_params` — always use destructuring.
 
-> 💡 **Tip:** Parameterized queries (`?` placeholders) are not supported. Build your SQL strings directly. Always sanitize any user-supplied values before interpolating them into SQL.
+> 💡 **Tip:** For any user-supplied value, use `exec_params` / `query_params` with `?` placeholders rather than interpolating into the SQL string — parameter binding prevents SQL injection.
 
 ```gray
 import @sqlite
@@ -4024,6 +4026,7 @@ All pointer arguments must be `^int` (pointer to int).
 | `spin_lock` | `(lk SpinLock)` | Acquire a spinlock (spins until acquired) |
 | `spin_trylock` | `(lk SpinLock) -> bool` | Try to acquire; returns true if acquired |
 | `spin_unlock` | `(lk SpinLock)` | Release a spinlock |
+| `spinlock_destroy` | `(lk SpinLock)` | Destroy a spinlock and free its resources |
 
 #### Memory Barrier
 
