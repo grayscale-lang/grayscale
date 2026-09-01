@@ -15430,8 +15430,14 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     } /* end while (new_instantiations) */
     free(inst_cursors);
 
-    /* Verify main() exists (not required when building a test runner) */
-    if (!checker->test_mode && !find_func(checker, "main")) {
+    /* Verify main() exists (not required when building a test runner). A
+     * #test-attributed main is stripped from a normal build, so it does not
+     * count as an entry point here. */
+    FuncSig *main_sig = find_func(checker, "main");
+    bool main_is_test = main_sig && main_sig->decl &&
+                        main_sig->decl->kind == NODE_FUNC_DECL &&
+                        main_sig->decl->data.func_decl.is_test;
+    if (!checker->test_mode && (!main_sig || main_is_test)) {
         /* Point at the last statement or line 1 if empty */
         int err_line = 1;
         if (program->data.program.stmt_count > 0) {

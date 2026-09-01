@@ -1,0 +1,12 @@
+/*
+ * Error Test: E4005 - #test on main() is not an entry point
+ * Expected: a #test-attributed main is stripped from a normal build, so the
+ * program has no main() function.
+ */
+// expect-error: E4005
+// expect-error-count: 1
+
+#test
+do main() {
+    assert(1 == 1)
+}
