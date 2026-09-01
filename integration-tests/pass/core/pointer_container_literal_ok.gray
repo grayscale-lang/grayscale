@@ -1,0 +1,55 @@
+/*
+ * pointer_container_literal_ok.gray - addr()/raw() buried in a container
+ * literal (array/map/struct) is fine as long as the pointee outlives the
+ * container. The escape checker (#2605) must not flag these.
+ */
+
+const B struct {
+    p ^int
+}
+
+do make_array(v ^int) -> [^int] {
+    return {v}
+}
+
+do make_struct(v ^int) -> B {
+    return B{p: v}
+}
+
+do main() {
+    println("=== Pointer Container Literal (safe) Tests ===")
+
+    // Test 1: addr() of a variable that outlives the array it's stored in
+    mut x int = 42
+    mut a [^int] = {addr(x)}
+    mut p ^int = a[0]
+    if p^ == 42 {
+        println("  [PASS] addr() in array literal, same-scope read")
+    } else {
+        println("  [FAIL] addr() in array literal, same-scope read")
+    }
+
+    // Test 2: addr() of a variable that outlives the struct field it's stored in
+    mut b B = B{p: addr(x)}
+    if b.p^ == 42 {
+        println("  [PASS] addr() in struct literal field, same-scope read")
+    } else {
+        println("  [FAIL] addr() in struct literal field, same-scope read")
+    }
+
+    // Test 3: forwarding an already-valid pointer through a container
+    // literal returned from a function — the pointee (x) outlives the call.
+    mut fa [^int] = make_array(addr(x))
+    if fa[0]^ == 42 {
+        println("  [PASS] addr() forwarded through returned array literal")
+    } else {
+        println("  [FAIL] addr() forwarded through returned array literal")
+    }
+
+    mut fb B = make_struct(addr(x))
+    if fb.p^ == 42 {
+        println("  [PASS] addr() forwarded through returned struct literal")
+    } else {
+        println("  [FAIL] addr() forwarded through returned struct literal")
+    }
+}

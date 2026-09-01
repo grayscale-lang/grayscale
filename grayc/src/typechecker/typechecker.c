@@ -299,6 +299,23 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
             return src->origin_depth;
         }
     }
+    /* An element/field read *out of* a container that was built from a
+     * literal holding addr(local) — `a[0]`, `b.p`. The container's buried
+     * origin travels with the value that comes back out, but only when the
+     * slot is itself a pointer; a copied scalar field is safe. */
+    if (value->kind == NODE_INDEX_EXPR || value->kind == NODE_MEMBER_EXPR) {
+        const char *root = assignment_target_root_name(value);
+        if (root) {
+            Symbol *s = scope_lookup(checker->current_scope, root);
+            if (s && s->field_origin_depth) {
+                GrayType *vt = resolve_expression(checker, value);
+                if (vt && vt->kind == TK_POINTER) {
+                    *out_name = s->field_origin_name;
+                    return s->field_origin_depth;
+                }
+            }
+        }
+    }
     if (value->kind == NODE_CALL_EXPR)
         return call_result_origin(checker, value, out_name);
     return 0;
@@ -1200,6 +1217,14 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
                                           node->data.array_value.elements[i]);
         return out;
     }
+    case NODE_MAP_VALUE: {
+        unsigned long long out = 0;
+        for (int i = 0; i < node->data.map_value.count; i++) {
+            out |= return_expr_param_bits(checker, fs, node->data.map_value.keys[i]);
+            out |= return_expr_param_bits(checker, fs, node->data.map_value.values[i]);
+        }
+        return out;
+    }
     case NODE_CALL_EXPR: {
         AstNode *f = node->data.call.function;
         if (f && f->kind == NODE_LABEL && node->data.call.arg_count == 1 &&
@@ -1541,18 +1566,61 @@ static int call_result_origin(TypeChecker *checker, AstNode *call,
     return best;
 }
 
-/* Deepest pointer-origin among a struct literal's field initialisers, or 0.
- * A struct value built with `Field{p: addr(local)}` carries the pointee's
- * lifetime even though the address is buried in a field. */
-static int struct_literal_origin(TypeChecker *checker, AstNode *node,
-                                 const char **out_name) {
-    if (!node || node->kind != NODE_STRUCT_VALUE) return 0;
+static int container_literal_origin(TypeChecker *checker, AstNode *node,
+                                    const char **out_name);
+
+/* Deepest lifetime origin an expression carries: a tracked pointer (the
+ * direct addr()/raw() form, one laundered through a variable, or one read
+ * back out of a container) combined with an address buried inside a
+ * struct / array / map literal. */
+static int expression_origin(TypeChecker *checker, AstNode *value,
+                             const char **out_name) {
+    const char *na = NULL, *nb = NULL;
+    int a = pointer_origin_of(checker, value, &na);
+    int b = container_literal_origin(checker, value, &nb);
+    if (b > a) { *out_name = nb; return b; }
+    if (a) { *out_name = na; return a; }
+    return 0;
+}
+
+/* Deepest pointer-origin buried in a struct / array / map literal, or 0.
+ * A container built with `Field{p: addr(local)}`, `{addr(local)}`, or
+ * `{"k": addr(local)}` carries the pointee's lifetime even though the
+ * address sits inside an element. Recurses through nested literals. */
+static int container_literal_origin(TypeChecker *checker, AstNode *node,
+                                    const char **out_name) {
+    if (!node) return 0;
     int best = 0;
     const char *best_name = NULL;
-    for (int i = 0; i < node->data.struct_value.count; i++) {
-        const char *nm = NULL;
-        int d = pointer_origin_of(checker, node->data.struct_value.field_values[i], &nm);
-        if (d > best) { best = d; best_name = nm; }
+    switch (node->kind) {
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < node->data.struct_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker,
+                        node->data.struct_value.field_values[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < node->data.array_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker,
+                        node->data.array_value.elements[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < node->data.map_value.count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker, node->data.map_value.values[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+            nm = NULL;
+            d = expression_origin(checker, node->data.map_value.keys[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    default:
+        return 0;
     }
     if (best) *out_name = best_name;
     return best;
@@ -11407,7 +11475,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     node->data.var_decl.value, &origin_name);
                 dst_sym->origin_name = origin_name;
                 const char *field_origin_name = NULL;
-                dst_sym->field_origin_depth = struct_literal_origin(checker,
+                dst_sym->field_origin_depth = container_literal_origin(checker,
                     node->data.var_decl.value, &field_origin_name);
                 dst_sym->field_origin_name = field_origin_name;
             }
@@ -12077,7 +12145,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
         const char *origin_name = NULL;
-        int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+        int origin_depth = expression_origin(checker, node->data.assign.value,
                                              &origin_name);
         if (origin_depth > symbol_scope_depth(checker->current_scope, ptr_name)) {
             diagnostic_error_code_formatted(checker->diag, "E3097",
@@ -12086,10 +12154,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         } else {
             Symbol *ptr_sym = scope_lookup(checker->current_scope, ptr_name);
             if (ptr_sym) {
-                ptr_sym->origin_depth = origin_depth;
-                ptr_sym->origin_name = origin_name;
+                const char *direct_origin_name = NULL;
+                ptr_sym->origin_depth = pointer_origin_of(checker,
+                    node->data.assign.value, &direct_origin_name);
+                ptr_sym->origin_name = direct_origin_name;
                 const char *field_origin_name = NULL;
-                ptr_sym->field_origin_depth = struct_literal_origin(checker,
+                ptr_sym->field_origin_depth = container_literal_origin(checker,
                     node->data.assign.value, &field_origin_name);
                 ptr_sym->field_origin_name = field_origin_name;
             }
@@ -12101,7 +12171,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         const char *root = assignment_target_root_name(target);
         if (root) {
             const char *origin_name = NULL;
-            int origin_depth = pointer_origin_of(checker, node->data.assign.value,
+            int origin_depth = expression_origin(checker, node->data.assign.value,
                                                  &origin_name);
             int root_depth = symbol_scope_depth(checker->current_scope, root);
             if (origin_depth > root_depth) {
@@ -12187,25 +12257,22 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     }
     /* E3063: reject returning the address of a local; its memory is freed
      * when the function returns. The origin travels through intermediate
-     * pointers, a function call, and a struct field, so `mut p = addr(local);
-     * return p`, `return forward(addr(local))`, and returning a struct value
-     * whose field holds `addr(local)` are all caught. */
+     * pointers, a function call, a struct field, and a container literal
+     * (array/map/struct) or an element read back out of one, so
+     * `mut p = addr(local); return p`, `return forward(addr(local))`,
+     * `return {addr(local)}`, and `mut a [^int] = {addr(local)}; return a[0]`
+     * are all caught. */
     for (int i = 0; i < node->data.return_stmt.count; i++) {
         AstNode *return_val = node->data.return_stmt.values[i];
         const char *origin_name = NULL;
-        int origin_depth = pointer_origin_of(checker, return_val, &origin_name);
-        if (origin_depth == 0) {
-            const char *field_name = NULL;
-            int field_depth = struct_literal_origin(checker, return_val, &field_name);
-            if (field_depth == 0 && return_val->kind == NODE_LABEL) {
-                Symbol *s = scope_lookup(checker->current_scope,
-                                         return_val->data.label.value);
-                if (s && s->field_origin_depth) {
-                    field_depth = s->field_origin_depth;
-                    field_name = s->field_origin_name;
-                }
+        int origin_depth = expression_origin(checker, return_val, &origin_name);
+        if (origin_depth == 0 && return_val->kind == NODE_LABEL) {
+            Symbol *s = scope_lookup(checker->current_scope,
+                                     return_val->data.label.value);
+            if (s && s->field_origin_depth) {
+                origin_depth = s->field_origin_depth;
+                origin_name = s->field_origin_name;
             }
-            if (field_depth) { origin_depth = field_depth; origin_name = field_name; }
         }
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
