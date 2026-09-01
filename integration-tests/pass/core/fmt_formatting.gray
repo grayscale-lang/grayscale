@@ -1,6 +1,6 @@
 /*
  * fmt_formatting.gray - Integration tests for @fmt formatting functions
- * Tests: format, pad_left, pad_right, center,
+ * Tests: sprintf, pad_left, pad_right, center,
  *        int_to_hex, int_to_binary, int_to_octal,
  *        float_fixed, float_sci
  */
@@ -12,23 +12,23 @@ do main() {
     mut passed int = 0
     mut failed int = 0
 
-    // Test 1: format with string and int
-    mut s1 string = fmt.format("Hello %s, you are %d", "Alice", 30)
+    // Test 1: sprintf with string and int
+    mut s1 string = fmt.sprintf("Hello %s, you are %d", "Alice", 30)
     if s1 == "Hello Alice, you are 30" {
-        println("  [PASS] format with string and int")
+        println("  [PASS] sprintf with string and int")
         passed += 1
     } otherwise {
-        println("  [FAIL] format: got '${s1}'")
+        println("  [FAIL] sprintf: got '${s1}'")
         failed += 1
     }
 
-    // Test 2: format with no extra args
-    mut s2 string = fmt.format("plain text")
+    // Test 2: sprintf with no extra args
+    mut s2 string = fmt.sprintf("plain text")
     if s2 == "plain text" {
-        println("  [PASS] format with no args")
+        println("  [PASS] sprintf with no args")
         passed += 1
     } otherwise {
-        println("  [FAIL] format no args: got '${s2}'")
+        println("  [FAIL] sprintf no args: got '${s2}'")
         failed += 1
     }
 

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4005 - threads.current was an alias for threads.get_id and has been removed.
+ *
+ */
+
+import @threads
+
+do main() {
+    mut id int = threads.current()
+    println("thread ${id}")
+}

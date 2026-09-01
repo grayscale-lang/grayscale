@@ -53,12 +53,12 @@ do main() {
         failed += 1
     }
 
-    // current / get_id return the same value
-    if threads.current() == threads.get_id() {
-        println("  [PASS] current() == get_id()")
+    // get_id returns a stable value for the current thread
+    if threads.get_id() == threads.get_id() {
+        println("  [PASS] get_id() is stable")
         passed += 1
     } otherwise {
-        println("  [FAIL] current() != get_id()")
+        println("  [FAIL] get_id() is not stable")
         failed += 1
     }
 

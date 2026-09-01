@@ -5611,7 +5611,7 @@ static bool emit_runtime_call(CodeGen *codegen, AstNode *node, const char *func)
 /* --- @uuid module --- */
 
 static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
-    if (strcmp(func, "generate") == 0 || strcmp(func, "generate_hyphenated") == 0) {
+    if (strcmp(func, "generate") == 0) {
         emit(codegen, "gray_uuid_generate(gray_default_arena)"); return true;
     }
     if (strcmp(func, "generate_compact") == 0) {
@@ -6951,7 +6951,6 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         {"eprintf",    "fprintf(stderr, ",                       false},
         {"eprintfln",  "fprintf(stderr, ",                       true},
         {"sprintf",    "gray_string_format(gray_default_arena, ", false},
-        {"format",     "gray_string_format(gray_default_arena, ", false},
         {"sprintfln",  "gray_string_format(gray_default_arena, ", true},
     };
     for (int i = 0; i < (int)(sizeof(fmt_variants) / sizeof(fmt_variants[0])); i++) {
@@ -7069,10 +7068,6 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *func)
     }
     if (strcmp(func, "get_id") == 0) {
         emit(codegen, "gray_threads_id()");
-        return true;
-    }
-    if (strcmp(func, "current") == 0) {
-        emit(codegen, "gray_threads_current()");
         return true;
     }
     if (strcmp(func, "yield") == 0) {

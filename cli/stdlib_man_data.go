@@ -144,7 +144,6 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"encoding.to_base64":         {Module: "encoding", Group: "Byte Conversion", Kind: "func", Sig: "to_base64(bytes [byte]) -> string", Fields: "", Desc: "Encodes a byte array as a base64 string.", Example: "import @encoding\nmut b [byte] = encoding.from_string(\"hello\")\nprintln(encoding.to_base64(b))"},
 	"fmt.printf":                 {Module: "fmt", Group: "Output", Kind: "func", Sig: "printf(format string, args [T])", Fields: "", Desc: "Prints a formatted string to stdout. Uses C-style format directives: %d (int), %f (float), %s (string), %b (bool), %c (char). Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nfmt.printf(\"hello %s, you are %d years old\\n\", \"alice\", 30)"},
 	"fmt.sprintf":                {Module: "fmt", Group: "Output", Kind: "func", Sig: "sprintf(format string, args [T]) -> string", Fields: "", Desc: "Returns a formatted string without printing it. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nmut s string = fmt.sprintf(\"x = %d\", 42)\nprintln(s)"},
-	"fmt.format":                 {Module: "fmt", Group: "Output", Kind: "func", Sig: "format(format string, args [T]) -> string", Fields: "", Desc: "Returns a formatted string. Alias for sprintf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nmut s string = fmt.format(\"pi is %.2f\", 3.14159)\nprintln(s)"},
 	"fmt.printfln":               {Module: "fmt", Group: "Output", Kind: "func", Sig: "printfln(format string, args [T])", Fields: "", Desc: "Prints a formatted string to stdout with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nfmt.printfln(\"hello %s, you are %d years old\", \"alice\", 30)"},
 	"fmt.eprintf":                {Module: "fmt", Group: "Output", Kind: "func", Sig: "eprintf(format string, args [T])", Fields: "", Desc: "Prints a formatted string to stderr. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nfmt.eprintf(\"error: %s\\n\", \"something went wrong\")"},
 	"fmt.eprintfln":              {Module: "fmt", Group: "Output", Kind: "func", Sig: "eprintfln(format string, args [T])", Fields: "", Desc: "Prints a formatted string to stderr with a trailing newline. Uses the same format directives as printf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.", Example: "import @fmt\nfmt.eprintfln(\"error: %s\", \"something went wrong\")"},
@@ -423,7 +422,6 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"threads.detach":             {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "detach(t Thread)", Fields: "", Desc: "Release ownership; the thread runs independently. After detach the handle must not be joined or queried.", Example: "import @threads\nmut t Thread = threads.spawn(background_work)\nthreads.detach(t)"},
 	"threads.is_alive":           {Module: "threads", Group: "Query", Kind: "func", Sig: "is_alive(t Thread) -> bool", Fields: "", Desc: "True while the thread's body has not returned. Not valid after detach or join.", Example: "import @threads\nmut t Thread = threads.spawn(work)\nif threads.is_alive(t) { println(\"still running\") }"},
 	"threads.get_id":             {Module: "threads", Group: "Query", Kind: "func", Sig: "get_id() -> int", Fields: "", Desc: "Get the current thread's ID.", Example: "import @threads\nmut id int = threads.get_id()\nprintln(\"thread ${id}\")"},
-	"threads.current":            {Module: "threads", Group: "Query", Kind: "func", Sig: "current() -> int", Fields: "", Desc: "Get the current thread's ID. Alias for get_id.", Example: "import @threads\nmut id int = threads.current()"},
 	"threads.yield":              {Module: "threads", Group: "Control", Kind: "func", Sig: "yield()", Fields: "", Desc: "Hint the scheduler to run another runnable thread.", Example: "import @threads\nthreads.yield()"},
 	"threads.sleep":              {Module: "threads", Group: "Control", Kind: "func", Sig: "sleep(ms int)", Fields: "", Desc: "Sleep the current thread for ms milliseconds.", Example: "import @threads\nthreads.sleep(1000)"},
 	"threads.thread_count":       {Module: "threads", Group: "Query", Kind: "func", Sig: "thread_count() -> int", Fields: "", Desc: "Number of live threads spawned through this module. Excludes the main thread and non-Grayscale threads.", Example: "import @threads\nmut n int = threads.thread_count()\nprintln(\"${n} threads running\")"},
@@ -448,7 +446,6 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"time.tick":                  {Module: "time", Group: "Performance", Kind: "func", Sig: "tick() -> int", Fields: "", Desc: "Returns a high-resolution timestamp in nanoseconds for performance measurement. Use with elapsed_ms() to measure durations.", Example: "import @time\nmut start int = time.tick()\nmut elapsed int = time.elapsed_ms(start)\nprintln(elapsed)"},
 	"time.elapsed_ms":            {Module: "time", Group: "Performance", Kind: "func", Sig: "elapsed_ms(start_tick int) -> int", Fields: "", Desc: "Returns the number of milliseconds elapsed since the tick value returned by tick().", Example: "import @time\nmut start int = time.tick()\nmut elapsed int = time.elapsed_ms(start)\nprintln(elapsed)"},
 	"uuid.generate":              {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate() -> UUID", Fields: "", Desc: "Generates a random RFC 4122 version 4 UUID as a 36-character lowercase hyphenated value.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.to_string(id))"},
-	"uuid.generate_hyphenated":   {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_hyphenated() -> UUID", Fields: "", Desc: "Alias for generate. Returns a random version 4 UUID as a 36-character lowercase hyphenated value.", Example: "import @uuid\nmut id UUID = uuid.generate_hyphenated()\nprintln(uuid.to_string(id))"},
 	"uuid.generate_random":       {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_random() -> UUID", Fields: "", Desc: "Generates an RFC 4122 version 4 (random) UUID, 36-character lowercase hyphenated. The version nibble is 4.", Example: "import @uuid\nmut id UUID = uuid.generate_random()\nprintln(uuid.to_string(id))"},
 	"uuid.generate_time_ordered": {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_time_ordered() -> UUID", Fields: "", Desc: "Generates an RFC 9562 version 7 (time-ordered) UUID, 36-character lowercase hyphenated. Values sort by creation time.", Example: "import @uuid\nmut id UUID = uuid.generate_time_ordered()\nprintln(uuid.to_string(id))"},
 	"uuid.generate_compact":      {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "generate_compact(id UUID) -> string", Fields: "", Desc: "Returns the UUID with its hyphens stripped, as a 32-character hex string.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.generate_compact(id))"},
@@ -468,7 +465,7 @@ var stdlibModules = map[string][]string{
 	"crypto":   {"sha256", "md5", "random_hex"},
 	"csv":      {"parse", "encode", "headers", "read_file", "write_file"},
 	"encoding": {"base64_encode", "base64_decode", "hex_encode", "hex_decode", "url_encode", "url_decode", "from_string", "from_hex", "from_base64", "to_string", "to_hex", "to_base64"},
-	"fmt":      {"printf", "sprintf", "format", "printfln", "eprintf", "eprintfln", "sprintfln", "pad_left", "pad_right", "center", "int_to_hex", "int_to_binary", "int_to_octal", "float_fixed", "float_sci"},
+	"fmt":      {"printf", "sprintf", "printfln", "eprintf", "eprintfln", "sprintfln", "pad_left", "pad_right", "center", "int_to_hex", "int_to_binary", "int_to_octal", "float_fixed", "float_sci"},
 	"http":     {"HttpResponse", "get", "post", "put", "patch", "delete", "head"},
 	"io":       {"read_file", "read_bytes", "read_lines", "file_exists", "is_file", "is_directory", "file_size", "write_file", "append_file", "write_bytes", "append_bytes", "delete_file", "rename_file", "copy_file", "move_file", "list_dir", "make_dir", "make_dir_all", "remove_dir", "remove_dir_all", "walk", "glob", "temp_file", "temp_dir", "path_join", "dirname", "basename", "extension", "is_absolute", "normalize", "O_RDONLY", "O_WRONLY", "O_RDWR"},
 	"json":     {"encode", "stringify", "decode", "parse", "is_valid", "pretty_print"},
@@ -485,9 +482,9 @@ var stdlibModules = map[string][]string{
 	"strconv":  {"to_int", "to_uint", "to_float", "to_bool", "from_int", "from_uint", "format_int", "format_uint", "from_float", "from_bool", "quote", "unquote", "is_numeric", "is_integer", "BASE_2", "BASE_8", "BASE_10", "BASE_16", "BASE_36"},
 	"strings":  {"to_upper", "to_lower", "to_title", "to_snake_case", "to_camel_case", "trim", "trim_left", "trim_right", "contains", "starts_with", "ends_with", "index_of", "last_index_of", "count", "is_empty", "contains_any", "equal_fold", "compare", "remove_prefix", "remove_suffix", "replace", "repeat", "reverse", "slice", "split", "split_whitespace", "split_n", "join", "char_at", "append_char", "prepend_char", "insert_char_at", "remove_at", "set_char_at", "to_chars", "from_chars", "is_alpha", "is_digit", "is_alnum", "is_whitespace", "is_upper", "is_lower"},
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
-	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "current", "yield", "sleep", "thread_count"},
+	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "yield", "sleep", "thread_count"},
 	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms"},
-	"uuid":     {"generate", "generate_hyphenated", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "is_valid", "NIL_UUID"},
+	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "is_valid", "NIL_UUID"},
 }
 
 // stdlibGroup is one labeled group of names within a module index.
@@ -541,7 +538,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Byte Conversion", Names: []string{"from_string", "from_hex", "from_base64", "to_string", "to_hex", "to_base64"}},
 	},
 	"fmt": {
-		{Label: "Output        ", Names: []string{"printf", "sprintf", "format", "printfln", "eprintf", "eprintfln", "sprintfln"}},
+		{Label: "Output        ", Names: []string{"printf", "sprintf", "printfln", "eprintf", "eprintfln", "sprintfln"}},
 		{Label: "Padding       ", Names: []string{"pad_left", "pad_right", "center"}},
 		{Label: "Number Formatting", Names: []string{"int_to_hex", "int_to_binary", "int_to_octal", "float_fixed", "float_sci"}},
 	},
@@ -647,7 +644,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 	},
 	"threads": {
 		{Label: "Lifecycle     ", Names: []string{"spawn", "spawn_arg", "join", "detach"}},
-		{Label: "Query         ", Names: []string{"is_alive", "get_id", "current", "thread_count"}},
+		{Label: "Query         ", Names: []string{"is_alive", "get_id", "thread_count"}},
 		{Label: "Control       ", Names: []string{"yield", "sleep"}},
 	},
 	"time": {
@@ -659,7 +656,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Performance   ", Names: []string{"tick", "elapsed_ms"}},
 	},
 	"uuid": {
-		{Label: "Generation    ", Names: []string{"generate", "generate_hyphenated", "generate_random", "generate_time_ordered"}},
+		{Label: "Generation    ", Names: []string{"generate", "generate_random", "generate_time_ordered"}},
 		{Label: "Conversion    ", Names: []string{"generate_compact", "parse", "to_string"}},
 		{Label: "Validation    ", Names: []string{"is_valid"}},
 		{Label: "Constants     ", Names: []string{"NIL_UUID"}},

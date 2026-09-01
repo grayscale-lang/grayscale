@@ -104,21 +104,8 @@ bool gray_threads_is_alive(GrayThread t);
  *   println("thread ${id}")
  *@end
  */
-/*@man current
- *@module threads
- *@group Query
- *@sig current() -> int
- *@desc Get the current thread's ID. Alias for get_id.
- *@example
- *   import @threads
- *   mut id int = threads.current()
- *@end
- */
-/* Get current thread id (for debugging). Identical to `current()`; both
- * names exist so callers can pick whichever reads better at the call
- * site. */
+/* Get current thread id (for debugging). */
 int64_t gray_threads_id(void);
-int64_t gray_threads_current(void);
 
 /*@man yield
  *@module threads

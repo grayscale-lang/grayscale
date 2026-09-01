@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4005 - fmt.format was an alias for fmt.sprintf and has been removed.
+ *
+ */
+
+import @fmt
+
+do main() {
+    mut s string = fmt.format("x = %d", 42)
+    println(s)
+}

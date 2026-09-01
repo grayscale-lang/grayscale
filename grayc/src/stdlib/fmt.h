@@ -47,19 +47,6 @@
  */
 /* fmt.sprintf — handled directly by codegen */
 
-/*@man format
- *@module fmt
- *@group Output
- *@sig format(format string, args [T]) -> string
- *@desc Returns a formatted string. Alias for sprintf. Pass one argument per format directive; each argument is independently int, uint, float, string, bool, or char. Composite types are rejected.
- *@example
- *   import @fmt
- *   mut s string = fmt.format("pi is %.2f", 3.14159)
- *   println(s)
- *@end
- */
-/* fmt.format — handled via gray_string_format with gray_default_arena */
-
 /*@man printfln
  *@module fmt
  *@group Output

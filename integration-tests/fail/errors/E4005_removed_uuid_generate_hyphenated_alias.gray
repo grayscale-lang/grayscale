@@ -1,0 +1,11 @@
+/*
+ * Error Test: E4005 - uuid.generate_hyphenated was an alias for uuid.generate and has been removed.
+ *
+ */
+
+import @uuid
+
+do main() {
+    mut id UUID = uuid.generate_hyphenated()
+    println(uuid.to_string(id))
+}

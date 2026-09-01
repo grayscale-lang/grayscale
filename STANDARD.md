@@ -3480,7 +3480,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | `decode` | `(text string) -> map[string:string]` | Decode JSON string to map |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
 | `encode` | `(value T) -> string` | Encode to JSON string. Accepts int, float, bool, string, map, array. |
-| `stringify` | `(value T) -> string` | Encode to JSON string (alias for encode, supports `#json` structs) |
+| `stringify` | `(value T) -> string` | Encode a `#json` struct to a JSON string |
 | `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
@@ -3733,7 +3733,6 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `generate` | `() -> UUID` | Generate UUID v4 (hyphenated, 36 chars) |
-| `generate_hyphenated` | `() -> UUID` | Alias for `generate` |
 | `generate_random` | `() -> UUID` | RFC 4122 v4 (random), hyphenated, lowercase |
 | `generate_time_ordered` | `() -> UUID` | RFC 9562 v7 (time-ordered), hyphenated, lowercase. Sorts by creation time |
 | `generate_compact` | `(id UUID) -> string` | Strip hyphens from a UUID, returning a 32-char hex string |
@@ -3950,7 +3949,6 @@ Thread lifecycle management. Compiler-only feature; requires POSIX threads.
 | `detach` | `(t Thread)` | Release ownership; the thread runs independently. After detach the handle must not be joined or queried |
 | `is_alive` | `(t Thread) -> bool` | True while the thread's body has not returned. Not valid after `detach` or `join` |
 | `get_id` | `() -> int` | Get the current thread's ID |
-| `current` | `() -> int` | Same as `get_id`; alternate spelling |
 | `yield` | `()` | Hint the scheduler to run another runnable thread |
 | `sleep` | `(ms int)` | Sleep the current thread for `ms` milliseconds |
 | `thread_count` | `() -> int` | Number of live threads spawned through this module (excludes main and non-Grayscale threads) |
@@ -4048,7 +4046,6 @@ Formatted output and string formatting functions.
 | `eprintfln` | `(format string, args [T])` | Print formatted string to stderr with trailing newline |
 | `sprintf` | `(format string, args [T]) -> string` | Return formatted string |
 | `sprintfln` | `(format string, args [T]) -> string` | Return formatted string with trailing newline |
-| `format` | `(format string, args [T]) -> string` | Return formatted string |
 
 One argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types are rejected.
 

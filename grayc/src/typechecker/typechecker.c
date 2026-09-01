@@ -1876,7 +1876,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}, "string"},
     {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}, "string"},
-    {"fmt", "format",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"fmt", "int_to_binary", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_hex",    1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -2134,7 +2133,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"sync", "try_lock", 1, 1, false, FT_NONE, 0, {{0}},"bool"},
     {"sync", "unlock",   1, 1, false, FT_NONE, 0, {{0}},"void"},
     /* threads */
-    {"threads", "current",      0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"threads", "detach",       1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"threads", "get_id",       0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"threads", "is_alive",     1, 1, false, FT_NONE, 0, {{0}},"bool"},
@@ -2168,7 +2166,6 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     /* uuid */
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
-    {"uuid", "generate_hyphenated",   0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
@@ -4392,8 +4389,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                              strcmp(mfn, "eprintf") == 0 ||
                              strcmp(mfn, "eprintfln") == 0 ||
                              strcmp(mfn, "sprintf") == 0 ||
-                             strcmp(mfn, "sprintfln") == 0 ||
-                             strcmp(mfn, "format") == 0;
+                             strcmp(mfn, "sprintfln") == 0;
             if (is_fmt_fn && node->data.call.arg_count >= 1) {
                 AstNode *fmt_arg = node->data.call.args[0];
                 if (fmt_arg->kind != NODE_STRING_VALUE) {

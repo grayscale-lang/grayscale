@@ -25,18 +25,6 @@
  *@end
  */
 
-/*@man generate_hyphenated
- *@module uuid
- *@group Generation
- *@sig generate_hyphenated() -> UUID
- *@desc Alias for generate. Returns a random version 4 UUID as a 36-character lowercase hyphenated value.
- *@example
- *   import @uuid
- *   mut id UUID = uuid.generate_hyphenated()
- *   println(uuid.to_string(id))
- *@end
- */
-
 /*@man generate_random
  *@module uuid
  *@group Generation

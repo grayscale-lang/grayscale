@@ -132,10 +132,6 @@ int64_t gray_threads_id(void) {
     return (int64_t)(uintptr_t)pthread_self();
 }
 
-int64_t gray_threads_current(void) {
-    return gray_threads_id();
-}
-
 void gray_threads_yield(void) {
     sched_yield();
 }
