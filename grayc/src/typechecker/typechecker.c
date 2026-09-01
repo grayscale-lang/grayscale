@@ -11658,10 +11658,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
 
-            /* E3048: string += requires a string on both sides */
-            if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
-                aop == TOK_PLUS_ASSIGN &&
-                (target_t->kind != TK_STRING || value_t->kind != TK_STRING)) {
+            /* E3048: appending a non-string to a string. Only a string
+             * target makes '+=' a concatenation; a non-string target
+             * (array, map, struct, int, ...) is left to the arithmetic
+             * checks below and the assignment type check, so E3048 does
+             * not pile onto E3093 / E3001. */
+            if (target_t->kind == TK_STRING && value_t->kind != TK_STRING &&
+                aop == TOK_PLUS_ASSIGN) {
                 diagnostic_error_code_formatted(checker->diag, "E3048",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     type_display_name(checker, target_t), type_display_name(checker, value_t));
