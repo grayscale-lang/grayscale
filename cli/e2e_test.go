@@ -233,6 +233,71 @@ func TestE2E_Doc_NoDocAttributes(t *testing.T) {
 // --help for all subcommands
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// gray test
+// ---------------------------------------------------------------------------
+
+func TestE2E_Test_PassAndFail(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "demo.gray")
+	os.WriteFile(src, []byte(
+		"do add(a int, b int) -> int { return a + b }\n\n"+
+			"#test\ndo test_pass() { assert(add(2, 3) == 5) }\n\n"+
+			"#test\ndo test_fail() { assert(add(2, 2) == 5) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code == 0 {
+		t.Fatalf("gray test should exit non-zero when a test fails; output:\n%s", out)
+	}
+	for _, want := range []string{"test_pass", "test_fail", "FAIL", "1 passed", "1 failed", "2 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestE2E_Test_StrippedFromNormalBuild(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "app.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_never_runs() { assert(false) }\n\n"+
+			"do main() { println(\"app ran\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray <file> with a #test fn exited %d; output:\n%s", code, out)
+	}
+	if !strings.Contains(out, "app ran") {
+		t.Errorf("expected main() to run, got:\n%s", out)
+	}
+	if strings.Contains(out, "assert") || strings.Contains(out, "test_never_runs") {
+		t.Errorf("#test function leaked into a normal build:\n%s", out)
+	}
+}
+
+func TestE2E_Test_NoTests(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "plain.gray"),
+		[]byte("do main() { println(\"hi\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", dir)
+	out := combinedOutput(stdout, stderr)
+	if code != 0 {
+		t.Fatalf("gray test with no #test functions should exit 0, got %d:\n%s", code, out)
+	}
+	if !strings.Contains(out, "No #test functions found") {
+		t.Errorf("expected 'No #test functions found', got:\n%s", out)
+	}
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {
@@ -249,7 +314,7 @@ func TestE2E_Help(t *testing.T) {
 	cmds := []string{
 		"build", "check", "doc", "fmt", "man",
 		"new", "report", "update", "verify", "version",
-		"cross", "install", "watch",
+		"cross", "install", "watch", "test",
 	}
 	for _, cmd := range cmds {
 		t.Run(cmd, func(t *testing.T) {

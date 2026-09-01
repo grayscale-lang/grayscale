@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 406 codes** (277 errors, 17 warnings, 112 panics)
+**Total: 408 codes** (279 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -263,6 +263,8 @@
 | `E5043` | usage | 'fields()' requires a struct instance, got '%s' |
 | `E5044` | usage | 'error()' argument must be a string, got '%s' |
 | `E5045` | arguments | constant argument is outside the valid domain for this function |
+| `E5046` | usage | '#test' function '%s' must take no parameters and have no return type |
+| `E5047` | usage | '#test' function '%s' cannot be called directly; it runs only under 'gray test' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -457,4 +459,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-08-31 21:59:37 UTC*
+*Generated on 2026-09-01 00:10:56 UTC*

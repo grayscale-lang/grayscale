@@ -2048,6 +2048,7 @@ const Person struct {
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 | `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
+| `#test` | functions | Marks a test function, run by `gray test` and stripped from normal builds |
 
 #### 7.5.1 `#doc` Attribute
 
@@ -2188,6 +2189,55 @@ const Container struct {
 - Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
 - `#deprecated` can be stacked with other attributes (including `#discard`) on the same declaration, in any order.
 - Like all warnings, `W3007` can be suppressed with `-q W3007` or `-q all`.
+
+#### 7.5.5 `#test` Attribute
+
+The `#test` attribute marks a function as a test. Test functions are run by the
+`gray test` command and are stripped entirely from `gray build` / `gray run`
+output — they add no code and no overhead to a normal binary.
+
+```gray
+do add(a int, b int) -> int {
+    return a + b
+}
+
+#test
+do test_add() {
+    assert(add(2, 3) == 5)
+    assert(add(-1, 1) == 0)
+}
+
+#doc("Verifies the zero case")
+#test
+do test_add_zero() {
+    assert(add(0, 0) == 0)
+}
+```
+
+Running tests:
+
+```
+gray test                Run every #test function in .gray files under the current directory (recursive)
+gray test file.gray      Run the #test functions in one file
+gray test ./src          Run the #test functions under a directory
+```
+
+A failed `assert` — or any runtime panic — inside a `#test` function is
+reported as a test failure; the runner records it and continues with the
+remaining tests rather than aborting. `gray test` exits non-zero if any test
+fails or any file fails to compile.
+
+**Rules:**
+
+- `#test` can only be applied to top-level function declarations. Applying it to
+  a struct function, enum, variable, or anything else is a parse error (E2002).
+- A `#test` function must take no parameters and declare no return type (E5046).
+- A `#test` function cannot be called or referenced from other code (E5047) —
+  it is invoked only by the test runner. Factor shared logic into a normal
+  helper function.
+- `#test` can be stacked with `#doc` in either order.
+- `#test` functions are type-checked in every build (so mistakes surface during
+  `gray build`), but only compiled and executed by `gray test`.
 
 ### 7.6 Function References
 
@@ -4493,6 +4543,7 @@ The `gray` command-line tool provides the following commands:
 | `gray <file.gray>` | Compile and run a source file |
 | `gray build <file.gray>` | Compile to a distributable binary |
 | `gray check <file.gray>` | Type-check without compiling |
+| `gray test [path...]` | Compile and run `#test` functions |
 | `gray watch <file.gray>` | Watch for changes and re-run on save |
 | `gray fmt <path>` | Format source files |
 | `gray doc <path>` | Generate documentation from `#doc` attributes |
@@ -4574,7 +4625,34 @@ gray check main.gray
 gray check src/
 ```
 
-### 13.4 `gray watch`
+### 13.4 `gray test`
+
+Compile and run every function marked with the `#test` attribute.
+
+```
+gray test [path...] [flags]
+```
+
+With no path, `gray test` scans the current directory recursively for `.gray`
+files containing a `#test` function. A path may be a single file or a
+directory (scanned recursively). Each source file is compiled to its own
+temporary test binary and run.
+
+| Flag | Description |
+|------|-------------|
+| `--no-color` | Disable colored output. |
+
+A failed `assert` or runtime panic inside a `#test` function is reported as a
+failure and the runner continues. The exit code is non-zero if any test fails
+or any file fails to compile.
+
+```bash
+gray test
+gray test math_test.gray
+gray test ./src
+```
+
+### 13.5 `gray watch`
 
 Watch a file or directory for changes and re-run on save. Automatically discovers and watches imported files.
 
@@ -4594,7 +4672,7 @@ gray watch main.gray
 gray watch src/
 ```
 
-### 13.5 `gray fmt`
+### 13.6 `gray fmt`
 
 Format `.gray` source files in place. Normalizes indentation to 4 spaces, removes trailing whitespace, ensures a final newline, and collapses runs of more than 2 blank lines.
 
@@ -4621,7 +4699,7 @@ gray fmt ./...
 gray fmt --check ./...
 ```
 
-### 13.6 `gray doc`
+### 13.7 `gray doc`
 
 Generate markdown documentation from `#doc` attributes in source files.
 
@@ -4641,7 +4719,7 @@ gray doc ./...
 gray doc src/ -o API.md
 ```
 
-### 13.7 `gray new`
+### 13.8 `gray new`
 
 Scaffold a new Grayscale project.
 
@@ -4666,7 +4744,7 @@ gray new myapp -t basic -c
 gray new                          # interactive mode
 ```
 
-### 13.8 `gray man`
+### 13.9 `gray man`
 
 Show documentation for builtin functions, stdlib modules, stdlib types, and language reference (keywords, types, symbols, attributes).
 
@@ -4704,7 +4782,7 @@ gray man flags
 
 > 💡 **Tip:** For attributes, omit the `#` prefix — the shell treats `#` as a comment. Use `gray man flags`, not `gray man #flags`.
 
-### 13.9 `gray report`
+### 13.10 `gray report`
 
 Print system information for filing bug reports.
 
@@ -4714,7 +4792,7 @@ gray report
 
 Output includes Grayscale version, commit hash, OS, CPU, RAM, C compiler version, and target triple.
 
-### 13.10 `gray update`
+### 13.11 `gray update`
 
 Check for updates and upgrade to a newer version.
 
@@ -4731,7 +4809,7 @@ gray update
 gray update --pre
 ```
 
-### 13.11 `gray install`
+### 13.12 `gray install`
 
 Install a specific Grayscale version by exact semver, replacing the current installation. Supports downgrades and pre-release tags.
 
@@ -4744,7 +4822,7 @@ gray install 3.0.0
 gray install 3.1.0-beta.2
 ```
 
-### 13.12 `gray version`
+### 13.13 `gray version`
 
 Show the installed version, build commit, build timestamp, and whether newer versions are available.
 
@@ -4752,7 +4830,7 @@ Show the installed version, build commit, build timestamp, and whether newer ver
 gray version
 ```
 
-### 13.13 `gray verify`
+### 13.14 `gray verify`
 
 Run the built-in language verification suite. Compiles and runs an embedded Grayscale test program to confirm the toolchain (compiler, runtime, C backend) is working. Exits non-zero on failure.
 
@@ -4762,7 +4840,7 @@ gray verify
 
 Not available on Windows, which has no runtime yet.
 
-### 13.14 `gray cross build`
+### 13.15 `gray cross build`
 
 Cross-compile a Grayscale source file for another platform using Zig as the C cross-compiler backend.
 
@@ -4799,7 +4877,7 @@ gray cross build main.gray --target windows-amd64 -o myapp.exe
 gray cross build main.gray --target linux-arm64 --emit-c
 ```
 
-### 13.15 `gray cross targets`
+### 13.16 `gray cross targets`
 
 List all supported cross-compilation targets and their corresponding Zig triples.
 

@@ -319,6 +319,19 @@ static DiagnosticList *typecheck_diagnostics(const char *input) {
     return diagnostics;
 }
 
+/* Helper: parse and typecheck in --test mode (main() not required). */
+static DiagnosticList *typecheck_diagnostics_test_mode(const char *input) {
+    DiagnosticList *diagnostics = diagnostic_create();
+    diagnostics->use_color = false;
+    Lexer *lexer = lexer_create(arena, input, "test.gray");
+    Parser *parser = parser_create(arena, lexer, "test.gray", diagnostics);
+    AstNode *program = parser_parse_program(parser);
+    TypeChecker *checker = typechecker_create(diagnostics, "test.gray");
+    typechecker_set_test_mode(checker, true);
+    typechecker_check(checker, program);
+    return diagnostics;
+}
+
 /* Helper: check if a specific error code was emitted */
 static bool has_error_code(DiagnosticList *diagnostics, const char *code) {
     for (int i = 0; i < diagnostics->count; i++) {
@@ -1244,6 +1257,54 @@ static void test_error_E3048_string_plus(void) {
         "do main() { mut s string = \"a\" + 5 }");
     ASSERT(has_error_code(diagnostics, "E3048"));
     diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E5046_test_fn_signature(void) {
+    /* #test function must take no params and no return type */
+    DiagnosticList *with_param = typecheck_diagnostics_test_mode(
+        "#test\ndo test_x(a int) { assert(a == 1) }");
+    ASSERT(has_error_code(with_param, "E5046"));
+    diagnostic_destroy(with_param);
+
+    DiagnosticList *with_ret = typecheck_diagnostics_test_mode(
+        "#test\ndo test_y() -> int { return 1 }");
+    ASSERT(has_error_code(with_ret, "E5046"));
+    diagnostic_destroy(with_ret);
+
+    DiagnosticList *ok = typecheck_diagnostics_test_mode(
+        "#test\ndo test_z() { assert(1 == 1) }");
+    ASSERT(!has_error_code(ok, "E5046"));
+    ASSERT(!diagnostic_has_errors(ok));
+    diagnostic_destroy(ok);
+}
+
+static void test_error_E5047_calling_test_fn(void) {
+    /* a #test function cannot be called or referenced from other code */
+    DiagnosticList *called = typecheck_diagnostics(
+        "#test\ndo test_helper() { assert(1 == 1) }\n"
+        "do main() { test_helper() }");
+    ASSERT(has_error_code(called, "E5047"));
+    diagnostic_destroy(called);
+
+    DiagnosticList *referenced = typecheck_diagnostics(
+        "#test\ndo test_helper() { assert(1 == 1) }\n"
+        "do main() { const f = ref(test_helper) }");
+    ASSERT(has_error_code(referenced, "E5047"));
+    diagnostic_destroy(referenced);
+}
+
+static void test_test_mode_skips_no_main_error(void) {
+    /* --test build: a file with only #test functions and no main() is valid */
+    DiagnosticList *test_mode = typecheck_diagnostics_test_mode(
+        "#test\ndo test_a() { assert(1 == 1) }");
+    ASSERT(!has_error_code(test_mode, "E4005"));
+    diagnostic_destroy(test_mode);
+
+    /* normal build: no main() is still E4005 */
+    DiagnosticList *normal = typecheck_diagnostics(
+        "#test\ndo test_a() { assert(1 == 1) }");
+    ASSERT(has_error_code(normal, "E4005"));
+    diagnostic_destroy(normal);
 }
 
 static void test_error_E3057_invalid_map_key(void) {
@@ -2407,6 +2468,9 @@ int main(void) {
     RUN_TEST(test_error_E2067_empty_struct);
     RUN_TEST(test_error_E3047_enum_no_member);
     RUN_TEST(test_error_E3048_string_plus);
+    RUN_TEST(test_error_E5046_test_fn_signature);
+    RUN_TEST(test_error_E5047_calling_test_fn);
+    RUN_TEST(test_test_mode_skips_no_main_error);
     RUN_TEST(test_error_E3057_invalid_map_key);
     RUN_TEST(test_error_E3059_const_map);
     RUN_TEST(test_error_E3061_recursive_struct);

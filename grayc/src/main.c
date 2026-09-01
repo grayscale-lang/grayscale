@@ -55,6 +55,7 @@ static void print_usage(void) {
     fprintf(stderr, "  --quiet W1001   Suppress specific warnings (comma-separated)\n");
     fprintf(stderr, "  --arena-limit=<size>  Max arena memory (e.g. 256MB, 1GB; default: 1GB)\n");
     fprintf(stderr, "  --no-color      Disable colored output\n");
+    fprintf(stderr, "  --test          Build a test runner from #test functions (used by 'gray test')\n");
     fprintf(stderr, "  -h, --help      Show this help\n");
 }
 
@@ -258,6 +259,7 @@ typedef struct {
     bool check_only;
     bool run_mode;
     bool fmt_mode;
+    bool test_mode;               /* --test: emit a test runner instead of calling main() */
     bool verbose;
     bool show_time;
     bool no_color;
@@ -343,6 +345,10 @@ static ArgsStatus parse_args(int argc, char **argv, CompilerOptions *opts) {
         }
         if (strcmp(argv[i], "--fmt") == 0) {
             opts->fmt_mode = true;
+            continue;
+        }
+        if (strcmp(argv[i], "--test") == 0) {
+            opts->test_mode = true;
             continue;
         }
         if (strncmp(argv[i], "--arena-limit=", 14) == 0) {
@@ -507,6 +513,7 @@ int main(int argc, char **argv) {
 
     /* Type check */
     TypeChecker *checker = typechecker_create(diag, opts.input_file);
+    typechecker_set_test_mode(checker, opts.test_mode);
     typechecker_add_file_module(checker, opts.input_file, NULL, true);
     for (int i = 0; i < imports.count; i++)
         typechecker_add_file_module(checker, imports.files[i], imports.modules[i], false);
@@ -553,6 +560,7 @@ int main(int argc, char **argv) {
     codegen.type_table = typechecker_get_table(checker);
     codegen.modules = typechecker_get_modules(checker);
     codegen.arena_limit = opts.arena_limit;
+    codegen.test_mode = opts.test_mode;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
 

@@ -11378,6 +11378,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         } else if (stmt->kind == NODE_ENUM_DECL) {
             BUCKET_PUSH(enum_bucket, enum_bucket_count, enum_bucket_cap, stmt);
         } else if (stmt->kind == NODE_FUNC_DECL) {
+            /* #test functions exist only for `gray test`; a normal build
+             * drops them entirely (no forward decl, no definition, no call). */
+            if (!codegen->test_mode && stmt->data.func_decl.is_test) continue;
             BUCKET_PUSH(func_bucket, func_bucket_count, func_bucket_cap, stmt);
         } else if (stmt->kind == NODE_VAR_DECL) {
             BUCKET_PUSH(var_bucket, var_bucket_count, var_bucket_cap, stmt);
@@ -11394,6 +11397,10 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"builtins.h\"\n");
     /* os.h is always needed — generated main() calls gray_os_init(). */
     emit(codegen, "#include \"os.h\"\n");
+    /* test.h declares the test-runner entry points used by the generated
+     * main() when compiling with --test. */
+    if (codegen->test_mode)
+        emit(codegen, "#include \"test.h\"\n");
     /* arrays.h / maps.h / strings.h are spliced in here after body emission,
      * but only when the `in` operator or an explicit import needs them. */
     size_t collection_include_anchor = codegen->output.len;
@@ -12038,10 +12045,29 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (codegen->global_init.len > 0) {
         append_string_to_buffer(&codegen->output, codegen->global_init.data);
     }
-    emit(codegen, "    gray_fn_main();\n");
-    emit(codegen, "    gray_runtime_shutdown();\n");
-    emit(codegen, "    return 0;\n");
-    emit(codegen, "}\n");
+    if (codegen->test_mode) {
+        /* Test runner: call each #test function under the runner's recovery
+         * point so a failed assert/panic is recorded, not fatal. */
+        emit(codegen, "    gray_test_begin();\n");
+        for (int i = 0; i < func_bucket_count; i++) {
+            AstNode *fn = func_bucket[i];
+            if (fn->kind != NODE_FUNC_DECL || !fn->data.func_decl.is_test) continue;
+            const char *name = fn->data.func_decl.original_name
+                ? fn->data.func_decl.original_name : fn->data.func_decl.name;
+            emit_formatted(codegen,
+                "    gray_test_run(\"%s\", gray_fn_%s, \"%s\", %d);\n",
+                name, fn->data.func_decl.name, codegen->file, fn->token.line);
+        }
+        emit(codegen, "    int _gray_test_rc = gray_test_end();\n");
+        emit(codegen, "    gray_runtime_shutdown();\n");
+        emit(codegen, "    return _gray_test_rc;\n");
+        emit(codegen, "}\n");
+    } else {
+        emit(codegen, "    gray_fn_main();\n");
+        emit(codegen, "    gray_runtime_shutdown();\n");
+        emit(codegen, "    return 0;\n");
+        emit(codegen, "}\n");
+    }
 
     /* Splice the collection headers into the preamble now that body emission
      * has settled which ones are actually used. */

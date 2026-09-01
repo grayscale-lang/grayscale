@@ -993,6 +993,26 @@ static void test_parse_deprecated_on_struct_func(void) {
     ASSERT_STR_EQ(fn->data.func_decl.deprecated_message, "use add");
 }
 
+/* #test on a top-level function sets is_test; on anything else it's E2002. */
+static void test_parse_test_attribute(void) {
+    AstNode *program = parse_test_input("#test\ndo test_it() { assert(1 == 1) }");
+    AstNode *statement = first_statement(program);
+    ASSERT(!parser_has_code(diagnostics, "E2002"));
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
+    ASSERT(statement->data.func_decl.is_test);
+}
+
+static void test_parse_test_attribute_on_struct_is_error(void) {
+    parse_test_input("const S struct {\n x int\n #test\n do check() {}\n}");
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+}
+
+static void test_parse_test_attribute_on_var_is_error(void) {
+    parse_test_input("#test\nmut x int = 1");
+    ASSERT(parser_has_code(diagnostics, "E2002"));
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -1104,6 +1124,9 @@ int main(void) {
     RUN_TEST(test_parse_float_literal_in_range);
     RUN_TEST(test_parse_error_deprecated_on_struct_field);
     RUN_TEST(test_parse_error_attributes_on_enum_variant);
+    RUN_TEST(test_parse_test_attribute);
+    RUN_TEST(test_parse_test_attribute_on_struct_is_error);
+    RUN_TEST(test_parse_test_attribute_on_var_is_error);
     RUN_TEST(test_parse_deprecated_on_struct_func);
 
     PRINT_RESULTS();

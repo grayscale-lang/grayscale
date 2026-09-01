@@ -502,6 +502,12 @@ var langManDocs = map[string]LangManEntry{
 		Desc:    "Allows callers to ignore the return value of a function without triggering E5011. Cannot be applied to void functions (E5042).",
 		Example: "#discard\ndo tryInsert(value int) -> bool {\n    return true\n}\n\ndo main() {\n    tryInsert(42)  // OK — no E5011\n}",
 	},
+	"#test": {
+		Kind:    "attribute",
+		Syntax:  "#test",
+		Desc:    "Marks a test function, run by 'gray test' and stripped from normal builds. Must take no parameters and no return type (E5046).",
+		Example: "#test\ndo test_add() {\n    assert(add(2, 3) == 5)\n}",
+	},
 }
 
 // langGroup is one labeled group of names within a language category index.
@@ -532,7 +538,7 @@ var langCategories = map[string][]langGroup{
 		{Label: "Symbols", Names: []string{"^", "&", "->", "@", "#", "?", "<?>"}},
 	},
 	"attributes": {
-		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard"}},
+		{Label: "Attributes", Names: []string{"#doc", "#json", "#flags", "#strict", "#discard", "#test"}},
 	},
 }
 
@@ -552,6 +558,7 @@ var langSymbolAliases = map[string]string{
 	"flags":   "#flags",
 	"strict":  "#strict",
 	"discard": "#discard",
+	"test":    "#test",
 }
 
 // langDisplayName strips the _type suffix used to avoid builtin key collisions.

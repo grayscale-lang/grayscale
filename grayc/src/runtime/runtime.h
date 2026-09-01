@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <setjmp.h>
 
 /* --- Arena Defaults --- */
 #define GRAY_DEFAULT_ARENA_SIZE   (1024 * 1024)
@@ -174,6 +176,20 @@ void gray_panic_code(const char *code, const char *fmt, ...)
 
 void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...)
     __attribute__((format(printf, 4, 5), noreturn));
+
+/* --- Test-runner failure hook (see runtime/test.c) ---
+ * While a #test function is executing under `gray test`, gray_test_active is
+ * true and any panic or failed assert is redirected here instead of exit(1):
+ * the message is captured and control longjmps back to the runner so the
+ * remaining tests still run. In every other program these are inert. */
+extern bool gray_test_active;
+extern jmp_buf gray_test_env;
+
+_Noreturn void gray_test_vfail(const char *code, const char *file, int line,
+                               const char *fmt, va_list args);
+_Noreturn void gray_test_fail(const char *code, const char *file, int line,
+                              const char *fmt, ...)
+    __attribute__((format(printf, 4, 5)));
 
 /* Nil-check a pointer and return it, so a checked dereference stays an
  * lvalue: `((T*)gray_ptr_check(p, f, l))->field` can be assigned, indexed,

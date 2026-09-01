@@ -621,9 +621,12 @@ Token lexer_next_token(Lexer *lexer) {
         } else if (check_upcoming_chars(lexer, "#deprecated", 11)) {
             tok = make_token(TOK_DEPRECATED, "#deprecated", tok.line, tok.column);
             for (int i = 0; i < 10; i++) read_char(lexer);
+        } else if (check_upcoming_chars(lexer, "#test", 5)) {
+            tok = make_token(TOK_TEST, "#test", tok.line, tok.column);
+            for (int i = 0; i < 4; i++) read_char(lexer);
         } else {
             lexer->error_code = "E1019";
-            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard', '#deprecated' for attributes";
+            lexer->error_msg = "unexpected character '#'; use '//' for comments, or '#strict', '#flags', '#json', '#doc', '#discard', '#deprecated', '#test' for attributes";
             tok = make_token(TOK_ILLEGAL, lexer->error_msg, tok.line, tok.column);
         }
         break;

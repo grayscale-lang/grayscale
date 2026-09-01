@@ -241,10 +241,18 @@ typedef struct {
     int const_int_count;
     int const_int_cap;
 
+    /* --test mode: building a test runner, so main() is not required and
+     * #test functions are not flagged as unused. */
+    bool test_mode;
+
 } TypeChecker;
 
 /* Create and run the type checker */
 TypeChecker *typechecker_create(DiagnosticList *diag, const char *file);
+
+/* Enable --test mode: main() is not required and #test functions are exempt
+ * from the unused-function warning. */
+void typechecker_set_test_mode(TypeChecker *checker, bool enabled);
 
 /* Record which module a source file belongs to. The import driver calls this
  * for the entry file and every file it pulls in, before typechecker_check. */

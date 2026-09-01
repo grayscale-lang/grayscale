@@ -168,6 +168,10 @@ typedef struct {
     /* Arena growth limit in bytes (0 = use 1 GB default) */
     size_t arena_limit;
 
+    /* --test mode: emit a test runner main() that calls every #test
+     * function; in normal builds #test functions are not emitted at all. */
+    bool test_mode;
+
     /* Monotonic counter for generating unique temporary variable names.
      * Every emitter that needs a unique C identifier draws from this
      * single counter via codegen_next_id(). */

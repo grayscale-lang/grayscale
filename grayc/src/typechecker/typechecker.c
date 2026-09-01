@@ -1603,6 +1603,17 @@ static void warn_if_func_deprecated(TypeChecker *checker, AstNode *node, FuncSig
     warn_deprecated(checker, node, "function", display, sig->deprecated_message);
 }
 
+/* E5047: a #test function is an entry point for `gray test`; a normal build
+ * strips it, so any call or reference from other code would dangle. Called
+ * from every path that resolves a bare/qualified function to a FuncSig. */
+static void reject_test_fn_reference(TypeChecker *checker, AstNode *node, FuncSig *sig) {
+    if (!sig || !sig->decl || sig->decl->kind != NODE_FUNC_DECL) return;
+    if (!sig->decl->data.func_decl.is_test) return;
+    diagnostic_error_code_formatted(checker->diag, "E5047",
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+        func_display_name(sig));
+}
+
 /* Exempt references to a deprecated struct's own type from within its own
  * struct-functions (same mechanism as the existing private-field-access
  * check: checker->current_struct_name, set/restored around struct-function
@@ -5544,6 +5555,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             FuncSig *rfs = find_func(checker, arg->data.label.value);
             if (rfs) rfs->used = true;
             warn_if_func_deprecated(checker, node, rfs);
+            reject_test_fn_reference(checker, node, rfs);
             /* Build typed function reference: "func(int,string)->int" */
             char sig[MSG_BUF_SIZE];
             int pos = 0;
@@ -6253,6 +6265,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     if (sig) {
         sig->used = true;
         warn_if_func_deprecated(checker, node, sig);
+        reject_test_fn_reference(checker, node, sig);
         /* Use the user-facing name in error messages, never
          * the module-prefixed internal key. */
         function_name = func_display_name(sig);
@@ -8524,6 +8537,7 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     if (ref_sig) {
         ref_sig->used = true;
         warn_if_func_deprecated(checker, node, ref_sig);
+        reject_test_fn_reference(checker, node, ref_sig);
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
@@ -14538,6 +14552,13 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
                     NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             }
         }
+        /* E5046: #test functions take no parameters and return nothing */
+        if (stmt->data.func_decl.is_test &&
+            (parameter_count > 0 || return_count > 0)) {
+            diagnostic_error_code_formatted(checker->diag, "E5046",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                FUNC_DISPLAY_NAME(stmt));
+        }
         /* Check for reserved prefix */
         check_reserved_name(checker, stmt->data.func_decl.name,
             NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
@@ -15044,6 +15065,10 @@ void typechecker_add_file_module(TypeChecker *checker, const char *file,
     module_table_map_file(checker->modules, file, module_name, is_entry);
 }
 
+void typechecker_set_test_mode(TypeChecker *checker, bool enabled) {
+    checker->test_mode = enabled;
+}
+
 void typechecker_add_module_alias(TypeChecker *checker, const char *alias,
                                   const char *module_name) {
     module_table_add_alias(checker->modules, alias, module_name);
@@ -15405,8 +15430,8 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     } /* end while (new_instantiations) */
     free(inst_cursors);
 
-    /* Verify main() exists */
-    if (!find_func(checker, "main")) {
+    /* Verify main() exists (not required when building a test runner) */
+    if (!checker->test_mode && !find_func(checker, "main")) {
         /* Point at the last statement or line 1 if empty */
         int err_line = 1;
         if (program->data.program.stmt_count > 0) {
@@ -15436,9 +15461,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     /* Warn about unused functions (skip main and struct-namespaced) */
     for (int i = 0; i < checker->func_count; i++) {
         FuncSig *fs = &checker->funcs[i];
+        bool is_test_fn = fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
+                          fs->decl->data.func_decl.is_test;
         if (!fs->used && fs->def_line > 0 &&
             strcmp(fs->name, "main") != 0 &&
-            !fs->is_private &&
+            !fs->is_private && !is_test_fn &&
             !(fs->name[0] >= 'A' && fs->name[0] <= 'Z' && strchr(fs->name, '_'))) {
             const char *display = func_display_name(fs);
             char *msg = NULL;

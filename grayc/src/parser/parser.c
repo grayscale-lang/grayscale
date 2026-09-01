@@ -2341,6 +2341,16 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             next_token(parser);
             continue;
         }
+        /* #test is not allowed on struct functions — a test function must be
+         * a top-level 'do' so the runner can call it directly. */
+        if (current_token_is(parser, TOK_TEST)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#test attribute can only be applied to top-level function declarations, not struct functions"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser);
+            continue;
+        }
         /* #deprecated inside struct body: same pending-flag treatment,
          * independent of pending_discard so both can stack on one function. */
         if (current_token_is(parser, TOK_DEPRECATED)) {
@@ -2597,6 +2607,14 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             diagnostic_error_message(parser->diag, "E2089",
                 arena_copy_string(parser->arena,
                     "#discard attribute can only be applied to function declarations, not enum variants"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            next_token(parser);
+            continue;
+        }
+        if (current_token_is(parser, TOK_TEST)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#test attribute can only be applied to function declarations, not enum variants"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             next_token(parser);
             continue;
@@ -3310,6 +3328,19 @@ static AstNode *parse_statement(Parser *parser) {
         } else {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
+    case TOK_TEST: {
+        /* #test; applies to the next function declaration */
+        next_token(parser);
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_test = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;

@@ -242,10 +242,11 @@ static void test_line_tracking(void) {
 }
 
 static void test_hash_attributes(void) {
-    Lexer *lexer = create_test_lexer("#strict #flags #doc");
+    Lexer *lexer = create_test_lexer("#strict #flags #doc #test");
     ASSERT_EQ(next_token(lexer).type, TOK_STRICT);
     ASSERT_EQ(next_token(lexer).type, TOK_FLAGS);
     ASSERT_EQ(next_token(lexer).type, TOK_DOC);
+    ASSERT_EQ(next_token(lexer).type, TOK_TEST);
 }
 
 static void test_hello_world_tokens(void) {

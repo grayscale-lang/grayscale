@@ -326,6 +326,7 @@ struct AstNode {
             AstNode *body;
             bool is_private;
             bool is_discard;
+            bool is_test;                    /* #test attribute — test-only fn */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             /* Wildcard generics concrete type bindings recorded

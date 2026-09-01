@@ -1,0 +1,43 @@
+/*
+ * test_attribute_stripped.gray - #test functions are stripped from a normal
+ * build. Run via `gray <file>`, main() executes and the #test function is not
+ * compiled in at all (see the cli e2e test TestE2E_Test_StrippedFromNormalBuild
+ * for the "no leak" assertion). Run via `gray test`, the #test function passes.
+ */
+
+do triple(x int) -> int {
+    return x * 3
+}
+
+// A helper used only by the #test function. It must still typecheck and must
+// not trigger an "unused function" warning even though it is stripped.
+do expected_triple() -> int {
+    return 9
+}
+
+#test
+do test_triple() {
+    assert(triple(3) == expected_triple())
+}
+
+do main() {
+    println("=== #test stripping ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if triple(4) == 12 {
+        println("  [PASS] main runs normally")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] triple(4)")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
