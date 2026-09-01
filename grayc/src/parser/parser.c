@@ -3553,6 +3553,7 @@ static AstNode *parse_statement(Parser *parser) {
         const char *dep_msgs[7];
         Token sites[7];
         int count = 0;
+        int seen = 0;
         bool malformed = false;
 
         while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)) {
@@ -3608,6 +3609,8 @@ static AstNode *parse_statement(Parser *parser) {
                 }
             }
 
+            seen++;
+
             char canon[24];
             snprintf(canon, sizeof(canon), "#%s", nm);
             if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canon)) && count < 7) {
@@ -3638,7 +3641,7 @@ static AstNode *parse_statement(Parser *parser) {
             break;
         }
 
-        if (!malformed && count == 0 && current_token_is(parser, TOK_RBRACKET)) {
+        if (!malformed && seen == 0 && current_token_is(parser, TOK_RBRACKET)) {
             diagnostic_error_code_help(parser->diag, "E2093",
                 parser->file, open.line, open.column, 0,
                 "'#[...]' cannot be empty; list at least one attribute");
