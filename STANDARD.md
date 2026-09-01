@@ -86,6 +86,7 @@ Identifiers must:
 - Contain only ASCII letters, digits, and underscores
 - Not be a reserved keyword
 - Not use the reserved prefixes `gray_`, `_gray_`, or `Gray` (reserved for the compiler)
+- Not be `main`, except as the name of the top-level entry-point function (E4026)
 
 The standalone `_` is the blank identifier (see §4.5) and is not a valid variable or function name.
 

@@ -245,6 +245,12 @@ typedef struct {
      * #test functions are not flagged as unused. */
     bool test_mode;
 
+    /* Set when a non-function declaration tried to claim the name `main`
+     * (E4026). Suppresses the follow-on "program has no main() function"
+     * (E4005), which would otherwise fire because the bad declaration
+     * shadowed the real entry point in the symbol table. */
+    bool main_name_misused;
+
 } TypeChecker;
 
 /* Create and run the type checker */

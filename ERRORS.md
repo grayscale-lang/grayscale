@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 414 codes** (285 errors, 17 warnings, 112 panics)
+**Total: 415 codes** (286 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -235,6 +235,7 @@
 | `E4023` | names | module '%s' has no function named '%s' |
 | `E4024` | names | module '%s' has no member named '%s' |
 | `E4025` | names | public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public |
+| `E4026` | names | 'main' is reserved for the program entry point; it can only name a top-level 'do main()' function |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -465,4 +466,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-01 11:24:11 UTC*
+*Generated on 2026-09-01 11:36:39 UTC*

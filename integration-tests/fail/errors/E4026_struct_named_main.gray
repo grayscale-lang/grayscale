@@ -1,0 +1,9 @@
+// expect-error: E4026
+// expect-error-count: 1
+// A struct cannot be named 'main'.
+
+const main struct {
+    x int
+}
+
+do main() {}

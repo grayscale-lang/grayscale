@@ -1,0 +1,9 @@
+// expect-error: E4026
+// expect-error-count: 1
+// An enum cannot be named 'main'.
+
+const main enum {
+    A
+}
+
+do main() {}

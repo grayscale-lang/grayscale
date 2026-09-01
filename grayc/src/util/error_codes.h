@@ -253,7 +253,8 @@
     GRAY_ERROR("E4022", "names", "struct function '%s.%s' conflicts with the top-level function '%s'; a bare call inside the struct resolves to the top-level one, so rename one of them") \
     GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'") \
     GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'") \
-    GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public")
+    GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public") \
+    GRAY_ERROR("E4026", "names", "'main' is reserved for the program entry point; it can only name a top-level 'do main()' function")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

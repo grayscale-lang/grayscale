@@ -9430,6 +9430,17 @@ static void check_reserved_name(TypeChecker *checker, const char *name, const ch
     }
 }
 
+/* Reject `main` as the name of anything but the top-level entry-point
+ * function. Without this a `const main`, `mut main`, struct/enum/alias/param
+ * named `main` either collides silently or surfaces as a misleading
+ * "program has no main() function" (E4005). */
+static void check_reserved_main(TypeChecker *checker, const char *name, const char *file, int line, int col) {
+    if (name && strcmp(name, "main") == 0) {
+        diagnostic_error_code(checker->diag, "E4026", file, line, col, 0);
+        checker->main_name_misused = true;
+    }
+}
+
 /* --- Keyword alias consistency (E2088) --- */
 
 /* One alias family: the spelling that first established the file's dialect.
@@ -10113,6 +10124,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         diagnostic_error_message(checker->diag, "E5035", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
+    /* E4026: 'main' is reserved for the entry-point function */
+    check_reserved_main(checker, node->data.var_decl.name,
+        NODE_FILE(checker, node), node->token.line, node->token.column);
     /* E3045: or_return on non-error-returning function */
     if (strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0 &&
         node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
@@ -11044,6 +11058,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        /* A variable named `main` was already rejected with E4026; the
+         * shadow checks below would only pile a second, vaguer error on top. */
+        if (strcmp(node->data.var_decl.name, "main") != 0) {
         /* E4012: shadows a type — only when the variable name matches a
          * type usable by that same name. is_struct_name/is_enum_name key
          * on the flattened (module-prefixed) name, so a legitimate local
@@ -11092,6 +11109,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        } /* end: name != "main" */
         if (declared->kind == TK_UNKNOWN &&
             !(node->data.var_decl.value &&
               (node->data.var_decl.value->kind == NODE_CALL_EXPR ||
@@ -12824,6 +12842,8 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E5035", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, p->name, NODE_FILE(checker, node), node->token.line, node->token.column);
         /* Check for duplicate parameter name */
         for (int j = 0; j < i; j++) {
             if (strcmp(node->data.func_decl.params[j].name, p->name) == 0) {
@@ -14039,6 +14059,11 @@ static void register_decl_aliases(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
             goto next_alias;
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        if (strcmp(aname, "main") == 0) {
+            check_reserved_main(checker, aname, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+            goto next_alias;
+        }
         /* E4007: collision with existing struct/enum type */
         if (type_name_already_declared(checker, aname, stmt) ||
             is_struct_name(checker, aname) || is_enum_name(checker, aname)) {
@@ -14135,6 +14160,8 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as an enum name", en);
             diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, stmt->data.enum_decl.name, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
         /* E2016: empty enum */
         if (stmt->data.enum_decl.value_count == 0) {
             diagnostic_error_code_formatted(checker->diag, "E2016", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
@@ -14207,10 +14234,12 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
                 break;
             }
         }
-        /* E4007: duplicate enum name */
-        if (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
+        /* E4007: duplicate enum name. An enum named `main` collides with the
+         * entry point, but E4026 already says so — don't pile on. */
+        if (strcmp(stmt->data.enum_decl.name, "main") != 0 &&
+            (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
             is_enum_name(checker, stmt->data.enum_decl.name) ||
-            is_struct_name(checker, stmt->data.enum_decl.name)) {
+            is_struct_name(checker, stmt->data.enum_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "a type named '%s' is already declared",
@@ -14404,10 +14433,14 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             msg = typechecker_format(checker, "'%s' is a standard library module and cannot be used as a struct name", sn);
             diagnostic_error_message(checker->diag, "E5035", msg, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0);
         }
-        /* E4007: duplicate struct name */
-        if (type_name_already_declared(checker, stmt->data.struct_decl.name, stmt) ||
+        /* E4026: 'main' is reserved for the entry-point function */
+        check_reserved_main(checker, stmt->data.struct_decl.name, NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+        /* E4007: duplicate struct name. A struct named `main` collides with
+         * the entry point, but E4026 already says so — don't pile on. */
+        if (strcmp(stmt->data.struct_decl.name, "main") != 0 &&
+            (type_name_already_declared(checker, stmt->data.struct_decl.name, stmt) ||
             is_struct_name(checker, stmt->data.struct_decl.name) ||
-            is_enum_name(checker, stmt->data.struct_decl.name)) {
+            is_enum_name(checker, stmt->data.struct_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "a type named '%s' is already declared",
@@ -14578,9 +14611,12 @@ static void register_decl_functions(TypeChecker *checker, AstNode *program) {
         if (find_func(checker, stmt->data.func_decl.name)) {
             diagnostic_error_code_formatted(checker->diag, "E4004", NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, FUNC_DISPLAY_NAME(stmt));
         }
-        /* E4007: function name conflicts with a type */
-        if (is_struct_name(checker, stmt->data.func_decl.name) ||
-            is_enum_name(checker, stmt->data.func_decl.name)) {
+        /* E4007: function name conflicts with a type. `do main()` paired with
+         * a type named `main` already produced E4026 on the type — the real
+         * entry point is not the problem, so don't flag it here. */
+        if (strcmp(stmt->data.func_decl.name, "main") != 0 &&
+            (is_struct_name(checker, stmt->data.func_decl.name) ||
+            is_enum_name(checker, stmt->data.func_decl.name))) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "function '%s' conflicts with a type of the same name",
@@ -15449,7 +15485,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     bool main_is_test = main_sig && main_sig->decl &&
                         main_sig->decl->kind == NODE_FUNC_DECL &&
                         main_sig->decl->data.func_decl.is_test;
-    if (!checker->test_mode && (!main_sig || main_is_test)) {
+    if (!checker->test_mode && !checker->main_name_misused && (!main_sig || main_is_test)) {
         /* Point at the last statement or line 1 if empty */
         int err_line = 1;
         if (program->data.program.stmt_count > 0) {
