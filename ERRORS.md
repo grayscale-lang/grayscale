@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 409 codes** (280 errors, 17 warnings, 112 panics)
+**Total: 410 codes** (281 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -277,6 +277,7 @@
 | `E6009` | imports | '%s' and '%s' produce the same compiled name; one of them would be lost |
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E6011` | imports | module '%s' is already imported in this file |
+| `E6012` | imports | #json struct '%s' requires 'import @json' in the same file |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -460,4 +461,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-01 10:30:32 UTC*
+*Generated on 2026-09-01 10:40:37 UTC*

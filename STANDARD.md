@@ -2100,6 +2100,7 @@ do main() {
 **Rules:**
 
 - Field names in the JSON must match the struct field names exactly.
+- A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `int`, `uint`, `float`, `string`, `bool`.
 

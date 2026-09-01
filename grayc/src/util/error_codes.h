@@ -301,7 +301,8 @@
     GRAY_ERROR("E6008", "imports", "cannot assign to '%s.%s'; a module %s is read-only from outside the module that declares it") \
     GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope") \
-    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file")
+    GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file") \
+    GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \

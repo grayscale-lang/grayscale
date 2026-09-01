@@ -3,6 +3,8 @@
  * Expected: E3103 error, compilation fails
  */
 
+import @json
+
 do double(n int) -> int { return n * 2 }
 
 #json

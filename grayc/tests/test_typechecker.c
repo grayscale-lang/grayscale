@@ -1961,6 +1961,7 @@ static void test_error_E3070_nested_ensure(void) {
 
 static void test_error_E3103_json_struct_func_field(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  callback func(int) -> int\n"
@@ -1972,6 +1973,7 @@ static void test_error_E3103_json_struct_func_field(void) {
 
 static void test_error_E3104_json_struct_method(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  name string\n"
@@ -1984,6 +1986,7 @@ static void test_error_E3104_json_struct_method(void) {
 
 static void test_error_E3109_json_struct_default_value(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @json\n"
         "#json\n"
         "const Config struct {\n"
         "  name string = \"default\"\n"

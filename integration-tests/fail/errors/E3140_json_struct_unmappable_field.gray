@@ -4,6 +4,8 @@
 
 // expect-error: E3140
 
+import @json
+
 const Kind enum {
     A
     B

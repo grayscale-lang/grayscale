@@ -3,6 +3,8 @@
  * Expected: E3109 error
  */
 
+import @json
+
 #json
 const Settings struct {
     name string = "default"

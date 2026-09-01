@@ -13228,6 +13228,15 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     }
     /* E3103/E3104: #json structs are data-only */
     if (node->data.struct_decl.is_json) {
+        /* E6012: the generated serializer helpers call into the json runtime,
+         * whose declarations only reach the C output when @json is imported.
+         * Without the import the helper references undeclared symbols and the
+         * C compiler fails instead of the typechecker. */
+        if (!typechecker_is_imported_module(checker, "json")) {
+            diagnostic_error_code_formatted_help(checker->diag, "E6012",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
+        }
         for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
             const char *ftype = node->data.struct_decl.fields[field_index].type_name;
             if (ftype && strncmp(ftype, "func", 4) == 0) {

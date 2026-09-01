@@ -1,0 +1,13 @@
+// expect-error: E6012
+// expect-error-count: 1
+// A #json struct with no 'import @json' in the file. The generated serializer
+// helpers reference the json runtime, so this must be rejected up front rather
+// than leaking a C compiler error.
+
+#json
+const Point struct {
+    x int
+    y int
+}
+
+do main() {}
