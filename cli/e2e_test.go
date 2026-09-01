@@ -384,6 +384,29 @@ func TestE2E_Test_ImportedTestsRunOnce(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_RecursionGuardDoesNotLeakBetweenTests(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "depth.gray")
+	os.WriteFile(src, []byte(
+		"do recurse(n int) -> int { return recurse(n + 1) + 1 }\n\n"+
+			"#test\ndo test_overflows() { mut x int = recurse(0) println(\"${x}\") }\n\n"+
+			"#test\ndo test_trivial_pass() { assert(2 == 2) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	// One test overflows the stack, the next is assert(2 == 2) — it must still
+	// pass; the recursion counter can't carry over from the panicking test.
+	if code == 0 {
+		t.Fatalf("expected non-zero exit (one test overflows):\n%s", out)
+	}
+	if !strings.Contains(out, "1 passed") || !strings.Contains(out, "1 failed") {
+		t.Errorf("recursion guard leaked into the next test:\n%s", out)
+	}
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {

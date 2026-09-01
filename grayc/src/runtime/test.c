@@ -78,6 +78,14 @@ void gray_test_run(const char *name, void (*fn)(void), const char *file, int lin
     gray_test_fail_file = NULL;
     gray_test_fail_line = 0;
 
+    /* A panicking test longjmps straight back here, so the pending
+     * gray_exit_func() decrements on the unwound C frames never run and
+     * gray_call_depth is left pinned wherever the panic hit it. Snapshot it
+     * now and restore below so the next test starts from a clean baseline
+     * instead of tripping the recursion guard on its first call.
+     * Not modified after this point, so it survives the longjmp untouched. */
+    int saved_call_depth = gray_call_depth;
+
     if (setjmp(gray_test_env) == 0) {
         gray_test_active = true;
         fn();
@@ -92,6 +100,7 @@ void gray_test_run(const char *name, void (*fn)(void), const char *file, int lin
                gray_test_fail_msg[0] ? gray_test_fail_msg : "test failed");
         gray_test_fail_count++;
     }
+    gray_call_depth = saved_call_depth;
     fflush(stdout);
 }
 
