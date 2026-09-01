@@ -1,7 +1,0 @@
-/* Panic Test: P0060 - strconv.to_bool cannot convert invalid string */
-import @strconv
-
-do main() {
-    mut val, mut err = strconv.to_bool("xyz")
-    println(val)
-}

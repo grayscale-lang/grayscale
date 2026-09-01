@@ -23,7 +23,8 @@
  *@desc The response object returned by all http request functions. Also available when the server module is imported.
  *@example
  *   import @http
- *   mut resp, err = http.get("http://example.com")
+ *   mut headers map[string:string] = {:}
+ *   mut resp, err = http.get("http://example.com", headers)
  *   println(resp.status)
  *   println(resp.body)
  *@end
