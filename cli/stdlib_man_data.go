@@ -417,7 +417,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"sync.unlock":                {Module: "sync", Group: "Mutex", Kind: "func", Sig: "unlock(m Mutex)", Fields: "", Desc: "Release a mutex.", Example: "import @sync\nsync.lock(m)\n// critical section\nsync.unlock(m)"},
 	"sync.try_lock":              {Module: "sync", Group: "Mutex", Kind: "func", Sig: "try_lock(m Mutex) -> bool", Fields: "", Desc: "Try to acquire a mutex without blocking. Returns true if acquired.", Example: "import @sync\nif sync.try_lock(m) {\n    // critical section\n    sync.unlock(m)\n}"},
 	"sync.destroy":               {Module: "sync", Group: "Mutex", Kind: "func", Sig: "destroy(m Mutex)", Fields: "", Desc: "Destroy a mutex and free its resources.", Example: "import @sync\nsync.destroy(m)"},
-	"threads.spawn":              {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "spawn(fn func()) -> Thread", Fields: "", Desc: "Spawn a new thread running fn. If a second int argument is provided, it is passed to the function.", Example: "import @threads\nmut t Thread = threads.spawn(()my_func)\nthreads.join(t)"},
+	"threads.spawn":              {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "spawn(fn func()) -> Thread", Fields: "", Desc: "Spawn a new thread running fn. To pass an int argument to fn, use spawn_arg (or call spawn with a second int argument, which forwards to spawn_arg).", Example: "import @threads\nmut t Thread = threads.spawn(()my_func)\nthreads.join(t)"},
+	"threads.spawn_arg":          {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "spawn_arg(fn func(int), arg int) -> Thread", Fields: "", Desc: "Spawn a new thread running fn, passing arg to it as its single int parameter.", Example: "import @threads\nmut t Thread = threads.spawn_arg(()worker, 7)\nthreads.join(t)"},
 	"threads.join":               {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "join(t Thread)", Fields: "", Desc: "Wait for a thread to finish. Frees the underlying handle.", Example: "import @threads\nmut t Thread = threads.spawn(work)\nthreads.join(t)"},
 	"threads.detach":             {Module: "threads", Group: "Lifecycle", Kind: "func", Sig: "detach(t Thread)", Fields: "", Desc: "Release ownership; the thread runs independently. After detach the handle must not be joined or queried.", Example: "import @threads\nmut t Thread = threads.spawn(background_work)\nthreads.detach(t)"},
 	"threads.is_alive":           {Module: "threads", Group: "Query", Kind: "func", Sig: "is_alive(t Thread) -> bool", Fields: "", Desc: "True while the thread's body has not returned. Not valid after detach or join.", Example: "import @threads\nmut t Thread = threads.spawn(work)\nif threads.is_alive(t) { println(\"still running\") }"},
@@ -484,7 +485,7 @@ var stdlibModules = map[string][]string{
 	"strconv":  {"to_int", "to_uint", "to_float", "to_bool", "from_int", "from_uint", "format_int", "format_uint", "from_float", "from_bool", "quote", "unquote", "is_numeric", "is_integer", "BASE_2", "BASE_8", "BASE_10", "BASE_16", "BASE_36"},
 	"strings":  {"to_upper", "to_lower", "to_title", "to_snake_case", "to_camel_case", "trim", "trim_left", "trim_right", "contains", "starts_with", "ends_with", "index_of", "last_index_of", "count", "is_empty", "contains_any", "equal_fold", "compare", "remove_prefix", "remove_suffix", "replace", "repeat", "reverse", "slice", "split", "split_whitespace", "split_n", "join", "char_at", "append_char", "prepend_char", "insert_char_at", "remove_at", "set_char_at", "to_chars", "from_chars", "is_alpha", "is_digit", "is_alnum", "is_whitespace", "is_upper", "is_lower"},
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
-	"threads":  {"spawn", "join", "detach", "is_alive", "get_id", "current", "yield", "sleep", "thread_count"},
+	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "current", "yield", "sleep", "thread_count"},
 	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms"},
 	"uuid":     {"generate", "generate_hyphenated", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "is_valid", "NIL_UUID"},
 }
@@ -645,7 +646,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Mutex         ", Names: []string{"mutex", "lock", "unlock", "try_lock", "destroy"}},
 	},
 	"threads": {
-		{Label: "Lifecycle     ", Names: []string{"spawn", "join", "detach"}},
+		{Label: "Lifecycle     ", Names: []string{"spawn", "spawn_arg", "join", "detach"}},
 		{Label: "Query         ", Names: []string{"is_alive", "get_id", "current", "thread_count"}},
 		{Label: "Control       ", Names: []string{"yield", "sleep"}},
 	},

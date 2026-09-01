@@ -23,10 +23,22 @@ typedef struct {
  *@module threads
  *@group Lifecycle
  *@sig spawn(fn func()) -> Thread
- *@desc Spawn a new thread running fn. If a second int argument is provided, it is passed to the function.
+ *@desc Spawn a new thread running fn. To pass an int argument to fn, use spawn_arg (or call spawn with a second int argument, which forwards to spawn_arg).
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn(()my_func)
+ *   threads.join(t)
+ *@end
+ */
+
+/*@man spawn_arg
+ *@module threads
+ *@group Lifecycle
+ *@sig spawn_arg(fn func(int), arg int) -> Thread
+ *@desc Spawn a new thread running fn, passing arg to it as its single int parameter.
+ *@example
+ *   import @threads
+ *   mut t Thread = threads.spawn_arg(()worker, 7)
  *   threads.join(t)
  *@end
  */
