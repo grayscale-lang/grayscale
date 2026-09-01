@@ -1,14 +1,16 @@
 // test.go — `gray test`: discover #test functions, compile each source file
 // with `grayc --test`, run the resulting binary, and render the results.
 //
-// The test binary speaks a small line protocol on stdout:
+// The test binary speaks a small line protocol on stdout, each line prefixed
+// with a per-run nonce passed in via GRAY_TEST_PROTOCOL_NONCE:
 //
-//	GRAYTEST PASS <name>
-//	GRAYTEST FAIL <name>\t<file>:<line>\t<message>
-//	GRAYTEST DONE <passed> <failed>
+//	<nonce>GRAYTEST PASS <name>
+//	<nonce>GRAYTEST FAIL <name>\t<file>:<line>\t<message>
+//	<nonce>GRAYTEST DONE <passed> <failed>
 //
 // Everything else the binary prints (a println inside a test, say) is passed
-// straight through.
+// straight through. The nonce keeps test output that happens to contain
+// "GRAYTEST ..." from forging protocol lines.
 //
 // Author:  Marshall A Burns (@SchoolyB)
 // Copyright (c) 2025-Present Marshall A Burns
@@ -18,6 +20,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -79,6 +83,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	nonce := newProtocolNonce()
 	totalPass, totalFail := 0, 0
 	buildFailed := false
 	var noTestFiles []string
@@ -97,7 +102,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		results, passthrough := runTestBinary(binPath)
+		results, passthrough := runTestBinary(binPath, nonce)
 
 		// The prescan only checks for a `#test` line; it also matches one
 		// inside a string literal or comment. Such a file compiles to a
@@ -233,10 +238,22 @@ type testResult struct {
 	line    int
 }
 
+// newProtocolNonce returns an unguessable token the test binary must prefix
+// every protocol line with. A test's own stdout can't forge it.
+func newProtocolNonce() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("GRAYTEST-NONCE-%d:", os.Getpid())
+	}
+	return "GT" + hex.EncodeToString(b[:]) + ":"
+}
+
 // runTestBinary executes the compiled test binary and parses its GRAYTEST
-// protocol lines. Any other stdout line is returned as passthrough.
-func runTestBinary(binPath string) (results []testResult, passthrough []string) {
+// protocol lines (each prefixed with nonce). Any other stdout line is returned
+// as passthrough.
+func runTestBinary(binPath, nonce string) (results []testResult, passthrough []string) {
 	cmd := exec.Command(binPath)
+	cmd.Env = append(os.Environ(), "GRAY_TEST_PROTOCOL_NONCE="+nonce)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, []string{"error: " + err.Error()}
@@ -251,15 +268,20 @@ func runTestBinary(binPath string) (results []testResult, passthrough []string) 
 	sawDone := false
 	for scanner.Scan() {
 		line := scanner.Text()
+		if !strings.HasPrefix(line, nonce) {
+			passthrough = append(passthrough, line)
+			continue
+		}
+		msg := strings.TrimPrefix(line, nonce)
 		switch {
-		case strings.HasPrefix(line, "GRAYTEST PASS "):
+		case strings.HasPrefix(msg, "GRAYTEST PASS "):
 			results = append(results, testResult{
-				name:   strings.TrimPrefix(line, "GRAYTEST PASS "),
+				name:   strings.TrimPrefix(msg, "GRAYTEST PASS "),
 				passed: true,
 			})
-		case strings.HasPrefix(line, "GRAYTEST FAIL "):
-			results = append(results, parseFailLine(strings.TrimPrefix(line, "GRAYTEST FAIL ")))
-		case strings.HasPrefix(line, "GRAYTEST DONE "):
+		case strings.HasPrefix(msg, "GRAYTEST FAIL "):
+			results = append(results, parseFailLine(strings.TrimPrefix(msg, "GRAYTEST FAIL ")))
+		case strings.HasPrefix(msg, "GRAYTEST DONE "):
 			sawDone = true
 		default:
 			passthrough = append(passthrough, line)

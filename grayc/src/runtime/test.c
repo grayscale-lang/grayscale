@@ -12,6 +12,19 @@
 
 #include "test.h"
 #include <stdio.h>
+#include <stdlib.h>
+
+/* Per-run nonce the `gray test` runner passes in via the environment. Every
+ * protocol line is prefixed with it so a #test that prints "GRAYTEST ..." to
+ * stdout (a logger, a formatter, or a hostile test) cannot forge a result.
+ * Empty when the binary is run directly, so the raw protocol is still usable.
+ * Captured once in gray_test_begin() so a test mutating the environment can't
+ * change it under the runner. */
+static char gray_test_nonce_buf[128];
+
+static const char *gray_test_nonce(void) {
+    return gray_test_nonce_buf;
+}
 
 /* --- Failure hook (referenced from runtime.c and builtins.c) --- */
 
@@ -51,6 +64,13 @@ static int gray_test_fail_count = 0;
 void gray_test_begin(void) {
     gray_test_pass_count = 0;
     gray_test_fail_count = 0;
+
+    const char *n = getenv("GRAY_TEST_PROTOCOL_NONCE");
+    if (n) {
+        snprintf(gray_test_nonce_buf, sizeof(gray_test_nonce_buf), "%s", n);
+    } else {
+        gray_test_nonce_buf[0] = '\0';
+    }
 }
 
 void gray_test_run(const char *name, void (*fn)(void), const char *file, int line) {
@@ -62,11 +82,11 @@ void gray_test_run(const char *name, void (*fn)(void), const char *file, int lin
         gray_test_active = true;
         fn();
         gray_test_active = false;
-        printf("GRAYTEST PASS %s\n", name);
+        printf("%sGRAYTEST PASS %s\n", gray_test_nonce(), name);
         gray_test_pass_count++;
     } else {
         /* gray_test_vfail already cleared gray_test_active */
-        printf("GRAYTEST FAIL %s\t%s:%d\t%s\n", name,
+        printf("%sGRAYTEST FAIL %s\t%s:%d\t%s\n", gray_test_nonce(), name,
                gray_test_fail_file ? gray_test_fail_file : file,
                gray_test_fail_file ? gray_test_fail_line : line,
                gray_test_fail_msg[0] ? gray_test_fail_msg : "test failed");
@@ -76,7 +96,8 @@ void gray_test_run(const char *name, void (*fn)(void), const char *file, int lin
 }
 
 int gray_test_end(void) {
-    printf("GRAYTEST DONE %d %d\n", gray_test_pass_count, gray_test_fail_count);
+    printf("%sGRAYTEST DONE %d %d\n", gray_test_nonce(),
+           gray_test_pass_count, gray_test_fail_count);
     fflush(stdout);
     return gray_test_fail_count > 0 ? 1 : 0;
 }

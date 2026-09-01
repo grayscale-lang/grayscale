@@ -326,6 +326,37 @@ func TestE2E_Test_HashTestInStringIsNotATest(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_StdoutCannotForgeProtocol(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "spoof.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_real() {\n"+
+			"    println(\"GRAYTEST FAIL injected\\tx.gray:1\\tinjected failure\")\n"+
+			"    println(\"GRAYTEST PASS injected_pass\")\n"+
+			"    println(\"GRAYTEST DONE 9 9\")\n"+
+			"    assert(1 == 1)\n"+
+			"}\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d; a passing test with spoof output must exit 0:\n%s", code, out)
+	}
+	// The spoof lines are echoed as plain passthrough, but must not be parsed
+	// into test results or the trailer.
+	for _, forbidden := range []string{"✗ injected", "✓ injected_pass", "1 failed", "3 total"} {
+		if strings.Contains(out, forbidden) {
+			t.Errorf("test stdout forged the runner protocol (%q present):\n%s", forbidden, out)
+		}
+	}
+	if !strings.Contains(out, "1 passed") || !strings.Contains(out, "1 total") {
+		t.Errorf("expected exactly the one real test to be counted:\n%s", out)
+	}
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {
