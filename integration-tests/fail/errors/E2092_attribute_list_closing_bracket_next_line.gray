@@ -1,0 +1,10 @@
+// expect-error: E2092
+// expect-error-count: 1
+// The closing ']' of a #[...] list sits on the next physical line. The list
+// must stay on a single line, so this is rejected.
+
+#[test
+]
+do a() {}
+
+do main() {}

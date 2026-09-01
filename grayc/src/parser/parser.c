@@ -3641,6 +3641,16 @@ static AstNode *parse_statement(Parser *parser) {
             break;
         }
 
+        /* The closing ']' must sit on the opening line too — the in-loop check
+         * only sees attribute-name tokens, so `#[flags\n]` and `#[a, b\n]`
+         * would otherwise slip through. */
+        if (!malformed && current_token_is(parser, TOK_RBRACKET) &&
+            parser->cur_token.line != open.line) {
+            diagnostic_error_code(parser->diag, "E2092",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            malformed = true;
+        }
+
         if (!malformed && seen == 0 && current_token_is(parser, TOK_RBRACKET)) {
             diagnostic_error_code_help(parser->diag, "E2093",
                 parser->file, open.line, open.column, 0,
