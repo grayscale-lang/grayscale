@@ -1,0 +1,10 @@
+// expect-error: E2091
+// expect-error-count: 1
+// An unrecognised attribute name inside a #[...] list.
+
+#[test, bogus]
+do something() -> int {
+    return 1
+}
+
+do main() {}

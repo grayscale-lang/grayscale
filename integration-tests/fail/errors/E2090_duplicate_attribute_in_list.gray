@@ -1,0 +1,10 @@
+// expect-error: E2090
+// expect-error-count: 1
+// The same attribute listed twice inside one #[...] container.
+
+#[test, test]
+do something() -> int {
+    return 1
+}
+
+do main() {}

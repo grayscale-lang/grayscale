@@ -76,6 +76,88 @@ static bool note_dup_attr(Parser *parser, AttrBit bit, const char *name) {
     return false;
 }
 
+/* Maps a bare attribute name (as written inside a `#[...]` list) to its
+ * AttrBit. Returns 0 for an unrecognised name. */
+static AttrBit attr_bit_for_name(const char *name) {
+    if (strcmp(name, "strict") == 0)     return ATTR_STRICT;
+    if (strcmp(name, "flags") == 0)      return ATTR_FLAGS;
+    if (strcmp(name, "json") == 0)       return ATTR_JSON;
+    if (strcmp(name, "discard") == 0)    return ATTR_DISCARD;
+    if (strcmp(name, "test") == 0)       return ATTR_TEST;
+    if (strcmp(name, "deprecated") == 0) return ATTR_DEPRECATED;
+    if (strcmp(name, "doc") == 0)        return ATTR_DOC;
+    return (AttrBit)0;
+}
+
+/* Applies one attribute (identified by its bare name) to the declaration that
+ * follows a `#[...]` list, emitting the same E2002 misapplied-attribute message
+ * the stacked `#attr` form uses when the declaration kind does not accept it.
+ * `dep_msg` is the optional #deprecated string (NULL otherwise); `where`
+ * locates the diagnostic. */
+static void apply_named_attribute(Parser *parser, AstNode *stmt,
+                                  const char *name, const char *dep_msg,
+                                  Token where) {
+    if (strcmp(name, "test") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_test = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "discard") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_discard = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "json") == 0) {
+        if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_json = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "flags") == 0) {
+        if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_flags = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "strict") == 0) {
+        if (stmt && stmt->kind == NODE_WHEN_STMT) {
+            stmt->data.when_stmt.is_strict = true;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "deprecated") == 0) {
+        if (stmt && stmt->kind == NODE_FUNC_DECL) {
+            stmt->data.func_decl.is_deprecated = true;
+            stmt->data.func_decl.deprecated_message = dep_msg;
+        } else if (stmt && stmt->kind == NODE_STRUCT_DECL) {
+            stmt->data.struct_decl.is_deprecated = true;
+            stmt->data.struct_decl.deprecated_message = dep_msg;
+        } else if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_deprecated = true;
+            stmt->data.enum_decl.deprecated_message = dep_msg;
+        } else {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    }
+    /* "doc": the parser discards #doc metadata today, so there is nothing to
+     * attach here — the entry is still validated for name and duplication. */
+}
+
 static void next_token(Parser *parser) {
     parser->cur_token = parser->peek_token;
     parser->peek_token = lexer_next_token(parser->lexer);
@@ -2355,6 +2437,21 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             && !current_token_is(parser, TOK_PRIVATE)) {
             parser->attr_seen_mask = 0;
         }
+        /* `#[...]` attribute lists are not supported on struct functions yet;
+         * stack the attributes instead. Emit one error and skip the list so the
+         * body keeps parsing. */
+        if (current_token_is(parser, TOK_HASH_LBRACKET)) {
+            diagnostic_error_message(parser->diag, "E2002",
+                arena_copy_string(parser->arena,
+                    "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)
+                   && !current_token_is(parser, TOK_RBRACE)) {
+                next_token(parser);
+            }
+            if (current_token_is(parser, TOK_RBRACKET)) next_token(parser);
+            continue;
+        }
         /* : skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
          * the next token (do/private do) is handled normally. */
@@ -3441,6 +3538,135 @@ static AstNode *parse_statement(Parser *parser) {
         }
         next_token(parser);
         return parse_statement(parser);
+    case TOK_HASH_LBRACKET: {
+        /* Single-line attribute list: `#[a, b, c("arg")]`. Additive sugar for
+         * the stacked `#attr` form — each entry is validated against the
+         * following declaration exactly as if it had been stacked.
+         *
+         * The list must stay on one physical line for now. If the attribute
+         * set ever grows enough that one line becomes unwieldy, a multi-line
+         * form can be permitted here. */
+        Token open = parser->cur_token;
+        next_token(parser); /* consume '#[' */
+
+        const char *names[7];
+        const char *dep_msgs[7];
+        Token sites[7];
+        int count = 0;
+        bool malformed = false;
+
+        while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)) {
+            /* `#[#test]` — an inner '#' on an entry. */
+            if (current_token_is(parser, TOK_STRICT) || current_token_is(parser, TOK_FLAGS) ||
+                current_token_is(parser, TOK_DOC)    || current_token_is(parser, TOK_JSON_ATTR) ||
+                current_token_is(parser, TOK_DISCARD)|| current_token_is(parser, TOK_DEPRECATED) ||
+                current_token_is(parser, TOK_TEST)) {
+                diagnostic_error_code_help(parser->diag, "E2093",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                    "write attributes without '#' inside '#[...]'");
+                malformed = true;
+                break;
+            }
+            if (!current_token_is(parser, TOK_IDENT)) {
+                diagnostic_error_code_help(parser->diag, "E2093",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                    "expected an attribute name");
+                malformed = true;
+                break;
+            }
+            if (parser->cur_token.line != open.line) {
+                diagnostic_error_code(parser->diag, "E2092",
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                malformed = true;
+                break;
+            }
+
+            Token site = parser->cur_token;
+            const char *nm = parser->cur_token.literal;
+            AttrBit bit = attr_bit_for_name(nm);
+            if (bit == (AttrBit)0) {
+                diagnostic_error_code_formatted(parser->diag, "E2091",
+                    parser->file, site.line, site.column, 0, nm);
+                malformed = true;
+                break;
+            }
+            next_token(parser); /* consume the name */
+
+            const char *dep_msg = NULL;
+            if (current_token_is(parser, TOK_LPAREN)) {
+                next_token(parser); /* consume '(' */
+                if (strcmp(nm, "deprecated") == 0 && current_token_is(parser, TOK_STRING)) {
+                    dep_msg = arena_copy_string(parser->arena, parser->cur_token.literal);
+                }
+                /* doc() args are discarded today; deprecated() takes just the
+                 * string above. Consume through the matching ')'. */
+                while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
+                    next_token(parser);
+                }
+                if (current_token_is(parser, TOK_RPAREN)) {
+                    next_token(parser); /* consume ')' */
+                }
+            }
+
+            char canon[24];
+            snprintf(canon, sizeof(canon), "#%s", nm);
+            if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canon)) && count < 7) {
+                names[count]    = arena_copy_string(parser->arena, nm);
+                dep_msgs[count] = dep_msg;
+                sites[count]    = site;
+                count++;
+            }
+
+            if (current_token_is(parser, TOK_COMMA)) {
+                next_token(parser); /* consume ',' */
+                if (current_token_is(parser, TOK_RBRACKET)) {
+                    diagnostic_error_code_help(parser->diag, "E2093",
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        "remove the trailing ',' before ']'");
+                    malformed = true;
+                    break;
+                }
+                continue;
+            }
+            if (current_token_is(parser, TOK_RBRACKET)) {
+                break;
+            }
+            diagnostic_error_code_help(parser->diag, "E2093",
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                "expected ',' or ']' after an attribute");
+            malformed = true;
+            break;
+        }
+
+        if (!malformed && count == 0 && current_token_is(parser, TOK_RBRACKET)) {
+            diagnostic_error_code_help(parser->diag, "E2093",
+                parser->file, open.line, open.column, 0,
+                "'#[...]' cannot be empty; list at least one attribute");
+            malformed = true;
+        }
+
+        if (current_token_is(parser, TOK_RBRACKET)) {
+            next_token(parser); /* consume ']' */
+        }
+
+        /* On a malformed list, skip ahead to the declaration keyword so the
+         * rest of the file still parses without a diagnostic cascade. */
+        if (malformed) {
+            while (!current_token_is(parser, TOK_EOF) &&
+                   !current_token_is(parser, TOK_DO) &&
+                   !current_token_is(parser, TOK_CONST) &&
+                   !current_token_is(parser, TOK_WHEN) &&
+                   !current_token_is(parser, TOK_MUT)) {
+                next_token(parser);
+            }
+        }
+
+        AstNode *stmt = parse_statement(parser);
+        for (int i = 0; i < count; i++) {
+            apply_named_attribute(parser, stmt, names[i], dep_msgs[i], sites[i]);
+        }
+        return stmt;
+    }
     case TOK_ENSURE:
         return parse_ensure_statement(parser);
     case TOK_BLANK:

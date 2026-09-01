@@ -80,6 +80,7 @@ typedef enum {
     TOK_QUESTION,       /* ?  — wildcard type placeholder */
 
     /* Hash attributes */
+    TOK_HASH_LBRACKET,  /* #[ — opens a single-line attribute list */
     TOK_STRICT,         /* #strict */
     TOK_FLAGS,          /* #flags */
     TOK_DOC,            /* #doc */

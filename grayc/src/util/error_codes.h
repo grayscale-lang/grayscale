@@ -93,7 +93,10 @@
     GRAY_ERROR("E2087", "syntax", "type parameters (<?>) cannot be mixed with value parameters in the same function") \
     GRAY_ERROR("E2088", "syntax", "mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d") \
     GRAY_ERROR("E2089", "syntax", "#discard attribute can only be applied to function declarations, not struct fields") \
-    GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration")
+    GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration") \
+    GRAY_ERROR("E2091", "syntax", "unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test") \
+    GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
+    GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 410 codes** (281 errors, 17 warnings, 112 panics)
+**Total: 413 codes** (284 errors, 17 warnings, 112 panics)
 
 ---
 
@@ -81,6 +81,9 @@
 | `E2088` | syntax | mixed keyword aliases in the same file; '%s' used here, but '%s' was used on line %d |
 | `E2089` | syntax | #discard attribute can only be applied to function declarations, not struct fields |
 | `E2090` | syntax | duplicate '%s' attribute; each attribute may appear at most once per declaration |
+| `E2091` | syntax | unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test |
+| `E2092` | syntax | '#[...]' attribute list must be on a single line |
+| `E2093` | syntax | malformed '#[...]' attribute list |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -461,4 +464,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-01 10:40:37 UTC*
+*Generated on 2026-09-01 10:50:23 UTC*

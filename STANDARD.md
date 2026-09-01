@@ -2019,7 +2019,7 @@ mathlib.factorial(5)          // OK - public
 
 ### 7.5 Attributes
 
-Attributes are annotations prefixed with `#` that modify declaration behavior. Attributes are placed on the line(s) immediately before a declaration, one attribute per line:
+Attributes are annotations prefixed with `#` that modify declaration behavior. Attributes are placed on the line(s) immediately before a declaration, either stacked one per line or grouped into a single-line `#[...]` list:
 
 ```gray
 #doc("A person with a name and age")
@@ -2028,11 +2028,18 @@ const Person struct {
     name string
     age int
 }
+
+// Equivalent, using the single-line container form:
+#[doc("A person with a name and age"), json]
+const Person struct {
+    name string
+    age int
+}
 ```
 
 **Rules:**
 
-- One attribute per line, stacked before the declaration. Same-line multi-attribute (`#doc("x") #json`) is not supported.
+- Attributes may be stacked one per line, or written as a single-line `#[a, b, c]` list (see 7.5.6). The stacked and container forms are equivalent and may be mixed on the same declaration. Same-line stacking without the container (`#doc("x") #json`) is not supported.
 - Order is irrelevant. `#doc` then `#json` and `#json` then `#doc` produce identical results.
 - A given attribute may appear at most once per declaration; a repeat is rejected (E2090).
 - Blank lines between attributes and the declaration are allowed.
@@ -2240,6 +2247,42 @@ fails or any file fails to compile.
 - `#test` can be stacked with `#doc` in either order.
 - `#test` functions are type-checked in every build (so mistakes surface during
   `gray build`), but only compiled and executed by `gray test`.
+
+#### 7.5.6 `#[...]` Attribute Lists
+
+Several attributes on one declaration can be grouped into a single-line
+container instead of stacking them:
+
+```gray
+#doc("This is a really long explanation of what this function does")
+#test
+#discard
+do something() { }
+```
+
+becomes:
+
+```gray
+#[doc("This is a really long explanation of what this function does"), test, discard]
+do something() { }
+```
+
+**Rules:**
+
+- Entries are bare attribute names separated by commas — no per-item `#`.
+  Parentheses appear only on attributes that take arguments (`doc("...")`,
+  `deprecated("...")`).
+- A one-element list (`#[test]`) is legal and equivalent to the bare `#test`
+  line.
+- The list must sit on a single physical line (E2092). It cannot be empty, carry
+  a trailing comma, or contain an inner `#` (E2093). An unrecognized name is
+  E2091.
+- Every entry is validated against the following declaration exactly as if it
+  had been stacked: order is irrelevant, a repeated attribute is E2090, and a
+  misapplied attribute produces the same error the stacked form would (e.g.
+  `#[json]` on a function is E2002).
+- The container and the stacked form may be mixed on the same declaration.
+- Not supported on struct functions yet — stack the attributes there (E2002).
 
 ### 7.6 Function References
 

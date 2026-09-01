@@ -1,0 +1,10 @@
+// expect-error: E2093
+// expect-error-count: 1
+// A trailing comma before ']' in a #[...] attribute list.
+
+#[test,]
+do something() -> int {
+    return 1
+}
+
+do main() {}
