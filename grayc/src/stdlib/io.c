@@ -342,8 +342,11 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
 /* Read an already-opened file into a GrayString. Tries seek-based sizing
  * first, falls back to streaming for non-seekable inputs (pipes, /proc,
  * /dev/stdin). Returns {NULL, -1} if the file exceeds INT32_MAX. Caller
- * is responsible for fclose. */
-static GrayString io_read_file_impl(GrayArena *arena, FILE *f) {
+ * is responsible for fclose.
+ *
+ * Not static: csv.c's gray_csv_read/gray_csv_read_result share this
+ * instead of re-deriving the same seek/streaming logic. */
+GrayString gray_io_read_file_impl(GrayArena *arena, FILE *f) {
     long size = -1;
     if (fseek(f, 0, SEEK_END) == 0) {
         size = ftell(f);
@@ -396,7 +399,7 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
         gray_panic_code("P0086", "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents");
     FILE *f = fopen(path.data, "rb");
     if (!f) return gray_string_lit("");
-    GrayString result = io_read_file_impl(arena, f);
+    GrayString result = gray_io_read_file_impl(arena, f);
     fclose(f);
     if (result.data == NULL)
         gray_panic_code("P0053", "io.read_file: input exceeds maximum string length");
@@ -761,7 +764,7 @@ GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path) {
         r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read '%s'", path.data));
         return r;
     }
-    GrayString result = io_read_file_impl(arena, f);
+    GrayString result = gray_io_read_file_impl(arena, f);
     fclose(f);
     if (result.data == NULL) {
         r.v0 = gray_string_lit("");
