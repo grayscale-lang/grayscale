@@ -357,6 +357,33 @@ func TestE2E_Test_StdoutCannotForgeProtocol(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_ImportedTestsRunOnce(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "lib.gray"), []byte(
+		"do double(x int) -> int { return x * 2 }\n\n"+
+			"#test\ndo test_in_import() { assert(double(21) == 42) }\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "app.gray"), []byte(
+		"import \"./lib\"\n\n"+
+			"#test\ndo test_uses_import() { assert(lib.double(5) == 10) }\n\n"+
+			"do main() { println(\"app\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", dir)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test exited %d:\n%s", code, out)
+	}
+	// Two distinct tests, each declared in one file, each run once.
+	if !strings.Contains(out, "2 total") {
+		t.Errorf("expected 2 total tests, got:\n%s", out)
+	}
+	if strings.Count(out, "test_in_import") != 1 {
+		t.Errorf("imported #test ran in more than its own file:\n%s", out)
+	}
+}
+
 func TestE2E_Help(t *testing.T) {
 	// Root help
 	t.Run("root", func(t *testing.T) {

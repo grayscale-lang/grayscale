@@ -11378,9 +11378,20 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         } else if (stmt->kind == NODE_ENUM_DECL) {
             BUCKET_PUSH(enum_bucket, enum_bucket_count, enum_bucket_cap, stmt);
         } else if (stmt->kind == NODE_FUNC_DECL) {
-            /* #test functions exist only for `gray test`; a normal build
-             * drops them entirely (no forward decl, no definition, no call). */
-            if (!codegen->test_mode && stmt->data.func_decl.is_test) continue;
+            if (stmt->data.func_decl.is_test) {
+                /* #test functions exist only for `gray test`; a normal build
+                 * drops them entirely (no forward decl, no definition, no
+                 * call). A --test build keeps only the ones declared in the
+                 * file being compiled — a #test reached through an import
+                 * belongs to that module's own test run, not this one. */
+                bool keep = codegen->test_mode;
+                if (keep && stmt->token.file && codegen->file) {
+                    char *nf = normalize_path_separators(stmt->token.file);
+                    if (nf && strcmp(nf, codegen->file) != 0) keep = false;
+                    free(nf);
+                }
+                if (!keep) continue;
+            }
             BUCKET_PUSH(func_bucket, func_bucket_count, func_bucket_cap, stmt);
         } else if (stmt->kind == NODE_VAR_DECL) {
             BUCKET_PUSH(var_bucket, var_bucket_count, var_bucket_cap, stmt);
