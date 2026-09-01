@@ -300,6 +300,31 @@ func TestE2E_Test_NoTests(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_ListFormAttributeIsDiscovered(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "listform.gray")
+	// The test functions are declared exclusively via the single-line list
+	// form, so the file-level prescan must recognise it too.
+	os.WriteFile(src, []byte(
+		"#[test]\ndo check_math() { assert(1 + 1 == 2) }\n\n"+
+			"#[doc(\"x\"), test]\ndo check_more() { assert(2 * 2 == 4) }\n\n"+
+			"do main() { println(\"main\") }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray test with passing #[test] functions should exit 0, got %d:\n%s", code, out)
+	}
+	for _, want := range []string{"check_math", "check_more", "2 passed", "2 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestE2E_Test_HashTestInStringIsNotATest(t *testing.T) {
 	dir := t.TempDir()
 	// The only `#test` occurrence is inside a raw string literal — this is

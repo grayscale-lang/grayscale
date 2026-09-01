@@ -36,8 +36,10 @@ import (
 )
 
 // testAttrRe matches a line whose first non-blank content is the #test
-// attribute — the cheap prescan that decides whether a file is worth compiling.
-var testAttrRe = regexp.MustCompile(`(?m)^[ \t]*#test\b`)
+// attribute, in either the stacked form (#test) or the single-line list form
+// (#[test], #[test, discard], #[doc("x"), test]) — the cheap prescan that
+// decides whether a file is worth compiling.
+var testAttrRe = regexp.MustCompile(`(?m)^[ \t]*(#test\b|#\[[^\]\n]*\btest\b)`)
 
 var testCmd = &cobra.Command{
 	Use:   "test [path...]",
