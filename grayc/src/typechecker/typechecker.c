@@ -3675,27 +3675,56 @@ static void reject_void_in_context(TypeChecker *checker, AstNode *expr,
         NODE_FILE(checker, expr), expr->token.line, expr->token.column, 0);
 }
 
-/* E3040: reject multi-return calls in single-value positions (array
- * elements, map values, return expressions, etc.). Shared helper to
- * avoid duplicating the lookup logic at each call site. */
-static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr) {
-    if (!expr || expr->kind != NODE_CALL_EXPR) return;
-    AstNode *fn = expr->data.call.function;
-    const char *qualifier = ast_member_qualifier(fn);
-    FuncSig *sig = NULL;
+/* Classify a call whose result is multiple values and emit the right
+ * diagnostic anchored at `at`: E3040 for a user-defined multi-return or a
+ * non-fallible multi-value stdlib function, E3089 for a fallible stdlib
+ * function's (T, Error). No-op for a single-value call. Shared by the
+ * var-decl single-variable check and the single-value position guard. */
+static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expr,
+                                    AstNode *at) {
+    if (!call_expr || call_expr->kind != NODE_CALL_EXPR) return;
+    AstNode *fn = call_expr->data.call.function;
+    if (!fn) return;
     const char *name = NULL;
-    if (fn && fn->kind == NODE_LABEL) {
+    const char *mod = NULL;
+    FuncSig *sig = NULL;
+    if (fn->kind == NODE_LABEL) {
         name = fn->data.label.value;
         sig = find_func(checker, name);
-    } else if (qualifier) {
+        /* A bare call carries no module qualifier; resolve it through the
+         * using-modules so the stdlib checks below consult the module that
+         * actually supplies it. */
+        if (!sig) mod = find_using_stdlib_module(checker, name);
+    } else if (ast_member_qualifier(fn)) {
+        const char *mod_raw = ast_member_qualifier(fn);
+        mod = typechecker_resolve_alias(checker, mod_raw);
         name = fn->data.member.member;
-        sig = find_module_func(checker, qualifier, name);
+        sig = find_module_func(checker, mod_raw, name);
     }
+    const char *file = NODE_FILE(checker, at);
+    int line = at->token.line;
+    int col = at->token.column;
     if (sig && sig->return_count > 1) {
-        diagnostic_error_code_formatted(checker->diag, "E3040",
-            NODE_FILE(checker, expr), expr->token.line, expr->token.column, 0,
+        diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
             name, sig->return_count, name);
+    } else if (name && !sig) {
+        if (typechecker_is_fallible_stdlib(mod, name)) {
+            diagnostic_error_code_formatted(checker->diag, "E3089", file, line, col, 0,
+                name, name, name);
+        } else {
+            const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, name);
+            if (mr) {
+                diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
+                    name, mr->count, name);
+            }
+        }
     }
+}
+
+/* E3040/E3089: reject a multi-value call in a single-value position (call
+ * argument, operand, array element, map value, return/if/when position). */
+static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode *expr) {
+    reject_multi_value_call(checker, expr, expr);
 }
 
 /* : emit E4005 at a stdlib call site where the function name
@@ -10438,47 +10467,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (node->data.var_decl.value->kind == NODE_CALL_EXPR &&
             strncmp(node->data.var_decl.name, GRAY_SYNTH_TMP, sizeof(GRAY_SYNTH_TMP) - 1) != 0 &&
             strncmp(node->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) != 0) {
-            AstNode *call_fn = node->data.var_decl.value->data.call.function;
-            const char *call_name = NULL;
-            const char *call_mod = NULL;
-            FuncSig *sig = NULL;
-            if (call_fn->kind == NODE_LABEL) {
-                call_name = call_fn->data.label.value;
-                sig = find_func(checker, call_name);
-                /* A bare call carries no module qualifier; resolve it through
-                 * the using-modules so the checks below consult the module
-                 * that actually supplies it rather than matching the name
-                 * against every stdlib module. */
-                if (!sig) call_mod = find_using_stdlib_module(checker, call_name);
-            } else if (ast_member_qualifier(call_fn)) {
-                const char *mod_raw = ast_member_qualifier(call_fn);
-                call_mod = typechecker_resolve_alias(checker, mod_raw);
-                const char *mfn = call_fn->data.member.member;
-                sig = find_module_func(checker, mod_raw, mfn);
-                call_name = mfn;
-            }
-            if (sig && sig->return_count > 1) {
-                diagnostic_error_code_formatted(checker->diag, "E3040", NODE_FILE(checker, node), node->token.line, node->token.column, 0, call_name, sig->return_count, call_name);
-            } else if (call_name && !sig) {
-                bool is_fallible = typechecker_is_fallible_stdlib(call_mod, call_name);
-                if (is_fallible) {
-                    diagnostic_error_code_formatted(checker->diag, "E3089", NODE_FILE(checker, node),
-                        node->token.line, node->token.column, 0,
-                        call_name, call_name, call_name);
-                } else if (call_name) {
-                    /* Non-fallible stdlib functions returning several values;
-                     * capturing one slot silently drops the rest. Bare calls
-                     * have no module qualifier, so fall back to the
-                     * using-modules for those. */
-                    const StdlibMultiReturn *mr =
-                        find_stdlib_multi_return(call_mod, call_name);
-                    if (mr) {
-                        diagnostic_error_code_formatted(checker->diag, "E3040",
-                            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                            call_name, mr->count, call_name);
-                    }
-                }
-            }
+            reject_multi_value_call(checker, node->data.var_decl.value, node);
         }
         /* Reject nil on non-nullable types */
         if (value_type->kind == TK_NIL && declared->kind != TK_UNKNOWN &&

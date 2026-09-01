@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot appear in a single-value
+ * position such as a function argument; the caller must destructure first.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @time
+
+do main() {
+    println(time.parse("not a date", "%Y-%m-%d"))
+}

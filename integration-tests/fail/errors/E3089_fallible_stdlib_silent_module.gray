@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3089 - fallible stdlib calls whose non-_result C variant emits
+ * no panic (json, regex, ...) must also be rejected in expression position;
+ * before this was gated they silently printed zero/garbage and exited 0.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @json
+
+do main() {
+    println(json.decode("{not valid json"))
+}

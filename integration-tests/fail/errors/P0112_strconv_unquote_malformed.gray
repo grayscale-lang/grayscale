@@ -1,6 +1,0 @@
-/* Panic Test: P0112 - strconv.unquote panics on malformed input (expression form) */
-import @strconv
-
-do main() {
-    println(strconv.unquote("not quoted"))
-}

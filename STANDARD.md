@@ -3486,8 +3486,6 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 - `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
 - `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
-Error-returning variant: `parse`
-
 #### Arithmetic
 
 | Function | Signature | Description |
@@ -3525,14 +3523,14 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `decode` | `(text string) -> map[string:string]` | Decode JSON string to map |
+| `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
 | `encode` | `(value T) -> string` | Encode to JSON string. Accepts int, float, bool, string, map, array. |
 | `stringify` | `(value T) -> string` | Encode a `#json` struct to a JSON string |
 | `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |
 
-Error-returning variant: `decode`
+`decode` is fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut m, err = ...` or `mut m, _ = ...`).
 
 ### 9.9 IO Module (`@io`)
 
@@ -3560,7 +3558,7 @@ Error-returning variant: `decode`
 | `file_exists` | `(path string) -> bool` | Check if file exists |
 | `is_file` | `(path string) -> bool` | Check if path is a regular file |
 | `is_directory` | `(path string) -> bool` | Check if path is a directory |
-| `file_size` | `(path string) -> int` | Get file size in bytes; returns `-1` on error |
+| `file_size` | `(path string) -> int` | Get file size in bytes (fallible; see below) |
 | `delete_file` | `(path string) -> bool` | Delete file |
 | `rename_file` | `(old_path string, new_path string) -> bool` | Rename file |
 | `copy_file` | `(src string, dst string) -> bool` | Copy file |
@@ -3601,12 +3599,12 @@ mut p string = io.path_join({"/home", "user", "docs"})  // "/home/user/docs"
 mut q string = io.path_join({"a/b", "/abs"})            // "/abs", absolute replaces
 ```
 
-#### Error-Returning Variants
+#### Fallible Functions
 
-Most functions that can fail have an error-returning variant usable via multi-variable destructuring. The plain form panics on hard errors; the error form returns `(T, Error)`.
+The functions below are fallible: they return `(T, Error)`, and the tables above show only the success type `T`. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile-time error (`E3089`). See [Section 4.5](#45-return-value-handling).
 
-| Function | Error-returning variant returns |
-|----------|---------------------------------|
+| Function | Full signature returns |
+|----------|------------------------|
 | `read_file` | `(string, Error)` |
 | `read_bytes` | `([byte], Error)` |
 | `read_lines` | `([string], Error)` |
@@ -3725,14 +3723,14 @@ HTTP client for making requests. Currently supports HTTP only.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get` | `(url string, headers map[string:string]) -> HttpResponse` | GET request |
-| `post` | `(url string, body string, headers map[string:string]) -> HttpResponse` | POST request |
-| `put` | `(url string, body string, headers map[string:string]) -> HttpResponse` | PUT request |
-| `patch` | `(url string, body string, headers map[string:string]) -> HttpResponse` | PATCH request |
-| `delete` | `(url string, headers map[string:string]) -> HttpResponse` | DELETE request |
-| `head` | `(url string, headers map[string:string]) -> HttpResponse` | HEAD request |
+| `get` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | GET request — always use destructuring |
+| `post` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | POST request — always use destructuring |
+| `put` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | PUT request — always use destructuring |
+| `patch` | `(url string, body string, headers map[string:string]) -> (HttpResponse, Error)` | PATCH request — always use destructuring |
+| `delete` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | DELETE request — always use destructuring |
+| `head` | `(url string, headers map[string:string]) -> (HttpResponse, Error)` | HEAD request — always use destructuring |
 
-Error-returning variants: `get`, `post`, `put`, `delete`, `head`, `patch`
+`get`, `post`, `put`, `patch`, `delete`, and `head` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut resp, err = ...` or `mut resp, _ = ...`).
 
 #### HttpResponse Type
 
@@ -3860,7 +3858,7 @@ SQLite database access for persistent storage.
 | `query` | `(db Database, sql string) -> ([map[string:string]], Error)` | Execute a SELECT query, returns array of row maps |
 | `query_params` | `(db Database, sql string, params [string]) -> ([map[string:string]], Error)` | Execute a parameterized SELECT query; bind values for `?` placeholders |
 
-Error-returning variants: `open`, `exec`, `exec_params`, `query`, `query_params` — always use destructuring.
+`open`, `exec`, `exec_params`, `query`, and `query_params` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 > 💡 **Tip:** For any user-supplied value, use `exec_params` / `query_params` with `?` placeholders rather than interpolating into the SQL string — parameter binding prevents SQL injection.
 
@@ -3949,12 +3947,12 @@ Regular expression operations using POSIX extended regex syntax.
 |----------|-----------|-------------|
 | `is_valid` | `(pattern string) -> bool` | Check if pattern is valid regex |
 | `is_match` | `(pattern string, text string) -> bool` | Check if pattern matches text |
-| `find` | `(pattern string, text string) -> string` | First match |
-| `find_all` | `(pattern string, text string) -> [string]` | All matches |
-| `replace` | `(pattern string, text string, replacement string) -> string` | Replace matches |
-| `split` | `(pattern string, text string) -> [string]` | Split by pattern |
+| `find` | `(pattern string, text string) -> (string, Error)` | First match — always use destructuring |
+| `find_all` | `(pattern string, text string) -> ([string], Error)` | All matches — always use destructuring |
+| `replace` | `(pattern string, text string, replacement string) -> (string, Error)` | Replace matches — always use destructuring |
+| `split` | `(pattern string, text string) -> ([string], Error)` | Split by pattern — always use destructuring |
 
-Error-returning variants: `find`, `find_all`, `replace`, `split`
+`find`, `find_all`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.19 CSV Module (`@csv`)
 
@@ -3974,16 +3972,16 @@ TCP sockets and DNS resolution.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `connect` | `(host string, port int) -> Socket` | Connect to a remote host |
-| `listen` | `(port int) -> Listener` | Listen for incoming connections on a port |
-| `accept` | `(listener Listener) -> Socket` | Accept an incoming connection |
-| `send` | `(sock Socket, data string) -> int` | Send data over a socket, returns bytes sent |
-| `receive` | `(sock Socket, max_bytes int) -> string` | Receive up to `max_bytes` bytes from a socket |
+| `connect` | `(host string, port int) -> (Socket, Error)` | Connect to a remote host — always use destructuring |
+| `listen` | `(port int) -> (Listener, Error)` | Listen for incoming connections on a port — always use destructuring |
+| `accept` | `(listener Listener) -> (Socket, Error)` | Accept an incoming connection — always use destructuring |
+| `send` | `(sock Socket, data string) -> (int, Error)` | Send data over a socket, returns bytes sent — always use destructuring |
+| `receive` | `(sock Socket, max_bytes int) -> (string, Error)` | Receive up to `max_bytes` bytes from a socket — always use destructuring |
 | `close` | `(sock Socket)` | Close a socket or listener |
 | `set_timeout` | `(sock Socket, ms int)` | Set read/write timeout in milliseconds |
-| `resolve` | `(hostname string) -> string` | Resolve a hostname to an IP address |
+| `resolve` | `(hostname string) -> (string, Error)` | Resolve a hostname to an IP address — always use destructuring |
 
-Error-returning variants: `connect`, `listen`, `accept`, `send`, `receive`, `resolve`
+`connect`, `listen`, `accept`, `send`, `receive`, and `resolve` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.21 Threads Module (`@threads`)
 

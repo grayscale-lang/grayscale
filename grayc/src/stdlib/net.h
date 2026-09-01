@@ -23,7 +23,7 @@ typedef struct {
  *@module net
  *@group Client
  *@sig connect(host string, port int) -> (Socket, Error)
- *@desc Opens a TCP connection to host on port. Always use destructuring — single-variable assignment panics on failure.
+ *@desc Opens a TCP connection to host on port. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut sock, err = net.connect("example.com", 80)
@@ -36,7 +36,7 @@ typedef struct {
  *@module net
  *@group Server
  *@sig listen(port int) -> (Listener, Error)
- *@desc Opens a TCP listener on port. Pass a host string as an optional first argument to bind a specific interface, e.g. listen("127.0.0.1", 8080). Always use destructuring — single-variable assignment panics on failure.
+ *@desc Opens a TCP listener on port. Pass a host string as an optional first argument to bind a specific interface, e.g. listen("127.0.0.1", 8080). Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut listener, err = net.listen(8080)
@@ -49,7 +49,7 @@ typedef struct {
  *@module net
  *@group Server
  *@sig accept(listener Listener) -> (Socket, Error)
- *@desc Blocks until an incoming connection arrives on listener, then returns a socket for it. Always use destructuring — single-variable assignment panics on failure.
+ *@desc Blocks until an incoming connection arrives on listener, then returns a socket for it. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut listener, _ = net.listen(8080)
@@ -62,7 +62,7 @@ typedef struct {
  *@module net
  *@group Data
  *@sig send(sock Socket, data string) -> (int, Error)
- *@desc Sends data over sock and returns the number of bytes written. Always use destructuring — single-variable assignment panics on failure.
+ *@desc Sends data over sock and returns the number of bytes written. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut sock, _ = net.connect("example.com", 80)
@@ -75,7 +75,7 @@ typedef struct {
  *@module net
  *@group Data
  *@sig receive(sock Socket, max_bytes int) -> (string, Error)
- *@desc Reads up to max_bytes from sock and returns them as a string. Always use destructuring — single-variable assignment panics on failure.
+ *@desc Reads up to max_bytes from sock and returns them as a string. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut sock, _ = net.connect("example.com", 80)
@@ -112,7 +112,7 @@ typedef struct {
  *@module net
  *@group DNS
  *@sig resolve(hostname string) -> (string, Error)
- *@desc Resolves hostname to an IP address string. Always use destructuring — single-variable assignment panics on failure.
+ *@desc Resolves hostname to an IP address string. Always use destructuring (`mut v, err = ...` or `mut v, _ = ...`) — single-variable assignment is a compile error.
  *@example
  *   import @net
  *   mut ip, err = net.resolve("localhost")

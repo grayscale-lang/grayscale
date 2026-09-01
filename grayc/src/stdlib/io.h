@@ -37,7 +37,7 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path);
  *@desc Reads the entire file at path and returns its contents as a byte array. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut data [byte] = io.read_bytes("image.png")
+ *   mut data, err = io.read_bytes("image.png")
  *@end
  */
 GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
@@ -49,7 +49,7 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
  *@desc Reads the file at path and returns its contents split into lines. CR/LF and LF line endings are stripped. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut lines [string] = io.read_lines("data.txt")
+ *   mut lines, err = io.read_lines("data.txt")
  *   for_each line in lines {
  *       println(line)
  *   }
@@ -102,7 +102,8 @@ bool gray_io_is_directory(GrayString path);
  *@desc Returns the size of the file at path in bytes. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   println(io.file_size("data.txt"))
+ *   mut size, _ = io.file_size("data.txt")
+ *   println(size)
  *@end
  */
 int64_t gray_io_file_size(GrayString path);
@@ -116,7 +117,7 @@ int64_t gray_io_file_size(GrayString path);
  *@desc Writes content to the file at path, creating it if it does not exist or overwriting it if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.write_file("out.txt", "hello\n")
+ *   mut ok, _ = io.write_file("out.txt", "hello\n")
  *@end
  */
 bool gray_io_write_file(GrayString path, GrayString content);
@@ -128,7 +129,7 @@ bool gray_io_write_file(GrayString path, GrayString content);
  *@desc Appends content to the end of the file at path. Creates the file if it does not exist. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.append_file("log.txt", "new entry\n")
+ *   mut ok, _ = io.append_file("log.txt", "new entry\n")
  *@end
  */
 bool gray_io_append_file(GrayString path, GrayString content);
@@ -140,7 +141,8 @@ bool gray_io_append_file(GrayString path, GrayString content);
  *@desc Writes a byte array to the file at path, creating it if it does not exist or overwriting it if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.write_bytes("out.bin", data)
+ *   mut data [byte] = {1, 2, 3}
+ *   mut ok, _ = io.write_bytes("out.bin", data)
  *@end
  */
 bool gray_io_write_bytes(GrayString path, GrayArray data);
@@ -152,7 +154,8 @@ bool gray_io_write_bytes(GrayString path, GrayArray data);
  *@desc Appends a byte array to the end of the file at path. Creates the file if it does not exist. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.append_bytes("log.bin", data)
+ *   mut data [byte] = {1, 2, 3}
+ *   mut ok, _ = io.append_bytes("log.bin", data)
  *@end
  */
 bool gray_io_append_bytes(GrayString path, GrayArray data);
@@ -166,7 +169,7 @@ bool gray_io_append_bytes(GrayString path, GrayArray data);
  *@desc Deletes the file at path. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.delete_file("tmp.txt")
+ *   mut ok, _ = io.delete_file("tmp.txt")
  *@end
  */
 bool gray_io_delete_file(GrayString path);
@@ -178,7 +181,7 @@ bool gray_io_delete_file(GrayString path);
  *@desc Renames (or moves) the file at old_path to new_path. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.rename_file("old.txt", "new.txt")
+ *   mut ok, _ = io.rename_file("old.txt", "new.txt")
  *@end
  */
 bool gray_io_rename_file(GrayString old_path, GrayString new_path);
@@ -190,7 +193,7 @@ bool gray_io_rename_file(GrayString old_path, GrayString new_path);
  *@desc Copies the file at src to dst. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.copy_file("src.txt", "dst.txt")
+ *   mut ok, _ = io.copy_file("src.txt", "dst.txt")
  *@end
  */
 bool gray_io_copy_file(GrayString src, GrayString dst);
@@ -202,7 +205,7 @@ bool gray_io_copy_file(GrayString src, GrayString dst);
  *@desc Moves the file at src to dst. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.move_file("tmp/file.txt", "final/file.txt")
+ *   mut ok, _ = io.move_file("tmp/file.txt", "final/file.txt")
  *@end
  */
 bool gray_io_move_file(GrayString src, GrayString dst);
@@ -216,7 +219,7 @@ bool gray_io_move_file(GrayString src, GrayString dst);
  *@desc Returns the names of all entries in the directory at path. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut entries [string] = io.list_dir(".")
+ *   mut entries, _ = io.list_dir(".")
  *   for_each e in entries {
  *       println(e)
  *   }
@@ -231,7 +234,7 @@ GrayArray gray_io_list_dir(GrayArena *arena, GrayString path);
  *@desc Creates the directory at path. Fails if the parent directory does not exist. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.make_dir("output")
+ *   mut ok, _ = io.make_dir("output")
  *@end
  */
 bool gray_io_make_dir(GrayString path);
@@ -243,7 +246,7 @@ bool gray_io_make_dir(GrayString path);
  *@desc Creates the directory at path, including all missing parent directories. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.make_dir_all("a/b/c")
+ *   mut ok, _ = io.make_dir_all("a/b/c")
  *@end
  */
 bool gray_io_make_dir_all(GrayString path);
@@ -255,7 +258,7 @@ bool gray_io_make_dir_all(GrayString path);
  *@desc Removes the empty directory at path. Fails if the directory is not empty. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.remove_dir("empty_dir")
+ *   mut ok, _ = io.remove_dir("empty_dir")
  *@end
  */
 bool gray_io_remove_dir(GrayString path);
@@ -267,7 +270,7 @@ bool gray_io_remove_dir(GrayString path);
  *@desc Removes the directory at path and all of its contents recursively. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   io.remove_dir_all("build")
+ *   mut ok, _ = io.remove_dir_all("build")
  *@end
  */
 bool gray_io_remove_dir_all(GrayString path);
@@ -279,7 +282,7 @@ bool gray_io_remove_dir_all(GrayString path);
  *@desc Recursively lists all files under path. Returns full paths relative to path. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut files [string] = io.walk("src")
+ *   mut files, _ = io.walk("src")
  *   for_each f in files {
  *       println(f)
  *   }
@@ -294,7 +297,7 @@ GrayArray gray_io_walk(GrayArena *arena, GrayString path);
  *@desc Returns all file paths matching the glob pattern. Returns an empty array if there are no matches. Always use destructuring — single-variable assignment is a compile error. Glob patterns are matched relative to the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut files [string] = io.glob("src/\*.gray")
+ *   mut files, _ = io.glob("src/\*.gray")
  *@end
  */
 GrayArray gray_io_glob(GrayArena *arena, GrayString pattern);
@@ -308,8 +311,8 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern);
  *@desc Creates a temporary file and returns its path. The file is automatically deleted when the program exits. Always use destructuring — single-variable assignment is a compile error.
  *@example
  *   import @io
- *   mut path string = io.temp_file()
- *   io.write_file(path, "scratch data")
+ *   mut path, _ = io.temp_file()
+ *   mut _, _ = io.write_file(path, "scratch data")
  *@end
  */
 GrayString gray_io_temp_file(GrayArena *arena);
@@ -321,8 +324,8 @@ GrayString gray_io_temp_file(GrayArena *arena);
  *@desc Creates a temporary directory and returns its path. The directory and all its contents are automatically deleted when the program exits. Always use destructuring — single-variable assignment is a compile error.
  *@example
  *   import @io
- *   mut path string = io.temp_dir()
- *   io.write_file(io.path_join([path, "data.txt"]), "hello")
+ *   mut path, _ = io.temp_dir()
+ *   mut _, _ = io.write_file(io.path_join({path, "data.txt"}), "hello")
  *@end
  */
 GrayString gray_io_temp_dir(GrayArena *arena);

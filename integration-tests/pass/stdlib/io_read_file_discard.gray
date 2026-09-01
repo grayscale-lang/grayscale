@@ -1,8 +1,9 @@
 /*
- * io_single_var.gray - Test io.read_file with explicit typed assignment
+ * io_read_file_discard.gray - Test io.read_file with the error-discard form
  *
- * Verifies that io.read_file() works with explicit typed single-var
- * assignment (mut content string = io.read_file(...)).
+ * io.read_file is fallible; single-variable assignment is a compile error.
+ * This verifies the `mut content, _ = io.read_file(...)` form and that the
+ * returned string is usable in len(), interpolation, and equality.
  * Writes its own fixture file: a hardcoded system path like /etc/hosts
  * does not exist on every platform.
  */
@@ -10,17 +11,17 @@
 import @io
 
 do main() {
-    println("=== IO Single-Var Assignment Tests ===")
+    println("=== IO read_file error-discard tests ===")
     mut passed int = 0
     mut failed int = 0
 
-    const fixture string = "io_single_var_fixture.txt"
-    mut _, _ = io.write_file(fixture, "single-var assignment fixture content\n")
+    const fixture string = "io_read_file_discard_fixture.txt"
+    mut _, _ = io.write_file(fixture, "error-discard fixture content\n")
 
-    // Test 1: io.read_file with explicit string type (the core bug case)
+    // Test 1: io.read_file with the error discarded
     mut hosts, _ = io.read_file(fixture)
     if len(hosts) > 0 {
-        println("  [PASS] io.read_file single-var string assignment")
+        println("  [PASS] io.read_file with discarded error")
         passed += 1
     } otherwise {
         println("  [FAIL] io.read_file returned empty")
@@ -48,11 +49,11 @@ do main() {
         failed += 1
     }
 
-    // Test 4: multiple explicit typed reads in same function
+    // Test 4: multiple reads in same function are consistent
     mut read1, _ = io.read_file(fixture)
     mut read2, _ = io.read_file(fixture)
     if read1 == read2 {
-        println("  [PASS] multiple explicit typed reads consistent")
+        println("  [PASS] multiple reads consistent")
         passed += 1
     } otherwise {
         println("  [FAIL] reads returned different content")

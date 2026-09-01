@@ -44,11 +44,11 @@ bool gray_regex_match(GrayString pattern, GrayString text);
 /*@man find
  *@module regex
  *@group Search
- *@sig find(pattern string, text string) -> string
- *@desc Return the first match of pattern in text, or an empty string if none.
+ *@sig find(pattern string, text string) -> (string, Error)
+ *@desc Return the first match of pattern in text, or an empty string if none. Always use destructuring (`mut m, err = ...` or `mut m, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, an empty string.
  *@example
  *   import @regex
- *   mut m string = regex.find("[0-9]+", "abc123def")
+ *   mut m, err = regex.find("[0-9]+", "abc123def")
  *   println(m)
  *@end
  */
@@ -58,11 +58,11 @@ GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text
 /*@man find_all
  *@module regex
  *@group Search
- *@sig find_all(pattern string, text string) -> [string]
- *@desc Return all non-overlapping matches of pattern in text.
+ *@sig find_all(pattern string, text string) -> ([string], Error)
+ *@desc Return all non-overlapping matches of pattern in text. Always use destructuring (`mut matches, err = ...` or `mut matches, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, an empty array.
  *@example
  *   import @regex
- *   mut matches [string] = regex.find_all("[0-9]+", "a1b2c3")
+ *   mut matches, err = regex.find_all("[0-9]+", "a1b2c3")
  *@end
  */
 /* regex.find_all(pattern, text) -> [string] */
@@ -71,11 +71,11 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
 /*@man replace
  *@module regex
  *@group Transform
- *@sig replace(pattern string, text string, replacement string) -> string
- *@desc Replace all matches of pattern in text with replacement.
+ *@sig replace(pattern string, text string, replacement string) -> (string, Error)
+ *@desc Replace all matches of pattern in text with replacement. Always use destructuring (`mut result, err = ...` or `mut result, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, the original text.
  *@example
  *   import @regex
- *   mut result string = regex.replace("[0-9]+", "a1b2", "X")
+ *   mut result, err = regex.replace("[0-9]+", "a1b2", "X")
  *   println(result)
  *@end
  */
@@ -85,11 +85,11 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
 /*@man split
  *@module regex
  *@group Transform
- *@sig split(pattern string, text string) -> [string]
- *@desc Split text on all matches of pattern.
+ *@sig split(pattern string, text string) -> ([string], Error)
+ *@desc Split text on all matches of pattern. Always use destructuring (`mut parts, err = ...` or `mut parts, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, a single-element array holding the original text.
  *@example
  *   import @regex
- *   mut parts [string] = regex.split("[,;]+", "a,b;;c")
+ *   mut parts, err = regex.split("[,;]+", "a,b;;c")
  *@end
  */
 /* regex.split(pattern, text) -> [string] */
