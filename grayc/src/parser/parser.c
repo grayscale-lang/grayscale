@@ -3595,17 +3595,45 @@ static AstNode *parse_statement(Parser *parser) {
 
             const char *dep_msg = NULL;
             if (current_token_is(parser, TOK_LPAREN)) {
-                next_token(parser); /* consume '(' */
-                if (strcmp(nm, "deprecated") == 0 && current_token_is(parser, TOK_STRING)) {
+                /* Entry arguments are validated exactly as the stacked form
+                 * does: only 'deprecated' and 'doc' accept a '(...)', and
+                 * 'deprecated' requires exactly one string literal. */
+                if (strcmp(nm, "deprecated") == 0) {
+                    next_token(parser); /* consume '(' */
+                    if (!current_token_is(parser, TOK_STRING)) {
+                        diagnostic_error_code_help(parser->diag, "E2093",
+                            parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                            "'deprecated' takes exactly one string literal, e.g. deprecated(\"use x() instead\")");
+                        malformed = true;
+                        break;
+                    }
                     dep_msg = arena_copy_string(parser->arena, parser->cur_token.literal);
-                }
-                /* doc() args are discarded today; deprecated() takes just the
-                 * string above. Consume through the matching ')'. */
-                while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
-                    next_token(parser);
-                }
-                if (current_token_is(parser, TOK_RPAREN)) {
+                    next_token(parser); /* consume the string */
+                    if (!current_token_is(parser, TOK_RPAREN)) {
+                        diagnostic_error_code_help(parser->diag, "E2093",
+                            parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                            "'deprecated' takes exactly one string literal");
+                        malformed = true;
+                        break;
+                    }
                     next_token(parser); /* consume ')' */
+                } else if (strcmp(nm, "doc") == 0) {
+                    /* doc() args are accepted and discarded, as in the stacked form. */
+                    next_token(parser); /* consume '(' */
+                    while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
+                        next_token(parser);
+                    }
+                    if (current_token_is(parser, TOK_RPAREN)) {
+                        next_token(parser); /* consume ')' */
+                    }
+                } else {
+                    char help[48];
+                    snprintf(help, sizeof(help), "'%s' takes no arguments", nm);
+                    diagnostic_error_code_help(parser->diag, "E2093",
+                        parser->file, parser->cur_token.line, parser->cur_token.column, 0,
+                        arena_copy_string(parser->arena, help));
+                    malformed = true;
+                    break;
                 }
             }
 
