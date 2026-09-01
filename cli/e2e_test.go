@@ -10,12 +10,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // grayBin holds the path to the compiled gray binary built by TestMain.
@@ -405,6 +407,50 @@ func TestE2E_Test_RecursionGuardDoesNotLeakBetweenTests(t *testing.T) {
 	if !strings.Contains(out, "1 passed") || !strings.Contains(out, "1 failed") {
 		t.Errorf("recursion guard leaked into the next test:\n%s", out)
 	}
+}
+
+func TestE2E_Test_LongOutputLineDoesNotHang(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "long.gray")
+	// ~2 MB on a single line — well past bufio.Scanner's old 1 MB cap.
+	os.WriteFile(src, []byte(
+		"#test\ndo test_big_line() {\n"+
+			"    mut s string = \"A\"\n"+
+			"    for i in range(0, 21) { s += s }\n"+
+			"    println(s)\n"+
+			"    assert(1 == 1)\n"+
+			"}\n\n"+
+			"#test\ndo test_after_big() { assert(3 == 3) }\n"), 0644)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, grayBin, "test", "--no-color", src)
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	runErr := cmd.Run()
+	out := buf.String()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatal("gray test hung on a test that printed a >1 MB line")
+	}
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if runErr != nil {
+		t.Fatalf("gray test failed (%v):\n%s", runErr, lastLines(out, 20))
+	}
+	// The over-long line must not swallow the trailer or the following test.
+	if !strings.Contains(out, "2 total") {
+		t.Errorf("results after a >1 MB line were dropped:\n%s", lastLines(out, 20))
+	}
+}
+
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func TestE2E_Help(t *testing.T) {

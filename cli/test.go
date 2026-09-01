@@ -263,28 +263,37 @@ func runTestBinary(binPath, nonce string) (results []testResult, passthrough []s
 		return nil, []string{"error: " + err.Error()}
 	}
 
-	scanner := bufio.NewScanner(stdout)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// bufio.Reader grows to fit whatever line the test prints. A fixed-cap
+	// Scanner would stop reading at the first over-long line, leaving the
+	// child blocked on a full stdout pipe and cmd.Wait() deadlocked — and
+	// would drop every line after it, the GRAYTEST DONE trailer included.
+	reader := bufio.NewReader(stdout)
 	sawDone := false
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, nonce) {
-			passthrough = append(passthrough, line)
-			continue
+	for {
+		chunk, readErr := reader.ReadString('\n')
+		if len(chunk) > 0 {
+			line := strings.TrimRight(chunk, "\r\n")
+			if !strings.HasPrefix(line, nonce) {
+				passthrough = append(passthrough, line)
+			} else {
+				msg := strings.TrimPrefix(line, nonce)
+				switch {
+				case strings.HasPrefix(msg, "GRAYTEST PASS "):
+					results = append(results, testResult{
+						name:   strings.TrimPrefix(msg, "GRAYTEST PASS "),
+						passed: true,
+					})
+				case strings.HasPrefix(msg, "GRAYTEST FAIL "):
+					results = append(results, parseFailLine(strings.TrimPrefix(msg, "GRAYTEST FAIL ")))
+				case strings.HasPrefix(msg, "GRAYTEST DONE "):
+					sawDone = true
+				default:
+					passthrough = append(passthrough, line)
+				}
+			}
 		}
-		msg := strings.TrimPrefix(line, nonce)
-		switch {
-		case strings.HasPrefix(msg, "GRAYTEST PASS "):
-			results = append(results, testResult{
-				name:   strings.TrimPrefix(msg, "GRAYTEST PASS "),
-				passed: true,
-			})
-		case strings.HasPrefix(msg, "GRAYTEST FAIL "):
-			results = append(results, parseFailLine(strings.TrimPrefix(msg, "GRAYTEST FAIL ")))
-		case strings.HasPrefix(msg, "GRAYTEST DONE "):
-			sawDone = true
-		default:
-			passthrough = append(passthrough, line)
+		if readErr != nil {
+			break
 		}
 	}
 	err = cmd.Wait()
