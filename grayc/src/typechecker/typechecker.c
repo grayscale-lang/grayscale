@@ -3314,6 +3314,38 @@ static void reject_private_type(TypeChecker *checker, AstNode *node, const char 
         NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
 }
 
+/* True when a written type spells 'Error' as an array element or a map
+ * key/value, at any nesting depth. A bare Error scalar (local, param,
+ * struct field) is fine — codegen represents it as GrayError* — but no
+ * container element type maps to it, so [Error] / map[string:Error] leak
+ * a C type error from the constructor. `in_container` tracks whether the
+ * recursion has passed through an array or map spelling. */
+static bool error_type_in_container(const char *written, bool in_container) {
+    if (!written || !*written) return false;
+    if (in_container &&
+        (strcmp(written, "Error") == 0 || strcmp(written, "error") == 0))
+        return true;
+    bool arr_or_map = written[0] == '[' || strncmp(written, "map[", 4) == 0;
+    char parts[2][MSG_BUF_SIZE];
+    int part_count = 0;
+    if (type_name_components(written, parts, &part_count)) {
+        for (int i = 0; i < part_count; i++)
+            if (error_type_in_container(parts[i], in_container || arr_or_map))
+                return true;
+    }
+    return false;
+}
+
+/* E3153: reject Error nested in an array or map. Called once per written
+ * annotation, alongside reject_private_type. */
+static void reject_error_in_container(TypeChecker *checker, AstNode *node,
+                                      const char *written) {
+    if (error_type_in_container(written, false)) {
+        diagnostic_error_code(checker->diag, "E3153",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    }
+}
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
      * module's own or a using'd declaration — onto the registry spelling. */
@@ -10568,6 +10600,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
     }
     /* E4021/E4015: annotated type is private to another file */
     reject_private_type(checker, node, node->data.var_decl.type_name);
+    reject_error_in_container(checker, node, node->data.var_decl.type_name);
     typechecker_mark_type_module_used(checker, node->data.var_decl.type_name);
 
     /* E3057: reject composite types as map keys before downstream checks
@@ -13203,6 +13236,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             }
         }
         reject_private_type(checker, node, p->type_name);
+        reject_error_in_container(checker, node, p->type_name);
         /* Type inference: if no explicit type annotation, infer from default
          * value when it is an enum member access (e.g. t = Color.RED). */
         if (!p->type_name && p->default_value) {
@@ -13355,6 +13389,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                     FUNC_DISPLAY_NAME(node));
             }
             reject_private_type(checker, node, rtn);
+            reject_error_in_container(checker, node, rtn);
             char leaf[MSG_BUF_SIZE];
             const char *undefined = undefined_type_leaf(checker, rtn, leaf, sizeof(leaf));
             if (undefined) {
@@ -13526,6 +13561,7 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     /* E4021/E4015: a field's annotated type is private to another file */
     for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
         reject_private_type(checker, node, node->data.struct_decl.fields[field_index].type_name);
+        reject_error_in_container(checker, node, node->data.struct_decl.fields[field_index].type_name);
     }
     check_stdlib_opaque_name_collision(checker, node, STRUCT_DISPLAY_NAME(node));
     /* E2053: struct inside function */

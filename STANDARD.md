@@ -4338,6 +4338,8 @@ error(.NotFound, "no such file")        // code and message
 
 `.Unknown` (ErrorCode slot 0) is not a "no error" sentinel — "no error" is `nil`, one level up in the `(T, Error)` tuple. Reading `err.code` at all means you are holding a real error.
 
+An `Error` is usable as a local, a parameter, a return value, and a struct field. It cannot be an array element or a map key/value; to keep a collection of errors, wrap the `Error` in a struct, or store `err.code` / `err.msg`.
+
 ### 10.2 Error Returns
 
 Functions that may fail return a `(T, Error)` tuple; these are fallible functions. Destructuring is required; single-var assignment from a fallible function is a compile error. See [Section 4.5](#45-return-value-handling) for the full rules.

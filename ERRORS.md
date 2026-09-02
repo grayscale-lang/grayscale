@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 429 codes** (297 errors, 17 warnings, 115 panics)
+**Total: 430 codes** (298 errors, 17 warnings, 115 panics)
 
 ---
 
@@ -222,6 +222,7 @@
 | `E3150` | types | 'io.read_lines' line limit cannot be negative; pass 0 to read to end of file |
 | `E3151` | types | 'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive |
 | `E3152` | types | #error_code enum '%s' cannot also be #flags; ErrorCode is numbered by global slot, not by power-of-2 bit position |
+| `E3153` | types | 'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -480,4 +481,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-02 20:00:40 UTC*
+*Generated on 2026-09-02 21:18:36 UTC*
