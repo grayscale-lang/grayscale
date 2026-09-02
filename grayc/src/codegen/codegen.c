@@ -3081,10 +3081,16 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             }
         } else if (!obj_is_ref && obj_t && obj_t->kind == TK_ERROR) {
             /* Error has fields code (ErrorCode int) and msg; '.message' is an
-             * accepted alias for '.msg'. */
+             * accepted alias for '.msg'. The value is a GrayError* that is
+             * NULL on the success path, so guard the read: without it a
+             * `mut m = err.msg` after a successful call is a raw segfault
+             * with no diagnostic. */
             const char *m = node->data.member.member;
+            const char *field = strcmp(m, "message") == 0 ? "msg" : sanitize_name(m);
+            emit(codegen, "({ __auto_type _err_v = ");
             emit_expression(codegen, node->data.member.object);
-            emit_formatted(codegen, "->%s", strcmp(m, "message") == 0 ? "msg" : sanitize_name(m));
+            emit_formatted(codegen, "; if (!_err_v) { gray_panic_code_at(\"%s\", %d, \"P0115\", \"read of '%%s' on a nil Error; check the error is non-nil before reading its fields\", \"%s\"); } _err_v->%s; })",
+                codegen->file, node->token.line, m, field);
         } else {
             emit_expression(codegen, node->data.member.object);
             emit_formatted(codegen, ".%s", sanitize_name(node->data.member.member));

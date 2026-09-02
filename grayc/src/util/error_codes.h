@@ -453,7 +453,8 @@
     GRAY_PANIC("P0111", "strconv",    "strconv.format_uint: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'") \
     GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d") \
-    GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length")
+    GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length") \
+    GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

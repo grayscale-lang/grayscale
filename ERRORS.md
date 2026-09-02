@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 426 codes** (295 errors, 17 warnings, 114 panics)
+**Total: 427 codes** (295 errors, 17 warnings, 115 panics)
 
 ---
 
@@ -453,6 +453,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
 | `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
 | `P0114` | io | csv.read_file: input exceeds maximum string length |
+| `P0115` | runtime | read of '%s' on a nil Error; check the error is non-nil before reading its fields |
 
 ---
 
@@ -477,4 +478,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-02 18:06:54 UTC*
+*Generated on 2026-09-02 18:59:27 UTC*

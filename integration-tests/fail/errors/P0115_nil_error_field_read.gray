@@ -1,0 +1,19 @@
+/* Panic Test: P0115 - reading a field on a nil Error.
+ *
+ * On the success path `err` is nil. Member access used to emit a raw
+ * `err->msg` with no guard, so this segfaulted with no diagnostic and
+ * the earlier println never flushed. Now it panics cleanly. */
+
+do lookup(key string) -> (int, Error) {
+    if key == "missing" {
+        return 0, error(.NotFound, "no such key")
+    }
+    return 42, nil
+}
+
+do main() {
+    println("start")
+    mut _, err = lookup("present")
+    mut m string = err.msg
+    println(m)
+}
