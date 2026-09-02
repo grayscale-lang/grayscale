@@ -11,7 +11,7 @@ do main() {
     mut failed int = 0
 
     // Test 1: when with imported enum - match RED
-    mut c int = defs.Color.RED
+    mut c defs.Color = defs.Color.RED
     mut name string = ""
     when c {
         is defs.Color.RED { name = "red" }
@@ -60,7 +60,7 @@ do main() {
     }
 
     // Test 4: second imported enum in when
-    mut p int = defs.Priority.HIGH
+    mut p defs.Priority = defs.Priority.HIGH
     mut level string = ""
     when p {
         is defs.Priority.LOW { level = "low" }
