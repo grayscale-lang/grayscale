@@ -12598,6 +12598,44 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E5024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_sym->declared_type, checker->current_return_type_names[0]);
             }
         }
+        /* Non-primary return slots. Everything above inspects values[0]
+         * only; without this a `return 0, NetErr.DNS_FAIL` into a
+         * `-> (int, DbErr)` slot passed unchecked and leaked a C type
+         * error to the user. Mirrors the primary slot's core check:
+         * assignability plus a same-type check for named struct/enum
+         * pairs (types_assignable() unifies same-kind enums on its own). */
+        for (int i = 1; i < node->data.return_stmt.count &&
+                        i < checker->current_return_count; i++) {
+            GrayType *slot_ret = resolve_expression(checker, node->data.return_stmt.values[i]);
+            GrayType *slot_exp = checker->current_return_types[i];
+            if (!slot_ret || !slot_exp) continue;
+            if (slot_ret->kind == TK_UNKNOWN || slot_exp->kind == TK_UNKNOWN ||
+                slot_ret->kind == TK_NIL) continue;
+            bool slot_assignable = types_assignable(checker, slot_exp, slot_ret);
+            bool slot_named_pair = slot_ret->name && slot_exp->name &&
+                slot_ret->kind == slot_exp->kind &&
+                (slot_ret->kind == TK_STRUCT || slot_ret->kind == TK_ENUM);
+            bool slot_same_named = true;
+            if (slot_named_pair) {
+                slot_same_named = slot_ret->kind == TK_STRUCT
+                    ? typechecker_same_struct_type(checker, slot_ret->name, slot_exp->name)
+                    : typechecker_same_enum_type(checker, slot_ret->name, slot_exp->name);
+            }
+            if (slot_assignable && slot_same_named) continue;
+            const char *slot_kind = slot_named_pair
+                ? (slot_ret->kind == TK_STRUCT ? "struct " : "enum ") : "";
+            AstNode *sv = node->data.return_stmt.values[i];
+            char *msg = slot_named_pair
+                ? typechecker_format(checker,
+                    "return type mismatch: expected %s'%s', got %s'%s'",
+                    slot_kind, type_display_name(checker, slot_exp),
+                    slot_kind, type_display_name(checker, slot_ret))
+                : typechecker_format(checker,
+                    "return type mismatch: expected %s, got %s",
+                    type_display_name(checker, slot_exp), type_display_name(checker, slot_ret));
+            diagnostic_error_message(checker->diag, "E3001", msg,
+                NODE_FILE(checker, sv), sv->token.line, sv->token.column, 0);
+        }
         /* E3073: named return variable must be the value returned */
         if (checker->current_has_named_returns && checker->current_return_names) {
             for (int i = 0; i < node->data.return_stmt.count && i < checker->current_return_count; i++) {

@@ -5,6 +5,7 @@
  * typechecker and leaked a -Wenum-conversion warning from the C compiler.
  * Expected: type mismatch error for the cross-enum assignment.
  */
+// expect-error: E3001
 
 #error_code
 const DbErr enum {
