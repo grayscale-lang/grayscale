@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot be the for_each
+ * collection; the loop would run over the first value and drop the Error.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @io
+
+do main() {
+    for_each line in io.read_lines("/no/such/file.txt", 0) {
+        println(line)
+    }
+}

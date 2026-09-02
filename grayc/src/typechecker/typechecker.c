@@ -9350,6 +9350,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         break;
 
     case NODE_INDEX_EXPR: {
+        /* Neither half of `a[i]` is a multi-value position: a fallible
+         * (T, Error) call there drops the Error, and a user multi-return
+         * call fails the C compile. */
+        reject_multi_return_in_single_position(checker, node->data.index_expr.left);
+        reject_multi_return_in_single_position(checker, node->data.index_expr.index);
         GrayType *left = resolve_expression(checker, node->data.index_expr.left);
         /* Propagate map key type as expected_type so .VARIANT resolves */
         GrayType *saved_idx_expected = checker->expected_type;
@@ -12987,6 +12992,11 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
             return;
         }
     }
+
+    /* The collection is a single-value position: a fallible (T, Error) call
+     * here drops the Error (the loop just runs over the first value), and a
+     * user multi-return call fails the C compile. */
+    reject_multi_return_in_single_position(checker, node->data.for_each.collection);
 
     /* Resolve collection type to determine element type */
     GrayType *coll_t = resolve_expression(checker, node->data.for_each.collection);
