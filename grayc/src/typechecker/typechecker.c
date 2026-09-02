@@ -8641,6 +8641,8 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         GrayType *saved_sv_expected = checker->expected_type;
         if (field_expected_t)
             checker->expected_type = field_expected_t;
+        /* A field value is a single-value position. */
+        reject_multi_return_in_single_position(checker, node->data.struct_value.field_values[i]);
         GrayType *val_t = resolve_expression(checker, node->data.struct_value.field_values[i]);
         checker->expected_type = saved_sv_expected;
         /* Validate field exists */
@@ -11733,6 +11735,10 @@ static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name) {
 }
 
 static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
+    /* The right-hand side is a single-value position: a fallible (T, Error)
+     * call drops the Error, a user multi-return call fails the C compile. */
+    reject_multi_return_in_single_position(checker, node->data.assign.value);
+
     /* Implicit declaration: x = expr where x is not in scope */
     {
         AstNode *target = node->data.assign.target;
