@@ -4403,7 +4403,7 @@ const PaymentErrors enum {
 ```
 
 - `error(.PAYMENT_DECLINED, ...)`, `when err.code { is .PAYMENT_DECLINED ... }`, and `PaymentErrors.PAYMENT_DECLINED` all denote the same value.
-- The enum must be plain int-backed. String-backed enums, enums with explicit `= N` variant values, and tagged (payload) enums are rejected under `#error_code`.
+- The enum must be plain int-backed. String-backed enums, enums with explicit `= N` variant values, tagged (payload) enums, and `#flags` enums are rejected under `#error_code`.
 - Every variant name across the whole `ErrorCode` set must be unique; a name already present (builtin or another `#error_code` enum) is a compile error.
 - `PaymentErrors` stays usable as its own enum type. A `#error_code` enum value and an `ErrorCode` value are freely interchangeable in comparisons and assignments — they share one value space.
 

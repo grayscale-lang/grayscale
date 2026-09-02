@@ -14629,6 +14629,11 @@ static void register_error_code_set(TypeChecker *checker, AstNode *program) {
                 NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
             bad = true;
         }
+        if (stmt->data.enum_decl.is_flags) {
+            diagnostic_error_code_formatted(checker->diag, "E3152",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
+            bad = true;
+        }
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
             AstNode *v = stmt->data.enum_decl.values[j].value;
             if (!v) continue;
