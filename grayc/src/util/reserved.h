@@ -25,6 +25,7 @@ static inline int gray_strptr_cmp(const void *a, const void *b) {
 
 static const char *const gray_reserved_type_names[] = {
     "Error",
+    "ErrorCode",
     "SourceLocation",
     "bool",
     "byte",

@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <time.h>
+#include <errno.h>
 
 static inline int panic_use_color(void) {
     return gray_rt_isatty(gray_rt_stderr_fileno()) && !getenv("NO_COLOR");
@@ -147,11 +148,45 @@ size_t gray_arena_block_count(GrayArena *arena) {
 
 /* --- Error --- */
 
-GrayError *gray_error_new(GrayArena *arena, GrayString message) {
+GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString msg) {
     GrayError *err = (GrayError *)gray_arena_alloc(arena, sizeof(GrayError));
-    err->message = gray_string_new(arena, message.data, message.len);
-    err->code = gray_string_lit("");
+    err->code = code;
+    err->msg = gray_string_new(arena, msg.data, msg.len);
     return err;
+}
+
+/* Map a C errno value to the closest builtin ErrorCode slot. */
+int64_t gray_errno_code(int err) {
+    switch (err) {
+        case ENOENT:       return GRAY_ERR_NotFound;
+        case EEXIST:       return GRAY_ERR_AlreadyExists;
+        case EACCES:
+        case EPERM:        return GRAY_ERR_PermissionDenied;
+        case EINVAL:       return GRAY_ERR_InvalidInput;
+        case ERANGE:       return GRAY_ERR_OutOfRange;
+        case ENOSYS:       return GRAY_ERR_Unsupported;
+        case EINTR:        return GRAY_ERR_Interrupted;
+        case ETIMEDOUT:    return GRAY_ERR_Timeout;
+#ifdef EAGAIN
+        case EAGAIN:       return GRAY_ERR_WouldBlock;
+#endif
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+        case EWOULDBLOCK:  return GRAY_ERR_WouldBlock;
+#endif
+#ifdef ECONNREFUSED
+        case ECONNREFUSED: return GRAY_ERR_ConnectionRefused;
+#endif
+#ifdef ECONNRESET
+        case ECONNRESET:   return GRAY_ERR_ConnectionReset;
+#endif
+#ifdef EADDRINUSE
+        case EADDRINUSE:   return GRAY_ERR_AddressInUse;
+#endif
+#ifdef EPIPE
+        case EPIPE:        return GRAY_ERR_BrokenPipe;
+#endif
+        default:           return GRAY_ERR_IoFailure;
+    }
 }
 
 /* --- String --- */

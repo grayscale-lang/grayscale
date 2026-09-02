@@ -179,6 +179,7 @@ const char *token_type_name(TokenType type) {
     case TOK_DISCARD:        return "#discard";
     case TOK_DEPRECATED:     return "#deprecated";
     case TOK_TEST:           return "#test";
+    case TOK_ERROR_CODE_ATTR: return "#error_code";
     case TOK_MUT:            return "mut";
     case TOK_CONST:          return "const";
     case TOK_DO:             return "do";

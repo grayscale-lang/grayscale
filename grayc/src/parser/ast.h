@@ -375,6 +375,7 @@ struct AstNode {
             int value_count;
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
+            bool is_error_code;              /* #error_code attribute */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             bool is_private;

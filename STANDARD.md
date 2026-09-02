@@ -2056,6 +2056,7 @@ const Person struct {
 | `#doc("...")` | functions, structs, enums, file-scope variables | Documentation metadata, used by `gray doc` |
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
+| `#error_code` | enums | Contributes the enum's variants to the open `ErrorCode` set (see 10.5) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 | `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
@@ -4298,41 +4299,93 @@ println(chars.to_upper('5'))   // '5'
 
 ### 10.1 Error Type
 
-The `Error` type represents an error condition. Errors are created with the `error()` function:
+The `Error` type represents an error condition. An `Error` has two fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `code` | `ErrorCode` | classification of the error (see 10.5) |
+| `msg` | `string` | human-facing message (`.message` is an accepted alias) |
+
+Errors are created with the `error()` function, in one of three forms:
 
 ```gray
-mut err Error = error("something went wrong")
+error("something went wrong")          // message only; code defaults to .Unknown
+error(.NotFound)                        // code only; message defaults to ""
+error(.NotFound, "no such file")        // code and message
 ```
+
+`.Unknown` (ErrorCode slot 0) is not a "no error" sentinel — "no error" is `nil`, one level up in the `(T, Error)` tuple. Reading `err.code` at all means you are holding a real error.
 
 ### 10.2 Error Returns
 
 Functions that may fail return a `(T, Error)` tuple; these are fallible functions. Destructuring is required; single-var assignment from a fallible function is a compile error. See [Section 4.5](#45-return-value-handling) for the full rules.
 
-Functions that may fail conventionally return a tuple with the result and an Error:
-
 ```gray
 do read_file(path string) -> (string, Error) {
     if !file_exists(path) {
-        return "", error("file not found")
+        return "", error(.NotFound, "file not found")
     }
     return contents, nil
 }
 ```
 
+Every standard library function that returns an `Error` sets both a specific `ErrorCode` and a fixed message. Only user `error()` calls may omit one.
+
 ### 10.3 Error Checking
 
-Errors are checked by comparing to `nil`:
+Whether an error occurred is checked by comparing to `nil`:
 
 ```gray
 mut content, err = read_file("data.txt")
 if err != nil {
-    println("Error: ${err}")
+    println("Error: ${err}")   // interpolates err.msg
     return
 }
-// Use content
 ```
 
-### 10.4 Runtime Errors
+Which error occurred is checked on `err.code`, either with `==` / `!=` or with `when`:
+
+```gray
+if err.code == .NotFound {
+    content = ""
+}
+
+when err.code {
+    is .NotFound       { use_defaults() }
+    is .PermissionDenied { escalate() }
+    default            { log(err.msg) }
+}
+```
+
+`err.code` is an `ErrorCode`, an open enum (10.5). A `when` on it always requires a `default` branch and can never be `#strict`.
+
+### 10.5 ErrorCode
+
+`ErrorCode` is a single, program-wide enum whose variant set is **open**: it is assembled at compile time from a compiler-owned builtin list plus every user enum marked `#error_code`. The compiler owns the numbering, so `int(someErrorCode)` is that variant's global slot, not a 0-based position within one enum.
+
+Builtin variants:
+
+`Unknown` (slot 0), `NotFound`, `AlreadyExists`, `PermissionDenied`, `InvalidInput`, `OutOfRange`, `Unsupported`, `Timeout`, `Interrupted`, `Closed`, `WouldBlock`, `Unavailable`, `IoFailure`, `ParseFailure`, `EncodingFailure`, `ConversionFailure`, `NotAuthenticated`, `ConnectionRefused`, `ConnectionReset`, `AddressInUse`, `BrokenPipe`, `WriteZero`.
+
+#### `#error_code`
+
+The `#error_code` attribute marks a normal named enum as contributing its variants to the `ErrorCode` set:
+
+```gray
+#error_code
+const PaymentErrors enum {
+    PAYMENT_DECLINED
+    PAYMENT_CANCELED
+    PAYMENT_EXPIRED
+}
+```
+
+- `error(.PAYMENT_DECLINED, ...)`, `when err.code { is .PAYMENT_DECLINED ... }`, and `PaymentErrors.PAYMENT_DECLINED` all denote the same value.
+- The enum must be plain int-backed. String-backed enums, enums with explicit `= N` variant values, and tagged (payload) enums are rejected under `#error_code`.
+- Every variant name across the whole `ErrorCode` set must be unique; a name already present (builtin or another `#error_code` enum) is a compile error.
+- `PaymentErrors` stays usable as its own enum type. A `#error_code` enum value and an `ErrorCode` value are freely interchangeable in comparisons and assignments — they share one value space.
+
+### 10.6 Runtime Errors
 
 Certain operations produce runtime errors that terminate program execution:
 

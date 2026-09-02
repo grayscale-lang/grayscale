@@ -1,0 +1,86 @@
+/*
+ * error_code_user_enum.gray - #error_code enums contribute variants to the
+ * shared open ErrorCode set.
+ *
+ * Covers: #error_code attribute, error(.UserVariant), matching builtin and
+ * user variants in one `when`, the enum still usable as its own type, and
+ * widening a #error_code enum value to ErrorCode.
+ */
+
+#error_code
+const PayErr enum {
+    PAYMENT_DECLINED
+    PAYMENT_EXPIRED
+}
+
+do charge(card string) -> (int, Error) {
+    if card == "expired" {
+        return 0, error(.PAYMENT_EXPIRED, "card expired")
+    }
+    if card == "gone" {
+        return 0, error(.NotFound, "no card on file")
+    }
+    return 100, nil
+}
+
+do main() {
+    println("=== ErrorCode user enum test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut _, e1 = charge("expired")
+    mut _, e2 = charge("gone")
+
+    if e1.code == .PAYMENT_EXPIRED {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] e1.code == .PAYMENT_EXPIRED")
+    }
+
+    // user variant and builtin variant matched in one when, plus default
+    mut n int = 0
+    when e1.code {
+        is .NotFound { n = 1 }
+        is .PAYMENT_DECLINED { n = 2 }
+        is .PAYMENT_EXPIRED { n = 3 }
+        default { n = 9 }
+    }
+    when e2.code {
+        is .NotFound { n = n + 10 }
+        is .PAYMENT_EXPIRED { n = n + 20 }
+        default { n = n + 90 }
+    }
+    if n == 13 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] mixed when, n=${n}")
+    }
+
+    // enum still usable as its own type
+    mut direct PayErr = PayErr.PAYMENT_DECLINED
+    if direct == .PAYMENT_DECLINED {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] PayErr usable as its own type")
+    }
+
+    // widening a #error_code value to ErrorCode
+    mut widened ErrorCode = PayErr.PAYMENT_EXPIRED
+    if widened == e1.code {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] widen PayErr to ErrorCode")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

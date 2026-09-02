@@ -12,6 +12,7 @@
 #include "../util/platform.h"
 #include "../util/xalloc.h"
 #include "../util/reserved.h"
+#include "../util/error_code_builtins.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -579,6 +580,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "byte") == 0)   return "uint8_t";
     if (strcmp(type_name, "string") == 0) return "GrayString";
     if (strcmp(type_name, "Error") == 0 || strcmp(type_name, "error") == 0) return "GrayError *";
+    if (strcmp(type_name, "ErrorCode") == 0) return "GrayErrorCode";
     /* A user struct/enum that shadows a stdlib opaque type name (Database,
      * Router, Thread, ...) resolves to its own GrayStruct_/GrayEnum_ name, so
      * every emit site agrees. The typechecker (E3099) still blocks declaring
@@ -1673,7 +1675,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, part);
                 emit(codegen, " ? ");
                 emit_expression(codegen, part);
-                emit(codegen, "->message : gray_string_lit(\"nil\")");
+                emit(codegen, "->msg : gray_string_lit(\"nil\")");
                 break;
             case TK_UINT:
                 emit(codegen, "gray_string_format(gray_default_arena, \"%llu\", (unsigned long long)(");
@@ -1693,6 +1695,10 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
             case TK_ENUM:
                 if (part_type && part_type->name && codegen_enum_is_string(codegen, part_type->name)) {
                     emit_expression(codegen, part);
+                } else if (part_type && part_type->name && strcmp(part_type->name, "ErrorCode") == 0) {
+                    emit(codegen, "gray_string_lit(gray_error_code_name((int64_t)(");
+                    emit_expression(codegen, part);
+                    emit(codegen, ")))");
                 } else {
                     emit(codegen, "gray_string_format(gray_default_arena, \"%lld\", (long long)(");
                     emit_expression(codegen, part);
@@ -1848,6 +1854,8 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
         static char enum_arr_buf[MSG_BUF_SIZE];
         if (is_str) {
             c_type = "GrayString";
+        } else if (elem_t->name && strcmp(elem_t->name, "ErrorCode") == 0) {
+            c_type = "GrayErrorCode";
         } else {
             snprintf(enum_arr_buf, sizeof(enum_arr_buf), "GrayEnum_%s", elem_t->name ? elem_t->name : "int");
             c_type = enum_arr_buf;
@@ -3053,8 +3061,11 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 }
             }
         } else if (!obj_is_ref && obj_t && obj_t->kind == TK_ERROR) {
+            /* Error has fields code (ErrorCode int) and msg; '.message' is an
+             * accepted alias for '.msg'. */
+            const char *m = node->data.member.member;
             emit_expression(codegen, node->data.member.object);
-            emit_formatted(codegen, "->%s", sanitize_name(node->data.member.member));
+            emit_formatted(codegen, "->%s", strcmp(m, "message") == 0 ? "msg" : sanitize_name(m));
         } else {
             emit_expression(codegen, node->data.member.object);
             emit_formatted(codegen, ".%s", sanitize_name(node->data.member.member));
@@ -3747,7 +3758,9 @@ static void emit_expression(CodeGen *codegen, AstNode *node) {
         const char *ename = node->data.implicit_enum.resolved_enum;
         const char *variant = node->data.implicit_enum.variant;
         if (ename) {
-            if (codegen_enum_is_tagged(codegen, ename)) {
+            if (strcmp(ename, "ErrorCode") == 0) {
+                emit_formatted(codegen, "GrayErrorCode_%s", variant);
+            } else if (codegen_enum_is_tagged(codegen, ename)) {
                 emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s }", ename, ename, variant);
             } else {
                 emit_formatted(codegen, "GrayEnum_%s_%s", ename, variant);
@@ -3935,7 +3948,14 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         int tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayError *_gray_str_err%d = (", tag);
         emit_expression(codegen, arg);
-        emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->message : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
+        emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->msg : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
+        return;
+    }
+    if (arg_type && arg_type->kind == TK_ENUM && arg_type->name &&
+        strcmp(arg_type->name, "ErrorCode") == 0) {
+        emit(codegen, "gray_string_lit(gray_error_code_name((int64_t)(");
+        emit_expression(codegen, arg);
+        emit(codegen, ")))");
         return;
     }
     if (arg_type && arg_type->kind == TK_CHAR) {
@@ -4197,6 +4217,14 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_indent(codegen);
         emit_formatted(codegen, "fprintf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
                stream, c_expr, c_expr);
+        return;
+    }
+
+    /* ErrorCode: print the variant name, not the raw slot number. */
+    if (type->kind == TK_ENUM && type->name && strcmp(type->name, "ErrorCode") == 0) {
+        emit_indent(codegen);
+        emit_formatted(codegen, "fprintf(%s, \"%%s\", gray_error_code_name((int64_t)(%s)));\n",
+               stream, c_expr);
         return;
     }
 
@@ -4518,7 +4546,12 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
         emit_expression(codegen, arg);
         emit(codegen, " ? ");
         emit_expression(codegen, arg);
-        emit(codegen, "->message : gray_string_lit(\"nil\"))");
+        emit(codegen, "->msg : gray_string_lit(\"nil\"))");
+    } else if (arg_t && arg_t->kind == TK_ENUM && arg_t->name &&
+               strcmp(arg_t->name, "ErrorCode") == 0) {
+        emit_formatted(codegen, "gray_builtin_%s_str(gray_string_lit(gray_error_code_name((int64_t)(", variant);
+        emit_expression(codegen, arg);
+        emit(codegen, "))))");
     } else if (arg_t && arg_t->kind == TK_STRUCT && arg_t->name &&
                strcmp(arg_t->name, "UUID") == 0) {
         emit_formatted(codegen, "gray_builtin_%s_str(", variant);
@@ -4903,8 +4936,25 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
     }
 
     if (strcmp(func, "error") == 0 && node->data.call.arg_count >= 1) {
+        /* Forms: error(msg), error(code), error(code, msg). The first arg is a
+         * code unless it is a plain string; slot 0 (Unknown) is the default. */
+        AstNode *a0 = node->data.call.args[0];
+        GrayType *a0t = codegen->type_table ? typetable_get(codegen->type_table, a0) : NULL;
+        bool first_is_code = !(a0t && a0t->kind == TK_STRING);
         emit(codegen, "gray_error_new(gray_default_arena, ");
-        emit_expression(codegen, node->data.call.args[0]);
+        if (first_is_code) {
+            emit(codegen, "(int64_t)(");
+            emit_expression(codegen, a0);
+            emit(codegen, "), ");
+            if (node->data.call.arg_count >= 2) {
+                emit_expression(codegen, node->data.call.args[1]);
+            } else {
+                emit(codegen, "gray_string_lit(\"\")");
+            }
+        } else {
+            emit(codegen, "0, ");
+            emit_expression(codegen, a0);
+        }
         emit(codegen, ")");
         return true;
     }
@@ -10074,8 +10124,8 @@ static void emit_function_return_escape(CodeGen *codegen, const char *ret_type_n
     } else if (return_graytype->kind == TK_ERROR) {
         emit(codegen, "if (_ret) { GrayError *_src_err = (GrayError *)_ret; ");
         emit(codegen, "GrayError *_esc_err = (GrayError *)gray_arena_alloc(_func_saved, sizeof(GrayError)); ");
-        emit(codegen, "_esc_err->message = gray_string_new(_func_saved, _src_err->message.data, _src_err->message.len); ");
-        emit(codegen, "_esc_err->code = gray_string_new(_func_saved, _src_err->code.data, _src_err->code.len); ");
+        emit(codegen, "_esc_err->code = _src_err->code; ");
+        emit(codegen, "_esc_err->msg = gray_string_new(_func_saved, _src_err->msg.data, _src_err->msg.len); ");
         emit(codegen, "_ret = _esc_err; } ");
     } else if (type_needs_deep_copy(codegen, ret_type_name)) {
         emit(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = _func_saved; _ret = ");
@@ -10104,8 +10154,8 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
             emit_formatted(codegen, "_ret.v%d = gray_string_new(_func_saved, _ret.v%d.data, _ret.v%d.len); ", i, i, i);
         } else if (return_graytype->kind == TK_ERROR) {
             emit_formatted(codegen, "if (_ret.v%d) { GrayError *_esc_err = (GrayError *)gray_arena_alloc(_func_saved, sizeof(GrayError)); ", i);
-            emit_formatted(codegen, "_esc_err->message = gray_string_new(_func_saved, _ret.v%d->message.data, _ret.v%d->message.len); ", i, i);
-            emit_formatted(codegen, "_esc_err->code = gray_string_new(_func_saved, _ret.v%d->code.data, _ret.v%d->code.len); ", i, i);
+            emit_formatted(codegen, "_esc_err->code = _ret.v%d->code; ", i);
+            emit_formatted(codegen, "_esc_err->msg = gray_string_new(_func_saved, _ret.v%d->msg.data, _ret.v%d->msg.len); ", i, i);
             emit_formatted(codegen, "_ret.v%d = _esc_err; } ", i);
         } else if (type_needs_deep_copy(codegen, type_str)) {
             char field[32];
@@ -11540,6 +11590,41 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         if (struct_count > 0) emit(codegen, "\n");
     }
 
+    /* Open ErrorCode enum: builtin slots (0..N-1) then every #error_code enum's
+     * variants in source order. Emitted before the enum typedefs so a
+     * #error_code enum's own typedef can reference these slot #defines. The
+     * numbering matches the typechecker's register_error_code_set() pass. */
+    {
+        emit(codegen, "typedef int64_t GrayErrorCode;\n");
+        int slot = 0;
+#define GRAY_ERR_EMIT(n) emit_formatted(codegen, "#define GrayErrorCode_%s %d\n", #n, slot++);
+        GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_EMIT)
+#undef GRAY_ERR_EMIT
+        for (int i = 0; i < enum_bucket_count; i++) {
+            AstNode *es = enum_bucket[i];
+            if (!es->data.enum_decl.is_error_code) continue;
+            for (int j = 0; j < es->data.enum_decl.value_count; j++) {
+                emit_formatted(codegen, "#define GrayErrorCode_%s %d\n",
+                    es->data.enum_decl.values[j].name, slot++);
+            }
+        }
+        emit(codegen, "static inline const char *gray_error_code_name(int64_t _c) {\n");
+        emit(codegen, "    switch (_c) {\n");
+        slot = 0;
+#define GRAY_ERR_CASE(n) emit_formatted(codegen, "        case %d: return \"%s\";\n", slot++, #n);
+        GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_CASE)
+#undef GRAY_ERR_CASE
+        for (int i = 0; i < enum_bucket_count; i++) {
+            AstNode *es = enum_bucket[i];
+            if (!es->data.enum_decl.is_error_code) continue;
+            for (int j = 0; j < es->data.enum_decl.value_count; j++) {
+                emit_formatted(codegen, "        case %d: return \"%s\";\n",
+                    slot++, es->data.enum_decl.values[j].name);
+            }
+        }
+        emit(codegen, "        default: return \"Unknown\";\n    }\n}\n\n");
+    }
+
     /* Register all enums and emit non-tagged enum typedefs.
      * Tagged enum typedefs are deferred until after struct body
      * definitions because their payloads may contain struct values. */
@@ -11600,11 +11685,16 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 emit_formatted(codegen, "} GrayEnum_%s_Tag;\n\n", ename);
             } else {
                 bool is_flags = stmt->data.enum_decl.is_flags;
+                bool is_error_code = stmt->data.enum_decl.is_error_code;
                 emit_formatted(codegen, "typedef enum {\n");
                 for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
                     EnumVal *ev = &stmt->data.enum_decl.values[j];
                     emit_formatted(codegen, "    GrayEnum_%s_%s", stmt->data.enum_decl.name, ev->name);
-                    if (ev->value) {
+                    if (is_error_code) {
+                        /* Variant value is its global ErrorCode slot, defined
+                         * once in the ErrorCode preamble. */
+                        emit_formatted(codegen, " = GrayErrorCode_%s", ev->name);
+                    } else if (ev->value) {
                         emit(codegen, " = ");
                         emit_expression(codegen, ev->value);
                     } else if (is_flags) {

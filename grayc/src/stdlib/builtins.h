@@ -366,11 +366,11 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man error
- *@sig error(message string) -> Error
- *@desc Creates an Error value with the given message. Access the message via string interpolation.
+ *@sig error(code ErrorCode = .Unknown, message string = "") -> Error
+ *@desc Creates an Error value. Forms: error("msg") (code defaults to .Unknown), error(.Code), or error(.Code, "msg"). Inspect err.code with == or `when`; err.msg holds the message.
  *@example
- *   mut err Error = error("file not found")
- *   println("${err}")
+ *   mut err Error = error(.NotFound, "file not found")
+ *   when err.code { is .NotFound { println(err.msg) } default { } }
  *@end
  */
 

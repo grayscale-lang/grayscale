@@ -340,7 +340,8 @@ typedef struct {
 } BuiltinTypeEntry;
 
 static BuiltinTypeEntry builtin_types[] = {
-    { "Error",  NULL,         TK_ERROR,   "Error" },
+    { "Error",     NULL,      TK_ERROR,   "Error" },
+    { "ErrorCode", NULL,      TK_ENUM,    "ErrorCode" },
     { "bool",   &TYPE_BOOL,   0, NULL },
     { "byte",   &TYPE_BYTE,   0, NULL },
     { "char",   &TYPE_CHAR,   0, NULL },

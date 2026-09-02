@@ -88,6 +88,7 @@ typedef enum {
     TOK_DISCARD,        /* #discard */
     TOK_DEPRECATED,     /* #deprecated */
     TOK_TEST,           /* #test */
+    TOK_ERROR_CODE_ATTR, /* #error_code */
 
     /* Keywords */
     TOK_MUT,

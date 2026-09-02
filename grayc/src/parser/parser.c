@@ -62,6 +62,7 @@ typedef enum {
     ATTR_TEST       = 1u << 4,
     ATTR_DEPRECATED = 1u << 5,
     ATTR_DOC        = 1u << 6,
+    ATTR_ERROR_CODE = 1u << 7,
 } AttrBit;
 
 /* Returns true when this attribute was already applied to the current
@@ -86,6 +87,7 @@ static AttrBit attr_bit_for_name(const char *name) {
     if (strcmp(name, "test") == 0)       return ATTR_TEST;
     if (strcmp(name, "deprecated") == 0) return ATTR_DEPRECATED;
     if (strcmp(name, "doc") == 0)        return ATTR_DOC;
+    if (strcmp(name, "error_code") == 0) return ATTR_ERROR_CODE;
     return (AttrBit)0;
 }
 
@@ -127,6 +129,13 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
         } else {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, where.line, where.column, 0);
+        }
+    } else if (strcmp(name, "error_code") == 0) {
+        if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_error_code = true;
+        } else {
+            diagnostic_error_code(parser->diag, "E3144",
                 parser->file, where.line, where.column, 0);
         }
     } else if (strcmp(name, "strict") == 0) {
@@ -2759,6 +2768,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
     node->data.enum_decl.name = parser->cur_token.literal;
     node->data.enum_decl.is_flags = false;
     node->data.enum_decl.is_tagged = false;
+    node->data.enum_decl.is_error_code = false;
 
     next_token(parser); /* skip 'enum' keyword */
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
@@ -3487,6 +3497,19 @@ static AstNode *parse_statement(Parser *parser) {
         } else {
             diagnostic_error_message(parser->diag, "E2002",
                 arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
+                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        }
+        return stmt;
+    }
+    case TOK_ERROR_CODE_ATTR: {
+        /* #error_code; contributes an enum's variants to the ErrorCode set */
+        note_dup_attr(parser, ATTR_ERROR_CODE, "#error_code");
+        next_token(parser); /* skip #error_code */
+        AstNode *stmt = parse_statement(parser);
+        if (stmt && stmt->kind == NODE_ENUM_DECL) {
+            stmt->data.enum_decl.is_error_code = true;
+        } else {
+            diagnostic_error_code(parser->diag, "E3144",
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         }
         return stmt;

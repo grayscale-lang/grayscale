@@ -115,7 +115,7 @@ int64_t gray_time_parse(GrayString s, GrayString layout) {
 GrayResult_int gray_time_parse_result(GrayString s, GrayString layout) {
     int64_t ts;
     if (!time_parse_to_timestamp(s, layout, &ts)) {
-        GrayError *err = gray_error_new(gray_default_arena, gray_string_format(gray_default_arena,
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure, gray_string_format(gray_default_arena,
             "cannot parse '%.*s' with layout '%.*s'", s.len, s.data, layout.len, layout.data));
         return (GrayResult_int){0, err};
     }

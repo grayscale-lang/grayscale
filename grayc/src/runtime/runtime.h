@@ -20,6 +20,8 @@
 #include <stdarg.h>
 #include <setjmp.h>
 
+#include "../util/error_code_builtins.h"
+
 /* --- Arena Defaults --- */
 #define GRAY_DEFAULT_ARENA_SIZE   (1024 * 1024)
 #define GRAY_MIN_ARENA_SIZE       4096
@@ -76,13 +78,31 @@ typedef struct {
 
 /* --- Error --- */
 
+/* Builtin ErrorCode slots, shared by the runtime/stdlib and generated code.
+ * User #error_code enum variants are numbered after these by codegen. */
+enum {
+#define GRAY_ERR_SLOT(name) GRAY_ERR_##name,
+    GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_SLOT)
+#undef GRAY_ERR_SLOT
+    GRAY_ERR_BUILTIN_COUNT
+};
+
+/* code is an ErrorCode slot number (see error_code_builtins.h); slot 0 is
+ * Unknown. "No error" is nil one level up, never a GrayError with code 0. */
 typedef struct {
-    GrayString message;
-    GrayString code;
+    int64_t code;
+    GrayString msg;
 } GrayError;
 
 /* Create an error on the default arena */
-GrayError *gray_error_new(GrayArena *arena, GrayString message);
+GrayError *gray_error_new(GrayArena *arena, int64_t code, GrayString msg);
+
+/* Map a C errno value to the closest builtin ErrorCode slot. */
+int64_t gray_errno_code(int err);
+
+/* gray_error_code_name(int64_t) — variant name for an ErrorCode slot — is
+ * emitted per-program into the generated C (builtins + #error_code variants),
+ * not provided by the runtime library. */
 
 /* --- SourceLocation: compile-time substituted by the here() builtin --- */
 
@@ -410,11 +430,11 @@ typedef struct { int64_t v0; GrayError *v1; } GrayResult_int;
 typedef struct { void *v0; GrayError *v1; } GrayResult_ptr;
 
 /* Wrap a bool-returning call into a GrayResult_bool.
- * Usage: GRAY_RESULT_WRAP_BOOL(arena, some_call(...), error_message); */
-#define GRAY_RESULT_WRAP_BOOL(arena, call, err_msg) \
+ * Usage: GRAY_RESULT_WRAP_BOOL(arena, some_call(...), code, error_message); */
+#define GRAY_RESULT_WRAP_BOOL(arena, call, code, err_msg) \
     do { GrayResult_bool _r; _r.v0 = (call); \
          if (_r.v0) { _r.v1 = NULL; } \
-         else { _r.v1 = gray_error_new((arena), (err_msg)); } \
+         else { _r.v1 = gray_error_new((arena), (code), (err_msg)); } \
          return _r; } while (0)
 
 #endif

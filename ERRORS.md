@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 418 codes** (287 errors, 17 warnings, 114 panics)
+**Total: 425 codes** (294 errors, 17 warnings, 114 panics)
 
 ---
 
@@ -213,6 +213,12 @@
 | `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
 | `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
 | `E3143` | types | #flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64 |
+| `E3144` | types | #error_code attribute can only be applied to enum declarations |
+| `E3145` | types | #error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set |
+| `E3146` | types | #error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering |
+| `E3147` | types | #error_code enum '%s' cannot have payload variants |
+| `E3148` | types | ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique |
+| `E3149` | types | 'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -271,6 +277,7 @@
 | `E5045` | arguments | constant argument is outside the valid domain for this function |
 | `E5046` | usage | '#test' function '%s' must take no parameters and have no return type |
 | `E5047` | usage | '#test' function '%s' cannot be called directly; it runs only under 'gray test' |
+| `E5048` | usage | 'error()' takes an ErrorCode, a message string, or a code and a message; got %s |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -469,4 +476,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-02 16:10:08 UTC*
+*Generated on 2026-09-02 17:04:04 UTC*

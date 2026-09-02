@@ -228,7 +228,13 @@
     GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
     GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
-    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64")
+    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64") \
+    GRAY_ERROR("E3144", "types", "#error_code attribute can only be applied to enum declarations") \
+    GRAY_ERROR("E3145", "types", "#error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set") \
+    GRAY_ERROR("E3146", "types", "#error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering") \
+    GRAY_ERROR("E3147", "types", "#error_code enum '%s' cannot have payload variants") \
+    GRAY_ERROR("E3148", "types", "ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique") \
+    GRAY_ERROR("E3149", "types", "'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -292,7 +298,8 @@
     GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'") \
     GRAY_ERROR("E5045", "arguments", "constant argument is outside the valid domain for this function") \
     GRAY_ERROR("E5046", "usage", "'#test' function '%s' must take no parameters and have no return type") \
-    GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'")
+    GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'") \
+    GRAY_ERROR("E5048", "usage", "'error()' takes an ErrorCode, a message string, or a code and a message; got %s")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \

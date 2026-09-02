@@ -1,0 +1,14 @@
+// expect-error: E3148
+// Two #error_code enums cannot declare the same variant name.
+
+#error_code
+const A enum {
+    SHARED
+}
+
+#error_code
+const B enum {
+    SHARED
+}
+
+do main() {}

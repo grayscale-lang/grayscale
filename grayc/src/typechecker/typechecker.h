@@ -128,6 +128,11 @@ typedef struct {
     int enum_count;
     int enum_cap;
 
+    /* Names of user enums carrying #error_code; their variants join the open
+     * builtin ErrorCode enum. "ErrorCode" itself is a normal registered enum. */
+    const char **error_code_enum_names;
+    int error_code_enum_count;
+
     /* Control flow tracking */
     int loop_depth;               /* >0 means inside a loop */
     int func_depth;               /* >0 means inside a function body */

@@ -15,6 +15,7 @@
 #include "../util/platform.h"
 #include "../util/reserved.h"
 #include "../util/xalloc.h"
+#include "../util/error_code_builtins.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -480,9 +481,13 @@ static bool typechecker_same_struct_type(TypeChecker *checker, const char *a, co
     (void)checker;
     return a == b || strcmp(a, b) == 0;
 }
+static bool typechecker_enum_is_error_code(TypeChecker *checker, const char *name);
 static bool typechecker_same_enum_type(TypeChecker *checker, const char *a, const char *b) {
-    (void)checker;
-    return a == b || strcmp(a, b) == 0;
+    if (a == b || strcmp(a, b) == 0) return true;
+    /* Every enum in the ErrorCode value space unifies: a #error_code enum value
+     * widens to ErrorCode, and vice versa. */
+    return typechecker_enum_is_error_code(checker, a) &&
+           typechecker_enum_is_error_code(checker, b);
 }
 /* Compare array element type names accounting for module-prefixed struct
  * aliases (e.g. "Item" vs "utils_Item" should match). */
@@ -512,6 +517,17 @@ static bool typechecker_enum_is_tagged(TypeChecker *checker, const char *name) {
 static bool typechecker_enum_is_flags(TypeChecker *checker, const char *name) {
     int i = find_enum_index(checker, name);
     return i >= 0 && checker->enum_is_flags[i];
+}
+
+/* True for the builtin open enum "ErrorCode" and for any user enum carrying
+ * #error_code. Values of these enums share one variant/value space. */
+static bool typechecker_enum_is_error_code(TypeChecker *checker, const char *name) {
+    if (!name) return false;
+    if (strcmp(name, "ErrorCode") == 0) return true;
+    for (int i = 0; i < checker->error_code_enum_count; i++) {
+        if (strcmp(checker->error_code_enum_names[i], name) == 0) return true;
+    }
+    return false;
 }
 
 /* How many declared types go by this user-facing name. Two means a message
@@ -6111,24 +6127,44 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "error") == 0) {
-        if (node->data.call.arg_count != 1) {
-            char *msg = typechecker_format(checker,
-                "'error()' expects 1 argument, got %d",
-                node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        /* Forms: error(msg), error(code), error(code, msg). code is an
+         * ErrorCode; a bare message defaults its code to .Unknown. */
+        int argc = node->data.call.arg_count;
+        if (argc < 1 || argc > 2) {
+            diagnostic_error_code_formatted(checker->diag, "E5048",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                argc == 0 ? "no arguments" : "too many arguments");
             result = type_from_name("Error");
             return result;
         }
-        /* E5044: the message is stored as a GrayString, so anything else
-         * reaches the C compiler as a type mismatch rather than a
-         * diagnostic. */
         AstNode *earg = node->data.call.args[0];
+        GrayType *saved_expected = checker->expected_type;
+        checker->expected_type = type_from_name("ErrorCode");
         GrayType *eat = resolve_expression(checker, earg);
-        if (eat && eat->kind != TK_STRING && eat->kind != TK_UNKNOWN) {
-            diagnostic_error_code_formatted(checker->diag, "E5044",
-                NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
-                type_display_name(checker, eat));
+        checker->expected_type = saved_expected;
+        bool a0_is_code = eat && eat->kind == TK_ENUM && eat->name &&
+            typechecker_enum_is_error_code(checker, eat->name);
+        bool a0_is_string = eat && eat->kind == TK_STRING;
+        if (argc == 1) {
+            if (!a0_is_code && !a0_is_string && eat && eat->kind != TK_UNKNOWN) {
+                diagnostic_error_code_formatted(checker->diag, "E5044",
+                    NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
+                    type_display_name(checker, eat));
+            }
+        } else {
+            /* error(code, msg) */
+            if (!a0_is_code && eat && eat->kind != TK_UNKNOWN) {
+                diagnostic_error_code_formatted(checker->diag, "E5048",
+                    NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
+                    "a message with no code");
+            }
+            AstNode *marg = node->data.call.args[1];
+            GrayType *mat = resolve_expression(checker, marg);
+            if (mat && mat->kind != TK_STRING && mat->kind != TK_UNKNOWN) {
+                diagnostic_error_code_formatted(checker->diag, "E5044",
+                    NODE_FILE(checker, marg), marg->token.line, marg->token.column, 0,
+                    type_display_name(checker, mat));
+            }
         }
         result = type_from_name("Error");
     } else if (strcmp(function_name, "println") == 0 || strcmp(function_name, "eprintln") == 0) {
@@ -8267,13 +8303,16 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, sym->type->element_type, member);
             }
         } else if (sym && sym->type->kind == TK_ERROR) {
-            /* Error type has .message and .code string fields */
-            if (strcmp(member, "message") == 0 || strcmp(member, "code") == 0) {
+            /* Error has .msg (string; '.message' is an accepted alias) and
+             * .code (ErrorCode). */
+            if (strcmp(member, "msg") == 0 || strcmp(member, "message") == 0) {
                 result = &TYPE_STRING;
+            } else if (strcmp(member, "code") == 0) {
+                result = type_from_name("ErrorCode");
             } else {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
-                    "Error has no field '%s'; available fields: message, code",
+                    "Error has no field '%s'; available fields: msg, code",
                     member);
                 diagnostic_error_message(checker->diag, "E3010", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -10753,7 +10792,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         /* Enum-to-enum name mismatch (both TK_ENUM but different enum types) */
         if (declared->kind == TK_ENUM && value_type->kind == TK_ENUM &&
             declared->name && value_type->name &&
-            strcmp(declared->name, value_type->name) != 0) {
+            !typechecker_same_enum_type(checker, declared->name, value_type->name)) {
             char *msg = NULL;
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign enum '%s' to enum '%s'",
@@ -13490,6 +13529,16 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
             type_display_name(checker, when_t));
         when_t = NULL;
     }
+    /* E3149: ErrorCode is an open enum — `when err.code` can never be
+     * exhaustive, so it always needs a default and is never #strict. */
+    if (when_t && when_t->kind == TK_ENUM && when_t->name &&
+        typechecker_enum_is_error_code(checker, when_t->name) &&
+        (node->data.when_stmt.is_strict || !node->data.when_stmt.default_body)) {
+        AstNode *subj = node->data.when_stmt.value;
+        diagnostic_error_code(checker->diag, "E3149",
+            NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+    }
+
     /* E2043: check for duplicate case values, E3001: check type match */
     /* Set expected_type for implicit enum resolution in when/is branches */
     GrayType *saved_when_expected = checker->expected_type;
@@ -14429,6 +14478,85 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
     }
 }
 
+/* Assemble the program-wide open ErrorCode enum: the compiler-owned builtin
+ * variants first (slots 0..N-1), then the variants of every #error_code enum
+ * in source order. Validates each #error_code enum and rejects duplicate
+ * variant names across the whole set. Registered as a normal enum named
+ * "ErrorCode" so .VARIANT selectors, ==, and `when` all work on it. */
+static void register_error_code_set(TypeChecker *checker, AstNode *program) {
+    int cap = 32, count = 0;
+    const char **names = xmalloc(sizeof(const char *) * cap);
+#define GRAY_ERR_ADD(n) names[count++] = #n;
+    GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_ADD)
+#undef GRAY_ERR_ADD
+
+    int ec_cap = 8;
+    checker->error_code_enum_names = xmalloc(sizeof(const char *) * ec_cap);
+    checker->error_code_enum_count = 0;
+
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_ENUM_DECL || !stmt->data.enum_decl.is_error_code) continue;
+
+        const char *en = ENUM_DISPLAY_NAME(stmt);
+        bool bad = false;
+
+        if (stmt->data.enum_decl.is_tagged) {
+            diagnostic_error_code_formatted(checker->diag, "E3147",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
+            bad = true;
+        }
+        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+            AstNode *v = stmt->data.enum_decl.values[j].value;
+            if (!v) continue;
+            if (v->kind == NODE_STRING_VALUE) {
+                diagnostic_error_code_formatted(checker->diag, "E3145",
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, en);
+                bad = true;
+                break;
+            }
+            diagnostic_error_code_formatted(checker->diag, "E3146",
+                NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0,
+                en, stmt->data.enum_decl.values[j].name);
+            bad = true;
+            break;
+        }
+        if (bad) continue;
+
+        if (checker->error_code_enum_count >= ec_cap) {
+            ec_cap *= 2;
+            checker->error_code_enum_names = xrealloc(checker->error_code_enum_names,
+                sizeof(const char *) * ec_cap);
+        }
+        checker->error_code_enum_names[checker->error_code_enum_count++] =
+            stmt->data.enum_decl.name;
+
+        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+            const char *vn = stmt->data.enum_decl.values[j].name;
+            bool dup = false;
+            for (int k = 0; k < count; k++) {
+                if (strcmp(names[k], vn) == 0) { dup = true; break; }
+            }
+            if (dup) {
+                diagnostic_error_code_formatted(checker->diag, "E3148",
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column, 0, vn);
+                continue;
+            }
+            if (count >= cap) {
+                cap *= 2;
+                names = xrealloc(names, sizeof(const char *) * cap);
+            }
+            names[count++] = vn;
+        }
+    }
+
+    const char **owned = arena_alloc(checker->arena, sizeof(const char *) * count);
+    for (int k = 0; k < count; k++) owned[k] = names[k];
+    free(names);
+    register_enum(checker, "ErrorCode", "ErrorCode", false, owned, count,
+                  NULL, NULL, false, false, false, NULL);
+}
+
 static void register_decl_structs(TypeChecker *checker, AstNode *program) {
     for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
@@ -14951,6 +15079,7 @@ static void register_declarations(TypeChecker *checker, AstNode *program) {
     register_decl_imports(checker, program);
     register_decl_aliases(checker, program);
     register_decl_enums(checker, program);
+    register_error_code_set(checker, program);
     register_decl_structs(checker, program);
     register_decl_functions(checker, program);
     register_decl_consts(checker, program);
@@ -15191,6 +15320,7 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->enum_is_flags);
     free(checker->enum_is_deprecated);
     free(checker->enum_deprecated_messages);
+    free(checker->error_code_enum_names);
 
     free(checker->imported_modules);
     free(checker->import_files);

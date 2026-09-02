@@ -165,7 +165,7 @@ GrayResult_socket gray_net_dial_result(GrayArena *arena, GrayString host, int64_
     GrayResult_socket r;
     r.v0 = gray_net_dial(arena, host, port);
     if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot connect to '%.*s:%lld'",
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot connect to '%.*s:%lld'",
             host.len, host.data, (long long)port));
     } else {
         r.v1 = NULL;
@@ -215,7 +215,7 @@ GrayResult_socket gray_net_listen_result(GrayArena *arena, int64_t port) {
     GrayResult_socket r;
     r.v0 = gray_net_listen(arena, port);
     if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot listen on port %lld",
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on port %lld",
             (long long)port));
     } else {
         r.v1 = NULL;
@@ -227,7 +227,7 @@ GrayResult_socket gray_net_listen_host_result(GrayArena *arena, GrayString host,
     GrayResult_socket r;
     r.v0 = gray_net_listen_host(arena, host, port);
     if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot listen on %.*s:%lld",
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot listen on %.*s:%lld",
             host.len, host.data, (long long)port));
     } else {
         r.v1 = NULL;
@@ -239,7 +239,7 @@ GrayResult_socket gray_net_accept_result(GrayArena *arena, GraySocket listener) 
     GrayResult_socket r;
     r.v0 = gray_net_accept(arena, listener);
     if (r.v0.fd < 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "accept failed on fd %d", listener.fd));
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "accept failed on fd %d", listener.fd));
     } else {
         r.v1 = NULL;
     }
@@ -250,7 +250,7 @@ GrayResult_int gray_net_send_result(GrayArena *arena, GraySocket sock, GrayStrin
     GrayResult_int r;
     r.v0 = gray_net_send(sock, data);
     if (r.v0 < 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "send failed on fd %d", sock.fd));
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "send failed on fd %d", sock.fd));
     } else {
         r.v1 = NULL;
     }
@@ -261,7 +261,7 @@ GrayResult_string gray_net_recv_result(GrayArena *arena, GraySocket sock, int64_
     GrayResult_string r;
     r.v0 = gray_net_recv(arena, sock, max_bytes);
     if (r.v0.len == 0 && sock.fd >= 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "recv returned no data on fd %d", sock.fd));
+        r.v1 = gray_error_new(arena, GRAY_ERR_Closed, gray_string_format(arena, "recv returned no data on fd %d", sock.fd));
     } else {
         r.v1 = NULL;
     }
@@ -272,7 +272,7 @@ GrayResult_string gray_net_resolve_result(GrayArena *arena, GrayString hostname)
     GrayResult_string r;
     r.v0 = gray_net_resolve(arena, hostname);
     if (r.v0.len == 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot resolve '%.*s'",
+        r.v1 = gray_error_new(arena, GRAY_ERR_NotFound, gray_string_format(arena, "cannot resolve '%.*s'",
             hostname.len, hostname.data));
     } else {
         r.v1 = NULL;

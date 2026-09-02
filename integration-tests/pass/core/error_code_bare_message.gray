@@ -1,0 +1,45 @@
+/*
+ * error_code_bare_message.gray - error("msg") with no code defaults to .Unknown.
+ */
+
+do boom() -> (int, Error) {
+    return 0, error("something broke")
+}
+
+do main() {
+    println("=== bare error() default code test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut _, err = boom()
+
+    if err.code == .Unknown {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] bare error() code should be .Unknown")
+    }
+
+    if err.msg == "something broke" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.msg preserved")
+    }
+
+    // legacy .message alias still reads the same field
+    if err.message == "something broke" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] .message alias")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

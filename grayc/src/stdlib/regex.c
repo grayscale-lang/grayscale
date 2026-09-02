@@ -218,7 +218,7 @@ GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, G
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) {
         r.v0 = (GrayString){"", 0};
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "invalid regex pattern '%.*s'",
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
         return r;
     }
@@ -233,7 +233,7 @@ GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) {
         r.v0 = gray_array_new(arena, sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "invalid regex pattern '%.*s'",
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
         return r;
     }
@@ -248,7 +248,7 @@ GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) {
         r.v0 = text;
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "invalid regex pattern '%.*s'",
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
         return r;
     }
@@ -263,7 +263,7 @@ GrayResult_array gray_regex_split_result(GrayArena *arena, GrayString pattern, G
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) {
         r.v0 = gray_array_new(arena, sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "invalid regex pattern '%.*s'",
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid regex pattern '%.*s'",
             pattern.len, pattern.data));
         return r;
     }
