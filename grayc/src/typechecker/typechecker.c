@@ -6195,15 +6195,29 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         bool a0_is_code = eat && eat->kind == TK_ENUM && eat->name &&
             typechecker_enum_is_error_code(checker, eat->name);
         bool a0_is_string = eat && eat->kind == TK_STRING;
+        /* C interop values (extern.SYMBOL) resolve to TK_UNKNOWN, which the
+         * checks below carve out. Left alone, error(extern.EXIT_FAILURE, ...)
+         * lowers to gray_error_new(arena, (int64_t)(EXIT_FAILURE), ...) and
+         * the constant's raw value is reinterpreted as an ErrorCode slot. */
+        bool a0_is_extern = earg->kind == NODE_MEMBER_EXPR &&
+            ast_member_qualifier(earg) &&
+            strcmp(ast_member_qualifier(earg), "extern") == 0;
+        if (a0_is_extern) {
+            char *got = typechecker_format(checker,
+                "'extern.%s', a C interop constant, as the code",
+                earg->data.member.member);
+            diagnostic_error_code_formatted(checker->diag, "E5048",
+                NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0, got);
+        }
         if (argc == 1) {
-            if (!a0_is_code && !a0_is_string && eat && eat->kind != TK_UNKNOWN) {
+            if (!a0_is_extern && !a0_is_code && !a0_is_string && eat && eat->kind != TK_UNKNOWN) {
                 diagnostic_error_code_formatted(checker->diag, "E5044",
                     NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
                     type_display_name(checker, eat));
             }
         } else {
             /* error(code, msg) */
-            if (!a0_is_code && eat && eat->kind != TK_UNKNOWN) {
+            if (!a0_is_extern && !a0_is_code && eat && eat->kind != TK_UNKNOWN) {
                 diagnostic_error_code_formatted(checker->diag, "E5048",
                     NODE_FILE(checker, earg), earg->token.line, earg->token.column, 0,
                     "a message with no code");
