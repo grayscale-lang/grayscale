@@ -8170,6 +8170,23 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     return result;
 }
 
+/* Field of the builtin Error type: .msg / .message -> string, .code ->
+ * ErrorCode. Any other name is E3010. Shared by every syntactic position
+ * that can yield an Error (bare var, array/map index, call result, field
+ * chain) so they resolve identically. */
+static GrayType *resolve_error_field(TypeChecker *checker, AstNode *node,
+                                     const char *member) {
+    if (strcmp(member, "msg") == 0 || strcmp(member, "message") == 0)
+        return &TYPE_STRING;
+    if (strcmp(member, "code") == 0)
+        return type_from_name("ErrorCode");
+    diagnostic_error_message(checker->diag, "E3010",
+        typechecker_format(checker,
+            "Error has no field '%s'; available fields: msg, code", member),
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    return &TYPE_UNKNOWN;
+}
+
 static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     /* Resolve object type first (sets type table entry for the object) */
@@ -8368,21 +8385,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0, sym->type->element_type, member);
             }
         } else if (sym && sym->type->kind == TK_ERROR) {
-            /* Error has .msg (string; '.message' is an accepted alias) and
-             * .code (ErrorCode). */
-            if (strcmp(member, "msg") == 0 || strcmp(member, "message") == 0) {
-                result = &TYPE_STRING;
-            } else if (strcmp(member, "code") == 0) {
-                result = type_from_name("ErrorCode");
-            } else {
-                char *msg = NULL;
-                msg = typechecker_format(checker,
-                    "Error has no field '%s'; available fields: msg, code",
-                    member);
-                diagnostic_error_message(checker->diag, "E3010", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-                result = &TYPE_UNKNOWN;
-            }
+            result = resolve_error_field(checker, node, member);
         } else if (sym && sym->type->kind != TK_UNKNOWN &&
                    sym->type->kind != TK_STRUCT && sym->type->kind != TK_ENUM &&
                    sym->type->kind != TK_POINTER &&
@@ -8468,6 +8471,8 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     obj_t->element_type, member);
             }
+        } else if (obj_t && obj_t->kind == TK_ERROR) {
+            result = resolve_error_field(checker, node, member);
         } else if (obj_t && obj_t->kind != TK_UNKNOWN && obj_t->kind != TK_STRUCT) {
             char *msg = NULL;
             msg = typechecker_format(checker,
@@ -8492,6 +8497,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3010", NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     obj_t->element_type, member);
             }
+        } else if (obj_t && obj_t->kind == TK_ERROR) {
+            /* Error from an expression: errs[0].code, m["k"].msg, f().code */
+            result = resolve_error_field(checker, node, member);
         } else if (obj_t && obj_t->kind != TK_UNKNOWN && obj_t->kind != TK_VOID) {
             char *msg = NULL;
             msg = typechecker_format(checker,
