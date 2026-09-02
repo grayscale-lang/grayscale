@@ -235,7 +235,8 @@
     GRAY_ERROR("E3147", "types", "#error_code enum '%s' cannot have payload variants") \
     GRAY_ERROR("E3148", "types", "ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique") \
     GRAY_ERROR("E3149", "types", "'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive") \
-    GRAY_ERROR("E3150", "types", "'io.read_lines' line limit cannot be negative; pass 0 to read to end of file")
+    GRAY_ERROR("E3150", "types", "'io.read_lines' line limit cannot be negative; pass 0 to read to end of file") \
+    GRAY_ERROR("E3151", "types", "'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

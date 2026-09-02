@@ -1,0 +1,18 @@
+// expect-error: E3151
+// expect-error-count: 1
+// ErrorCode is an open enum: `when err.code` can never be #strict, even
+// with a default branch present.
+
+do f() -> (int, Error) {
+    return 0, error(.NotFound, "x")
+}
+
+do main() {
+    mut _, err = f()
+
+    #strict
+    when err.code {
+        is .NotFound { println("nf") }
+        default      { println("d") }
+    }
+}

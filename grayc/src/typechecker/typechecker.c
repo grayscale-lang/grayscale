@@ -13626,14 +13626,19 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
             type_display_name(checker, when_t));
         when_t = NULL;
     }
-    /* E3149: ErrorCode is an open enum — `when err.code` can never be
-     * exhaustive, so it always needs a default and is never #strict. */
+    /* ErrorCode is an open enum — `when err.code` can never be exhaustive, so
+     * it always needs a default (E3149) and is never #strict (E3151). #strict
+     * is the more specific violation, so it wins when both apply. */
     if (when_t && when_t->kind == TK_ENUM && when_t->name &&
-        typechecker_enum_is_error_code(checker, when_t->name) &&
-        (node->data.when_stmt.is_strict || !node->data.when_stmt.default_body)) {
+        typechecker_enum_is_error_code(checker, when_t->name)) {
         AstNode *subj = node->data.when_stmt.value;
-        diagnostic_error_code(checker->diag, "E3149",
-            NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+        if (node->data.when_stmt.is_strict) {
+            diagnostic_error_code(checker->diag, "E3151",
+                NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+        } else if (!node->data.when_stmt.default_body) {
+            diagnostic_error_code(checker->diag, "E3149",
+                NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+        }
     }
 
     /* E2043: check for duplicate case values, E3001: check type match */
