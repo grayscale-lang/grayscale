@@ -2917,6 +2917,15 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             }
         }
 
+        /* ErrorCode.VARIANT — the program-wide synthetic enum. Its slots are
+         * #defined as GrayErrorCode_<V> in the preamble, never as a
+         * GrayEnum_ErrorCode_<V> variant, and it has no AST decl for
+         * codegen_is_enum to recognize. */
+        if (strcmp(mod, "ErrorCode") == 0) {
+            emit_formatted(codegen, "GrayErrorCode_%s", mem);
+            return;
+        }
+
         /* Check if this is an enum access: EnumName.VALUE or prefix_EnumName.VALUE */
         if (mod[0] >= 'A' && mod[0] <= 'Z') {
             /* Resolve unprefixed enum names from 'import and use' */

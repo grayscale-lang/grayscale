@@ -1,0 +1,97 @@
+/*
+ * error_code_qualified_selector.gray - ErrorCode.<Variant> qualified spelling.
+ *
+ * Covers the qualified selector ErrorCode.NotFound in every position it is
+ * accepted: var-decl init, assignment, == / != comparison, `when` arm, call
+ * argument, and function-return expression. It must lower identically to the
+ * implicit .<Variant> form.
+ */
+
+do classify(c ErrorCode) -> bool {
+    return c == ErrorCode.NotFound
+}
+
+do main() {
+    println("=== ErrorCode qualified selector test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // var-decl init
+    mut x ErrorCode = ErrorCode.NotFound
+    if x == .NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] var-decl init")
+    }
+
+    // assignment
+    x = ErrorCode.PermissionDenied
+    if x == .PermissionDenied {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] assignment")
+    }
+
+    // == / != against a real Error's code
+    mut _, err = error_thing()
+    if err.code == ErrorCode.NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] == comparison")
+    }
+    if err.code != ErrorCode.PermissionDenied {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] != comparison")
+    }
+
+    // when arm
+    mut label string = ""
+    when err.code {
+        is ErrorCode.NotFound { label = "nf" }
+        default { label = "other" }
+    }
+    if label == "nf" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] when arm -> ${label}")
+    }
+
+    // call argument
+    mut _, err2 = make_error(ErrorCode.NotFound)
+    if err2.code == .NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] call argument")
+    }
+
+    // function-return expression
+    if classify(ErrorCode.NotFound) {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] function-return expression")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
+
+do error_thing() -> (int, Error) {
+    return 0, error(.NotFound, "no such thing")
+}
+
+do make_error(c ErrorCode) -> (int, Error) {
+    return 0, error(c, "made")
+}
