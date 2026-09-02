@@ -1,0 +1,50 @@
+/*
+ * error_code_user_enum_string_form.gray - a #error_code enum value renders
+ * as its variant name in string interpolation, matching ErrorCode. The two
+ * denote the same value (STANDARD 10.5) so the string form must not diverge
+ * with the static type.
+ */
+
+#error_code
+const Kind enum {
+    TRANSIENT
+    FATAL
+}
+
+do main() {
+    println("=== #error_code enum string form ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut k Kind = Kind.FATAL
+    mut c ErrorCode = Kind.FATAL
+
+    if "${k}" == "FATAL" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] interpolation as Kind: ${k}")
+    }
+
+    if "${k}" == "${c}" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] Kind and ErrorCode string forms diverge: ${k} vs ${c}")
+    }
+
+    if "prefix ${k} suffix" == "prefix FATAL suffix" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] interpolation mid-string")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

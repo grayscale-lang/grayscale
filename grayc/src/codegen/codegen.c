@@ -76,6 +76,7 @@ static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
 static bool codegen_enum_is_tagged(CodeGen *codegen, const char *name);
+static bool codegen_enum_is_error_code(CodeGen *codegen, const char *name);
 static int codegen_enum_index(CodeGen *codegen, const char *name);
 static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
@@ -1699,7 +1700,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
             case TK_ENUM:
                 if (part_type && part_type->name && codegen_enum_is_string(codegen, part_type->name)) {
                     emit_expression(codegen, part);
-                } else if (part_type && part_type->name && strcmp(part_type->name, "ErrorCode") == 0) {
+                } else if (part_type && codegen_enum_is_error_code(codegen, part_type->name)) {
                     emit(codegen, "gray_string_lit(gray_error_code_name((int64_t)(");
                     emit_expression(codegen, part);
                     emit(codegen, ")))");
@@ -3976,8 +3977,8 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         emit_formatted(codegen, "); _gray_str_err%d ? _gray_str_err%d->msg : gray_c_string_dup(gray_default_arena, \"nil\"); })", tag, tag);
         return;
     }
-    if (arg_type && arg_type->kind == TK_ENUM && arg_type->name &&
-        strcmp(arg_type->name, "ErrorCode") == 0) {
+    if (arg_type && arg_type->kind == TK_ENUM &&
+        codegen_enum_is_error_code(codegen, arg_type->name)) {
         emit(codegen, "gray_string_lit(gray_error_code_name((int64_t)(");
         emit_expression(codegen, arg);
         emit(codegen, ")))");
@@ -4245,8 +4246,9 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         return;
     }
 
-    /* ErrorCode: print the variant name, not the raw slot number. */
-    if (type->kind == TK_ENUM && type->name && strcmp(type->name, "ErrorCode") == 0) {
+    /* ErrorCode (and #error_code enums): print the variant name, not the raw
+     * slot number. */
+    if (type->kind == TK_ENUM && codegen_enum_is_error_code(codegen, type->name)) {
         emit_indent(codegen);
         emit_formatted(codegen, "fprintf(%s, \"%%s\", gray_error_code_name((int64_t)(%s)));\n",
                stream, c_expr);
@@ -4572,8 +4574,8 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
         emit(codegen, " ? ");
         emit_expression(codegen, arg);
         emit(codegen, "->msg : gray_string_lit(\"nil\"))");
-    } else if (arg_t && arg_t->kind == TK_ENUM && arg_t->name &&
-               strcmp(arg_t->name, "ErrorCode") == 0) {
+    } else if (arg_t && arg_t->kind == TK_ENUM &&
+               codegen_enum_is_error_code(codegen, arg_t->name)) {
         emit_formatted(codegen, "gray_builtin_%s_str(gray_string_lit(gray_error_code_name((int64_t)(", variant);
         emit_expression(codegen, arg);
         emit(codegen, "))))");
@@ -11299,6 +11301,17 @@ static int codegen_enum_index(CodeGen *codegen, const char *name) {
                                sizeof(const char *), keyword_compare);
     if (hit) return (int)(hit - codegen->enum_names);
     return -1;
+}
+
+/* True for the program-wide ErrorCode enum and for any user enum marked
+ * #error_code. Their values share one global slot space, so they must also
+ * share one string form: the variant name, via gray_error_code_name(). */
+static bool codegen_enum_is_error_code(CodeGen *codegen, const char *name) {
+    if (!name) return false;
+    if (strcmp(name, "ErrorCode") == 0) return true;
+    int idx = codegen_enum_index(codegen, name);
+    return idx >= 0 && codegen->enum_decls[idx] &&
+           codegen->enum_decls[idx]->data.enum_decl.is_error_code;
 }
 
 /* Source paths are emitted into C string literals in roughly a hundred places
