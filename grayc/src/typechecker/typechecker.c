@@ -484,10 +484,12 @@ static bool typechecker_same_struct_type(TypeChecker *checker, const char *a, co
 static bool typechecker_enum_is_error_code(TypeChecker *checker, const char *name);
 static bool typechecker_same_enum_type(TypeChecker *checker, const char *a, const char *b) {
     if (a == b || strcmp(a, b) == 0) return true;
-    /* Every enum in the ErrorCode value space unifies: a #error_code enum value
-     * widens to ErrorCode, and vice versa. */
-    return typechecker_enum_is_error_code(checker, a) &&
-           typechecker_enum_is_error_code(checker, b);
+    /* A #error_code enum value is interchangeable with an ErrorCode value, but
+     * only with ErrorCode — each concrete #error_code enum stays its own type,
+     * so NetErr and DbErr do not unify with each other (STANDARD 10.5). */
+    if (!typechecker_enum_is_error_code(checker, a) ||
+        !typechecker_enum_is_error_code(checker, b)) return false;
+    return strcmp(a, "ErrorCode") == 0 || strcmp(b, "ErrorCode") == 0;
 }
 /* Compare array element type names accounting for module-prefixed struct
  * aliases (e.g. "Item" vs "utils_Item" should match). */
