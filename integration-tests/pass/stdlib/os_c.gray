@@ -62,13 +62,21 @@ do main() {
         failed += 1
     }
 
-    // current_os returns an int
-    mut os_val int = os.current_os()
-    if os_val >= 0 {
-        println("  [PASS] current_os (${os_val})")
+    // current_os returns a Platform enum
+    mut plat Platform = os.current_os()
+    mut named string = ""
+    when plat {
+        is .MAC_OS  { named = "mac" }
+        is .LINUX   { named = "linux" }
+        is .WINDOWS { named = "windows" }
+        is .OTHER   { named = "other" }
+        default     { named = "?" }
+    }
+    if named != "" && named != "?" && plat == os.current_os() {
+        println("  [PASS] current_os (${named})")
         passed += 1
     } otherwise {
-        println("  [FAIL] current_os: got ${os_val}")
+        println("  [FAIL] current_os: got ${named}")
         failed += 1
     }
 

@@ -1,0 +1,11 @@
+// expect-error: E3099
+// A user enum named OpenFlag collides with io's OpenFlag while @io is imported.
+
+import @io
+
+const OpenFlag enum {
+    A
+    B
+}
+
+do main() {}

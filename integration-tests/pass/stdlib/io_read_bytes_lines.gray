@@ -129,33 +129,38 @@ do main() {
         failed += 1
     }
 
-    // Test 13: O_RDONLY is 0
-    mut rdonly int = io.O_RDONLY
-    if rdonly == 0 {
-        println("  [PASS] O_RDONLY == 0")
+    // Test 13: io.O_RDONLY is the OpenFlag enum, equal to OpenFlag.O_RDONLY
+    mut rdonly OpenFlag = io.O_RDONLY
+    if rdonly == OpenFlag.O_RDONLY {
+        println("  [PASS] io.O_RDONLY == OpenFlag.O_RDONLY")
         passed += 1
     } otherwise {
-        println("  [FAIL] O_RDONLY: expected 0, got ${rdonly}")
+        println("  [FAIL] io.O_RDONLY")
         failed += 1
     }
 
-    // Test 14: O_WRONLY is 1
-    mut wronly int = io.O_WRONLY
-    if wronly == 1 {
-        println("  [PASS] O_WRONLY == 1")
+    // Test 14: OpenFlag variants are distinct
+    if io.O_WRONLY != io.O_RDONLY && io.O_WRONLY != io.O_RDWR {
+        println("  [PASS] OpenFlag variants distinct")
         passed += 1
     } otherwise {
-        println("  [FAIL] O_WRONLY: expected 1, got ${wronly}")
+        println("  [FAIL] OpenFlag variants not distinct")
         failed += 1
     }
 
-    // Test 15: O_RDWR is 2
-    mut rdwr int = io.O_RDWR
-    if rdwr == 2 {
-        println("  [PASS] O_RDWR == 2")
+    // Test 15: OpenFlag matched with when
+    mut mode string = ""
+    when io.O_RDWR {
+        is .O_RDONLY { mode = "r" }
+        is .O_WRONLY { mode = "w" }
+        is .O_RDWR   { mode = "rw" }
+        default      { mode = "?" }
+    }
+    if mode == "rw" {
+        println("  [PASS] when over OpenFlag")
         passed += 1
     } otherwise {
-        println("  [FAIL] O_RDWR: expected 2, got ${rdwr}")
+        println("  [FAIL] when over OpenFlag: got ${mode}")
         failed += 1
     }
 

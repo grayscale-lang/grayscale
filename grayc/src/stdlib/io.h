@@ -442,30 +442,18 @@ GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, G
 GrayResult_string gray_io_temp_file_result(GrayArena *arena);
 GrayResult_string gray_io_temp_dir_result(GrayArena *arena);
 
-/*@man O_RDONLY
+/*@man OpenFlag
  *@module io
- *@group Constants
- *@kind const
- *@sig 0
- *@desc Open for reading only.
- *@end
- */
-
-/*@man O_WRONLY
- *@module io
- *@group Constants
- *@kind const
- *@sig 1
- *@desc Open for writing only.
- *@end
- */
-
-/*@man O_RDWR
- *@module io
- *@group Constants
- *@kind const
- *@sig 2
- *@desc Open for reading and writing.
+ *@group Types
+ *@kind type
+ *@field O_RDONLY
+ *@field O_WRONLY
+ *@field O_RDWR
+ *@desc Mutually-exclusive open modes. Reachable as io.O_RDONLY or OpenFlag.O_RDONLY (same value). Underlying values: O_RDONLY 0, O_WRONLY 1, O_RDWR 2.
+ *@example
+ *   import @io
+ *   mut mode OpenFlag = io.O_RDWR
+ *   when mode { is .O_RDONLY { } is .O_WRONLY { } is .O_RDWR { } default { } }
  *@end
  */
 

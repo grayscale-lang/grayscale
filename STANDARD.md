@@ -122,7 +122,7 @@ func         int            map         nil         SourceLocation
 string       uint
 ```
 
-`Error` and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
+`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
 
 **Sized types (reserved names):**
 ```
@@ -3646,13 +3646,24 @@ for_each line in lines {
 mut sz, err = io.file_size("data.txt")
 ```
 
-#### Constants
+#### `OpenFlag` Enum
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `O_RDONLY` | `0` | Open for reading only |
-| `O_WRONLY` | `1` | Open for writing only |
-| `O_RDWR` | `2` | Open for reading and writing |
+`io` provides the `OpenFlag` enum for the mutually-exclusive open modes.
+Reachable as `io.O_RDONLY` or `OpenFlag.O_RDONLY` (both denote the same value).
+Underlying values: `O_RDONLY` 0, `O_WRONLY` 1, `O_RDWR` 2. `OpenFlag` is
+reserved as a type name only while `@io` is imported.
+
+```gray
+import @io
+
+mut mode OpenFlag = io.O_RDWR
+when mode {
+    is .O_RDONLY { }
+    is .O_WRONLY { }
+    is .O_RDWR   { }
+    default      { }
+}
+```
 
 #### Path Resolution
 
@@ -3690,7 +3701,7 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `current_dir` | `() -> string` | Get current working directory |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> int` | Get process ID |
-| `current_os` | `() -> int` | Get current OS as an int matching the constants below (`MAC_OS`, `LINUX`, `WINDOWS`, `OTHER`) |
+| `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
 | `arch` | `() -> string` | Get CPU architecture |
 
 #### Process Execution
@@ -3709,12 +3720,23 @@ if ok && code != 0 {
 }
 ```
 
-#### Constants
+#### `Platform` Enum
 
-- `MAC_OS` = 0
-- `LINUX` = 1
-- `WINDOWS` = 2
-- `OTHER` = 3
+`os` provides the `Platform` enum for the mutually-exclusive host-OS values.
+Reachable as `os.MAC_OS` or `Platform.MAC_OS` (both denote the same value);
+returned by `current_os()`. Underlying values: `MAC_OS` 0, `LINUX` 1,
+`WINDOWS` 2, `OTHER` 3. `Platform` is reserved as a type name only while `@os`
+is imported.
+
+```gray
+import @os
+
+when os.current_os() {
+    is .LINUX { println("linux") }
+    is .MAC_OS { println("macos") }
+    default   { println("other") }
+}
+```
 
 ### 9.11 HTTP Module (`@http`)
 

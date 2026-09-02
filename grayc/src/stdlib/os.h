@@ -98,15 +98,28 @@ GrayString gray_os_cwd(GrayArena *arena);
 /* os.hostname() */
 GrayString gray_os_hostname(GrayArena *arena);
 
+/*@man Platform
+ *@module os
+ *@group Types
+ *@kind type
+ *@field MAC_OS
+ *@field LINUX
+ *@field WINDOWS
+ *@field OTHER
+ *@desc Host operating system. Reachable as os.MAC_OS or Platform.MAC_OS (same value). Underlying values: MAC_OS 0, LINUX 1, WINDOWS 2, OTHER 3.
+ *@end
+ */
+
 /*@man current_os
  *@module os
  *@group System
- *@sig current_os() -> int
- *@desc Returns an integer identifying the current operating system. Compare against the module constants: MAC_OS (0), LINUX (1), WINDOWS (2), OTHER (3).
+ *@sig current_os() -> Platform
+ *@desc Returns the current operating system as a Platform enum value.
  *@example
  *   import @os
- *   if os.current_os() == os.LINUX {
- *       println("running on Linux")
+ *   when os.current_os() {
+ *       is .LINUX { println("running on Linux") }
+ *       default   { }
  *   }
  *@end
  */
@@ -158,41 +171,5 @@ void gray_os_init(int argc, char **argv);
 /* os.exec(cmd, args) — run a process, capture stdout and stderr, return (exit_code, stdout, stderr, ok) */
 typedef struct { int64_t v0; GrayString v1; GrayString v2; bool v3; } GrayOsExecResult;
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args);
-
-/*@man MAC_OS
- *@module os
- *@group Constants
- *@kind const
- *@sig 0
- *@desc Integer constant representing macOS. Returned by current_os().
- *@end
- */
-
-/*@man LINUX
- *@module os
- *@group Constants
- *@kind const
- *@sig 1
- *@desc Integer constant representing Linux. Returned by current_os().
- *@end
- */
-
-/*@man WINDOWS
- *@module os
- *@group Constants
- *@kind const
- *@sig 2
- *@desc Integer constant representing Windows. Returned by current_os().
- *@end
- */
-
-/*@man OTHER
- *@module os
- *@group Constants
- *@kind const
- *@sig 3
- *@desc Integer constant representing an unrecognized operating system. Returned by current_os().
- *@end
- */
 
 #endif

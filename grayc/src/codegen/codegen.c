@@ -581,6 +581,8 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "string") == 0) return "GrayString";
     if (strcmp(type_name, "Error") == 0 || strcmp(type_name, "error") == 0) return "GrayError *";
     if (strcmp(type_name, "ErrorCode") == 0) return "GrayErrorCode";
+    if (strcmp(type_name, "OpenFlag") == 0) return "GrayEnum_OpenFlag";
+    if (strcmp(type_name, "Platform") == 0) return "GrayEnum_Platform";
     /* A user struct/enum that shadows a stdlib opaque type name (Database,
      * Router, Thread, ...) resolves to its own GrayStruct_/GrayEnum_ name, so
      * every emit site agrees. The typechecker (E3099) still blocks declaring
@@ -1450,8 +1452,10 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         {"NEG_INF","math","(-1.0/0.0)"},{"EPSILON","math","2.2204460492503131e-16"},
         {"MAX_INT","math","9223372036854775807LL"},{"MIN_INT","math","(-9223372036854775807LL - 1)"},
         {"MAX_FLOAT","math","1.7976931348623157e308"},{"MIN_FLOAT","math","-1.7976931348623157e308"},
-        {"MAC_OS","os","0"},{"LINUX","os","1"},{"WINDOWS","os","2"},{"OTHER","os","3"},
-        {"O_RDONLY","io","0"},{"O_WRONLY","io","1"},{"O_RDWR","io","2"},
+        {"MAC_OS","os","GrayEnum_Platform_MAC_OS"},{"LINUX","os","GrayEnum_Platform_LINUX"},
+        {"WINDOWS","os","GrayEnum_Platform_WINDOWS"},{"OTHER","os","GrayEnum_Platform_OTHER"},
+        {"O_RDONLY","io","GrayEnum_OpenFlag_O_RDONLY"},{"O_WRONLY","io","GrayEnum_OpenFlag_O_WRONLY"},
+        {"O_RDWR","io","GrayEnum_OpenFlag_O_RDWR"},
         {"BASE_2","strconv","2"},{"BASE_8","strconv","8"},{"BASE_10","strconv","10"},
         {"BASE_16","strconv","16"},{"BASE_36","strconv","36"},
         {"NIL_UUID","uuid","gray_uuid_nil()"},
@@ -2878,19 +2882,22 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             if (strcmp(mem, "MIN_FLOAT") == 0) { emit(codegen, "-1.7976931348623157e308"); return; }
         }
 
-        /* @io constants */
+        /* @io OpenFlag enum via the module.VARIANT spelling */
         if (strcmp(mod, "io") == 0) {
-            if (strcmp(mem, "O_RDONLY") == 0) { emit(codegen, "0"); return; }
-            if (strcmp(mem, "O_WRONLY") == 0) { emit(codegen, "1"); return; }
-            if (strcmp(mem, "O_RDWR") == 0)   { emit(codegen, "2"); return; }
+            if (strcmp(mem, "O_RDONLY") == 0 || strcmp(mem, "O_WRONLY") == 0 ||
+                strcmp(mem, "O_RDWR") == 0) {
+                emit_formatted(codegen, "GrayEnum_OpenFlag_%s", mem);
+                return;
+            }
         }
 
-        /* @os constants */
+        /* @os Platform enum via the module.VARIANT spelling */
         if (strcmp(mod, "os") == 0) {
-            if (strcmp(mem, "MAC_OS") == 0)  { emit(codegen, "0"); return; }
-            if (strcmp(mem, "LINUX") == 0)   { emit(codegen, "1"); return; }
-            if (strcmp(mem, "WINDOWS") == 0) { emit(codegen, "2"); return; }
-            if (strcmp(mem, "OTHER") == 0)   { emit(codegen, "3"); return; }
+            if (strcmp(mem, "MAC_OS") == 0 || strcmp(mem, "LINUX") == 0 ||
+                strcmp(mem, "WINDOWS") == 0 || strcmp(mem, "OTHER") == 0) {
+                emit_formatted(codegen, "GrayEnum_Platform_%s", mem);
+                return;
+            }
         }
 
         /* @strconv constants */
@@ -2915,6 +2922,9 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             /* Resolve unprefixed enum names from 'import and use' */
             const char *resolved_enum = NULL;
             if (codegen_is_enum(codegen, mod)) {
+                resolved_enum = mod;
+            } else if (strcmp(mod, "OpenFlag") == 0 || strcmp(mod, "Platform") == 0) {
+                /* Stdlib-provided enums have no AST decl in codegen's registry. */
                 resolved_enum = mod;
             } else {
                 const char *resolved_name = codegen_resolve_type(codegen, mod);
@@ -11623,6 +11633,30 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
         }
         emit(codegen, "        default: return \"Unknown\";\n    }\n}\n\n");
+    }
+
+    /* Enums a stdlib module exposes (io.OpenFlag, os.Platform): a plain C enum
+     * typedef, emitted only when the owning module is imported. Variant value is
+     * its position — matches the typechecker's stdlib_enum_map. */
+    {
+        static const struct {
+            const char *name; const char *mod;
+            const char *variants[6]; int count;
+        } cg_stdlib_enums[] = {
+            {"OpenFlag", "io", {"O_RDONLY", "O_WRONLY", "O_RDWR"}, 3},
+            {"Platform", "os", {"MAC_OS", "LINUX", "WINDOWS", "OTHER"}, 4},
+            {NULL, NULL, {NULL}, 0}
+        };
+        for (int i = 0; cg_stdlib_enums[i].name; i++) {
+            if (!has_stdlib_module(stdlib_imports, stdlib_import_count, cg_stdlib_enums[i].mod))
+                continue;
+            emit(codegen, "typedef enum {\n");
+            for (int j = 0; j < cg_stdlib_enums[i].count; j++) {
+                emit_formatted(codegen, "    GrayEnum_%s_%s = %d,\n",
+                    cg_stdlib_enums[i].name, cg_stdlib_enums[i].variants[j], j);
+            }
+            emit_formatted(codegen, "} GrayEnum_%s;\n\n", cg_stdlib_enums[i].name);
+        }
     }
 
     /* Register all enums and emit non-tagged enum typedefs.

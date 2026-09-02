@@ -2098,7 +2098,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"os", "arch",        0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "args",        0, 0, false, FT_NONE, 0, {{0}},"[string]"},
     {"os", "current_dir", 0, 0, false, FT_NONE, 0, {{0}},"string"},
-    {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"int"},
+    {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"Platform"},
     {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"os", "hostname",    0, 0, false, FT_NONE, 0, {{0}},"string"},
@@ -2540,6 +2540,26 @@ static const struct { const char *type; const char *mod; } stdlib_opaque_map[] =
         {NULL, NULL}
 };
 
+/* Enums a stdlib module exposes: closed sets of named int values. A variant is
+ * reachable both as `module.VARIANT` and as `EnumName.VARIANT`; its value is its
+ * position. Reserved (E3099) only while the owning module is imported. */
+static const struct {
+    const char *name; const char *mod;
+    const char *variants[6]; int count;
+} stdlib_enum_map[] = {
+    {"OpenFlag", "io", {"O_RDONLY", "O_WRONLY", "O_RDWR"}, 3},
+    {"Platform", "os", {"MAC_OS", "LINUX", "WINDOWS", "OTHER"}, 4},
+    {NULL, NULL, {NULL}, 0}
+};
+
+/* Module that owns a stdlib-provided enum name, or NULL. */
+static const char *stdlib_enum_module(const char *bare_name) {
+    for (int i = 0; stdlib_enum_map[i].name; i++) {
+        if (strcmp(bare_name, stdlib_enum_map[i].name) == 0) return stdlib_enum_map[i].mod;
+    }
+    return NULL;
+}
+
 static const char *stdlib_opaque_module(const char *bare_name) {
     for (int i = 0; stdlib_opaque_map[i].type; i++) {
         if (strcmp(bare_name, stdlib_opaque_map[i].type) == 0) return stdlib_opaque_map[i].mod;
@@ -2765,7 +2785,7 @@ typedef struct {
     const char *name;
     const char *mod;
     TypeKind return_kind;
-    const char *struct_name; /* only for TK_STRUCT constants; NULL otherwise */
+    const char *struct_name; /* referenced type name for TK_STRUCT / TK_ENUM constants; NULL otherwise */
 } UsingConst;
 static GrayType *stdlib_const_type(int index);
 
@@ -2776,8 +2796,8 @@ static const UsingConst _using_consts[] = {
     {"EPSILON","math",TK_FLOAT,NULL},
     {"MAX_INT","math",TK_INT,NULL},{"MIN_INT","math",TK_INT,NULL},
     {"MAX_FLOAT","math",TK_FLOAT,NULL},{"MIN_FLOAT","math",TK_FLOAT,NULL},
-    {"MAC_OS","os",TK_INT,NULL},{"LINUX","os",TK_INT,NULL},{"WINDOWS","os",TK_INT,NULL},{"OTHER","os",TK_INT,NULL},
-    {"O_RDONLY","io",TK_INT,NULL},{"O_WRONLY","io",TK_INT,NULL},{"O_RDWR","io",TK_INT,NULL},
+    {"MAC_OS","os",TK_ENUM,"Platform"},{"LINUX","os",TK_ENUM,"Platform"},{"WINDOWS","os",TK_ENUM,"Platform"},{"OTHER","os",TK_ENUM,"Platform"},
+    {"O_RDONLY","io",TK_ENUM,"OpenFlag"},{"O_WRONLY","io",TK_ENUM,"OpenFlag"},{"O_RDWR","io",TK_ENUM,"OpenFlag"},
     {"BASE_2","strconv",TK_INT,NULL},{"BASE_8","strconv",TK_INT,NULL},{"BASE_10","strconv",TK_INT,NULL},
     {"BASE_16","strconv",TK_INT,NULL},{"BASE_36","strconv",TK_INT,NULL},
     {"NIL_UUID","uuid",TK_STRUCT,"UUID"},
@@ -2792,6 +2812,8 @@ static GrayType *stdlib_const_type(int index) {
     case TK_STRING: return &TYPE_STRING;
     case TK_STRUCT: return _using_consts[index].struct_name
                         ? type_struct(_using_consts[index].struct_name) : &TYPE_UNKNOWN;
+    case TK_ENUM:   return _using_consts[index].struct_name
+                        ? type_enum(_using_consts[index].struct_name) : &TYPE_UNKNOWN;
     default:        return &TYPE_UNKNOWN;
     }
 }
@@ -13395,6 +13417,14 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
  * reserved unconditionally. */
 static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *node,
                                                const char *name) {
+    /* Enums a stdlib module exposes (io.OpenFlag, os.Platform) are reserved the
+     * same way opaque types are: only while the owning module is imported. */
+    const char *enum_owner = stdlib_enum_module(name);
+    if (enum_owner && typechecker_is_imported_module(checker, enum_owner)) {
+        diagnostic_error_code_formatted(checker->diag, "E3099",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+        return;
+    }
     if (!is_reserved_stdlib_struct_name(name)) return;
     const char *owner = stdlib_opaque_module(name);
     if (!owner || typechecker_is_imported_module(checker, owner)) {
@@ -14141,6 +14171,17 @@ static void register_stdlib_module(TypeChecker *checker, const char *module) {
             DECL_STRUCT, stdlib_opaque_map[i].type, NULL);
         if (entry) entry->external = true;
     }
+    /* Enums a stdlib module exposes (io.OpenFlag, os.Platform). Registered as
+     * ordinary enums so EnumName.VARIANT, `when`, and `type_of` all work; the
+     * module.VARIANT spelling is typed through _using_consts above. */
+    for (int i = 0; stdlib_enum_map[i].name; i++) {
+        if (strcmp(stdlib_enum_map[i].mod, module) != 0) continue;
+        if (find_enum_index(checker, stdlib_enum_map[i].name) >= 0) continue;
+        register_enum(checker, stdlib_enum_map[i].name, stdlib_enum_map[i].name,
+            false, (const char **)stdlib_enum_map[i].variants, stdlib_enum_map[i].count,
+            NULL, NULL, false, false, false, NULL);
+        type_enum(stdlib_enum_map[i].name);
+    }
     for (int i = 0; _using_consts[i].name; i++) {
         if (strcmp(_using_consts[i].mod, module) != 0) continue;
         DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
@@ -14414,8 +14455,11 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
             }
         }
         /* E4007: duplicate enum name. An enum named `main` collides with the
-         * entry point, but E4026 already says so — don't pile on. */
+         * entry point, but E4026 already says so — don't pile on. A collision
+         * with a stdlib-provided enum (io.OpenFlag, os.Platform) is reported by
+         * E3099 instead — that enum is pre-registered, so is_enum_name is true. */
         if (strcmp(stmt->data.enum_decl.name, "main") != 0 &&
+            !stdlib_enum_module(stmt->data.enum_decl.name) &&
             (type_name_already_declared(checker, stmt->data.enum_decl.name, stmt) ||
             is_enum_name(checker, stmt->data.enum_decl.name) ||
             is_struct_name(checker, stmt->data.enum_decl.name))) {
