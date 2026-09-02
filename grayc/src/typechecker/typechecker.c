@@ -1998,7 +1998,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"io", "path_join",      1, 1, false, FT_NONE,         1, {{0, ARG_ARRAY}}, "string"},
     {"io", "read_bytes",     1, 1, true,  FT_ARRAY_BYTE,   1, {{0, ARG_STRING}}, "[byte]"},
     {"io", "read_file",      1, 1, true,  FT_STRING,       1, {{0, ARG_STRING}}, "string"},
-    {"io", "read_lines",     1, 1, true,  FT_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[string]"},
+    {"io", "read_lines",     1, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "[string]"},
     {"io", "remove_dir",     1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
     {"io", "remove_dir_all", 1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
     {"io", "rename_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -2370,6 +2370,31 @@ static void typechecker_check_strconv_base(TypeChecker *checker, const char *mod
             (long long)base, fn);
         diagnostic_error_message(checker->diag, "E5009", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    }
+}
+
+/* Compile-time validation for io.read_lines' optional line limit.
+ * A literal negative limit is rejected outright rather than clamped. */
+static void typechecker_check_io_read_lines_limit(TypeChecker *checker, const char *mod,
+    const char *fn, AstNode *node)
+{
+    if (strcmp(mod, "io") != 0 || strcmp(fn, "read_lines") != 0) return;
+    if (node->data.call.arg_count < 2) return;
+    AstNode *limit_arg = node->data.call.args[1];
+    int64_t limit;
+    if (limit_arg->kind == NODE_INT_VALUE) {
+        limit = limit_arg->data.int_value.value;
+    } else if (limit_arg->kind == NODE_PREFIX_EXPR &&
+               limit_arg->data.prefix.op == TOK_MINUS &&
+               limit_arg->data.prefix.right &&
+               limit_arg->data.prefix.right->kind == NODE_INT_VALUE) {
+        limit = -limit_arg->data.prefix.right->data.int_value.value;
+    } else {
+        return;
+    }
+    if (limit < 0) {
+        diagnostic_error_code(checker->diag, "E3150",
+            NODE_FILE(checker, node), limit_arg->token.line, limit_arg->token.column, 0);
     }
 }
 
@@ -3956,6 +3981,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     typechecker_check_stdlib_arg_count(checker, mod, mfn, node);
     typechecker_check_stdlib_arg_types(checker, mod, mfn, node);
     typechecker_check_strconv_base(checker, mod, mfn, node);
+    typechecker_check_io_read_lines_limit(checker, mod, mfn, node);
     typechecker_check_const_domain(checker, mod, mfn, node);
     /* Table-driven return type resolution: O(log n) bsearch */
     const StdlibFuncMeta *meta = find_stdlib_meta(mod, mfn);
@@ -6964,6 +6990,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     typechecker_check_stdlib_arg_count(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_stdlib_arg_types(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_strconv_base(checker, using_stdlib_mod, function_name, node);
+                    typechecker_check_io_read_lines_limit(checker, using_stdlib_mod, function_name, node);
                     typechecker_check_const_domain(checker, using_stdlib_mod, function_name, node);
                 }
             } else {

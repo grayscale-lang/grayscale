@@ -3541,7 +3541,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 |----------|-----------|-------------|
 | `read_file` | `(path string) -> string` | Read entire file as a string |
 | `read_bytes` | `(path string) -> [byte]` | Read entire file as a byte array |
-| `read_lines` | `(path string) -> [string]` | Read file and split into lines (strips `\r\n`) |
+| `read_lines` | `(path string, limit int = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
 
 #### File Writing
 

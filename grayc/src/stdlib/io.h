@@ -46,17 +46,18 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
 /*@man read_lines
  *@module io
  *@group File Reading
- *@sig read_lines(path string) -> ([string], Error)
- *@desc Reads the file at path and returns its contents split into lines. CR/LF and LF line endings are stripped. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@sig read_lines(path string, limit int = 0) -> ([string], Error)
+ *@desc Reads the file at path line by line and returns the lines. CR/LF and LF line endings are stripped. `limit` caps how many lines are read: a count, not an index, so `limit` of N returns at most N lines; `limit` of 0 (the default) reads to end of file. A negative literal `limit` is a compile error (E3150). Streaming means a small `limit` stays cheap on a large file. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
  *   mut lines, err = io.read_lines("data.txt")
+ *   mut head, _ = io.read_lines("big.log", 100)
  *   for_each line in lines {
  *       println(line)
  *   }
  *@end
  */
-GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path);
+GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
 
 /*@man file_exists
  *@module io
@@ -422,7 +423,7 @@ typedef struct { GrayArray v0; GrayError *v1; } GrayResult_array;
 
 GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_bytes_result(GrayArena *arena, GrayString path);
-GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path);
+GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit);
 GrayResult_int    gray_io_file_size_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);

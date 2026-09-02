@@ -6924,6 +6924,10 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *func) {
                 if (i > 0) emit(codegen, ", ");
                 emit_expression(codegen, node->data.call.args[i]);
             }
+            /* read_lines' optional line limit defaults to 0 (read to EOF) */
+            if (strcmp(func, "read_lines") == 0 && node->data.call.arg_count == 1) {
+                emit(codegen, ", 0");
+            }
             emit(codegen, ")");
         } else {
             emit_formatted(codegen, "gray_io_%s_result(gray_default_arena", func);
@@ -6931,6 +6935,9 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *func) {
             for (int i = 0; i < node->data.call.arg_count; i++) {
                 if (i > 0) emit(codegen, ", ");
                 emit_expression(codegen, node->data.call.args[i]);
+            }
+            if (strcmp(func, "read_lines") == 0 && node->data.call.arg_count == 1) {
+                emit(codegen, ", 0");
             }
             emit(codegen, ")");
         }

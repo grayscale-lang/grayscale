@@ -424,29 +424,39 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     return arr;
 }
 
-GrayArray gray_io_read_lines(GrayArena *arena, GrayString path) {
+/* Stream lines from f into arr, stripping a trailing LF and (for CRLF) CR.
+ * limit > 0 stops after that many lines; limit <= 0 reads to end of file.
+ * Streaming keeps `limit` cheap on large files and avoids the read_file
+ * max-string-length panic when the caller only wants the first few lines. */
+static void io_stream_lines(GrayArena *arena, FILE *f, int64_t limit, GrayArray *arr) {
+    char *line = NULL;
+    size_t cap = 0;
+    ssize_t got;
+    int64_t count = 0;
+    while ((limit <= 0 || count < limit) && (got = getline(&line, &cap, f)) != -1) {
+        size_t len = (size_t)got;
+        if (len > 0 && line[len - 1] == '\n') len--;
+        if (len > 0 && line[len - 1] == '\r') len--;
+        char *linebuf = gray_arena_alloc_uninitialized(arena, len + 1);
+        memcpy(linebuf, line, len);
+        linebuf[len] = '\0';
+        GrayString gs = { linebuf, (int32_t)len };
+        GRAY_ARRAY_PUSH(arena, arr, &gs);
+        count++;
+    }
+    free(line);
+}
+
+GrayArray gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0086", "io.read_lines() cannot read a directory");
-    GrayString content = gray_io_read_file(arena, path);
-    if (content.len == 0) return arr;
-    const char *p = content.data;
-    const char *end = content.data + content.len;
-    while (p < end) {
-        const char *nl = p;
-        while (nl < end && *nl != '\n') nl++;
-        int32_t len = (int32_t)(nl - p);
-        /* Strip trailing \r for Windows line endings */
-        if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
-        memcpy(linebuf, p, (size_t)len);
-        linebuf[len] = '\0';
-        GrayString line = { linebuf, len };
-        GRAY_ARRAY_PUSH(arena, &arr, &line);
-        p = nl + 1;
-    }
+    FILE *f = fopen(path.data, "rb");
+    if (!f) return arr;
+    io_stream_lines(arena, f, limit, &arr);
+    fclose(f);
     return arr;
 }
 
@@ -945,38 +955,24 @@ GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
     return r;
 }
 
-GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path) {
+GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
     GrayResult_array r;
+    r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
         r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
         return r;
     }
-    GrayResult_string fr = gray_io_read_file_result(arena, path);
-    if (fr.v1 != NULL) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
-        r.v1 = fr.v1;
+    FILE *f = fopen(path.data, "rb");
+    if (!f) {
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena,
+            "cannot read '%s'", path.data));
         return r;
     }
-    r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    GrayString content = fr.v0;
-    const char *p = content.data;
-    const char *end = content.data + content.len;
-    while (p < end) {
-        const char *nl = p;
-        while (nl < end && *nl != '\n') nl++;
-        int32_t len = (int32_t)(nl - p);
-        if (len > 0 && p[len - 1] == '\r') len--;
-        char *linebuf = gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
-        memcpy(linebuf, p, (size_t)len);
-        linebuf[len] = '\0';
-        GrayString line = { linebuf, len };
-        GRAY_ARRAY_PUSH(arena, &r.v0, &line);
-        p = nl + 1;
-    }
+    io_stream_lines(arena, f, limit, &r.v0);
+    fclose(f);
     r.v1 = NULL;
     return r;
 }

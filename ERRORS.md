@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 425 codes** (294 errors, 17 warnings, 114 panics)
+**Total: 426 codes** (295 errors, 17 warnings, 114 panics)
 
 ---
 
@@ -219,6 +219,7 @@
 | `E3147` | types | #error_code enum '%s' cannot have payload variants |
 | `E3148` | types | ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique |
 | `E3149` | types | 'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive |
+| `E3150` | types | 'io.read_lines' line limit cannot be negative; pass 0 to read to end of file |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -476,4 +477,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-02 17:04:04 UTC*
+*Generated on 2026-09-02 18:06:54 UTC*

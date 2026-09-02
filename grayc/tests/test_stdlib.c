@@ -1232,10 +1232,16 @@ static void test_io_append_file(void) {
 static void test_io_read_lines(void) {
     GrayString path = io_tmp_path("grayc_ut_lines.txt");
     ASSERT(gray_io_write_file(path, gray_string_lit("one\ntwo\nthree")));
-    GrayArray lines = gray_io_read_lines(arena, path);
+    GrayArray lines = gray_io_read_lines(arena, path, 0);
     ASSERT_EQ(lines.len, 3);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 0), gray_string_lit("one")));
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 2), gray_string_lit("three")));
+    /* limit caps the count; asking for more than the file has yields all */
+    GrayArray head = gray_io_read_lines(arena, path, 2);
+    ASSERT_EQ(head.len, 2);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(head, GrayString, 1), gray_string_lit("two")));
+    GrayArray over = gray_io_read_lines(arena, path, 99);
+    ASSERT_EQ(over.len, 3);
     gray_io_delete_file(path);
 }
 

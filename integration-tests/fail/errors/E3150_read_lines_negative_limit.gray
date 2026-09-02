@@ -1,0 +1,9 @@
+// expect-error: E3150
+// io.read_lines rejects a negative line limit at compile time.
+
+import @io
+
+do main() {
+    mut lines, _ = io.read_lines("data.txt", -1)
+    println(len(lines))
+}
