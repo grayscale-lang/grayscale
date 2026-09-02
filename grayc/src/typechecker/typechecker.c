@@ -13692,10 +13692,17 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 val_i->kind != NODE_RANGE_EXPR &&
                 !(val_i->kind == NODE_CALL_EXPR && val_i->data.call.function->kind == NODE_LABEL &&
                   strcmp(val_i->data.call.function->data.label.value, "range") == 0)) {
-                bool compat = types_assignable(checker, when_t, case_t) ||
+                /* Mixing an enum with a plain int is a mismatch, matching the
+                 * == operator (E3117): an int literal pattern against an enum
+                 * subject, or an enum-variant pattern against an int subject,
+                 * would otherwise match by raw ordinal with no diagnostic. */
+                bool enum_vs_int =
                     (when_t->kind == TK_ENUM && is_int_kind(case_t->kind)) ||
-                    (when_t->kind == TK_ENUM && case_t->kind == TK_STRING &&
-                     typechecker_enum_is_string(checker, when_t->name));
+                    (is_int_kind(when_t->kind) && case_t->kind == TK_ENUM);
+                bool compat = !enum_vs_int &&
+                    (types_assignable(checker, when_t, case_t) ||
+                     (when_t->kind == TK_ENUM && case_t->kind == TK_STRING &&
+                      typechecker_enum_is_string(checker, when_t->name)));
                 if (!compat) {
                     diagnostic_error_code_formatted(checker->diag, "E3018", NODE_FILE(checker, val_i), val_i->token.line, val_i->token.column, 0, type_display_name(checker, when_t), type_display_name(checker, case_t));
                 }
