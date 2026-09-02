@@ -8518,8 +8518,16 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         emit_formatted(codegen, "GrayArray %s;\n", sanitize_name(node->data.var_decl.name));
         Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
         emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
-        if (node->data.var_decl.value) emit_expression(codegen, node->data.var_decl.value);
-        else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+        if (node->data.var_decl.value &&
+            node->data.var_decl.value->kind == NODE_ARRAY_VALUE &&
+            node->data.var_decl.value->data.array_value.count == 0) {
+            /* Empty array literal with type annotation; use the declared elem size. */
+            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+        } else if (node->data.var_decl.value) {
+            emit_expression(codegen, node->data.var_decl.value);
+        } else {
+            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
+        }
         emit(codegen, ";\n");
         codegen->global_init = codegen->output; codegen->output = saved; codegen->indent = 0;
     } else {

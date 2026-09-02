@@ -1,0 +1,56 @@
+/*
+ * file_scope_empty_array_elem_size.gray - a file-scope `mut arr [T] = {}` must
+ * allocate with the declared element type's size, not sizeof(int64_t). When T is
+ * wider than 8 bytes (a struct, a string field), an 8-byte stride corrupts every
+ * element past the first.
+ */
+
+import @arrays
+
+const P struct {
+    x int
+    y int
+}
+
+const Named struct {
+    id   int
+    name string
+}
+
+mut ps [P] = {}
+mut ns [Named] = {}
+
+do main() {
+    println("=== file-scope empty array element size ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    arrays.append(ps, P{x: 10, y: 20})
+    arrays.append(ps, P{x: 30, y: 40})
+    if ps[0].x == 10 && ps[0].y == 20 && ps[1].x == 30 && ps[1].y == 40 {
+        println("  [PASS] struct elements stored at the right stride")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${ps[0].x} ${ps[0].y} / ${ps[1].x} ${ps[1].y}")
+        failed += 1
+    }
+
+    arrays.append(ns, Named{id: 1, name: "alice"})
+    arrays.append(ns, Named{id: 2, name: "bob"})
+    if ns[0].id == 1 && ns[0].name == "alice" && ns[1].id == 2 && ns[1].name == "bob" {
+        println("  [PASS] struct-with-string elements are intact")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${ns[0].id} ${ns[0].name} / ${ns[1].id} ${ns[1].name}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
