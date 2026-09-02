@@ -78,6 +78,7 @@ static const char *const gray_builtin_func_names[] = {
     "error",
     "exit",
     "fields",
+    "flush",
     "here",
     "input",
     "len",

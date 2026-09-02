@@ -128,10 +128,17 @@ PRINT_FAMILY(addr,  uintptr_t)
 
 #undef PRINT_FAMILY
 
+/* --- flush --- */
+
+void gray_builtin_flush(void) {
+    fflush(stdout);
+}
+
 /* --- input --- */
 
 GrayString gray_builtin_input(GrayArena *arena) {
     char buf[GRAY_INPUT_BUF_SIZE];
+    fflush(stdout);
     if (fgets(buf, sizeof(buf), stdin) == NULL) {
         return gray_string_lit("");
     }
@@ -235,6 +242,10 @@ int64_t gray_builtin_system(GrayString cmd) {
     if (!cstr) return -1;
     memcpy(cstr, cmd.data, (size_t)cmd.len);
     cstr[cmd.len] = '\0';
+    /* Flush our buffered output so it lands before the child's, which inherits
+     * the same stdout fd. */
+    fflush(stdout);
+    fflush(stderr);
     int status = system(cstr);
     free(cstr);
 #if GRAY_RT_WINDOWS

@@ -49,6 +49,16 @@ void gray_builtin_print_bool(bool v);
 void gray_builtin_print_char(int32_t c);
 void gray_builtin_print_addr(uintptr_t v);
 
+/*@man flush
+ *@sig flush()
+ *@desc Flushes buffered stdout so partial-line output (prompts, progress indicators) appears immediately, even when stdout is a pipe or file.
+ *@example
+ *   print("working")
+ *   flush()
+ *@end
+ */
+void gray_builtin_flush(void);
+
 /*@man eprintln
  *@sig eprintln(value T)
  *@desc Prints any value to stderr followed by a newline. Supports all types: string, int, uint, float, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.

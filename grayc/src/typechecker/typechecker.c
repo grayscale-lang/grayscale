@@ -2673,7 +2673,7 @@ static bool typechecker_is_builtin(const char *name) {
     static const char *const builtins[] = {
         "addr", "assert", "bool", "byte", "c_string", "cast",
         "char", "char_count", "copy", "embed", "eprint", "eprintln",
-        "error", "exit", "f32", "f64", "fields", "float", "here",
+        "error", "exit", "f32", "f64", "fields", "float", "flush", "here",
         "i128", "i16", "i256", "i32", "i64", "i8",
         "input", "int", "len", "new", "panic", "print", "println",
         "range", "raw", "ref", "size_of", "sleep_ms", "sleep_ns", "sleep_s",
@@ -6323,6 +6323,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             char context[TYPE_NAME_MAX];
             snprintf(context, sizeof(context), "'%s()' argument", function_name);
             reject_void_in_context(checker, node->data.call.args[0], at, context);
+        }
+        result = &TYPE_VOID;
+    } else if (strcmp(function_name, "flush") == 0) {
+        if (node->data.call.arg_count != 0) {
+            char *msg = typechecker_format(checker,
+                "'flush()' expects 0 arguments, got %d", node->data.call.arg_count);
+            diagnostic_error_message(checker->diag, "E5008", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         result = &TYPE_VOID;
     } else if (strcmp(function_name, "exit") == 0 || strcmp(function_name, "panic") == 0 ||

@@ -3036,14 +3036,20 @@ Built-in functions are always available without importing any module.
 | `print` | `(value T)` | Print value without newline. Accepts any type. |
 | `eprintln` | `(value T)` | Print to stderr with newline. Accepts any type. |
 | `eprint` | `(value T)` | Print to stderr without newline. Accepts any type. |
+| `flush` | `()` | Flush buffered stdout so partial-line output appears immediately. |
 
 All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs, and pointers.
+
+`stdout` is buffered. `print` output may not appear until a newline is written (on a
+terminal) or the buffer fills (on a pipe or file); call `flush()` to force it out for
+prompts, progress indicators, and spinners. `system` flushes stdout and stderr before
+running the child so output is not reordered.
 
 #### Input Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `input` | `() -> string` | Read line from stdin |
+| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. |
 
 #### Wide Integer Conversions
 

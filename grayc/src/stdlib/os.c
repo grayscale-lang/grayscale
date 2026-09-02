@@ -219,6 +219,10 @@ static DWORD WINAPI drain_pipe(LPVOID param) {
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) {
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
 
+    /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
+    fflush(stdout);
+    fflush(stderr);
+
     /* CreateProcess takes one flat command line rather than an argv array, so
      * rebuild it with MSVCRT quoting. */
     char cmdline[32768];
@@ -301,6 +305,10 @@ GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) 
 
 GrayOsExecResult gray_os_exec(GrayArena *arena, GrayString cmd, GrayArray args) {
     GrayOsExecResult fail = {0, gray_string_lit(""), gray_string_lit(""), false};
+
+    /* Flush buffered stdout/stderr so it is not interleaved after the child's. */
+    fflush(stdout);
+    fflush(stderr);
 
     /* Build null-terminated argv: argv[0] = cmd, argv[1..n] = args, argv[n+1] = NULL */
     int argc = 1 + args.len;

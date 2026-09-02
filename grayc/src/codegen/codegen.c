@@ -4991,6 +4991,11 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         return true;
     }
 
+    if (strcmp(func, "flush") == 0) {
+        emit(codegen, "gray_builtin_flush()");
+        return true;
+    }
+
 
     if (strcmp(func, "eprintln") == 0) {
         if (node->data.call.arg_count == 0) {
