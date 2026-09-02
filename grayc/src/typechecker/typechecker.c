@@ -3337,10 +3337,12 @@ static bool error_type_in_container(const char *written, bool in_container) {
 }
 
 /* E3153: reject Error nested in an array or map. Called once per written
- * annotation, alongside reject_private_type. */
+ * annotation, alongside reject_private_type. Resolves type aliases first so
+ * `alias ErrBag = [Error]` cannot hide the [Error] spelling from the
+ * literal-string match in error_type_in_container. */
 static void reject_error_in_container(TypeChecker *checker, AstNode *node,
                                       const char *written) {
-    if (error_type_in_container(written, false)) {
+    if (error_type_in_container(resolve_type_alias(checker, written), false)) {
         diagnostic_error_code(checker->diag, "E3153",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }

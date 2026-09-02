@@ -1,0 +1,20 @@
+// expect-error: E3153
+// expect-error-count: 1
+// A one-line alias must not hide the [Error] spelling from E3153 in a
+// function signature. The param and return-type sites now resolve the
+// alias before the container check.
+
+alias ErrBag = [Error]
+
+do split() -> (int, Error) {
+    return 0, error(.NotFound, "n")
+}
+
+do make_bag() -> ErrBag {
+    mut _, e = split()
+    return {e}
+}
+
+do main() {
+    println("${len(make_bag())}")
+}
