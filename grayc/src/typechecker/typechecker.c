@@ -9496,6 +9496,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             reject_void_in_context(checker, node->data.map_value.keys[i], kt, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], vt, "map value");
             /* E3040: multi-return call in single-value map position */
+            reject_multi_return_in_single_position(checker, node->data.map_value.keys[i]);
             reject_multi_return_in_single_position(checker, node->data.map_value.values[i]);
         }
         /* E12006: Check for duplicate keys in map literal */
@@ -13064,6 +13065,8 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
 
 static void check_while_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *wh_cond_t = resolve_expression(checker, node->data.while_stmt.condition);
+    /* E3089/E3040: fallible or multi-return call in single-value condition position. */
+    reject_multi_return_in_single_position(checker, node->data.while_stmt.condition);
     /* E3038 (): void function call as 'as_long_as' condition. */
     if (wh_cond_t && wh_cond_t->kind == TK_VOID) {
         AstNode *c = node->data.while_stmt.condition;
