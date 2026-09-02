@@ -385,9 +385,9 @@ void gray_builtin_sleep_ns(int64_t ns);
 
 /*@man c_string
  *@sig c_string(ptr ^u8) -> string
- *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (import c"header.h").
+ *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (extern import "header.h").
  *@example
- *   import c"mylib.h"
+ *   extern import "mylib.h"
  *   mut s string = c_string(mylib_get_name())
  *@end
  */

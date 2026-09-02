@@ -2911,53 +2911,53 @@ sqrt(16.0)
 
 ### 8.6 C Interop
 
-> ⚠️ **Notice:** C interop will be redesigned before 1.0. Expect breaking changes to the syntax and semantics described in this section.
-
-Grayscale can import C headers and call C functions directly using the `c` prefix:
+Grayscale can import C headers and call C functions directly using the `extern` prefix:
 
 #### Importing C Headers
 
 ```gray
-import c"stdio.h"           // system header → #include <stdio.h>
-import c"./mylib.h"         // local header  → #include "./mylib.h"
+extern import "stdio.h"           // system header → #include <stdio.h>
+extern import "./mylib.h"         // local header  → #include "./mylib.h"
 ```
 
 System headers (no `./` or `../` prefix) emit angle-bracket includes. Local headers emit quoted includes. Multiple C imports can be comma-separated:
 
 ```gray
-import c"stdio.h", c"stdlib.h", c"string.h"
+extern import "stdio.h", "stdlib.h", "string.h"
 ```
 
 C imports can be mixed with Grayscale imports on separate lines:
 
 ```gray
 import @math
-import c"stdio.h"
+extern import "stdio.h"
 ```
 
 #### Calling C Functions
 
-All C functions are accessed via the `c.` prefix:
+All C functions are accessed via the `extern.` prefix:
 
 ```gray
-import c"stdio.h"
+extern import "stdio.h"
 
 do main() {
-    c.puts("hello from C")
-    c.printf("value: %d\n", 42)
+    extern.puts("hello from C")
+    extern.printf("value: %d\n", 42)
 }
 ```
 
+The `extern.` prefix is required at every C call site. `using` and `import ... and use` are not allowed with `extern import`; C symbols must always stay qualified.
+
 #### Accessing C Constants and Macros
 
-C constants and macros are accessed with the same `c.` prefix:
+C constants and macros are accessed with the same `extern.` prefix:
 
 ```gray
-import c"stdio.h"
+extern import "stdio.h"
 
 do main() {
-    println(c.EOF)              // -1
-    println(c.EXIT_SUCCESS)     // 0
+    println(extern.EOF)              // -1
+    println(extern.EXIT_SUCCESS)     // 0
 }
 ```
 
@@ -2979,10 +2979,10 @@ do main() {
 **String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
 
 ```gray
-import c"stdlib.h"
+extern import "stdlib.h"
 
 do main() {
-    mut home string = c_string(c.getenv("HOME"))
+    mut home string = c_string(extern.getenv("HOME"))
     println(home)
 }
 ```
@@ -2990,11 +2990,11 @@ do main() {
 **Return types:** C function return types are inferred by the C compiler. If Grayscale needs to know the type (e.g., for `println`), add a type annotation:
 
 ```gray
-import c"math.h"
+extern import "math.h"
 
 do main() {
-    mut x float = c.sqrt(2.0)    // type annotation needed
-    println(x)                    // prints 1.4142135623730951
+    mut x float = extern.sqrt(2.0)    // type annotation needed
+    println(x)                        // prints 1.4142135623730951
 }
 ```
 
@@ -3010,11 +3010,11 @@ C structs returned from C functions can be passed back to other C functions via 
 
 #### Reserved Name
 
-The module name `c` is reserved for C interop. Files named `c.gray` must use an explicit alias:
+The module name `extern` is reserved for C interop. Files named `extern.gray` must use an explicit alias:
 
 ```gray
-import myc "./c.gray"    // OK, aliased
-import "./c.gray"         // Error: 'c' is reserved
+import mymod "./extern.gray"    // OK, aliased
+import "./extern.gray"          // Error: 'extern' is reserved
 ```
 
 ---

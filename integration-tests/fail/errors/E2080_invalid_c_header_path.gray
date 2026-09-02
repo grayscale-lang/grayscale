@@ -3,6 +3,6 @@
  * Expected: "invalid character in C header path"
  */
 
-import c "path@invalid.h"
+extern import "path@invalid.h"
 
 do main() {}

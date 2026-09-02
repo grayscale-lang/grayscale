@@ -836,7 +836,7 @@ int main(int argc, char **argv) {
             if (has_c_import) break;
         }
         if (has_c_import) {
-            fprintf(stderr, "gray: hint: check that all C headers in import c\"...\" exist and are installed\n");
+            fprintf(stderr, "gray: hint: check that all C headers in extern import \"...\" exist and are installed\n");
         }
         fprintf(stderr, "gray: generated C source at %s\n", c_file);
     } else {

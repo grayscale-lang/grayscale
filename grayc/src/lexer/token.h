@@ -117,6 +117,7 @@ typedef enum {
     TOK_BLANK,
     TOK_ENSURE,
     TOK_OR_RETURN,
+    TOK_EXTERN,
 
     /* Module system keywords */
     TOK_PRIVATE,

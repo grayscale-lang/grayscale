@@ -2937,8 +2937,8 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             return;
         }
 
-        /* C interop constant access: c.EOF, c.NULL, c.EXIT_SUCCESS */
-        if (strcmp(mod, "c") == 0 && codegen->has_c_imports) {
+        /* C interop constant access: extern.EOF, extern.NULL, extern.EXIT_SUCCESS */
+        if (strcmp(mod, "extern") == 0 && codegen->has_c_imports) {
             emit_formatted(codegen, "%s", mem);
             return;
         }
@@ -7389,8 +7389,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
         if (obj->kind == NODE_LABEL) {
             const char *raw_name = obj->data.label.value;
 
-            /* C interop: c.func(); emit raw C function call */
-            if (strcmp(raw_name, "c") == 0 && codegen->has_c_imports) {
+            /* C interop: extern.func(); emit raw C function call */
+            if (strcmp(raw_name, "extern") == 0 && codegen->has_c_imports) {
                 emit_formatted(codegen, "%s(", member);
                 for (int i = 0; i < node->data.call.arg_count; i++) {
                     if (i > 0) emit(codegen, ", ");

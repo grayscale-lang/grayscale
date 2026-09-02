@@ -3,9 +3,9 @@
  * Expected: error about array at C boundary
  */
 
-import c "stdio.h"
+extern import "stdio.h"
 
 do main() {
     mut arr [int] = {1, 2, 3}
-    c.puts(arr)
+    extern.puts(arr)
 }

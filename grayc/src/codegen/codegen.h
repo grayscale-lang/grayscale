@@ -134,7 +134,7 @@ typedef struct {
     int imported_module_count;
     int imported_module_cap;
 
-    /* C interop headers from import c"header.h" */
+    /* C interop headers from extern import "header.h" */
     const char **c_headers;
     int c_header_count;
     int c_header_cap;

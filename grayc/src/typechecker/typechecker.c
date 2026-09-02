@@ -6027,7 +6027,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'c_string()' requires a raw C pointer; '%s' is not a pointer type. "
-                    "'c_string()' is only valid with values from C interop ('import c\"header.h\"')",
+                    "'c_string()' is only valid with values from C interop ('extern import \"header.h\"')",
                     type_name(arg0));
                 diagnostic_error_message(checker->diag, "E3083", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -7489,22 +7489,22 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E4001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* c.func() without import c"..."; but only if "c" isn't a
-         * local variable. A variable named `c` with a struct type
+        /* extern.func() without extern import "..."; but only if "extern" isn't a
+         * local variable. A variable named `extern` with a struct type
          * should fall through to the struct function dispatch, not
          * be treated as the C interop module (). */
-        if (!mod_imported && strcmp(mod, "c") == 0 &&
-            !scope_lookup(checker->current_scope, "c")) {
+        if (!mod_imported && strcmp(mod, "extern") == 0 &&
+            !scope_lookup(checker->current_scope, "extern")) {
             diagnostic_error_message(checker->diag, "E4001",
-                "C interop requires a C header import; add import c\"header.h\" at the top of the file",
+                "C interop requires a C header import; add extern import \"header.h\" at the top of the file",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             result = &TYPE_UNKNOWN;
             return result;
         }
-        /* C interop: c.func(); skip type checking but reject bigints */
-        if (strcmp(mod, "c") == 0 && mod_imported) {
+        /* C interop: extern.func(); skip type checking but reject bigints */
+        if (strcmp(mod, "extern") == 0 && mod_imported) {
             /* Mark all C imports as used */
-            mark_import_used(checker, "c");
+            mark_import_used(checker, "extern");
             /* Validate arguments; reject types that don't translate to C */
             for (int argument_index = 0; argument_index < node->data.call.arg_count; argument_index++) {
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
@@ -8164,8 +8164,8 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             return result;
         }
 
-        /* C interop constant access: c.EOF, c.NULL, etc. */
-        if (strcmp(obj_name, "c") == 0 && typechecker_is_imported_module(checker, "c")) {
+        /* C interop constant access: extern.EOF, extern.NULL, etc. */
+        if (strcmp(obj_name, "extern") == 0 && typechecker_is_imported_module(checker, "extern")) {
             result = &TYPE_UNKNOWN;
             return result;
         }

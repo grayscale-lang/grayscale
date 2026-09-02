@@ -1,0 +1,53 @@
+/*
+ * c_identifier_freed.gray - 'c' is an ordinary identifier again.
+ *
+ * The old C interop syntax reserved the module name 'c'. With the move to
+ * 'extern import' / 'extern.', 'c' carries no special meaning and must work
+ * as a variable, parameter, and struct field name.
+ */
+
+const Pair struct {
+    c int
+    d int
+}
+
+do bump(c int) -> int {
+    return c + 1
+}
+
+do main() {
+    println("=== c identifier freed ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut c int = 41
+    if c == 41 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] c as variable")
+    }
+
+    if bump(c) == 42 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] c as parameter")
+    }
+
+    mut p Pair = Pair{ c: 7, d: 8 }
+    if p.c == 7 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] c as struct field")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

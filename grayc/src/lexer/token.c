@@ -40,6 +40,7 @@ static const KeywordEntry keywords[] = {
     {"else",        TOK_OTHERWISE},
     {"ensure",      TOK_ENSURE},
     {"enum",        TOK_ENUM},
+    {"extern",      TOK_EXTERN},
     {"false",       TOK_FALSE},
     {"fn",          TOK_DO},
     {"for",         TOK_FOR},
@@ -205,6 +206,7 @@ const char *token_type_name(TokenType type) {
     case TOK_BLANK:          return "_";
     case TOK_ENSURE:         return "ensure";
     case TOK_OR_RETURN:      return "or_return";
+    case TOK_EXTERN:         return "extern";
     case TOK_PRIVATE:        return "private";
     case TOK_USE:            return "use";
     case TOK_WHEN:           return "when";

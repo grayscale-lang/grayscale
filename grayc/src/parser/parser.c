@@ -943,6 +943,7 @@ static AstNode *parse_grouped_expression(Parser *parser) {
 /* Parse prefix expression (the "nud" in Pratt parsing) */
 static AstNode *parse_prefix(Parser *parser) {
     switch (parser->cur_token.type) {
+    case TOK_EXTERN:
     case TOK_IDENT:
         /* Check for module-qualified struct literal: mod.Name{ ... } */
         if (peek_token_is(parser, TOK_DOT)) {
@@ -2215,28 +2216,32 @@ static AstNode *parse_import_statement(Parser *parser) {
     node->data.import_stmt.items = arena_alloc(parser->arena, sizeof(ImportItem) * cap);
     node->data.import_stmt.auto_use = false;
 
+    bool is_extern_import = false;
+    if (current_token_is(parser, TOK_EXTERN)) {
+        is_extern_import = true;
+        if (!expect_peek_token(parser, TOK_IMPORT)) return NULL;
+    }
+
     do {
         next_token(parser);
         ImportItem *item = &node->data.import_stmt.items[node->data.import_stmt.count];
         memset(item, 0, sizeof(ImportItem));
 
-        if (current_token_is(parser, TOK_IDENT) && strcmp(parser->cur_token.literal, "and") == 0) {
-            /* import and use syntax; consume 'and' then 'use' */
-            node->data.import_stmt.auto_use = true;
-            next_token(parser); /* consume 'use' */
-            next_token(parser); /* advance to alias or @module */
-        }
-
-        /* Check for C interop import: import c"header.h" */
-        if (current_token_is(parser, TOK_IDENT) &&
-            strcmp(parser->cur_token.literal, "c") == 0 &&
-            peek_token_is(parser, TOK_STRING)) {
-            next_token(parser); /* consume 'c', now on string */
+        if (is_extern_import) {
+            if (!current_token_is(parser, TOK_STRING)) {
+                char buf[MSG_BUF_SIZE];
+                snprintf(buf, sizeof(buf),
+                    "expected string literal header path after 'extern import', got '%s'",
+                    parser->cur_token.literal ? parser->cur_token.literal : "?");
+                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                return node;
+            }
             item->is_c_import = true;
             item->is_stdlib = false;
             item->path = parser->cur_token.literal;
-            item->alias = "c";
-            item->module = "c";
+            item->alias = "extern";
+            item->module = "extern";
             /* Validate path: only [A-Za-z0-9./_+-] permitted to prevent injection */
             for (const char *q = item->path; *q; q++) {
                 unsigned char c = (unsigned char)*q;
@@ -2250,7 +2255,46 @@ static AstNode *parse_import_statement(Parser *parser) {
                     break;
                 }
             }
+            /* 'extern import ... and use' is disallowed; C symbols stay qualified */
+            if (peek_token_is(parser, TOK_IDENT) && parser->peek_token.literal &&
+                strcmp(parser->peek_token.literal, "and") == 0) {
+                next_token(parser); /* consume 'and' */
+                diagnostic_error_code(parser->diag, "E6013", parser->file,
+                    parser->cur_token.line, parser->cur_token.column, 0);
+                if (peek_token_is(parser, TOK_USE)) next_token(parser); /* consume 'use' */
+            }
             goto import_item_done;
+        }
+
+        if (current_token_is(parser, TOK_IDENT) && strcmp(parser->cur_token.literal, "and") == 0) {
+            /* import and use syntax; consume 'and' then 'use' */
+            node->data.import_stmt.auto_use = true;
+            next_token(parser); /* consume 'use' */
+            next_token(parser); /* advance to alias or @module */
+        }
+
+        /* Migration hint for the retired 'import c"header.h"' syntax. Only fires
+         * when the path looks like a C header/source ('.h'/'.c'); 'c' is now a
+         * valid alias for ordinary imports (import c "./config.gray"). */
+        if (current_token_is(parser, TOK_IDENT) &&
+            strcmp(parser->cur_token.literal, "c") == 0 &&
+            peek_token_is(parser, TOK_STRING) &&
+            parser->peek_token.literal) {
+            const char *p = parser->peek_token.literal;
+            size_t plen = strlen(p);
+            if (plen >= 2 && p[plen - 2] == '.' &&
+                (p[plen - 1] == 'h' || p[plen - 1] == 'c')) {
+                diagnostic_error_message(parser->diag, "E2002",
+                    arena_copy_string(parser->arena, "'import c\"...\"' syntax has been replaced; use 'extern import \"...\"'"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                next_token(parser); /* consume 'c', now on string */
+                item->is_c_import = true;
+                item->is_stdlib = false;
+                item->path = parser->cur_token.literal;
+                item->alias = "extern";
+                item->module = "extern";
+                goto import_item_done;
+            }
         }
 
         /* Check for alias: identifier followed by @ or string */
@@ -2325,10 +2369,10 @@ static AstNode *parse_import_statement(Parser *parser) {
                         arena_copy_string(parser->arena, help));
                 }
             }
-            /* Reject 'c' as a module name; reserved for C interop */
-            if (item->alias && strcmp(item->alias, "c") == 0) {
+            /* Reject 'extern' as a module name; reserved for C interop */
+            if (item->alias && strcmp(item->alias, "extern") == 0) {
                 diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,"'c' is reserved for C interop; rename the file or use an alias (e.g., 'import myc \"./c.gray\"')"),
+                    arena_copy_string(parser->arena,"'extern' is reserved for C interop; rename the file or use an alias (e.g., 'import mymod \"./extern.gray\"')"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
         } else if (current_token_is(parser, TOK_IDENT)) {
@@ -2360,6 +2404,11 @@ static AstNode *parse_using_statement(Parser *parser) {
 
     do {
         next_token(parser);
+        if (current_token_is(parser, TOK_EXTERN) ||
+            (parser->cur_token.literal && strcmp(parser->cur_token.literal, "extern") == 0)) {
+            diagnostic_error_code(parser->diag, "E6013", parser->file,
+                parser->cur_token.line, parser->cur_token.column, 0);
+        }
         ARENA_GROW(parser->arena, node->data.using_stmt.modules,
             node->data.using_stmt.count, cap);
         node->data.using_stmt.modules[node->data.using_stmt.count++] = parser->cur_token.literal;
@@ -3724,6 +3773,12 @@ static AstNode *parse_statement(Parser *parser) {
             parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         synchronize_parser(parser);
         return NULL;
+    case TOK_EXTERN:
+        if (peek_token_is(parser, TOK_IMPORT)) {
+            return parse_import_statement(parser);
+        }
+        /* Not an import; parse as an expression statement (e.g. extern.printf(...)). */
+        /* fallthrough */
     default: {
         /* Bare variable declaration: x int = 5  or  x, err = func()
          * Also handles array types: x [int] = {1,2,3}

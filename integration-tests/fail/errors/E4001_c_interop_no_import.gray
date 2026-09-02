@@ -1,8 +1,8 @@
 /*
- * Error Test: E4001 - c.func() without C header import
- * Expected: error requiring import c"header.h"
+ * Error Test: E4001 - extern.func() without C header import
+ * Expected: error requiring extern import "header.h"
  */
 
 do main() {
-    c.puts("no import")
+    extern.puts("no import")
 }
