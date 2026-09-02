@@ -14719,8 +14719,15 @@ static void register_error_code_set(TypeChecker *checker, AstNode *program) {
             checker->error_code_enum_names = xrealloc(checker->error_code_enum_names,
                 sizeof(const char *) * ec_cap);
         }
+        /* Store the registry spelling, not the bare name: an imported
+         * #error_code enum reaches typechecker_enum_is_error_code() as its
+         * module-prefixed key (errs_ModErr), and a bare "ModErr" here would
+         * never match, so cross-file widening to ErrorCode was rejected. */
+        const char *saved_check_file = checker->current_check_file;
+        checker->current_check_file = stmt->token.file;
         checker->error_code_enum_names[checker->error_code_enum_count++] =
-            stmt->data.enum_decl.name;
+            checker_resolve_enum_key(checker, stmt->data.enum_decl.name);
+        checker->current_check_file = saved_check_file;
 
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
             const char *vn = stmt->data.enum_decl.values[j].name;
