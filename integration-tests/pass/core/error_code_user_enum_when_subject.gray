@@ -1,0 +1,56 @@
+/*
+ * error_code_user_enum_when_subject.gray - a concrete #error_code enum is a
+ * closed set and stays usable as an ordinary `when` subject, including
+ * #strict exhaustiveness. Only the program-wide open ErrorCode (via
+ * err.code) requires a default and forbids #strict.
+ */
+
+#error_code
+const PayErr enum {
+    DECLINED
+    CANCELED
+}
+
+do label(p PayErr) -> string {
+    #strict
+    when p {
+        is .DECLINED { return "declined" }
+        is .CANCELED { return "canceled" }
+    }
+}
+
+do main() {
+    println("=== #error_code enum as when subject ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p PayErr = PayErr.CANCELED
+
+    mut r string = ""
+    when p {
+        is .DECLINED { r = "d" }
+        is .CANCELED { r = "c" }
+        default      { r = "?" }
+    }
+    if r == "c" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] plain when -> ${r}")
+    }
+
+    if label(p) == "canceled" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] #strict when -> ${label(p)}")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -13640,11 +13640,14 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
             type_display_name(checker, when_t));
         when_t = NULL;
     }
-    /* ErrorCode is an open enum — `when err.code` can never be exhaustive, so
-     * it always needs a default (E3149) and is never #strict (E3151). #strict
-     * is the more specific violation, so it wins when both apply. */
+    /* The program-wide ErrorCode enum is open — `when err.code` can never be
+     * exhaustive, so it always needs a default (E3149) and is never #strict
+     * (E3151); #strict is the more specific violation and wins when both
+     * apply. A concrete #error_code enum (PayErr, ...) is a closed set and
+     * stays usable as an ordinary when subject (STANDARD 10.5), so this keys
+     * on the literal ErrorCode type, not the whole ErrorCode value space. */
     if (when_t && when_t->kind == TK_ENUM && when_t->name &&
-        typechecker_enum_is_error_code(checker, when_t->name)) {
+        strcmp(when_t->name, "ErrorCode") == 0) {
         AstNode *subj = node->data.when_stmt.value;
         if (node->data.when_stmt.is_strict) {
             diagnostic_error_code(checker->diag, "E3151",
