@@ -3316,6 +3316,53 @@ result.
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
 | `from_chars` | `(chars [char]) -> string` | Convert char array to string |
 
+#### Builder
+
+`string` is an immutable value type, so building one with repeated `+=` reallocates
+and copies the whole accumulated content each time — assembling N pieces is O(N²).
+`Builder` is a growable byte accumulator that appends in place and is finalized to a
+`string` once, making the same work amortized O(M) in the total byte count M.
+
+`Builder` is arena-managed like any struct: it goes out of scope with its enclosing
+arena, with no manual free. The buffer grows by doubling. `strings.builder_clear`
+keeps the allocated capacity, so a builder can be reused across frames of a loop
+without reallocating.
+
+Every operation on a `Builder` mutates it, so it must be declared `mut` — a `const`
+builder is a compile error (E3062). The `builder_append*` calls take the builder by
+reference with no `&` at the call site, but — like an array — a function that appends
+to a builder passed in by the caller must take it as `&b Builder`; appending through a
+plain (immutable) parameter is a compile error (E5007).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `builder` | `() -> Builder` | Create an empty builder |
+| `builder_reserve` | `(b Builder, n int) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
+| `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
+| `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
+| `builder_append_bytes` | `(b Builder, data [byte]) -> void` | Append every byte of `data` |
+| `builder_append_int` | `(b Builder, n int) -> void` | Append the decimal text of `n` |
+| `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
+| `builder_len` | `(b Builder) -> int` | Bytes accumulated so far |
+| `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
+| `build` | `(b Builder) -> string` | Copy the accumulated bytes into a new string; the builder stays usable |
+
+```grayscale
+import @strings
+
+do append_row(&b Builder, row [string]) {
+    strings.builder_append_line(b, strings.join(row, ","))
+}
+
+do rows_to_csv(rows [[string]]) -> string {
+    mut b Builder = strings.builder()
+    for_each row in rows {
+        append_row(b, row)
+    }
+    return strings.build(b)
+}
+```
+
 ### 9.4 Maps Module (`@maps`)
 
 | Function | Signature | Description |

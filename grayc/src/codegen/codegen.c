@@ -617,6 +617,7 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
     if (strcmp(type_name, "Router") == 0)   return "GrayRouter";
     if (strcmp(type_name, "UUID") == 0)     return "GrayUUID";
     if (strcmp(type_name, "Arena") == 0)    return "GrayArena *";
+    if (strcmp(type_name, "Builder") == 0)  return "GrayStringsBuilder *";
     if (strcmp(type_name, "func") == 0)  return "void *"; /* bare func; cast at call site */
     if (strncmp(type_name, "func(", 5) == 0) return "void *"; /* typed func; same C storage, signature lives in casts */
 
@@ -7014,22 +7015,26 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "to_title") == 0 || strcmp(func, "to_snake_case") == 0 ||
         strcmp(func, "to_camel_case") == 0 ||
         strcmp(func, "join") == 0 ||
+        strcmp(func, "builder") == 0 || strcmp(func, "build") == 0 ||
         strcmp(func, "append_char") == 0 || strcmp(func, "prepend_char") == 0 ||
         strcmp(func, "insert_char_at") == 0 || strcmp(func, "remove_at") == 0 ||
         strcmp(func, "set_char_at") == 0 ||
         strcmp(func, "to_chars") == 0 || strcmp(func, "from_chars") == 0);
 
     emit_formatted(codegen, "gray_strings_%s(", func);
+    bool wrote_arg = false;
     if (needs_arena) {
-        emit(codegen, "gray_default_arena, ");
+        emit(codegen, "gray_default_arena");
+        wrote_arg = true;
     }
     if (strcmp(func, "from_chars") == 0) {
+        if (wrote_arg) emit(codegen, ", ");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
     }
     for (int i = 0; i < node->data.call.arg_count; i++) {
-        if (i > 0) emit(codegen, ", ");
+        if (wrote_arg || i > 0) emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[i]);
     }
     emit(codegen, ")");

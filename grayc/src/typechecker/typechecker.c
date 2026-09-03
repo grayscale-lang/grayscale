@@ -1747,6 +1747,7 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 
 typedef enum {
     ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
+    ARG_BUILDER,
     /* A type name, not a value. Declaring the position here is what keeps
      * it out of value resolution — see arg_is_type_position(). */
     ARG_TYPE
@@ -1768,6 +1769,8 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
     case ARG_CHAR:   return actual->kind == TK_CHAR;
     case ARG_CHANNEL: return actual->kind == TK_STRUCT &&
                              actual->name && strcmp(actual->name, "Channel") == 0;
+    case ARG_BUILDER: return actual->kind == TK_STRUCT &&
+                             actual->name && strcmp(actual->name, "Builder") == 0;
     /* Validated by name, never by resolved type — the argument is a type
      * name and is never resolved as a value. */
     case ARG_TYPE:   return true;
@@ -1787,6 +1790,7 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_NUMBER: return "number";
     case ARG_CHAR:   return "char";
     case ARG_CHANNEL: return "Channel";
+    case ARG_BUILDER: return "Builder";
     case ARG_TYPE:   return "a type name";
     }
     return "unknown";
@@ -2171,6 +2175,16 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strconv", "unquote",    1, 1, true,  FT_STRING, 1, {{0, ARG_STRING}}, "string"},
     /* strings */
     {"strings", "append_char",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_CHAR}}, "string"},
+    {"strings", "build",              1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "string"},
+    {"strings", "builder",            0, 0, false, FT_NONE, 0, {{0}}, "Builder"},
+    {"strings", "builder_append",      2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_STRING}}, "void"},
+    {"strings", "builder_append_bytes", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_ARRAY}}, "void"},
+    {"strings", "builder_append_char", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_CHAR}}, "void"},
+    {"strings", "builder_append_int",  2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_INT}}, "void"},
+    {"strings", "builder_append_line", 2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_STRING}}, "void"},
+    {"strings", "builder_clear",       1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "void"},
+    {"strings", "builder_len",         1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "int"},
+    {"strings", "builder_reserve",     2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_INT}}, "void"},
     {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
     {"strings", "compare",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -2553,6 +2567,7 @@ static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name)
  * resolution and registration cannot disagree about it. */
 static const struct { const char *type; const char *mod; } stdlib_opaque_map[] = {
         {"Arena",        "mem"},
+        {"Builder",      "strings"},
         {"Thread",       "threads"},
         {"Mutex",        "sync"},
         {"SpinLock",     "atomic"},
@@ -4549,6 +4564,26 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         }
     } else if (strcmp(mod, "strings") == 0) {
+        /* E5007: mutating a string builder reached through an immutable binding.
+         * The builder's buffer grows into the arena that owns the binding, so a
+         * non-'mut' parameter would have its growth freed when the callee returns
+         * (its scope watermark unwinds). Same rule as arrays.append — a wrapper
+         * that appends must take '&b Builder'. */
+        if ((strcmp(mfn, "builder_reserve") == 0 || strcmp(mfn, "builder_append") == 0 ||
+             strcmp(mfn, "builder_append_char") == 0 || strcmp(mfn, "builder_append_bytes") == 0 ||
+             strcmp(mfn, "builder_append_int") == 0 || strcmp(mfn, "builder_append_line") == 0 ||
+             strcmp(mfn, "builder_clear") == 0) &&
+            node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            if (arg0->kind == NODE_LABEL) {
+                Symbol *sym = scope_lookup(checker->current_scope, arg0->data.label.value);
+                if (sym && !sym->mutable) {
+                    diagnostic_error_code_formatted(checker->diag, "E5007",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        "string builder", arg0->data.label.value);
+                }
+            }
+        }
         /* E7004: strings.repeat() second arg must be integer */
         if (strcmp(mfn, "repeat") == 0 && node->data.call.arg_count >= 2) {
             GrayType *count_t = typetable_get(checker->type_table, node->data.call.args[1]);
@@ -11412,6 +11447,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         if (strcmp(declared_name, "Channel") == 0) handle_label = "channel";
         else if (strcmp(declared_name, "Mutex") == 0) handle_label = "mutex";
         else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
+        else if (strcmp(declared_name, "Builder") == 0) handle_label = "string builder";
         if (handle_label) {
             diagnostic_error_code_formatted(checker->diag, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
         }

@@ -161,6 +161,7 @@ static inline bool is_reserved_name(const char *name) {
 
 static const char *const gray_reserved_stdlib_struct_names[] = {
     "Arena",
+    "Builder",
     "Channel",
     "Database",
     "HttpRequest",

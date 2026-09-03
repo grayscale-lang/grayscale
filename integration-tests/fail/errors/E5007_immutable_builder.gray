@@ -1,0 +1,19 @@
+/*
+ * Error Test: E5007 - appending to a string builder through an immutable binding
+ *
+ * A plain 'b Builder' parameter is immutable; the builder's buffer grows into
+ * the arena that owns the binding, so mutating it here would be freed when the
+ * function returns. A wrapper that appends must take '&b Builder'.
+ */
+
+import @strings
+
+do append_row(b Builder, s string) {
+    strings.builder_append_line(b, s)
+}
+
+do main() {
+    mut b Builder = strings.builder()
+    append_row(b, "row")
+    println(strings.build(b))
+}
