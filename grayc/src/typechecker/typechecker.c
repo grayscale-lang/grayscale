@@ -4330,6 +4330,18 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                             op_name, type_name(val_t), arr_t->element_type);
                         diagnostic_error_message(checker->diag, "E3001", msg,
                             NODE_FILE(checker, val_node), val_node->token.line, val_node->token.column, 0);
+                    } else if (is_int_kind(elem_t->kind) && is_int_kind(val_t->kind)) {
+                        /* A narrow element slot must reject an oversized value the
+                         * same way `xs[i] = value` does: E3036 for an out-of-range
+                         * literal, E3019/E3001 for a signedness crossing. */
+                        int64_t lit_val;
+                        if (try_get_literal_int(val_node, &lit_val)) {
+                            check_integer_range(checker->diag, NODE_FILE(checker, val_node),
+                                val_node->token.line, val_node->token.column,
+                                arr_t->element_type, lit_val);
+                        }
+                        check_signedness_crossing(checker, arr_t->element_type,
+                            val_node, val_t, val_node);
                     }
                 }
             }
