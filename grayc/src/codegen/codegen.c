@@ -3258,20 +3258,24 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             node->data.index_expr.left->data.postfix.op == TOK_CARET) {
             map_is_rvalue = true;
         }
+        /* Dereference the entry pointer *outside* the statement expression so
+         * the result is an lvalue: `m[k].field = v`, `m[k].field += v`,
+         * `bump(m[k].field)`, and `m[k1][k2] = v` all take the address of, or
+         * assign through, this expression, exactly as the array form does. */
         if (map_is_rvalue) {
-            emit_formatted(codegen, "({ GrayMap _mt = ");
+            emit_formatted(codegen, "(*(%s *)({ GrayMap _mt = ", c_val);
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; %s _mk = ", c_key);
             emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&_mt, &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
-            emit_formatted(codegen, "*(%s *)_mv; })", c_val);
+            emit(codegen, "_mv; }))");
         } else {
-            emit_formatted(codegen, "({ %s _mk = ", c_key);
+            emit_formatted(codegen, "(*(%s *)({ %s _mk = ", c_val, c_key);
             emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
-            emit_formatted(codegen, "*(%s *)_mv; })", c_val);
+            emit(codegen, "_mv; }))");
         }
     } else if (left_t && left_t->kind == TK_STRING) {
         /* String indexing with bounds check: s.data[i] */
