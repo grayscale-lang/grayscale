@@ -1349,6 +1349,14 @@ static AstNode *parse_index_expression(Parser *parser, AstNode *left) {
         diagnostic_error_code(parser->diag, "E2075", parser->file, parser->cur_token.line, parser->cur_token.column, 0);
         /* Continue parsing so we consume the closing ']'. */
     }
+    /* Reject 'arr[]' before descending into a sub-parse: with cur on ']' there
+     * is no prefix parser (E2002) and expect_peek then trips on the following
+     * token (E2001) — two misleading errors for one mistake. Mirror E2071. */
+    if (peek_token_is(parser, TOK_RBRACKET)) {
+        diagnostic_error_code(parser->diag, "E2077", parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+        next_token(parser); /* consume '[', leaving cur on ']' for resync */
+        return NULL;
+    }
     AstNode *node = ast_alloc(parser->arena, NODE_INDEX_EXPR, parser->cur_token);
     node->data.index_expr.left = left;
     next_token(parser);

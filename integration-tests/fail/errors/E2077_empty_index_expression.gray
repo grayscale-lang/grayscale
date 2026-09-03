@@ -1,0 +1,8 @@
+// Error Test: E2077 - an index expression needs an expression between the brackets
+// expect-error: E2077
+// expect-error-count: 1
+
+do main() {
+    mut arr [int] = {1, 2, 3}
+    mut x int = arr[]
+}

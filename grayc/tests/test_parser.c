@@ -853,6 +853,15 @@ static void test_parse_error_E2071_empty_interpolation(void) {
     ASSERT(parser_has_code(diagnostics, "E2071"));
 }
 
+static void test_parse_error_E2077_empty_index(void) {
+    AstNode *program = parse_test_input("do main() { mut a [int] = {1} mut x int = a[] }");
+    (void)program;
+    ASSERT(parser_has_code(diagnostics, "E2077"));
+    /* One diagnostic, not the old E2002 + E2001 cascade. */
+    ASSERT(!parser_has_code(diagnostics, "E2002"));
+    ASSERT(!parser_has_code(diagnostics, "E2001"));
+}
+
 /* Source truncated in expression position: the parser hits EOF outside any
  * ${...} sub-expression, so it must report the plain unexpected-token wording
  * rather than the interpolation one. */
@@ -1116,6 +1125,7 @@ int main(void) {
     RUN_TEST(test_parse_error_E2069_semicolon_in_struct);
     RUN_TEST(test_parse_error_E2070_wildcard_in_var);
     RUN_TEST(test_parse_error_E2071_empty_interpolation);
+    RUN_TEST(test_parse_error_E2077_empty_index);
     RUN_TEST(test_parse_error_truncated_at_eof);
     RUN_TEST(test_parse_error_E2002_reports_typed_keyword);
     RUN_TEST(test_parse_error_E2002_non_keyword_fallback);

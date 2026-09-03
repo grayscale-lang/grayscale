@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 430 codes** (298 errors, 17 warnings, 115 panics)
+**Total: 431 codes** (299 errors, 17 warnings, 115 panics)
 
 ---
 
@@ -69,6 +69,7 @@
 | `E2074` | syntax | member access cannot have whitespace before the dot; write 'obj.field' or 'Enum.VARIANT' with no space or newline |
 | `E2075` | syntax | index expressions cannot have whitespace before the opening bracket; write 'arr[i]' with no space or newline |
 | `E2076` | syntax | postfix operators ('++', '--', '^') cannot have whitespace before them; write 'x++', 'x--', or 'p^' with no space or newline |
+| `E2077` | syntax | empty index expression '[]'; indexing requires an expression between the brackets, e.g. 'arr[i]' |
 | `E2079` | syntax | 'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause |
 | `E2080` | syntax | invalid character in C header path; only [A-Za-z0-9./_+-] are permitted |
 | `E2081` | syntax | '^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^' |
@@ -481,4 +482,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-02 21:18:36 UTC*
+*Generated on 2026-09-03 00:53:42 UTC*

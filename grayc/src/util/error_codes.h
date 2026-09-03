@@ -82,6 +82,7 @@
     GRAY_ERROR("E2074", "syntax", "member access cannot have whitespace before the dot; write 'obj.field' or 'Enum.VARIANT' with no space or newline") \
     GRAY_ERROR("E2075", "syntax", "index expressions cannot have whitespace before the opening bracket; write 'arr[i]' with no space or newline") \
     GRAY_ERROR("E2076", "syntax", "postfix operators ('++', '--', '^') cannot have whitespace before them; write 'x++', 'x--', or 'p^' with no space or newline") \
+    GRAY_ERROR("E2077", "syntax", "empty index expression '[]'; indexing requires an expression between the brackets, e.g. 'arr[i]'") \
     GRAY_ERROR("E2079", "syntax", "'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause") \
     GRAY_ERROR("E2080", "syntax", "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted") \
     GRAY_ERROR("E2081", "syntax", "'^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^'") \
