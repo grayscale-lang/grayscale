@@ -748,7 +748,13 @@ static const char *gray_map_element_c_type(CodeGen *codegen, const char *gray_tn
     GrayType *type = type_from_name(gray_tn);
     if (!type) return "int64_t";
     switch (type->kind) {
-    case TK_FLOAT:   return "double";
+    /* Honor the annotated width/signedness for sized ints (i8..u64, uint)
+     * and f32/f64, just like a scalar or struct field — the slot must match
+     * so its size and the casts on read agree. gray_type_to_c_codegen maps
+     * int->int64_t and float->double, so the plain forms are unaffected. */
+    case TK_FLOAT:   return gray_type_to_c_codegen(codegen, gray_tn);
+    case TK_INT:     return gray_type_to_c_codegen(codegen, gray_tn);
+    case TK_UINT:    return gray_type_to_c_codegen(codegen, gray_tn);
     case TK_STRING:  return "GrayString";
     case TK_BOOL:    return "bool";
     case TK_CHAR:    return "int32_t";
@@ -5652,14 +5658,10 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         const char *c_val_type = "int64_t";
         const char *bi_val = NULL;
         if (map_t && map_t->value_type) {
-            GrayType *vt = type_from_name(map_t->value_type);
-            if (vt->kind == TK_FLOAT) c_val_type = "double";
-            else if (vt->kind == TK_BOOL) c_val_type = "bool";
-            else if (vt->kind == TK_STRING) c_val_type = "GrayString";
-            else if (is_bigint_type(map_t->value_type)) {
-                bi_val = map_t->value_type;
-                c_val_type = bigint_prefix(bi_val);
-            }
+            /* Match the slot's C type (sized ints and f32 included) so the
+             * staged comparison value is the same width as the stored slot. */
+            c_val_type = gray_map_element_c_type(codegen, map_t->value_type);
+            if (is_bigint_type(map_t->value_type)) bi_val = map_t->value_type;
         }
         emit_formatted(codegen, "({ %s _cv = ", c_val_type);
         emit_map_slot_value(codegen, bi_val, node->data.call.args[1]);

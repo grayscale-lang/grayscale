@@ -11120,6 +11120,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 bool val_is_literal = node->data.var_decl.value &&
                     node->data.var_decl.value->kind == NODE_MAP_VALUE;
                 if (dv && vv && ((is_int_kind(dv->kind) && is_int_kind(vv->kind)) ||
+                                (dv->kind == TK_FLOAT && vv->kind == TK_FLOAT) ||
                                 /* int→float coercion only for map literals, not variables */
                                 (val_is_literal && dv->kind == TK_FLOAT && is_int_kind(vv->kind))))
                     val_mismatch = false;
