@@ -1,0 +1,10 @@
+// Error Test: E3019 - a signed value in an unsigned map value (literal and m[k] = v)
+// expect-error: E3019
+// expect-error-count: 2
+
+do main() {
+    mut neg int = -1
+    mut m map[string:uint] = {"a": neg}
+    m["b"] = neg
+    println("${m}")
+}

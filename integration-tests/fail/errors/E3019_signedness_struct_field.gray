@@ -1,0 +1,13 @@
+// Error Test: E3019 - a signed value in an unsigned struct-field initializer
+// expect-error: E3019
+// expect-error-count: 1
+
+const Box struct {
+    v uint
+}
+
+do main() {
+    mut neg int = -1
+    mut b Box = Box{ v: neg }
+    println("${b.v}")
+}

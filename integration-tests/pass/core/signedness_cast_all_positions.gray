@@ -1,0 +1,75 @@
+/*
+ * signedness_cast_all_positions.gray - a signed integer value used where an
+ * unsigned integer is expected needs an explicit cast() in every position
+ * (call argument, array element, struct field, map value, map assignment). The
+ * unsigned -> signed direction stays an implicit conversion.
+ */
+
+const Box struct {
+    v uint
+}
+
+do take_u(u uint) -> uint {
+    return u
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut s int = 7
+
+    // call argument: signed -> unsigned needs the cast
+    mut a uint = take_u(cast(s, uint))
+    if a == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] call argument: ${a}")
+        failed += 1
+    }
+
+    // array element
+    mut arr [uint] = {cast(s, uint)}
+    if arr[0] == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] array element")
+        failed += 1
+    }
+
+    // struct field
+    mut b Box = Box{ v: cast(s, uint) }
+    if b.v == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] struct field")
+        failed += 1
+    }
+
+    // map literal value + map value assignment
+    mut m map[string:uint] = {"a": cast(s, uint)}
+    m["b"] = cast(s, uint)
+    if m["a"] == 7 && m["b"] == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] map value")
+        failed += 1
+    }
+
+    // unsigned -> signed remains implicit (no cast)
+    mut u uint = 42
+    mut back int = u
+    if back == 42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] implicit unsigned to signed: ${back}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
