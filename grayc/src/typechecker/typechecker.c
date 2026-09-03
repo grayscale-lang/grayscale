@@ -13804,6 +13804,34 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
     checker->current_struct_name = NULL;
 }
 
+/* The enum-variant name a when/is case value selects — plain (`Color.RED`),
+ * implicit (`.RED`), or a tagged pattern (`Shape.Circle(r)`). NULL if the case
+ * value does not name an enum variant. Uses only parse-time fields, so it is
+ * safe to call before the case values are resolved. */
+static const char *when_case_variant_name(AstNode *v) {
+    if (!v) return NULL;
+    if (v->kind == NODE_WHEN_PATTERN) return v->data.when_pattern.variant;
+    if (v->kind == NODE_IMPLICIT_ENUM) return v->data.implicit_enum.variant;
+    if (v->kind == NODE_MEMBER_EXPR && v->data.member.object &&
+        v->data.member.object->kind == NODE_LABEL)
+        return v->data.member.member;
+    return NULL;
+}
+
+/* True when two when/is case values select the same case. Enum variants are
+ * compared by name (the subject type already constrains every case to one
+ * enum, so `Color.RED` and `.RED` are the same case). */
+static bool when_case_values_equal(AstNode *a, AstNode *b) {
+    if (!a || !b) return false;
+    if (a->kind == NODE_INT_VALUE && b->kind == NODE_INT_VALUE)
+        return a->data.int_value.value == b->data.int_value.value;
+    if (a->kind == NODE_STRING_VALUE && b->kind == NODE_STRING_VALUE)
+        return strcmp(a->data.string_value.value, b->data.string_value.value) == 0;
+    const char *va = when_case_variant_name(a);
+    const char *vb = when_case_variant_name(b);
+    return va && vb && strcmp(va, vb) == 0;
+}
+
 static void check_when_stmt(TypeChecker *checker, AstNode *node) {
     /* E3100: a bare struct or enum name is a type, not a value. Without
      * this the subject resolves to the type itself and codegen emits a
@@ -13865,7 +13893,29 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E2043: check for duplicate case values, E3001: check type match */
+    /* E2043: a case value that repeats an earlier one is dead code. Covers int,
+     * string, and enum-variant cases (plain, implicit, and tagged patterns);
+     * the tagged-pattern branch below `continue`s before the per-value checks,
+     * so this runs as its own pass over every (case, value) pair. */
+    for (int i = 0; i < node->data.when_stmt.case_count; i++) {
+        for (int j = 0; j < node->data.when_stmt.cases[i].value_count; j++) {
+            AstNode *val_i = node->data.when_stmt.cases[i].values[j];
+            bool flagged = false;
+            for (int pi = 0; pi <= i && !flagged; pi++) {
+                int pj_max = (pi == i) ? j : node->data.when_stmt.cases[pi].value_count;
+                for (int pj = 0; pj < pj_max; pj++) {
+                    if (when_case_values_equal(val_i, node->data.when_stmt.cases[pi].values[pj])) {
+                        diagnostic_error_code(checker->diag, "E2043", NODE_FILE(checker, val_i),
+                            val_i->token.line, val_i->token.column, 0);
+                        flagged = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /* E3001: check type match */
     /* Set expected_type for implicit enum resolution in when/is branches */
     GrayType *saved_when_expected = checker->expected_type;
     if (when_t && when_t->kind == TK_ENUM && when_t->name)
@@ -13929,20 +13979,6 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                       typechecker_enum_is_string(checker, when_t->name)));
                 if (!compat) {
                     diagnostic_error_code_formatted(checker->diag, "E3018", NODE_FILE(checker, val_i), val_i->token.line, val_i->token.column, 0, type_display_name(checker, when_t), type_display_name(checker, case_t));
-                }
-            }
-            /* Compare against all previous case values */
-            for (int parameter_index = 0; parameter_index < i; parameter_index++) {
-                for (int pj = 0; pj < node->data.when_stmt.cases[parameter_index].value_count; pj++) {
-                    AstNode *val_p = node->data.when_stmt.cases[parameter_index].values[pj];
-                    bool dup = false;
-                    if (val_i->kind == NODE_INT_VALUE && val_p->kind == NODE_INT_VALUE &&
-                        val_i->data.int_value.value == val_p->data.int_value.value) dup = true;
-                    if (val_i->kind == NODE_STRING_VALUE && val_p->kind == NODE_STRING_VALUE &&
-                        strcmp(val_i->data.string_value.value, val_p->data.string_value.value) == 0) dup = true;
-                    if (dup) {
-                        diagnostic_error_code(checker->diag, "E2043", NODE_FILE(checker, val_i), val_i->token.line, val_i->token.column, 0);
-                    }
                 }
             }
         }
