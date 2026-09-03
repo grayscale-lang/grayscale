@@ -1,0 +1,113 @@
+/*
+ * map_foreach_key_binding.gray - for_each over a map must bind the key
+ * variable with the key type's real C type, not GrayString.
+ *
+ * The key binding only special-cased int/uint; enum, float, char, and byte
+ * keys fell through to GrayString, so any loop body that read the key
+ * produced type-mismatched C.
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    println("=== for_each map key binding ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- enum key read in the loop body --
+    mut em map[Color:int] = {:}
+    em[Color.RED] = 1
+    em[Color.GREEN] = 2
+    mut enum_hits int = 0
+    for_each k, v in em {
+        if k == Color.RED || k == Color.GREEN {
+            enum_hits += v
+        }
+    }
+    if enum_hits == 3 {
+        println("  [PASS] enum key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] enum key: ${enum_hits}")
+        failed += 1
+    }
+
+    // -- float key --
+    mut fm map[float:int] = {:}
+    fm[1.5] = 10
+    mut float_sum float = 0.0
+    for_each k, v in fm {
+        float_sum += k
+    }
+    if float_sum == 1.5 {
+        println("  [PASS] float key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] float key: ${float_sum}")
+        failed += 1
+    }
+
+    // -- char key --
+    mut cm map[char:int] = {:}
+    cm['a'] = 1
+    mut got_char char = ' '
+    for_each k, v in cm {
+        got_char = k
+    }
+    if got_char == 'a' {
+        println("  [PASS] char key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] char key")
+        failed += 1
+    }
+
+    // -- byte key --
+    mut bm map[byte:int] = {:}
+    bm[255] = 1
+    mut byte_sum int = 0
+    for_each k, v in bm {
+        byte_sum += int(k)
+    }
+    if byte_sum == 255 {
+        println("  [PASS] byte key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] byte key: ${byte_sum}")
+        failed += 1
+    }
+
+    // -- string and int keys still work --
+    mut sm map[string:int] = {:}
+    sm["x"] = 7
+    mut str_ok bool = false
+    for_each k, v in sm {
+        if k == "x" { str_ok = true }
+    }
+    mut im map[int:int] = {:}
+    im[42] = 1
+    mut int_key int = 0
+    for_each k, v in im {
+        int_key = k
+    }
+    if str_ok && int_key == 42 {
+        println("  [PASS] string and int keys")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string and int keys")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

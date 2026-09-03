@@ -10812,10 +10812,7 @@ static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
 
     const char *c_key = "GrayString";
     const char *c_val = "int64_t";
-    if (coll_t->key_type) {
-        GrayType *kt = type_from_name(coll_t->key_type);
-        if (kt->kind == TK_INT || kt->kind == TK_UINT) c_key = "int64_t";
-    }
+    if (coll_t->key_type) c_key = gray_map_element_c_type(codegen, coll_t->key_type);
     if (coll_t->value_type) c_val = gray_map_element_c_type(codegen, coll_t->value_type);
 
     *out_map_needs_tmp = (coll->kind != NODE_LABEL);
