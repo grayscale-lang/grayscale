@@ -6428,7 +6428,11 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         bool elem_is_string = (val_t && val_t->kind == TK_STRING) ||
             (elem_tn && strcmp(elem_tn, "string") == 0);
         const char *c_elem = "__auto_type";
-        if (val_t) {
+        /* An inline tagged-enum constructor at the call site is left as
+         * TK_UNKNOWN in the type table; fall back to the array's declared
+         * element type so the temporary is not declared as `__auto_type` and
+         * then spliced into `sizeof(__auto_type)`. */
+        if (val_t && val_t->kind != TK_UNKNOWN) {
             switch (val_t->kind) {
             case TK_INT: c_elem = "int64_t"; break;
             case TK_UINT: c_elem = "uint64_t"; break;

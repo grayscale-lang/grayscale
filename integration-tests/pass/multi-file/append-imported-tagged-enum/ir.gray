@@ -1,0 +1,23 @@
+/*
+ * ir.gray - a tagged enum plus a helper that appends inline-constructed
+ * variants to an array of that enum, all within this module.
+ */
+
+import @arrays
+
+const Operand enum {
+    Reg(int)
+    Imm(int)
+    Name(string)
+}
+
+do build() -> [Operand] {
+    mut out [Operand] = {}
+    arrays.append(out, Operand.Reg(1))
+    arrays.append(out, Operand.Imm(2))
+    arrays.append(out, Operand.Name("sp"))
+    for i in range(0, 3) {
+        arrays.append(out, Operand.Reg(i))
+    }
+    return out
+}
