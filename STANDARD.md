@@ -37,7 +37,7 @@ Grayscale is a programming language for software that's simple to write and safe
 - **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
 - **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
-- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
 
 ---
 
@@ -2999,6 +2999,14 @@ do main() {
 }
 ```
 
+#### Safety
+
+`extern import` is an opt-out from Grayscale's memory safety. ASBAM, the pointer escape checks (11.7), and bounds checking reason only about Grayscale code — they cannot analyze a C function, so their guarantees stop at the `extern.` call. Once a program calls into C, "memory safe by default" no longer holds for anything that crosses the boundary.
+
+- **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
+- **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
+- **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
+
 #### Restrictions
 
 The following Grayscale types cannot be passed to C functions:
@@ -4571,7 +4579,7 @@ mem.destroy(scratch)
 
 ### 11.7 Memory Safety
 
-Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, or unsynchronized threading introduces hazards that the programmer is responsible for, and the pointer escape checks below have a known gap. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
+Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, unsynchronized threading, or C interop (`extern import`) introduces hazards that the programmer is responsible for, and the pointer escape checks below have a known gap. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
 
 **Compile-time checked:**
 
@@ -4614,9 +4622,12 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
 | Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
 | Pointer escape through an intermediate variable | The escape checks above match the address expression directly. Assigning `addr()` to a variable first and then returning that variable, or assigning it to an outer-scope pointer, is not currently detected and produces a dangling pointer. |
+| Pointer retained by a C function | Passing `addr()` of a Grayscale value to a C function (`extern import`) that stores the pointer. The value is freed when its scope ends; the pointer the C side still holds dangles. The escape checks do not cross the `extern.` call. |
+| Memory freed across the C boundary | A C function frees memory Grayscale still references, or a Grayscale-owned allocation is passed to C `free()`. Neither side tracks the other's lifetimes. |
+| Out-of-bounds write by a C function | A C function writes past the end of a buffer passed from Grayscale. Bounds checking does not cross the `extern.` call. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
-For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
+For most Grayscale programs, those that don't use the `@mem` module, raw pointers, threading, or C interop, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
 
 ### 11.8 Under the Hood
 

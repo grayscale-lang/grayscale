@@ -35,7 +35,7 @@
 - **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
 - **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
-- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
 ---
 
 ## The Standard Library
