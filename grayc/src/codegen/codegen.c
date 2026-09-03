@@ -1748,7 +1748,7 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
         if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
             const char *etype = arr_t->element_type;
             GrayType *et = type_from_name(etype);
-            if (et->kind == TK_FLOAT) elem_sz = "double";
+            if (et->kind == TK_FLOAT) elem_sz = (strcmp(etype, "f32") == 0) ? "float" : "double";
             else if (et->kind == TK_BOOL) elem_sz = "bool";
             else if (et->kind == TK_STRING) elem_sz = "GrayString";
             else if (et->kind == TK_ARRAY) elem_sz = "GrayArray";
@@ -1894,6 +1894,12 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
     case TK_BYTE:   c_type = "uint8_t"; break;
     default:        c_type = "int64_t"; break;
     }
+
+    /* A declared [f32] array stores packed 4-byte float; the TK_FLOAT case
+     * (and the int-literal override above) otherwise emit double storage. */
+    if (strcmp(c_type, "double") == 0 && codegen->current_var_type &&
+        strcmp(codegen->current_var_type, "[f32]") == 0)
+        c_type = "float";
 
     emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[]){", c_type);
     for (int i = 0; i < count; i++) {
@@ -3136,7 +3142,7 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             c_elem = "void *";
         } else if (elem_tn) {
             GrayType *et = type_from_name(elem_tn);
-            if (et->kind == TK_FLOAT) c_elem = "double";
+            if (et->kind == TK_FLOAT) c_elem = (strcmp(elem_tn, "f32") == 0) ? "float" : "double";
             else if (et->kind == TK_BOOL) c_elem = "bool";
             else if (et->kind == TK_STRING) c_elem = "GrayString";
             else if (et->kind == TK_CHAR) c_elem = "int32_t";
@@ -6491,6 +6497,9 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (et->kind == TK_FUNCTION) c_elem = "void *";
             else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         }
+        /* [f32] elements are stored packed as 4-byte float; a float-typed
+         * value would otherwise be staged and appended as an 8-byte double. */
+        if (elem_tn && strcmp(elem_tn, "f32") == 0) c_elem = "float";
         const char *alloc_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
         emit_formatted(codegen, "{ %s _av = ", c_elem);
         emit_expression(codegen, node->data.call.args[1]);
@@ -10929,7 +10938,7 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     if (coll_t && coll_t->kind == TK_ARRAY && coll_t->element_type) {
         const char *elem_tn = codegen_effective_type_string(codegen, coll_t->element_type);
         GrayType *et = type_from_name(elem_tn);
-        if (et->kind == TK_FLOAT) c_elem = "double";
+        if (et->kind == TK_FLOAT) c_elem = (strcmp(elem_tn, "f32") == 0) ? "float" : "double";
         else if (et->kind == TK_BOOL) c_elem = "bool";
         else if (et->kind == TK_STRING) c_elem = "GrayString";
         else if (et->kind == TK_ARRAY) c_elem = "GrayArray";

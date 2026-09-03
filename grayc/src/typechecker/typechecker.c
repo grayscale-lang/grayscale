@@ -11075,7 +11075,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 decl_elem->kind != TK_UNKNOWN && val_elem->kind != TK_UNKNOWN &&
                 !(is_int_kind(decl_elem->kind) && is_int_kind(val_elem->kind)) &&
                 !(is_int_kind(decl_elem->kind) && val_elem->kind == TK_STRUCT) &&
-                !(decl_elem->kind == TK_FLOAT && is_int_kind(val_elem->kind))) {
+                !(decl_elem->kind == TK_FLOAT && is_int_kind(val_elem->kind)) &&
+                /* float ↔ f32 ↔ f64 array element coercion, mirroring the
+                 * scalar path (`mut x f32 = someFloat` is allowed). */
+                !(decl_elem->kind == TK_FLOAT && val_elem->kind == TK_FLOAT)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
