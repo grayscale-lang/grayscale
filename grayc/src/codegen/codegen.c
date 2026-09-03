@@ -1901,6 +1901,32 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
         strcmp(codegen->current_var_type, "[f32]") == 0)
         c_type = "float";
 
+    /* A non-empty integer-literal element carries TK_INT regardless of the
+     * declared width/signedness, so [byte]/[i8..i64]/[u8..u64]/[uint] would
+     * otherwise fall to int64_t storage. When the declaration pins a narrower
+     * or unsigned integer element, match it — the same way [f32]/[f64] above
+     * do for floats and empty literals already do via type_from_name. Covers
+     * both the [T] and [T, N] forms. */
+    if ((tk == TK_INT || tk == TK_UINT || tk == TK_BYTE) && !bi_elem &&
+        codegen->current_var_type && codegen->current_var_type[0] == '[') {
+        const char *cvt = codegen->current_var_type;
+        size_t cvt_len = strlen(cvt);
+        if (cvt_len >= 3 && cvt[cvt_len - 1] == ']') {
+            char inner[TYPE_NAME_MAX];
+            size_t ilen = cvt_len - 2;
+            if (ilen < sizeof(inner)) {
+                memcpy(inner, cvt + 1, ilen);
+                inner[ilen] = '\0';
+                char *comma = strchr(inner, ',');
+                if (comma) *comma = '\0';
+                GrayType *it = type_from_name(inner);
+                if (it && !is_bigint_type(inner) &&
+                    (it->kind == TK_INT || it->kind == TK_UINT || it->kind == TK_BYTE))
+                    c_type = gray_type_to_c_codegen(codegen, inner);
+            }
+        }
+    }
+
     emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[]){", c_type);
     for (int i = 0; i < count; i++) {
         if (i > 0) emit(codegen, ", ");
@@ -8485,6 +8511,11 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
     }
     int fixed_size = extract_array_size(type_name);
     if (fixed_size > 0) {
+        /* Thread the declared [T, N] type so a full-init literal (which
+         * routes through emit_array_value) sizes its elements to the
+         * annotation rather than defaulting to int64_t. */
+        const char *saved_fx_var_type = codegen->current_var_type;
+        codegen->current_var_type = type_name;
         /* Fixed-size array: use GrayArray but initialized with exact capacity */
         if (codegen->indent == 0) {
             /* File scope: emit uninitialized global, defer init to gray_init_globals */
@@ -8512,6 +8543,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
             }
             emit(codegen, ";\n");
         }
+        codegen->current_var_type = saved_fx_var_type;
         return;
     }
 
@@ -8558,7 +8590,10 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
             /* Empty array literal with type annotation; use the declared elem size. */
             emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
         } else if (node->data.var_decl.value) {
+            const char *saved_var_type = codegen->current_var_type;
+            codegen->current_var_type = type_name;
             emit_expression(codegen, node->data.var_decl.value);
+            codegen->current_var_type = saved_var_type;
         } else {
             emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
         }
