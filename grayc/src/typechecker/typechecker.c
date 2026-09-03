@@ -7780,6 +7780,30 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             mark_import_used(checker, "extern");
             /* Validate arguments; reject types that don't translate to C */
             for (int argument_index = 0; argument_index < node->data.call.arg_count; argument_index++) {
+                /* E3154: a stack address cannot cross into C. The direct
+                 * addr()/ref()/raw() form is rejected when its target is a
+                 * local, a parameter, or bound in a nested block of the
+                 * current function; the compiler cannot see the C signature
+                 * and cannot prove the C side does not retain the pointer.
+                 * new() (heap arena) and file-scope variables outlive the
+                 * call and are allowed. */
+                AstNode *ca = node->data.call.args[argument_index];
+                if (checker->current_func_scope_depth > 0 &&
+                    ca && ca->kind == NODE_CALL_EXPR &&
+                    ca->data.call.function->kind == NODE_LABEL &&
+                    ca->data.call.arg_count == 1 &&
+                    (strcmp(ca->data.call.function->data.label.value, "addr") == 0 ||
+                     strcmp(ca->data.call.function->data.label.value, "ref") == 0 ||
+                     strcmp(ca->data.call.function->data.label.value, "raw") == 0)) {
+                    const char *root = assignment_target_root_name(ca->data.call.args[0]);
+                    int d = root
+                        ? symbol_scope_depth(checker->current_scope, root) : 0;
+                    if (d > 0 && d >= checker->current_func_scope_depth) {
+                        diagnostic_error_code_formatted(checker->diag, "E3154",
+                            NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0,
+                            root);
+                    }
+                }
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 if (!arg_t || arg_t->kind == TK_UNKNOWN) continue;
                 /* Reject bigint types */

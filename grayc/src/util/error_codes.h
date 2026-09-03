@@ -239,7 +239,8 @@
     GRAY_ERROR("E3150", "types", "'io.read_lines' line limit cannot be negative; pass 0 to read to end of file") \
     GRAY_ERROR("E3151", "types", "'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive") \
     GRAY_ERROR("E3152", "types", "#error_code enum '%s' cannot also be #flags; ErrorCode is numbered by global slot, not by power-of-2 bit position") \
-    GRAY_ERROR("E3153", "types", "'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead")
+    GRAY_ERROR("E3153", "types", "'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead") \
+    GRAY_ERROR("E3154", "safety", "cannot pass the address of stack variable '%s' to a C function; the C side may retain it past the variable's scope. Allocate with new() or take the address of a file-scope variable instead")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

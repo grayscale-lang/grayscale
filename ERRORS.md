@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 432 codes** (299 errors, 17 warnings, 116 panics)
+**Total: 433 codes** (300 errors, 17 warnings, 116 panics)
 
 ---
 
@@ -224,6 +224,7 @@
 | `E3151` | types | 'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive |
 | `E3152` | types | #error_code enum '%s' cannot also be #flags; ErrorCode is numbered by global slot, not by power-of-2 bit position |
 | `E3153` | types | 'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead |
+| `E3154` | safety | cannot pass the address of stack variable '%s' to a C function; the C side may retain it past the variable's scope. Allocate with new() or take the address of a file-scope variable instead |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -483,4 +484,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-03 15:24:28 UTC*
+*Generated on 2026-09-03 18:42:38 UTC*
