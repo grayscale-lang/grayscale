@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2002 - trailing tokens after a complete expression in ${...}
+ *
+ * Everything after the first complete expression inside ${...} used to be
+ * dropped with no diagnostic; this printed "42".
+ */
+
+do main() {
+    mut x int = 42
+    println("${x y z nonsense}")
+}

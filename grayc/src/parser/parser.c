@@ -790,6 +790,21 @@ static AstNode *parse_interpolated_string(Parser *parser, const char *raw) {
                 Parser *expr_parser = parser_create(parser->arena, expr_lexer, parser->file, parser->diag);
                 expr_parser->in_interp = true;
                 AstNode *expr = parse_expression(expr_parser, PREC_LOWEST);
+                /* The sub-parser must consume the whole ${...} body. parse_expression
+                 * stops with cur_token on the last token of the expression and
+                 * peek_token on whatever follows; anything other than EOF there —
+                 * a ':05d' format spec, trailing garbage — was dropped silently,
+                 * so the interpolation evaluated only the leading expression.
+                 * Grayscale has no format-spec syntax. */
+                if (expr && expr_parser->peek_token.type != TOK_EOF &&
+                    expr_parser->peek_token.type != TOK_ILLEGAL) {
+                    char buf[MSG_BUF_SIZE];
+                    snprintf(buf, sizeof(buf), "unexpected token '%s' in interpolation expression",
+                        token_display_name(expr_parser->peek_token));
+                    diagnostic_error_message(parser->diag, "E2002",
+                        arena_copy_string(parser->arena, buf), parser->file,
+                        expr_parser->peek_token.line, expr_parser->peek_token.column, 0);
+                }
                 if (expr) parts[count++] = expr;
             }
 
