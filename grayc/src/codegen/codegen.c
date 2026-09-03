@@ -1146,6 +1146,18 @@ static const char *bigint_prefix(const char *type_str) {
     return NULL;
 }
 
+/* Canonical wide-integer type name as a string literal, or NULL if not one.
+ * Use this (not the caller's string) when registering a bigint binding, so the
+ * stored pointer has static lifetime. */
+static const char *bigint_type_name(const char *type_str) {
+    if (!type_str) return NULL;
+    if (strcmp(type_str, "i128") == 0) return "i128";
+    if (strcmp(type_str, "u128") == 0) return "u128";
+    if (strcmp(type_str, "i256") == 0) return "i256";
+    if (strcmp(type_str, "u256") == 0) return "u256";
+    return NULL;
+}
+
 /* Resolve the bigint type name for an expression (checks labels against tracked vars) */
 static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     if (!node) return NULL;
@@ -10872,6 +10884,20 @@ static void emit_foreach_map(CodeGen *codegen, AstNode *node, AstNode *coll,
         else emit_expression(codegen, coll);
         emit_formatted(codegen, ", %s);\n", slot_name);
     }
+
+    /* A wide-integer key or value binds as a struct, not int64_t; track it so
+     * reads of the loop variable resolve to the bigint type. The caller
+     * restores bigint_var_count after the loop body, so these are loop-scoped. */
+    const char *key_bind = node->data.for_each.index_name
+        ? node->data.for_each.index_name : node->data.for_each.var_name;
+    const char *val_bind = node->data.for_each.index_name
+        ? node->data.for_each.var_name : NULL;
+    const char *key_bi = bigint_type_name(coll_t->key_type);
+    const char *val_bi = bigint_type_name(coll_t->value_type);
+    if (key_bi && key_bind && strcmp(key_bind, "_") != 0)
+        register_bigint_variable(codegen, key_bind, key_bi);
+    if (val_bi && val_bind && strcmp(val_bind, "_") != 0)
+        register_bigint_variable(codegen, val_bind, val_bi);
 }
 
 static void emit_foreach_string(CodeGen *codegen, AstNode *node, AstNode *coll,
@@ -10903,9 +10929,12 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
         else if (et->kind == TK_POINTER) c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_CHAR) c_elem = "int32_t";
         else if (et->kind == TK_BYTE) c_elem = "uint8_t";
+        /* Wide integers are TK_INT/TK_UINT in the type system but structs in C;
+         * the element is stored packed as that struct, like a map value. */
+        else if (is_bigint_type(elem_tn)) c_elem = bigint_prefix(elem_tn);
         /* Sized int element types are stored packed by cast(arr, [T]); the
          * int64_t fall-through would stride past the buffer. Match storage. */
-        else if ((et->kind == TK_INT || et->kind == TK_UINT) && !is_bigint_type(elem_tn))
+        else if (et->kind == TK_INT || et->kind == TK_UINT)
             c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         else if (et->kind == TK_ENUM) {
             c_elem = codegen_enum_is_string(codegen, elem_tn)
@@ -10962,6 +10991,14 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     emit_formatted(codegen, "%s %s = GRAY_ARRAY_GET_AT(", c_elem, sanitize_name(node->data.for_each.var_name));
     if (*out_coll_needs_tmp) emit_formatted(codegen, "%s, %s, %s, \"%s\", %d);\n", arr_tmp_name, c_elem, idx_name, codegen->file, node->token.line);
     else { emit_expression(codegen, coll); emit_formatted(codegen, ", %s, %s, \"%s\", %d);\n", c_elem, idx_name, codegen->file, node->token.line); }
+
+    /* Track a wide-integer element binding so reads resolve to the bigint type.
+     * The caller restores bigint_var_count after the loop body. */
+    if (coll_t && coll_t->kind == TK_ARRAY) {
+        const char *elem_bi = bigint_type_name(coll_t->element_type);
+        if (elem_bi && strcmp(node->data.for_each.var_name, "_") != 0)
+            register_bigint_variable(codegen, node->data.for_each.var_name, elem_bi);
+    }
 }
 
 static void emit_statement(CodeGen *codegen, AstNode *node) {
@@ -11013,6 +11050,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         char map_tmp_name[SHORT_VAR_BUF];
         map_tmp_name[0] = '\0';
 
+        /* The foreach emitters may register wide-integer loop bindings; drop
+         * them again once the body is emitted so they stay loop-scoped. */
+        int prev_bigint_var_count = codegen->bigint_var_count;
+
         if (is_map_iter) {
             emit_foreach_map(codegen, node, coll, coll_t, idx_name,
                              &map_needs_tmp, map_tmp_name, sizeof(map_tmp_name));
@@ -11024,6 +11065,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         }
 
         emit_loop_body_with_arena(codegen, node->data.for_each.body);
+        codegen->bigint_var_count = prev_bigint_var_count;
         codegen->indent--;
         emit_indent(codegen);
         emit(codegen, "}\n");

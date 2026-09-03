@@ -1,0 +1,103 @@
+/*
+ * foreach_bigint_bindings.gray - for_each must bind a wide-integer loop
+ * variable as the bigint type, not int64_t.
+ *
+ * Array elements, map keys, and map values of type i128/u128/i256/u256 were
+ * bound as int64_t, so any loop body that did arithmetic on or interpolated
+ * the binding emitted broken C or silently truncated the value.
+ */
+
+do main() {
+    println("=== for_each bigint bindings ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- array of wide ints: arithmetic on the element --
+    mut arr [i128] = {i128(1000000000000000000000), i128(2)}
+    mut arr_sum i128 = i128(0)
+    for_each x in arr {
+        arr_sum = arr_sum + x
+    }
+    if arr_sum == i128(1000000000000000000002) {
+        println("  [PASS] array element")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array element: ${arr_sum}")
+        failed += 1
+    }
+
+    // -- map wide-int value --
+    mut mv map[string:i128] = {:}
+    mv["a"] = i128(170141183460469231731687303715884105727)
+    mut val_ok bool = false
+    for_each k, v in mv {
+        mut dec i128 = v - i128(1)
+        if k == "a" && dec == i128(170141183460469231731687303715884105726) {
+            val_ok = true
+        }
+    }
+    if val_ok {
+        println("  [PASS] map value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map value")
+        failed += 1
+    }
+
+    // -- map wide-int key --
+    mut mk map[u128:int] = {:}
+    mk[u128(9223372036854775808)] = 7
+    mut key_ok bool = false
+    for_each k, v in mk {
+        if k == u128(9223372036854775808) && v == 7 {
+            key_ok = true
+        }
+    }
+    if key_ok {
+        println("  [PASS] map key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map key")
+        failed += 1
+    }
+
+    // -- both key and value wide --
+    mut mm map[u256:i256] = {:}
+    mm[u256(5)] = i256(-42)
+    mut both_ok bool = false
+    for_each k, v in mm {
+        if k == u256(5) && v == i256(-42) {
+            both_ok = true
+        }
+    }
+    if both_ok {
+        println("  [PASS] wide key and wide value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] wide key and wide value")
+        failed += 1
+    }
+
+    // -- binding does not leak past the loop --
+    mut after int = 5
+    for_each x in arr {
+        mut ignore i128 = x
+    }
+    after = after + 1
+    if after == 6 {
+        println("  [PASS] binding is loop-scoped")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] binding is loop-scoped")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
