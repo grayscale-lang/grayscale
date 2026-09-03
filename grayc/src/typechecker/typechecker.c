@@ -11449,6 +11449,15 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         src_tn, dest_tn, node->data.var_decl.name, dest_tn),
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+        } else if (node->data.var_decl.type_name && node->data.var_decl.value &&
+                   value_type && value_type->kind != TK_UNKNOWN) {
+            /* A non-label initializer (function call, or an expression whose
+             * top-level type is a concrete integer) crosses signedness the
+             * same way — the NODE_LABEL branch above only covers a bare
+             * variable RHS. Literals are range-checked separately and are
+             * skipped by check_signedness_crossing. */
+            check_signedness_crossing(checker, node->data.var_decl.type_name,
+                node->data.var_decl.value, value_type, node->data.var_decl.value);
         }
     }
 
