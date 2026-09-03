@@ -10043,8 +10043,15 @@ static void emit_ensure_cleanup(CodeGen *codegen) {
     int ensure_cap = 0;
     collect_ensures(codegen->current_func->data.func_decl.body, &ensures, &ensure_count, &ensure_cap);
 
+    /* Only the defer/ensure statements control flow has actually reached run at
+     * this exit; a return that lexically precedes a defer must not splice it in
+     * (the deferred expression may reference not-yet-declared variables, or
+     * clean up a resource that was never acquired). */
+    int reached = codegen->ensure_reached;
+    if (reached > ensure_count) reached = ensure_count;
+
     /* Emit in reverse (LIFO) order */
-    for (int i = ensure_count - 1; i >= 0; i--) {
+    for (int i = reached - 1; i >= 0; i--) {
         emit_indent(codegen);
         emit_expression(codegen, ensures[i]->data.ensure_stmt.expr);
         emit(codegen, ";\n");
@@ -10732,7 +10739,9 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     int prev_raw_var_count = codegen->raw_var_count;
     int prev_bigint_var_count = codegen->bigint_var_count;
     int prev_iter_guard_count = codegen->iter_guard_count;
+    int prev_ensure_reached = codegen->ensure_reached;
     codegen->current_func = node;
+    codegen->ensure_reached = 0;
 
     /* Register bigint parameters for type tracking */
     for (int i = 0; i < node->data.func_decl.param_count; i++) {
@@ -10771,6 +10780,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
          * return the named variable, so no implicit fall-through is needed. */
     }
     codegen->current_func = prev_func;
+    codegen->ensure_reached = prev_ensure_reached;
     codegen->using_module_count = prev_using_count;
     codegen->ref_var_count = prev_ref_var_count;
     codegen->raw_var_count = prev_raw_var_count;
@@ -11261,7 +11271,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_block(codegen, node);
         break;
     case NODE_ENSURE_STMT:
-        /* Ensure is collected and emitted at return/function-exit */
+        /* Ensure is emitted at return/function-exit; record that control flow
+         * has now reached this one so earlier returns don't run it. */
+        codegen->ensure_reached++;
         break;
     case NODE_STRUCT_DECL:
         /* Struct declarations are emitted in the preamble */

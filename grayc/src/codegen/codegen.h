@@ -47,6 +47,11 @@ typedef struct {
     /* Current function context (for multi-return, ensure) */
     AstNode *current_func;
 
+    /* Number of top-level defer/ensure statements whose source position codegen
+     * has already passed in the current function. A return only runs the
+     * defer/ensure statements that control flow has actually reached. */
+    int ensure_reached;
+
     /* loop scoping depth — when > 0, codegen is inside a
      * scoped loop and container mutations need escape-copy logic. */
     int loop_scope_depth;
