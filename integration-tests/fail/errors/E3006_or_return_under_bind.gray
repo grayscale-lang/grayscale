@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3006 - or_return destructure with fewer bindings than the
+ * call's non-error return slots. The trailing value was silently dropped.
+ */
+
+do three() -> (int, int, int, Error) { return 10, 20, 30, nil }
+
+do consume() -> (int, Error) {
+    mut a, b = three() or_return
+    return a + b, nil
+}
+
+do main() {
+    mut n, e = consume()
+    println("${n}")
+}

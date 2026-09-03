@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3040 - a single or_return binding for a call with more than
+ * one non-error return slot. The second value was silently dropped.
+ */
+
+do two() -> (int, string, Error) { return 10, "hi", nil }
+
+do consume() -> (int, Error) {
+    mut a = two() or_return
+    return a, nil
+}
+
+do main() {
+    mut n, e = consume()
+    println("${n}")
+}

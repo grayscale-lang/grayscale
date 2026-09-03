@@ -1,0 +1,45 @@
+/*
+ * or_return_arity_exact.gray - an or_return bind that names exactly one
+ * variable per non-error return slot is valid, including '_' placeholders
+ * and the whole-result discard form.
+ */
+
+do two() -> (int, int, Error) { return 3, 4, nil }
+do three() -> (int, string, bool, Error) { return 7, "ok", true, nil }
+do one() -> (int, Error) { return 9, nil }
+
+do run() -> (int, Error) {
+    mut a, b = two() or_return           // exact: 2 bindings, 2 non-error slots
+    mut _, d = two() or_return            // '_' still counts as a slot
+    mut n, label, flag = three() or_return
+    mut c = one() or_return               // single binding, single non-error slot
+    _ = two() or_return                   // discard the whole result
+    two() or_return                       // bare form
+    if flag && label == "ok" {
+        return a + b + d + n + c, nil
+    }
+    return 0, nil
+}
+
+do main() {
+    println("=== or_return exact arity ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut total int, e Error = run()
+    if e == nil && total == 3 + 4 + 4 + 7 + 9 {
+        println("  [PASS] exact-arity or_return binds every non-error slot")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] total=${total}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

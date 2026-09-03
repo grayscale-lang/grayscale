@@ -10334,6 +10334,56 @@ static void check_block(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+    /* E3006/E3040: or_return binding arity. The desugared block is
+     *   _gray_orN = call(); if (_gray_orN.verr) { return ... }; a = _gray_orN.v0; ...
+     * The trailing Error slot is consumed by the guard, so the user bindings
+     * must match the call's non-error return slots exactly. Nothing else checks
+     * this, so trailing values were dropped silently and an over-count bound the
+     * Error slot to a user variable. */
+    if (node->data.block.count >= 3) {
+        AstNode *first = node->data.block.stmts[0];
+        if (first && first->kind == NODE_VAR_DECL &&
+            strncmp(first->data.var_decl.name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0 &&
+            first->data.var_decl.value &&
+            first->data.var_decl.value->kind == NODE_CALL_EXPR) {
+            Symbol *sym = scope_lookup_local(checker->current_scope, first->data.var_decl.name);
+            if (sym && sym->ret_types && sym->ret_count >= 2 &&
+                sym->ret_types[sym->ret_count - 1]->kind == TK_ERROR) {
+                int nonerr_count = sym->ret_count - 1;
+                int var_count = node->data.block.count - 2; /* tmp_decl + guard */
+                /* `_ = call() or_return` is the whole-result discard form,
+                 * equivalent to bare `call() or_return`; it binds nothing. */
+                AstNode *b0 = node->data.block.stmts[2];
+                bool discard_all = var_count == 1 && b0 &&
+                    b0->kind == NODE_VAR_DECL && strcmp(b0->data.var_decl.name, "_") == 0;
+                AstNode *call_fn = first->data.var_decl.value->data.call.function;
+                const char *function_name = "function";
+                if (call_fn->kind == NODE_LABEL) {
+                    function_name = call_fn->data.label.value;
+                } else if (call_fn->kind == NODE_MEMBER_EXPR &&
+                           call_fn->data.member.member) {
+                    function_name = call_fn->data.member.member;
+                }
+                const char *file = NODE_FILE(checker, first);
+                int line = first->token.line, col = first->token.column;
+                if (discard_all) {
+                    /* nothing bound — no arity to check */
+                } else if (var_count == 1 && nonerr_count > 1) {
+                    diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
+                        function_name, nonerr_count, function_name);
+                } else if (var_count < nonerr_count) {
+                    char *msg = typechecker_format(checker,
+                        "'%s' returns %d values but only %d variable(s) provided; "
+                        "all return values must be handled (use '_' to discard unwanted values)",
+                        function_name, nonerr_count, var_count);
+                    diagnostic_error_message(checker->diag, "E3006", msg, file, line, col, 0);
+                } else if (var_count > nonerr_count) {
+                    diagnostic_error_code_formatted(checker->diag, "E3006", file, line, col, 0,
+                        nonerr_count, var_count);
+                }
+            }
+        }
+    }
 }
 
 /* --- check_statement() per-case helpers --- */
