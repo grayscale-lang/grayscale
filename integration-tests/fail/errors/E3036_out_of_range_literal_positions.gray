@@ -1,0 +1,35 @@
+// Error Test: E3036 - an out-of-range integer literal must be rejected in
+// every value position: struct-literal field (plain and nested), map-literal
+// value, default parameter, return statement, array-element assignment, and
+// map-value assignment.
+// expect-error: E3036
+// expect-error-count: 7
+
+const Inner struct {
+    b byte
+}
+const Outer struct {
+    i Inner
+}
+const S struct {
+    b byte
+}
+
+do ret_bad() -> byte {
+    return 300
+}
+
+do with_default(b byte = 300) {
+    println("${b}")
+}
+
+do main() {
+    mut s S = S{ b: 300 }
+    mut o Outer = Outer{ i: Inner{ b: 300 } }
+    mut m map[string:byte] = {"a": 300}
+    mut xs [byte] = {1, 2}
+    xs[0] = 300
+    mut mm map[string:byte] = {:}
+    mm["k"] = 300
+    println("${ret_bad()}")
+}

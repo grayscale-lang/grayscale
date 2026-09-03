@@ -1,0 +1,47 @@
+/*
+ * in_range_literal_positions.gray
+ * In-range integer literals in the positions covered by the E3036 range
+ * check (struct-literal field, map value, default param, return, index
+ * assignment) must still compile and round-trip.
+ */
+
+const S struct {
+    b byte
+    n i16
+}
+
+do ret_ok() -> byte {
+    return 255
+}
+
+do with_default(b byte = 200) -> byte {
+    return b
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut s S = S{ b: 250, n: -32000 }
+    mut m map[string:byte] = {"a": 100}
+    mut xs [byte] = {1, 2}
+    xs[0] = 254
+    mut mm map[string:u8] = {:}
+    mm["k"] = 255
+
+    if s.b == 250 && s.n == -32000 && m["a"] == 100 && xs[0] == 254 &&
+       mm["k"] == 255 && ret_ok() == 255 && with_default() == 200 {
+        println("  [PASS] in-range literals accepted in all positions")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${s.b} ${s.n} ${m["a"]} ${xs[0]} ${mm["k"]} ${ret_ok()} ${with_default()}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

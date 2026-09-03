@@ -8794,6 +8794,14 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 check_signedness_crossing(checker, expected_t->name,
                     node->data.struct_value.field_values[i], val_t,
                     node->data.struct_value.field_values[i]);
+            /* E3036: an out-of-range literal in a narrow field (S{ b: 300 }). */
+            if (found && expected_t && expected_t->name) {
+                int64_t field_lit;
+                AstNode *fv = node->data.struct_value.field_values[i];
+                if (try_get_literal_int(fv, &field_lit))
+                    check_integer_range(checker->diag, NODE_FILE(checker, fv),
+                        fv->token.line, fv->token.column, expected_t->name, field_lit);
+            }
             /* E3066: func signature mismatch on a struct-literal field. The
              * mismatch check above treats any two func types as assignable, so
              * a reference with the wrong signature only got caught when it was
@@ -11367,6 +11375,14 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             /* E3019/E3001: a map key or value that crosses signedness needs a cast. */
                             check_signedness_crossing(checker, key_tn, kn, kt, kn);
                             check_signedness_crossing(checker, val_tn, vn, vt, vn);
+                            /* E3036: an out-of-range literal key or value ({"a": 300}). */
+                            int64_t kv_lit;
+                            if (try_get_literal_int(kn, &kv_lit))
+                                check_integer_range(checker->diag, NODE_FILE(checker, kn),
+                                    kn->token.line, kn->token.column, key_tn, kv_lit);
+                            if (try_get_literal_int(vn, &kv_lit))
+                                check_integer_range(checker->diag, NODE_FILE(checker, vn),
+                                    vn->token.line, vn->token.column, val_tn, kv_lit);
                             if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
                                 expected_k && expected_k->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, expected_k, kt) &&
@@ -12171,11 +12187,27 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             /* E3019/E3001: assigning a value that crosses signedness into an element needs a cast. */
             check_signedness_crossing(checker, indexed_t->element_type,
                 node->data.assign.value, val_t, node->data.assign.value);
+            /* E3036: out-of-range literal into a narrow element (xs[0] = 300). */
+            int64_t elem_lit;
+            if (try_get_literal_int(node->data.assign.value, &elem_lit)) {
+                check_integer_range(checker->diag, NODE_FILE(checker, node),
+                    node->data.assign.value->token.line,
+                    node->data.assign.value->token.column,
+                    indexed_t->element_type, elem_lit);
+            }
         }
         /* E3019: assigning a signed value into an unsigned map value needs a cast. */
         if (indexed_t && indexed_t->kind == TK_MAP && indexed_t->value_type) {
             check_signedness_crossing(checker, indexed_t->value_type,
                 node->data.assign.value, value_t, node->data.assign.value);
+            /* E3036: out-of-range literal into a narrow map value (m["a"] = 300). */
+            int64_t mval_lit;
+            if (try_get_literal_int(node->data.assign.value, &mval_lit)) {
+                check_integer_range(checker->diag, NODE_FILE(checker, node),
+                    node->data.assign.value->token.line,
+                    node->data.assign.value->token.column,
+                    indexed_t->value_type, mval_lit);
+            }
         }
     }
 
@@ -12870,6 +12902,20 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
+        /* E3036: an out-of-range integer literal in any return slot
+         * (do f() -> byte { return 300 }). */
+        if (checker->current_return_type_names) {
+            for (int i = 0; i < node->data.return_stmt.count &&
+                            i < checker->current_return_count; i++) {
+                const char *slot_tn = checker->current_return_type_names[i];
+                int64_t ret_lit;
+                if (slot_tn && try_get_literal_int(node->data.return_stmt.values[i], &ret_lit)) {
+                    AstNode *rv = node->data.return_stmt.values[i];
+                    check_integer_range(checker->diag, NODE_FILE(checker, rv),
+                        rv->token.line, rv->token.column, slot_tn, ret_lit);
+                }
+            }
+        }
         /* Non-primary return slots. Everything above inspects values[0]
          * only; without this a `return 0, NetErr.DNS_FAIL` into a
          * `-> (int, DbErr)` slot passed unchecked and leaked a C type
@@ -13494,6 +13540,13 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, p->default_value), p->default_value->token.line, p->default_value->token.column, 0);
             }
+            /* E3036: out-of-range default value for a narrow parameter
+             * (do f(b byte = 300)). */
+            int64_t def_lit;
+            if (try_get_literal_int(p->default_value, &def_lit))
+                check_integer_range(checker->diag, NODE_FILE(checker, p->default_value),
+                    p->default_value->token.line, p->default_value->token.column,
+                    p->type_name, def_lit);
         }
         scope_define(func_scope, p->name, ptype, p->mutable);
     }
