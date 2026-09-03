@@ -3471,6 +3471,16 @@ static int int_type_name_rank(const char *n) {
     return 0;
 }
 
+/* True when an unsigned value of type `src_tn` is representable in the signed
+ * type `dest_tn` purely by width — a value-preserving widening that needs no
+ * cast (uint -> i128, byte -> int). A same-width or narrower crossing still
+ * reinterprets or truncates and requires an explicit cast. */
+static bool unsigned_widens_to_signed(const char *dest_tn, const char *src_tn) {
+    int dr = int_type_name_rank(dest_tn);
+    int sr = int_type_name_rank(src_tn);
+    return dr > 0 && sr > 0 && dr > sr;
+}
+
 /* --- Literal value extraction --- */
 
 /* Try to extract a compile-time integer value from a literal expression.
@@ -3509,25 +3519,35 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
     return false;
 }
 
-/* E3019: a non-literal signed integer value used where an unsigned integer is
- * expected reinterprets negatives as huge positives and needs an explicit cast.
- * var-decl, reassignment, and return already check this for their own value
- * position; this consolidates it so call arguments, array elements, struct
- * fields, and map values are covered too. Literals are skipped — their value is
- * range-checked separately (a negative literal to a uint is its own error).
- * (The unsigned -> signed direction stays an implicit conversion, matching
- * int_uint_implicit_conv.gray.) `pos` anchors the diagnostic. */
-static void check_signed_to_unsigned_crossing(TypeChecker *checker,
-                                              const char *expected_tn,
-                                              AstNode *value, GrayType *value_t,
-                                              AstNode *pos) {
+/* A non-literal integer value used where the other signedness is expected
+ * reinterprets the bits — a negative becomes a huge positive, a large unsigned
+ * becomes negative — and needs an explicit cast in either direction. var-decl,
+ * reassignment, and return check this for their own value position; this
+ * consolidates it so call arguments, array elements, struct fields, and map
+ * values are covered too. Literals are skipped — their value is range-checked
+ * separately (a negative literal to a uint is its own error). `pos` anchors the
+ * diagnostic. E3019 covers signed -> unsigned, E3001 covers unsigned -> signed
+ * (matching what reassignment already emits for each direction). A
+ * value-preserving unsigned -> wider-signed widening is left implicit. */
+static void check_signedness_crossing(TypeChecker *checker,
+                                      const char *expected_tn,
+                                      AstNode *value, GrayType *value_t,
+                                      AstNode *pos) {
     if (!expected_tn || !value_t || !value_t->name || !pos) return;
-    if (!is_unsigned_type(expected_tn) || !is_signed_int_type(value_t->name)) return;
     int64_t lit;
     if (value && try_get_literal_int(value, &lit)) return;
-    diagnostic_error_code_formatted(checker->diag, "E3019",
-        NODE_FILE(checker, pos), pos->token.line, pos->token.column, 0,
-        value_t->name, expected_tn);
+    if (is_unsigned_type(expected_tn) && is_signed_int_type(value_t->name)) {
+        diagnostic_error_code_formatted(checker->diag, "E3019",
+            NODE_FILE(checker, pos), pos->token.line, pos->token.column, 0,
+            value_t->name, expected_tn);
+    } else if (is_signed_int_type(expected_tn) && is_unsigned_type(value_t->name) &&
+               !unsigned_widens_to_signed(expected_tn, value_t->name)) {
+        diagnostic_error_message(checker->diag, "E3001",
+            typechecker_format(checker,
+                "type mismatch: cannot assign unsigned type '%s' to signed type '%s'; use cast(value, %s) to convert explicitly",
+                value_t->name, expected_tn, expected_tn),
+            NODE_FILE(checker, pos), pos->token.line, pos->token.column, 0);
+    }
 }
 
 /* Register a file-scope const integer value for later constant folding. */
@@ -7248,9 +7268,9 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * argument position. Caller must destructure first. */
         reject_multi_return_in_single_position(checker, node->data.call.args[i]);
 
-        /* E3019: a signed argument passed to an unsigned parameter needs a cast. */
+        /* E3019/E3001: an argument that crosses signedness vs the parameter needs a cast. */
         if (callee_decl && i < callee_decl->data.func_decl.param_count)
-            check_signed_to_unsigned_crossing(checker,
+            check_signedness_crossing(checker,
                 callee_decl->data.func_decl.params[i].type_name,
                 node->data.call.args[i], ai_t, node->data.call.args[i]);
     }
@@ -8722,9 +8742,9 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3001", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* E3019: a signed value in an unsigned field initializer needs a cast. */
+            /* E3019/E3001: a field initializer that crosses signedness needs a cast. */
             if (found && expected_t && expected_t->name)
-                check_signed_to_unsigned_crossing(checker, expected_t->name,
+                check_signedness_crossing(checker, expected_t->name,
                     node->data.struct_value.field_values[i], val_t,
                     node->data.struct_value.field_values[i]);
             /* E3066: func signature mismatch on a struct-literal field. The
@@ -11149,8 +11169,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
                         AstNode *el_node = arr->data.array_value.elements[enum_index];
                         GrayType *actual_et = resolve_expression(checker, el_node);
-                        /* E3019: a signed value in an unsigned-array element needs a cast. */
-                        check_signed_to_unsigned_crossing(checker, elem_type,
+                        /* E3019/E3001: an array element that crosses signedness needs a cast. */
+                        check_signedness_crossing(checker, elem_type,
                             el_node, actual_et, el_node);
                         if (actual_et && actual_et->kind != TK_UNKNOWN &&
                             expected_et && expected_et->kind != TK_UNKNOWN &&
@@ -11243,9 +11263,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             AstNode *vn = mv->data.map_value.values[mi];
                             GrayType *kt = resolve_expression(checker, kn);
                             GrayType *vt = resolve_expression(checker, vn);
-                            /* E3019: a signed key or value where the map type is unsigned needs a cast. */
-                            check_signed_to_unsigned_crossing(checker, key_tn, kn, kt, kn);
-                            check_signed_to_unsigned_crossing(checker, val_tn, vn, vt, vn);
+                            /* E3019/E3001: a map key or value that crosses signedness needs a cast. */
+                            check_signedness_crossing(checker, key_tn, kn, kt, kn);
+                            check_signedness_crossing(checker, val_tn, vn, vt, vn);
                             if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
                                 expected_k && expected_k->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, expected_k, kt) &&
@@ -11310,16 +11330,24 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        /* E3019: signed-to-unsigned assignment from variable */
+        /* E3019/E3001: a declared integer type crossed by the initializer variable's
+         * signedness (int x = uint_var, uint x = int_var) needs an explicit cast. */
         if (node->data.var_decl.type_name &&
-            is_unsigned_type(node->data.var_decl.type_name) &&
             node->data.var_decl.value &&
             node->data.var_decl.value->kind == NODE_LABEL) {
+            const char *dest_tn = node->data.var_decl.type_name;
             const char *src_name = node->data.var_decl.value->data.label.value;
             Symbol *src_sym = scope_lookup(checker->current_scope, src_name);
-            if (src_sym && src_sym->declared_type &&
-                is_signed_int_type(src_sym->declared_type)) {
-                diagnostic_error_code_formatted(checker->diag, "E3019", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_sym->declared_type, node->data.var_decl.type_name);
+            const char *src_tn = src_sym ? src_sym->declared_type : NULL;
+            if (src_tn && is_unsigned_type(dest_tn) && is_signed_int_type(src_tn)) {
+                diagnostic_error_code_formatted(checker->diag, "E3019", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, dest_tn);
+            } else if (src_tn && is_signed_int_type(dest_tn) && is_unsigned_type(src_tn) &&
+                       !unsigned_widens_to_signed(dest_tn, src_tn)) {
+                diagnostic_error_message(checker->diag, "E3001",
+                    typechecker_format(checker,
+                        "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
+                        src_tn, dest_tn, node->data.var_decl.name, dest_tn),
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
     }
@@ -12029,13 +12057,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     type_display_name(checker, val_t), type_display_name(checker, indexed_t));
             }
-            /* E3019: assigning a signed value into an unsigned element needs a cast. */
-            check_signed_to_unsigned_crossing(checker, indexed_t->element_type,
+            /* E3019/E3001: assigning a value that crosses signedness into an element needs a cast. */
+            check_signedness_crossing(checker, indexed_t->element_type,
                 node->data.assign.value, val_t, node->data.assign.value);
         }
         /* E3019: assigning a signed value into an unsigned map value needs a cast. */
         if (indexed_t && indexed_t->kind == TK_MAP && indexed_t->value_type) {
-            check_signed_to_unsigned_crossing(checker, indexed_t->value_type,
+            check_signedness_crossing(checker, indexed_t->value_type,
                 node->data.assign.value, value_t, node->data.assign.value);
         }
     }
@@ -12265,14 +12293,15 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             NODE_FILE(checker, node), node->token.line, node->token.column, 0,
             value_t->name, target_t->name);
     }
-    /* Unsigned-to-signed on reassignment (e.g., int_var = uint_var).
-     * Only fires when narrowing did not already catch it (same rank). */
+    /* Unsigned-to-signed on reassignment (e.g., int_var = uint_var). Fires on a
+     * same-width reinterpretation only: narrowing is caught above, and an
+     * unsigned value widening into a strictly larger signed type is lossless. */
     if (target->kind == NODE_LABEL &&
         target_t && value_t &&
         target_t->name && value_t->name &&
         is_signed_int_type(target_t->name) &&
         is_unsigned_type(value_t->name) &&
-        int_type_name_rank(target_t->name) >= int_type_name_rank(value_t->name)) {
+        int_type_name_rank(target_t->name) == int_type_name_rank(value_t->name)) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
@@ -12711,15 +12740,23 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             diagnostic_error_message(checker->diag, "E3001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* E5024: signed-to-unsigned return type mismatch */
+        /* E5024/E3001: a returned variable whose signedness crosses the declared
+         * return type needs an explicit cast, in either direction. */
         if (checker->current_return_type_names && checker->current_return_type_names[0] &&
-            is_unsigned_type(checker->current_return_type_names[0]) &&
             node->data.return_stmt.values[0]->kind == NODE_LABEL) {
+            const char *ret_tn = checker->current_return_type_names[0];
             const char *src_name = node->data.return_stmt.values[0]->data.label.value;
             Symbol *src_sym = scope_lookup(checker->current_scope, src_name);
-            if (src_sym && src_sym->declared_type &&
-                is_signed_int_type(src_sym->declared_type)) {
-                diagnostic_error_code_formatted(checker->diag, "E5024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_sym->declared_type, checker->current_return_type_names[0]);
+            const char *src_tn = src_sym ? src_sym->declared_type : NULL;
+            if (src_tn && is_unsigned_type(ret_tn) && is_signed_int_type(src_tn)) {
+                diagnostic_error_code_formatted(checker->diag, "E5024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, ret_tn);
+            } else if (src_tn && is_signed_int_type(ret_tn) && is_unsigned_type(src_tn) &&
+                       !unsigned_widens_to_signed(ret_tn, src_tn)) {
+                diagnostic_error_message(checker->diag, "E3001",
+                    typechecker_format(checker,
+                        "return type mismatch: cannot return unsigned '%s' as signed '%s'; use cast(value, %s) to convert explicitly",
+                        src_tn, ret_tn, ret_tn),
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
         /* Non-primary return slots. Everything above inspects values[0]

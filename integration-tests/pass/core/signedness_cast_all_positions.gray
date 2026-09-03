@@ -1,8 +1,8 @@
 /*
- * signedness_cast_all_positions.gray - a signed integer value used where an
- * unsigned integer is expected needs an explicit cast() in every position
- * (call argument, array element, struct field, map value, map assignment). The
- * unsigned -> signed direction stays an implicit conversion.
+ * signedness_cast_all_positions.gray - an integer value that crosses signedness
+ * needs an explicit cast() in every position (call argument, array element,
+ * struct field, map value, map assignment), in both the signed -> unsigned and
+ * unsigned -> signed directions.
  */
 
 const Box struct {
@@ -56,13 +56,27 @@ do main() {
         failed += 1
     }
 
-    // unsigned -> signed remains implicit (no cast)
+    // unsigned -> signed also needs the cast, in every position
     mut u uint = 42
-    mut back int = u
-    if back == 42 {
+    mut back int = cast(u, int)
+    mut arr2 [int] = {cast(u, int)}
+    mut m2 map[string:int] = {"a": cast(u, int)}
+    m2["b"] = cast(u, int)
+    if back == 42 && arr2[0] == 42 && m2["a"] == 42 && m2["b"] == 42 {
         passed += 1
     } otherwise {
-        println("[FAIL] implicit unsigned to signed: ${back}")
+        println("[FAIL] unsigned to signed via cast: ${back}")
+        failed += 1
+    }
+
+    // a value-preserving unsigned -> wider-signed widening stays implicit
+    mut by byte = 200
+    mut widened int = by
+    mut wide i128 = u
+    if widened == 200 && wide == i128(42) {
+        passed += 1
+    } otherwise {
+        println("[FAIL] unsigned widening to wider signed: ${widened}")
         failed += 1
     }
 

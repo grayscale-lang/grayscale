@@ -24,13 +24,13 @@ do main() {
         failed += 1
     }
 
-    // Test 2: Assign uint value to int variable
-    mut b int = a
+    // Test 2: Assign uint value to int variable via explicit cast
+    mut b int = cast(a, int)
     if b == 42 {
-        println("  [PASS] assign uint value to int var")
+        println("  [PASS] assign uint value to int var via cast")
         passed += 1
     } otherwise {
-        println("  [FAIL] assign uint value to int var")
+        println("  [FAIL] assign uint value to int var via cast")
         failed += 1
     }
 

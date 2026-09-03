@@ -1,0 +1,10 @@
+// Error Test: E3001 - an unsigned value passed to a signed parameter reinterprets large values
+// expect-error: E3001
+// expect-error-count: 1
+
+do take_i(i int) {}
+
+do main() {
+    mut u uint = 18446744073709551615
+    take_i(u)
+}

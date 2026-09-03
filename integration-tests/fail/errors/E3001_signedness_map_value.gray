@@ -1,0 +1,10 @@
+// Error Test: E3001 - an unsigned value in a signed map value needs an explicit cast
+// expect-error: E3001
+// expect-error-count: 1
+
+do main() {
+    mut u uint = 18446744073709551615
+    mut m map[string:int] = {"a": u}
+    mut got int = m["a"]
+    println("${got}")
+}
