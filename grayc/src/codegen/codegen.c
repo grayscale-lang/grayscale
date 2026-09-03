@@ -401,6 +401,29 @@ static const char *sanitize_name(const char *name) {
     return bufs[i];
 }
 
+/* C name for a file-scope variable declared in the entry module. The
+ * gray_g_ prefix keeps a name like `log`, `index`, or `getline` from
+ * colliding with a libc identifier pulled in by the runtime headers —
+ * a collision C rejects with no Grayscale diagnostic. Locals, parameters,
+ * and struct fields legally shadow such names and are left untouched.
+ * Interned in the module arena so the pointer stays valid when it is
+ * swapped onto a declaration node. */
+static const char *global_var_cname(CodeGen *codegen, const char *name) {
+    char buf[MSG_BUF_SIZE];
+    int n = snprintf(buf, sizeof(buf), "gray_g_%s", name);
+    return arena_intern_string(codegen->modules->arena, buf,
+                               n > 0 ? (size_t)n : 0);
+}
+
+/* True when a bare reference resolves to an entry-module file-scope
+ * variable, i.e. one emitted through global_var_cname(). */
+static bool label_is_entry_global(AstNode *node) {
+    if (!node || node->kind != NODE_LABEL ||
+        !node->data.label.refers_to_file_global)
+        return false;
+    return !node->resolved_decl || node->resolved_decl->kind == DECL_CONST;
+}
+
 /* Build a mangled name for a generic instantiation: `base__concrete`
  * with non-alphanumeric characters replaced by underscores so
  * array/map bindings stay legal C identifiers. */
@@ -1498,6 +1521,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         emit_formatted(codegen, "(*%s)", name);
     } else if (is_reference_variable(codegen, raw)) {
         emit_formatted(codegen, "(*%s)", name);
+    } else if (label_is_entry_global(node)) {
+        emit(codegen, global_var_cname(codegen, raw));
     } else {
         /* A bare name that names a module-level declaration is emitted under
          * that declaration's mangled name. Locals and parameters are not
@@ -5527,6 +5552,10 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
     if (arg->kind == NODE_LABEL) {
         const char *vn = arg->data.label.value;
         if (is_mutable_parameter(codegen, vn)) { emit(codegen, vn); return; }
+        if (label_is_entry_global(arg)) {
+            emit_formatted(codegen, "&%s", global_var_cname(codegen, vn));
+            return;
+        }
         /* A bare name that names a module-level declaration is emitted under
          * its mangled name; resolve it the same way emit_label() does before
          * taking its address. */
@@ -8881,7 +8910,12 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
     emit(codegen, ";\n");
 }
 
-static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
+/* source_name is the variable's name as written in Grayscale — the key the
+ * raw/ref/heap-pointer trackers use, since reference sites look them up by
+ * the source name. node->data.var_decl.name may already carry a mangled or
+ * gray_g_-prefixed C name by the time this runs. */
+static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
+                                      const char *source_name) {
     emit_indent(codegen);
 
     const char *type_name = node->data.var_decl.type_name;
@@ -9014,7 +9048,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
                     arg->kind == NODE_MEMBER_EXPR ||
                     arg->kind == NODE_INDEX_EXPR;
                 if (is_assignable) {
-                    register_reference_variable(codegen, node->data.var_decl.name);
+                    register_reference_variable(codegen, source_name);
                 }
             }
         }
@@ -9025,15 +9059,15 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
     if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
         AstNode *fn = node->data.var_decl.value->data.call.function;
         if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "raw") == 0) {
-            register_raw_variable(codegen, node->data.var_decl.name);
+            register_raw_variable(codegen, source_name);
             is_raw_init = true;
         }
     }
     /* If a pointer variable shadows a raw variable from an outer scope,
      * push a non-raw override so inner dereferences get nil checks. */
     if (!is_raw_init && type_name && type_name[0] == '^' &&
-        is_raw_variable(codegen, node->data.var_decl.name)) {
-        unregister_raw_variable(codegen, node->data.var_decl.name);
+        is_raw_variable(codegen, source_name)) {
+        unregister_raw_variable(codegen, source_name);
     }
 
     /* Detect new() assignment; register as heap-tracked pointer so later
@@ -9041,9 +9075,9 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node) {
      * Any other declaration clears a shadowed outer-scope heap variable
      * of the same name. */
     if (is_new_call(node->data.var_decl.value)) {
-        register_heap_variable(codegen, node->data.var_decl.name, true);
-    } else if (is_heap_variable(codegen, node->data.var_decl.name)) {
-        register_heap_variable(codegen, node->data.var_decl.name, false);
+        register_heap_variable(codegen, source_name, true);
+    } else if (is_heap_variable(codegen, source_name)) {
+        register_heap_variable(codegen, source_name, false);
     }
 
     /* File-scope initializer that isn't a C constant expression: emit a
@@ -10191,8 +10225,13 @@ static char *iter_guard_expr(CodeGen *codegen, bool needs_tmp,
     const char *raw = coll->data.label.value;
     /* A module-level collection is emitted under its module's mangled name,
      * the same as any other reference to it. */
-    const char *resolved = codegen_resolve_decl(codegen, raw);
-    const char *san = sanitize_name(resolved != raw ? resolved : raw);
+    const char *san = label_is_entry_global(coll)
+        ? global_var_cname(codegen, raw)
+        : NULL;
+    if (!san) {
+        const char *resolved = codegen_resolve_decl(codegen, raw);
+        san = sanitize_name(resolved != raw ? resolved : raw);
+    }
     char buf[128];
     if (is_mutable_parameter(codegen, raw) || is_reference_variable(codegen, raw))
         snprintf(buf, sizeof(buf), "(*%s)", san);
@@ -11069,9 +11108,14 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
          * already uses for generic instantiations and struct namespacing. */
         DeclEntry *entry = module_table_entry_for_node(codegen->modules, node);
         const char *written = node->data.var_decl.name;
-        if (entry && entry->kind == DECL_CONST)
+        if (entry && entry->kind == DECL_CONST && !entry->module_is_entry)
             node->data.var_decl.name = module_mangle(codegen->modules, entry);
-        emit_variable_declaration(codegen, node);
+        else if (codegen->indent == 0 && !node->data.var_decl.synthetic)
+            /* File-scope global in the entry module: gray_g_ prefix so the
+             * name cannot collide with a libc identifier. References resolve
+             * to the same prefixed name (label_is_entry_global). */
+            node->data.var_decl.name = global_var_cname(codegen, written);
+        emit_variable_declaration(codegen, node, written);
         node->data.var_decl.name = written;
         break;
     }

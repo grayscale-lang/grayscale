@@ -9258,12 +9258,25 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
          * legitimately take type names as arguments. */
 
         Symbol *sym = scope_lookup(checker->current_scope, name);
+        if (sym) {
+            /* Direct hit — a local, a parameter, or a file-scope global.
+             * Flag the global case (declared in the root scope, nothing
+             * nearer shadowing it) so codegen gives it a collision-proof
+             * C name: a bare global can clash with a libc identifier. */
+            Scope *decl_scope = checker->current_scope;
+            while (decl_scope->parent && !scope_lookup_local(decl_scope, name))
+                decl_scope = decl_scope->parent;
+            if (decl_scope->parent == NULL)
+                node->data.label.refers_to_file_global = true;
+        }
         /* A bare name that names a module-level declaration is bound under
          * that module's spelling, so a reference from inside the module has
          * to resolve the same way. */
         if (!sym) {
             DeclEntry *entry = checker_cache_resolution(checker, node, name);
             if (entry) {
+                if (entry->module_is_entry)
+                    node->data.label.refers_to_file_global = true;
                 char key[MSG_BUF_SIZE];
                 sym = scope_lookup(checker->current_scope,
                                    module_mangle_into(entry, key, sizeof(key)));
