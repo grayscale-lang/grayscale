@@ -5826,6 +5826,26 @@ static bool path_contains_dynamic_array_index(TypeChecker *checker, AstNode *e) 
     }
 }
 
+/* True if the access path indexes into a string, e.g. addr(s[i]). A string
+ * byte is a computed value widened to a codepoint (strings are immutable),
+ * not an addressable slot. Mirrors path_contains_dynamic_array_index. */
+static bool path_contains_string_index(TypeChecker *checker, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_MEMBER_EXPR:
+        return path_contains_string_index(checker, e->data.member.object);
+    case NODE_INDEX_EXPR: {
+        GrayType *lt = resolve_expression(checker, e->data.index_expr.left);
+        if (lt && lt->kind == TK_STRING) return true;
+        return path_contains_string_index(checker, e->data.index_expr.left);
+    }
+    case NODE_POSTFIX_EXPR:
+        return path_contains_string_index(checker, e->data.postfix.left);
+    default:
+        return false;
+    }
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -5856,6 +5876,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 "'addr()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        if (path_contains_string_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'addr()' cannot take the address of a string index expression; string bytes are immutable",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "'addr()' requires a variable, field, or index expression; cannot take address of a literal or expression",
@@ -5873,6 +5898,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (path_contains_dynamic_array_index(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3013",
                 "'raw()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
+        if (path_contains_string_index(checker, arg)) {
+            diagnostic_error_message(checker->diag, "E3013",
+                "'raw()' cannot take the address of a string index expression; string bytes are immutable",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (!is_assignment_target(checker, arg)) {
@@ -5931,6 +5961,11 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             if (path_contains_dynamic_array_index(checker, arg)) {
                 diagnostic_error_message(checker->diag, "E3013",
                     "'ref()' cannot take a reference to a dynamic array index expression; the backing store may relocate when the array grows",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+            if (path_contains_string_index(checker, arg)) {
+                diagnostic_error_message(checker->diag, "E3013",
+                    "'ref()' cannot take a reference to a string index expression; string bytes are immutable",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             if (!is_assignment_target(checker, arg)) {
