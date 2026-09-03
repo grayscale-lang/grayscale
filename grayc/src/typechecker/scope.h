@@ -20,6 +20,8 @@ typedef struct {
     bool mutable;
     bool is_ref;         /* true if created via ref() — transparent reference */
     bool const_source;   /* true if pointer was taken from a const variable via addr() */
+    bool is_heap;        /* true if bound to a new() result — the pointee lives in
+                            the heap arena and outlives every function scope */
     /* Lifetime origin of a pointer value: the depth of the scope declaring
      * the variable whose address this pointer holds, biased by +1 so that 0
      * means "no tracked origin", plus that variable's name for diagnostics.

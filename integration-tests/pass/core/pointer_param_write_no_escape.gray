@@ -1,0 +1,66 @@
+/*
+ * pointer_param_write_no_escape.gray
+ * Writing a value (or a caller-lived address) through a pointer / mutable-
+ * reference parameter is safe and must keep compiling — the #2650 escape
+ * guard only rejects a *local's* address flowing into caller memory.
+ */
+
+const Box struct {
+    p ^int
+}
+
+do bump(&n int) {
+    n = n + 1
+}
+
+do write_through(out ^int, v int) {
+    out^ = v
+}
+
+do set_field(&b Box, target ^int) {
+    b.p = target
+}
+
+do rebind_local_copy(p ^int) {
+    // p is a local copy; rebinding it escapes nothing
+    mut local int = 7
+    p = addr(local)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut x int = 5
+    bump(x)
+
+    mut y int = 10
+    write_through(addr(y), 99)
+
+    mut z int = 1
+    mut box Box = Box{ p: nil }
+    set_field(box, addr(z))
+
+    rebind_local_copy(addr(x))
+
+    // A heap object's pointer field set to a same-scope local's address, with
+    // the object never escaping this function, is safe.
+    mut w int = 77
+    mut n ^Box = new(Box)
+    n^.p = addr(w)
+
+    if x == 6 && y == 99 && box.p^ == 1 && n^.p^ == 77 {
+        println("  [PASS] safe pointer-parameter writes compile and run")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${x} ${y} ${box.p^}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

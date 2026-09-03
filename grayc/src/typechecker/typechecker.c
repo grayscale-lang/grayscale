@@ -286,7 +286,8 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
         value->data.call.function->kind == NODE_LABEL &&
         value->data.call.arg_count == 1 &&
         (strcmp(value->data.call.function->data.label.value, "addr") == 0 ||
-         strcmp(value->data.call.function->data.label.value, "raw") == 0)) {
+         strcmp(value->data.call.function->data.label.value, "raw") == 0 ||
+         strcmp(value->data.call.function->data.label.value, "ref") == 0)) {
         const char *root = assignment_target_root_name(value->data.call.args[0]);
         if (!root) return 0;
         int depth = symbol_scope_depth(checker->current_scope, root);
@@ -11645,6 +11646,15 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             def_sym->declared_type = node->data.var_decl.type_name;
             def_sym->def_line = node->token.line;
             def_sym->def_column = node->token.column;
+            /* A new() result (or an alias of one) lives in the heap arena,
+             * which outlives every function scope — storing a local's address
+             * into one of its pointer fields is an escape (#2650). */
+            AstNode *dv = node->data.var_decl.value;
+            if (dv && dv->kind == NODE_NEW_EXPR) def_sym->is_heap = true;
+            else if (dv && dv->kind == NODE_LABEL) {
+                Symbol *src = scope_lookup(checker->current_scope, dv->data.label.value);
+                if (src && src->is_heap) def_sym->is_heap = true;
+            }
         }
 
         /* Mark as transparent ref if assigned from ref() */
@@ -11935,6 +11945,41 @@ static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name) {
     char key[MSG_BUF_SIZE];
     return scope_lookup(checker->current_scope,
                         module_mangle_into(entry, key, sizeof(key)));
+}
+
+/* True when an assignment target writes into memory the caller owns, reached
+ * through a parameter of the current function: a &mutable-reference parameter
+ * (writes to it or its fields flow back to the caller), or a write *through* a
+ * pointer parameter (`out^ = ...`, `out^.f = ...`). Storing a local's address
+ * into such a target hands the caller a dangling pointer once this frame is
+ * reclaimed (#2650). Reassigning a plain pointer parameter itself
+ * (`p = addr(x)`) only rebinds the local copy and is not caught here. */
+static bool assign_target_outlives_locals(TypeChecker *checker, AstNode *target) {
+    AstNode *fd = checker->current_func_decl;
+    if (!fd || fd->kind != NODE_FUNC_DECL || !target) return false;
+    AstNode *base = target;
+    bool through_deref = false;
+    while (base) {
+        if (base->kind == NODE_MEMBER_EXPR) base = base->data.member.object;
+        else if (base->kind == NODE_INDEX_EXPR) base = base->data.index_expr.left;
+        else if (base->kind == NODE_POSTFIX_EXPR && base->data.postfix.op == TOK_CARET) {
+            through_deref = true;
+            base = base->data.postfix.left;
+        } else break;
+    }
+    if (!base || base->kind != NODE_LABEL) return false;
+    const char *root = base->data.label.value;
+    for (int i = 0; i < fd->data.func_decl.param_count; i++) {
+        Param *p = &fd->data.func_decl.params[i];
+        if (!p->name || strcmp(p->name, root) != 0) continue;
+        if (p->mutable) return true; /* &ref param: any write reaches the caller */
+        if (through_deref) {
+            GrayType *pt = typechecker_type_from_name(checker, p->type_name);
+            return pt && pt->kind == TK_POINTER;
+        }
+        return false;
+    }
+    return false;
 }
 
 static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
@@ -12527,11 +12572,28 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+    /* E3097: storing a local's address into memory that outlives it, reached
+     * through a pointer parameter, a &ref parameter, or a new() heap object's
+     * pointer field. The origin travels through intermediate pointers, so
+     * `tmp = addr(local); out^ = tmp` is caught too (#2650). */
+    bool caller_mem = assign_target_outlives_locals(checker, target);
+    if (caller_mem) {
+        const char *origin_name = NULL;
+        int origin_depth = expression_origin(checker, node->data.assign.value,
+                                             &origin_name);
+        if (origin_depth > 0 &&
+            origin_depth >= checker->current_func_scope_depth) {
+            const char *dest = escape_root_name(target);
+            diagnostic_error_code_formatted(checker->diag, "E3097",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                dest ? dest : origin_name, origin_name);
+        }
+    }
     /* E3097: reject storing an address into a pointer that outlives it.
      * The origin travels through intermediate pointers and function calls,
      * so laundering the address (p = tmp where tmp = addr(local), or
      * p = forward(addr(local))) is caught too. */
-    if (target->kind == NODE_LABEL) {
+    if (!caller_mem && target->kind == NODE_LABEL) {
         const char *ptr_name = target->data.label.value;
         const char *origin_name = NULL;
         int origin_depth = expression_origin(checker, node->data.assign.value,
@@ -12553,7 +12615,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 ptr_sym->field_origin_name = field_origin_name;
             }
         }
-    } else if (target->kind == NODE_MEMBER_EXPR || target->kind == NODE_INDEX_EXPR) {
+    } else if (!caller_mem &&
+               (target->kind == NODE_MEMBER_EXPR || target->kind == NODE_INDEX_EXPR)) {
         /* A struct field or array element as the target: the E3097 guard
          * above never reached these. Compare the stored address's origin
          * against the scope of the root aggregate variable. */
@@ -12572,6 +12635,27 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 if (root_sym && origin_depth > root_sym->field_origin_depth) {
                     root_sym->field_origin_depth = origin_depth;
                     root_sym->field_origin_name = origin_name;
+                }
+            }
+        } else {
+            /* The chain passes through a `^` (e.g. `n^.link = addr(local)` on a
+             * new() heap object). assignment_target_root_name gave up at the
+             * deref; record the stored address's origin on the pointer variable
+             * so the escape checks catch it when that pointer itself escapes
+             * (`return n`) — the write only dangles if the object outlives the
+             * local (#2650). */
+            const char *deref_root = escape_root_name(target);
+            if (deref_root) {
+                Symbol *root_sym = scope_lookup(checker->current_scope, deref_root);
+                if (root_sym && root_sym->is_heap) {
+                    const char *origin_name = NULL;
+                    int origin_depth = expression_origin(checker,
+                        node->data.assign.value, &origin_name);
+                    if (origin_depth > 0 &&
+                        origin_depth > root_sym->field_origin_depth) {
+                        root_sym->field_origin_depth = origin_depth;
+                        root_sym->field_origin_name = origin_name;
+                    }
                 }
             }
         }
