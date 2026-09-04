@@ -3832,16 +3832,29 @@ static void typechecker_check_const_domain(TypeChecker *checker, const char *mod
     }
 }
 
+/* Like try_get_literal_int, but also reports whether the literal is a
+ * genuinely negative value, as opposed to a large non-negative magnitude in
+ * (INT64_MAX, UINT64_MAX] whose int64 bit pattern only looks negative. A bare
+ * NODE_INT_VALUE always holds a magnitude (the parser stores the `-` sign as a
+ * prefix expression), so only folded expressions and unary-minus can be
+ * negative. */
+static bool try_get_signed_literal_int(AstNode *node, int64_t *out, bool *is_negative) {
+    if (!try_get_literal_int(node, out)) return false;
+    *is_negative = (node && node->kind == NODE_INT_VALUE) ? false : (*out < 0);
+    return true;
+}
+
 /* Check if a literal integer value fits in the declared sized type.
  * Returns true if an error was emitted.
  *
- * value carries the signed bit pattern as parsed. For u64/uint, max_val is
- * UINT64_MAX which doesn't fit in int64_t; we compare via the unsigned
- * bit pattern in that case. */
+ * value carries the parsed bit pattern; value_is_negative distinguishes a
+ * true negative from a non-negative magnitude whose top bit is set (a literal
+ * above INT64_MAX). For unsigned targets the magnitude is compared as
+ * uint64_t so UINT64_MAX itself is accepted by uint/u64. */
 static bool check_integer_range(DiagnosticList *diag, const char *file,
-    int line, int col, const char *type_name_str, int64_t value) {
+    int line, int col, const char *type_name_str, int64_t value,
+    bool value_is_negative) {
     int64_t min_val = 0, max_val = 0;
-    uint64_t umax_val = 0;
     bool is_unsigned = false;
     bool is_u64 = false;
 
@@ -3851,41 +3864,45 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     else if (strcmp(type_name_str, "u8") == 0)    { min_val = 0; max_val = 255; is_unsigned = true; }
     else if (strcmp(type_name_str, "u16") == 0)   { min_val = 0; max_val = 65535; is_unsigned = true; }
     else if (strcmp(type_name_str, "u32") == 0)   { min_val = 0; max_val = 4294967295LL; is_unsigned = true; }
-    else if (strcmp(type_name_str, "u64") == 0)   { umax_val = UINT64_MAX; is_unsigned = true; is_u64 = true; }
-    else if (strcmp(type_name_str, "uint") == 0)  { umax_val = UINT64_MAX; is_unsigned = true; is_u64 = true; }
+    else if (strcmp(type_name_str, "u64") == 0)   { is_unsigned = true; is_u64 = true; }
+    else if (strcmp(type_name_str, "uint") == 0)  { is_unsigned = true; is_u64 = true; }
     else if (strcmp(type_name_str, "byte") == 0)  { min_val = 0; max_val = 255; is_unsigned = true; }
     else return false; /* not a range-checked type */
 
     bool out_of_range;
     if (is_u64) {
-        /* u64/uint: any non-negative bit pattern fits (0..UINT64_MAX).
-         * value < 0 means the literal carried a `-` sign. */
-        out_of_range = value < 0;
+        out_of_range = value_is_negative; /* 0..UINT64_MAX all fit */
+    } else if (value_is_negative) {
+        out_of_range = is_unsigned || value < min_val;
     } else {
-        out_of_range = value < min_val || value > max_val;
+        out_of_range = (uint64_t)value > (uint64_t)max_val;
     }
+    if (!out_of_range) return false;
 
-    if (out_of_range) {
-        char msg[MSG_BUF_SIZE];
-        if (is_unsigned && value < 0) {
-            if (is_u64) {
-                snprintf(msg, sizeof(msg),
-                    "value %lld is out of range for type '%s'; unsigned types cannot hold negative values (valid range: 0 to %llu)",
-                    (long long)value, type_name_str, (unsigned long long)umax_val);
-            } else {
-                snprintf(msg, sizeof(msg),
-                    "value %lld is out of range for type '%s'; unsigned types cannot hold negative values (valid range: %lld to %lld)",
-                    (long long)value, type_name_str, (long long)min_val, (long long)max_val);
-            }
-        } else {
-            snprintf(msg, sizeof(msg),
-                "value %lld is out of range for type '%s' (valid range: %lld to %lld)",
-                (long long)value, type_name_str, (long long)min_val, (long long)max_val);
-        }
-        diagnostic_error_message(diag, "E3036", strdup(msg), file, line, col, 0);
-        return true;
+    char valbuf[24];
+    if (value_is_negative)
+        snprintf(valbuf, sizeof(valbuf), "%lld", (long long)value);
+    else
+        snprintf(valbuf, sizeof(valbuf), "%llu", (unsigned long long)value);
+
+    char range_hi[24];
+    if (is_u64)
+        snprintf(range_hi, sizeof(range_hi), "%llu", (unsigned long long)UINT64_MAX);
+    else
+        snprintf(range_hi, sizeof(range_hi), "%lld", (long long)max_val);
+
+    char msg[MSG_BUF_SIZE];
+    if (is_unsigned && value_is_negative) {
+        snprintf(msg, sizeof(msg),
+            "value %s is out of range for type '%s'; unsigned types cannot hold negative values (valid range: 0 to %s)",
+            valbuf, type_name_str, range_hi);
+    } else {
+        snprintf(msg, sizeof(msg),
+            "value %s is out of range for type '%s' (valid range: %lld to %s)",
+            valbuf, type_name_str, (long long)min_val, range_hi);
     }
-    return false;
+    diagnostic_error_message(diag, "E3036", strdup(msg), file, line, col, 0);
+    return true;
 }
 
 /* --- Expression type resolution --- */
@@ -4351,10 +4368,11 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                          * same way `xs[i] = value` does: E3036 for an out-of-range
                          * literal, E3019 for a signedness crossing. */
                         int64_t lit_val;
-                        if (try_get_literal_int(val_node, &lit_val)) {
+                        bool lit_neg;
+                        if (try_get_signed_literal_int(val_node, &lit_val, &lit_neg)) {
                             check_integer_range(checker->diag, NODE_FILE(checker, val_node),
                                 val_node->token.line, val_node->token.column,
-                                arr_t->element_type, lit_val);
+                                arr_t->element_type, lit_val, lit_neg);
                         }
                         check_signedness_crossing(checker, arr_t->element_type,
                             val_node, val_t, val_node);
@@ -8791,10 +8809,11 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             /* E3036: an out-of-range literal in a narrow field (S{ b: 300 }). */
             if (found && expected_t && expected_t->name) {
                 int64_t field_lit;
+                bool field_lit_neg;
                 AstNode *fv = node->data.struct_value.field_values[i];
-                if (try_get_literal_int(fv, &field_lit))
+                if (try_get_signed_literal_int(fv, &field_lit, &field_lit_neg))
                     check_integer_range(checker->diag, NODE_FILE(checker, fv),
-                        fv->token.line, fv->token.column, expected_t->name, field_lit);
+                        fv->token.line, fv->token.column, expected_t->name, field_lit, field_lit_neg);
             }
             /* E3066: func signature mismatch on a struct-literal field. The
              * mismatch check above treats any two func types as assignable, so
@@ -11169,10 +11188,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             bool val_overflowed = (node->data.var_decl.value->kind == NODE_INT_VALUE &&
                 node->data.var_decl.value->data.int_value.overflow);
             int64_t lit_val;
-            if (!val_overflowed && try_get_literal_int(node->data.var_decl.value, &lit_val)) {
+            bool lit_neg;
+            if (!val_overflowed && try_get_signed_literal_int(node->data.var_decl.value, &lit_val, &lit_neg)) {
                 check_integer_range(checker->diag, NODE_FILE(checker, node),
                     node->token.line, node->token.column,
-                    node->data.var_decl.type_name, lit_val);
+                    node->data.var_decl.type_name, lit_val, lit_neg);
             }
             /* E3001 (): assigning an array literal `{}` to a map
              * variable falls through the normal type check because the
@@ -11259,10 +11279,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             continue;
                         }
                         int64_t ev;
-                        if (try_get_literal_int(el, &ev)) {
+                        bool ev_neg;
+                        if (try_get_signed_literal_int(el, &ev, &ev_neg)) {
                             check_integer_range(checker->diag, NODE_FILE(checker, el),
                                 el->token.line, el->token.column,
-                                elem_type, ev);
+                                elem_type, ev, ev_neg);
                         }
                     }
                 }
@@ -11372,12 +11393,13 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             check_signedness_crossing(checker, val_tn, vn, vt, vn);
                             /* E3036: an out-of-range literal key or value ({"a": 300}). */
                             int64_t kv_lit;
-                            if (try_get_literal_int(kn, &kv_lit))
+                            bool kv_neg;
+                            if (try_get_signed_literal_int(kn, &kv_lit, &kv_neg))
                                 check_integer_range(checker->diag, NODE_FILE(checker, kn),
-                                    kn->token.line, kn->token.column, key_tn, kv_lit);
-                            if (try_get_literal_int(vn, &kv_lit))
+                                    kn->token.line, kn->token.column, key_tn, kv_lit, kv_neg);
+                            if (try_get_signed_literal_int(vn, &kv_lit, &kv_neg))
                                 check_integer_range(checker->diag, NODE_FILE(checker, vn),
-                                    vn->token.line, vn->token.column, val_tn, kv_lit);
+                                    vn->token.line, vn->token.column, val_tn, kv_lit, kv_neg);
                             if (kt && kt->kind != TK_UNKNOWN && kt->kind != TK_VOID &&
                                 expected_k && expected_k->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, expected_k, kt) &&
@@ -12228,11 +12250,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 node->data.assign.value, val_t, node->data.assign.value);
             /* E3036: out-of-range literal into a narrow element (xs[0] = 300). */
             int64_t elem_lit;
-            if (try_get_literal_int(node->data.assign.value, &elem_lit)) {
+            bool elem_lit_neg;
+            if (try_get_signed_literal_int(node->data.assign.value, &elem_lit, &elem_lit_neg)) {
                 check_integer_range(checker->diag, NODE_FILE(checker, node),
                     node->data.assign.value->token.line,
                     node->data.assign.value->token.column,
-                    indexed_t->element_type, elem_lit);
+                    indexed_t->element_type, elem_lit, elem_lit_neg);
             }
         }
         /* E3019: assigning a signed value into an unsigned map value needs a cast. */
@@ -12241,11 +12264,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 node->data.assign.value, value_t, node->data.assign.value);
             /* E3036: out-of-range literal into a narrow map value (m["a"] = 300). */
             int64_t mval_lit;
-            if (try_get_literal_int(node->data.assign.value, &mval_lit)) {
+            bool mval_lit_neg;
+            if (try_get_signed_literal_int(node->data.assign.value, &mval_lit, &mval_lit_neg)) {
                 check_integer_range(checker->diag, NODE_FILE(checker, node),
                     node->data.assign.value->token.line,
                     node->data.assign.value->token.column,
-                    indexed_t->value_type, mval_lit);
+                    indexed_t->value_type, mval_lit, mval_lit_neg);
             }
         }
     }
@@ -12257,11 +12281,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         Symbol *sym = scope_lookup(checker->current_scope, target->data.label.value);
         if (sym && sym->declared_type) {
             int64_t lit_val;
-            if (try_get_literal_int(node->data.assign.value, &lit_val)) {
+            bool lit_neg;
+            if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
                 check_integer_range(checker->diag, NODE_FILE(checker, node),
                     node->data.assign.value->token.line,
                     node->data.assign.value->token.column,
-                    sym->declared_type, lit_val);
+                    sym->declared_type, lit_val, lit_neg);
             }
         }
     }
@@ -12274,11 +12299,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             GrayType *field_t = struct_field_type(checker, sym->type->name, target->data.member.member);
             if (field_t && field_t->name) {
                 int64_t lit_val;
-                if (try_get_literal_int(node->data.assign.value, &lit_val)) {
+                bool lit_neg;
+                if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
                     check_integer_range(checker->diag, NODE_FILE(checker, node),
                         node->data.assign.value->token.line,
                         node->data.assign.value->token.column,
-                        field_t->name, lit_val);
+                        field_t->name, lit_val, lit_neg);
                 }
             }
         }
@@ -12294,11 +12320,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             GrayType *field_t = struct_field_type(checker, sym->type->element_type, target->data.member.member);
             if (field_t && field_t->name) {
                 int64_t lit_val;
-                if (try_get_literal_int(node->data.assign.value, &lit_val)) {
+                bool lit_neg;
+                if (try_get_signed_literal_int(node->data.assign.value, &lit_val, &lit_neg)) {
                     check_integer_range(checker->diag, NODE_FILE(checker, node),
                         node->data.assign.value->token.line,
                         node->data.assign.value->token.column,
-                        field_t->name, lit_val);
+                        field_t->name, lit_val, lit_neg);
                 }
             }
         }
@@ -12978,10 +13005,11 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                             i < checker->current_return_count; i++) {
                 const char *slot_tn = checker->current_return_type_names[i];
                 int64_t ret_lit;
-                if (slot_tn && try_get_literal_int(node->data.return_stmt.values[i], &ret_lit)) {
+                bool ret_lit_neg;
+                if (slot_tn && try_get_signed_literal_int(node->data.return_stmt.values[i], &ret_lit, &ret_lit_neg)) {
                     AstNode *rv = node->data.return_stmt.values[i];
                     check_integer_range(checker->diag, NODE_FILE(checker, rv),
-                        rv->token.line, rv->token.column, slot_tn, ret_lit);
+                        rv->token.line, rv->token.column, slot_tn, ret_lit, ret_lit_neg);
                 }
             }
         }
@@ -13611,10 +13639,11 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
             /* E3036: out-of-range default value for a narrow parameter
              * (do f(b byte = 300)). */
             int64_t def_lit;
-            if (try_get_literal_int(p->default_value, &def_lit))
+            bool def_lit_neg;
+            if (try_get_signed_literal_int(p->default_value, &def_lit, &def_lit_neg))
                 check_integer_range(checker->diag, NODE_FILE(checker, p->default_value),
                     p->default_value->token.line, p->default_value->token.column,
-                    p->type_name, def_lit);
+                    p->type_name, def_lit, def_lit_neg);
         }
         scope_define(func_scope, p->name, ptype, p->mutable);
     }
