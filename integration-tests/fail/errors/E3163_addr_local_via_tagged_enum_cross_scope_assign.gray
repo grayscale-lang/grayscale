@@ -1,0 +1,24 @@
+/*
+ * Error Test: E3163 - addr() of an inner-scope local buried inside a
+ * tagged-enum variant's payload, assigned into an outer-scope variable.
+ *
+ * outer outlives the if-block; storing Box.Full(addr(x)) into it leaves
+ * outer holding a pointer into memory that is freed once the block exits.
+ */
+
+const Box enum {
+    Full(^int)
+    Empty
+}
+
+do main() {
+    mut outer Box = Box.Empty
+    if true {
+        mut x int = 1
+        outer = Box.Full(addr(x))
+    }
+    when outer {
+        is Box.Full(p) { println(p^) }
+        default { println("empty") }
+    }
+}

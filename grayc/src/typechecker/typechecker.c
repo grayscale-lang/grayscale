@@ -1212,6 +1212,23 @@ static AstNode *local_initializer(AstNode *node, const char *name) {
     }
 }
 
+/* True if `node` constructs a tagged-enum variant — `Enum.Variant(args)` or
+ * the implicit-selector form `.Variant(args)` — rather than calling a real
+ * function. Both compile to a NODE_CALL_EXPR whose function resolves to no
+ * FuncSig, so origin tracking (return_expr_param_bits, container_literal_
+ * origin) must recognize the shape directly, the same way it already walks
+ * into a struct/array/map literal, or an addr(local) buried in the payload
+ * escapes undetected (a tagged-enum return/store is a value carrier exactly
+ * like those literals). */
+static bool is_tagged_enum_variant_call(TypeChecker *checker, AstNode *node) {
+    if (!node || node->kind != NODE_CALL_EXPR) return false;
+    AstNode *fn = node->data.call.function;
+    if (!fn) return false;
+    if (fn->kind == NODE_IMPLICIT_ENUM) return true;
+    const char *qual = ast_member_qualifier(fn);
+    return qual && is_enum_name(checker, resolve_type_alias(checker, qual));
+}
+
 /* Structural: bitmask of `fs`'s parameters whose address `node` may carry —
  * the parameter named directly, addr()/raw() of a parameter's pointee, a
  * field/element read through a parameter, a value buried in a struct or
@@ -1283,6 +1300,12 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
             (strcmp(f->data.label.value, "addr") == 0 ||
              strcmp(f->data.label.value, "raw") == 0))
             return return_expr_param_bits(checker, fs, node->data.call.args[0]);
+        if (is_tagged_enum_variant_call(checker, node)) {
+            unsigned long long out = 0;
+            for (int i = 0; i < node->data.call.arg_count; i++)
+                out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
+            return out;
+        }
         FuncSig *callee = resolve_call_sig(checker, node);
         if (!callee || callee == fs) return 0;
         unsigned long long callee_bits = returns_param_address(checker, callee);
@@ -1770,6 +1793,20 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
             if (d > best) { best = d; best_name = nm; }
             nm = NULL;
             d = expression_origin(checker, node->data.map_value.keys[i], &nm);
+            if (d > best) { best = d; best_name = nm; }
+        }
+        break;
+    case NODE_CALL_EXPR:
+        /* Enum.Variant(args) / .Variant(args): the payload is a value carrier
+         * exactly like a struct/array/map literal, but resolves to no FuncSig
+         * so it needs its own recognizer rather than falling into a normal
+         * call's lookup. Anything else here is an ordinary call, which
+         * pointer_origin_of (not this function) already tracks through its
+         * own return-address summary. */
+        if (!is_tagged_enum_variant_call(checker, node)) return 0;
+        for (int i = 0; i < node->data.call.arg_count; i++) {
+            const char *nm = NULL;
+            int d = expression_origin(checker, node->data.call.args[i], &nm);
             if (d > best) { best = d; best_name = nm; }
         }
         break;
@@ -7488,7 +7525,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 ? symbol_scope_depth(checker->current_scope, dest) : 0;
             AstNode *arg = node->data.call.args[sink->value_arg];
             const char *onm = NULL;
-            int od = pointer_origin_of(checker, arg, &onm);
+            int od = expression_origin(checker, arg, &onm);
             if (od > 0 && od > dest_depth)
                 diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, arg), arg->token.line,
@@ -7504,7 +7541,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 if ((reported_arg >> a) & 1) continue;
                 AstNode *arg = node->data.call.args[a];
                 const char *onm = NULL;
-                int od = pointer_origin_of(checker, arg, &onm);
+                int od = expression_origin(checker, arg, &onm);
                 if (od <= 0) continue;
                 int sink_depth;
                 const char *sink_name;

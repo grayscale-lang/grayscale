@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3163 - a pointer parameter buried inside a tagged-enum
+ * variant's payload, stashed into a global by a helper function.
+ *
+ * stash's escape summary must record that parameter 0 escapes into GLOBAL
+ * even though it is wrapped in Box.Full(...) rather than stored directly.
+ */
+
+const Box enum {
+    Full(^int)
+    Empty
+}
+
+mut GLOBAL Box = Box.Empty
+
+do stash(p ^int) {
+    GLOBAL = Box.Full(p)
+}
+
+do main() {
+    mut x int = 99
+    stash(addr(x))
+}

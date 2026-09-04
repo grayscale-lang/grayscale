@@ -1,0 +1,26 @@
+/*
+ * Error Test: E3162 - addr() of a local buried inside a tagged-enum
+ * variant's payload, returned from the function that owns the local.
+ *
+ * Box.Full(addr(x)) is a value carrier exactly like a struct/array/map
+ * literal; the local's memory is freed when the function returns, so the
+ * pointer inside the payload would dangle.
+ */
+
+const Box enum {
+    Full(^int)
+    Empty
+}
+
+do make_box() -> Box {
+    mut x int = 42
+    return Box.Full(addr(x))
+}
+
+do main() {
+    mut b Box = make_box()
+    when b {
+        is Box.Full(p) { println(p^) }
+        default { println("empty") }
+    }
+}

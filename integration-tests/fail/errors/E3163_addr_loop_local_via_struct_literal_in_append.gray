@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3163 - addr() of a loop-local buried inside a struct literal
+ * appended into an outer-scope array.
+ *
+ * The container-sink check (arrays.append/prepend/insert_at/fill) must see
+ * through the struct literal wrapping the address, not just a bare addr(x)
+ * argument; outer outlives the loop body that x is local to.
+ */
+
+import @arrays
+
+const Holder struct {
+    p ^int
+}
+
+do main() {
+    mut outer [Holder] = {}
+    for i in range(3) {
+        mut x int = i * 10
+        arrays.append(outer, Holder{ p: addr(x) })
+    }
+    println(outer[0].p^)
+}
