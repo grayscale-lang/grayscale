@@ -1,7 +1,9 @@
 /*
- * Error Test: E3001 - arrays cannot be passed to C functions
+ * Error Test: E3158 - arrays cannot be passed to C functions
  * Expected: error about array at C boundary
  */
+// expect-error: E3158
+// expect-error-count: 1
 
 extern import "stdio.h"
 

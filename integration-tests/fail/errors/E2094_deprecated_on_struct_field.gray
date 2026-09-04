@@ -1,5 +1,5 @@
-/* Error Test: E2002 - #deprecated applied to a struct field */
-// expect-error: E2002
+/* Error Test: E2094 - #deprecated applied to a struct field */
+// expect-error: E2094
 const Point struct {
     #deprecated
     x int

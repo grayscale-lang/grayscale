@@ -1,9 +1,9 @@
 /*
- * Error Test: E3013 - addr() rejects a string index expression. A string
+ * Error Test: E3161 - addr() rejects a string index expression. A string
  * byte is a computed codepoint value (strings are immutable), not an
  * addressable slot; without this the C compiler rejects '&(rvalue)'.
  */
-// expect-error: E3013
+// expect-error: E3161
 // expect-error-count: 2
 
 do main() {

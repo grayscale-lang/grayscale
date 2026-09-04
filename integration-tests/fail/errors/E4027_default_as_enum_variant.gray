@@ -1,5 +1,5 @@
-/* Error Test: E2002 - 'default' is reserved and cannot name an enum variant */
-// expect-error: E2002
+/* Error Test: E4027 - 'default' is reserved and cannot name an enum variant */
+// expect-error: E4027
 const Mode enum {
     FAST,
     default

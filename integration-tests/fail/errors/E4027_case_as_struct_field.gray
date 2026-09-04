@@ -1,9 +1,9 @@
-/* Error Test: E2002 - 'case' is reserved and cannot name a struct field
+/* Error Test: E4027 - 'case' is reserved and cannot name a struct field
  *
  * 'case' is the alias for 'is'; both spellings are reserved everywhere
  * an identifier is expected.
  */
-// expect-error: E2002
+// expect-error: E4027
 const Record struct {
     case int
 }

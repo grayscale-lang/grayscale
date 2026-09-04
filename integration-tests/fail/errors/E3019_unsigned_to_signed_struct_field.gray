@@ -1,5 +1,5 @@
-// Error Test: E3001 - an unsigned value in a signed struct-field initializer
-// expect-error: E3001
+// Error Test: E3019 - an unsigned value in a signed struct-field initializer
+// expect-error: E3019
 // expect-error-count: 1
 
 const Box struct {

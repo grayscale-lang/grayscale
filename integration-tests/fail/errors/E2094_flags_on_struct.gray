@@ -1,8 +1,8 @@
 /*
- * Error Test: E2002 - #flags on a struct declaration instead of an enum declaration
+ * Error Test: E2094 - #flags on a struct declaration instead of an enum declaration
  */
 
-// expect-error: E2002
+// expect-error: E2094
 // expect-error-count: 1
 
 #flags

@@ -1,7 +1,9 @@
 /*
- * Error Test: E3001 - nil cannot be assigned to int
+ * Error Test: E3157 - nil cannot be assigned to int
  * Expected: error about non-nullable type
  */
+// expect-error: E3157
+// expect-error-count: 1
 
 do main() {
     mut x int = nil

@@ -1,8 +1,8 @@
 /*
- * Error Test: E2002 - missing symbol; 'here' is rejected by the parser
+ * Error Test: E4028 - missing symbol; 'here' is rejected by the parser
  */
 
-// expect-error: E2002
+// expect-error: E4028
 
 do f(here int) {
     println("${here}")

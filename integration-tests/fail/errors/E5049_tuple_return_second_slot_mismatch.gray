@@ -1,10 +1,10 @@
 /*
- * Error Test: E3001 - a type mismatch in a non-primary return slot is
+ * Error Test: E5049 - a type mismatch in a non-primary return slot is
  * caught. Only values[0] used to be checked, so `return 0, B{...}` into a
  * `-> (int, A)` slot passed the typechecker and leaked a C type error.
  * Expected: return type mismatch for the second slot.
  */
-// expect-error: E3001
+// expect-error: E5049
 // expect-error-count: 1
 
 const A struct {

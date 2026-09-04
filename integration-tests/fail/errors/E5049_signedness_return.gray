@@ -1,5 +1,5 @@
-// Error Test: E3001 - returning an unsigned variable as a signed return type needs a cast
-// expect-error: E3001
+// Error Test: E5049 - returning an unsigned variable as a signed return type needs a cast
+// expect-error: E5049
 // expect-error-count: 1
 
 do give() -> int {

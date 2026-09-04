@@ -1,8 +1,8 @@
 /*
- * Error Test: E3013 - raw() rejects a dynamic array index expression;
+ * Error Test: E3161 - raw() rejects a dynamic array index expression;
  * the backing store relocates when the array grows.
  */
-// expect-error: E3013
+// expect-error: E3161
 // expect-error-count: 1
 
 do main() {

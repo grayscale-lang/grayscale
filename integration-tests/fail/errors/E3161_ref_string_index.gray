@@ -1,8 +1,8 @@
 /*
- * Error Test: E3013 - ref()/raw() also reject a string index expression,
+ * Error Test: E3161 - ref()/raw() also reject a string index expression,
  * matching addr().
  */
-// expect-error: E3013
+// expect-error: E3161
 // expect-error-count: 2
 
 do main() {

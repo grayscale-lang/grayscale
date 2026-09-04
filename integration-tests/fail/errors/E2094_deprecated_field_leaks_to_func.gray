@@ -1,6 +1,6 @@
-/* Error Test: E2002 - #deprecated on a field must not drift onto the next
+/* Error Test: E2094 - #deprecated on a field must not drift onto the next
  * struct function in the body */
-// expect-error: E2002
+// expect-error: E2094
 const Point struct {
     #deprecated
     x int

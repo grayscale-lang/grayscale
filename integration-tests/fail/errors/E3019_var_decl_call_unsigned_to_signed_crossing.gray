@@ -1,7 +1,7 @@
-// Error Test: E3001 - a mut declaration whose initializer is a function call
+// Error Test: E3019 - a mut declaration whose initializer is a function call
 // (or an expression containing one) must get the same signedness-crossing
 // diagnostic as `mut s int = uint_var`.
-// expect-error: E3001
+// expect-error: E3019
 // expect-error-count: 2
 
 do get_max() -> uint {

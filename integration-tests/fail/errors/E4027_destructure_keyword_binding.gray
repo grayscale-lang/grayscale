@@ -1,8 +1,8 @@
 /*
- * Error Test: E2002 - reserved keyword as a destructuring binding name
+ * Error Test: E4027 - reserved keyword as a destructuring binding name
  * Expected: "reserved keyword and cannot be used as a variable name"
  */
-// expect-error: E2002
+// expect-error: E4027
 
 do two() -> (int, int) {
     return 1, 2

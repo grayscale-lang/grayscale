@@ -1,3 +1,5 @@
+// expect-error: E3156
+// expect-error-count: 1
 do main() {
     mut x int = 1
     mut s string = "hi"

@@ -1,5 +1,5 @@
-// Error Test: E3001 - an unsigned value passed to a signed parameter reinterprets large values
-// expect-error: E3001
+// Error Test: E3019 - an unsigned value passed to a signed parameter reinterprets large values
+// expect-error: E3019
 // expect-error-count: 1
 
 do take_i(i int) {}

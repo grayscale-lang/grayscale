@@ -1,8 +1,8 @@
 /*
- * Error Test: E3001 - same-named structs from different modules are
+ * Error Test: E5026 - same-named structs from different modules are
  * distinct types; a shapes.Point is not a colors.Point.
  */
-// expect-error: E3001
+// expect-error: E5026
 // expect-error-count: 1
 
 import "./shapes.gray"
