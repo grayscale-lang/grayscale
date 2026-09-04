@@ -171,6 +171,10 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
                               const char *bind_name);
 static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
 static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
+static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
+                           const char **out_fn, const char **out_arena);
+static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
+                                     bool is_destroy, AstNode *at, const char *disp);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
@@ -917,6 +921,9 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->escape_state = 0;
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
+    fs->mem_state = 0;
+    fs->destroys_param_arena = 0;
+    fs->resets_param_arena = 0;
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1590,6 +1597,108 @@ static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *f
     if (!fs) return 0;
     ensure_escape_summary(checker, fs);
     return fs->returns_param_addr;
+}
+
+/* --- pc_mem_walk: cross-function @mem summary --- */
+
+static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs);
+
+/* Scan `fs`'s body for mem.destroy()/mem.reset() calls on one of its own
+ * parameters, and for calls to other (already-summarised) functions that
+ * destroy/reset one of *their* parameters when the corresponding argument
+ * here is one of `fs`'s own parameters — so the effect forwards through a
+ * wrapper like `do outer(a Arena) { helper(a) }`. Structural, like
+ * escape_walk: looks only at the AST while the summary is being built. */
+static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
+    if (!node || !fs->decl) return;
+    switch (node->kind) {
+    case NODE_CALL_EXPR: {
+        const char *fn = NULL, *arena = NULL;
+        if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+            (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0)) {
+            int pc = fs->decl->data.func_decl.param_count;
+            for (int i = 0; i < pc && i < 64; i++) {
+                const char *pn = fs->decl->data.func_decl.params[i].name;
+                if (!pn || strcmp(pn, arena) != 0) continue;
+                if (strcmp(fn, "destroy") == 0) fs->destroys_param_arena |= 1ull << i;
+                else fs->resets_param_arena |= 1ull << i;
+            }
+        } else {
+            FuncSig *callee = resolve_call_sig(checker, node);
+            if (callee && callee != fs) {
+                pc_ensure_mem_summary(checker, callee);
+                int pc = fs->decl->data.func_decl.param_count;
+                for (int k = 0; k < callee->param_count &&
+                                k < node->data.call.arg_count && k < 64; k++) {
+                    unsigned long long keffect =
+                        (callee->destroys_param_arena | callee->resets_param_arena) &
+                        (1ull << k);
+                    if (!keffect) continue;
+                    AstNode *arg = node->data.call.args[k];
+                    if (arg->kind != NODE_LABEL) continue;
+                    for (int i = 0; i < pc && i < 64; i++) {
+                        const char *pn = fs->decl->data.func_decl.params[i].name;
+                        if (!pn || strcmp(pn, arg->data.label.value) != 0) continue;
+                        if (callee->destroys_param_arena & (1ull << k))
+                            fs->destroys_param_arena |= 1ull << i;
+                        if (callee->resets_param_arena & (1ull << k))
+                            fs->resets_param_arena |= 1ull << i;
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            pc_mem_walk(checker, fs, node->data.call.args[i]);
+        break;
+    }
+    case NODE_VAR_DECL:
+        pc_mem_walk(checker, fs, node->data.var_decl.value);
+        break;
+    case NODE_ASSIGN_STMT:
+        pc_mem_walk(checker, fs, node->data.assign.value);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            pc_mem_walk(checker, fs, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        pc_mem_walk(checker, fs, node->data.if_stmt.consequence);
+        pc_mem_walk(checker, fs, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            pc_mem_walk(checker, fs, node->data.when_stmt.cases[i].body);
+        pc_mem_walk(checker, fs, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:      pc_mem_walk(checker, fs, node->data.for_stmt.body); break;
+    case NODE_FOR_EACH_STMT: pc_mem_walk(checker, fs, node->data.for_each.body); break;
+    case NODE_WHILE_STMT:    pc_mem_walk(checker, fs, node->data.while_stmt.body); break;
+    case NODE_LOOP_STMT:     pc_mem_walk(checker, fs, node->data.loop_stmt.body); break;
+    case NODE_EXPR_STMT:     pc_mem_walk(checker, fs, node->data.expr_stmt.expr); break;
+    case NODE_ENSURE_STMT:   pc_mem_walk(checker, fs, node->data.ensure_stmt.expr); break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            pc_mem_walk(checker, fs, node->data.return_stmt.values[i]);
+        break;
+    default:
+        break;
+    }
+}
+
+/* Lazily compute and memoise `fs`'s cross-function @mem summary. Mirrors
+ * ensure_escape_summary: a function caught mid-computation (recursion) is
+ * left with whatever partial summary it has — conservative, never a false
+ * negative turned into a crash, just a possibly-missed forwarding case. */
+static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
+    if (!fs || fs->mem_state != 0) return;
+    fs->mem_state = 1;
+    fs->destroys_param_arena = 0;
+    fs->resets_param_arena = 0;
+    AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
+                    ? fs->decl->data.func_decl.body : NULL;
+    if (body && fs->decl->data.func_decl.param_count <= 64)
+        pc_mem_walk(checker, fs, body);
+    fs->mem_state = 2;
 }
 
 static int call_result_origin(TypeChecker *checker, AstNode *call,
@@ -7415,6 +7524,23 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                         NODE_FILE(checker, arg), arg->token.line,
                         arg->token.column, 0, sink_name, onm);
             }
+            /* Pointer checker: a call to a helper that destroys/resets one of
+             * its own @mem arena parameters applies that same effect to the
+             * caller's arena state here, at the call site — closing the
+             * "across a function call" gap in E3164/E3165/E3166. Only a bare
+             * variable argument is traced (mem.arena() results are always
+             * plain locals in practice); anything else is left alone. */
+            pc_ensure_mem_summary(checker, csig);
+            unsigned long long mem_effect =
+                csig->destroys_param_arena | csig->resets_param_arena;
+            for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
+                if (!(mem_effect & (1ull << a))) continue;
+                AstNode *arg = node->data.call.args[a];
+                if (arg->kind != NODE_LABEL) continue;
+                bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
+                pc_apply_arena_lifecycle(checker, arg->data.label.value, destroys,
+                                         node, func_display_name(csig));
+            }
         }
     }
 
@@ -13186,6 +13312,31 @@ static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
 /* Apply a @mem lifecycle call's effect to arena state, reporting E3166 for a
  * destroy/reset of an already-destroyed arena. `bind_name` is the variable a
  * mem.arena() result is bound to, or NULL for a bare statement call. */
+/* Apply a destroy or reset to arena `arena_name`'s lifetime state, reporting
+ * E3166 if it is already destroyed. `disp` is the call spelling for the
+ * message (e.g. "mem.destroy", or a callee name for a cross-function
+ * destroy applied on the caller's behalf at a call site). Shared by the
+ * direct mem.destroy()/mem.reset() form and the cross-function summary. */
+static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
+                                     bool is_destroy, AstNode *at, const char *disp) {
+    ArenaLifetime *a = pc_arena_ensure(checker, arena_name);
+    if (a->destroyed) {
+        diagnostic_error_code_formatted(checker->diag, "E3166",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            disp, arena_name, arena_name);
+        return;
+    }
+    a->end_file = NODE_FILE(checker, at);
+    a->end_line = at->token.line;
+    if (is_destroy) {
+        a->destroyed = true;
+        a->end_was_reset = false;
+    } else {
+        a->epoch++;
+        a->end_was_reset = true;
+    }
+}
+
 static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
                               const char *bind_name) {
     const char *fn = NULL, *arena = NULL;
@@ -13202,25 +13353,10 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
     if (!arena) return;
 
     if (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0) {
-        ArenaLifetime *a = pc_arena_ensure(checker, arena);
-        if (a->destroyed) {
-            const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
-                ? (strcmp(fn, "destroy") == 0 ? "mem.destroy" : "mem.reset")
-                : fn;
-            diagnostic_error_code_formatted(checker->diag, "E3166",
-                NODE_FILE(checker, at), at->token.line, at->token.column, 0,
-                disp, arena, arena);
-            return;
-        }
-        a->end_file = NODE_FILE(checker, at);
-        a->end_line = at->token.line;
-        if (strcmp(fn, "destroy") == 0) {
-            a->destroyed = true;
-            a->end_was_reset = false;
-        } else {
-            a->epoch++;
-            a->end_was_reset = true;
-        }
+        const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
+            ? (strcmp(fn, "destroy") == 0 ? "mem.destroy" : "mem.reset")
+            : fn;
+        pc_apply_arena_lifecycle(checker, arena, strcmp(fn, "destroy") == 0, at, disp);
     }
     /* init / alloc: no lifetime effect; the pointer binding is recorded at the
      * var-decl (pc_bind_mem_pointer). */

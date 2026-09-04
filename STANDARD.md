@@ -4590,8 +4590,8 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Dangling pointer into a relocated container | `addr()`, `raw()`, or `ref()` on a dynamic `[T]` array element or a map value is rejected; the backing store relocates when the array grows or the map rehashes. Fixed-size `[T,N]` array elements are allowed — their storage never moves |
 | Pointer-type reinterpretation | `cast()` between two pointer types is rejected; `cast()` converts values, not pointer identity |
-| Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen |
-| Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, or on a prior iteration of an enclosing loop |
+| Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen. Also traced across a function call: a helper that destroys or resets its own arena parameter (directly, or by forwarding it to another helper that does) is treated as destroying/resetting the caller's arena at the call site |
+| Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, on a prior iteration of an enclosing loop, or inside a helper the arena was passed to |
 
 **Prevented by ASBAM:**
 
@@ -4612,13 +4612,14 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Division by zero | Runtime panic |
 | Integer overflow | Runtime panic (checked arithmetic) |
 | Stack overflow (deep recursion) | Detected and reported |
-| Double-`destroy`/use-after-`destroy` on `@mem` arenas that crosses a function call | Runtime panic — the pointer checker's arena tracking is per-function; a handle destroyed inside a called function, or a pointer taken before a call that destroys its arena, is not traced across the call boundary |
+| Double-`destroy`/use-after-`destroy` on a `@mem` pointer the checker can't trace to a named arena parameter | Runtime panic — see the two rows below for exactly which cross-function shapes are and aren't traced |
 
 **Not checked (programmer responsibility):**
 
 | Hazard | When It Can Happen |
 |--------|-------------------|
-| Use-after-free on a `@mem` arena across a function call | The pointer checker traces `mem.destroy()`/`mem.reset()` within one function; a `destroy`/`reset` performed by a called function, or a pointer that outlives the call in which its arena is destroyed, falls back to the runtime panic above rather than a compile error |
+| A pointer allocated inside a called function is used after the caller destroys its arena | The cross-function trace follows `mem.destroy()`/`mem.reset()` calls on a named arena parameter, not pointers a callee allocates from that arena and returns. `do make(a Arena) -> ^int { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller falls back to the runtime panic rather than a compile error |
+| An arena reached other than by a plain parameter name | An arena stored in a struct field, an array/map element, or a global, then destroyed through that path, is not traced — the cross-function summary only recognizes `mem.destroy(param)`/`mem.reset(param)` where `param` is a bare parameter |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |

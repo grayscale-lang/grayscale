@@ -99,6 +99,23 @@ typedef struct {
     unsigned char escape_state;
     unsigned long long returns_param_addr;
     signed char param_escape_into[64];
+
+    /* Pointer checker: cross-function @mem summary, filled lazily by
+     * pc_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
+     * 2 = done.
+     *
+     * destroys_param_arena / resets_param_arena: bit i set if some path
+     * through this function's body calls mem.destroy() / mem.reset() on the
+     * @mem arena named by parameter i — directly, or forwarded through
+     * another summarised call (do outer(a Arena) { helper(a) } where helper
+     * destroys its own parameter 0). Lets a call site apply the same effect
+     * to the caller's arena state that a direct mem.destroy(a)/mem.reset(a)
+     * would (E3164/E3165/E3166), closing the "across a function call" gap
+     * STANDARD 11.7 documents as unchecked. */
+    unsigned char mem_state;
+    unsigned long long destroys_param_arena;
+    unsigned long long resets_param_arena;
+
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;

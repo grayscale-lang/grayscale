@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3166 - mem.destroy() on an arena already destroyed
+ * Expected: the destroy is buried two calls deep — outer(a) calls
+ * helper(a), which destroys its own parameter. The cross-function summary
+ * forwards through the wrapper, so the caller's later destroy is still
+ * caught as a double destroy.
+ */
+
+import @mem
+
+do helper(a Arena) {
+    mem.destroy(a)
+}
+
+do outer(a Arena) {
+    helper(a)
+}
+
+do main() {
+    mut a = mem.arena(1024)
+    outer(a)
+    mem.destroy(a)
+}
