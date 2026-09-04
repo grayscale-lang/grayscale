@@ -1,0 +1,45 @@
+/*
+ * array_element_assign_struct_literal.gray
+ * arr[i] = StructLiteral{a: x, b: y} emitted the compound literal
+ * unparenthesized inside the GRAY_ARRAY_SET_AT macro. The unescaped comma
+ * between fields split it into an extra macro argument and the generated C
+ * failed to compile. Covers a two-field literal (the reported shape) and a
+ * struct-pointer-through-field target.
+ */
+
+const Cell struct {
+    a int
+    b int
+}
+
+const Box struct {
+    cells [Cell]
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut cells [Cell] = {Cell{a: 0, b: 0}, Cell{a: 0, b: 0}}
+    cells[0] = Cell{a: 1, b: 2}
+    if cells[0].a == 1 && cells[0].b == 2 {
+        println("  [PASS] arr[i] = multi-field struct literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] arr[i] = struct literal: got a=${cells[0].a}, b=${cells[0].b}, expected a=1, b=2")
+        failed += 1
+    }
+
+    mut box Box = Box{cells: {Cell{a: 0, b: 0}}}
+    box.cells[0] = Cell{a: 3, b: 4}
+    if box.cells[0].a == 3 && box.cells[0].b == 4 {
+        println("  [PASS] struct-field-array[i] = multi-field struct literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct-field-array[i] = struct literal: got a=${box.cells[0].a}, b=${box.cells[0].b}, expected a=3, b=4")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

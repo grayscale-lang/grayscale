@@ -2170,6 +2170,12 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             sname = codegen_resolve_type(codegen, sname);
         }
     }
+    /* Wrapped in an extra pair of parens: a bare compound literal
+     * (T){.a=x, .b=y} contains an unparenthesized top-level comma, which the
+     * C preprocessor splits into separate macro arguments wherever this
+     * value lands inside a function-like macro call (GRAY_ARRAY_SET_AT and
+     * friends). ((T){.a=x, .b=y}) reads as one token run everywhere. */
+    emit(codegen, "(");
     /* : use mangled name for generic struct instantiations */
     if (node->data.struct_value.wildcard_binding) {
         const char *binding = node->data.struct_value.wildcard_binding;
@@ -2274,7 +2280,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     }
     codegen->current_module = saved_struct_module;
     codegen->current_file = saved_struct_file;
-    emit(codegen, "}");
+    emit(codegen, "})");
 }
 
 static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
