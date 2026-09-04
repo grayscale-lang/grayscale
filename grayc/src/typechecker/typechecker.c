@@ -13754,6 +13754,36 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
              * would make that real statement collide with its own echo. */
             if (strcmp(fn, "destroy") == 0) a->premarked_destroyed = true;
             else a->epoch++;
+        } else {
+            /* A call to a helper whose own cross-function @mem summary says
+             * it destroys/resets an arena passed to it — same cross-
+             * function effect pc_mem_walk()/resolve_call_expr() apply at an
+             * ordinary (non-loop) call site, needed here too: a loop that
+             * hands the arena to a cleanup helper on some iteration is the
+             * same hazard as calling mem.destroy(a) directly in the body.
+             * Called synchronously from this function's own Pass-2 walk (not
+             * a lazily-triggered summary), so checker->current_scope is
+             * correctly this function's own — resolve_call_sig() sees
+             * through a func-ref call here too. */
+            FuncSig *callee = resolve_call_sig(checker, node);
+            if (callee) {
+                pc_ensure_mem_summary(checker, callee);
+                unsigned long long effect =
+                    callee->destroys_param_arena | callee->resets_param_arena;
+                for (int k = 0; k < callee->param_count &&
+                                k < node->data.call.arg_count && k < 64 && effect; k++) {
+                    if (!(effect & (1ull << k))) continue;
+                    AstNode *arg = node->data.call.args[k];
+                    if (arg->kind != NODE_LABEL ||
+                        declared_in_subtree(body, arg->data.label.value))
+                        continue;
+                    ArenaLifetime *a = pc_arena_ensure(checker, arg->data.label.value);
+                    if (callee->destroys_param_arena & (1ull << k))
+                        a->premarked_destroyed = true;
+                    else
+                        a->epoch++;
+                }
+            }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
             pc_premark_loop_body(checker, node->data.call.args[i], body);

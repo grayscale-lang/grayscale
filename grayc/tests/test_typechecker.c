@@ -2013,6 +2013,55 @@ static void test_no_false_positive_mem_destroy_break_self_collision(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* pc_premark_loop_body() only recognized a direct mem.destroy()/mem.reset()
+ * call in the loop body — a call to a helper whose own cross-function @mem
+ * summary says it destroys an arena passed to it was invisible, so a
+ * dereference earlier in the loop body wasn't flagged as unsafe on a later
+ * iteration even though the helper genuinely destroys the arena on some
+ * iteration. */
+static void test_error_E3164_mem_use_after_helper_destroy_in_loop(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do cleanup(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  for i in range(0, 3) {\n"
+        "    println(p^)\n"
+        "    if i == 1 {\n"
+        "      cleanup(a)\n"
+        "    }\n"
+        "  }\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* Same helper-destroy-in-loop shape as above, but the destroy is the last
+ * thing before an unconditional break — no later iteration actually exists,
+ * so this must not also collide with itself as E3166 (mirrors the direct-
+ * mem.destroy() case already covered above). */
+static void test_no_false_positive_mem_helper_destroy_break_self_collision(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do cleanup(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  for i in range(0, 5) {\n"
+        "    if i == 2 {\n"
+        "      cleanup(a)\n"
+        "      break\n"
+        "    }\n"
+        "  }\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2706,6 +2755,8 @@ int main(void) {
     RUN_TEST(test_error_E3165_mem_use_after_reset);
     RUN_TEST(test_error_E3166_mem_destroy_forwarded_through_wrapper);
     RUN_TEST(test_no_false_positive_mem_destroy_break_self_collision);
+    RUN_TEST(test_error_E3164_mem_use_after_helper_destroy_in_loop);
+    RUN_TEST(test_no_false_positive_mem_helper_destroy_break_self_collision);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
