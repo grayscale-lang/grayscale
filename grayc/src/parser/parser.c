@@ -77,6 +77,13 @@ static bool note_dup_attr(Parser *parser, AttrBit bit, const char *name) {
     return false;
 }
 
+/* Emits E2094 for an attribute applied to the wrong kind of declaration, or
+ * with a malformed argument. Pins the code so the situation stays 1:1 with its
+ * diagnostic (see scripts/check_error_codes.gray). `msg` is arena-owned. */
+static void parser_err_attr(Parser *parser, const char *msg, int line, int col) {
+    diagnostic_error_message(parser->diag, "E2094", msg, parser->file, line, col, 0);
+}
+
 /* Maps a bare attribute name (as written inside a `#[...]` list) to its
  * AttrBit. Returns 0 for an unrecognised name. */
 static AttrBit attr_bit_for_name(const char *name) {
@@ -92,7 +99,7 @@ static AttrBit attr_bit_for_name(const char *name) {
 }
 
 /* Applies one attribute (identified by its bare name) to the declaration that
- * follows a `#[...]` list, emitting the same E2002 misapplied-attribute message
+ * follows a `#[...]` list, emitting the same E2094 misapplied-attribute message
  * the stacked `#attr` form uses when the declaration kind does not accept it.
  * `dep_msg` is the optional #deprecated string (NULL otherwise); `where`
  * locates the diagnostic. */
@@ -103,33 +110,25 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_test = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "discard") == 0) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_discard = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "json") == 0) {
         if (stmt && stmt->kind == NODE_STRUCT_DECL) {
             stmt->data.struct_decl.is_json = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "flags") == 0) {
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "error_code") == 0) {
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
@@ -142,9 +141,7 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
         if (stmt && stmt->kind == NODE_WHEN_STMT) {
             stmt->data.when_stmt.is_strict = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), where.line, where.column);
         }
     } else if (strcmp(name, "deprecated") == 0) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
@@ -157,10 +154,7 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
             stmt->data.enum_decl.is_deprecated = true;
             stmt->data.enum_decl.deprecated_message = dep_msg;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
-                parser->file, where.line, where.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), where.line, where.column);
         }
     }
     /* "doc": the parser discards #doc metadata today, so there is nothing to
@@ -1639,7 +1633,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             snprintf(msg, sizeof(msg),
                 "'%s' is a reserved keyword and cannot be used as a variable name",
                 parser->peek_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
                 parser->file, parser->peek_token.line, parser->peek_token.column, 0);
             synchronize_parser(parser);
             return NULL;
@@ -1724,7 +1718,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
                         snprintf(msg, sizeof(msg),
                             "'%s' is a reserved keyword and cannot be used as a variable name",
                             parser->peek_token.literal);
-                        diagnostic_error_message(parser->diag, "E2002",
+                        diagnostic_error_message(parser->diag, "E4027",
                             arena_copy_string(parser->arena, msg),
                             parser->file, parser->peek_token.line, parser->peek_token.column, 0);
                         synchronize_parser(parser);
@@ -1916,7 +1910,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
         snprintf(msg, sizeof(msg),
             "'%s' is a reserved keyword and cannot be used as a function name",
             parser->peek_token.literal);
-        diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+        diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
             parser->file, parser->peek_token.line, parser->peek_token.column, 0);
         synchronize_parser(parser);
         return NULL;
@@ -1955,14 +1949,14 @@ static AstNode *parse_func_declaration(Parser *parser) {
                 snprintf(buf, sizeof(buf),
                     "'%s' is a keyword and cannot be used as a parameter name",
                     param->name);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+                diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, buf),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             } else if (parser->cur_token.type == TOK_IDENT && is_reserved_name(param->name)) {
                 char buf[MSG_BUF_SIZE];
                 snprintf(buf, sizeof(buf),
                     "'%s' is a built-in name and cannot be used as a parameter name",
                     param->name);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+                diagnostic_error_message(parser->diag, "E4028", arena_copy_string(parser->arena, buf),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
 
@@ -2265,7 +2259,7 @@ static AstNode *parse_import_statement(Parser *parser) {
                 snprintf(buf, sizeof(buf),
                     "expected string literal header path after 'extern import', got '%s'",
                     parser->cur_token.literal ? parser->cur_token.literal : "?");
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+                diagnostic_error_message(parser->diag, "E6014", arena_copy_string(parser->arena, buf),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 return node;
             }
@@ -2316,7 +2310,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             size_t plen = strlen(p);
             if (plen >= 2 && p[plen - 2] == '.' &&
                 (p[plen - 1] == 'h' || p[plen - 1] == 'c')) {
-                diagnostic_error_message(parser->diag, "E2002",
+                diagnostic_error_message(parser->diag, "E6014",
                     arena_copy_string(parser->arena, "'import c\"...\"' syntax has been replaced; use 'extern import \"...\"'"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 next_token(parser); /* consume 'c', now on string */
@@ -2403,7 +2397,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             }
             /* Reject 'extern' as a module name; reserved for C interop */
             if (item->alias && strcmp(item->alias, "extern") == 0) {
-                diagnostic_error_message(parser->diag, "E2002",
+                diagnostic_error_message(parser->diag, "E6014",
                     arena_copy_string(parser->arena,"'extern' is reserved for C interop; rename the file or use an alias (e.g., 'import mymod \"./extern.gray\"')"),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             }
@@ -2412,7 +2406,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             snprintf(buf, sizeof(buf),
                 "expected '@module' or '\"path\"' after 'import', got '%s'",
                 parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
+            diagnostic_error_message(parser->diag, "E6014", arena_copy_string(parser->arena, buf),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             return node;
         }
@@ -2522,10 +2516,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * stack the attributes instead. Emit one error and skip the list so the
          * body keeps parsing. */
         if (current_token_is(parser, TOK_HASH_LBRACKET)) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"), parser->cur_token.line, parser->cur_token.column);
             while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)
                    && !current_token_is(parser, TOK_RBRACE)) {
                 next_token(parser);
@@ -2557,10 +2548,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* #test is not allowed on struct functions — a test function must be
          * a top-level 'do' so the runner can call it directly. */
         if (current_token_is(parser, TOK_TEST)) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#test attribute can only be applied to top-level function declarations, not struct functions"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to top-level function declarations, not struct functions"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser);
             continue;
         }
@@ -2577,17 +2565,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                     if (!dup) pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
                     next_token(parser); /* consume string */
                 } else {
-                    diagnostic_error_message(parser->diag, "E2002",
-                        arena_copy_string(parser->arena,
-                            "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
-                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                    parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
                 }
                 if (current_token_is(parser, TOK_RPAREN)) {
                     next_token(parser); /* consume ) */
                 } else {
-                    diagnostic_error_message(parser->diag, "E2002",
-                        arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
-                        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                    parser_err_attr(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
                 }
             }
             continue;
@@ -2688,10 +2671,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Same for #deprecated. Clearing the pending state is what stops the
          * attribute from drifting onto the next struct function in the body. */
         if (pending_deprecated) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
             pending_deprecated = false;
             pending_deprecated_message = NULL;
         }
@@ -2717,7 +2697,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 snprintf(msg, sizeof(msg),
                     "'%s' is a reserved keyword and cannot be used as a struct field name",
                     parser->cur_token.literal);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+                diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 synchronize_parser(parser);
                 break;
@@ -2727,7 +2707,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 snprintf(msg, sizeof(msg),
                     "'%s' is a built-in name and cannot be used as a struct field name",
                     parser->cur_token.literal);
-                diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+                diagnostic_error_message(parser->diag, "E4028", arena_copy_string(parser->arena, msg),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 synchronize_parser(parser);
                 break;
@@ -2827,18 +2807,12 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             continue;
         }
         if (current_token_is(parser, TOK_TEST)) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#test attribute can only be applied to function declarations, not enum variants"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations, not enum variants"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser);
             continue;
         }
         if (current_token_is(parser, TOK_DEPRECATED)) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser); /* consume #deprecated */
             /* Consume an optional ("message") so it is not read as a variant */
             if (current_token_is(parser, TOK_LPAREN)) {
@@ -2889,7 +2863,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             snprintf(msg, sizeof(msg),
                 "'%s' is a reserved keyword and cannot be used as an enum variant name",
                 parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             synchronize_parser(parser);
             continue;
@@ -2899,7 +2873,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             snprintf(msg, sizeof(msg),
                 "'%s' is a built-in name and cannot be used as an enum variant name",
                 parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+            diagnostic_error_message(parser->diag, "E4028", arena_copy_string(parser->arena, msg),
                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
             synchronize_parser(parser);
             continue;
@@ -3317,7 +3291,7 @@ static AstNode *parse_when_statement(Parser *parser) {
                             snprintf(msg, sizeof(msg),
                                 "'%s' is a built-in name and cannot be used as a binding name",
                                 parser->cur_token.literal);
-                            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+                            diagnostic_error_message(parser->diag, "E4028", arena_copy_string(parser->arena, msg),
                                 parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                         }
                         pat->data.when_pattern.bindings[binding_count++] = arena_copy_string(parser->arena, parser->cur_token.literal);
@@ -3437,7 +3411,7 @@ static AstNode *parse_statement(Parser *parser) {
             snprintf(msg, sizeof(msg),
                 "'%s' is a reserved keyword and cannot be used as a name",
                 parser->peek_token.literal);
-            diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, msg),
+            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
                 parser->file, parser->peek_token.line, parser->peek_token.column, 0);
             synchronize_parser(parser);
             return NULL;
@@ -3504,9 +3478,7 @@ static AstNode *parse_statement(Parser *parser) {
         if (stmt && stmt->kind == NODE_WHEN_STMT) {
             stmt->data.when_stmt.is_strict = true;
         } else if (!dup) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
@@ -3518,9 +3490,7 @@ static AstNode *parse_statement(Parser *parser) {
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
@@ -3545,9 +3515,7 @@ static AstNode *parse_statement(Parser *parser) {
         if (stmt && stmt->kind == NODE_STRUCT_DECL) {
             stmt->data.struct_decl.is_json = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
@@ -3559,9 +3527,7 @@ static AstNode *parse_statement(Parser *parser) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_discard = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
@@ -3573,9 +3539,7 @@ static AstNode *parse_statement(Parser *parser) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_test = true;
         } else {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
@@ -3591,17 +3555,12 @@ static AstNode *parse_statement(Parser *parser) {
                 message = arena_copy_string(parser->arena, parser->cur_token.literal);
                 next_token(parser); /* consume string */
             } else {
-                diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena,
-                        "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
             }
             if (current_token_is(parser, TOK_RPAREN)) {
                 next_token(parser); /* consume ) */
             } else {
-                diagnostic_error_message(parser->diag, "E2002",
-                    arena_copy_string(parser->arena, "expected ')' after #deprecated message"),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+                parser_err_attr(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
             }
         }
         AstNode *stmt = parse_statement(parser);
@@ -3615,10 +3574,7 @@ static AstNode *parse_statement(Parser *parser) {
             stmt->data.enum_decl.is_deprecated = true;
             if (!dup) stmt->data.enum_decl.deprecated_message = message;
         } else if (!dup) {
-            diagnostic_error_message(parser->diag, "E2002",
-                arena_copy_string(parser->arena,
-                    "#deprecated attribute can only be applied to function, struct, or enum declarations"),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }

@@ -956,7 +956,7 @@ static void test_parse_error_deprecated_on_struct_field(void) {
     AstNode *program = parse_test_input(
         "const Point struct {\n #deprecated\n x int\n\n do sum() -> int { return 3 }\n}");
     AstNode *statement = first_statement(program);
-    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT(parser_has_code(diagnostics, "E2094"));
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
     ASSERT_EQ(statement->data.struct_decl.func_count, 1);
@@ -972,7 +972,7 @@ static void test_parse_error_deprecated_on_struct_field(void) {
 static void test_parse_error_attributes_on_enum_variant(void) {
     AstNode *program = parse_test_input("const Color enum {\n #deprecated\n RED\n GREEN\n}");
     AstNode *statement = first_statement(program);
-    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT(parser_has_code(diagnostics, "E2094"));
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ENUM_DECL);
     ASSERT_EQ(statement->data.enum_decl.value_count, 2);
@@ -1014,12 +1014,12 @@ static void test_parse_test_attribute(void) {
 
 static void test_parse_test_attribute_on_struct_is_error(void) {
     parse_test_input("const S struct {\n x int\n #test\n do check() {}\n}");
-    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT(parser_has_code(diagnostics, "E2094"));
 }
 
 static void test_parse_test_attribute_on_var_is_error(void) {
     parse_test_input("#test\nmut x int = 1");
-    ASSERT(parser_has_code(diagnostics, "E2002"));
+    ASSERT(parser_has_code(diagnostics, "E2094"));
 }
 
 int main(void) {

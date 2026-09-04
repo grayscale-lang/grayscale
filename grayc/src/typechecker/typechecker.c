@@ -797,6 +797,25 @@ static char *typechecker_format(TypeChecker *checker, const char *fmt, ...) {
     return arena_copy_string(checker->arena, buffer);
 }
 
+/* Diagnostic emit helpers for the type-mismatch family. Each pins one code so
+ * the situation stays 1:1 with its diagnostic (see scripts/check_error_codes.gray)
+ * and spares the caller the repeated file/line/column boilerplate. `msg` is a
+ * fully-built, arena-owned string (typically from typechecker_format). */
+static void tc_err_assign_type(TypeChecker *checker, AstNode *node, char *msg) {
+    diagnostic_error_message(checker->diag, "E3001", msg,
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+}
+
+static void tc_err_arg_type(TypeChecker *checker, AstNode *arg_node, char *msg) {
+    diagnostic_error_message(checker->diag, "E5026", msg,
+        NODE_FILE(checker, arg_node), arg_node->token.line, arg_node->token.column, 0);
+}
+
+static void tc_err_arity(TypeChecker *checker, AstNode *node, char *msg) {
+    diagnostic_error_message(checker->diag, "E5008", msg,
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+}
+
 static AstNode *find_struct_in_program(AstNode *program, const char *name);
 
 static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name, const char *field) {
@@ -2362,8 +2381,7 @@ static void typechecker_check_stdlib_arg_count(TypeChecker *checker, const char 
                 "function '%s.%s' expects %d to %d argument(s), got %d",
                 mod, fn, m->min_args, m->max_args, nargs);
         }
-        diagnostic_error_message(checker->diag, "E5008", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_arity(checker, node, msg);
     }
 }
 
@@ -3542,7 +3560,7 @@ static bool try_get_literal_int(AstNode *node, int64_t *out) {
  * consolidates it so call arguments, array elements, struct fields, and map
  * values are covered too. Literals are skipped — their value is range-checked
  * separately (a negative literal to a uint is its own error). `pos` anchors the
- * diagnostic. E3019 covers signed -> unsigned, E3001 covers unsigned -> signed
+ * diagnostic. E3019 covers a signedness crossing in either direction
  * (matching what reassignment already emits for each direction). A
  * value-preserving unsigned -> wider-signed widening is left implicit. */
 static void check_signedness_crossing(TypeChecker *checker,
@@ -3558,7 +3576,7 @@ static void check_signedness_crossing(TypeChecker *checker,
             value_t->name, expected_tn);
     } else if (is_signed_int_type(expected_tn) && is_unsigned_type(value_t->name) &&
                !unsigned_widens_to_signed(expected_tn, value_t->name)) {
-        diagnostic_error_message(checker->diag, "E3001",
+        diagnostic_error_message(checker->diag, "E3019",
             typechecker_format(checker,
                 "type mismatch: cannot assign unsigned type '%s' to signed type '%s'; use cast(value, %s) to convert explicitly",
                 value_t->name, expected_tn, expected_tn),
@@ -4163,7 +4181,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         t0->value_type ? t0->value_type : "?",
                         t1->key_type ? t1->key_type : "?",
                         t1->value_type ? t1->value_type : "?");
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3156", msg,
                         NODE_FILE(checker, a1), a1->token.line, a1->token.column, 0);
                 }
                 const char *bad_member = NULL;
@@ -4177,8 +4195,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "maps.is_equal does not support maps with %s values; only primitive and string element types are supported",
                         bad_member);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0);
+                    tc_err_arg_type(checker, a0, msg);
                 }
             }
         }
@@ -4296,7 +4313,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-        /* E3001: arrays.append/prepend/insert_at element type mismatch */
+        /* E5026: arrays.append/prepend/insert_at element type mismatch */
         {
             AstNode *val_node = NULL;
             const char *op_name = NULL;
@@ -4318,8 +4335,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "'arrays.%s()' expects an array as the first argument, got '%s'",
                         op_name, type_name(arr_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, arr_arg), arr_arg->token.line, arr_arg->token.column, 0);
+                    tc_err_arg_type(checker, arr_arg, msg);
                 } else if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
                     val_t && val_t->kind != TK_UNKNOWN) {
                     GrayType *elem_t = type_from_name(arr_t->element_type);
@@ -4329,12 +4345,11 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         msg = typechecker_format(checker,
                             "type mismatch in 'arrays.%s()'; cannot add '%s' to array of '%s'",
                             op_name, type_name(val_t), arr_t->element_type);
-                        diagnostic_error_message(checker->diag, "E3001", msg,
-                            NODE_FILE(checker, val_node), val_node->token.line, val_node->token.column, 0);
+                        tc_err_arg_type(checker, val_node, msg);
                     } else if (is_int_kind(elem_t->kind) && is_int_kind(val_t->kind)) {
                         /* A narrow element slot must reject an oversized value the
                          * same way `xs[i] = value` does: E3036 for an out-of-range
-                         * literal, E3019/E3001 for a signedness crossing. */
+                         * literal, E3019 for a signedness crossing. */
                         int64_t lit_val;
                         if (try_get_literal_int(val_node, &lit_val)) {
                             check_integer_range(checker->diag, NODE_FILE(checker, val_node),
@@ -4347,7 +4362,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-        /* E3001: arrays.remove_at/insert_at index must be int */
+        /* E5026: arrays.remove_at/insert_at index must be int */
         if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
             (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
             AstNode *idx_node = node->data.call.args[1];
@@ -4357,8 +4372,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "'arrays.%s()' expects an int index, got '%s'",
                     mfn, type_name(idx_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, idx_node), idx_node->token.line, idx_node->token.column, 0);
+                tc_err_arg_type(checker, idx_node, msg);
             }
         }
         /* E9002: arrays.sum/min/max require numeric array */
@@ -4375,7 +4389,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
-        /* E3001: arrays.concat element type mismatch */
+        /* E5026: arrays.concat element type mismatch */
         if (strcmp(mfn, "concat") == 0 && node->data.call.arg_count >= 2) {
             AstNode *a0 = node->data.call.args[0];
             AstNode *a1 = node->data.call.args[1];
@@ -4388,8 +4402,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "type mismatch: cannot concat array of %s with array of %s",
                     t0->element_type, t1->element_type);
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, a1), a1->token.line, a1->token.column, 0);
+                tc_err_arg_type(checker, a1, msg);
             }
         }
         if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
@@ -4404,7 +4417,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "type mismatch: cannot compare array of %s with array of %s",
                     t0->element_type, t1->element_type);
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E3156", msg,
                     NODE_FILE(checker, a1), a1->token.line, a1->token.column, 0);
             }
             if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
@@ -4414,8 +4427,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "arrays.is_equal does not support arrays of %s; only primitive and string element types are supported",
                         t0->element_type);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0);
+                    tc_err_arg_type(checker, a0, msg);
                 }
             }
         }
@@ -4572,8 +4584,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "'arrays.%s()' expects an array as the first argument, got '%s'",
                     mfn, type_name(arg0_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0);
+                tc_err_arg_type(checker, arg0, msg);
             }
         }
     } else if (strcmp(mod, "strings") == 0) {
@@ -4977,7 +4988,7 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
                 msg = typechecker_format(checker,
                     "cannot infer wildcard type '%s' from argument %d of '%s' (got %s)",
                     ptn, argument_index + 1, function_name, type_name(at));
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E3159", msg,
                     NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                     node->data.call.args[argument_index]->token.column, 0);
                 continue;
@@ -4989,7 +5000,7 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
                 msg = typechecker_format(checker,
                     "wildcard type conflict in '%s': '?' was bound to %s, but argument %d is %s",
                     function_name, generic_binding, argument_index + 1, bound);
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E3159", msg,
                     NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                     node->data.call.args[argument_index]->token.column, 0);
                 free(bound);
@@ -5115,8 +5126,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             "function '%s.%s' expects %d-%d argument(s), got %d",
                             display_mod, mfn, min_params, sig->param_count, node->data.call.arg_count);
                     }
-                    diagnostic_error_message(checker->diag, "E5008", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    tc_err_arity(checker, node, msg);
                 }
             }
             /* Check argument types */
@@ -5141,9 +5151,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected %s, got %s",
                         argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
                 /* Enum-to-enum: kinds both TK_ENUM but different names */
                 if (arg_t->kind == TK_ENUM && param_t->kind == TK_ENUM &&
@@ -5153,9 +5161,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected enum '%s', got enum '%s'",
                         argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
                 /* Struct-to-struct: kinds both TK_STRUCT but different names */
                 if (arg_t->kind == TK_STRUCT && param_t->kind == TK_STRUCT &&
@@ -5165,9 +5171,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected struct '%s', got struct '%s'",
                         argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
                 /* Pointer-to-pointer: pointee types differ */
                 if (arg_t->kind == TK_POINTER && param_t->kind == TK_POINTER &&
@@ -5177,9 +5181,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     msg = typechecker_format(checker,
                         "argument %d of '%s.%s': expected '%s', got '%s'",
                         argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
                 /* E3027: non-assignable or const passed to mutable (&) param.
                  * Struct functions live inside NODE_STRUCT_DECL, not as
@@ -5258,8 +5260,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             "function '%s' expects %d-%d argument(s), got %d",
                             display, min_args, sig->param_count, node->data.call.arg_count);
                     }
-                    diagnostic_error_message(checker->diag, "E5008", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    tc_err_arity(checker, node, msg);
                 }
             }
             /* A generic callee needs the same binding, validation and
@@ -5303,13 +5304,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         (arg_t->kind == TK_NIL &&
                          (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR)))
                         continue;
-                    diagnostic_error_message(checker->diag, "E3001",
-                        typechecker_format(checker,
-                            "argument %d of '%s': expected %s, got %s",
-                            argument_index + 1, display,
-                            type_display_name(checker, param_t),
-                            type_display_name(checker, arg_t)),
-                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+                    tc_err_arg_type(checker, arg, typechecker_format(checker, "argument %d of '%s': expected %s, got %s", argument_index + 1, display, type_display_name(checker, param_t), type_display_name(checker, arg_t)));
                 }
             }
         } else {
@@ -5491,8 +5486,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                     "function '%s.%s' expects %d-%d argument(s), got %d",
                                     display_sname, mfn, display_min, display_max, display_got);
                             }
-                            diagnostic_error_message(checker->diag, "E5008", arena_copy_string(checker->arena, emsg),
-                                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                            tc_err_arity(checker, node, arena_copy_string(checker->arena, emsg));
                         }
                     }
                     /* Validate argument types (after AST rewrite) */
@@ -5519,10 +5513,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                diagnostic_error_message(checker->diag, "E3001", arena_copy_string(checker->arena, amsg),
-                                    NODE_FILE(checker, node->data.call.args[argument_index]),
-                                    node->data.call.args[argument_index]->token.line,
-                                    node->data.call.args[argument_index]->token.column, 0);
+                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, amsg));
                             }
                             /* Struct-to-struct: kinds both TK_STRUCT but different names */
                             if (arg_t && param_t &&
@@ -5533,10 +5524,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 snprintf(smsg, sizeof(smsg),
                                     "argument %d of '%s.%s': expected struct '%s', got struct '%s'",
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                diagnostic_error_message(checker->diag, "E3001", arena_copy_string(checker->arena, smsg),
-                                    NODE_FILE(checker, node->data.call.args[argument_index]),
-                                    node->data.call.args[argument_index]->token.line,
-                                    node->data.call.args[argument_index]->token.column, 0);
+                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, smsg));
                             }
                             /* Pointer-to-pointer: pointee types differ */
                             if (arg_t && param_t &&
@@ -5547,10 +5535,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 snprintf(pmsg, sizeof(pmsg),
                                     "argument %d of '%s.%s': expected '%s', got '%s'",
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                diagnostic_error_message(checker->diag, "E3001", arena_copy_string(checker->arena, pmsg),
-                                    NODE_FILE(checker, node->data.call.args[argument_index]),
-                                    node->data.call.args[argument_index]->token.line,
-                                    node->data.call.args[argument_index]->token.column, 0);
+                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, pmsg));
                             }
                         }
                     }
@@ -5635,8 +5620,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                     "function '%s.%s' expects %d-%d argument(s), got %d",
                                     display_sname, mfn, min_params, ssig->param_count, node->data.call.arg_count);
                             }
-                            diagnostic_error_message(checker->diag, "E5008", arena_copy_string(checker->arena, emsg),
-                                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                            tc_err_arity(checker, node, arena_copy_string(checker->arena, emsg));
                         }
                     }
                     /* Validate argument types */
@@ -5658,10 +5642,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 snprintf(amsg, sizeof(amsg),
                                     "argument %d of '%s.%s': expected %s, got %s",
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                diagnostic_error_message(checker->diag, "E3001", arena_copy_string(checker->arena, amsg),
-                                    NODE_FILE(checker, node->data.call.args[argument_index]),
-                                    node->data.call.args[argument_index]->token.line,
-                                    node->data.call.args[argument_index]->token.column, 0);
+                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, amsg));
                             }
                         }
                     }
@@ -5867,17 +5848,17 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
          * rejected at typecheck instead of leaking an
          * '&(rvalue)' to clang. */
         if (path_contains_map_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'addr()' cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (path_contains_dynamic_array_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'addr()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (path_contains_string_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'addr()' cannot take the address of a string index expression; string bytes are immutable",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -5891,17 +5872,17 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
     } else if (strcmp(function_name, "raw") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
         if (path_contains_map_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'raw()' cannot take the address of a map index expression; map values may relocate on rehash",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (path_contains_dynamic_array_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'raw()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         if (path_contains_string_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3013",
+            diagnostic_error_message(checker->diag, "E3161",
                 "'raw()' cannot take the address of a string index expression; string bytes are immutable",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -5954,17 +5935,17 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
              * ref(some_call()) leaked '&42' / '&(rvalue)' to clang
              * and produced opaque generated-C errors. */
             if (path_contains_map_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3013",
+                diagnostic_error_message(checker->diag, "E3161",
                     "'ref()' cannot take a reference to a map index expression; map values may relocate on rehash",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             if (path_contains_dynamic_array_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3013",
+                diagnostic_error_message(checker->diag, "E3161",
                     "'ref()' cannot take a reference to a dynamic array index expression; the backing store may relocate when the array grows",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
             if (path_contains_string_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3013",
+                diagnostic_error_message(checker->diag, "E3161",
                     "'ref()' cannot take a reference to a string index expression; string bytes are immutable",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
@@ -6000,8 +5981,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'len()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         } else {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
             reject_void_in_context(checker, node->data.call.args[0], at,
@@ -6021,8 +6001,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'type_of()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
             result = &TYPE_STRING;
             return result;
         }
@@ -6071,8 +6050,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             char *msg = typechecker_format(checker,
                 "'fields()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
             result = type_array("string");
             return result;
         }
@@ -6117,8 +6095,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             char *msg = typechecker_format(checker,
                 "'size_of()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
             result = &TYPE_INT;
             return result;
         }
@@ -6164,8 +6141,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'to_char()' expects 2 arguments (string, index), got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         } else {
             GrayType *arg0 = resolve_expression(checker, node->data.call.args[0]);
             GrayType *arg1 = resolve_expression(checker, node->data.call.args[1]);
@@ -6174,16 +6150,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 msg = typechecker_format(checker,
                     "'to_char()' first argument must be a string, got '%s'",
                     type_name(arg0));
-                diagnostic_error_message(checker->diag, "E3043", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
             if (arg1->kind != TK_INT && arg1->kind != TK_UINT) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'to_char()' second argument must be int or uint, got '%s'",
                     type_name(arg1));
-                diagnostic_error_message(checker->diag, "E3043", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             } else {
                 /* Constant index provably out of bounds — gray_builtin_to_char
                  * panics P0049 (negative) / P0050 (past end). Dynamic indices
@@ -6221,8 +6195,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'char_count()' expects 1 argument (string), got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         } else {
             GrayType *arg0 = resolve_expression(checker, node->data.call.args[0]);
             if (arg0->kind != TK_STRING) {
@@ -6230,8 +6203,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 msg = typechecker_format(checker,
                     "'char_count()' argument must be a string, got '%s'",
                     type_name(arg0));
-                diagnostic_error_message(checker->diag, "E3043", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
         }
         result = &TYPE_INT;
@@ -6240,8 +6212,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             char *msg = typechecker_format(checker,
                 "'c_string()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
             result = &TYPE_STRING;
             return result;
         }
@@ -6272,8 +6243,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'embed()' takes exactly 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         } else {
             AstNode *arg = node->data.call.args[0];
             if (arg->kind != NODE_STRING_VALUE) {
@@ -6396,8 +6366,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'%s()' expects 0 or 1 argument(s), got %d",
                 function_name, node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         }
         if (node->data.call.arg_count >= 1) {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
@@ -6426,8 +6395,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'%s()' expects 1 argument, got %d",
                 function_name, node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         }
         if (node->data.call.arg_count >= 1) {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
@@ -6453,8 +6421,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (node->data.call.arg_count != 0) {
             char *msg = typechecker_format(checker,
                 "'flush()' expects 0 arguments, got %d", node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         }
         result = &TYPE_VOID;
     } else if (strcmp(function_name, "exit") == 0 || strcmp(function_name, "panic") == 0 ||
@@ -6469,8 +6436,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'exit()' expects an integer argument, got '%s'", type_name(at));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
         } else if (strcmp(function_name, "panic") == 0 && node->data.call.arg_count >= 1) {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
@@ -6478,8 +6444,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'panic()' expects a string argument, got '%s'", type_name(at));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
         } else if (strcmp(function_name, "assert") == 0 && node->data.call.arg_count >= 1) {
             GrayType *cond_t = resolve_expression(checker, node->data.call.args[0]);
@@ -6487,8 +6452,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'assert()' condition must be a bool, got '%s'", type_name(cond_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
             if (node->data.call.arg_count >= 2) {
                 GrayType *msg_t = resolve_expression(checker, node->data.call.args[1]);
@@ -6496,8 +6460,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "'assert()' message must be a string, got '%s'", type_display_name(checker, msg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    tc_err_arg_type(checker, node, msg);
                 }
             }
         } else if ((strcmp(function_name, "sleep_s") == 0 || strcmp(function_name, "sleep_ms") == 0 ||
@@ -6507,8 +6470,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'%s()' expects an integer argument, got '%s'", function_name, type_name(at));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
         }
         result = &TYPE_VOID;
@@ -6518,16 +6480,14 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'system()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         } else {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
             if (at->kind != TK_UNKNOWN && at->kind != TK_STRING) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'system()' expects a string argument, got '%s'", type_name(at));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arg_type(checker, node, msg);
             }
         }
         result = &TYPE_INT;
@@ -6550,8 +6510,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'char()' expects 1 argument, got %d",
                 node->data.call.arg_count);
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
             result = &TYPE_CHAR;
             return result;
         }
@@ -6560,7 +6519,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         if (try_get_literal_int(node->data.call.args[0], &lit_val) && lit_val < 0) {
             diagnostic_error_code_formatted(checker->diag, "E7014", NODE_FILE(checker, node), node->token.line, node->token.column, 0, (long long)lit_val);
         }
-        /* E3001: char() converts an integer codepoint; reject any non-integer
+        /* E5026: char() converts an integer codepoint; reject any non-integer
          * argument (a length-1 string still reaches codegen otherwise and
          * emits (int32_t)(GrayString), which cc rejects). */
         GrayType *char_arg_t = resolve_expression(checker, node->data.call.args[0]);
@@ -6569,8 +6528,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             msg = typechecker_format(checker,
                 "'char()' expects an integer codepoint, got %s",
                 type_name(char_arg_t));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arg_type(checker, node, msg);
         }
         result = &TYPE_CHAR;
     } else if ((strcmp(function_name, "int") == 0 ||
@@ -6656,8 +6614,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         char *msg = typechecker_format(checker,
             "'%s()' expects 1 argument, got %d",
             function_name, node->data.call.arg_count);
-        diagnostic_error_message(checker->diag, "E5008", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_arity(checker, node, msg);
         GrayType *bt = type_from_name(function_name);
         result = (bt != &TYPE_UNKNOWN) ? bt : &TYPE_UNKNOWN;
     } else {
@@ -6741,8 +6698,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     "function '%s' expects %d-%d argument(s), got %d",
                     function_name, min_args, sig->param_count, node->data.call.arg_count);
             }
-            diagnostic_error_message(checker->diag, "E5008", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_arity(checker, node, msg);
         }
         /* Generic (wildcard) dispatch: unify each '?' parameter
          * against the corresponding argument to derive a single
@@ -6788,9 +6744,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected %s, got %s",
                     argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                    node->data.call.args[argument_index]->token.column, 0);
+                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
             }
             /* Enum-to-enum: kinds both TK_ENUM but different names */
             if (arg_t->kind == TK_ENUM && param_t->kind == TK_ENUM &&
@@ -6800,9 +6754,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected enum '%s', got enum '%s'",
                     argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                    node->data.call.args[argument_index]->token.column, 0);
+                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
             }
             /* Struct-to-struct: kinds both TK_STRUCT but different names */
             if (arg_t->kind == TK_STRUCT && param_t->kind == TK_STRUCT &&
@@ -6812,9 +6764,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected struct '%s', got struct '%s'",
                     argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                    node->data.call.args[argument_index]->token.column, 0);
+                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
             }
             /* Pointer-to-pointer: pointee types differ (e.g., addr(Color) to ^Point) */
             if (arg_t->kind == TK_POINTER && param_t->kind == TK_POINTER &&
@@ -6824,9 +6774,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 msg = typechecker_format(checker,
                     "argument %d of '%s': expected '%s', got '%s'",
                     argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                    node->data.call.args[argument_index]->token.column, 0);
+                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
             }
             /* Bigint narrowing in call argument: i128 arg to i64 param, etc. */
             if (arg_t->name && param_t->name) {
@@ -6837,7 +6785,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "argument %d of '%s': cannot implicitly narrow '%s' to '%s'; use 'cast(value, %s)' to convert explicitly",
                         argument_index + 1, function_name, arg_t->name, param_t->name, param_t->name);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3155", msg,
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0);
                 }
@@ -6853,9 +6801,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "argument %d of '%s': expected '%s', got '%s'",
                         argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
             }
             /* Map key/value type mismatch */
@@ -6869,9 +6815,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "argument %d of '%s': expected '%s', got '%s'",
                         argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
-                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                        node->data.call.args[argument_index]->token.column, 0);
+                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                 }
             }
             /* E3066: typed-func signatures must match exactly */
@@ -6952,8 +6896,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                             "function '%s' expects %d to %d argument(s), got %d",
                             func_display_name(ref_sig), min_arity, ref_sig->param_count, ac);
                     }
-                    diagnostic_error_message(checker->diag, "E5008", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    tc_err_arity(checker, node, msg);
                 } else {
                     for (int argument_index = 0; argument_index < ref_sig->param_count; argument_index++) {
                         GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
@@ -6968,10 +6911,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 "argument %d of '%s': expected %s, got %s",
                                 argument_index + 1, func_display_name(ref_sig),
                                 type_display_name(checker, pt), type_display_name(checker, at));
-                            diagnostic_error_message(checker->diag, "E3001", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
+                            tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                         }
                         /* Enum-to-enum: different enum types */
                         if (at && pt && at->kind == TK_ENUM && pt->kind == TK_ENUM &&
@@ -6981,10 +6921,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                             msg = typechecker_format(checker,
                                 "argument %d of '%s': expected enum '%s', got enum '%s'",
                                 argument_index + 1, func_display_name(ref_sig), enum_display_name(checker, pt->name), enum_display_name(checker, at->name));
-                            diagnostic_error_message(checker->diag, "E3001", msg,
-                                NODE_FILE(checker, node->data.call.args[argument_index]),
-                                node->data.call.args[argument_index]->token.line,
-                                node->data.call.args[argument_index]->token.column, 0);
+                            tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                         }
                         /* E3027: non-assignable or const passed to mutable (&) param */
                         {
@@ -7021,8 +6958,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     msg = typechecker_format(checker,
                         "function reference '%s' expects %d argument(s), got %d",
                         function_name, sig->param_count, ac);
-                    diagnostic_error_message(checker->diag, "E5008", msg,
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    tc_err_arity(checker, node, msg);
                 } else {
                     for (int argument_index = 0; argument_index < sig->param_count; argument_index++) {
                         AstNode *arg = node->data.call.args[argument_index];
@@ -7037,8 +6973,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 "argument %d of '%s': expected %s, got %s",
                                 argument_index + 1, function_name,
                                 type_display_name(checker, pt), type_display_name(checker, at));
-                            diagnostic_error_message(checker->diag, "E3001", msg,
-                                NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+                            tc_err_arg_type(checker, arg, msg);
                         }
                         /* E3027: `&` param requires an assignment target */
                         if (sig->param_mutable[argument_index]) {
@@ -7351,7 +7286,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * argument position. Caller must destructure first. */
         reject_multi_return_in_single_position(checker, node->data.call.args[i]);
 
-        /* E3019/E3001: an argument that crosses signedness vs the parameter needs a cast. */
+        /* E3019: an argument that crosses signedness vs the parameter needs a cast. */
         if (callee_decl && i < callee_decl->data.func_decl.param_count)
             check_signedness_crossing(checker,
                 callee_decl->data.func_decl.params[i].type_name,
@@ -7570,7 +7505,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                             if (arg_t && exp_t &&
                                 arg_t->kind != TK_UNKNOWN && exp_t->kind != TK_UNKNOWN &&
                                 !types_assignable(checker, exp_t, arg_t)) {
-                                diagnostic_error_code_formatted(checker->diag, "E3001", NODE_FILE(checker, node->data.call.args[argument_index]),
+                                diagnostic_error_code_formatted(checker->diag, "E5026", NODE_FILE(checker, node->data.call.args[argument_index]),
                                     node->data.call.args[argument_index]->token.line, node->data.call.args[argument_index]->token.column, 0);
                             }
                         }
@@ -7625,8 +7560,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     "function '%s.%s.%s' expects %d argument(s), got %d",
                     mod_name, struct_name, func_name,
                     sig->param_count, node->data.call.arg_count);
-                diagnostic_error_message(checker->diag, "E5008", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_arity(checker, node, msg);
             }
             /* E3027: mutable param checks for triple-namespaced calls.
              * Struct functions live inside NODE_STRUCT_DECL, so scan
@@ -7721,7 +7655,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     if (arg_t && expected_t &&
                         arg_t->kind != TK_UNKNOWN && expected_t->kind != TK_UNKNOWN &&
                         !types_assignable(checker, expected_t, arg_t)) {
-                        diagnostic_error_code_formatted(checker->diag, "E3001", NODE_FILE(checker, node->data.call.args[argument_index]),
+                        diagnostic_error_code_formatted(checker->diag, "E5026", NODE_FILE(checker, node->data.call.args[argument_index]),
                             node->data.call.args[argument_index]->token.line, node->data.call.args[argument_index]->token.column, 0);
                     }
                 }
@@ -7814,7 +7748,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "cannot pass %s to a C function; C has no 128/256-bit integer types",
                         arg_t->name);
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3158", msg,
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0);
                 }
@@ -7824,7 +7758,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "cannot pass %s to a C function; use individual elements instead",
                         arg_t->kind == TK_ARRAY ? "an array" : "a map");
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3158", msg,
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0);
                 }
@@ -7835,7 +7769,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "cannot pass struct '%s' to a C function; pass individual fields instead",
                         type_display_name(checker, arg_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3158", msg,
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0);
                 }
@@ -8227,7 +8161,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "cannot compare %s with %s", type_name(left), type_name(right));
-        diagnostic_error_message(checker->diag, "E3001", msg,
+        diagnostic_error_message(checker->diag, "E3156", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
 
@@ -8240,7 +8174,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         char *msg = NULL;
         msg = typechecker_format(checker,
             "cannot compare %s with %s", type_name(left), type_name(right));
-        diagnostic_error_message(checker->diag, "E3001", msg,
+        diagnostic_error_message(checker->diag, "E3156", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* E3074: arrays cannot be compared with == / != directly. The C
@@ -8846,10 +8780,10 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "field '%s' of struct '%s': expected %s, got %s",
                     fname, struct_display_name(checker, struct_name), type_display_name(checker, expected_t), type_display_name(checker, val_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E3053", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
-            /* E3019/E3001: a field initializer that crosses signedness needs a cast. */
+            /* E3019: a field initializer that crosses signedness needs a cast. */
             if (found && expected_t && expected_t->name)
                 check_signedness_crossing(checker, expected_t->name,
                     node->data.struct_value.field_values[i], val_t,
@@ -8904,7 +8838,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                             msg = typechecker_format(checker,
                                 "wildcard type conflict in struct '%s': '?' was bound to %s, but field '%s' is %s",
                                 struct_name, binding, fname, concrete);
-                            diagnostic_error_message(checker->diag, "E3001", msg,
+                            diagnostic_error_message(checker->diag, "E3159", msg,
                                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                         }
                     }
@@ -9599,7 +9533,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "map key type mismatch: expected '%s', got '%s'",
                         left->key_type, type_name(idx_t));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3156", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 }
             }
@@ -9648,7 +9582,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     msg = typechecker_format(checker,
                         "array elements must all be the same type; element %d is '%s' but the array is '%s'",
                         i, type_name(element_resolved), type_name(first));
-                    diagnostic_error_message(checker->diag, "E3001", msg,
+                    diagnostic_error_message(checker->diag, "E3053", msg,
                         NODE_FILE(checker, node->data.array_value.elements[i]), node->data.array_value.elements[i]->token.line,
                         node->data.array_value.elements[i]->token.column, 0);
                     break;
@@ -9737,9 +9671,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "'range()' %s argument must be an integer type, got '%s'",
                     labels[return_index], type_name(pt));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), parts[return_index]->token.line,
-                    parts[return_index]->token.column, 0);
+                tc_err_arg_type(checker, parts[return_index], msg);
             }
         }
         GrayType *rt = type_alloc();
@@ -10821,9 +10753,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E2002: private not allowed inside functions */
+    /* E4029: private not allowed inside functions */
     if (node->data.var_decl.is_private && checker->func_depth > 0) {
-        diagnostic_error_message(checker->diag, "E2002",
+        diagnostic_error_message(checker->diag, "E4029",
             "'private' cannot be used inside a function; it only applies to top-level declarations",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
@@ -11009,12 +10941,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "cannot assign nil to '%s'; only Error and pointer types are nullable",
                 type_name(declared));
-            diagnostic_error_message(checker->diag, "E3001", msg,
+            diagnostic_error_message(checker->diag, "E3157", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* Reject bare 'mut x = nil' with no type context */
         if (value_type->kind == TK_NIL && declared->kind == TK_UNKNOWN) {
-            diagnostic_error_message(checker->diag, "E3001",
+            diagnostic_error_message(checker->diag, "E3157",
                 "cannot infer type from 'nil'; add a type annotation (e.g., 'mut x Error = nil')",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
@@ -11061,8 +10993,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         "cannot assign %s to 'func'; func variables hold function references (e.g. '()name')",
                         type_name(value_type));
                 }
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_assign_type(checker, node, msg);
                 func_decl_reported = true;
             }
         }
@@ -11086,8 +11017,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign %s to %s",
                 type_display_name(checker, value_type), type_display_name(checker, declared));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_assign_type(checker, node, msg);
         }
         /* Pointer-to-pointer: pointee types differ (e.g., ^int assigned from ^string).
          * The outer kind-mismatch guard above short-circuits when both sides are TK_POINTER,
@@ -11100,8 +11030,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign %s to %s",
                 type_display_name(checker, value_type), type_display_name(checker, declared));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_assign_type(checker, node, msg);
         }
         /* Bigint narrowing: e.g. i128 → i64, u256 → int.  Both sides share
          * TK_INT/TK_UINT so the kind-equality guard above silently passes
@@ -11115,7 +11044,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "type mismatch: cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly",
                     value_type->name, declared->name, declared->name);
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E3155", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -11140,8 +11069,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign '%s' to '%s'",
                 type_display_name(checker, value_type), type_display_name(checker, declared));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_assign_type(checker, node, msg);
         }
         /* Enum-to-enum name mismatch (both TK_ENUM but different enum types) */
         if (declared->kind == TK_ENUM && value_type->kind == TK_ENUM &&
@@ -11151,8 +11079,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign enum '%s' to enum '%s'",
                 type_display_name(checker, value_type), type_display_name(checker, declared));
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_assign_type(checker, node, msg);
         }
         /* Array element type mismatch (both TK_ARRAY but different element types) */
         if (declared->kind == TK_ARRAY && value_type->kind == TK_ARRAY &&
@@ -11176,8 +11103,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_assign_type(checker, node, msg);
             }
         }
         /* Map key/value type mismatch (both TK_MAP but different key or value types) */
@@ -11211,8 +11137,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_assign_type(checker, node, msg);
             }
         }
         /* E3046: literal that exceeds the destination type's range.
@@ -11268,10 +11193,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                         "cannot assign array literal to '%s'; map literals use '{key: value, ...}' syntax",
                         type_name_str);
                 }
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node->data.var_decl.value),
-                    node->data.var_decl.value->token.line,
-                    node->data.var_decl.value->token.column, 0);
+                tc_err_assign_type(checker, node->data.var_decl.value, msg);
             }
             /* E3026/E3036: Check array literal elements fit in sized element type */
             if (type_name_str[0] == '[' && node->data.var_decl.value->kind == NODE_ARRAY_VALUE) {
@@ -11351,7 +11273,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     for (int enum_index = 0; enum_index < arr->data.array_value.count; enum_index++) {
                         AstNode *el_node = arr->data.array_value.elements[enum_index];
                         GrayType *actual_et = resolve_expression(checker, el_node);
-                        /* E3019/E3001: an array element that crosses signedness needs a cast. */
+                        /* E3019: an array element that crosses signedness needs a cast. */
                         check_signedness_crossing(checker, elem_type,
                             el_node, actual_et, el_node);
                         if (actual_et && actual_et->kind != TK_UNKNOWN &&
@@ -11445,7 +11367,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                             AstNode *vn = mv->data.map_value.values[mi];
                             GrayType *kt = resolve_expression(checker, kn);
                             GrayType *vt = resolve_expression(checker, vn);
-                            /* E3019/E3001: a map key or value that crosses signedness needs a cast. */
+                            /* E3019: a map key or value that crosses signedness needs a cast. */
                             check_signedness_crossing(checker, key_tn, kn, kt, kn);
                             check_signedness_crossing(checker, val_tn, vn, vt, vn);
                             /* E3036: an out-of-range literal key or value ({"a": 300}). */
@@ -11520,7 +11442,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        /* E3019/E3001: a declared integer type crossed by the initializer variable's
+        /* E3019: a declared integer type crossed by the initializer variable's
          * signedness (int x = uint_var, uint x = int_var) needs an explicit cast. */
         if (node->data.var_decl.type_name &&
             node->data.var_decl.value &&
@@ -11533,7 +11455,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E3019", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, dest_tn);
             } else if (src_tn && is_signed_int_type(dest_tn) && is_unsigned_type(src_tn) &&
                        !unsigned_widens_to_signed(dest_tn, src_tn)) {
-                diagnostic_error_message(checker->diag, "E3001",
+                diagnostic_error_message(checker->diag, "E3019",
                     typechecker_format(checker,
                         "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
                         src_tn, dest_tn, node->data.var_decl.name, dest_tn),
@@ -12301,7 +12223,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     type_display_name(checker, val_t), type_display_name(checker, indexed_t));
             }
-            /* E3019/E3001: assigning a value that crosses signedness into an element needs a cast. */
+            /* E3019: assigning a value that crosses signedness into an element needs a cast. */
             check_signedness_crossing(checker, indexed_t->element_type,
                 node->data.assign.value, val_t, node->data.assign.value);
             /* E3036: out-of-range literal into a narrow element (xs[0] = 300). */
@@ -12409,8 +12331,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot assign %s to %s variable '%s'",
                 type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
-            diagnostic_error_message(checker->diag, "E3001", msg,
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            tc_err_assign_type(checker, node, msg);
         }
     }
     /* Struct-to-struct name mismatch on direct variable assignment */
@@ -12423,8 +12344,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             "type mismatch: cannot assign '%s' to '%s' variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t),
             target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* Enum-to-enum name mismatch on direct variable assignment */
     if (target->kind == NODE_LABEL &&
@@ -12436,8 +12356,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             "type mismatch: cannot assign enum '%s' to enum '%s' variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t),
             target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* Function-to-function signature mismatch on direct variable assignment */
     if (target->kind == NODE_LABEL && func_types_mismatch(target_t, value_t)) {
@@ -12445,8 +12364,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             "type mismatch: cannot assign '%s' to '%s' variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t),
             target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* E3098: struct-to-struct name mismatch through pointer dereference: v3^ = v2^
      * The NODE_LABEL check above is bypassed when the target is a postfix
@@ -12478,7 +12396,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         char *msg = typechecker_format(checker,
             "type mismatch: cannot assign %s to %s through pointer dereference",
             type_display_name(checker, value_t), type_display_name(checker, target_t));
-        diagnostic_error_message(checker->diag, "E3001", msg,
+        diagnostic_error_message(checker->diag, "E3098", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Pointer-to-pointer: pointee types differ on reassignment (e.g., p = q where ^int ≠ ^string).
@@ -12492,8 +12410,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         msg = typechecker_format(checker,
             "type mismatch: cannot assign %s to %s variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* Array-to-array: element types differ on reassignment (e.g., [int] = [string]).
      * Both sides are TK_ARRAY so the outer kind-equality guard passes. */
@@ -12506,8 +12423,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         msg = typechecker_format(checker,
             "type mismatch: cannot assign %s to %s variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* Map-to-map: key or value types differ on reassignment (e.g., [string:int] = [string:string]).
      * Both sides are TK_MAP so the outer kind-equality guard passes. */
@@ -12522,8 +12438,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         msg = typechecker_format(checker,
             "type mismatch: cannot assign %s to %s variable '%s'",
             type_display_name(checker, value_t), type_display_name(checker, target_t), target->data.label.value);
-        diagnostic_error_message(checker->diag, "E3001", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        tc_err_assign_type(checker, node, msg);
     }
     /* Integer narrowing on reassignment: u32 → u8, int → i16, i128 → i64, etc.
      * Both sides share TK_INT/TK_UINT so the kind-equality guard passes. */
@@ -12537,7 +12452,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
                 value_t->name, target_t->name, target->data.label.value, target_t->name);
-            diagnostic_error_message(checker->diag, "E3001", msg,
+            diagnostic_error_message(checker->diag, "E3155", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
     }
@@ -12567,7 +12482,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             "type mismatch: cannot assign unsigned type '%s' to signed type '%s' variable '%s'; use cast(value, %s) to convert explicitly",
             value_t->name, target_t->name, target->data.label.value,
             target_t->name);
-        diagnostic_error_message(checker->diag, "E3001", msg,
+        diagnostic_error_message(checker->diag, "E3019", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Float narrowing on reassignment: f64 → f32, float → f32.
@@ -12582,7 +12497,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         msg = typechecker_format(checker,
             "type mismatch: cannot implicitly narrow %s to %s variable '%s'; use cast(value, %s) to convert explicitly",
             value_t->name, target_t->name, target->data.label.value, target_t->name);
-        diagnostic_error_message(checker->diag, "E3001", msg,
+        diagnostic_error_message(checker->diag, "E3155", msg,
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
     /* Check type mismatch on struct field assignment.
@@ -12608,8 +12523,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "type mismatch: cannot assign %s to %s field '%s'",
                     type_display_name(checker, value_t), type_display_name(checker, field_t), target->data.member.member);
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_assign_type(checker, node, msg);
             }
             /* E3066: func signature mismatch on struct field assignment */
             if (func_types_mismatch(field_t, value_t)) {
@@ -12639,8 +12553,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 char *msg = typechecker_format(checker,
                     "type mismatch: cannot assign %s to %s field '%s'",
                     type_display_name(checker, value_t), type_display_name(checker, field_t), target->data.member.member);
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                tc_err_assign_type(checker, node, msg);
             }
         }
     }
@@ -12908,7 +12821,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     } else if (checker->current_return_count > 0 && node->data.return_stmt.count > 0 &&
                node->data.return_stmt.count != checker->current_return_count) {
-        /* E3013: wrong number of return values (skip or_return synthetic returns
+        /* E3040: wrong number of return values (skip or_return synthetic returns
          * which have count=1 but the function expects more; that's handled by codegen) */
         bool is_or_return_synthetic = false;
         if (node->data.return_stmt.count == 1 &&
@@ -12923,7 +12836,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "function expects %d return value(s), got %d",
                 checker->current_return_count, node->data.return_stmt.count);
-            diagnostic_error_message(checker->diag, "E3013", msg,
+            diagnostic_error_message(checker->diag, "E3040", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
     } else if (checker->current_return_count > 0 && node->data.return_stmt.count > 0 &&
@@ -12972,7 +12885,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                     : typechecker_format(checker,
                         "return type mismatch: expected %s, got %s",
                         type_display_name(checker, expected), type_display_name(checker, ret_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E5049", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -12998,7 +12911,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",
                     type_display_name(checker, expected), type_display_name(checker, ret_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E5049", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -13013,7 +12926,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",
                     type_display_name(checker, expected), type_display_name(checker, ret_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
+                diagnostic_error_message(checker->diag, "E5049", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -13036,10 +12949,10 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             msg = typechecker_format(checker,
                 "return type mismatch: expected '%s', got '%s'",
                 exp_str, got_str);
-            diagnostic_error_message(checker->diag, "E3001", msg,
+            diagnostic_error_message(checker->diag, "E5049", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
-        /* E5024/E3001: a returned variable whose signedness crosses the declared
+        /* E5024/E5049: a returned variable whose signedness crosses the declared
          * return type needs an explicit cast, in either direction. */
         if (checker->current_return_type_names && checker->current_return_type_names[0] &&
             node->data.return_stmt.values[0]->kind == NODE_LABEL) {
@@ -13051,7 +12964,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_code_formatted(checker->diag, "E5024", NODE_FILE(checker, node), node->token.line, node->token.column, 0, src_tn, ret_tn);
             } else if (src_tn && is_signed_int_type(ret_tn) && is_unsigned_type(src_tn) &&
                        !unsigned_widens_to_signed(ret_tn, src_tn)) {
-                diagnostic_error_message(checker->diag, "E3001",
+                diagnostic_error_message(checker->diag, "E5049",
                     typechecker_format(checker,
                         "return type mismatch: cannot return unsigned '%s' as signed '%s'; use cast(value, %s) to convert explicitly",
                         src_tn, ret_tn, ret_tn),
@@ -13107,7 +13020,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 : typechecker_format(checker,
                     "return type mismatch: expected %s, got %s",
                     type_display_name(checker, slot_exp), type_display_name(checker, slot_ret));
-            diagnostic_error_message(checker->diag, "E3001", msg,
+            diagnostic_error_message(checker->diag, "E5049", msg,
                 NODE_FILE(checker, sv), sv->token.line, sv->token.column, 0);
         }
         /* E3073: named return variable must be the value returned */
@@ -13674,11 +13587,11 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "parameter '%s' has no type annotation; omitting the type is only allowed when the default value is an enum member (e.g. %s = MyEnum.VALUE)",
                     p->name, p->name);
-                diagnostic_error_message(checker->diag, "E2002", msg,
+                diagnostic_error_message(checker->diag, "E3160", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
-        /* E3001: validate default value type matches parameter type */
+        /* E5026: validate default value type matches parameter type */
         if (p->default_value && p->type_name) {
             /* Set expected_type for implicit enum resolution in default param values */
             GrayType *saved_def_expected = checker->expected_type;
@@ -13693,8 +13606,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 msg = typechecker_format(checker,
                     "default value for parameter '%s' has wrong type; expected %s, got %s",
                     p->name, p->type_name, type_name(def_t));
-                diagnostic_error_message(checker->diag, "E3001", msg,
-                    NODE_FILE(checker, p->default_value), p->default_value->token.line, p->default_value->token.column, 0);
+                tc_err_arg_type(checker, p->default_value, msg);
             }
             /* E3036: out-of-range default value for a narrow parameter
              * (do f(b byte = 300)). */
