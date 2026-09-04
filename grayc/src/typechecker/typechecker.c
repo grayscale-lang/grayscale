@@ -13426,7 +13426,12 @@ static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
 static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *at, const char *disp) {
     ArenaLifetime *a = pc_arena_ensure(checker, arena_name);
-    if (a->destroyed) {
+    /* A destroy scheduled via `ensure` still runs, at scope exit, no matter
+     * what happens between now and then — so an explicit destroy reaching
+     * here after one is already pending is a second destroy too, same as
+     * a->destroyed. A reset is unaffected: resetting (or re-resetting) an
+     * arena whose actual destroy hasn't run yet is safe. */
+    if (a->destroyed || (is_destroy && a->ensure_destroy_pending)) {
         diagnostic_error_code_formatted(checker->diag, "E3166",
             NODE_FILE(checker, at), at->token.line, at->token.column, 0,
             disp, arena_name, arena_name);
@@ -13441,6 +13446,29 @@ static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_nam
         a->epoch++;
         a->end_was_reset = true;
     }
+}
+
+/* ensure mem.destroy(a): mark the destroy pending rather than applying it
+ * immediately through pc_apply_arena_lifecycle. The arena is not actually
+ * freed until this function returns, so an ordinary use of it in the
+ * statements that follow (the entire point of scheduling cleanup with
+ * `ensure`) must stay legal — only a second destroy attempt on the same
+ * arena, explicit or via another ensure, is the genuine double-free E3166
+ * exists to catch. */
+static void pc_apply_ensure_mem_call(TypeChecker *checker, AstNode *call, AstNode *at) {
+    const char *fn = NULL, *arena = NULL;
+    if (!pc_is_mem_call(checker, call, &fn, &arena)) return;
+    if (!arena || strcmp(fn, "destroy") != 0) return;
+    ArenaLifetime *a = pc_arena_ensure(checker, arena);
+    const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
+        ? "mem.destroy" : fn;
+    if (a->destroyed || a->ensure_destroy_pending) {
+        diagnostic_error_code_formatted(checker->diag, "E3166",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            disp, arena, arena);
+        return;
+    }
+    a->ensure_destroy_pending = true;
 }
 
 static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
@@ -15017,6 +15045,15 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             node->data.ensure_stmt.expr->kind != NODE_CALL_EXPR) {
             diagnostic_error_code(checker->diag, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
+        /* Pointer checker: ensure mem.destroy(a) — mark the destroy pending
+         * (pc_apply_ensure_mem_call), not applied via pc_apply_mem_call like
+         * a bare statement would be: that sets the arena destroyed
+         * immediately, which would flag every ordinary use of it for the
+         * rest of the function — exactly the pattern `ensure mem.destroy`
+         * exists to let the caller write. */
+        if (node->data.ensure_stmt.expr &&
+            node->data.ensure_stmt.expr->kind == NODE_CALL_EXPR)
+            pc_apply_ensure_mem_call(checker, node->data.ensure_stmt.expr, node);
         break;
 
     case NODE_STRUCT_DECL:

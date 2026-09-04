@@ -54,6 +54,13 @@ typedef struct {
     const char *end_file;  /* where the destroy/reset that ended it sits */
     int  end_line;
     bool end_was_reset;    /* true: last lifetime event was reset, not destroy */
+    /* An `ensure mem.destroy(a)` was seen: the arena WILL be destroyed once
+     * the function returns, no matter what runs between here and then, so a
+     * later explicit mem.destroy(a) (or another ensure mem.destroy(a)) is a
+     * genuine double-free (P0002 at runtime) — but unlike `destroyed`, this
+     * does NOT make an ordinary use of the arena elsewhere in the function
+     * an error; the deferred destroy hasn't actually run yet. */
+    bool ensure_destroy_pending;
 } ArenaLifetime;
 
 typedef struct {
