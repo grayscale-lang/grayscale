@@ -1,0 +1,27 @@
+/*
+ * Error Test: E3163 - a struct function's own parameter, stashed into a
+ * global, escapes undetected when the function is called via instance
+ * dispatch (s.stash(...)) rather than static dispatch (Stasher.stash(...)).
+ *
+ * resolve_call_sig() cannot find stash's FuncSig until the instance-dispatch
+ * AST rewrite (retarget the member object to the struct name, prepend self
+ * as arg[0]) has happened; the escape check must run again after that
+ * rewrite, not only once, early, before it.
+ */
+
+mut GLOBAL ^int = nil
+
+const Stasher struct {
+    tag int
+
+    do stash(self Stasher, x ^int) {
+        GLOBAL = x
+    }
+}
+
+do main() {
+    mut s Stasher = Stasher{tag: 1}
+    mut y int = 5
+    s.stash(addr(y))
+    println(GLOBAL^)
+}

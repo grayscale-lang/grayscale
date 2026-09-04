@@ -1854,6 +1854,76 @@ static const char *func_display_name(const FuncSig *fs) {
     return fs ? fs->name : "";
 }
 
+/* E3163 ("a helper's summary escapes one of its own parameters" — into a
+ * global, another parameter's reachable storage, or a container sink) plus
+ * the @mem arena-lifecycle propagation, for a call to `csig` against `node`'s
+ * current arguments. `reported_arg` is the bitmask of argument positions an
+ * earlier direct addr()/raw()-alongside-outer-arg heuristic already reported,
+ * so this does not double-report them.
+ *
+ * A shared function rather than inline in resolve_call_expr because instance
+ * dispatch (s.stash(addr(y))) needs it run a second time, later: at the point
+ * resolve_call_expr's own copy of this check runs, resolve_call_sig() cannot
+ * find a FuncSig for the call — the callee is still spelled with the instance
+ * as the member-expr's object, not the struct's type name, and self has not
+ * yet been prepended into args[0]. That rewrite (retarget_member_object() +
+ * the self-arg splice) happens later in the same function, inside
+ * resolve_struct_or_module_call(). Without a second call from there, every
+ * escape/@mem check silently no-ops for instance-dispatch struct functions —
+ * the language's most common calling convention for the struct-function
+ * feature. (Static dispatch, Struct.func(self: s, ...), needs no second call:
+ * the object already names the struct and self is already an explicit
+ * argument, so the first, early check already sees the right shape.) */
+static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
+    AstNode *node, FuncSig *csig, unsigned long long reported_arg) {
+    if (!csig) return;
+    int argc = node->data.call.arg_count;
+    ensure_escape_summary(checker, csig);
+    for (int a = 0; a < argc && a < csig->param_count && a < 64; a++) {
+        signed char pe = csig->param_escape_into[a];
+        if (pe == PARAM_ESCAPE_NONE) continue;
+        if ((reported_arg >> a) & 1) continue;
+        AstNode *arg = node->data.call.args[a];
+        const char *onm = NULL;
+        int od = expression_origin(checker, arg, &onm);
+        if (od <= 0) continue;
+        int sink_depth;
+        const char *sink_name;
+        if (pe == PARAM_ESCAPE_GLOBAL) {
+            sink_depth = 0;
+            sink_name = onm;
+        } else {
+            const char *droot = (pe < argc)
+                ? assignment_target_root_name(node->data.call.args[pe])
+                : NULL;
+            sink_depth = droot
+                ? symbol_scope_depth(checker->current_scope, droot) : 0;
+            sink_name = droot ? droot : onm;
+        }
+        if (od > sink_depth)
+            diagnostic_error_code_formatted(checker->diag, "E3163",
+                NODE_FILE(checker, arg), arg->token.line,
+                arg->token.column, 0, sink_name, onm);
+    }
+    /* Pointer checker: a call to a helper that destroys/resets one of its own
+     * @mem arena parameters applies that same effect to the caller's arena
+     * state here, at the call site — closing the "across a function call" gap
+     * in E3164/E3165/E3166. Only a bare variable argument is traced
+     * (mem.arena() results are always plain locals in practice); anything
+     * else is left alone. */
+    pc_ensure_mem_summary(checker, csig);
+    unsigned long long mem_effect =
+        csig->destroys_param_arena | csig->resets_param_arena;
+    for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
+        if (!(mem_effect & (1ull << a))) continue;
+        AstNode *arg = node->data.call.args[a];
+        if (arg->kind != NODE_LABEL) continue;
+        bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
+        pc_apply_arena_lifecycle(checker, arg->data.label.value, destroys,
+                                 node, func_display_name(csig));
+    }
+}
+
 /* --- #deprecated warning helpers ---
  * Fire W3007 at every genuine reference site (not internal lookup/diagnostic
  * helper calls). Each caller is responsible for only calling these from a
@@ -5764,6 +5834,13 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             }
                         }
                     }
+                    /* E3163 / @mem effects: resolve_call_expr's own copy of
+                     * this check runs before dispatch, so resolve_call_sig()
+                     * could not yet see this call — the object was still the
+                     * instance label, not the struct name, and self had not
+                     * been prepended into args[0]. Now that the rewrite above
+                     * has happened, apply it directly against ssig. */
+                    apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
                 } else if (ssig) {
                     /* Non-self struct function called on an instance.
                      * Rewrite the AST so the member-expr object uses
@@ -5857,6 +5934,10 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 param_desc, fn_display);
                         }
                     }
+                    /* E3163 / @mem effects — see the is_self_func branch
+                     * above for why this must run here rather than in
+                     * resolve_call_expr's own copy of the check. */
+                    apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
                 } else {
                     diagnostic_error_code_formatted(checker->diag, "E4018",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -7552,54 +7633,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, arg), arg->token.line,
                     arg->token.column, 0, dest ? dest : onm, onm);
         }
-        /* user helper whose summary escapes one of its parameters */
-        FuncSig *csig = resolve_call_sig(checker, node);
-        if (csig) {
-            ensure_escape_summary(checker, csig);
-            for (int a = 0; a < argc && a < csig->param_count && a < 64; a++) {
-                signed char pe = csig->param_escape_into[a];
-                if (pe == PARAM_ESCAPE_NONE) continue;
-                if ((reported_arg >> a) & 1) continue;
-                AstNode *arg = node->data.call.args[a];
-                const char *onm = NULL;
-                int od = expression_origin(checker, arg, &onm);
-                if (od <= 0) continue;
-                int sink_depth;
-                const char *sink_name;
-                if (pe == PARAM_ESCAPE_GLOBAL) {
-                    sink_depth = 0;
-                    sink_name = onm;
-                } else {
-                    const char *droot = (pe < argc)
-                        ? assignment_target_root_name(node->data.call.args[pe])
-                        : NULL;
-                    sink_depth = droot
-                        ? symbol_scope_depth(checker->current_scope, droot) : 0;
-                    sink_name = droot ? droot : onm;
-                }
-                if (od > sink_depth)
-                    diagnostic_error_code_formatted(checker->diag, "E3163",
-                        NODE_FILE(checker, arg), arg->token.line,
-                        arg->token.column, 0, sink_name, onm);
-            }
-            /* Pointer checker: a call to a helper that destroys/resets one of
-             * its own @mem arena parameters applies that same effect to the
-             * caller's arena state here, at the call site — closing the
-             * "across a function call" gap in E3164/E3165/E3166. Only a bare
-             * variable argument is traced (mem.arena() results are always
-             * plain locals in practice); anything else is left alone. */
-            pc_ensure_mem_summary(checker, csig);
-            unsigned long long mem_effect =
-                csig->destroys_param_arena | csig->resets_param_arena;
-            for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
-                if (!(mem_effect & (1ull << a))) continue;
-                AstNode *arg = node->data.call.args[a];
-                if (arg->kind != NODE_LABEL) continue;
-                bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
-                pc_apply_arena_lifecycle(checker, arg->data.label.value, destroys,
-                                         node, func_display_name(csig));
-            }
-        }
+        /* user helper whose summary escapes one of its parameters. For
+         * instance dispatch (s.stash(addr(y))) resolve_call_sig() finds
+         * nothing here — dispatch hasn't rewritten the call yet, so the
+         * object is still the instance label, not the struct's type name —
+         * and apply_call_param_escape_and_mem_effects() is a no-op on a NULL
+         * csig; resolve_struct_or_module_call() below calls it a second time
+         * once that rewrite has happened. */
+        apply_call_param_escape_and_mem_effects(checker,
+            node, resolve_call_sig(checker, node), reported_arg);
     }
 
     /* Resolve function return type */
