@@ -1,0 +1,50 @@
+/*
+ * Tests function reference invocation with a pointer-typed parameter.
+ *
+ * The func-ref signature encoder read a parameter's GrayType.name directly
+ * instead of through type_name(), which for a pointer type holds only the
+ * bare pointee ("int" for ^int) — flattening func(^int) to func(int). That
+ * broke both the implicit-typed ref (wrong C cast emitted, a raw compiler
+ * error) and the explicit-typed ref (a bogus func(int) vs func(^int)
+ * mismatch at typecheck).
+ */
+
+do stash(x ^int) -> ^int {
+    return x
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: implicit-typed ref, pointer param
+    const f1 = ()stash
+    mut y1 int = 5
+    mut r1 ^int = f1(addr(y1))
+    if r1^ == 5 {
+        println("  [PASS] implicit-typed func-ref with pointer param")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] implicit-typed func-ref with pointer param: got ${r1^}")
+        failed += 1
+    }
+
+    // Test 2: explicit-typed ref, pointer param and pointer return
+    const f2 func(^int) -> ^int = ()stash
+    mut y2 int = 9
+    mut r2 ^int = f2(addr(y2))
+    if r2^ == 9 {
+        println("  [PASS] explicit-typed func-ref with pointer param")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] explicit-typed func-ref with pointer param: got ${r2^}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

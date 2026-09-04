@@ -9263,8 +9263,14 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
             bool mut_p = (ref_sig->decl && ref_sig->decl->kind == NODE_FUNC_DECL &&
                           i < ref_sig->decl->data.func_decl.param_count &&
                           ref_sig->decl->data.func_decl.params[i].mutable);
-            const char *param_type_name = (ref_sig->param_types[i] && ref_sig->param_types[i]->name)
-                ? ref_sig->param_types[i]->name : "int";
+            /* type_name(), not ->name directly: a pointer/array/map type
+             * stores its bare pointee/element/key-value in ->name (^int's
+             * ->name is "int") — reading it raw here flattened func(^int)
+             * to func(int), so a func-ref call with a pointer argument
+             * either leaked a C compiler error or failed a bogus signature
+             * check against the flattened type. */
+            const char *param_type_name = ref_sig->param_types[i]
+                ? type_name(ref_sig->param_types[i]) : "int";
             int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s%s",
                 i ? "," : "", mut_p ? "&" : "", param_type_name);
             if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
@@ -9275,12 +9281,12 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
             if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
             else buf_len = (int)buffer_size - 1;
         }
-        if (ref_sig->return_count == 1 && ref_sig->return_types[0] &&
-            ref_sig->return_types[0]->name &&
-            strcmp(ref_sig->return_types[0]->name, "void") != 0 &&
+        const char *ret0_tn = (ref_sig->return_count == 1 && ref_sig->return_types[0])
+            ? type_name(ref_sig->return_types[0]) : NULL;
+        if (ret0_tn && strcmp(ret0_tn, "void") != 0 &&
             (size_t)buf_len < buffer_size - 1) {
             int written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "->%s",
-                ref_sig->return_types[0]->name);
+                ret0_tn);
             if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
             else buf_len = (int)buffer_size - 1;
         } else if (ref_sig->return_count > 1 && (size_t)buf_len < buffer_size - 1) {
@@ -9288,8 +9294,8 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
             if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
             else buf_len = (int)buffer_size - 1;
             for (int i = 0; i < ref_sig->return_count && (size_t)buf_len < buffer_size - 1; i++) {
-                const char *return_type_name = (ref_sig->return_types[i] && ref_sig->return_types[i]->name)
-                    ? ref_sig->return_types[i]->name : "int";
+                const char *return_type_name = ref_sig->return_types[i]
+                    ? type_name(ref_sig->return_types[i]) : "int";
                 written = snprintf(buffer + buf_len, buffer_size - (size_t)buf_len, "%s%s",
                     i ? "," : "", return_type_name);
                 if (written > 0 && (size_t)written < buffer_size - (size_t)buf_len) buf_len += written;
