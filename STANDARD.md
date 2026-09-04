@@ -4536,6 +4536,23 @@ mut duplicate = copy(original)
 duplicate.age = 31  // original.age is still 30
 ```
 
+**Pointer fields alias, not copy.** A pointer-typed field is deliberately left pointing at its original referent — `copy()` does not follow it and duplicate the pointee. If a struct holds a pointer into itself (a self-referential field), the copy's field still points at the *original* value, not the copy's own:
+
+```gray
+const Node struct {
+    val int
+    self_ptr ^int
+}
+
+mut n Node = Node{val: 1}
+n.self_ptr = addr(n.val)
+mut n2 = copy(n)
+n2.val = 999
+println(n2.self_ptr^)  // 1, not 999 - still aliases n.val
+```
+
+This matches pointer-copy semantics in other systems languages. The pointer checker (11.7) still guarantees safety around it: a copy that carries a pointer aliasing its source is tied to the source's lifetime, so it cannot escape to an outer scope while the source is reclaimed.
+
 ### 11.4 Zero Values
 
 The `new()` function allocates a zero-initialized value of any type on the heap arena and returns a pointer to it:
