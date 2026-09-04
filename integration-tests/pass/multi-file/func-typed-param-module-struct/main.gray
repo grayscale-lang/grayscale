@@ -1,0 +1,14 @@
+/*
+ * A func(StructT) -> R parameter written and used entirely within an
+ * imported (non-entry) module failed to type-check: the struct name inside
+ * the func(...) type expression was compared literally ("Rec") against the
+ * mangled name a real function reference resolves to ("lib_Rec"), so the
+ * func-type comparison rejected every call. Covers a single struct param and
+ * a two-struct-param signature.
+ */
+import "./lib"
+
+do main() {
+    println("Results: ${lib.run()} passed, 0 failed")
+    if lib.run() == 2 { println("ALL TESTS PASSED") } otherwise { println("SOME TESTS FAILED") }
+}
