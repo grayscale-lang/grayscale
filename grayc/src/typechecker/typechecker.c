@@ -6140,6 +6140,16 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
                                 tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, pmsg));
                             }
+                            /* E3019: an argument that crosses signedness vs the
+                             * parameter needs a cast. resolve_call_expr's own
+                             * copy of this check could not see this call —
+                             * dispatch had not yet rewritten the object from
+                             * the instance label to the struct name. */
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                                check_signedness_crossing(checker,
+                                    ssig->decl->data.func_decl.params[argument_index].type_name,
+                                    node->data.call.args[argument_index], arg_t,
+                                    node->data.call.args[argument_index]);
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -6254,6 +6264,14 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                     argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
                                 tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, amsg));
                             }
+                            /* E3019: an argument that crosses signedness vs the
+                             * parameter needs a cast — same gap as the
+                             * is_self_func branch above. */
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                                check_signedness_crossing(checker,
+                                    ssig->decl->data.func_decl.params[argument_index].type_name,
+                                    node->data.call.args[argument_index], arg_t,
+                                    node->data.call.args[argument_index]);
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
