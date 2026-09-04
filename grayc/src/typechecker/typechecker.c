@@ -12359,6 +12359,34 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     if (umod) {
                         apply_stdlib_call_returns(checker, node->data.var_decl.name,
                                                   umod, fn->data.label.value);
+                    } else {
+                        /* Not a declared function either — maybe a func-typed
+                         * local or parameter holding a multi-return callback
+                         * (`mut a, b = f(n)` where f is `func(T)->(R1,R2)`).
+                         * find_func() only matches real declarations, so this
+                         * temp's ret_types was left unset, and any .v1+ access
+                         * on it read back as "the function returns only 1
+                         * value" regardless of the callback's real signature. */
+                        Symbol *callee_sym = scope_lookup(checker->current_scope,
+                            fn->data.label.value);
+                        if (callee_sym && callee_sym->type &&
+                            callee_sym->type->kind == TK_FUNCTION &&
+                            callee_sym->type->func_sig &&
+                            callee_sym->type->func_sig->return_count > 1) {
+                            GrayFuncSig *fsig = callee_sym->type->func_sig;
+                            Symbol *sym = scope_lookup_local(checker->current_scope,
+                                node->data.var_decl.name);
+                            if (sym) {
+                                GrayType **slots = xmalloc(sizeof(GrayType *) * (size_t)fsig->return_count);
+                                for (int return_index = 0; return_index < fsig->return_count; return_index++) {
+                                    slots[return_index] = typechecker_type_from_name(checker,
+                                        fsig->return_types[return_index]);
+                                }
+                                sym->ret_types = slots;
+                                sym->ret_count = fsig->return_count;
+                                sym->ret_types_owned = true;
+                            }
+                        }
                     }
                 }
                 if (sig && sig->return_count > 1) {
