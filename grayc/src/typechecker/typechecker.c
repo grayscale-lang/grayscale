@@ -1932,6 +1932,16 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
         break;
     }
     if (node->kind != NODE_CALL_EXPR) return;
+    if (is_tagged_enum_variant_call(checker, node)) {
+        /* Enum.Variant(args): same treatment as a struct/array/map literal
+         * above — see pc_mem_pointer_in_expr's identical case. */
+        for (int i = 0; i < node->data.call.arg_count; i++) {
+            unsigned long long d = 0, f = 0;
+            pc_return_expr_mem_bits(checker, fs, node->data.call.args[i], &d, &f);
+            *out_field |= d | f;
+        }
+        return;
+    }
     const char *fn = NULL, *arena = NULL;
     if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
@@ -13884,6 +13894,24 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         *out_via_field = false;
         return true;
     }
+    if (value->kind == NODE_CALL_EXPR && is_tagged_enum_variant_call(checker, value)) {
+        /* Enum.Variant(args) / .Variant(args): the payload is a value
+         * carrier exactly like a struct/array/map literal — a mem-bound
+         * pointer in one of its arguments is buried in the enum value, not
+         * the enum value itself. Resolves to no FuncSig, so it needs this
+         * recognizer rather than falling into the generic call-forwarding
+         * branch below and finding nothing (mirrors container_literal_origin
+         * treating a tagged-enum construction as a literal for the escape
+         * checker). */
+        bool inner_via_field = false;
+        for (int i = 0; i < value->data.call.arg_count; i++)
+            if (pc_mem_pointer_in_expr(checker, value->data.call.args[i],
+                                       out_arena, out_epoch, &inner_via_field)) {
+                *out_via_field = true;
+                return true;
+            }
+        return false;
+    }
     if (value->kind == NODE_CALL_EXPR) {
         /* A call to a user function that itself returns a @mem pointer
          * forwarded from one of its own arena parameters — directly
@@ -15266,6 +15294,31 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                         for (int bi = 0; bi < limit; bi++) {
                             GrayType *bt = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][bi]);
                             scope_define(checker->current_scope, val_i->data.when_pattern.bindings[bi], bt, false);
+                        }
+                        /* Pointer checker: if the when-subject carries a
+                         * buried @mem pointer (field_mem_arena — set when it
+                         * was constructed as Enum.Variant(mem.alloc(a,...)))
+                         * , a payload binding here becomes that bare pointer
+                         * once destructured — bind it the same way a var-decl
+                         * would. Applied to every binding, since a payload
+                         * position isn't individually tracked; the same
+                         * single-slot approximation field_mem_arena already
+                         * makes for a struct's fields. */
+                        {
+                            const char *subj_root = assignment_target_root_name(
+                                node->data.when_stmt.value);
+                            Symbol *subj_sym = subj_root
+                                ? scope_lookup(case_outer, subj_root) : NULL;
+                            if (subj_sym && subj_sym->field_mem_arena) {
+                                for (int bi = 0; bi < limit; bi++) {
+                                    Symbol *bsym = scope_lookup_local(checker->current_scope,
+                                        val_i->data.when_pattern.bindings[bi]);
+                                    if (bsym) {
+                                        bsym->mem_arena = subj_sym->field_mem_arena;
+                                        bsym->mem_epoch = subj_sym->field_mem_epoch;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

@@ -2272,6 +2272,46 @@ static void test_no_false_positive_mem_return_forwarded_in_literal_read_before(v
     diagnostic_destroy(diagnostics);
 }
 
+/* A @mem pointer buried in a tagged-enum payload (Box.Full(mem.alloc(a,x)))
+ * was untracked two ways at once: pc_mem_pointer_in_expr() didn't recognize
+ * an enum-variant construction as a container the way it already does a
+ * struct/array/map literal, and even if the enum value itself carried
+ * field_mem_arena, when/is pattern binding never propagated it to the
+ * destructured payload variable. */
+static void test_error_E3164_mem_use_after_destroy_tagged_enum_payload(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
+        "  mem.destroy(a)\n"
+        "  when b {\n"
+        "    is Box.Full(p) { println(p^) }\n"
+        "    default {}\n"
+        "  }\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
+        "  when b {\n"
+        "    is Box.Full(p) { println(p^) }\n"
+        "    default {}\n"
+        "  }\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2979,6 +3019,8 @@ int main(void) {
     RUN_TEST(test_no_false_positive_mem_cross_function_field_destroy_read_before);
     RUN_TEST(test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal);
     RUN_TEST(test_no_false_positive_mem_return_forwarded_in_literal_read_before);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_tagged_enum_payload);
+    RUN_TEST(test_no_false_positive_mem_tagged_enum_payload_read_before_destroy);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
