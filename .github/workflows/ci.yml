@@ -39,6 +39,12 @@ jobs:
       - name: Build
         run: make build
 
+      - name: Check diagnostic error codes
+        run: |
+          ./grayc/grayc scripts/check_error_codes.gray
+          ./check_error_codes
+          rm -f ./check_error_codes
+
       - name: Run gray verify
         run: ./gray verify
 
