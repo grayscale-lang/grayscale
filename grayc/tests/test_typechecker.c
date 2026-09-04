@@ -2338,6 +2338,45 @@ static void test_error_E3163_addr_scope_mismatch(void) {
     diagnostic_destroy(diagnostics);
 }
 
+static void test_error_E3163_addr_escapes_through_func_ref_call(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "mut GLOBAL ^int = nil\n"
+        "do stash(x ^int) {\n"
+        "  GLOBAL = x\n"
+        "}\n"
+        "do capture() {\n"
+        "  const f = ()stash\n"
+        "  mut y int = 12\n"
+        "  f(addr(y))\n"
+        "}\n"
+        "do main() { capture() }");
+    ASSERT(has_error_code(diagnostics, "E3163"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A func-typed parameter's call (`f(p)` where `f func(T) -> T`) has no
+ * FuncSig, so its escape-summary walk falls back to consulting the call's
+ * already-resolved type via typetable_get() rather than resolving it fresh —
+ * resolving it fresh would run against whatever scope happens to be live
+ * when the summary is first requested (often a different, unrelated
+ * function's), misreporting the parameter and its argument as undefined. */
+static void test_no_false_positive_func_param_call_forward_reference(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const Pair struct {\n a int\n b int\n}\n"
+        "do double_pair(p Pair) -> Pair {\n"
+        "  return Pair{a: p.a * 2, b: p.b * 2}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut r = apply_pair(()double_pair, Pair{a: 1, b: 2})\n"
+        "  println(r.a)\n"
+        "}\n"
+        "do apply_pair(f func(Pair) -> Pair, p Pair) -> Pair {\n"
+        "  return f(p)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
 int main(void) {
     arena = arena_create(256 * 1024);
     printf("\n");
@@ -2645,6 +2684,8 @@ int main(void) {
     RUN_TEST(test_error_E3102_func_return_to_var);
     RUN_TEST(test_error_E3122_addr_const_var);
     RUN_TEST(test_error_E3163_addr_scope_mismatch);
+    RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_call);
+    RUN_TEST(test_no_false_positive_func_param_call_forward_reference);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

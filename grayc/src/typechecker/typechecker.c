@@ -1195,8 +1195,21 @@ static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
     if (!call || call->kind != NODE_CALL_EXPR) return NULL;
     AstNode *fn = call->data.call.function;
     if (!fn) return NULL;
-    if (fn->kind == NODE_LABEL)
-        return find_func(checker, fn->data.label.value);
+    if (fn->kind == NODE_LABEL) {
+        FuncSig *direct = find_func(checker, fn->data.label.value);
+        if (direct) return direct;
+        /* A call through a func-ref variable (`const f = ()target; f(...)`,
+         * or `ref(target)`) dispatches to `target`, not to a function named
+         * "f" — resolve through Symbol.func_ref_name so the escape and @mem
+         * summaries still apply across the indirection. A func-ref call
+         * passes its arguments 1:1 (no implicit receiver is inserted), so
+         * the resolved callee's param indices line up with this call's
+         * arg indices exactly as they would for a direct call. */
+        Symbol *sym = scope_lookup(checker->current_scope, fn->data.label.value);
+        if (sym && sym->func_ref_name)
+            return find_func(checker, sym->func_ref_name);
+        return NULL;
+    }
     if (fn->kind == NODE_MEMBER_EXPR &&
         fn->data.member.object &&
         fn->data.member.object->kind == NODE_LABEL)
@@ -1348,8 +1361,21 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
              * stdlib_call_arg_origin backstops for pointer_origin_of /
              * container_literal_origin, in this function's own bitmask
              * terms. Gated the same way: only when the call's own result
-             * could structurally carry a pointer. */
-            GrayType *rt = resolve_expression(checker, node);
+             * could structurally carry a pointer.
+             *
+             * A summary is computed lazily, on demand from whichever call
+             * site first needs it — e.g. from a caller textually earlier in
+             * the file, whose own body is what's actively being checked and
+             * whose scope is therefore live on checker->current_scope. This
+             * walk is structural precisely so it never needs a live scope
+             * for *this* function's own body; calling resolve_expression()
+             * here would resolve `node` (e.g. a func-typed-parameter call
+             * `f(p)`) against the wrong function's scope and misreport `f`
+             * and `p` as undefined. typetable_get() is a plain lookup: it
+             * returns the type if this exact node was already resolved
+             * during a properly-scoped pass over this function's own body,
+             * and NULL — a safe "unknown, no bit set" — otherwise. */
+            GrayType *rt = typetable_get(checker->type_table, node);
             if (!rt || !(rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
                          rt->kind == TK_ARRAY || rt->kind == TK_MAP))
                 return 0;
