@@ -1807,17 +1807,28 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
         }
         break;
     case NODE_CALL_EXPR:
-        /* Enum.Variant(args) / .Variant(args): the payload is a value carrier
-         * exactly like a struct/array/map literal, but resolves to no FuncSig
-         * so it needs its own recognizer rather than falling into a normal
-         * call's lookup. Anything else here is an ordinary call, which
-         * pointer_origin_of (not this function) already tracks through its
-         * own return-address summary. */
-        if (!is_tagged_enum_variant_call(checker, node)) return 0;
-        for (int i = 0; i < node->data.call.arg_count; i++) {
-            const char *nm = NULL;
-            int d = expression_origin(checker, node->data.call.args[i], &nm);
-            if (d > best) { best = d; best_name = nm; }
+        if (is_tagged_enum_variant_call(checker, node)) {
+            /* Enum.Variant(args) / .Variant(args): the payload is a value
+             * carrier exactly like a struct/array/map literal, but resolves
+             * to no FuncSig so it needs its own recognizer rather than
+             * falling into a normal call's lookup. */
+            for (int i = 0; i < node->data.call.arg_count; i++) {
+                const char *nm = NULL;
+                int d = expression_origin(checker, node->data.call.args[i], &nm);
+                if (d > best) { best = d; best_name = nm; }
+            }
+        } else {
+            /* An ordinary call whose result may carry one of its own
+             * arguments' address (the callee's returns_param_addr summary,
+             * via call_result_origin — pointer_origin_of already returns the
+             * same thing for a bare `p = f(...)`). Recorded here too so a
+             * multi-return temp's per-slot reads see it: `p, n = f(...)`
+             * desugars to `_tmp = f(...); p = _tmp.v0; n = _tmp.v1`, and the
+             * second statement's value is a NODE_MEMBER_EXPR whose origin
+             * lookup (pointer_origin_of's NODE_MEMBER_EXPR case) consults
+             * field_origin_depth — this function's result — not origin_depth,
+             * which only the first statement's plain call expression sets. */
+            best = call_result_origin(checker, node, &best_name);
         }
         break;
     default:

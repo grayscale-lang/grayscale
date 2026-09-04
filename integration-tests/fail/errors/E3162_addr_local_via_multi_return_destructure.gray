@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3162 - addr() of a local, forwarded through a multi-return
+ * call and pulled back out by destructuring, then returned.
+ *
+ * `mut p, n = forward2(addr(y), 1)` desugars to a temp holding the call
+ * result, then `p = _tmp.v0`; the temp's origin must still reach p through
+ * that per-slot member read.
+ */
+
+do forward2(x ^int, n int) -> (^int, int) {
+    return x, n
+}
+
+do make() -> ^int {
+    mut y int = 9
+    mut p, n = forward2(addr(y), 1)
+    return p
+}
+
+do main() {
+    mut r ^int = make()
+    println(r^)
+}

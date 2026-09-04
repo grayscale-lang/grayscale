@@ -1,0 +1,24 @@
+/*
+ * Error Test: E3163 - addr() of a local, forwarded through a multi-return
+ * call and pulled back out by destructuring, then stored into a global.
+ *
+ * Same desugaring gap as the return-sink form: the destructured slot must
+ * still carry the temp's origin so storing it into GLOBAL is caught.
+ */
+
+do forward2(x ^int, n int) -> (^int, int) {
+    return x, n
+}
+
+mut GLOBAL ^int = nil
+
+do set() {
+    mut y int = 3
+    mut p, n = forward2(addr(y), 1)
+    GLOBAL = p
+}
+
+do main() {
+    set()
+    println(GLOBAL^)
+}
