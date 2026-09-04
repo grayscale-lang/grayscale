@@ -8217,11 +8217,34 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             }
             if (ref_func) target_func = ref_func;
         }
-        /* Return type: typed_sig wins, else fall back to call-node type table */
+        /* Return type: typed_sig wins, else fall back to call-node type table.
+         * Multi-return needs an inline anonymous struct with v0,v1,...
+         * fields — the same layout emit_multi_return_typedef() gives every
+         * concrete function's own named GrayMulti_<name>. The callee is an
+         * erased function pointer, so there is no single named typedef to
+         * reuse here; an unnamed struct with matching field order and types
+         * is layout-identical to whatever real function's GrayMulti_ struct
+         * actually comes back, and the destructuring .v0/.v1 access below
+         * reads it the same way either way. */
+        char multi_ret_buf[MSG_BUF_SIZE];
         const char *c_ret = "int64_t";
         if (typed_sig) {
-            if (typed_sig->return_count == 0) c_ret = "void";
-            else c_ret = gray_type_to_c_codegen(codegen, typed_sig->return_types[0]);
+            if (typed_sig->return_count == 0) {
+                c_ret = "void";
+            } else if (typed_sig->return_count == 1) {
+                c_ret = gray_type_to_c_codegen(codegen, typed_sig->return_types[0]);
+            } else {
+                int pos = snprintf(multi_ret_buf, sizeof(multi_ret_buf), "struct {");
+                for (int i = 0; i < typed_sig->return_count && pos > 0 &&
+                     (size_t)pos < sizeof(multi_ret_buf); i++) {
+                    int written = snprintf(multi_ret_buf + pos, sizeof(multi_ret_buf) - (size_t)pos,
+                        " %s v%d;", gray_type_to_c_codegen(codegen, typed_sig->return_types[i]), i);
+                    pos = (written > 0) ? pos + written : -1;
+                }
+                if (pos > 0 && (size_t)pos < sizeof(multi_ret_buf))
+                    snprintf(multi_ret_buf + pos, sizeof(multi_ret_buf) - (size_t)pos, " }");
+                c_ret = multi_ret_buf;
+            }
         } else {
             GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
             if (ret_t && ret_t->kind != TK_UNKNOWN) c_ret = gray_type_to_c_codegen(codegen, type_name(ret_t));

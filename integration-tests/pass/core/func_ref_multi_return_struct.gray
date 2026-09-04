@@ -1,0 +1,57 @@
+/*
+ * func_ref_multi_return_struct.gray
+ * Calling through a func(T) -> (R1, R2) parameter (a func reference passed
+ * as a callback) crashed C compilation: the function-pointer cast codegen
+ * built for the call used only the first return type, so the callee's real
+ * multi-value struct return (GrayMulti_<name>) got truncated to a single
+ * value and the destructuring .v0/.v1 access failed with "no member named
+ * 'v0'". Covers a two-value multi-return where one value is a struct.
+ */
+
+const Rec struct {
+    n int
+}
+
+do split(r Rec) -> (Rec, int) {
+    return r, r.n
+}
+
+do combine(a Rec, b Rec) -> bool {
+    return a.n == b.n
+}
+
+do call_split(r Rec, f func(Rec) -> (Rec, int)) -> int {
+    mut r2, n = f(r)
+    return n + r2.n
+}
+
+do call_pred(a Rec, b Rec, pred func(Rec, Rec) -> bool) -> bool {
+    return pred(a, b)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut r Rec = Rec{n: 5}
+    if call_split(r, ()split) == 10 {
+        println("  [PASS] func-ref call through multi-return callback")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] func-ref call through multi-return callback: got ${call_split(r, ()split)}, expected 10")
+        failed += 1
+    }
+
+    mut a Rec = Rec{n: 5}
+    mut b Rec = Rec{n: 5}
+    if call_pred(a, b, ()combine) {
+        println("  [PASS] func-ref call through multi-param callback still works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] func-ref call through multi-param callback")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}
