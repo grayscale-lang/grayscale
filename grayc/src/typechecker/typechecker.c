@@ -1601,12 +1601,22 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
         /* returns_param_addr matters only when the return value can carry a
-         * pointer: a pointer, or an aggregate that may hold one. */
+         * pointer: a pointer, or an aggregate that may hold one. A `?` return
+         * slot resolves to TK_UNKNOWN here — there is no call-site binding
+         * yet to give it a concrete kind — but real call sites bind it to
+         * pointer/aggregate types constantly, so check the slot's declared
+         * name for a wildcard too; otherwise a wildcard-return function's
+         * summary is never computed and forwarding a pointer through it
+         * hides the escape from both E3162 and E3163. */
         bool escapable_ret = false;
+        int decl_ret_count = fs->decl->data.func_decl.return_type_count;
         for (int i = 0; i < fs->return_count; i++) {
             GrayType *rt = fs->return_types[i];
             if (rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
                        rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+                escapable_ret = true;
+            else if (i < decl_ret_count &&
+                     type_name_has_wildcard(fs->decl->data.func_decl.return_types[i]))
                 escapable_ret = true;
         }
         if (escapable_ret)
