@@ -2147,7 +2147,7 @@ const List struct {
 
 **Rules:**
 
-- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
+- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2094).
 - `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
 
 #### 7.5.4 `#deprecated` Attribute
@@ -2196,7 +2196,7 @@ const Container struct {
 
 **Rules:**
 
-- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2002).
+- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2094).
 - The message argument, when present, must be a string literal: `#deprecated("...")`.
 - A deprecated function's own recursive calls to itself do not trigger the warning, and code inside a deprecated struct's own struct-functions can reference that struct's type without warning. A struct-function calling a *different* deprecated struct-function or referencing a *different* deprecated type still warns normally.
 - Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
@@ -2243,7 +2243,7 @@ fails or any file fails to compile.
 **Rules:**
 
 - `#test` can only be applied to top-level function declarations. Applying it to
-  a struct function, enum, variable, or anything else is a parse error (E2002).
+  a struct function, enum, variable, or anything else is a parse error (E2094).
 - A `#test` function must take no parameters and declare no return type (E5046).
 - A `#test` function cannot be called or referenced from other code (E5047) —
   it is invoked only by the test runner. Factor shared logic into a normal
@@ -2284,9 +2284,9 @@ do something() { }
 - Every entry is validated against the following declaration exactly as if it
   had been stacked: order is irrelevant, a repeated attribute is E2090, and a
   misapplied attribute produces the same error the stacked form would (e.g.
-  `#[json]` on a function is E2002).
+  `#[json]` on a function is E2094).
 - The container and the stacked form may be mixed on the same declaration.
-- Not supported on struct functions yet — stack the attributes there (E2002).
+- Not supported on struct functions yet — stack the attributes there (E2094).
 
 ### 7.6 Function References
 
@@ -3136,8 +3136,8 @@ assert(connected)  // message is optional
 `assert()` is a global builtin — no import required.
 
 **Rules:**
-- The condition must be a `bool`. Passing a non-bool is a compile-time error (E3001).
-- The optional message must be a `string`. Passing any other type is a compile-time error (E3001).
+- The condition must be a `bool`. Passing a non-bool is a compile-time error (E5026).
+- The optional message must be a `string`. Passing any other type is a compile-time error (E5026).
 - If the condition is `true`, the program continues normally. `assert()` has no return value.
 
 **Runtime error code:** `P0075`
