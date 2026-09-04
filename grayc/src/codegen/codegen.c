@@ -9104,18 +9104,24 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         return;
     }
 
-    if (!node->data.var_decl.mutable) {
-        if (type_name && type_name[0] == '^') {
-            /* const pointer: T * const p — the pointer is immutable, not the
-             * pointed-to data.  Placing const before the type would produce
-             * const T * p (pointer to const T), which incorrectly propagates
-             * the const qualifier through dereferences and field accesses. */
-            emit_formatted(codegen, "%s const %s", c_type, sanitize_name(node->data.var_decl.name));
-        } else {
-            emit(codegen, "const ");
-            emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
-        }
+    if (!node->data.var_decl.mutable && type_name && type_name[0] == '^') {
+        /* const pointer: T * const p — the pointer is immutable, not the
+         * pointed-to data.  Placing const before the type would produce
+         * const T * p (pointer to const T), which incorrectly propagates
+         * the const qualifier through dereferences and field accesses. */
+        emit_formatted(codegen, "%s const %s", c_type, sanitize_name(node->data.var_decl.name));
     } else {
+        /* Non-pointer const-declared variables are deliberately NOT emitted
+         * as C `const`. Grayscale enforces write-through-pointer protection
+         * for const sources at the typechecker level (E3122), and raw()
+         * deliberately bypasses that protection (STANDARD 3.1.11). Writing
+         * through a pointer cast away from a C `const` object is undefined
+         * behavior — an optimizing compiler is free to assume the object
+         * never changes and fold reads of it, which is exactly what -O2
+         * does to a `const` global: the raw()-write silently has no visible
+         * effect instead of taking effect as documented. Leaving the C
+         * storage mutable keeps raw()'s write well-defined; Grayscale's own
+         * const protection is already enforced without help from C's. */
         emit_formatted(codegen, "%s %s", c_type, sanitize_name(node->data.var_decl.name));
     }
 
