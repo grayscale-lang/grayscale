@@ -11811,8 +11811,12 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                         codegen->c_header_cap);
                     codegen->c_headers[codegen->c_header_count++] = item->path;
                 }
-                /* Track all imported module names */
-                if (item->module) {
+                /* Track imported stdlib module names — codegen_module_imported()
+                 * is a stdlib-only lookup; a user module's membership comes from
+                 * the symbol table instead (see its resolved_decl callers), so
+                 * one leaking in here falsely matches a user function's
+                 * module-qualified call as a stdlib call. */
+                if (item->is_stdlib && item->module) {
                     const char *mname = item->alias ? item->alias : item->module;
                     GROW_ARRAY(codegen->imported_modules, codegen->imported_module_count,
                         codegen->imported_module_cap);

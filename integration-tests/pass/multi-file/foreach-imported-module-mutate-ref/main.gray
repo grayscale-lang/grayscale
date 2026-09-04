@@ -1,0 +1,36 @@
+/*
+ * for_each calling an imported-module function that mutates an array element
+ * by reference (&) ran the call in the per-iteration arena instead of the
+ * loop's outer arena. The heap-backed field the call wrote (items, a [string])
+ * was freed with the iteration arena; a later cross-module call that reuses
+ * the freed page (vis(), matching the reported repro) then reads corrupted
+ * data or crashes.
+ */
+import @arrays
+import "./box"
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut boxes [box.Box] = {}
+    arrays.append(boxes, box.Box{id: 0})
+    arrays.append(boxes, box.Box{id: 1})
+    arrays.append(boxes, box.Box{id: 2})
+
+    for_each i, _ in boxes { box.fill(boxes[i]) }
+
+    for_each i, _ in boxes {
+        mut b box.Box = boxes[i]
+        mut rows [string] = box.vis(b, 5)
+        if len(rows) == 3 && rows[0] == "alpha" && rows[1] == "beta" && rows[2] == "gamma" {
+            passed += 1
+        } otherwise {
+            println("  [FAIL] box ${b.id}: rows=${rows}")
+            failed += 1
+        }
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}
