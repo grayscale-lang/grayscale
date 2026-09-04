@@ -138,6 +138,18 @@ typedef struct {
     unsigned long long destroys_param_arena;
     unsigned long long resets_param_arena;
 
+    /* returns_param_mem_alloc[i]: bit i set if some `return` in this
+     * function's body yields a @mem pointer allocated from the arena named
+     * by parameter i — `return mem.alloc(a, x)` / `mem.init(a, T)`
+     * (directly, through a local variable initialised from one, or
+     * forwarded through another summarised call). Lets a call site
+     * (pc_bind_mem_pointer) bind the result to the *caller's* arena
+     * variable at that parameter position, the same way returns_param_addr
+     * lets a return value's escape origin follow a pointer parameter
+     * through a call. Computed alongside destroys_param_arena in the same
+     * pc_mem_walk() pass. */
+    unsigned long long returns_param_mem_alloc;
+
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;

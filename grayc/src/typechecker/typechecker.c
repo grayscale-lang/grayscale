@@ -959,6 +959,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
+    fs->returns_param_mem_alloc = 0;
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1837,6 +1838,82 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
     }
 }
 
+/* bitmask: bit i set if return-value expression `node` yields a @mem pointer
+ * allocated from the arena named by `fs`'s parameter i — mem.alloc(a, x) /
+ * mem.init(a, T) directly, through a local variable declared from one, or
+ * forwarded through another summarised call's own returns_param_mem_alloc.
+ * Mirrors return_expr_param_bits' shape, for arena allocation instead of
+ * pointer escape. */
+static unsigned long long pc_return_expr_mem_bits(TypeChecker *checker,
+                                                   FuncSig *fs, AstNode *node) {
+    if (!node || !fs->decl) return 0;
+    if (node->kind == NODE_LABEL) {
+        AstNode *init = local_initializer(fs->decl->data.func_decl.body,
+                                          node->data.label.value);
+        return (init && init != node) ? pc_return_expr_mem_bits(checker, fs, init) : 0;
+    }
+    if (node->kind != NODE_CALL_EXPR) return 0;
+    const char *fn = NULL, *arena = NULL;
+    int pc = fs->decl->data.func_decl.param_count;
+    if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+        (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
+        unsigned long long bits = 0;
+        for (int i = 0; i < pc && i < 64; i++) {
+            const char *pn = fs->decl->data.func_decl.params[i].name;
+            if (pn && strcmp(pn, arena) == 0) bits |= 1ull << i;
+        }
+        return bits;
+    }
+    FuncSig *callee = resolve_call_sig_in_body(checker, fs->decl->data.func_decl.body, node);
+    if (!callee || callee == fs) return 0;
+    pc_ensure_mem_summary(checker, callee);
+    unsigned long long bits = 0;
+    for (int k = 0; k < callee->param_count &&
+                    k < node->data.call.arg_count && k < 64; k++) {
+        if (!(callee->returns_param_mem_alloc & (1ull << k))) continue;
+        AstNode *arg = node->data.call.args[k];
+        if (arg->kind != NODE_LABEL) continue;
+        for (int i = 0; i < pc && i < 64; i++) {
+            const char *pn = fs->decl->data.func_decl.params[i].name;
+            if (pn && strcmp(pn, arg->data.label.value) == 0) bits |= 1ull << i;
+        }
+    }
+    return bits;
+}
+
+/* OR together pc_return_expr_mem_bits() over every `return` reachable in a
+ * statement subtree. Mirrors return_stmt_param_bits. */
+static unsigned long long pc_return_stmt_mem_bits(TypeChecker *checker,
+                                                   FuncSig *fs, AstNode *node) {
+    if (!node) return 0;
+    unsigned long long bits = 0;
+    switch (node->kind) {
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            bits |= pc_return_expr_mem_bits(checker, fs, node->data.return_stmt.values[i]);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            bits |= pc_return_stmt_mem_bits(checker, fs, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.consequence);
+        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            bits |= pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.cases[i].body);
+        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:      bits |= pc_return_stmt_mem_bits(checker, fs, node->data.for_stmt.body); break;
+    case NODE_FOR_EACH_STMT: bits |= pc_return_stmt_mem_bits(checker, fs, node->data.for_each.body); break;
+    case NODE_WHILE_STMT:    bits |= pc_return_stmt_mem_bits(checker, fs, node->data.while_stmt.body); break;
+    case NODE_LOOP_STMT:     bits |= pc_return_stmt_mem_bits(checker, fs, node->data.loop_stmt.body); break;
+    default: break;
+    }
+    return bits;
+}
+
 /* Lazily compute and memoise `fs`'s cross-function @mem summary. Mirrors
  * ensure_escape_summary: a function caught mid-computation (recursion) is
  * left with whatever partial summary it has — conservative, never a false
@@ -1846,10 +1923,13 @@ static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
     fs->mem_state = 1;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
+    fs->returns_param_mem_alloc = 0;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
-    if (body && fs->decl->data.func_decl.param_count <= 64)
+    if (body && fs->decl->data.func_decl.param_count <= 64) {
         pc_mem_walk(checker, fs, body);
+        fs->returns_param_mem_alloc = pc_return_stmt_mem_bits(checker, fs, body);
+    }
     fs->mem_state = 2;
 }
 
@@ -13548,6 +13628,28 @@ static ArenaLifetime *pc_arena_ensure(TypeChecker *checker, const char *name) {
  * arena named by a bare variable: mem.arena / mem.init / mem.alloc / mem.reset
  * / mem.destroy, written `mem.fn(a, ...)` or bare `fn(a, ...)` under `using
  * mem`. For mem.arena(size) *out_arena is NULL (arg 0 is a size). */
+/* A stable string key for an arena-handle expression: a bare variable name
+ * ("a"), or a dotted field-access chain reaching one buried in a struct
+ * ("h.a", "h.inner.a"). Used as ArenaLifetime.name and Symbol.mem_arena /
+ * field_mem_arena alike — every consumer treats an arena's identity as an
+ * opaque string, so a struct-field handle needs nothing more than a key
+ * that's stable and distinct from any other arena's. Only a plain field
+ * chain is recognized (no array index, no pointer deref) — the common case
+ * an arena struct field actually takes; anything else returns NULL rather
+ * than risk two different arenas colliding on the same key. */
+static const char *pc_arena_path_key(TypeChecker *checker, AstNode *expr) {
+    if (!expr) return NULL;
+    if (expr->kind == NODE_LABEL) return expr->data.label.value;
+    if (expr->kind == NODE_MEMBER_EXPR) {
+        const char *base = pc_arena_path_key(checker, expr->data.member.object);
+        if (!base || !expr->data.member.member) return NULL;
+        char buf[MSG_BUF_SIZE];
+        snprintf(buf, sizeof(buf), "%s.%s", base, expr->data.member.member);
+        return arena_copy_string(checker->arena, buf);
+    }
+    return NULL;
+}
+
 static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
                            const char **out_fn, const char **out_arena) {
     if (!call || call->kind != NODE_CALL_EXPR || call->data.call.arg_count < 1)
@@ -13573,9 +13675,9 @@ static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
         return false;
     *out_fn = fname;
     if (strcmp(fname, "arena") == 0) { *out_arena = NULL; return true; }
-    AstNode *arg0 = call->data.call.args[0];
-    if (arg0->kind != NODE_LABEL) return false;
-    *out_arena = arg0->data.label.value;
+    const char *key = pc_arena_path_key(checker, call->data.call.args[0]);
+    if (!key) return false;
+    *out_arena = key;
     return true;
 }
 
@@ -13678,6 +13780,33 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         *out_arena = arena;
         *out_epoch = a->epoch;
         return true;
+    }
+    if (value->kind == NODE_CALL_EXPR) {
+        /* A call to a user function that itself returns a @mem pointer
+         * forwarded from one of its own arena parameters — `do make(a
+         * Arena) -> ^int { return mem.alloc(a, 1) }` called as `p =
+         * make(a)`. resolve_call_sig() (not the _in_body variant: this
+         * runs during the caller's own live Pass-2 walk, so
+         * checker->current_scope is this call's real scope) plus the
+         * callee's returns_param_mem_alloc summary say which of *this*
+         * call's arguments names the arena; binding to that argument's own
+         * live epoch (not the callee's, which the callee's own frame no
+         * longer exists to hold) is what lets a destroy the caller performs
+         * after the call still be seen. */
+        FuncSig *callee = resolve_call_sig(checker, value);
+        if (!callee) return false;
+        pc_ensure_mem_summary(checker, callee);
+        for (int k = 0; k < callee->param_count &&
+                        k < value->data.call.arg_count && k < 64; k++) {
+            if (!(callee->returns_param_mem_alloc & (1ull << k))) continue;
+            AstNode *arg = value->data.call.args[k];
+            if (arg->kind != NODE_LABEL) continue;
+            ArenaLifetime *a = pc_arena_get(checker, arg->data.label.value);
+            *out_arena = arg->data.label.value;
+            *out_epoch = a ? a->epoch : 0;
+            return true;
+        }
+        return false;
     }
     if (value->kind == NODE_LABEL) {
         Symbol *src = scope_lookup(checker->current_scope, value->data.label.value);

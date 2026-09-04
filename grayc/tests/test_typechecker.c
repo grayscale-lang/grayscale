@@ -2110,6 +2110,90 @@ static void test_no_false_positive_mem_struct_field_read_before_destroy(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* pc_mem_pointer_in_expr() only recognized a direct mem.init()/mem.alloc()
+ * call, a bare-variable alias, or one buried in a struct/array/map literal
+ * — a pointer returned by a *called* function that itself forwards its own
+ * mem.alloc()/mem.init() result was invisible, so the caller's variable
+ * never got bound to the arena at all. */
+static void test_error_E3164_mem_use_after_destroy_return_forwarded(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> ^int {\n"
+        "  return mem.alloc(a, 42)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_return_forwarded_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> ^int {\n"
+        "  return mem.alloc(a, 42)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = make(a)\n"
+        "  println(p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_is_mem_call() only recognized an arena named by a bare variable — a
+ * struct field holding the arena handle (`mem.destroy(h.a)`) was invisible
+ * to the whole @mem tracker: neither the pointer bound from it nor the
+ * destroy itself were tracked at all. pc_arena_path_key() generalizes the
+ * arena's identity to a dotted field-access key so the rest of the tracker
+ * (unchanged) treats "h.a" as it would any other arena name. */
+static void test_error_E3164_mem_use_after_destroy_arena_in_struct_field(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mem.destroy(h.a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3166_mem_destroy_arena_in_struct_field_twice(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mem.destroy(h.a)\n"
+        "  mem.destroy(h.a)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_arena_in_struct_field_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  println(p^)\n"
+        "  mem.destroy(h.a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2808,6 +2892,11 @@ int main(void) {
     RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_literal);
     RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_assign);
     RUN_TEST(test_no_false_positive_mem_struct_field_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_return_forwarded);
+    RUN_TEST(test_no_false_positive_mem_return_forwarded_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_arena_in_struct_field);
+    RUN_TEST(test_error_E3166_mem_destroy_arena_in_struct_field_twice);
+    RUN_TEST(test_no_false_positive_mem_arena_in_struct_field_read_before_destroy);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
