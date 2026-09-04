@@ -2062,6 +2062,54 @@ static void test_no_false_positive_mem_helper_destroy_break_self_collision(void)
     diagnostic_destroy(diagnostics);
 }
 
+/* pc_bind_mem_pointer() only tracked a bare pointer variable's own
+ * mem_arena; a @mem pointer buried in a struct field was invisible to
+ * pc_check_mem_deref(), so `b.p^` after the arena backing it is destroyed
+ * went uncaught. field_mem_arena, set at construction (a struct literal)
+ * and at a later field assignment alike, closes both. */
+static void test_error_E3164_mem_use_after_destroy_struct_field_literal(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3164_mem_use_after_destroy_struct_field_assign(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: nil}\n"
+        "  b.p = mem.alloc(a, 42)\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_struct_field_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
+        "  println(b.p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2757,6 +2805,9 @@ int main(void) {
     RUN_TEST(test_no_false_positive_mem_destroy_break_self_collision);
     RUN_TEST(test_error_E3164_mem_use_after_helper_destroy_in_loop);
     RUN_TEST(test_no_false_positive_mem_helper_destroy_break_self_collision);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_literal);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_assign);
+    RUN_TEST(test_no_false_positive_mem_struct_field_read_before_destroy);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);

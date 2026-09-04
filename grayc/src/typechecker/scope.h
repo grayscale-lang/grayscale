@@ -43,6 +43,14 @@ typedef struct {
      * (E3164) or reset past this epoch (E3165) is a use-after-free. */
     const char *mem_arena;
     int mem_epoch;
+    /* Same, for a pointer buried in a *field* of this aggregate variable — a
+     * struct/array/map literal initialised or updated with a pointer bound
+     * to a @mem arena. Lets pc_check_mem_deref() catch `b.p^` after the
+     * arena backing `b.p` is destroyed, the same way field_origin_depth lets
+     * the escape checks see through a struct carrying a dangling pointer
+     * field. */
+    const char *field_mem_arena;
+    int field_mem_epoch;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

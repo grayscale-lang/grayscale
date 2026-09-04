@@ -171,6 +171,8 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
                               const char *bind_name);
 static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
 static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
+static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
+                                   const char **out_arena, int *out_epoch);
 static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
                            const char **out_fn, const char **out_arena);
 static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
@@ -13075,6 +13077,24 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     root_sym->field_origin_name = origin_name;
                 }
             }
+            /* Pointer checker: `b.p = mem.alloc(a, x)` binds a @mem arena
+             * into a field, the same as a struct literal doing it at
+             * construction (pc_bind_mem_pointer) — track it on the root
+             * aggregate's field_mem_arena so pc_check_mem_deref() catches
+             * `b.p^` after `a` is destroyed. Always the field slot here
+             * (never root_sym's own mem_arena): the target is a field of
+             * root, not root itself. */
+            {
+                Symbol *root_sym = scope_lookup(checker->current_scope, root);
+                const char *marena = NULL;
+                int mepoch = 0;
+                if (root_sym &&
+                    pc_mem_pointer_in_expr(checker, node->data.assign.value,
+                                           &marena, &mepoch)) {
+                    root_sym->field_mem_arena = marena;
+                    root_sym->field_mem_epoch = mepoch;
+                }
+            }
         } else {
             /* The chain passes through a `^` (e.g. `n^.link = addr(local)` on a
              * new() heap object). assignment_target_root_name gave up at the
@@ -13640,26 +13660,80 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
      * var-decl (pc_bind_mem_pointer). */
 }
 
-/* Record on a freshly declared pointer symbol that it points into a @mem
- * arena, if its initializer is mem.init()/mem.alloc(). */
-static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
-    if (!sym || !value) return;
+/* Deepest @mem arena binding an expression carries: a direct mem.init()/
+ * mem.alloc() call, a variable already bound to one (directly or via its own
+ * field_mem_arena — reading a mem-pointer back out of a tracked aggregate),
+ * or a struct/array/map literal with such a value buried in a field or
+ * element. Mirrors container_literal_origin()'s walk, for @mem arenas
+ * instead of scope depth. Fills out_arena and out_epoch and returns true on
+ * a match; leaves them untouched and returns false otherwise. */
+static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
+                                   const char **out_arena, int *out_epoch) {
+    if (!value) return false;
     const char *fn = NULL, *arena = NULL;
     if (value->kind == NODE_CALL_EXPR &&
         pc_is_mem_call(checker, value, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
         ArenaLifetime *a = pc_arena_ensure(checker, arena);
-        sym->mem_arena = arena;
-        sym->mem_epoch = a->epoch;
-        return;
+        *out_arena = arena;
+        *out_epoch = a->epoch;
+        return true;
     }
-    /* Alias of another mem-bound pointer: mut q = p */
     if (value->kind == NODE_LABEL) {
         Symbol *src = scope_lookup(checker->current_scope, value->data.label.value);
-        if (src && src->mem_arena) {
-            sym->mem_arena = src->mem_arena;
-            sym->mem_epoch = src->mem_epoch;
+        if (!src) return false;
+        if (src->mem_arena) {
+            *out_arena = src->mem_arena;
+            *out_epoch = src->mem_epoch;
+            return true;
         }
+        if (src->field_mem_arena) {
+            *out_arena = src->field_mem_arena;
+            *out_epoch = src->field_mem_epoch;
+            return true;
+        }
+        return false;
+    }
+    switch (value->kind) {
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < value->data.struct_value.count; i++)
+            if (pc_mem_pointer_in_expr(checker, value->data.struct_value.field_values[i],
+                                       out_arena, out_epoch))
+                return true;
+        return false;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < value->data.array_value.count; i++)
+            if (pc_mem_pointer_in_expr(checker, value->data.array_value.elements[i],
+                                       out_arena, out_epoch))
+                return true;
+        return false;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < value->data.map_value.count; i++)
+            if (pc_mem_pointer_in_expr(checker, value->data.map_value.values[i],
+                                       out_arena, out_epoch))
+                return true;
+        return false;
+    default:
+        return false;
+    }
+}
+
+/* Record on a freshly declared symbol that it points into a @mem arena
+ * (value is itself a mem-bound pointer expression — mem.init()/mem.alloc(),
+ * or an alias of an already-tracked pointer), or that it's an aggregate
+ * carrying one buried in a field/element (a struct/array/map literal). */
+static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
+    if (!sym || !value) return;
+    bool is_direct = (value->kind == NODE_CALL_EXPR || value->kind == NODE_LABEL);
+    const char *arena = NULL;
+    int epoch = 0;
+    if (!pc_mem_pointer_in_expr(checker, value, &arena, &epoch)) return;
+    if (is_direct) {
+        sym->mem_arena = arena;
+        sym->mem_epoch = epoch;
+    } else {
+        sym->field_mem_arena = arena;
+        sym->field_mem_epoch = epoch;
     }
 }
 
@@ -13670,22 +13744,29 @@ static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode 
     while (inner && inner->kind == NODE_POSTFIX_EXPR &&
            inner->data.postfix.op == TOK_CARET)
         inner = inner->data.postfix.left;
-    const char *root = (inner && inner->kind == NODE_LABEL)
-        ? inner->data.label.value
-        : assignment_target_root_name(inner);
+    /* A bare pointer variable (`p^`) is tracked on its own symbol
+     * (mem_arena); one reached through a field or element chain (`b.p^`,
+     * `arr[i]^`) is tracked on the root aggregate's field_mem_arena — the
+     * slot itself carries no symbol of its own to hang the binding on. */
+    bool is_bare = inner && inner->kind == NODE_LABEL;
+    const char *root = is_bare ? inner->data.label.value
+                               : assignment_target_root_name(inner);
     if (!root) return;
     Symbol *sym = scope_lookup(checker->current_scope, root);
-    if (!sym || !sym->mem_arena) return;
-    ArenaLifetime *a = pc_arena_get(checker, sym->mem_arena);
+    if (!sym) return;
+    const char *arena = is_bare ? sym->mem_arena : sym->field_mem_arena;
+    int bound_epoch = is_bare ? sym->mem_epoch : sym->field_mem_epoch;
+    if (!arena) return;
+    ArenaLifetime *a = pc_arena_get(checker, arena);
     if (!a) return;
     if (a->destroyed || a->premarked_destroyed) {
         diagnostic_error_code_formatted(checker->diag, "E3164",
             NODE_FILE(checker, at), at->token.line, at->token.column, 0,
-            root, sym->mem_arena);
-    } else if (a->epoch > sym->mem_epoch) {
+            root, arena);
+    } else if (a->epoch > bound_epoch) {
         diagnostic_error_code_formatted(checker->diag, "E3165",
             NODE_FILE(checker, at), at->token.line, at->token.column, 0,
-            root, sym->mem_arena);
+            root, arena);
     }
 }
 
