@@ -137,18 +137,31 @@ typedef struct {
     unsigned char mem_state;
     unsigned long long destroys_param_arena;
     unsigned long long resets_param_arena;
+    /* mem_param_field[i]: when destroys_param_arena or resets_param_arena
+     * has bit i set because of a mem.destroy()/mem.reset() reaching the
+     * arena through a *field* of parameter i (`mem.destroy(h.a)` where h is
+     * parameter i) rather than the parameter itself, the field-path suffix
+     * (".a", ".inner.a") to append to whatever path the caller's own
+     * argument for parameter i resolves to. NULL when the bit is set by a
+     * bare-parameter arena (the parameter itself names the handle). */
+    const char *mem_param_field[64];
 
-    /* returns_param_mem_alloc[i]: bit i set if some `return` in this
-     * function's body yields a @mem pointer allocated from the arena named
-     * by parameter i — `return mem.alloc(a, x)` / `mem.init(a, T)`
-     * (directly, through a local variable initialised from one, or
-     * forwarded through another summarised call). Lets a call site
-     * (pc_bind_mem_pointer) bind the result to the *caller's* arena
-     * variable at that parameter position, the same way returns_param_addr
-     * lets a return value's escape origin follow a pointer parameter
-     * through a call. Computed alongside destroys_param_arena in the same
-     * pc_mem_walk() pass. */
+    /* returns_param_mem_alloc[i] / returns_param_mem_alloc_field[i]: bit i
+     * set if some `return` in this function's body yields a @mem pointer
+     * allocated from the arena named by parameter i — directly (the return
+     * value itself is the pointer: mem.alloc(a,x), a local initialised from
+     * one, or forwarded through another summarised call's own _direct bit)
+     * or _field (the pointer is buried in a struct/array/map literal the
+     * function returns, or forwarded through another call's own _field
+     * bit). Lets a call site (pc_bind_mem_pointer, via
+     * pc_mem_pointer_in_expr) bind the result — as mem_arena or
+     * field_mem_arena respectively — to the *caller's* arena variable at
+     * that parameter position, the same way returns_param_addr lets a
+     * return value's escape origin follow a pointer parameter through a
+     * call. Computed alongside destroys_param_arena in the same
+     * pc_mem_walk()/pc_return_stmt_mem_bits() pass. */
     unsigned long long returns_param_mem_alloc;
+    unsigned long long returns_param_mem_alloc_field;
 
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */

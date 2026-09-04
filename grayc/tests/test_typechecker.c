@@ -2194,6 +2194,84 @@ static void test_no_false_positive_mem_arena_in_struct_field_read_before_destroy
     diagnostic_destroy(diagnostics);
 }
 
+/* pc_mem_walk()'s parameter-index matching only recognized a bare parameter
+ * name — a helper destroying an arena reached through a *field* of its own
+ * struct parameter (mem.destroy(h.a) where h is the parameter) never set
+ * destroys_param_arena at all, so the effect didn't propagate to a caller
+ * that only passes h itself. mem_param_field[] plus pc_mem_param_index_for_key()
+ * recover the field suffix so it composes at the call site. */
+static void test_error_E3164_mem_use_after_cross_function_field_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do cleanup(h Holder) {\n"
+        "  mem.destroy(h.a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  cleanup(h)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_cross_function_field_destroy_read_before(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do cleanup(h Holder) {\n"
+        "  mem.destroy(h.a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  println(p^)\n"
+        "  cleanup(h)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_return_expr_mem_bits() only recognized a directly-returned mem.alloc()/
+ * mem.init() result — one buried in a struct/array/map literal the function
+ * returns was invisible, so returns_param_mem_alloc_field never got set and
+ * the caller's variable was never bound to the arena. */
+static void test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do make(a Arena) -> Box {\n"
+        "  return Box{p: mem.alloc(a, 42)}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_return_forwarded_in_literal_read_before(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do make(a Arena) -> Box {\n"
+        "  return Box{p: mem.alloc(a, 42)}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = make(a)\n"
+        "  println(b.p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2897,6 +2975,10 @@ int main(void) {
     RUN_TEST(test_error_E3164_mem_use_after_destroy_arena_in_struct_field);
     RUN_TEST(test_error_E3166_mem_destroy_arena_in_struct_field_twice);
     RUN_TEST(test_no_false_positive_mem_arena_in_struct_field_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_cross_function_field_destroy);
+    RUN_TEST(test_no_false_positive_mem_cross_function_field_destroy_read_before);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal);
+    RUN_TEST(test_no_false_positive_mem_return_forwarded_in_literal_read_before);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);

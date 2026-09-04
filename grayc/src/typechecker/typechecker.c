@@ -172,11 +172,13 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
 static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
 static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
 static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
-                                   const char **out_arena, int *out_epoch);
+                                   const char **out_arena, int *out_epoch,
+                                   bool *out_via_field);
 static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
                            const char **out_fn, const char **out_arena);
 static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *at, const char *disp);
+static const char *pc_arena_path_key(TypeChecker *checker, AstNode *expr);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
@@ -959,7 +961,9 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
+    memset(fs->mem_param_field, 0, sizeof fs->mem_param_field);
     fs->returns_param_mem_alloc = 0;
+    fs->returns_param_mem_alloc_field = 0;
     fs->instantiations = NULL;
     fs->instantiation_calls = NULL;
     fs->instantiation_count = 0;
@@ -1755,6 +1759,43 @@ static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *f
 
 static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs);
 
+/* Which of fs's own parameters `key` is rooted at, by index, and the
+ * field-path suffix beyond that parameter (NULL if key IS the bare
+ * parameter itself, e.g. key "h.a" against parameter "h" yields suffix
+ * ".a"). -1 if key doesn't root at any parameter of fs — a global, an
+ * unrelated local, or simply not a match. */
+static int pc_mem_param_index_for_key(FuncSig *fs, const char *key, const char **out_suffix) {
+    if (!fs->decl || !key) return -1;
+    int pc = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < pc && i < 64; i++) {
+        const char *pn = fs->decl->data.func_decl.params[i].name;
+        if (!pn) continue;
+        size_t pnlen = strlen(pn);
+        if (strcmp(pn, key) == 0) { *out_suffix = NULL; return i; }
+        if (strncmp(key, pn, pnlen) == 0 && key[pnlen] == '.') {
+            *out_suffix = key + pnlen;
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* The path key an arena reference resolves to at a call site, given a
+ * callee's arena-carrying parameter and its recorded field suffix (NULL for
+ * a bare parameter). `arg` is this call's own argument expression for that
+ * parameter — pc_arena_path_key() resolves it whether it's itself a bare
+ * name or already a field chain, so a suffix composes through any depth of
+ * forwarding (`cleanup(h)` where cleanup destroys `h.a`, called as
+ * `cleanup(outer.h)`, yields "outer.h.a"). */
+static const char *pc_mem_forward_key(TypeChecker *checker, AstNode *arg, const char *suffix) {
+    const char *base = pc_arena_path_key(checker, arg);
+    if (!base) return NULL;
+    if (!suffix) return base;
+    char buf[MSG_BUF_SIZE];
+    snprintf(buf, sizeof(buf), "%s%s", base, suffix);
+    return arena_copy_string(checker->arena, buf);
+}
+
 /* Scan `fs`'s body for mem.destroy()/mem.reset() calls on one of its own
  * parameters, and for calls to other (already-summarised) functions that
  * destroy/reset one of *their* parameters when the corresponding argument
@@ -1768,35 +1809,35 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
         const char *fn = NULL, *arena = NULL;
         if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
             (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0)) {
-            int pc = fs->decl->data.func_decl.param_count;
-            for (int i = 0; i < pc && i < 64; i++) {
-                const char *pn = fs->decl->data.func_decl.params[i].name;
-                if (!pn || strcmp(pn, arena) != 0) continue;
+            const char *suffix = NULL;
+            int i = pc_mem_param_index_for_key(fs, arena, &suffix);
+            if (i >= 0) {
                 if (strcmp(fn, "destroy") == 0) fs->destroys_param_arena |= 1ull << i;
                 else fs->resets_param_arena |= 1ull << i;
+                if (suffix) fs->mem_param_field[i] = suffix;
             }
         } else {
             FuncSig *callee = resolve_call_sig_in_body(checker,
                 fs->decl->data.func_decl.body, node);
             if (callee && callee != fs) {
                 pc_ensure_mem_summary(checker, callee);
-                int pc = fs->decl->data.func_decl.param_count;
                 for (int k = 0; k < callee->param_count &&
                                 k < node->data.call.arg_count && k < 64; k++) {
                     unsigned long long keffect =
                         (callee->destroys_param_arena | callee->resets_param_arena) &
                         (1ull << k);
                     if (!keffect) continue;
-                    AstNode *arg = node->data.call.args[k];
-                    if (arg->kind != NODE_LABEL) continue;
-                    for (int i = 0; i < pc && i < 64; i++) {
-                        const char *pn = fs->decl->data.func_decl.params[i].name;
-                        if (!pn || strcmp(pn, arg->data.label.value) != 0) continue;
-                        if (callee->destroys_param_arena & (1ull << k))
-                            fs->destroys_param_arena |= 1ull << i;
-                        if (callee->resets_param_arena & (1ull << k))
-                            fs->resets_param_arena |= 1ull << i;
-                    }
+                    const char *key = pc_mem_forward_key(checker,
+                        node->data.call.args[k], callee->mem_param_field[k]);
+                    if (!key) continue;
+                    const char *suffix = NULL;
+                    int i = pc_mem_param_index_for_key(fs, key, &suffix);
+                    if (i < 0) continue;
+                    if (callee->destroys_param_arena & (1ull << k))
+                        fs->destroys_param_arena |= 1ull << i;
+                    if (callee->resets_param_arena & (1ull << k))
+                        fs->resets_param_arena |= 1ull << i;
+                    if (suffix) fs->mem_param_field[i] = suffix;
                 }
             }
         }
@@ -1844,74 +1885,125 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
  * forwarded through another summarised call's own returns_param_mem_alloc.
  * Mirrors return_expr_param_bits' shape, for arena allocation instead of
  * pointer escape. */
-static unsigned long long pc_return_expr_mem_bits(TypeChecker *checker,
-                                                   FuncSig *fs, AstNode *node) {
-    if (!node || !fs->decl) return 0;
+/* Fills *out_direct (bit i: node itself is a @mem pointer allocated from
+ * parameter i's arena) and *out_field (bit i: node is an aggregate — a
+ * struct/array/map literal, or a call forwarding one — with such a pointer
+ * buried inside it) for a return-value expression. A bit is set in at most
+ * one of the two; mirrors the mem_arena / field_mem_arena split
+ * pc_bind_mem_pointer() records on a Symbol, but for a FuncSig's summary of
+ * its own return value instead. */
+static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
+                                    unsigned long long *out_direct,
+                                    unsigned long long *out_field) {
+    if (!node || !fs->decl) return;
     if (node->kind == NODE_LABEL) {
         AstNode *init = local_initializer(fs->decl->data.func_decl.body,
                                           node->data.label.value);
-        return (init && init != node) ? pc_return_expr_mem_bits(checker, fs, init) : 0;
+        if (init && init != node)
+            pc_return_expr_mem_bits(checker, fs, init, out_direct, out_field);
+        return;
     }
-    if (node->kind != NODE_CALL_EXPR) return 0;
-    const char *fn = NULL, *arena = NULL;
     int pc = fs->decl->data.func_decl.param_count;
+    switch (node->kind) {
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < node->data.struct_value.count; i++) {
+            unsigned long long d = 0, f = 0;
+            pc_return_expr_mem_bits(checker, fs,
+                node->data.struct_value.field_values[i], &d, &f);
+            *out_field |= d | f;
+        }
+        return;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < node->data.array_value.count; i++) {
+            unsigned long long d = 0, f = 0;
+            pc_return_expr_mem_bits(checker, fs,
+                node->data.array_value.elements[i], &d, &f);
+            *out_field |= d | f;
+        }
+        return;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < node->data.map_value.count; i++) {
+            unsigned long long d = 0, f = 0;
+            pc_return_expr_mem_bits(checker, fs, node->data.map_value.values[i], &d, &f);
+            *out_field |= d | f;
+        }
+        return;
+    default:
+        break;
+    }
+    if (node->kind != NODE_CALL_EXPR) return;
+    const char *fn = NULL, *arena = NULL;
     if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
-        unsigned long long bits = 0;
         for (int i = 0; i < pc && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
-            if (pn && strcmp(pn, arena) == 0) bits |= 1ull << i;
+            if (pn && strcmp(pn, arena) == 0) *out_direct |= 1ull << i;
         }
-        return bits;
+        return;
     }
     FuncSig *callee = resolve_call_sig_in_body(checker, fs->decl->data.func_decl.body, node);
-    if (!callee || callee == fs) return 0;
+    if (!callee || callee == fs) return;
     pc_ensure_mem_summary(checker, callee);
-    unsigned long long bits = 0;
     for (int k = 0; k < callee->param_count &&
                     k < node->data.call.arg_count && k < 64; k++) {
-        if (!(callee->returns_param_mem_alloc & (1ull << k))) continue;
+        unsigned long long callee_bit = 1ull << k;
+        if (!((callee->returns_param_mem_alloc | callee->returns_param_mem_alloc_field) &
+              callee_bit))
+            continue;
         AstNode *arg = node->data.call.args[k];
         if (arg->kind != NODE_LABEL) continue;
+        bool via_field = (callee->returns_param_mem_alloc_field & callee_bit) != 0;
         for (int i = 0; i < pc && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
-            if (pn && strcmp(pn, arg->data.label.value) == 0) bits |= 1ull << i;
+            if (!pn || strcmp(pn, arg->data.label.value) != 0) continue;
+            if (via_field) *out_field |= 1ull << i;
+            else *out_direct |= 1ull << i;
         }
     }
-    return bits;
 }
 
 /* OR together pc_return_expr_mem_bits() over every `return` reachable in a
  * statement subtree. Mirrors return_stmt_param_bits. */
-static unsigned long long pc_return_stmt_mem_bits(TypeChecker *checker,
-                                                   FuncSig *fs, AstNode *node) {
-    if (!node) return 0;
-    unsigned long long bits = 0;
+static void pc_return_stmt_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
+                                    unsigned long long *out_direct,
+                                    unsigned long long *out_field) {
+    if (!node) return;
     switch (node->kind) {
     case NODE_RETURN_STMT:
         for (int i = 0; i < node->data.return_stmt.count; i++)
-            bits |= pc_return_expr_mem_bits(checker, fs, node->data.return_stmt.values[i]);
+            pc_return_expr_mem_bits(checker, fs, node->data.return_stmt.values[i],
+                                    out_direct, out_field);
         break;
     case NODE_BLOCK_STMT:
         for (int i = 0; i < node->data.block.count; i++)
-            bits |= pc_return_stmt_mem_bits(checker, fs, node->data.block.stmts[i]);
+            pc_return_stmt_mem_bits(checker, fs, node->data.block.stmts[i],
+                                    out_direct, out_field);
         break;
     case NODE_IF_STMT:
-        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.consequence);
-        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.alternative);
+        pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.consequence, out_direct, out_field);
+        pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.alternative, out_direct, out_field);
         break;
     case NODE_WHEN_STMT:
         for (int i = 0; i < node->data.when_stmt.case_count; i++)
-            bits |= pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.cases[i].body);
-        bits |= pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.default_body);
+            pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.cases[i].body,
+                                    out_direct, out_field);
+        pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.default_body, out_direct, out_field);
         break;
-    case NODE_FOR_STMT:      bits |= pc_return_stmt_mem_bits(checker, fs, node->data.for_stmt.body); break;
-    case NODE_FOR_EACH_STMT: bits |= pc_return_stmt_mem_bits(checker, fs, node->data.for_each.body); break;
-    case NODE_WHILE_STMT:    bits |= pc_return_stmt_mem_bits(checker, fs, node->data.while_stmt.body); break;
-    case NODE_LOOP_STMT:     bits |= pc_return_stmt_mem_bits(checker, fs, node->data.loop_stmt.body); break;
-    default: break;
+    case NODE_FOR_STMT:
+        pc_return_stmt_mem_bits(checker, fs, node->data.for_stmt.body, out_direct, out_field);
+        break;
+    case NODE_FOR_EACH_STMT:
+        pc_return_stmt_mem_bits(checker, fs, node->data.for_each.body, out_direct, out_field);
+        break;
+    case NODE_WHILE_STMT:
+        pc_return_stmt_mem_bits(checker, fs, node->data.while_stmt.body, out_direct, out_field);
+        break;
+    case NODE_LOOP_STMT:
+        pc_return_stmt_mem_bits(checker, fs, node->data.loop_stmt.body, out_direct, out_field);
+        break;
+    default:
+        break;
     }
-    return bits;
 }
 
 /* Lazily compute and memoise `fs`'s cross-function @mem summary. Mirrors
@@ -1923,12 +2015,15 @@ static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
     fs->mem_state = 1;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
+    memset(fs->mem_param_field, 0, sizeof fs->mem_param_field);
     fs->returns_param_mem_alloc = 0;
+    fs->returns_param_mem_alloc_field = 0;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
         pc_mem_walk(checker, fs, body);
-        fs->returns_param_mem_alloc = pc_return_stmt_mem_bits(checker, fs, body);
+        pc_return_stmt_mem_bits(checker, fs, body,
+            &fs->returns_param_mem_alloc, &fs->returns_param_mem_alloc_field);
     }
     fs->mem_state = 2;
 }
@@ -2140,20 +2235,22 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
                 arg->token.column, 0, sink_name, onm);
     }
     /* Pointer checker: a call to a helper that destroys/resets one of its own
-     * @mem arena parameters applies that same effect to the caller's arena
-     * state here, at the call site — closing the "across a function call" gap
-     * in E3164/E3165/E3166. Only a bare variable argument is traced
-     * (mem.arena() results are always plain locals in practice); anything
-     * else is left alone. */
+     * @mem arena parameters — the parameter itself, or a field of it
+     * (csig->mem_param_field) — applies that same effect to the caller's
+     * arena state here, at the call site — closing the "across a function
+     * call" gap in E3164/E3165/E3166. Only an argument pc_arena_path_key()
+     * can name (a bare variable, or a field-access chain) is traced;
+     * anything else is left alone. */
     pc_ensure_mem_summary(checker, csig);
     unsigned long long mem_effect =
         csig->destroys_param_arena | csig->resets_param_arena;
     for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
         if (!(mem_effect & (1ull << a))) continue;
-        AstNode *arg = node->data.call.args[a];
-        if (arg->kind != NODE_LABEL) continue;
+        const char *key = pc_mem_forward_key(checker, node->data.call.args[a],
+                                             csig->mem_param_field[a]);
+        if (!key) continue;
         bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
-        pc_apply_arena_lifecycle(checker, arg->data.label.value, destroys,
+        pc_apply_arena_lifecycle(checker, key, destroys,
                                  node, func_display_name(csig));
     }
 }
@@ -13168,9 +13265,13 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 Symbol *root_sym = scope_lookup(checker->current_scope, root);
                 const char *marena = NULL;
                 int mepoch = 0;
+                bool mvia_field = false;
+                /* Always the field slot here, regardless of what
+                 * pc_mem_pointer_in_expr reports: the assignment target is
+                 * root.<field>, not root itself. */
                 if (root_sym &&
                     pc_mem_pointer_in_expr(checker, node->data.assign.value,
-                                           &marena, &mepoch)) {
+                                           &marena, &mepoch, &mvia_field)) {
                     root_sym->field_mem_arena = marena;
                     root_sym->field_mem_epoch = mepoch;
                 }
@@ -13770,7 +13871,8 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
  * instead of scope depth. Fills out_arena and out_epoch and returns true on
  * a match; leaves them untouched and returns false otherwise. */
 static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
-                                   const char **out_arena, int *out_epoch) {
+                                   const char **out_arena, int *out_epoch,
+                                   bool *out_via_field) {
     if (!value) return false;
     const char *fn = NULL, *arena = NULL;
     if (value->kind == NODE_CALL_EXPR &&
@@ -13779,31 +13881,37 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         ArenaLifetime *a = pc_arena_ensure(checker, arena);
         *out_arena = arena;
         *out_epoch = a->epoch;
+        *out_via_field = false;
         return true;
     }
     if (value->kind == NODE_CALL_EXPR) {
         /* A call to a user function that itself returns a @mem pointer
-         * forwarded from one of its own arena parameters — `do make(a
-         * Arena) -> ^int { return mem.alloc(a, 1) }` called as `p =
-         * make(a)`. resolve_call_sig() (not the _in_body variant: this
-         * runs during the caller's own live Pass-2 walk, so
-         * checker->current_scope is this call's real scope) plus the
-         * callee's returns_param_mem_alloc summary say which of *this*
-         * call's arguments names the arena; binding to that argument's own
-         * live epoch (not the callee's, which the callee's own frame no
-         * longer exists to hold) is what lets a destroy the caller performs
-         * after the call still be seen. */
+         * forwarded from one of its own arena parameters — directly
+         * (`do make(a Arena) -> ^int { return mem.alloc(a, 1) }`) or buried
+         * in a returned literal (`do make(a Arena) -> Box { return Box{p:
+         * mem.alloc(a, 1)} }`) — called as `p = make(a)` / `b = make(a)`.
+         * resolve_call_sig() (not the _in_body variant: this runs during
+         * the caller's own live Pass-2 walk, so checker->current_scope is
+         * this call's real scope) plus the callee's returns_param_mem_alloc
+         * / _field summary say which of *this* call's arguments names the
+         * arena and whether it's direct or buried; binding to that
+         * argument's own live epoch (not the callee's, which the callee's
+         * own frame no longer exists to hold) is what lets a destroy the
+         * caller performs after the call still be seen. */
         FuncSig *callee = resolve_call_sig(checker, value);
         if (!callee) return false;
         pc_ensure_mem_summary(checker, callee);
         for (int k = 0; k < callee->param_count &&
                         k < value->data.call.arg_count && k < 64; k++) {
-            if (!(callee->returns_param_mem_alloc & (1ull << k))) continue;
+            unsigned long long bit = 1ull << k;
+            if (!((callee->returns_param_mem_alloc | callee->returns_param_mem_alloc_field) & bit))
+                continue;
             AstNode *arg = value->data.call.args[k];
             if (arg->kind != NODE_LABEL) continue;
             ArenaLifetime *a = pc_arena_get(checker, arg->data.label.value);
             *out_arena = arg->data.label.value;
             *out_epoch = a ? a->epoch : 0;
+            *out_via_field = (callee->returns_param_mem_alloc_field & bit) != 0;
             return true;
         }
         return false;
@@ -13814,33 +13922,45 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         if (src->mem_arena) {
             *out_arena = src->mem_arena;
             *out_epoch = src->mem_epoch;
+            *out_via_field = false;
             return true;
         }
         if (src->field_mem_arena) {
             *out_arena = src->field_mem_arena;
             *out_epoch = src->field_mem_epoch;
+            *out_via_field = true;
             return true;
         }
         return false;
     }
+    /* A struct/array/map literal: anything found inside it is buried in a
+     * field from the outside, regardless of whether the recursive call
+     * itself found a direct or already-field match at the inner level. */
+    bool inner_via_field = false;
     switch (value->kind) {
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < value->data.struct_value.count; i++)
             if (pc_mem_pointer_in_expr(checker, value->data.struct_value.field_values[i],
-                                       out_arena, out_epoch))
+                                       out_arena, out_epoch, &inner_via_field)) {
+                *out_via_field = true;
                 return true;
+            }
         return false;
     case NODE_ARRAY_VALUE:
         for (int i = 0; i < value->data.array_value.count; i++)
             if (pc_mem_pointer_in_expr(checker, value->data.array_value.elements[i],
-                                       out_arena, out_epoch))
+                                       out_arena, out_epoch, &inner_via_field)) {
+                *out_via_field = true;
                 return true;
+            }
         return false;
     case NODE_MAP_VALUE:
         for (int i = 0; i < value->data.map_value.count; i++)
             if (pc_mem_pointer_in_expr(checker, value->data.map_value.values[i],
-                                       out_arena, out_epoch))
+                                       out_arena, out_epoch, &inner_via_field)) {
+                *out_via_field = true;
                 return true;
+            }
         return false;
     default:
         return false;
@@ -13850,19 +13970,22 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
 /* Record on a freshly declared symbol that it points into a @mem arena
  * (value is itself a mem-bound pointer expression — mem.init()/mem.alloc(),
  * or an alias of an already-tracked pointer), or that it's an aggregate
- * carrying one buried in a field/element (a struct/array/map literal). */
+ * carrying one buried in a field/element (a struct/array/map literal, or a
+ * call forwarding one). Which of the two applies comes from
+ * pc_mem_pointer_in_expr() itself — not merely value's own AST shape, since
+ * a CALL_EXPR can return either a bare pointer or an aggregate. */
 static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
     if (!sym || !value) return;
-    bool is_direct = (value->kind == NODE_CALL_EXPR || value->kind == NODE_LABEL);
     const char *arena = NULL;
     int epoch = 0;
-    if (!pc_mem_pointer_in_expr(checker, value, &arena, &epoch)) return;
-    if (is_direct) {
-        sym->mem_arena = arena;
-        sym->mem_epoch = epoch;
-    } else {
+    bool via_field = false;
+    if (!pc_mem_pointer_in_expr(checker, value, &arena, &epoch, &via_field)) return;
+    if (via_field) {
         sym->field_mem_arena = arena;
         sym->field_mem_epoch = epoch;
+    } else {
+        sym->mem_arena = arena;
+        sym->mem_epoch = epoch;
     }
 }
 
@@ -13984,10 +14107,14 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
                                 k < node->data.call.arg_count && k < 64 && effect; k++) {
                     if (!(effect & (1ull << k))) continue;
                     AstNode *arg = node->data.call.args[k];
-                    if (arg->kind != NODE_LABEL ||
-                        declared_in_subtree(body, arg->data.label.value))
-                        continue;
-                    ArenaLifetime *a = pc_arena_ensure(checker, arg->data.label.value);
+                    const char *root = (arg->kind == NODE_LABEL)
+                        ? arg->data.label.value
+                        : assignment_target_root_name(arg);
+                    if (!root || declared_in_subtree(body, root)) continue;
+                    const char *key = pc_mem_forward_key(checker, arg,
+                        callee->mem_param_field[k]);
+                    if (!key) continue;
+                    ArenaLifetime *a = pc_arena_ensure(checker, key);
                     if (callee->destroys_param_arena & (1ull << k))
                         a->premarked_destroyed = true;
                     else
