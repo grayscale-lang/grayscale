@@ -284,6 +284,21 @@ static int symbol_scope_depth(Scope *scope, const char *name) {
 static int call_result_origin(TypeChecker *checker, AstNode *call,
                               const char **out_name);
 
+/* Deepest origin among a call's own arguments — the conservative fallback
+ * for a call this checker cannot analyze precisely: a stdlib module
+ * function or bare builtin, neither of which has a FuncSig or a computed
+ * escape summary the way a user function does. Only meaningful when the
+ * caller has already confirmed there is no such summary to fall back on
+ * instead. Defined below expression_origin; forward-declared here for
+ * pointer_origin_of and container_literal_origin. */
+static int stdlib_call_arg_origin(TypeChecker *checker, AstNode *call,
+                                  const char **out_name);
+
+/* The user-defined function `call` targets, or NULL for anything this
+ * checker keeps no FuncSig for (a stdlib module call, a bare builtin).
+ * Defined further down; forward-declared here for pointer_origin_of. */
+static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call);
+
 /* If `value` produces a pointer with a known lifetime origin, report that
  * origin's scope depth and name. Covers the direct form addr(x)/raw(x), a
  * pointer variable that already carries an origin, and a call result that
@@ -338,8 +353,17 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
             }
         }
     }
-    if (value->kind == NODE_CALL_EXPR)
-        return call_result_origin(checker, value, out_name);
+    if (value->kind == NODE_CALL_EXPR) {
+        int r = call_result_origin(checker, value, out_name);
+        /* call_result_origin comes back 0 both when a resolved user
+         * function's summary says nothing escapes, and when there is no
+         * FuncSig to summarise at all (a stdlib module call, a bare
+         * builtin). Only the latter falls back to the conservative
+         * arguments-based guess — resolve_call_sig() tells them apart. */
+        if (!r && !resolve_call_sig(checker, value))
+            r = stdlib_call_arg_origin(checker, value, out_name);
+        return r;
+    }
     return 0;
 }
 
@@ -1317,7 +1341,23 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
             return out;
         }
         FuncSig *callee = resolve_call_sig(checker, node);
-        if (!callee || callee == fs) return 0;
+        if (callee == fs) return 0;
+        if (!callee) {
+            /* A stdlib module call or bare builtin: no FuncSig, so no
+             * returns_param_addr summary to consult — same gap
+             * stdlib_call_arg_origin backstops for pointer_origin_of /
+             * container_literal_origin, in this function's own bitmask
+             * terms. Gated the same way: only when the call's own result
+             * could structurally carry a pointer. */
+            GrayType *rt = resolve_expression(checker, node);
+            if (!rt || !(rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                         rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+                return 0;
+            unsigned long long out = 0;
+            for (int i = 0; i < node->data.call.arg_count; i++)
+                out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
+            return out;
+        }
         unsigned long long callee_bits = returns_param_address(checker, callee);
         unsigned long long out = 0;
         for (int i = 0; i < callee->param_count &&
@@ -1780,6 +1820,32 @@ static int expression_origin(TypeChecker *checker, AstNode *value,
     return 0;
 }
 
+/* Deepest origin among a call's own arguments — see the forward declaration
+ * near call_result_origin for when this applies. Gated on the call's own
+ * result type being able to structurally carry a pointer (a pointer, or a
+ * struct/array/map that might hold one buried inside): arrays.get_first(arr)
+ * needs this (returns ^T, forwarded from arr), arrays.contains(arr, x) does
+ * not (returns bool — no argument's address could possibly be smuggled out
+ * through it, whatever arr holds). Without the gate, any stdlib call taking
+ * an address-carrying argument would be flagged regardless of what it
+ * actually returns. */
+static int stdlib_call_arg_origin(TypeChecker *checker, AstNode *call,
+                                  const char **out_name) {
+    GrayType *rt = resolve_expression(checker, call);
+    if (!rt || !(rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                 rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+        return 0;
+    int best = 0;
+    const char *best_name = NULL;
+    for (int i = 0; i < call->data.call.arg_count; i++) {
+        const char *nm = NULL;
+        int d = expression_origin(checker, call->data.call.args[i], &nm);
+        if (d > best) { best = d; best_name = nm; }
+    }
+    if (best) *out_name = best_name;
+    return best;
+}
+
 /* Deepest pointer-origin buried in a struct / array / map literal, or 0.
  * A container built with `Field{p: addr(local)}`, `{addr(local)}`, or
  * `{"k": addr(local)}` carries the pointee's lifetime even though the
@@ -1817,24 +1883,13 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
         }
         break;
     case NODE_CALL_EXPR:
-        if (node->data.call.function &&
-            node->data.call.function->kind == NODE_LABEL &&
-            node->data.call.arg_count == 1 &&
-            strcmp(node->data.call.function->data.label.value, "copy") == 0) {
-            /* copy(v): a deep copy still copies a pointer field's value
-             * verbatim (the copy points at the same memory the original
-             * did), so the buried origin travels with it. copy() is a
-             * builtin, not a resolvable FuncSig, and is disallowed directly
-             * on a pointer (E5037) — it only ever wraps an aggregate here —
-             * so it needs its own recognizer the same way addr()/raw() does
-             * in pointer_origin_of, rather than falling into call_result_
-             * origin's FuncSig lookup below and finding nothing. */
-            best = expression_origin(checker, node->data.call.args[0], &best_name);
-        } else if (is_tagged_enum_variant_call(checker, node)) {
+        if (is_tagged_enum_variant_call(checker, node)) {
             /* Enum.Variant(args) / .Variant(args): the payload is a value
              * carrier exactly like a struct/array/map literal, but resolves
              * to no FuncSig so it needs its own recognizer rather than
-             * falling into a normal call's lookup. */
+             * falling into a normal call's lookup — the enum's own type is
+             * TK_ENUM, which the general stdlib_call_arg_origin fallback
+             * below does not treat as capable of carrying a pointer. */
             for (int i = 0; i < node->data.call.arg_count; i++) {
                 const char *nm = NULL;
                 int d = expression_origin(checker, node->data.call.args[i], &nm);
@@ -1842,16 +1897,23 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
             }
         } else {
             /* An ordinary call whose result may carry one of its own
-             * arguments' address (the callee's returns_param_addr summary,
-             * via call_result_origin — pointer_origin_of already returns the
-             * same thing for a bare `p = f(...)`). Recorded here too so a
-             * multi-return temp's per-slot reads see it: `p, n = f(...)`
-             * desugars to `_tmp = f(...); p = _tmp.v0; n = _tmp.v1`, and the
-             * second statement's value is a NODE_MEMBER_EXPR whose origin
-             * lookup (pointer_origin_of's NODE_MEMBER_EXPR case) consults
-             * field_origin_depth — this function's result — not origin_depth,
+             * arguments' address. A resolved user function keeps its own
+             * precise, computed returns_param_addr summary (call_result_
+             * origin — pointer_origin_of already returns the same thing for
+             * a bare `p = f(...)`). Anything without a FuncSig — a stdlib
+             * module call (arrays.get_first, maps.get_values, ...) or a
+             * builtin (copy()) — falls back to the conservative
+             * arguments-based guess instead, since none of those get an
+             * escape summary to consult. Recorded here too so a multi-return
+             * temp's per-slot reads see it: `p, n = f(...)` desugars to
+             * `_tmp = f(...); p = _tmp.v0; n = _tmp.v1`, and the second
+             * statement's value is a NODE_MEMBER_EXPR whose origin lookup
+             * (pointer_origin_of's NODE_MEMBER_EXPR case) consults field_
+             * origin_depth — this function's result — not origin_depth,
              * which only the first statement's plain call expression sets. */
             best = call_result_origin(checker, node, &best_name);
+            if (!best && !resolve_call_sig(checker, node))
+                best = stdlib_call_arg_origin(checker, node, &best_name);
         }
         break;
     default:
