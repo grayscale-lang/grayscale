@@ -311,6 +311,15 @@ static int pointer_origin_of(TypeChecker *checker, AstNode *value,
             *out_name = src->origin_name;
             return src->origin_depth;
         }
+        /* A bare struct/array/map variable, taken as a whole (not indexed
+         * into): its own buried origin, from when it was declared or last
+         * assigned a literal/copy() holding addr(local). Unlike the indexed
+         * read below, no TK_POINTER guard is needed — the origin belongs to
+         * something inside the aggregate, not to `value` itself. */
+        if (src && src->field_origin_depth) {
+            *out_name = src->field_origin_name;
+            return src->field_origin_depth;
+        }
     }
     /* An element/field read *out of* a container that was built from a
      * literal holding addr(local) — `a[0]`, `b.p`. The container's buried
@@ -1298,7 +1307,8 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
         AstNode *f = node->data.call.function;
         if (f && f->kind == NODE_LABEL && node->data.call.arg_count == 1 &&
             (strcmp(f->data.label.value, "addr") == 0 ||
-             strcmp(f->data.label.value, "raw") == 0))
+             strcmp(f->data.label.value, "raw") == 0 ||
+             strcmp(f->data.label.value, "copy") == 0))
             return return_expr_param_bits(checker, fs, node->data.call.args[0]);
         if (is_tagged_enum_variant_call(checker, node)) {
             unsigned long long out = 0;
@@ -1807,7 +1817,20 @@ static int container_literal_origin(TypeChecker *checker, AstNode *node,
         }
         break;
     case NODE_CALL_EXPR:
-        if (is_tagged_enum_variant_call(checker, node)) {
+        if (node->data.call.function &&
+            node->data.call.function->kind == NODE_LABEL &&
+            node->data.call.arg_count == 1 &&
+            strcmp(node->data.call.function->data.label.value, "copy") == 0) {
+            /* copy(v): a deep copy still copies a pointer field's value
+             * verbatim (the copy points at the same memory the original
+             * did), so the buried origin travels with it. copy() is a
+             * builtin, not a resolvable FuncSig, and is disallowed directly
+             * on a pointer (E5037) — it only ever wraps an aggregate here —
+             * so it needs its own recognizer the same way addr()/raw() does
+             * in pointer_origin_of, rather than falling into call_result_
+             * origin's FuncSig lookup below and finding nothing. */
+            best = expression_origin(checker, node->data.call.args[0], &best_name);
+        } else if (is_tagged_enum_variant_call(checker, node)) {
             /* Enum.Variant(args) / .Variant(args): the payload is a value
              * carrier exactly like a struct/array/map literal, but resolves
              * to no FuncSig so it needs its own recognizer rather than
@@ -13025,14 +13048,6 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         AstNode *return_val = node->data.return_stmt.values[i];
         const char *origin_name = NULL;
         int origin_depth = expression_origin(checker, return_val, &origin_name);
-        if (origin_depth == 0 && return_val->kind == NODE_LABEL) {
-            Symbol *s = scope_lookup(checker->current_scope,
-                                     return_val->data.label.value);
-            if (s && s->field_origin_depth) {
-                origin_depth = s->field_origin_depth;
-                origin_name = s->field_origin_name;
-            }
-        }
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
             diagnostic_error_code_formatted(checker->diag, "E3162",
