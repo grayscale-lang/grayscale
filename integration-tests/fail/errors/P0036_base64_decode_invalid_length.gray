@@ -1,3 +1,4 @@
+// expect-contains: .gray:
 /* Panic Test: P0036 - base64 decode input length not multiple of 4 */
 import @encoding
 

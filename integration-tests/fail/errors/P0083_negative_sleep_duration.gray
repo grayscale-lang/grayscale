@@ -1,3 +1,4 @@
+// expect-contains: .gray:
 /* Panic Test: P0083 - sleep duration cannot be negative */
 do main() {
     sleep_ms(-1)

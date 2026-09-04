@@ -188,6 +188,14 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
 
 /* --- Panic --- */
 
+/* Source location of the statement currently executing. Generated code stamps
+ * this as it enters each statement so a panic raised from stdlib or builtin C
+ * code via gray_panic_code() — which has no location of its own — still
+ * reports the .gray file and line, the same as a language-level panic. NULL
+ * before the first statement of a program runs. */
+extern _Thread_local const char *gray_panic_call_file;
+extern _Thread_local int gray_panic_call_line;
+
 void gray_panic(const char *file, int line, const char *fmt, ...)
     __attribute__((format(printf, 3, 4), noreturn));
 

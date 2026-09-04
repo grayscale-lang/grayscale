@@ -31,6 +31,11 @@ _Thread_local GrayArena *gray_heap_arena = NULL;
 
 _Thread_local size_t gray_total_alloc_count = 0;
 
+/* --- Stdlib call site, for locating panics raised from stdlib C code --- */
+
+_Thread_local const char *gray_panic_call_file = NULL;
+_Thread_local int gray_panic_call_line = 0;
+
 /* --- Arena Allocator --- */
 
 #define ALIGN_UP(x, a) (((x) + (a) - 1) & ~((a) - 1))
@@ -346,7 +351,9 @@ void gray_panic(const char *file, int line, const char *fmt, ...) {
 void gray_panic_code(const char *code, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    gray_panic_impl(code, NULL, 0, fmt, args);
+    /* No location of its own: fall back to the current statement's location,
+     * stamped by generated code (NULL before the program's first statement). */
+    gray_panic_impl(code, gray_panic_call_file, gray_panic_call_line, fmt, args);
 }
 
 void gray_panic_code_at(const char *file, int line, const char *code, const char *fmt, ...) {

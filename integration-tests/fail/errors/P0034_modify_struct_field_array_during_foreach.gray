@@ -1,3 +1,4 @@
+// expect-contains: .gray:
 /* Panic Test: P0034 - cannot modify a struct field array during for_each */
 import @arrays
 

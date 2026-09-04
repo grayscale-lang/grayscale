@@ -1,3 +1,4 @@
+// expect-contains: .gray:
 /* Panic Test: P0110 - strconv.format_int with invalid base at runtime */
 import @strconv
 

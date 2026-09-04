@@ -10853,6 +10853,14 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     codegen->current_func = node;
     codegen->ensure_reached = 0;
 
+    /* Point codegen->file at this function's own module for the duration of
+     * the body, so panic-location arguments (gray_panic_code_at, the sized/
+     * bounds/nil checks, gray_enter_func) name the file the code lives in
+     * rather than the entry file in a multi-file build. */
+    const char *prev_file = codegen->file;
+    char *fn_file = node->token.file ? normalize_path_separators(node->token.file) : NULL;
+    if (fn_file) codegen->file = fn_file;
+
     /* Register bigint parameters for type tracking */
     for (int i = 0; i < node->data.func_decl.param_count; i++) {
         Param *param = &node->data.func_decl.params[i];
@@ -10896,6 +10904,8 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     codegen->raw_var_count = prev_raw_var_count;
     codegen->bigint_var_count = prev_bigint_var_count;
     codegen->iter_guard_count = prev_iter_guard_count;
+    codegen->file = prev_file;
+    free(fn_file);
     codegen->indent--;
     emit(codegen, "}\n\n");
 }
@@ -11098,6 +11108,19 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     codegen_enter_node(codegen, node);
     if (!node) return;
+
+    /* Record this statement's source location for the runtime. A panic raised
+     * from stdlib or builtin C code goes through gray_panic_code(), which has
+     * no location of its own; it falls back to this so the user still sees the
+     * .gray file and line, the same as a language-level panic. Only inside a
+     * function body (indent > 0) — file-scope initializers cannot call, so
+     * cannot panic this way. codegen->file is the enclosing function's own
+     * module here (emit_function_declaration points it there). */
+    if (codegen->indent > 0 && codegen->file && node->token.line > 0) {
+        emit_indent(codegen);
+        emit_formatted(codegen, "gray_panic_call_file = \"%s\"; gray_panic_call_line = %d;\n",
+                       codegen->file, node->token.line);
+    }
 
     switch (node->kind) {
     case NODE_VAR_DECL: {
