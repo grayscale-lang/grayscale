@@ -227,6 +227,21 @@ static inline void *gray_ptr_check(void *p, const char *file, int line) {
     return p;
 }
 
+/* Arena-liveness check for a @mem pointer, composable the same way as
+ * gray_ptr_check so a checked dereference stays an lvalue. Codegen emits
+ * this ahead of a dereference of a variable it traced back to a direct
+ * mem.init()/mem.alloc() call, re-checking the same arena expression that
+ * produced the pointer — see is_stable_arena_expr in codegen.c. Catches a
+ * use-after-destroy/reset the compile-time pointer checker couldn't trace
+ * (an arena reached other than by a plain parameter name — STANDARD 11.7). */
+static inline void *gray_mem_check_live(GrayArena *arena, void *p, const char *file, int line) {
+    if (arena && arena->destroyed) {
+        gray_panic_code_at(file, line, "P0117",
+            "dereferenced a pointer into an arena that has been destroyed or reset");
+    }
+    return p;
+}
+
 /* --- Stack depth guard --- */
 
 #define GRAY_MAX_CALL_DEPTH 10000

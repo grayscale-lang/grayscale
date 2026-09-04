@@ -108,6 +108,19 @@ typedef struct {
     int heap_var_count;
     int heap_var_cap;
 
+    /* @mem-arena-tracked pointer variables (from mem.init()/mem.alloc()) —
+     * dereference emits a live check against the arena expression that
+     * produced them, so a use after that arena was destroyed/reset panics
+     * (P0105) instead of silently reading freed memory. arena_expr is NULL
+     * for an unregister entry (shadowing/reassignment from a non-mem
+     * source). Same shadow-stack shape as raw_vars/heap_vars. Only
+     * registered when the arena argument is a side-effect-free, safely
+     * re-evaluable expression (see is_stable_arena_expr in codegen.c) —
+     * the same expression is re-emitted at every dereference site. */
+    struct { const char *name; AstNode *arena_expr; } *mem_vars;
+    int mem_var_count;
+    int mem_var_cap;
+
     /* Track declared bigint variable types (name → type_name) */
     const char **bigint_var_names;
     const char **bigint_var_types;

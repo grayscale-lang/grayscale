@@ -1137,6 +1137,88 @@ static bool is_new_call(AstNode *value) {
     return value && value->kind == NODE_NEW_EXPR;
 }
 
+/* --- @mem arena liveness tracking (dereference-time use-after-destroy check) ---
+ *
+ * The typechecker's pointer checker proves most @mem escape/lifetime hazards
+ * at compile time, but it deliberately gives up on an arena reached other
+ * than by a plain parameter name (a global, or one read back out of a
+ * struct/array/map field written through more than one hop) — see
+ * STANDARD 11.7. For exactly that residual gap, codegen inserts a runtime
+ * guard: whenever a variable is directly initialized from mem.init()/
+ * mem.alloc(), every later dereference of that variable re-checks the
+ * originating arena's `destroyed` flag and panics (P0117) instead of
+ * silently reading freed memory.
+ *
+ * This only covers dereferences of the tracked variable itself (not a
+ * value later copied out of it into another variable/field/container —
+ * that path drops the tracking, same as raw_vars/heap_vars do), and only
+ * registers when the arena argument is safe to re-evaluate a second time
+ * (see is_stable_arena_expr) — anything else (a call result, an index
+ * expression) is left unchecked rather than risk re-running a side effect
+ * or reading a different arena than the one actually used. */
+
+/* A variable/field/pointer-deref chain has a stable address and no side
+ * effects, so re-emitting it at a later dereference site evaluates to the
+ * same arena every time. Mirrors the addr()/raw()/ref() argument rule
+ * (STANDARD 3.2, "recurses through member/index chains") minus the dynamic
+ * array/map index case, which is deliberately excluded here: an index into
+ * a container that could have been reassigned between the mem.init() call
+ * and the later dereference is not guaranteed to still name the same
+ * arena. */
+static bool is_stable_arena_expr(AstNode *expr) {
+    if (!expr) return false;
+    switch (expr->kind) {
+        case NODE_LABEL:
+            return true;
+        case NODE_MEMBER_EXPR:
+            return is_stable_arena_expr(expr->data.member.object);
+        case NODE_POSTFIX_EXPR:
+            return expr->data.postfix.op == TOK_CARET &&
+                   is_stable_arena_expr(expr->data.postfix.left);
+        default:
+            return false;
+    }
+}
+
+/* Search from end: most recent entry for this name wins. Returns the arena
+ * expression to re-check, or NULL if the variable isn't (currently) a
+ * tracked mem-arena pointer. */
+static AstNode *is_mem_tracked_variable(CodeGen *codegen, const char *name) {
+    for (int i = codegen->mem_var_count - 1; i >= 0; i--) {
+        if (strcmp(codegen->mem_vars[i].name, name) == 0)
+            return codegen->mem_vars[i].arena_expr;
+    }
+    return NULL;
+}
+
+static void register_mem_variable(CodeGen *codegen, const char *name, AstNode *arena_expr) {
+    GROW_ARRAY(codegen->mem_vars, codegen->mem_var_count, codegen->mem_var_cap);
+    codegen->mem_vars[codegen->mem_var_count].name = name;
+    codegen->mem_vars[codegen->mem_var_count].arena_expr = arena_expr;
+    codegen->mem_var_count++;
+}
+
+static void unregister_mem_variable(CodeGen *codegen, const char *name) {
+    GROW_ARRAY(codegen->mem_vars, codegen->mem_var_count, codegen->mem_var_cap);
+    codegen->mem_vars[codegen->mem_var_count].name = name;
+    codegen->mem_vars[codegen->mem_var_count].arena_expr = NULL;
+    codegen->mem_var_count++;
+}
+
+/* Wrap `ptr_c_expr` with a call to gray_mem_check_live(arena, ptr, file,
+ * line) — composable inside a larger cast/dereference expression without
+ * breaking its lvalue-ness, the same way gray_ptr_check already is. Emits
+ * `gray_mem_check_live(<arena_expr>, (void *)(` and leaves the caller to
+ * close with `), file, line)` after emitting the pointer expression. */
+static void emit_mem_check_live_open(CodeGen *codegen, AstNode *arena_expr) {
+    emit(codegen, "gray_mem_check_live(");
+    emit_expression(codegen, arena_expr);
+    emit(codegen, ", (void *)(");
+}
+static void emit_mem_check_live_close(CodeGen *codegen, int line) {
+    emit_formatted(codegen, "), \"%s\", %d)", codegen->file, line);
+}
+
 /* Returns true if the named enum is string-backed.
  * enum_names is sorted after the init pass, so we use bsearch. */
 static bool codegen_enum_is_string(CodeGen *codegen, const char *name) {
@@ -2656,6 +2738,10 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
             strcmp(_dp_left->data.call.function->data.label.value, "raw") == 0) {
             is_raw_deref = true;
         }
+        /* A raw() pointer bypasses every guardrail, including arena
+         * liveness — same philosophy as its existing nil-check bypass. */
+        AstNode *mem_arena = (!is_raw_deref && _dp_left->kind == NODE_LABEL)
+            ? is_mem_tracked_variable(codegen, _dp_left->data.label.value) : NULL;
         if (is_raw_deref) {
             /* Raw pointer: bare dereference, no nil check */
             emit(codegen, "(*");
@@ -2675,12 +2761,21 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                 snprintf(c_pointee, sizeof(c_pointee), "%s",
                     gray_type_to_c_codegen(codegen, deref_pointee));
                 emit_formatted(codegen, "(*(%s *)gray_ptr_check((void *)(", c_pointee);
+                if (mem_arena) emit_mem_check_live_open(codegen, mem_arena);
                 emit_expression(codegen, _dp_left);
+                if (mem_arena) emit_mem_check_live_close(codegen, node->token.line);
                 emit_formatted(codegen, "), \"%s\", %d))", codegen->file, node->token.line);
             } else {
                 emit(codegen, "({ __auto_type _dp = ");
                 emit_expression(codegen, _dp_left);
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } *_dp; })", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                if (mem_arena) {
+                    emit(codegen, "*(__typeof__(_dp))gray_mem_check_live(");
+                    emit_expression(codegen, mem_arena);
+                    emit_formatted(codegen, ", (void *)_dp, \"%s\", %d); })", codegen->file, node->token.line);
+                } else {
+                    emit(codegen, "*_dp; })");
+                }
             }
         }
     } else if (node->data.postfix.op == TOK_INCREMENT) {
@@ -9080,6 +9175,29 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         register_heap_variable(codegen, source_name, false);
     }
 
+    /* Detect mem.init()/mem.alloc() assignment; register the pointer as
+     * arena-tracked so a later dereference of this variable catches a use
+     * after that arena was destroyed/reset via a path the compile-time
+     * pointer checker couldn't trace (STANDARD 11.7). Only when the arena
+     * argument is safe to re-evaluate a second time at the deref site. */
+    if (node->data.var_decl.value && node->data.var_decl.value->kind == NODE_CALL_EXPR) {
+        const char *mem_module = NULL, *mem_func = NULL;
+        if (is_stdlib_call(node->data.var_decl.value, &mem_module, &mem_func) &&
+            mem_module && strcmp(mem_module, "mem") == 0 &&
+            (strcmp(mem_func, "init") == 0 || strcmp(mem_func, "alloc") == 0) &&
+            node->data.var_decl.value->data.call.arg_count >= 1) {
+            AstNode *arena_arg = node->data.var_decl.value->data.call.args[0];
+            if (is_stable_arena_expr(arena_arg)) {
+                register_mem_variable(codegen, source_name, arena_arg);
+            } else {
+                unregister_mem_variable(codegen, source_name);
+            }
+        } else if (type_name && type_name[0] == '^' && is_mem_tracked_variable(codegen, source_name)) {
+            /* Re-declared from a non-mem source; clear shadowed tracking. */
+            unregister_mem_variable(codegen, source_name);
+        }
+    }
+
     /* File-scope initializer that isn't a C constant expression: emit a
      * zero-initialized global and defer the real initializer into the
      * global-init buffer, the same way emit_vardecl_array/map do. C
@@ -9160,6 +9278,18 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         if (is_new_call(node->data.assign.value)) {
             register_heap_variable(codegen, decl_name, true);
         }
+        if (node->data.assign.value && node->data.assign.value->kind == NODE_CALL_EXPR) {
+            const char *mem_module = NULL, *mem_func = NULL;
+            if (is_stdlib_call(node->data.assign.value, &mem_module, &mem_func) &&
+                mem_module && strcmp(mem_module, "mem") == 0 &&
+                (strcmp(mem_func, "init") == 0 || strcmp(mem_func, "alloc") == 0) &&
+                node->data.assign.value->data.call.arg_count >= 1) {
+                AstNode *arena_arg = node->data.assign.value->data.call.args[0];
+                if (is_stable_arena_expr(arena_arg)) {
+                    register_mem_variable(codegen, decl_name, arena_arg);
+                }
+            }
+        }
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(decl_name));
         emit_expression(codegen, node->data.assign.value);
         emit(codegen, ";\n");
@@ -9189,6 +9319,28 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             register_heap_variable(codegen, var, true);
         } else if (is_heap_variable(codegen, var)) {
             register_heap_variable(codegen, var, false);
+        }
+    }
+    /* Track mem-arena-tracked reassignment: p = mem.init(a, T)/mem.alloc(a, v)
+     * (re-)tracks p against arena expression a; any other reassignment of a
+     * previously tracked p clears it, mirroring the heap-pointer case. */
+    if (node->data.assign.target->kind == NODE_LABEL) {
+        const char *var = node->data.assign.target->data.label.value;
+        const char *mem_module = NULL, *mem_func = NULL;
+        bool is_mem_reinit = false;
+        if (node->data.assign.value && node->data.assign.value->kind == NODE_CALL_EXPR &&
+            is_stdlib_call(node->data.assign.value, &mem_module, &mem_func) &&
+            mem_module && strcmp(mem_module, "mem") == 0 &&
+            (strcmp(mem_func, "init") == 0 || strcmp(mem_func, "alloc") == 0) &&
+            node->data.assign.value->data.call.arg_count >= 1) {
+            AstNode *arena_arg = node->data.assign.value->data.call.args[0];
+            if (is_stable_arena_expr(arena_arg)) {
+                register_mem_variable(codegen, var, arena_arg);
+                is_mem_reinit = true;
+            }
+        }
+        if (!is_mem_reinit && is_mem_tracked_variable(codegen, var)) {
+            unregister_mem_variable(codegen, var);
         }
     }
 

@@ -4609,6 +4609,8 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Pointer-type reinterpretation | `cast()` between two pointer types is rejected; `cast()` converts values, not pointer identity |
 | Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen. Also traced across a function call: a helper that destroys or resets its own arena parameter (directly, or by forwarding it to another helper that does) is treated as destroying/resetting the caller's arena at the call site |
 | Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, on a prior iteration of an enclosing loop, or inside a helper the arena was passed to |
+| A pointer allocated inside a called function and handed back to the caller | Traced the same way as a destroy/reset: a helper that allocates on its own arena parameter and returns the pointer is followed at the call site, so `do make(a Arena) -> ^int { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller is a compile error, not a runtime fallback |
+| An arena reached through a struct field | An arena stored in a field and destroyed/reset by reading it back through that same field — including across a function call that takes the struct (or a pointer to it) and destroys the field itself — is traced |
 
 **Prevented by ASBAM:**
 
@@ -4629,14 +4631,17 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Division by zero | Runtime panic |
 | Integer overflow | Runtime panic (checked arithmetic) |
 | Stack overflow (deep recursion) | Detected and reported |
-| Double-`destroy`/use-after-`destroy` on a `@mem` pointer the checker can't trace to a named arena parameter | Runtime panic — see the two rows below for exactly which cross-function shapes are and aren't traced |
+| Double-`destroy` on a `@mem` arena the checker can't trace to a named arena parameter | Runtime panic (`P0002`) |
+| Allocating (`mem.init()`/`mem.alloc()`) from a `@mem` arena the checker can't trace as already destroyed | Runtime panic (`P0001`) |
+| Dereferencing a `@mem` pointer after its arena was `destroy()`ed, when the checker can't trace the arena at compile time | Runtime panic (`P0117`) whenever the variable holding the pointer was itself directly assigned from `mem.init()`/`mem.alloc()` — the same arena expression used at that call is re-checked at every dereference of that variable, however the arena is reached (global, struct field, chained pointer deref). Not caught this way if the pointer is copied into another variable, struct field, or container before being dereferenced there instead — see "Not checked" below |
 
 **Not checked (programmer responsibility):**
 
 | Hazard | When It Can Happen |
 |--------|-------------------|
-| A pointer allocated inside a called function is used after the caller destroys its arena | The cross-function trace follows `mem.destroy()`/`mem.reset()` calls on a named arena parameter, not pointers a callee allocates from that arena and returns. `do make(a Arena) -> ^int { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller falls back to the runtime panic rather than a compile error |
-| An arena reached other than by a plain parameter name | An arena stored in a struct field, an array/map element, or a global, then destroyed through that path, is not traced — the cross-function summary only recognizes `mem.destroy(param)`/`mem.reset(param)` where `param` is a bare parameter |
+| An arena reached through an array/map element, or through a global whose value came from a call result | The compile-time trace follows a plain parameter, a struct field, and a pointer-dereference chain of those; an arena reached by indexing a container, or produced by a function call, is not traced. Falls back to the runtime checks below rather than a compile error |
+| A `@mem` pointer copied into another variable, struct field, or container before being dereferenced | Both the compile-time trace and the runtime dereference check (`P0117`) follow the variable a `mem.init()`/`mem.alloc()` result was directly assigned to. Assign that pointer to a second variable, store it in a struct field or container, and dereference it from there instead, and neither catches a subsequent use after the arena is destroyed |
+| Use of a `@mem` pointer after `mem.reset()` (as opposed to `mem.destroy()`) on a path the compile-time checker can't trace | The runtime dereference check only inspects an arena's `destroyed` flag, which `mem.reset()` does not set. A pointer taken before a reset the checker couldn't trace, then dereferenced after it, is not caught at compile time or at runtime — the memory may already have been handed out again by a later allocation |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
