@@ -4524,7 +4524,29 @@ for_each line in lines {
 
 ### 11.2 Reference Semantics
 
-Composite types (arrays, maps) have reference semantics for assignment but value semantics for function parameters (unless the parameter is declared mutable).
+Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, or into an existing struct field, copies it:
+
+```gray
+mut a [int] = {1, 2, 3}
+mut b [int] = a
+b[0] = 99
+println(a[0])   // 1 - b is an independent copy, not an alias
+```
+
+The one place a composite gets aliased instead of copied is a **literal that embeds an existing value** — a struct or array/map literal that names an existing variable as one of its fields/elements shares that variable's backing storage rather than copying it:
+
+```gray
+const Box struct {
+    items [int]
+}
+
+mut arr [int] = {1, 2, 3}
+mut box Box = Box{items: arr}   // struct literal embeds arr
+box.items[0] = 99
+println(arr[0])                  // 99 - box.items aliases arr
+```
+
+The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
 
 ### 11.3 Deep Copy
 
