@@ -1987,6 +1987,32 @@ static void test_error_E3166_mem_destroy_forwarded_through_wrapper(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* pc_premark_loop_body() pre-marks an arena a loop body destroys, so a
+ * dereference textually earlier in the body is still caught as unsafe on a
+ * later iteration. That premark must not make the loop's own (single, real)
+ * destroy statement look like a double-free of itself: `break` right after
+ * the destroy means there is no later iteration at all here, only the one
+ * legitimate destroy and one legitimate post-loop use of the now-dangling
+ * pointer. */
+static void test_no_false_positive_mem_destroy_break_self_collision(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  for i in range(0, 5) {\n"
+        "    if i == 2 {\n"
+        "      mem.destroy(a)\n"
+        "      break\n"
+        "    }\n"
+        "  }\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3166"));
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -2652,6 +2678,7 @@ int main(void) {
     RUN_TEST(test_error_E3164_mem_use_after_cross_function_destroy);
     RUN_TEST(test_error_E3165_mem_use_after_reset);
     RUN_TEST(test_error_E3166_mem_destroy_forwarded_through_wrapper);
+    RUN_TEST(test_no_false_positive_mem_destroy_break_self_collision);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);

@@ -13637,7 +13637,7 @@ static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode 
     if (!sym || !sym->mem_arena) return;
     ArenaLifetime *a = pc_arena_get(checker, sym->mem_arena);
     if (!a) return;
-    if (a->destroyed) {
+    if (a->destroyed || a->premarked_destroyed) {
         diagnostic_error_code_formatted(checker->diag, "E3164",
             NODE_FILE(checker, at), at->token.line, at->token.column, 0,
             root, sym->mem_arena);
@@ -13707,7 +13707,11 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
             (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0) &&
             !declared_in_subtree(body, arena)) {
             ArenaLifetime *a = pc_arena_ensure(checker, arena);
-            if (strcmp(fn, "destroy") == 0) a->destroyed = true;
+            /* premarked_destroyed, not destroyed — see the field comment.
+             * The body's own walk (below) applies this destroy for real when
+             * it reaches the statement; premarking it here as `destroyed`
+             * would make that real statement collide with its own echo. */
+            if (strcmp(fn, "destroy") == 0) a->premarked_destroyed = true;
             else a->epoch++;
         }
         for (int i = 0; i < node->data.call.arg_count; i++)

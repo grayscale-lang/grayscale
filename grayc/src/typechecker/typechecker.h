@@ -61,6 +61,21 @@ typedef struct {
      * does NOT make an ordinary use of the arena elsewhere in the function
      * an error; the deferred destroy hasn't actually run yet. */
     bool ensure_destroy_pending;
+    /* Pre-marked destroyed by pc_premark_loop_body(): some statement later in
+     * this loop body's source text destroys the arena, so a dereference
+     * appearing earlier in the text is still unsafe on any iteration after
+     * the one whose destroy runs. Deliberately kept separate from
+     * `destroyed`: it must make an early dereference in the body an error
+     * (checked wherever `destroyed` is checked for that purpose), but must
+     * NOT make the loop body's own (real, single, textually-later) destroy
+     * statement look like a double-free of itself — that statement is the
+     * one this flag exists to warn about, not a repeat of it. Only
+     * pc_check_mem_deref consults this; the double-destroy guards
+     * (pc_apply_arena_lifecycle, pc_apply_ensure_mem_call) deliberately do
+     * not, and rely on the loop body's real statements — via the same
+     * branch-join machinery used everywhere else — to set `destroyed` for
+     * real once actually walked. */
+    bool premarked_destroyed;
 } ArenaLifetime;
 
 typedef struct {
