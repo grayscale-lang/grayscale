@@ -13961,6 +13961,27 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         }
         return false;
     }
+    if (value->kind == NODE_INDEX_EXPR || value->kind == NODE_MEMBER_EXPR) {
+        /* An element/field read *out of* a tracked aggregate — `_tmp.v0`
+         * (a multi-return temp's per-slot read), `b.p`, `arr[0]`. Mirrors
+         * pointer_origin_of's identical case: the container's buried arena
+         * travels with the value read back out, but only when the slot
+         * itself is a pointer — a copied scalar field isn't one. */
+        const char *root = assignment_target_root_name(value);
+        if (root) {
+            Symbol *s = scope_lookup(checker->current_scope, root);
+            if (s && s->field_mem_arena) {
+                GrayType *vt = resolve_expression(checker, value);
+                if (vt && vt->kind == TK_POINTER) {
+                    *out_arena = s->field_mem_arena;
+                    *out_epoch = s->field_mem_epoch;
+                    *out_via_field = false;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     /* A struct/array/map literal: anything found inside it is buried in a
      * field from the outside, regardless of whether the recursive call
      * itself found a direct or already-field match at the inner level. */
@@ -14008,6 +14029,21 @@ static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *valu
     int epoch = 0;
     bool via_field = false;
     if (!pc_mem_pointer_in_expr(checker, value, &arena, &epoch, &via_field)) return;
+    /* A call's result is ambiguous at this point: a single-return call's
+     * result *is* the symbol (direct — `p^` would deref it), but a
+     * multi-return call's result is a synthetic temp whose per-slot reads
+     * desugar to `_tmp.v0` (field — pc_mem_pointer_in_expr's own
+     * NODE_MEMBER_EXPR case, added for exactly this, consults
+     * field_mem_arena). Nothing at bind time says which shape this
+     * particular call has, so bind both; only one of the two ever gets
+     * read back out. */
+    if (value->kind == NODE_CALL_EXPR) {
+        sym->mem_arena = arena;
+        sym->mem_epoch = epoch;
+        sym->field_mem_arena = arena;
+        sym->field_mem_epoch = epoch;
+        return;
+    }
     if (via_field) {
         sym->field_mem_arena = arena;
         sym->field_mem_epoch = epoch;

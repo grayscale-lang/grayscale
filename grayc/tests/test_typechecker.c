@@ -2312,6 +2312,47 @@ static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(v
     diagnostic_destroy(diagnostics);
 }
 
+/* Multi-return desugars `mut p, n = make(a)` into `mut _tmp = make(a); mut p
+ * = _tmp.v0; mut n = _tmp.v1` — the second statement's value is a
+ * NODE_MEMBER_EXPR, which pc_mem_pointer_in_expr didn't handle at all, so a
+ * @mem pointer returned alongside another value was never bound to `p`.
+ * pc_bind_mem_pointer now binds a CALL_EXPR result to both mem_arena and
+ * field_mem_arena, since a single-return call's result is the pointer
+ * itself but a multi-return temp's per-slot read needs the field slot. */
+static void test_error_E3164_mem_use_after_destroy_multi_return(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> (^int, int) {\n"
+        "  return mem.alloc(a, 42), 1\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int, n = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(n)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_multi_return_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> (^int, int) {\n"
+        "  return mem.alloc(a, 42), 1\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int, n = make(a)\n"
+        "  println(n)\n"
+        "  println(p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3165_mem_use_after_reset(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
@@ -3021,6 +3062,8 @@ int main(void) {
     RUN_TEST(test_no_false_positive_mem_return_forwarded_in_literal_read_before);
     RUN_TEST(test_error_E3164_mem_use_after_destroy_tagged_enum_payload);
     RUN_TEST(test_no_false_positive_mem_tagged_enum_payload_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_multi_return);
+    RUN_TEST(test_no_false_positive_mem_multi_return_read_before_destroy);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
