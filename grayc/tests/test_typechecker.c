@@ -2380,6 +2380,33 @@ static void test_error_E3163_addr_escapes_through_func_ref_call(void) {
     diagnostic_destroy(diagnostics);
 }
 
+/* A parameter forwarded through a func-ref declared *inside* a helper
+ * function's own body (as opposed to a direct func-ref call, the case
+ * above): the escape summary for that helper is computed structurally, by
+ * escape_walk() walking its AST directly — detached from live scope by
+ * design, since the summary is routinely requested from a different
+ * function's call site. resolve_call_sig_in_body() has to recover the
+ * func-ref's target from the AST itself (local_initializer() style) rather
+ * than a scope lookup for this to be seen at all. */
+static void test_error_E3163_addr_escapes_through_func_ref_in_helper(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "mut GLOBAL ^int = nil\n"
+        "do stash(x ^int) {\n"
+        "  GLOBAL = x\n"
+        "}\n"
+        "do helper(x ^int) {\n"
+        "  const f = ()stash\n"
+        "  f(x)\n"
+        "}\n"
+        "do capture() {\n"
+        "  mut y int = 33\n"
+        "  helper(addr(y))\n"
+        "}\n"
+        "do main() { capture() }");
+    ASSERT(has_error_code(diagnostics, "E3163"));
+    diagnostic_destroy(diagnostics);
+}
+
 /* A func-typed parameter's call (`f(p)` where `f func(T) -> T`) has no
  * FuncSig, so its escape-summary walk falls back to consulting the call's
  * already-resolved type via typetable_get() rather than resolving it fresh —
@@ -2712,6 +2739,7 @@ int main(void) {
     RUN_TEST(test_error_E3122_addr_const_var);
     RUN_TEST(test_error_E3163_addr_scope_mismatch);
     RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_call);
+    RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_in_helper);
     RUN_TEST(test_no_false_positive_func_param_call_forward_reference);
 
     PRINT_RESULTS();

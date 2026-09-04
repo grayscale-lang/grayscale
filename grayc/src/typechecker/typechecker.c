@@ -1258,6 +1258,46 @@ static AstNode *local_initializer(AstNode *node, const char *name) {
     }
 }
 
+/* The function a func-ref initializer names — `()target` or `ref(target)` —
+ * or NULL if `value` is neither. */
+static const char *func_ref_target_name(AstNode *value) {
+    if (!value) return NULL;
+    if (value->kind == NODE_FUNC_REF) {
+        AstNode *target = value->data.func_ref.function;
+        return (target && target->kind == NODE_LABEL) ? target->data.label.value : NULL;
+    }
+    if (value->kind == NODE_CALL_EXPR && value->data.call.function &&
+        value->data.call.function->kind == NODE_LABEL &&
+        strcmp(value->data.call.function->data.label.value, "ref") == 0 &&
+        value->data.call.arg_count == 1 &&
+        value->data.call.args[0]->kind == NODE_LABEL)
+        return value->data.call.args[0]->data.label.value;
+    return NULL;
+}
+
+/* resolve_call_sig(), extended to see through a call to a func-ref variable
+ * declared inside `body` — `const f = ()target; f(...)` or `const f =
+ * ref(target); f(...)`. resolve_call_sig()'s own func-ref branch depends on
+ * a live checker->current_scope, which the structural summary walks
+ * (escape_walk, return_expr_param_bits, pc_mem_walk) never set: they run
+ * detached from scope by design, over whichever function's AST they were
+ * asked to summarise, which is routinely a different function from whatever
+ * is actually being type-checked at the moment the summary is first
+ * requested. `body` — the summarised function's own body, which every one
+ * of those walks already has on hand — lets local_initializer() recover the
+ * same answer structurally, the same way it already recovers a local
+ * variable's initializer for this walk without touching scope. */
+static FuncSig *resolve_call_sig_in_body(TypeChecker *checker, AstNode *body,
+                                         AstNode *call) {
+    FuncSig *direct = resolve_call_sig(checker, call);
+    if (direct) return direct;
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_LABEL) return NULL;
+    const char *target = func_ref_target_name(
+        local_initializer(body, fn->data.label.value));
+    return target ? find_func(checker, target) : NULL;
+}
+
 /* True if `node` constructs a tagged-enum variant — `Enum.Variant(args)` or
  * the implicit-selector form `.Variant(args)` — rather than calling a real
  * function. Both compile to a NODE_CALL_EXPR whose function resolves to no
@@ -1353,7 +1393,7 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
                 out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
             return out;
         }
-        FuncSig *callee = resolve_call_sig(checker, node);
+        FuncSig *callee = resolve_call_sig_in_body(checker, fs->decl->data.func_decl.body, node);
         if (callee == fs) return 0;
         if (!callee) {
             /* A stdlib module call or bare builtin: no FuncSig, so no
@@ -1597,7 +1637,7 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                 record_param_escape(fs, return_expr_param_bits(checker, fs,
                     node->data.call.args[sink->value_arg]), dest);
         }
-        FuncSig *callee = resolve_call_sig(checker, node);
+        FuncSig *callee = resolve_call_sig_in_body(checker, body, node);
         if (callee && callee != fs) {
             ensure_escape_summary(checker, callee);
             for (int k = 0; k < callee->param_count &&
@@ -1733,7 +1773,8 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
                 else fs->resets_param_arena |= 1ull << i;
             }
         } else {
-            FuncSig *callee = resolve_call_sig(checker, node);
+            FuncSig *callee = resolve_call_sig_in_body(checker,
+                fs->decl->data.func_decl.body, node);
             if (callee && callee != fs) {
                 pc_ensure_mem_summary(checker, callee);
                 int pc = fs->decl->data.func_decl.param_count;
