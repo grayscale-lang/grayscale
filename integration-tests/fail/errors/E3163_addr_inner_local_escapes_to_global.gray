@@ -1,7 +1,7 @@
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 1
 /*
- * Error Test: E3097 - an inner-scope address stored into a module-level
+ * Error Test: E3163 - an inner-scope address stored into a module-level
  * variable by a helper function.
  *
  * capture() assigns its pointer parameter to the global 'g'; the global

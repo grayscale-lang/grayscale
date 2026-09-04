@@ -1,7 +1,7 @@
-// expect-error: E3063
+// expect-error: E3162
 // expect-error-count: 1
 /*
- * Error Test: E3063 - a new() heap object whose pointer field is set to a
+ * Error Test: E3162 - a new() heap object whose pointer field is set to a
  * local's address and is then returned: the object outlives the local, so
  * the returned pointer carries a dangling field (#2650 vector B).
  */

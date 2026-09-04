@@ -45,6 +45,17 @@ typedef struct {
 #define PARAM_ESCAPE_NONE   ((signed char)-1)
 #define PARAM_ESCAPE_GLOBAL ((signed char)-2)
 
+/* Pointer checker: the lifetime state of one @mem arena variable within the
+ * function currently being checked. */
+typedef struct {
+    const char *name;      /* arena variable name as written */
+    int  epoch;            /* incremented by each mem.reset() on this arena */
+    bool destroyed;        /* mem.destroy() has run on this arena */
+    const char *end_file;  /* where the destroy/reset that ended it sits */
+    int  end_line;
+    bool end_was_reset;    /* true: last lifetime event was reset, not destroy */
+} ArenaLifetime;
+
 typedef struct {
     /* Function signature for call type checking */
     const char *name;
@@ -82,8 +93,8 @@ typedef struct {
      * by-reference container/struct parameter, a module-level variable, a
      * stdlib container insert, or transitively another escaping call).
      *
-     * Together these let the return and assignment escape checks (E3063,
-     * E3097) follow an address through a function call and through a helper
+     * Together these let the return and assignment escape checks (E3162,
+     * E3163) follow an address through a function call and through a helper
      * that stashes it in caller-visible memory. */
     unsigned char escape_state;
     unsigned long long returns_param_addr;
@@ -200,10 +211,15 @@ typedef struct {
     const char *using_visible_file;
     int using_visible_stamp;
 
-    /*  track mem.destroy() calls for double-free detection */
-    const char **destroyed_arenas;
-    int destroyed_arena_count;
-    int destroyed_arena_cap;
+    /* Pointer checker: per-function @mem arena lifetime state. Tracks, per
+     * arena variable in scope, whether mem.destroy() has run and how many
+     * times mem.reset() has (the epoch). Flow-sensitive: saved and joined
+     * around branches so a destroy on one path is seen after the join.
+     * Drives E3164 (use after destroy), E3165 (use after reset), E3166
+     * (destroy/reset of an already-destroyed arena). */
+    ArenaLifetime *arenas;
+    int arena_count;
+    int arena_cap;
 
     /*  true during register_declarations to allow forward references */
     bool registering;

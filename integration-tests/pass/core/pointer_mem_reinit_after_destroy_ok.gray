@@ -1,0 +1,19 @@
+/*
+ * pointer_mem_reinit_after_destroy_ok.gray - re-binding an arena handle to a
+ * fresh mem.arena() after mem.destroy() gives it a clean lifetime; a pointer
+ * taken from the new handle is not flagged as a use-after-free.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    println(p^)
+    mem.destroy(a)
+
+    a = mem.arena(1024)
+    mut q ^int = mem.alloc(a, 7)
+    println(q^)
+    mem.destroy(a)
+}

@@ -1,5 +1,5 @@
 /*
- * Error Test: E3064 - double mem.destroy() on the same arena
+ * Error Test: E3166 - double mem.destroy() on the same arena
  *
  * compile-time detection of straight-line double
  * destroy on the same variable.

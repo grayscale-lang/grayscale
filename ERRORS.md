@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 445 codes** (313 errors, 16 warnings, 116 panics)
+**Total: 448 codes** (316 errors, 16 warnings, 116 panics)
 
 ---
 
@@ -136,8 +136,6 @@
 | `E3060` | types | wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type |
 | `E3061` | types | struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s' |
 | `E3062` | types | '%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state) |
-| `E3063` | types | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
-| `E3064` | types | '%s(%s)' called again; '%s' was already destroyed |
 | `E3066` | types | function reference signature mismatch; expected and actual function types differ |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
@@ -168,7 +166,6 @@
 | `E3094` | types | cannot assign '%s' to element of '%s' |
 | `E3095` | types | 'in' only works with arrays, maps, and strings; got '%s' |
 | `E3096` | types | cannot negate unsigned type '%s'; negation of unsigned types is not defined |
-| `E3097` | safety | pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits |
 | `E3098` | types | type mismatch: cannot assign '%s' to '%s' through pointer dereference |
 | `E3099` | types | '%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import |
 | `E3100` | types | type name '%s' cannot be used as a value |
@@ -233,6 +230,12 @@
 | `E3159` | types | wildcard '?' type conflict; '?' was already bound to a different type |
 | `E3160` | types | parameter needs a type annotation; add one, or give it a default value whose type can be inferred |
 | `E3161` | types | cannot take the address of this index expression; the backing store may move, leaving the pointer dangling |
+| `E3162` | safety | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
+| `E3163` | safety | '%s' outlives the variable '%s' it points to, whose memory is freed when its scope exits |
+| `E3164` | safety | '%s' points into arena '%s', which has already been destroyed |
+| `E3165` | safety | '%s' points into arena '%s', whose memory was released by 'mem.reset()' |
+| `E3166` | safety | '%s(%s)' called again; '%s' was already destroyed |
+| `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -496,4 +499,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-04 05:16:07 UTC*
+*Generated on 2026-09-04 13:40:24 UTC*

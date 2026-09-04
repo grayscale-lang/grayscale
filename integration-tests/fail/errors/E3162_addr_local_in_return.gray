@@ -1,5 +1,5 @@
 /*
- * Error Test: E3063 - cannot return addr() of a local variable
+ * Error Test: E3162 - cannot return addr() of a local variable
  *
  * the local's memory is freed when the function
  * returns, so the pointer would dangle.

@@ -4579,25 +4579,27 @@ mem.destroy(scratch)
 
 ### 11.7 Memory Safety
 
-Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, unsynchronized threading, or C interop (`extern import`) introduces hazards that the programmer is responsible for, and the pointer escape checks below have a known gap. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
+Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the pointer checker — a compile-time pass that traces the lifetime of every pointer value — catches the rest. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, unsynchronized threading, or C interop (`extern import`) introduces hazards that the programmer is responsible for. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management: the pointer checker proves no pointer is ever readable after the memory it points to has been reclaimed.
 
 **Compile-time checked:**
 
 | Hazard | Grayscale Behavior |
 |--------|-------------|
-| Returning address of local variable | `return addr(local)` is rejected. Only the direct form is detected; see the pointer escape limitation below |
-| Cross-scope pointer assignment | Assigning `addr()` of an inner-scope value directly to an outer-scope pointer is rejected. Only the direct form is detected; see the pointer escape limitation below |
+| Returning a pointer to a local variable | `return addr(local)` is rejected, however the address is laundered — through an intermediate variable, a struct field, an array/map literal, a function call that forwards it, or a returned `new()` object's pointer field |
+| Storing a pointer where the destination outlives its referent | Assigning `addr()` of a shorter-lived value into a longer-lived variable, struct field, or array element is rejected; so is passing it to `arrays.append`/`prepend`/`insert_at`/`fill`, and writing it through a pointer or `&mut` parameter (which hands the caller a dangling pointer once the callee returns) |
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Dangling pointer into a relocated container | `addr()`, `raw()`, or `ref()` on a dynamic `[T]` array element or a map value is rejected; the backing store relocates when the array grows or the map rehashes. Fixed-size `[T,N]` array elements are allowed — their storage never moves |
-| Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
+| Pointer-type reinterpretation | `cast()` between two pointer types is rejected; `cast()` converts values, not pointer identity |
+| Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen |
+| Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, or on a prior iteration of an enclosing loop |
 
 **Prevented by ASBAM:**
 
 | Hazard | How |
 |--------|-----|
 | Memory leaks in long-running programs | Scopes free allocations on exit |
-| Use-after-free (common case) | Out-of-scope values can't be named — if you can't reach it, it's freed |
-| Dangling returns (common case) | Return values are copied to the caller's scope — the data moves, the pointer stays valid |
+| Use-after-free (default arena) | Out-of-scope values can't be named — if you can't reach it, it's freed |
+| Dangling returns (default arena) | Return values are copied to the caller's scope — the data moves, the pointer stays valid |
 | Loop memory accumulation | Each iteration is a scope; temporaries cleaned up on iteration end |
 
 **Runtime-checked (safe by default):**
@@ -4610,24 +4612,23 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Division by zero | Runtime panic |
 | Integer overflow | Runtime panic (checked arithmetic) |
 | Stack overflow (deep recursion) | Detected and reported |
-| Double-free on `@mem` arenas (conditional/cross-function) | Runtime panic |
+| Double-`destroy`/use-after-`destroy` on `@mem` arenas that crosses a function call | Runtime panic — the pointer checker's arena tracking is per-function; a handle destroyed inside a called function, or a pointer taken before a call that destroys its arena, is not traced across the call boundary |
 
 **Not checked (programmer responsibility):**
 
 | Hazard | When It Can Happen |
 |--------|-------------------|
-| Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
+| Use-after-free on a `@mem` arena across a function call | The pointer checker traces `mem.destroy()`/`mem.reset()` within one function; a `destroy`/`reset` performed by a called function, or a pointer that outlives the call in which its arena is destroyed, falls back to the runtime panic above rather than a compile error |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
 | Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
-| Pointer escape through an intermediate variable | The escape checks above match the address expression directly. Assigning `addr()` to a variable first and then returning that variable, or assigning it to an outer-scope pointer, is not currently detected and produces a dangling pointer. |
-| Pointer retained by a C function | Passing `addr()` of a Grayscale value to a C function (`extern import`) that stores the pointer. The value is freed when its scope ends; the pointer the C side still holds dangles. The escape checks do not cross the `extern.` call. |
+| Pointer retained by a C function | Passing `addr()` of a Grayscale value to a C function (`extern import`) that stores the pointer. The value is freed when its scope ends; the pointer the C side still holds dangles. The pointer checker does not cross the `extern.` call. |
 | Memory freed across the C boundary | A C function frees memory Grayscale still references, or a Grayscale-owned allocation is passed to C `free()`. Neither side tracks the other's lifetimes. |
 | Out-of-bounds write by a C function | A C function writes past the end of a buffer passed from Grayscale. Bounds checking does not cross the `extern.` call. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
-For most Grayscale programs, those that don't use the `@mem` module, raw pointers, threading, or C interop, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
+For programs that stay in the safe subset — no `@mem`, no `raw()`, no threading, no C interop — the pointer checker makes use-after-free a compile error, not a runtime hazard. `@mem`, `raw()`, threading, and `extern import` are Grayscale's explicit unsafe opt-outs; reaching for one of them is what puts memory safety back in the programmer's hands.
 
 ### 11.8 Under the Hood
 

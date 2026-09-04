@@ -165,6 +165,13 @@ static bool string_set_contains(const char *const *sorted, int n, const char *na
  * routines and stdlib arg-type validation. */
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
+/* Forward declarations — pointer checker @mem lifetime helpers, defined near
+ * check_expr_stmt but hooked into expression resolution and var-decl. */
+static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
+                              const char *bind_name);
+static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
+static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
+
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
 static const char *operator_display_name(TokenType op) {
@@ -1388,7 +1395,7 @@ static bool declared_in_subtree(AstNode *node, const char *name) {
 
 /* Is `name` a module-level variable of the program being checked? Only
  * returns true when it can prove it, so an unknown name is treated as a
- * local (a conservative miss, never a false E3097). */
+ * local (a conservative miss, never a false E3163). */
 static bool is_module_level_var(TypeChecker *checker, const char *name) {
     if (!checker->program || !name ||
         checker->program->kind != NODE_PROGRAM) return false;
@@ -1402,7 +1409,7 @@ static bool is_module_level_var(TypeChecker *checker, const char *name) {
 }
 
 /* Classify a store target's root: a parameter index, PARAM_ESCAPE_GLOBAL, or
- * PARAM_ESCAPE_NONE (a local — an in-function concern the direct E3097
+ * PARAM_ESCAPE_NONE (a local — an in-function concern the direct E3163
  * checks already cover). */
 static signed char escape_dest_for_root(TypeChecker *checker, FuncSig *fs,
                                         const char *root, AstNode *body) {
@@ -7311,7 +7318,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 node->data.call.args[i], ai_t, node->data.call.args[i]);
     }
 
-    /* E3097: addr() of inner-scope variable passed alongside an outer-scope
+    /* E3163: addr() of inner-scope variable passed alongside an outer-scope
      * argument — the classic escape pattern, e.g. arrays.append(outer, addr(x))
      * where x is loop/if/while-local.  We fire only when another argument in
      * the same call comes from an outer scope (scope_lookup_local returns null
@@ -7346,7 +7353,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 }
             }
             if (has_outer_arg) {
-                diagnostic_error_code_formatted(checker->diag, "E3097",
+                diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
                     addr_var, addr_var);
                 reported_arg |= 1ull << i;
@@ -7354,7 +7361,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E3097: an inner-scope address that reaches longer-lived memory through
+    /* E3163: an inner-scope address that reaches longer-lived memory through
      * a call — stored into a container by a stdlib insert, or stashed into a
      * caller-visible parameter or global by a helper function (its
      * param_escape_into summary). Covers both the inline addr()/raw() form
@@ -7374,7 +7381,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             const char *onm = NULL;
             int od = pointer_origin_of(checker, arg, &onm);
             if (od > 0 && od > dest_depth)
-                diagnostic_error_code_formatted(checker->diag, "E3097",
+                diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, arg), arg->token.line,
                     arg->token.column, 0, dest ? dest : onm, onm);
         }
@@ -7404,7 +7411,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     sink_name = droot ? droot : onm;
                 }
                 if (od > sink_depth)
-                    diagnostic_error_code_formatted(checker->diag, "E3097",
+                    diagnostic_error_code_formatted(checker->diag, "E3163",
                         NODE_FILE(checker, arg), arg->token.line,
                         arg->token.column, 0, sink_name, onm);
             }
@@ -9443,6 +9450,9 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
     case NODE_POSTFIX_EXPR: {
         GrayType *left_t = resolve_expression(checker, node->data.postfix.left);
         if (node->data.postfix.op == TOK_CARET) {
+            /* Pointer checker: dereferencing a pointer into a @mem arena that
+             * has been destroyed (E3164) or reset (E3165). */
+            pc_check_mem_deref(checker, node->data.postfix.left, node);
             if (left_t->kind == TK_POINTER) {
                 /* Dereference: ^T^ → T */
                 result = typechecker_type_from_name(checker, left_t->element_type);
@@ -9746,6 +9756,19 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         /* Resolve user-defined enum types that type_from_name() can't find */
         if (!dst_t && is_enum_name(checker, target))
             dst_t = type_enum(target);
+        /* E3167: cast() cannot reinterpret one pointer type as another. A
+         * pointer cast bypasses every lifetime and type guarantee the pointer
+         * checker relies on; there is no safe form of it in the language. */
+        if (src_t && src_t->kind == TK_POINTER && dst_t && dst_t->kind == TK_POINTER) {
+            char src_name[TYPE_NAME_MAX];
+            strncpy(src_name, type_name(src_t), sizeof(src_name) - 1);
+            src_name[sizeof(src_name) - 1] = '\0';
+            diagnostic_error_code_formatted(checker->diag, "E3167",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                src_name, unqualified_display_name(written_target));
+            result = dst_t;
+            break;
+        }
         /* Allowlist-based cast validation */
         if (src_t && src_t->kind != TK_UNKNOWN && dst_t && dst_t->kind != TK_UNKNOWN) {
             bool allowed = false;
@@ -11848,7 +11871,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         /* Record the lifetime origin of a pointer declared from addr()/raw()
          * or copied from another tracked pointer. A declaration is always
          * legal — the pointer cannot outlive its own scope — but the origin
-         * travels with it so later escapes (E3063, E3097) are still caught. */
+         * travels with it so later escapes (E3162, E3163) are still caught. */
         {
             Symbol *dst_sym = scope_lookup_local(checker->current_scope,
                 node->data.var_decl.name);
@@ -11861,6 +11884,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 dst_sym->field_origin_depth = container_literal_origin(checker,
                     node->data.var_decl.value, &field_origin_name);
                 dst_sym->field_origin_name = field_origin_name;
+                /* Pointer checker: a @mem arena handle (mut a = mem.arena(n)),
+                 * or a pointer into one (mut p = mem.init(a, T)). */
+                pc_apply_mem_call(checker, node->data.var_decl.value, node,
+                                  node->data.var_decl.name);
+                pc_bind_mem_pointer(checker, dst_sym, node->data.var_decl.value);
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -12040,6 +12068,20 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         checker->expected_type = target_t;
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
+
+    /* Pointer checker: `a = mem.arena(n)` re-binds a fresh, live arena handle
+     * (a common idiom right after `mem.destroy(a)`); `p = mem.init(a, T)` /
+     * `mem.alloc(a, n)` re-binds which arena a pointer variable tracks. */
+    if (node->data.assign.target->kind == NODE_LABEL &&
+        node->data.assign.op == TOK_ASSIGN) {
+        const char *aname = node->data.assign.target->data.label.value;
+        pc_apply_mem_call(checker, node->data.assign.value, node, aname);
+        Symbol *tsym = scope_lookup(checker->current_scope, aname);
+        if (tsym) {
+            tsym->mem_arena = NULL;
+            pc_bind_mem_pointer(checker, tsym, node->data.assign.value);
+        }
+    }
 
     /* An in-range integer literal (or constant-folded literal expression)
      * carries no inherent signedness or width — resolve_expression types it
@@ -12584,7 +12626,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* E3097: storing a local's address into memory that outlives it, reached
+    /* E3163: storing a local's address into memory that outlives it, reached
      * through a pointer parameter, a &ref parameter, or a new() heap object's
      * pointer field. The origin travels through intermediate pointers, so
      * `tmp = addr(local); out^ = tmp` is caught too (#2650). */
@@ -12596,12 +12638,12 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
             const char *dest = escape_root_name(target);
-            diagnostic_error_code_formatted(checker->diag, "E3097",
+            diagnostic_error_code_formatted(checker->diag, "E3163",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 dest ? dest : origin_name, origin_name);
         }
     }
-    /* E3097: reject storing an address into a pointer that outlives it.
+    /* E3163: reject storing an address into a pointer that outlives it.
      * The origin travels through intermediate pointers and function calls,
      * so laundering the address (p = tmp where tmp = addr(local), or
      * p = forward(addr(local))) is caught too. */
@@ -12611,7 +12653,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         int origin_depth = expression_origin(checker, node->data.assign.value,
                                              &origin_name);
         if (origin_depth > symbol_scope_depth(checker->current_scope, ptr_name)) {
-            diagnostic_error_code_formatted(checker->diag, "E3097",
+            diagnostic_error_code_formatted(checker->diag, "E3163",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 ptr_name, origin_name);
         } else {
@@ -12629,7 +12671,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         }
     } else if (!caller_mem &&
                (target->kind == NODE_MEMBER_EXPR || target->kind == NODE_INDEX_EXPR)) {
-        /* A struct field or array element as the target: the E3097 guard
+        /* A struct field or array element as the target: the E3163 guard
          * above never reached these. Compare the stored address's origin
          * against the scope of the root aggregate variable. */
         const char *root = assignment_target_root_name(target);
@@ -12639,7 +12681,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                                                  &origin_name);
             int root_depth = symbol_scope_depth(checker->current_scope, root);
             if (origin_depth > root_depth) {
-                diagnostic_error_code_formatted(checker->diag, "E3097",
+                diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     root, origin_name);
             } else if (origin_depth > 0) {
@@ -12740,7 +12782,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             "use exit(code) to terminate with a status code");
         return;
     }
-    /* E3063: reject returning the address of a local; its memory is freed
+    /* E3162: reject returning the address of a local; its memory is freed
      * when the function returns. The origin travels through intermediate
      * pointers, a function call, a struct field, and a container literal
      * (array/map/struct) or an element read back out of one, so
@@ -12761,7 +12803,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         }
         if (origin_depth > 0 &&
             origin_depth >= checker->current_func_scope_depth) {
-            diagnostic_error_code_formatted(checker->diag, "E3063",
+            diagnostic_error_code_formatted(checker->diag, "E3162",
                 NODE_FILE(checker, node), return_val->token.line,
                 return_val->token.column, 0, origin_name, origin_name);
         }
@@ -13071,6 +13113,264 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
     }
 }
 
+/* ============================================================================
+ * Pointer checker — @mem arena lifetime tracking (E3164 / E3165 / E3166)
+ *
+ * checker->arenas holds one ArenaLifetime per @mem arena variable seen in the
+ * function being checked. mem.destroy() marks it destroyed; mem.reset() bumps
+ * its epoch. A pointer bound from mem.init()/mem.alloc() records the arena and
+ * the epoch-at-binding on its Symbol; dereferencing it after the arena is
+ * destroyed is E3164, after a reset past that epoch is E3165. A destroy/reset
+ * of an already-destroyed arena is E3166.
+ *
+ * The state is flow-sensitive: check_if_stmt / check_when_stmt snapshot the
+ * array, check each branch from the snapshot, then join — destroyed on ANY
+ * path wins, epoch is the max — so a destroy on one branch is seen after the
+ * merge. Loop checkers pre-mark any arena a loop body destroys/resets (unless
+ * the handle is loop-local), so a use on a later iteration is caught. This
+ * replaces the old flat `destroyed_arenas` list, which saw only the direct
+ * `mem.destroy(a); mem.destroy(a)` form.
+ * ========================================================================== */
+
+static ArenaLifetime *pc_arena_get(TypeChecker *checker, const char *name) {
+    for (int i = 0; i < checker->arena_count; i++)
+        if (strcmp(checker->arenas[i].name, name) == 0) return &checker->arenas[i];
+    return NULL;
+}
+
+static ArenaLifetime *pc_arena_ensure(TypeChecker *checker, const char *name) {
+    ArenaLifetime *a = pc_arena_get(checker, name);
+    if (a) return a;
+    GROW_ARRAY(checker->arenas, checker->arena_count, checker->arena_cap);
+    a = &checker->arenas[checker->arena_count++];
+    memset(a, 0, sizeof *a);
+    a->name = name;
+    return a;
+}
+
+/* True + fills *out_fn / *out_arena when `call` is a @mem lifecycle call on an
+ * arena named by a bare variable: mem.arena / mem.init / mem.alloc / mem.reset
+ * / mem.destroy, written `mem.fn(a, ...)` or bare `fn(a, ...)` under `using
+ * mem`. For mem.arena(size) *out_arena is NULL (arg 0 is a size). */
+static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
+                           const char **out_fn, const char **out_arena) {
+    if (!call || call->kind != NODE_CALL_EXPR || call->data.call.arg_count < 1)
+        return false;
+    AstNode *fn = call->data.call.function;
+    const char *fname = NULL;
+    if (fn->kind == NODE_MEMBER_EXPR && fn->data.member.object &&
+        fn->data.member.object->kind == NODE_LABEL &&
+        strcmp(fn->data.member.object->data.label.value, "mem") == 0) {
+        fname = fn->data.member.member;
+    } else if (fn->kind == NODE_LABEL) {
+        bool mem_using = false;
+        for (int i = 0; i < checker->using_module_count; i++) {
+            if (!using_module_accessible(checker, i)) continue;
+            if (strcmp(checker->using_modules[i], "mem") == 0) { mem_using = true; break; }
+        }
+        if (mem_using) fname = fn->data.label.value;
+    }
+    if (!fname) return false;
+    if (strcmp(fname, "arena") != 0 && strcmp(fname, "init") != 0 &&
+        strcmp(fname, "alloc") != 0 && strcmp(fname, "reset") != 0 &&
+        strcmp(fname, "destroy") != 0)
+        return false;
+    *out_fn = fname;
+    if (strcmp(fname, "arena") == 0) { *out_arena = NULL; return true; }
+    AstNode *arg0 = call->data.call.args[0];
+    if (arg0->kind != NODE_LABEL) return false;
+    *out_arena = arg0->data.label.value;
+    return true;
+}
+
+/* Apply a @mem lifecycle call's effect to arena state, reporting E3166 for a
+ * destroy/reset of an already-destroyed arena. `bind_name` is the variable a
+ * mem.arena() result is bound to, or NULL for a bare statement call. */
+static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
+                              const char *bind_name) {
+    const char *fn = NULL, *arena = NULL;
+    if (!pc_is_mem_call(checker, call, &fn, &arena)) return;
+
+    if (strcmp(fn, "arena") == 0) {
+        if (bind_name) {
+            ArenaLifetime *a = pc_arena_ensure(checker, bind_name);
+            a->destroyed = false;
+            a->epoch = 0;
+        }
+        return;
+    }
+    if (!arena) return;
+
+    if (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0) {
+        ArenaLifetime *a = pc_arena_ensure(checker, arena);
+        if (a->destroyed) {
+            const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
+                ? (strcmp(fn, "destroy") == 0 ? "mem.destroy" : "mem.reset")
+                : fn;
+            diagnostic_error_code_formatted(checker->diag, "E3166",
+                NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+                disp, arena, arena);
+            return;
+        }
+        a->end_file = NODE_FILE(checker, at);
+        a->end_line = at->token.line;
+        if (strcmp(fn, "destroy") == 0) {
+            a->destroyed = true;
+            a->end_was_reset = false;
+        } else {
+            a->epoch++;
+            a->end_was_reset = true;
+        }
+    }
+    /* init / alloc: no lifetime effect; the pointer binding is recorded at the
+     * var-decl (pc_bind_mem_pointer). */
+}
+
+/* Record on a freshly declared pointer symbol that it points into a @mem
+ * arena, if its initializer is mem.init()/mem.alloc(). */
+static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
+    if (!sym || !value) return;
+    const char *fn = NULL, *arena = NULL;
+    if (value->kind == NODE_CALL_EXPR &&
+        pc_is_mem_call(checker, value, &fn, &arena) && arena &&
+        (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
+        ArenaLifetime *a = pc_arena_ensure(checker, arena);
+        sym->mem_arena = arena;
+        sym->mem_epoch = a->epoch;
+        return;
+    }
+    /* Alias of another mem-bound pointer: mut q = p */
+    if (value->kind == NODE_LABEL) {
+        Symbol *src = scope_lookup(checker->current_scope, value->data.label.value);
+        if (src && src->mem_arena) {
+            sym->mem_arena = src->mem_arena;
+            sym->mem_epoch = src->mem_epoch;
+        }
+    }
+}
+
+/* A dereference `ptr_expr^` (as `p^`, `p^.field`, `p^[i]`). If ptr_expr roots
+ * at a mem-bound pointer, verify its arena is still alive. */
+static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at) {
+    AstNode *inner = ptr_expr;
+    while (inner && inner->kind == NODE_POSTFIX_EXPR &&
+           inner->data.postfix.op == TOK_CARET)
+        inner = inner->data.postfix.left;
+    const char *root = (inner && inner->kind == NODE_LABEL)
+        ? inner->data.label.value
+        : assignment_target_root_name(inner);
+    if (!root) return;
+    Symbol *sym = scope_lookup(checker->current_scope, root);
+    if (!sym || !sym->mem_arena) return;
+    ArenaLifetime *a = pc_arena_get(checker, sym->mem_arena);
+    if (!a) return;
+    if (a->destroyed) {
+        diagnostic_error_code_formatted(checker->diag, "E3164",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            root, sym->mem_arena);
+    } else if (a->epoch > sym->mem_epoch) {
+        diagnostic_error_code_formatted(checker->diag, "E3165",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            root, sym->mem_arena);
+    }
+}
+
+/* --- branch-sensitive snapshot / join --- */
+
+typedef struct { ArenaLifetime *rows; int count; } PcArenaSnap;
+
+static PcArenaSnap pc_snap(TypeChecker *checker) {
+    PcArenaSnap s;
+    s.count = checker->arena_count;
+    s.rows = s.count ? xmalloc(sizeof(ArenaLifetime) * (size_t)s.count) : NULL;
+    if (s.count)
+        memcpy(s.rows, checker->arenas, sizeof(ArenaLifetime) * (size_t)s.count);
+    return s;
+}
+
+static void pc_snap_free(PcArenaSnap s) { free(s.rows); }
+
+/* Restore live state to a snapshot. Arena rows are append-only and
+ * index-stable within a function, and any handle a branch declared is
+ * block-scoped, so truncating back to the snapshot's count is correct. */
+static void pc_restore(TypeChecker *checker, PcArenaSnap s) {
+    for (int i = 0; i < s.count && i < checker->arena_count; i++)
+        checker->arenas[i] = s.rows[i];
+    checker->arena_count = s.count;
+}
+
+/* Merge `other` into the live state: an arena is destroyed after the join if
+ * destroyed on either path; its epoch is the higher of the two. */
+static void pc_join(TypeChecker *checker, PcArenaSnap other) {
+    for (int i = 0; i < other.count && i < checker->arena_count; i++) {
+        ArenaLifetime *live = &checker->arenas[i];
+        ArenaLifetime *o = &other.rows[i];
+        if (o->destroyed && !live->destroyed) {
+            live->destroyed = true;
+            live->end_file = o->end_file;
+            live->end_line = o->end_line;
+            live->end_was_reset = o->end_was_reset;
+        }
+        if (o->epoch > live->epoch) {
+            live->epoch = o->epoch;
+            if (!live->destroyed) {
+                live->end_file = o->end_file;
+                live->end_line = o->end_line;
+                live->end_was_reset = o->end_was_reset;
+            }
+        }
+    }
+}
+
+/* Pre-mark every arena a loop body destroys or resets, so a dereference on a
+ * later iteration is caught. A handle declared inside the body is fresh each
+ * iteration and is left alone (the idiomatic per-iteration scratch arena). */
+static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *body) {
+    if (!node) return;
+    switch (node->kind) {
+    case NODE_CALL_EXPR: {
+        const char *fn = NULL, *arena = NULL;
+        if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+            (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0) &&
+            !declared_in_subtree(body, arena)) {
+            ArenaLifetime *a = pc_arena_ensure(checker, arena);
+            if (strcmp(fn, "destroy") == 0) a->destroyed = true;
+            else a->epoch++;
+        }
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            pc_premark_loop_body(checker, node->data.call.args[i], body);
+        break;
+    }
+    case NODE_VAR_DECL:
+        pc_premark_loop_body(checker, node->data.var_decl.value, body);
+        break;
+    case NODE_ASSIGN_STMT:
+        pc_premark_loop_body(checker, node->data.assign.value, body);
+        break;
+    case NODE_EXPR_STMT:
+        pc_premark_loop_body(checker, node->data.expr_stmt.expr, body);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            pc_premark_loop_body(checker, node->data.block.stmts[i], body);
+        break;
+    case NODE_IF_STMT:
+        pc_premark_loop_body(checker, node->data.if_stmt.consequence, body);
+        pc_premark_loop_body(checker, node->data.if_stmt.alternative, body);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            pc_premark_loop_body(checker, node->data.when_stmt.cases[i].body, body);
+        pc_premark_loop_body(checker, node->data.when_stmt.default_body, body);
+        break;
+    case NODE_FOR_STMT:      pc_premark_loop_body(checker, node->data.for_stmt.body, body); break;
+    case NODE_FOR_EACH_STMT: pc_premark_loop_body(checker, node->data.for_each.body, body); break;
+    case NODE_WHILE_STMT:    pc_premark_loop_body(checker, node->data.while_stmt.body, body); break;
+    case NODE_LOOP_STMT:     pc_premark_loop_body(checker, node->data.loop_stmt.body, body); break;
+    default: break;
+    }
+}
+
 static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *expr_t = resolve_expression(checker, node->data.expr_stmt.expr);
     /* E3081: bare function name used as statement without call */
@@ -13140,65 +13440,11 @@ static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* : double-free detection for mem.destroy() */
-    if (expr && expr->kind == NODE_CALL_EXPR &&
-        expr->data.call.function->kind == NODE_MEMBER_EXPR) {
-        AstNode *obj = expr->data.call.function->data.member.object;
-        const char *mem_fn = expr->data.call.function->data.member.member;
-        if (obj->kind == NODE_LABEL && strcmp(mem_fn, "destroy") == 0 &&
-            strcmp(obj->data.label.value, "mem") == 0 &&
-            expr->data.call.arg_count == 1 &&
-            expr->data.call.args[0]->kind == NODE_LABEL) {
-            const char *arena_name = expr->data.call.args[0]->data.label.value;
-            bool already_destroyed = false;
-            for (int di = 0; di < checker->destroyed_arena_count; di++) {
-                if (strcmp(checker->destroyed_arenas[di], arena_name) == 0) {
-                    already_destroyed = true;
-                    break;
-                }
-            }
-            if (already_destroyed) {
-                diagnostic_error_code_formatted(checker->diag, "E3064",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "mem.destroy", arena_name, arena_name);
-            } else {
-                GROW_ARRAY(checker->destroyed_arenas, checker->destroyed_arena_count,
-                    checker->destroyed_arena_cap);
-                checker->destroyed_arenas[checker->destroyed_arena_count++] = arena_name;
-            }
-        }
-    }
-    /* Also catch bare destroy() via 'using mem' */
-    if (expr && expr->kind == NODE_CALL_EXPR &&
-        expr->data.call.function->kind == NODE_LABEL &&
-        strcmp(expr->data.call.function->data.label.value, "destroy") == 0 &&
-        expr->data.call.arg_count == 1 &&
-        expr->data.call.args[0]->kind == NODE_LABEL) {
-        bool is_mem_using = false;
-        for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
-            if (!using_module_accessible(checker, using_index)) continue;
-            if (strcmp(checker->using_modules[using_index], "mem") == 0) { is_mem_using = true; break; }
-        }
-        if (is_mem_using) {
-            const char *arena_name = expr->data.call.args[0]->data.label.value;
-            bool already_destroyed = false;
-            for (int di = 0; di < checker->destroyed_arena_count; di++) {
-                if (strcmp(checker->destroyed_arenas[di], arena_name) == 0) {
-                    already_destroyed = true;
-                    break;
-                }
-            }
-            if (already_destroyed) {
-                diagnostic_error_code_formatted(checker->diag, "E3064",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    "destroy", arena_name, arena_name);
-            } else {
-                GROW_ARRAY(checker->destroyed_arenas, checker->destroyed_arena_count,
-                    checker->destroyed_arena_cap);
-                checker->destroyed_arenas[checker->destroyed_arena_count++] = arena_name;
-            }
-        }
-    }
+    /* Pointer checker: a bare @mem lifecycle call as a statement —
+     * mem.destroy(a) / mem.reset(a). Updates arena lifetime state and reports
+     * E3166 for a repeat destroy/reset. */
+    if (expr && expr->kind == NODE_CALL_EXPR)
+        pc_apply_mem_call(checker, expr, node, NULL);
 }
 
 static void check_if_stmt(TypeChecker *checker, AstNode *node) {
@@ -13234,11 +13480,16 @@ static void check_if_stmt(TypeChecker *checker, AstNode *node) {
             type_display_name(checker, cond_t));
     }
     Scope *if_outer = checker->current_scope;
+    /* Pointer checker: check each arm from the pre-branch arena state, then
+     * join — an arena destroyed on either path is destroyed after the merge. */
+    PcArenaSnap pc_pre = pc_snap(checker);
     Scope *if_body = scope_create(if_outer);
     checker->current_scope = if_body;
     check_block(checker, node->data.if_stmt.consequence);
     checker->current_scope = if_outer;
     scope_destroy(if_body);
+    PcArenaSnap pc_then = pc_snap(checker);
+    pc_restore(checker, pc_pre);
     if (node->data.if_stmt.alternative) {
         Scope *else_body = scope_create(if_outer);
         checker->current_scope = else_body;
@@ -13246,6 +13497,9 @@ static void check_if_stmt(TypeChecker *checker, AstNode *node) {
         checker->current_scope = if_outer;
         scope_destroy(else_body);
     }
+    pc_join(checker, pc_then);
+    pc_snap_free(pc_then);
+    pc_snap_free(pc_pre);
 }
 
 static void check_for_stmt(TypeChecker *checker, AstNode *node) {
@@ -13294,6 +13548,7 @@ static void check_for_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     checker->loop_depth++;
+    pc_premark_loop_body(checker, node->data.for_stmt.body, node->data.for_stmt.body);
     check_block(checker, node->data.for_stmt.body);
     checker->loop_depth--;
     checker->current_scope = outer;
@@ -13395,6 +13650,7 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     checker->loop_depth++;
+    pc_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
     check_block(checker, node->data.for_each.body);
     checker->loop_depth--;
     checker->current_scope = outer;
@@ -13439,6 +13695,7 @@ static void check_while_stmt(TypeChecker *checker, AstNode *node) {
     Scope *wh_scope = scope_create(wh_outer);
     checker->current_scope = wh_scope;
     checker->loop_depth++;
+    pc_premark_loop_body(checker, node->data.while_stmt.body, node->data.while_stmt.body);
     check_block(checker, node->data.while_stmt.body);
     checker->loop_depth--;
     checker->current_scope = wh_outer;
@@ -13484,7 +13741,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
     int saved_func_scope_depth = checker->current_func_scope_depth;
     checker->current_func_scope_depth = func_scope->depth + 1;
     checker->func_depth++;
-    checker->destroyed_arena_count = 0;
+    checker->arena_count = 0;
 
     /* Define parameters in function scope, check for duplicates */
     for (int i = 0; i < node->data.func_decl.param_count; i++) {
@@ -14131,6 +14388,12 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *saved_when_expected = checker->expected_type;
     if (when_t && when_t->kind == TK_ENUM && when_t->name)
         checker->expected_type = when_t;
+    /* Pointer checker: each case body and the default run from the pre-when
+     * arena state; the state after the when is the join of every branch (plus
+     * the fall-through path when there is no default). */
+    PcArenaSnap pc_pre = pc_snap(checker);
+    PcArenaSnap pc_merged = { NULL, 0 };
+    bool pc_have = false;
     for (int i = 0; i < node->data.when_stmt.case_count; i++) {
         for (int j = 0; j < node->data.when_stmt.cases[i].value_count; j++) {
             AstNode *val_i = node->data.when_stmt.cases[i].values[j];
@@ -14223,7 +14486,11 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
+        pc_restore(checker, pc_pre);
         check_block(checker, node->data.when_stmt.cases[i].body);
+        if (!pc_have) { pc_merged = pc_snap(checker); pc_have = true; }
+        else { PcArenaSnap m = pc_merged; pc_join(checker, m);
+               pc_merged = pc_snap(checker); pc_snap_free(m); }
         checker->current_scope = case_outer;
         scope_destroy(case_body);
     }
@@ -14232,7 +14499,11 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         Scope *def_outer = checker->current_scope;
         Scope *def_body = scope_create(def_outer);
         checker->current_scope = def_body;
+        pc_restore(checker, pc_pre);
         check_block(checker, node->data.when_stmt.default_body);
+        if (!pc_have) { pc_merged = pc_snap(checker); pc_have = true; }
+        else { PcArenaSnap m = pc_merged; pc_join(checker, m);
+               pc_merged = pc_snap(checker); pc_snap_free(m); }
         checker->current_scope = def_outer;
         scope_destroy(def_body);
         /* W3006: empty default branch */
@@ -14362,6 +14633,20 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
     }
+    /* Pointer checker: settle the joined arena state. A when with no default
+     * (and not #strict) may match nothing, so the pre-when state is also a
+     * possible outcome. */
+    if (pc_have && !node->data.when_stmt.is_strict &&
+        !node->data.when_stmt.default_body) {
+        PcArenaSnap m = pc_merged;
+        pc_restore(checker, pc_pre);
+        pc_join(checker, m);
+        pc_merged = pc_snap(checker);
+        pc_snap_free(m);
+    }
+    if (pc_have) { pc_restore(checker, pc_merged); pc_snap_free(pc_merged); }
+    else pc_restore(checker, pc_pre);
+    pc_snap_free(pc_pre);
 }
 
 static void check_statement(TypeChecker *checker, AstNode *node) {
@@ -14438,6 +14723,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         Scope *lp_scope = scope_create(lp_outer);
         checker->current_scope = lp_scope;
         checker->loop_depth++;
+        pc_premark_loop_body(checker, node->data.loop_stmt.body, node->data.loop_stmt.body);
         check_block(checker, node->data.loop_stmt.body);
         checker->loop_depth--;
         checker->current_scope = lp_outer;
@@ -15938,7 +16224,7 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->using_module_files);
     free(checker->using_module_import_indices);
 
-    free(checker->destroyed_arenas);
+    free(checker->arenas);
 
     free(checker->type_alias_names);
     free(checker->type_alias_targets);

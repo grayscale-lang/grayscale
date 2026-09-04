@@ -1,7 +1,7 @@
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 1
 /*
- * Error Test: E3097 - a struct field as the assignment target of an
+ * Error Test: E3163 - a struct field as the assignment target of an
  * inner-scope address.
  *
  * 'inner' lives in the if-block's arena; 'b' outlives it, so b.p is left

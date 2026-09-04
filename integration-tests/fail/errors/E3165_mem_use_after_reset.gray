@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3165 - pointer into a @mem arena used after mem.reset()
+ * Expected: mem.reset() releases the arena's memory without destroying the
+ * handle; a pointer taken before the reset is still dangling.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    mem.reset(a)
+    println(p^)
+}

@@ -1,8 +1,8 @@
 /*
- * Error Test: E3097 - assigning a global from an array-literal element
+ * Error Test: E3163 - assigning a global from an array-literal element
  * that holds addr(local) is rejected, same as `G = addr(local)` directly.
  */
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 1
 
 mut G ^int = nil

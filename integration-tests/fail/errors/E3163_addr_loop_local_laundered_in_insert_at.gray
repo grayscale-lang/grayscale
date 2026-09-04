@@ -1,7 +1,7 @@
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 1
 /*
- * Error Test: E3097 - a block-local's address laundered through a pointer
+ * Error Test: E3163 - a block-local's address laundered through a pointer
  * variable and stored into a longer-lived array via arrays.insert_at.
  *
  * Same class as the append case, on a different container-mutating stdlib

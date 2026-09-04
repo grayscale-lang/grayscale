@@ -1,9 +1,9 @@
 /*
- * Error Test: E3063 - returning an array-literal element that holds
+ * Error Test: E3162 - returning an array-literal element that holds
  * addr(local) is rejected, same as returning addr(local) directly. The
  * array literal must not launder the address past the escape checker.
  */
-// expect-error: E3063
+// expect-error: E3162
 // expect-error-count: 1
 
 do f() -> ^int {

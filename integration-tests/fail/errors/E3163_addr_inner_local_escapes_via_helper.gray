@@ -1,7 +1,7 @@
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 1
 /*
- * Error Test: E3097 - a loop-local's address stored into a longer-lived
+ * Error Test: E3163 - a loop-local's address stored into a longer-lived
  * array by a helper function.
  *
  * stash() appends its pointer parameter to its by-reference array

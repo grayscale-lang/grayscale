@@ -152,8 +152,6 @@
     GRAY_ERROR("E3060", "types", "wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type") \
     GRAY_ERROR("E3061", "types", "struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s'") \
     GRAY_ERROR("E3062", "types", "'%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state)") \
-    GRAY_ERROR("E3063", "types", "cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns") \
-    GRAY_ERROR("E3064", "types", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3066", "types", "function reference signature mismatch; expected and actual function types differ") \
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
     GRAY_ERROR("E3069", "types", "'&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable") \
@@ -184,7 +182,6 @@
     GRAY_ERROR("E3094", "types", "cannot assign '%s' to element of '%s'") \
     GRAY_ERROR("E3095", "types", "'in' only works with arrays, maps, and strings; got '%s'") \
     GRAY_ERROR("E3096", "types", "cannot negate unsigned type '%s'; negation of unsigned types is not defined") \
-    GRAY_ERROR("E3097", "safety", "pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits") \
     GRAY_ERROR("E3098", "types", "type mismatch: cannot assign '%s' to '%s' through pointer dereference") \
     GRAY_ERROR("E3099", "types", "'%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import") \
     GRAY_ERROR("E3100", "types", "type name '%s' cannot be used as a value") \
@@ -248,7 +245,13 @@
     GRAY_ERROR("E3158", "types", "type %s cannot cross the C boundary") \
     GRAY_ERROR("E3159", "types", "wildcard '?' type conflict; '?' was already bound to a different type") \
     GRAY_ERROR("E3160", "types", "parameter needs a type annotation; add one, or give it a default value whose type can be inferred") \
-    GRAY_ERROR("E3161", "types", "cannot take the address of this index expression; the backing store may move, leaving the pointer dangling")
+    GRAY_ERROR("E3161", "types", "cannot take the address of this index expression; the backing store may move, leaving the pointer dangling") \
+    GRAY_ERROR("E3162", "safety", "cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns") \
+    GRAY_ERROR("E3163", "safety", "'%s' outlives the variable '%s' it points to, whose memory is freed when its scope exits") \
+    GRAY_ERROR("E3164", "safety", "'%s' points into arena '%s', which has already been destroyed") \
+    GRAY_ERROR("E3165", "safety", "'%s' points into arena '%s', whose memory was released by 'mem.reset()'") \
+    GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
+    GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

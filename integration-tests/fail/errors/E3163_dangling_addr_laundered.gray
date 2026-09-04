@@ -1,6 +1,6 @@
-// expect-error: E3097
+// expect-error: E3163
 /*
- * Error Test: E3097 - inner-scope address laundered through an intermediate
+ * Error Test: E3163 - inner-scope address laundered through an intermediate
  * pointer before escaping to an outer-scope pointer
  *
  * 's' lives in the if-block's arena; 'p' outlives it.

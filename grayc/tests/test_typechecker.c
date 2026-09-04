@@ -883,6 +883,18 @@ static void test_error_E3043_invalid_cast(void) {
     diagnostic_destroy(diagnostics);
 }
 
+static void test_error_E3167_cast_pointer_reinterpret(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const Point struct { x int\n y int }\n"
+        "const Vec struct { a int\n b int }\n"
+        "do main() {\n"
+        "    mut p = new(Point)\n"
+        "    mut q ^Vec = cast(p, ^Vec)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3167"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3045_or_return_no_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do get() -> int { return 42 }\n"
@@ -1338,13 +1350,13 @@ static void test_valid_recursive_pointer_struct(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3063_return_addr_local(void) {
+static void test_error_E3162_return_addr_local(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do bad() -> ptr<int> {\n"
         "  mut x int = 42\n"
         "  return addr(x)\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3063"));
+    ASSERT(has_error_code(diagnostics, "E3162"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -1916,7 +1928,7 @@ static void test_error_E3062_const_handle(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3064_arena_already_destroyed(void) {
+static void test_error_E3166_arena_already_destroyed(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
         "do main() {\n"
@@ -1924,7 +1936,33 @@ static void test_error_E3064_arena_already_destroyed(void) {
         "  mem.destroy(a)\n"
         "  mem.destroy(a)\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3064"));
+    ASSERT(has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3164_mem_use_after_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mem.destroy(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3165_mem_use_after_reset(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mem.reset(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3165"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -2249,9 +2287,9 @@ static void test_error_E3122_addr_const_var(void) {
     diagnostic_destroy(diagnostics);
 }
 
-/* --- E3097: addr of inner-scope variable assigned to outer pointer --- */
+/* --- E3163: addr of inner-scope variable assigned to outer pointer --- */
 
-static void test_error_E3097_addr_scope_mismatch(void) {
+static void test_error_E3163_addr_scope_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do setup() -> ^int {\n"
         "  mut outer int = 10\n"
@@ -2262,7 +2300,7 @@ static void test_error_E3097_addr_scope_mismatch(void) {
         "  }\n"
         "  return p\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3097"));
+    ASSERT(has_error_code(diagnostics, "E3163"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -2409,6 +2447,7 @@ int main(void) {
     RUN_TEST(test_error_E3041_new_unknown_type);
     RUN_TEST(test_error_E3041_interpolate_void);
     RUN_TEST(test_error_E3043_invalid_cast);
+    RUN_TEST(test_error_E3167_cast_pointer_reinterpret);
     RUN_TEST(test_error_E3045_or_return_no_error);
 
     /* E4xxx: Additional name errors */
@@ -2478,7 +2517,7 @@ int main(void) {
     RUN_TEST(test_error_E3059_const_map);
     RUN_TEST(test_error_E3061_recursive_struct);
     RUN_TEST(test_valid_recursive_pointer_struct);
-    RUN_TEST(test_error_E3063_return_addr_local);
+    RUN_TEST(test_error_E3162_return_addr_local);
     RUN_TEST(test_error_E3072_return_nil_non_pointer);
     RUN_TEST(test_error_E3073_return_in_main);
     RUN_TEST(test_error_E3074_array_compare);
@@ -2535,7 +2574,9 @@ int main(void) {
     RUN_TEST(test_error_E3117_enum_int_compare);
     RUN_TEST(test_error_E3118_int_to_enum_assign);
     RUN_TEST(test_error_E3062_const_handle);
-    RUN_TEST(test_error_E3064_arena_already_destroyed);
+    RUN_TEST(test_error_E3166_arena_already_destroyed);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy);
+    RUN_TEST(test_error_E3165_mem_use_after_reset);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
@@ -2567,7 +2608,7 @@ int main(void) {
     RUN_TEST(test_error_E3101_mut_func_ref);
     RUN_TEST(test_error_E3102_func_return_to_var);
     RUN_TEST(test_error_E3122_addr_const_var);
-    RUN_TEST(test_error_E3097_addr_scope_mismatch);
+    RUN_TEST(test_error_E3163_addr_scope_mismatch);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

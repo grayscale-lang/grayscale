@@ -1,7 +1,7 @@
-// expect-error: E3097
+// expect-error: E3163
 // expect-error-count: 4
 /*
- * Error Test: E3097 - a local's address must not escape into caller-owned
+ * Error Test: E3163 - a local's address must not escape into caller-owned
  * memory reached through a parameter (#2650). Four routes:
  *   1. write through a ^^T out-parameter
  *   2. assign to a &out mutable-reference parameter
