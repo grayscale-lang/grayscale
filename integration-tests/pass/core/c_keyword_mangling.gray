@@ -55,16 +55,16 @@ do main() {
         failed += 1
     }
 
-    // Test 5: For loop variable named 'extern'
+    // Test 5: For loop variable named 'volatile'
     mut sum int = 0
-    for extern in range(1, 4) {
-        sum += extern
+    for volatile in range(1, 4) {
+        sum += volatile
     }
     if sum == 6 {
-        println("  [PASS] for loop variable named 'extern'")
+        println("  [PASS] for loop variable named 'volatile'")
         passed += 1
     } otherwise {
-        println("  [FAIL] for loop variable named 'extern'")
+        println("  [FAIL] for loop variable named 'volatile'")
         failed += 1
     }
 

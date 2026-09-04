@@ -1,8 +1,9 @@
+// expect-contains: .gray:
 /* Panic Test: P0043 - arrays.insert_at index out of bounds */
 import @arrays
 
 do main() {
     mut arr [int] = {1, 2, 3}
-    arrays.insert_at(&arr, 10, 99)
+    arrays.insert_at(arr, 10, 99)
     println(arr)
 }

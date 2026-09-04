@@ -1,8 +1,9 @@
+// expect-contains: .gray:
 /* Panic Test: P0044 - arrays.remove_at index out of bounds */
 import @arrays
 
 do main() {
     mut arr [int] = {1, 2, 3}
-    arrays.remove_at(&arr, 10)
+    arrays.remove_at(arr, 10)
     println(arr)
 }
