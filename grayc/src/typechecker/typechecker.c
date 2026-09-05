@@ -5602,6 +5602,18 @@ static GrayType *resolve_generic_call(TypeChecker *checker, AstNode *node,
                 continue;
             }
             GrayType *at = resolve_expression(checker, node->data.call.args[argument_index]);
+            /* A C interop value carries no Grayscale type. It must never bind a
+             * `?` (codegen would emit its display name, "a C interop value", as
+             * a C type name), and the generic path is the only arg check that
+             * runs for a generic callee, so reject it here as a non-generic
+             * argument would. */
+            if (at && at->kind == TK_C_FUNC) {
+                tc_err_arg_type(checker, node->data.call.args[argument_index],
+                    typechecker_format(checker,
+                        "argument %d of '%s' is a C interop value, which has no Grayscale type; assign it to a typed variable first",
+                        argument_index + 1, function_name));
+                continue;
+            }
             if (!type_name_has_wildcard(ptn)) continue;
             char *bound = bind_wildcard(ptn, at);
             if (!bound) {
