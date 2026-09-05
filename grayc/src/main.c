@@ -732,6 +732,12 @@ int main(int argc, char **argv) {
 #endif
     if (opts.debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opts.opt_level);
+    /* Marks this translation unit as a grayc-generated program. The stdlib
+     * headers whose basename collides with a system header (time.h, io.h,
+     * ...) only need to forward to the real header in this context — where
+     * their directory is on -isystem and shadows libc — not when they are
+     * compiled into libgrayrt.a. */
+    argv_push(&cc_argv, "-DGRAY_GENERATED_C=1");
     argv_push(&cc_argv, "-Wall");
     argv_push(&cc_argv, "-Wno-unused-function");
     argv_push(&cc_argv, "-Wno-unused-variable");

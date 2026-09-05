@@ -1,0 +1,44 @@
+/*
+ * c_interop_system_header_collision.gray - a Grayscale stdlib module ships a
+ * C header whose basename matches a system header (time.h, strings.h, ...).
+ * The generated program puts the stdlib directory on the C compiler's
+ * -isystem path, so `extern import "time.h"` must still reach libc's
+ * <time.h>, not Grayscale's. Regression guard for the header-shadowing bug.
+ */
+
+extern import "time.h"
+extern import "strings.h"
+
+do main() {
+    println("=== C interop: system header collision ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // <time.h>: difftime is declared only by the real system header
+    mut a int = 100
+    mut b int = 40
+    mut d float = extern.difftime(a, b)
+    if d > 59.9 && d < 60.1 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] extern.difftime")
+    }
+
+    // <strings.h>: strcasecmp compares two C strings ignoring case
+    mut cmp int = extern.strcasecmp("Hello", "hello")
+    if cmp == 0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] extern.strcasecmp")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

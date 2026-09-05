@@ -13,11 +13,25 @@
 #define GRAY_MATH_H
 
 #include "../runtime/runtime.h"
-/* This header is named math.h and generated programs see its directory via
- * -isystem, so a plain #include <math.h> resolves back to this file and the
- * libc math functions are never declared. include_next (GNU C, required by
- * this project) continues the search past this directory to the real one. */
-#include_next <math.h>
+
+/* This header's basename collides with the system <math.h>, and its inline
+ * wrappers below need libc's declarations. In a grayc-generated program this
+ * directory is on -isystem and shadows libc, so a plain `#include <math.h>`
+ * loops back here — step past this directory with include_next. In the
+ * libgrayrt.a build the directory is not on the search path, so a plain
+ * include resolves straight to libc. __has_include_next / include_next are
+ * GNU/Clang, already required by this project; the __has_include_next guard
+ * keeps the mechanism uniform with the other colliding stdlib headers,
+ * whose system namesakes are absent on some platforms. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<math.h>)
+#      include_next <math.h>
+#    endif
+#  endif
+#else
+#  include <math.h>
+#endif
 
 /*@man abs
  *@module math

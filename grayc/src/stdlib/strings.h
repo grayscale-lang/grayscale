@@ -14,6 +14,18 @@
 #include "../runtime/runtime.h"
 #include "../runtime/array.h"
 
+/* Basename collides with the POSIX <strings.h>: in a grayc-generated program
+ * this directory shadows libc, so step past it so `extern import "strings.h"`
+ * reaches the real header (on macOS those names also live in <string.h>, so
+ * this is a no-op there). See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<strings.h>)
+#      include_next <strings.h>
+#    endif
+#  endif
+#endif
+
 /*@man to_upper
  *@module strings
  *@group Case

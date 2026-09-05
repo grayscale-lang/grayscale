@@ -15,6 +15,18 @@
 #include "../runtime/array.h"
 #include <stdio.h>
 
+/* Basename collides with the Windows <io.h>: in a grayc-generated program
+ * this directory shadows the SDK header, so step past it so
+ * `extern import "io.h"` reaches the real header where it exists (Windows
+ * targets; absent on Linux/macOS). See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<io.h>)
+#      include_next <io.h>
+#    endif
+#  endif
+#endif
+
 /* File reading */
 
 /*@man read_file

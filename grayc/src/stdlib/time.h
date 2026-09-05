@@ -13,6 +13,17 @@
 
 #include "../runtime/runtime.h"
 
+/* Basename collides with the system <time.h>: in a grayc-generated program
+ * this directory shadows libc, so step past it so `extern import "time.h"`
+ * reaches the real header. See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<time.h>)
+#      include_next <time.h>
+#    endif
+#  endif
+#endif
+
 /* Current time */
 
 /*@man now
