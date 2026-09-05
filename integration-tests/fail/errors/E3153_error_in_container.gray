@@ -1,0 +1,15 @@
+// expect-error: E3153
+// expect-error-count: 1
+// Error has no container element representation in codegen, so [Error]
+// and map[K:Error] leak a C type error from the constructor. Reject them;
+// wrap Error in a struct, or store err.code / err.msg.
+
+do f() -> (int, Error) {
+    return 0, error(.NotFound, "x")
+}
+
+do main() {
+    mut _, e1 = f()
+    mut errs [Error] = {e1}
+    println("${len(errs)}")
+}

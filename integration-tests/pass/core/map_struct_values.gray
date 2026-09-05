@@ -13,6 +13,8 @@ const Person struct {
     age int
 }
 
+do bump(&n int) { n = n + 1 }
+
 do main() {
     println("=== Map Struct Values Test ===")
     mut passed int = 0
@@ -71,6 +73,32 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] for_each expected 3 entries, got ${count}")
+        failed += 1
+    }
+
+    // Test 6: write a struct field through a map index, in place
+    points["origin"].x = 7
+    points["origin"].y += 3
+    bump(points["origin"].x)
+    if points["origin"].x == 8 && points["origin"].y == 3 {
+        println("  [PASS] field write, compound, and &-param through map index")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] points[\"origin\"] = (${points["origin"].x}, ${points["origin"].y})")
+        failed += 1
+    }
+
+    // Test 7: write through a nested map index
+    mut grid map[string:map[string:int]] = {:}
+    mut row map[string:int] = {"a": 1}
+    grid["r"] = row
+    grid["r"]["a"] = 42
+    grid["r"]["a"] += 5
+    if grid["r"]["a"] == 47 {
+        println("  [PASS] nested map index write")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] grid[\"r\"][\"a\"] == ${grid["r"]["a"]}")
         failed += 1
     }
 

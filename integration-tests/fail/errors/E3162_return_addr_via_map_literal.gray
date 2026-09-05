@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3162 - returning a map-literal value that holds
+ * addr(local) is rejected, same as returning addr(local) directly.
+ */
+// expect-error: E3162
+// expect-error-count: 1
+
+do f() -> ^int {
+    mut x int = 1
+    mut m map[string:^int] = {"k": addr(x)}
+    return m["k"]
+}
+
+do main() {
+    mut d ^int = f()
+    println("done")
+}

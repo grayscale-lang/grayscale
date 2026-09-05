@@ -1,0 +1,26 @@
+// expect-error: E3163
+// expect-error-count: 1
+/*
+ * Error Test: E3163 - a loop-local's address stored into a longer-lived
+ * array by a helper function.
+ *
+ * stash() appends its pointer parameter to its by-reference array
+ * parameter; the address is laundered through 't' so it never appears at
+ * the call, but 'ptrs' outlives each iteration's 'x'.
+ */
+
+import @arrays
+
+do stash(&c [^int], p ^int) {
+    arrays.append(c, p)
+}
+
+do main() {
+    mut ptrs [^int] = {}
+    for i in range(3) {
+        mut x int = i * 10
+        mut t ^int = addr(x)
+        stash(ptrs, t)
+    }
+    println(ptrs[0]^)
+}

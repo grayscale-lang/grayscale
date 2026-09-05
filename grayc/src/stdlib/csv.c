@@ -11,6 +11,7 @@
 #include "csv.h"
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 GrayArray gray_csv_parse(GrayArena *arena, GrayString csv_string) {
     GrayArray rows = gray_array_new(arena, sizeof(GrayArray), 8);
@@ -150,14 +151,14 @@ GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
     FILE *f = fopen(path.data, "rb");
     if (!f) {
         r.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "cannot read CSV file '%s'", path.data));
+        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read CSV file '%s'", path.data));
         return r;
     }
     GrayString content = gray_io_read_file_impl(arena, f);
     fclose(f);
     if (content.data == NULL) {
         r.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena,
+        r.v1 = gray_error_new(arena, GRAY_ERR_OutOfRange, gray_string_format(arena,
             "cannot read '%s': file exceeds maximum string length", path.data));
         return r;
     }
@@ -167,6 +168,6 @@ GrayResult_array gray_csv_read_result(GrayArena *arena, GrayString path) {
 }
 
 GrayResult_bool gray_csv_write_result(GrayArena *arena, GrayString path, GrayArray *data) {
-    GRAY_RESULT_WRAP_BOOL(arena, gray_csv_write(arena, path, data),
+    GRAY_RESULT_WRAP_BOOL(arena, gray_csv_write(arena, path, data), gray_errno_code(errno),
         gray_string_format(arena, "cannot write CSV file '%s'", path.data));
 }

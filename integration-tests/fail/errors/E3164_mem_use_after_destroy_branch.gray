@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3164 - pointer into a @mem arena used after mem.destroy()
+ * Expected: the destroy happens on only one branch of an if; after the join
+ * the arena counts as destroyed, so the deref past it is still caught.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    mut cond bool = true
+    if cond {
+        mem.destroy(a)
+    }
+    println(p^)
+}

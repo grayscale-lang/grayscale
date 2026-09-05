@@ -1,0 +1,19 @@
+/*
+ * Error Test: E2043 - a duplicate 'is' branch on a tagged enum subject.
+ * The second Shape.Circle pattern is dead code regardless of its binding.
+ */
+
+const Shape enum {
+    Circle(int)
+    Square(int)
+}
+
+do main() {
+    mut s Shape = Shape.Circle(3)
+    when s {
+        is Shape.Circle(r) { println("circle ${r}") }
+        is Shape.Square(w) { println("square ${w}") }
+        is Shape.Circle(x) { println("circle again ${x}") }
+        default {}
+    }
+}

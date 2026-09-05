@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3040 - a user multi-return call cannot be the right-hand
+ * side of an assignment statement; only the first value is kept and the
+ * rest are dropped (a C compile error for the struct multi-return).
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do pair() -> (int, int) {
+    return 1, 2
+}
+
+do main() {
+    mut x int = 0
+    x = pair()
+    println("${x}")
+}

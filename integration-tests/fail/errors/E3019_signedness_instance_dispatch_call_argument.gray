@@ -1,0 +1,17 @@
+// Error Test: E3019 - instance-dispatch call must run the same signedness guard as Type.func()
+// expect-error: E3019
+// expect-error-count: 1
+
+const V struct {
+    n int
+
+    do take(v V, x int) -> int {
+        return x
+    }
+}
+
+do main() {
+    mut u uint = 18446744073709551615
+    mut a V = V{ n: 0 }
+    println("${a.take(u)}")
+}

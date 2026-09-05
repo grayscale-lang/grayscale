@@ -1,0 +1,20 @@
+/*
+ * Error Test: E2043 - a duplicate 'is' branch on a plain enum subject.
+ * The second Color.RED branch is dead code.
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut c Color = Color.RED
+    when c {
+        is Color.RED { println("red") }
+        is Color.GREEN { println("green") }
+        is Color.RED { println("red again") }
+        default {}
+    }
+}

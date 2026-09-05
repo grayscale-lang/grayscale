@@ -1,0 +1,25 @@
+/*
+ * Error Test: E5049 - an enum-to-enum return mismatch is one mistake and
+ * must be reported exactly once
+ * Expected: "return type mismatch: expected enum 'Size', got enum 'Color'"
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+const Color enum {
+    RED,
+    GREEN
+}
+
+const Size enum {
+    BIG,
+    SMALL
+}
+
+do f(c Color) -> Size {
+    return c
+}
+
+do main() {
+    println(f(Color.RED))
+}

@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.sh` to regenerate.
+> Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 417 codes** (286 errors, 17 warnings, 114 panics)
+**Total: 453 codes** (319 errors, 16 warnings, 118 panics)
 
 ---
 
@@ -69,6 +69,7 @@
 | `E2074` | syntax | member access cannot have whitespace before the dot; write 'obj.field' or 'Enum.VARIANT' with no space or newline |
 | `E2075` | syntax | index expressions cannot have whitespace before the opening bracket; write 'arr[i]' with no space or newline |
 | `E2076` | syntax | postfix operators ('++', '--', '^') cannot have whitespace before them; write 'x++', 'x--', or 'p^' with no space or newline |
+| `E2077` | syntax | empty index expression '[]'; indexing requires an expression between the brackets, e.g. 'arr[i]' |
 | `E2079` | syntax | 'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause |
 | `E2080` | syntax | invalid character in C header path; only [A-Za-z0-9./_+-] are permitted |
 | `E2081` | syntax | '^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^' |
@@ -84,6 +85,7 @@
 | `E2091` | syntax | unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test |
 | `E2092` | syntax | '#[...]' attribute list must be on a single line |
 | `E2093` | syntax | malformed '#[...]' attribute list |
+| `E2094` | syntax | attribute is applied to the wrong kind of declaration, or its argument is malformed |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -101,7 +103,7 @@
 | `E3016` | types | cannot dereference non-pointer type '%s'; only ^T types can use ^ |
 | `E3017` | types | 'fmt.%s()' cannot format value of type '%s'; use 'println()' for composite types, or access individual fields |
 | `E3018` | types | type mismatch in 'when'; comparing '%s' with '%s' |
-| `E3019` | types | cannot assign signed type '%s' to unsigned type '%s'; value may be negative |
+| `E3019` | types | signedness mismatch: cannot convert between '%s' and '%s' without a cast; the value may not round-trip |
 | `E3024` | types | function '%s' must return a value but has no return statement |
 | `E3027` | types | cannot pass a constant to a mutable parameter; the function wants to modify this value |
 | `E3031` | types | function '%s' cannot be used as a value; did you mean '%s()' or '()%s'? |
@@ -124,7 +126,7 @@
 | `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3}) |
 | `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1}) |
 | `E3052` | types | too many elements in array initializer; declared size is %d, got %d |
-| `E3053` | types | type mismatch in array initializer; expected '%s', got '%s' |
+| `E3053` | types | type mismatch in a collection or struct literal; expected '%s', got '%s' |
 | `E3054` | types | mutable arrays cannot have a fixed size; remove the size or use 'const' (e.g., mut %s %.*s] = ...) |
 | `E3055` | types | const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...) |
 | `E3056` | types | #strict when is not exhaustive; missing variant '%s.%s' |
@@ -134,8 +136,6 @@
 | `E3060` | types | wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type |
 | `E3061` | types | struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s' |
 | `E3062` | types | '%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state) |
-| `E3063` | types | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
-| `E3064` | types | '%s(%s)' called again; '%s' was already destroyed |
 | `E3066` | types | function reference signature mismatch; expected and actual function types differ |
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
@@ -166,7 +166,6 @@
 | `E3094` | types | cannot assign '%s' to element of '%s' |
 | `E3095` | types | 'in' only works with arrays, maps, and strings; got '%s' |
 | `E3096` | types | cannot negate unsigned type '%s'; negation of unsigned types is not defined |
-| `E3097` | safety | pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits |
 | `E3098` | types | type mismatch: cannot assign '%s' to '%s' through pointer dereference |
 | `E3099` | types | '%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import |
 | `E3100` | types | type name '%s' cannot be used as a value |
@@ -213,6 +212,31 @@
 | `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
 | `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
 | `E3143` | types | #flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64 |
+| `E3144` | types | #error_code attribute can only be applied to enum declarations |
+| `E3145` | types | #error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set |
+| `E3146` | types | #error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering |
+| `E3147` | types | #error_code enum '%s' cannot have payload variants |
+| `E3148` | types | ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique |
+| `E3149` | types | 'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive |
+| `E3150` | types | 'io.read_lines' line limit cannot be negative; pass 0 to read to end of file |
+| `E3151` | types | 'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive |
+| `E3152` | types | #error_code enum '%s' cannot also be #flags; ErrorCode is numbered by global slot, not by power-of-2 bit position |
+| `E3153` | types | 'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead |
+| `E3154` | safety | cannot pass the address of stack variable '%s' to a C function; the C side may retain it past the variable's scope. Allocate with new() or take the address of a file-scope variable instead |
+| `E3155` | types | cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly |
+| `E3156` | types | cannot compare %s with %s |
+| `E3157` | types | cannot use 'nil' here; 'nil' is only valid for pointer and Error types |
+| `E3158` | types | type %s cannot cross the C boundary |
+| `E3159` | types | wildcard '?' type conflict; '?' was already bound to a different type |
+| `E3160` | types | parameter needs a type annotation; add one, or give it a default value whose type can be inferred |
+| `E3161` | types | cannot take the address of this index expression; the backing store may move, leaving the pointer dangling |
+| `E3162` | safety | cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns |
+| `E3163` | safety | '%s' outlives the variable '%s' it points to, whose memory is freed when its scope exits |
+| `E3164` | safety | '%s' points into arena '%s', which has already been destroyed |
+| `E3165` | safety | '%s' points into arena '%s', whose memory was released by 'mem.reset()' |
+| `E3166` | safety | '%s(%s)' called again; '%s' was already destroyed |
+| `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
+| `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -236,8 +260,12 @@
 | `E4024` | names | module '%s' has no member named '%s' |
 | `E4025` | names | public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public |
 | `E4026` | names | 'main' is reserved for the program entry point; it can only name a top-level 'do main()' function |
+| `E4027` | names | a reserved keyword cannot be used as a name |
+| `E4028` | names | a built-in name cannot be used as a user-defined name |
+| `E4029` | names | the 'private' modifier can only be applied to top-level declarations |
+| `E4030` | names | a local variable or parameter shadows a C function of the same name called via 'extern.' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
-| `E5008` | arguments | wrong number of arguments; the function expects a different count than was provided |
+| `E5008` | arguments | wrong number of arguments; the call passes more or fewer arguments than the function accepts |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
 | `E5011` | usage | return value of '%s' is not used; assign it to a variable or use '_' to discard |
 | `E5012` | usage | the throwaway '_' is only meaningful when discarding the result of a function call; the right-hand side has no return value to discard |
@@ -250,7 +278,7 @@
 | `E5023` | usage | cannot use '%s' on type '%s'; only integer types support increment/decrement |
 | `E5024` | usage | return type mismatch: cannot return signed '%s' as unsigned '%s' |
 | `E5025` | usage | invalid assignment target; left side of '=' must be a variable, field, or index expression |
-| `E5026` | arguments | argument type mismatch; the function expects a different type than what was provided |
+| `E5026` | arguments | argument type mismatch; an argument's type does not match the parameter it is bound to |
 | `E5027` | usage | 'embed()' path must not escape the source file's directory tree |
 | `E5028` | usage | func references are not printable values; func references cannot be passed to print functions |
 | `E5029` | usage | 'copy()' cannot be used on a func reference; func references are compile-time aliases, not copyable values |
@@ -271,6 +299,8 @@
 | `E5045` | arguments | constant argument is outside the valid domain for this function |
 | `E5046` | usage | '#test' function '%s' must take no parameters and have no return type |
 | `E5047` | usage | '#test' function '%s' cannot be called directly; it runs only under 'gray test' |
+| `E5048` | usage | 'error()' takes an ErrorCode, a message string, or a code and a message; got %s |
+| `E5049` | arguments | return type mismatch; the returned value's type does not match the function's declared return type |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -283,6 +313,9 @@
 | `E6010` | imports | unknown module '%s'; no import, struct, or variable by that name is in scope |
 | `E6011` | imports | module '%s' is already imported in this file |
 | `E6012` | imports | #json struct '%s' requires 'import @json' in the same file |
+| `E6013` | imports | C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.' |
+| `E6014` | imports | malformed import statement |
+| `E6015` | imports | C header '%s' could not be found for the current target |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -317,7 +350,6 @@
 | `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
 | `W2014` | imports | intra-directory import already included by directory import |
 | `W3003` | safety | fixed-size array is not fully initialized; remaining elements will be zero-valued |
-| `W3004` | safety | pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
 | `W3006` | safety | empty default branch in when statement; unmatched values are silently ignored |
 | `W3007` | deprecation | reference to a function, struct, or enum marked #deprecated |
@@ -444,6 +476,10 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0112` | strconv | strconv.unquote: cannot unquote '%s' |
 | `P0113` | bounds | binary.%s: byte array too short to decode; need %d bytes but have %d |
 | `P0114` | io | csv.read_file: input exceeds maximum string length |
+| `P0115` | runtime | read of '%s' on a nil Error; check the error is non-nil before reading its fields |
+| `P0116` | strings | string builder size exceeds maximum string length |
+| `P0117` | memory | dereferenced a pointer into an arena that has been destroyed or reset |
+| `P0118` | runtime | call through a nil function value |
 
 ---
 
@@ -468,4 +504,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-01 16:09:21 UTC*
+*Generated on 2026-09-05 20:44:06 UTC*

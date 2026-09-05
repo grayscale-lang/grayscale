@@ -1,0 +1,26 @@
+/*
+ * Error Test: E3162 - addr() of a local buried in an array, forwarded
+ * through a stdlib accessor (arrays.get_first), then returned.
+ *
+ * A stdlib module function has no FuncSig and no computed escape summary
+ * the way a user function does, so container_literal_origin()/pointer_
+ * origin_of() must fall back to a conservative arguments-based guess for
+ * any call they cannot resolve to one — gated on the call's own result type
+ * being able to structurally carry a pointer, so a scalar-returning call
+ * (arrays.contains, len(), ...) is not spuriously flagged regardless of
+ * what its arguments hold.
+ */
+
+import and use @arrays
+
+do make() -> ^int {
+    mut x int = 66
+    mut arr [^int] = {addr(x)}
+    mut p ^int = arrays.get_first(arr)
+    return p
+}
+
+do main() {
+    mut r ^int = make()
+    println(r^)
+}

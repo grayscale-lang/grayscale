@@ -1,0 +1,14 @@
+/* Error Test: E4027 - 'case' is reserved and cannot name a struct field
+ *
+ * 'case' is the alias for 'is'; both spellings are reserved everywhere
+ * an identifier is expected.
+ */
+// expect-error: E4027
+const Record struct {
+    case int
+}
+
+do main() {
+    mut r Record = Record{case: 1}
+    println(r.case)
+}

@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3018 - when/is rejects an int-literal pattern against an
+ * enum subject. Previously exempted, so it matched by raw ordinal with no
+ * diagnostic, contradicting the == operator (E3117).
+ */
+// expect-error: E3018
+// expect-error-count: 2
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut c Color = Color.GREEN
+    when c {
+        is 0 { println("zero") }
+        is 1 { println("one") }
+        default { println("d") }
+    }
+}

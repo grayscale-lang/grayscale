@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3166 - an explicit mem.destroy(a) after ensure mem.destroy(a)
+ * already scheduled the same arena's destruction.
+ *
+ * check_statement's NODE_ENSURE_STMT case only resolved the deferred call's
+ * type; it never registered the destroy with the pointer checker's
+ * within-function arena tracker, so a later explicit destroy on the same
+ * arena went unnoticed at typecheck and panicked at runtime instead
+ * (mem.destroy() called twice on the same arena).
+ */
+
+import @mem
+
+do process(a Arena) {
+    ensure mem.destroy(a)
+    mem.destroy(a)
+}
+
+do main() {
+    mut a = mem.arena(1024)
+    process(a)
+}

@@ -544,12 +544,12 @@ GrayResult_map gray_json_decode_result(GrayArena *arena, GrayString text) {
     GrayResult_map r;
     if (text.len <= 0 || !text.data) {
         r.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "empty JSON input"));
+        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena, "empty JSON input"));
         return r;
     }
     if (!gray_json_is_valid(text)) {
         r.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "invalid JSON"));
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid JSON"));
         return r;
     }
     r.v0 = gray_json_decode(arena, text);

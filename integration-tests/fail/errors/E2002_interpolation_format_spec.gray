@@ -1,0 +1,11 @@
+/*
+ * Error Test: E2002 - a format spec inside ${...}
+ *
+ * Grayscale interpolation is ${expr} only; it has no ':05d'-style format
+ * specs. The trailing ':05d' used to be discarded silently, printing "42".
+ */
+
+do main() {
+    mut x int = 42
+    println("${x:05d}")
+}

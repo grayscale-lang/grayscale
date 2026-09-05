@@ -1,0 +1,75 @@
+/*
+ * float_array_literal_f32_f64.gray
+ * [f32] and [f64] arrays accept bare float literals (like scalar f32/f64),
+ * and [f32] elements are stored/staged/read as packed 4-byte float so that
+ * every construction path (non-empty literal, empty + append) and every
+ * read path (index, for_each) returns the right value.
+ */
+
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Bare float literals in [f32] / [f64] must type-check.
+    mut a [f32] = {1.5, 2.5, 3.5}
+    mut b [f64] = {1.5, 2.5, 3.5}
+
+    if a[0] == 1.5 && a[1] == 2.5 && a[2] == 3.5 {
+        println("  [PASS] [f32] literal index reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] literal: ${a[0]} ${a[1]} ${a[2]}")
+        failed += 1
+    }
+
+    if b[0] == 1.5 && b[1] == 2.5 && b[2] == 3.5 {
+        println("  [PASS] [f64] literal index reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64] literal: ${b[0]} ${b[1]} ${b[2]}")
+        failed += 1
+    }
+
+    // for_each over [f32] must stride by 4 bytes, not 8.
+    mut fe_sum f64 = 0.0
+    for_each v in a { fe_sum = fe_sum + cast(v, f64) }
+    if fe_sum == 7.5 {
+        println("  [PASS] [f32] for_each sum")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] for_each sum: ${fe_sum}")
+        failed += 1
+    }
+
+    // Empty [f32] + append: value staging and element reads must be float.
+    mut c [f32] = {}
+    arrays.append(c, 1.5)
+    arrays.append(c, 2.5)
+    arrays.append(c, 3.5)
+    if c[0] == 1.5 && c[1] == 2.5 && c[2] == 3.5 {
+        println("  [PASS] empty [f32] + append reads")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] empty [f32] + append: ${c[0]} ${c[1]} ${c[2]}")
+        failed += 1
+    }
+
+    // Element write into [f32].
+    a[1] = 9.5
+    if a[1] == 9.5 {
+        println("  [PASS] [f32] element write")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32] element write: ${a[1]}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

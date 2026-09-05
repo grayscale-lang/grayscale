@@ -11,6 +11,7 @@
 #include "strings.h"
 #include "builtins.h" /* gray_builtin_char_to_utf8 */
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -434,3 +435,95 @@ bool gray_strings_is_alnum(char c)      { return isalnum((unsigned char)c) != 0;
 bool gray_strings_is_whitespace(char c) { return isspace((unsigned char)c) != 0; }
 bool gray_strings_is_upper(char c)      { return isupper((unsigned char)c) != 0; }
 bool gray_strings_is_lower(char c)      { return islower((unsigned char)c) != 0; }
+
+/* --- Builder --- */
+
+#define GRAY_BUILDER_MIN_CAP 16
+
+/* Ensure the builder can hold `extra` more bytes, growing capacity by doubling.
+   The arena has no realloc, so growth is allocate-and-copy: the old buffer lives
+   until the arena is reset or destroyed, the same contract as gray_array_grow. */
+static void builder_ensure(GrayStringsBuilder *b, int64_t extra) {
+    int64_t need = (int64_t)b->len + extra;
+    if (need <= b->cap) return;
+    if (need > INT32_MAX) {
+        gray_panic_code("P0116", "string builder size exceeds maximum string length");
+    }
+    int64_t new_cap = b->cap > 0 ? b->cap : GRAY_BUILDER_MIN_CAP;
+    while (new_cap < need) new_cap *= 2;
+    if (new_cap > INT32_MAX) new_cap = INT32_MAX;
+    char *new_data = gray_arena_alloc_uninitialized(b->arena, (size_t)new_cap);
+    if (b->data && b->len > 0) {
+        memcpy(new_data, b->data, (size_t)b->len);
+    }
+    b->data = new_data;
+    b->cap = (int32_t)new_cap;
+}
+
+GrayStringsBuilder *gray_strings_builder(GrayArena *arena) {
+    GrayStringsBuilder *b = gray_arena_alloc(arena, sizeof(GrayStringsBuilder));
+    b->data = NULL;
+    b->len = 0;
+    b->cap = 0;
+    b->arena = arena;
+    return b;
+}
+
+void gray_strings_builder_reserve(GrayStringsBuilder *b, int64_t n) {
+    if (n <= b->cap) return;
+    builder_ensure(b, n - b->len);
+}
+
+void gray_strings_builder_append(GrayStringsBuilder *b, GrayString s) {
+    if (s.len <= 0) return;
+    builder_ensure(b, s.len);
+    memcpy(b->data + b->len, s.data, (size_t)s.len);
+    b->len += s.len;
+}
+
+void gray_strings_builder_append_char(GrayStringsBuilder *b, int32_t c) {
+    gray_strings_builder_append(b, gray_builtin_char_to_utf8(b->arena, c));
+}
+
+void gray_strings_builder_append_bytes(GrayStringsBuilder *b, GrayArray data) {
+    if (data.len <= 0) return;
+    builder_ensure(b, data.len);
+    if (data.elem_size == 1) {
+        memcpy(b->data + b->len, data.data, (size_t)data.len);
+    } else {
+        /* A [byte] built from an array literal is stored one element per
+           machine word; take the low byte of each (little-endian). */
+        const unsigned char *src = (const unsigned char *)data.data;
+        for (int32_t i = 0; i < data.len; i++) {
+            b->data[b->len + i] = (char)src[(size_t)i * (size_t)data.elem_size];
+        }
+    }
+    b->len += data.len;
+}
+
+void gray_strings_builder_append_int(GrayStringsBuilder *b, int64_t n) {
+    char buf[24];
+    int len = snprintf(buf, sizeof(buf), "%lld", (long long)n);
+    builder_ensure(b, len);
+    memcpy(b->data + b->len, buf, (size_t)len);
+    b->len += len;
+}
+
+void gray_strings_builder_append_line(GrayStringsBuilder *b, GrayString s) {
+    gray_strings_builder_append(b, s);
+    builder_ensure(b, 1);
+    b->data[b->len] = '\n';
+    b->len += 1;
+}
+
+int64_t gray_strings_builder_len(GrayStringsBuilder *b) {
+    return b->len;
+}
+
+void gray_strings_builder_clear(GrayStringsBuilder *b) {
+    b->len = 0;
+}
+
+GrayString gray_strings_build(GrayArena *arena, GrayStringsBuilder *b) {
+    return gray_string_new(arena, b->data ? b->data : "", b->len);
+}

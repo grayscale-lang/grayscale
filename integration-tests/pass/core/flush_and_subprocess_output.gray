@@ -1,0 +1,41 @@
+/*
+ * flush_and_subprocess_output.gray - flush() forces buffered stdout out, and
+ * system() flushes the parent's stdout before the child runs so output is not
+ * reordered.
+ */
+
+do main() {
+    println("=== flush() and subprocess output ordering ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: flush() is callable with no arguments and returns nothing.
+    print("partial line, no newline")
+    flush()
+    print("\n")
+    println("  [PASS] flush() runs")
+    passed += 1
+
+    // Test 2: system() still reports the child's exit code, and the parent's
+    // buffered "before" text is flushed ahead of the child (visible when stdout
+    // is a pipe or file).
+    print("[parent before] ")
+    mut code int = system("echo '[child]'")
+    print("[parent after]\n")
+    if code == 0 {
+        println("  [PASS] system() after buffered print returns child exit code")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] system() returned ${code}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

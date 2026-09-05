@@ -1,0 +1,54 @@
+/*
+ * func_ref_multi_return_destructure.gray
+ * `mut a, b = f(n)` where f is a func-typed parameter/local (a callback,
+ * bound via a func reference) never propagated the callback's multi-return
+ * signature onto the destructuring temp: find_func() only matches a
+ * declared function, not a variable holding one, so the temp's ret_types
+ * stayed unset. Every access past the first (.v1, .v2, ...) then read back
+ * as "the function returns only 1 value" regardless of the callback's real
+ * arity, and any correctly-typechecked slot still lost its real type (a
+ * string return coming back formatted as an int). Covers a two-slot and a
+ * three-slot callback return, both with a string in a non-zero slot.
+ */
+
+do split_str(n int) -> (int, string) {
+    return n, "tag"
+}
+
+do call_2(n int, f func(int) -> (int, string)) -> string {
+    mut a, b = f(n)
+    return "${a}-${b}"
+}
+
+do split_3(n int) -> (int, string, bool) {
+    return n, "tag", n > 0
+}
+
+do call_3(n int, f func(int) -> (int, string, bool)) -> string {
+    mut a, b, c = f(n)
+    return "${a}-${b}-${c}"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    if call_2(7, ()split_str) == "7-tag" {
+        println("  [PASS] two-slot callback destructure keeps string type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] two-slot callback destructure: got ${call_2(7, ()split_str)}")
+        failed += 1
+    }
+
+    if call_3(7, ()split_3) == "7-tag-true" {
+        println("  [PASS] three-slot callback destructure keeps string type")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] three-slot callback destructure: got ${call_3(7, ()split_3)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 { println("SOME TESTS FAILED") } otherwise { println("ALL TESTS PASSED") }
+}

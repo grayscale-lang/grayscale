@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3161 - ref()/raw() also reject a string index expression,
+ * matching addr().
+ */
+// expect-error: E3161
+// expect-error-count: 2
+
+do main() {
+    mut s string = "hi"
+    mut p ^char = raw(s[0])
+    mut q ^char = ref(s[1])
+}

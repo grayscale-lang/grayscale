@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3159 - map[?:?] requires key type to equal value type
+ *
+ * the typechecker's TK_MAP wildcard binding branch
+ * accepts map[?:?] only when a single '?' binding can satisfy both slots
+ * — i.e. the argument's key type equals its value type. Otherwise the
+ * parameter shape cannot be inferred and the call must fail cleanly.
+ */
+// expect-error: E3159
+// expect-error-count: 1
+
+do count(m map[?:?]) -> int {
+    mut n int = 0
+    for_each k, v in m {
+        n += 1
+    }
+    return n
+}
+
+do main() {
+    mut mixed map[string:int] = {"a": 1, "b": 2}
+    mut n int = count(mixed)  // key type != value type → reject
+}

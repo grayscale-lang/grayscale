@@ -1,0 +1,39 @@
+// expect-error: E3163
+// expect-error-count: 4
+/*
+ * Error Test: E3163 - a local's address must not escape into caller-owned
+ * memory reached through a parameter (#2650). Four routes:
+ *   1. write through a ^^T out-parameter
+ *   2. assign to a &out mutable-reference parameter
+ *   3. pointer field of a &b mutable-reference struct parameter
+ *   4. any of the above via an intermediate local pointer
+ */
+
+const Box struct {
+    p ^int
+}
+
+do via_out_param(out ^^int) {
+    mut local int = 42
+    out^ = addr(local)
+}
+
+do via_ref_param(&out ^int) {
+    mut local int = 42
+    out = ref(local)
+}
+
+do via_ref_struct_field(&b Box) {
+    mut local int = 42
+    b.p = addr(local)
+}
+
+do via_alias(out ^^int) {
+    mut local int = 42
+    mut tmp ^int = addr(local)
+    out^ = tmp
+}
+
+do main() {
+    println("unreachable")
+}

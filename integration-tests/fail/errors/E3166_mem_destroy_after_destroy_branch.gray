@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3166 - mem.destroy() on an arena already destroyed
+ * Expected: the first destroy happens on only one branch of an if; after the
+ * join the arena counts as destroyed, so the unconditional destroy that
+ * follows is still caught.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut cond bool = true
+    if cond {
+        mem.destroy(a)
+    }
+    mem.destroy(a)
+}

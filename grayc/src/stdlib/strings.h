@@ -14,6 +14,18 @@
 #include "../runtime/runtime.h"
 #include "../runtime/array.h"
 
+/* Basename collides with the POSIX <strings.h>: in a grayc-generated program
+ * this directory shadows libc, so step past it so `extern import "strings.h"`
+ * reaches the real header (on macOS those names also live in <string.h>, so
+ * this is a no-op there). See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<strings.h>)
+#      include_next <strings.h>
+#    endif
+#  endif
+#endif
+
 /*@man to_upper
  *@module strings
  *@group Case
@@ -536,5 +548,162 @@ bool gray_strings_is_upper(char c);
  *@end
  */
 bool gray_strings_is_lower(char c);
+
+/* --- Builder: amortized string assembly --- */
+
+/*@man Builder
+ *@module strings
+ *@group Builder
+ *@kind type
+ *@desc A growable byte accumulator for assembling a string from many pieces without the O(n^2) copying of repeated `+=`. Arena-managed like any struct: it goes out of scope with its enclosing arena, with no manual free. The buffer grows by doubling, so N appends totalling M bytes cost amortized O(M). Create one with strings.builder(), append with the builder_append* functions, and finalize once with strings.build(). Must be declared mut; a function that appends to a caller's builder takes it as &b Builder.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "Hello, ")
+ *   strings.builder_append(b, "world")
+ *   println(strings.build(b))
+ *@end
+ */
+typedef struct {
+    char *data;
+    int32_t len;
+    int32_t cap;
+    GrayArena *arena;   /* arena the buffer grows into */
+} GrayStringsBuilder;
+
+/*@man builder
+ *@module strings
+ *@group Builder
+ *@sig builder() -> Builder
+ *@desc Creates an empty string builder. The buffer grows on demand as content is appended.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "text")
+ *@end
+ */
+GrayStringsBuilder *gray_strings_builder(GrayArena *arena);
+
+/*@man builder_reserve
+ *@module strings
+ *@group Builder
+ *@sig builder_reserve(b Builder, n int) -> void
+ *@desc Grows the builder's buffer so it can hold at least n bytes without reallocating. Optional; use it when the final size is known ahead of time. A negative n is ignored.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_reserve(b, 4096)
+ *@end
+ */
+void gray_strings_builder_reserve(GrayStringsBuilder *b, int64_t n);
+
+/*@man builder_append
+ *@module strings
+ *@group Builder
+ *@sig builder_append(b Builder, s string) -> void
+ *@desc Appends the bytes of s to the builder.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "row")
+ *@end
+ */
+void gray_strings_builder_append(GrayStringsBuilder *b, GrayString s);
+
+/*@man builder_append_char
+ *@module strings
+ *@group Builder
+ *@sig builder_append_char(b Builder, c char) -> void
+ *@desc Appends the codepoint c to the builder, UTF-8 encoded (1 to 4 bytes).
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append_char(b, '\n')
+ *@end
+ */
+void gray_strings_builder_append_char(GrayStringsBuilder *b, int32_t c);
+
+/*@man builder_append_bytes
+ *@module strings
+ *@group Builder
+ *@sig builder_append_bytes(b Builder, data [byte]) -> void
+ *@desc Appends every byte of data to the builder.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   mut data [byte] = {104, 105}
+ *   strings.builder_append_bytes(b, data)
+ *@end
+ */
+void gray_strings_builder_append_bytes(GrayStringsBuilder *b, GrayArray data);
+
+/*@man builder_append_int
+ *@module strings
+ *@group Builder
+ *@sig builder_append_int(b Builder, n int) -> void
+ *@desc Appends the decimal text of n to the builder (e.g. -42 appends "-42").
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append_int(b, 2637)
+ *@end
+ */
+void gray_strings_builder_append_int(GrayStringsBuilder *b, int64_t n);
+
+/*@man builder_append_line
+ *@module strings
+ *@group Builder
+ *@sig builder_append_line(b Builder, s string) -> void
+ *@desc Appends s followed by a newline character.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append_line(b, "first")
+ *   strings.builder_append_line(b, "second")
+ *@end
+ */
+void gray_strings_builder_append_line(GrayStringsBuilder *b, GrayString s);
+
+/*@man builder_len
+ *@module strings
+ *@group Builder
+ *@sig builder_len(b Builder) -> int
+ *@desc Returns the number of bytes accumulated in the builder so far.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "abc")
+ *   println(strings.builder_len(b))
+ *@end
+ */
+int64_t gray_strings_builder_len(GrayStringsBuilder *b);
+
+/*@man builder_clear
+ *@module strings
+ *@group Builder
+ *@sig builder_clear(b Builder) -> void
+ *@desc Resets the builder's length to zero while keeping its allocated capacity, so it can be reused without reallocating.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "old")
+ *   strings.builder_clear(b)
+ *@end
+ */
+void gray_strings_builder_clear(GrayStringsBuilder *b);
+
+/*@man build
+ *@module strings
+ *@group Builder
+ *@sig build(b Builder) -> string
+ *@desc Copies the accumulated bytes into a new string. The builder stays usable afterward; call build again for an updated snapshot.
+ *@example
+ *   import @strings
+ *   mut b Builder = strings.builder()
+ *   strings.builder_append(b, "done")
+ *   mut out string = strings.build(b)
+ *@end
+ */
+GrayString gray_strings_build(GrayArena *arena, GrayStringsBuilder *b);
 
 #endif

@@ -11,6 +11,8 @@
 *.rsp
 /gray
 /grayc/grayc
+/generate_errors
+/check_error_codes
 /grayc/libgrayrt.a
 /grayc/tests/test_lexer
 /grayc/tests/test_parser

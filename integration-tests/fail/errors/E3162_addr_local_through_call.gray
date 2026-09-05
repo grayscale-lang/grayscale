@@ -1,0 +1,21 @@
+// expect-error: E3162
+// expect-error-count: 1
+/*
+ * Error Test: E3162 - a local's address returned after passing through a
+ * function call that forwards its argument.
+ *
+ * id() returns its parameter unchanged, so id(addr(local)) is still the
+ * address of 'local', which dies when leak() returns.
+ */
+
+do id(p ^int) -> ^int { return p }
+
+do leak() -> ^int {
+    mut local int = 7
+    return id(addr(local))
+}
+
+do main() {
+    mut r ^int = leak()
+    println(r^)
+}

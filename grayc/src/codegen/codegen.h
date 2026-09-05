@@ -47,6 +47,11 @@ typedef struct {
     /* Current function context (for multi-return, ensure) */
     AstNode *current_func;
 
+    /* Number of top-level defer/ensure statements whose source position codegen
+     * has already passed in the current function. A return only runs the
+     * defer/ensure statements that control flow has actually reached. */
+    int ensure_reached;
+
     /* loop scoping depth — when > 0, codegen is inside a
      * scoped loop and container mutations need escape-copy logic. */
     int loop_scope_depth;
@@ -103,6 +108,19 @@ typedef struct {
     int heap_var_count;
     int heap_var_cap;
 
+    /* @mem-arena-tracked pointer variables (from mem.init()/mem.alloc()) —
+     * dereference emits a live check against the arena expression that
+     * produced them, so a use after that arena was destroyed/reset panics
+     * (P0105) instead of silently reading freed memory. arena_expr is NULL
+     * for an unregister entry (shadowing/reassignment from a non-mem
+     * source). Same shadow-stack shape as raw_vars/heap_vars. Only
+     * registered when the arena argument is a side-effect-free, safely
+     * re-evaluable expression (see is_stable_arena_expr in codegen.c) —
+     * the same expression is re-emitted at every dereference site. */
+    struct { const char *name; AstNode *arena_expr; } *mem_vars;
+    int mem_var_count;
+    int mem_var_cap;
+
     /* Track declared bigint variable types (name → type_name) */
     const char **bigint_var_names;
     const char **bigint_var_types;
@@ -134,7 +152,7 @@ typedef struct {
     int imported_module_count;
     int imported_module_cap;
 
-    /* C interop headers from import c"header.h" */
+    /* C interop headers from extern import "header.h" */
     const char **c_headers;
     int c_header_count;
     int c_header_cap;

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3053 - an extern. C call result used as an array literal element
+ * is caught by element-type checking instead of leaking a raw C compiler error.
+ */
+// expect-error: E3053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut arr [string] = {extern.getenv("HOME"), "b"}
+    println(arr[0])
+}

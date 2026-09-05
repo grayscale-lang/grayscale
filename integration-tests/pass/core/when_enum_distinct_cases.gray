@@ -1,0 +1,64 @@
+/*
+ * when_enum_distinct_cases.gray - distinct enum 'is' branches (plain and
+ * tagged) must not be flagged as duplicates by the E2043 check.
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+const Shape enum {
+    Circle(int)
+    Square(int)
+    Point
+}
+
+do name_of(c Color) -> string {
+    when c {
+        is Color.RED { return "red" }
+        is Color.GREEN { return "green" }
+        is Color.BLUE { return "blue" }
+    }
+    return "?"
+}
+
+do area(s Shape) -> int {
+    when s {
+        is Shape.Circle(r) { return 3 * r * r }
+        is Shape.Square(w) { return w * w }
+        is Shape.Point { return 0 }
+    }
+    return -1
+}
+
+do main() {
+    println("=== when enum distinct cases ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if name_of(Color.RED) == "red" && name_of(Color.BLUE) == "blue" {
+        println("  [PASS] plain enum branches")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] plain enum branches")
+        failed += 1
+    }
+
+    if area(Shape.Circle(2)) == 12 && area(Shape.Square(4)) == 16 && area(Shape.Point) == 0 {
+        println("  [PASS] tagged enum branches")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] tagged enum branches")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

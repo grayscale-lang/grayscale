@@ -1,0 +1,6 @@
+#error_code
+const ModErr enum {
+    ALPHA
+    BETA
+    GAMMA
+}

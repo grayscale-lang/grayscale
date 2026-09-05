@@ -1,0 +1,10 @@
+/*
+ * Error Test: E6014 - a malformed import statement (no path after
+ * "extern import").
+ */
+// expect-error: E6014
+// expect-error-count: 1
+
+extern import
+
+do main() {}

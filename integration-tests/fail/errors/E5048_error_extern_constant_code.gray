@@ -1,0 +1,16 @@
+// expect-error: E5048
+// expect-error-count: 1
+// A C interop constant resolves to an unknown type, which the error()
+// check used to carve out. error(extern.EXIT_FAILURE, ...) then reused the
+// constant's raw value as an ErrorCode slot with no diagnostic.
+
+extern import "stdlib.h"
+
+do do_thing() -> (int, Error) {
+    return 0, error(extern.EXIT_FAILURE, "C call failed")
+}
+
+do main() {
+    mut _, e = do_thing()
+    println("${e.code}")
+}

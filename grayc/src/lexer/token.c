@@ -40,6 +40,7 @@ static const KeywordEntry keywords[] = {
     {"else",        TOK_OTHERWISE},
     {"ensure",      TOK_ENSURE},
     {"enum",        TOK_ENUM},
+    {"extern",      TOK_EXTERN},
     {"false",       TOK_FALSE},
     {"fn",          TOK_DO},
     {"for",         TOK_FOR},
@@ -97,6 +98,13 @@ bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, con
         }
         if (cmp < 0) hi = mid - 1;
         else lo = mid + 1;
+    }
+    return false;
+}
+
+bool token_type_is_keyword(TokenType type) {
+    for (size_t i = 0; i < KEYWORD_COUNT; i++) {
+        if (keywords[i].type == type) return true;
     }
     return false;
 }
@@ -178,6 +186,7 @@ const char *token_type_name(TokenType type) {
     case TOK_DISCARD:        return "#discard";
     case TOK_DEPRECATED:     return "#deprecated";
     case TOK_TEST:           return "#test";
+    case TOK_ERROR_CODE_ATTR: return "#error_code";
     case TOK_MUT:            return "mut";
     case TOK_CONST:          return "const";
     case TOK_DO:             return "do";
@@ -205,6 +214,7 @@ const char *token_type_name(TokenType type) {
     case TOK_BLANK:          return "_";
     case TOK_ENSURE:         return "ensure";
     case TOK_OR_RETURN:      return "or_return";
+    case TOK_EXTERN:         return "extern";
     case TOK_PRIVATE:        return "private";
     case TOK_USE:            return "use";
     case TOK_WHEN:           return "when";

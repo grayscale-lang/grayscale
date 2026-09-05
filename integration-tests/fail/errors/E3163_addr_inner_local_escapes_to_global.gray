@@ -1,0 +1,23 @@
+// expect-error: E3163
+// expect-error-count: 1
+/*
+ * Error Test: E3163 - an inner-scope address stored into a module-level
+ * variable by a helper function.
+ *
+ * capture() assigns its pointer parameter to the global 'g'; the global
+ * outlives the if-block where 'inner' is declared.
+ */
+
+mut g ^int = nil
+
+do capture(p ^int) {
+    g = p
+}
+
+do main() {
+    if true {
+        mut inner int = 99
+        capture(addr(inner))
+    }
+    println(g^)
+}

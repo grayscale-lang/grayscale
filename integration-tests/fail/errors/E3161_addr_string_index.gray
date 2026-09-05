@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3161 - addr() rejects a string index expression. A string
+ * byte is a computed codepoint value (strings are immutable), not an
+ * addressable slot; without this the C compiler rejects '&(rvalue)'.
+ */
+// expect-error: E3161
+// expect-error-count: 2
+
+do main() {
+    mut s string = "hi"
+    mut p ^char = addr(s[0])
+    mut i int = 1
+    mut q ^char = addr(s[i])
+}

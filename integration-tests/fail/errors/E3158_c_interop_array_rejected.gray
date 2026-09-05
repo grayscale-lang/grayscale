@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3158 - arrays cannot be passed to C functions
+ * Expected: error about array at C boundary
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+do main() {
+    mut arr [int] = {1, 2, 3}
+    extern.puts(arr)
+}

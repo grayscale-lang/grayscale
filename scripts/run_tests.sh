@@ -79,14 +79,22 @@ forbidden_marker() {
         | sed -E 's|^[[:space:]]*//[[:space:]]*expect-not:[[:space:]]*||' | head -1
 }
 
+# expect-contains: <text> — the run's output must contain <text>. Used to pin
+# that a runtime panic carries a source location (expect-contains: .gray:).
+required_marker() {
+    grep -E '^[[:space:]]*//[[:space:]]*expect-contains:' "$1" \
+        | sed -E 's|^[[:space:]]*//[[:space:]]*expect-contains:[[:space:]]*||' | head -1
+}
+
 run_fail_test() {
     local label="$1" entry="$2" marker_file="$3"
-    local expected_error expected_count output actual_count forbidden
+    local expected_error expected_count output actual_count forbidden required
     expected_error=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error:[[:space:]]*[EPW][0-9]+' "$marker_file" \
         | grep -oE '[EPW][0-9]+' | head -1)
     expected_count=$(grep -oE '^[[:space:]]*//[[:space:]]*expect-error-count:[[:space:]]*[0-9]+' "$marker_file" \
         | grep -oE '[0-9]+' | head -1)
     forbidden=$(forbidden_marker "$marker_file")
+    required=$(required_marker "$marker_file")
     if [ -n "$expected_error" ]; then
         output=$(run_timeout $TIMEOUT "$GRAY_BIN" check "$entry" 2>&1) || true
         actual_count=$(echo "$output" | grep -cE '^error\[' || true)
@@ -96,6 +104,8 @@ run_fail_test() {
             && ! echo "$output" | grep -qE "'[a-z][a-zA-Z0-9]*_[A-Z][a-zA-Z0-9]*'"; then
             if [ -n "$forbidden" ] && echo "$output" | grep -qF -- "$forbidden"; then
                 fail "$label" "(output contains '$forbidden')"
+            elif [ -n "$required" ] && ! echo "$output" | grep -qF -- "$required"; then
+                fail "$label" "(output missing '$required')"
             else
                 pass "$label"
             fi
@@ -110,6 +120,8 @@ run_fail_test() {
         # Without this the branch passed on any failure at all, so a leaked
         # C error read as the test doing its job.
         fail "$label" "(no grayscale diagnostic; C compiler error leaked)"
+    elif [ -n "$required" ] && ! echo "$output" | grep -qF -- "$required"; then
+        fail "$label" "(output missing '$required')"
     else
         pass "$label"
     fi

@@ -1,0 +1,83 @@
+/*
+ * c_interop_result_typed_uses.gray - the ways an extern. C call result or
+ * constant may be consumed. Its type is known only to the C compiler, so it is
+ * valid only in a type-annotated declaration, as an argument to another extern.
+ * call, through c_string(), or through cast(). Every other position is a
+ * compile error (covered by the fail/ suite).
+ */
+
+extern import "math.h"
+extern import "stdlib.h"
+extern import "string.h"
+
+do main() {
+    println("=== C interop result: typed uses ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // annotated declaration, numeric
+    mut root float = extern.sqrt(2.0)
+    if root > 1.41 && root < 1.42 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] annotated float decl")
+    }
+
+    // annotated declaration, integer
+    mut n i64 = extern.strlen("hello")
+    if n == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] annotated i64 decl")
+    }
+
+    // annotated declaration, pointer + pass straight back into C
+    mut buf ^byte = extern.malloc(8)
+    extern.free(buf)
+    passed += 1
+
+    // result of one extern. call as an argument to another
+    mut copied ^byte = extern.malloc(4)
+    extern.memset(copied, 0, 4)
+    extern.free(copied)
+    passed += 1
+
+    // through c_string(), inline and via an intermediate variable
+    mut env_inline string = c_string(extern.getenv("GRAY_UNSET_VAR_55123"))
+    mut raw_env = extern.getenv("GRAY_UNSET_VAR_55123")
+    mut env_var string = c_string(raw_env)
+    if env_inline == "" && env_var == "" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] c_string() paths")
+    }
+
+    // through cast()
+    mut truncated int = cast(extern.sqrt(9.0), int)
+    if truncated == 3 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] cast() path")
+    }
+
+    // C constants follow the same rule: annotate, then use
+    mut exit_ok int = extern.EXIT_SUCCESS
+    if exit_ok == 0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] extern constant comparison")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

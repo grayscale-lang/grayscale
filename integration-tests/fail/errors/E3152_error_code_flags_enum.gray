@@ -1,0 +1,13 @@
+// expect-error: E3152
+// A #error_code enum cannot also be #flags: ErrorCode is numbered by
+// global slot, so the power-of-2 bit values would be silently discarded.
+
+#error_code
+#flags
+const Both enum {
+    X
+    Y
+    Z
+}
+
+do main() {}

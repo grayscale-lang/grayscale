@@ -20,21 +20,37 @@ typedef struct {
     bool mutable;
     bool is_ref;         /* true if created via ref() — transparent reference */
     bool const_source;   /* true if pointer was taken from a const variable via addr() */
+    bool is_heap;        /* true if bound to a new() result — the pointee lives in
+                            the heap arena and outlives every function scope */
     /* Lifetime origin of a pointer value: the depth of the scope declaring
      * the variable whose address this pointer holds, biased by +1 so that 0
      * means "no tracked origin", plus that variable's name for diagnostics.
      * Set at addr()/raw() and propagated through pointer assignment so the
-     * escape checks (E3063, E3097) survive laundering through intermediate
+     * escape checks (E3162, E3163) survive laundering through intermediate
      * pointer variables. */
     int origin_depth;
     const char *origin_name;
     /* Lifetime origin of a pointer stored in a *field* of this aggregate
      * variable — a struct value initialised or updated with a pointer whose
      * pointee is shorter-lived than the variable itself. Same +1 bias as
-     * origin_depth. Lets the escape checks (E3063) see through a struct that
+     * origin_depth. Lets the escape checks (E3162) see through a struct that
      * carries a dangling pointer field. */
     int field_origin_depth;
     const char *field_origin_name;
+    /* Pointer checker: if this pointer was bound from mem.init()/mem.alloc()
+     * on a @mem arena, the arena variable's name and the arena epoch at the
+     * time of binding. A read of this variable after that arena is destroyed
+     * (E3164) or reset past this epoch (E3165) is a use-after-free. */
+    const char *mem_arena;
+    int mem_epoch;
+    /* Same, for a pointer buried in a *field* of this aggregate variable — a
+     * struct/array/map literal initialised or updated with a pointer bound
+     * to a @mem arena. Lets pc_check_mem_deref() catch `b.p^` after the
+     * arena backing `b.p` is destroyed, the same way field_origin_depth lets
+     * the escape checks see through a struct carrying a dangling pointer
+     * field. */
+    const char *field_mem_arena;
+    int field_mem_epoch;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

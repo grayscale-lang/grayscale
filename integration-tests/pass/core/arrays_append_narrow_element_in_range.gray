@@ -1,0 +1,56 @@
+/*
+ * arrays_append_narrow_element_in_range.gray
+ * In-range values (literal and same-typed variable) still append/prepend/
+ * insert_at cleanly into narrow element slots — the overflow guard must not
+ * reject values that fit.
+ */
+
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a [byte] = {}
+    arrays.append(a, 255)
+    arrays.prepend(a, 0)
+    arrays.insert_at(a, 1, 128)
+    mut x byte = 42
+    arrays.append(a, x)
+    if a[0] == 0 && a[1] == 128 && a[2] == 255 && a[3] == 42 {
+        println("  [PASS] [byte] in-range append/prepend/insert_at")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [byte]: ${a[0]} ${a[1]} ${a[2]} ${a[3]}")
+        failed += 1
+    }
+
+    mut s [i16] = {}
+    arrays.append(s, -32768)
+    arrays.append(s, 32767)
+    if s[0] == -32768 && s[1] == 32767 {
+        println("  [PASS] [i16] in-range bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [i16]: ${s[0]} ${s[1]}")
+        failed += 1
+    }
+
+    // Full-width element: large value is fine.
+    mut n [int] = {}
+    arrays.append(n, 999999999)
+    if n[0] == 999999999 {
+        println("  [PASS] [int] wide value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [int]: ${n[0]}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,29 @@
+// expect-error: E3154
+// expect-error-count: 4
+/*
+ * Error Test: E3154 - the address of a local, a parameter, or a block-scoped
+ * variable cannot be passed to a C function. The compiler cannot see the C
+ * signature and cannot prove the C side does not retain the pointer past the
+ * variable's scope (#2657). Four routes:
+ *   1. addr() of a local
+ *   2. ref() of a local
+ *   3. raw() of a parameter
+ *   4. addr() of a variable bound in a nested block
+ */
+
+extern import "stdio.h"
+
+do leak(param ^int) {
+    mut local int = 1337
+    extern.printf("%p\n", addr(local))
+    extern.printf("%p\n", ref(local))
+    extern.printf("%p\n", raw(param))
+    if true {
+        mut inner int = 5
+        extern.printf("%p\n", addr(inner))
+    }
+}
+
+do main() {
+    leak(new(int))
+}

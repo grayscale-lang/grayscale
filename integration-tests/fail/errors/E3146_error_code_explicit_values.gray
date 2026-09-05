@@ -1,0 +1,10 @@
+// expect-error: E3146
+// The compiler owns ErrorCode numbering; explicit variant values are rejected.
+
+#error_code
+const Codes enum {
+    A = 10
+    B = 20
+}
+
+do main() {}

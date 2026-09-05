@@ -1,0 +1,13 @@
+/* Error Test: E4027 - 'extern' is a reserved keyword and cannot name a
+ * struct field. 'extern' is a lexer keyword but was omitted from the
+ * parser's reserved-word check, so it silently became a legal field name.
+ */
+// expect-error: E4027
+const P struct {
+    extern int
+}
+
+do main() {
+    mut p P = P{extern: 1}
+    println(p.extern)
+}

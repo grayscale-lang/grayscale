@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3162 - returning an array literal built directly from
+ * addr(local) is rejected without needing an intermediate variable.
+ */
+// expect-error: E3162
+// expect-error-count: 1
+
+do f() -> [^int] {
+    mut x int = 1
+    return {addr(x)}
+}
+
+do main() {
+    mut a [^int] = f()
+    println("done")
+}

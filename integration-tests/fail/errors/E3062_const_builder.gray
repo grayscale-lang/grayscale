@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3062 - const on a string builder handle
+ *
+ * a Builder is inherently stateful (every append
+ * mutates its internal buffer), so const is rejected.
+ */
+
+import @strings
+
+do main() {
+    const b = strings.builder()
+}

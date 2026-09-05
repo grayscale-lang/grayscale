@@ -1,0 +1,21 @@
+// expect-error: E3163
+// expect-error-count: 1
+/*
+ * Error Test: E3163 - a loop-local's address laundered through a pointer
+ * variable before being appended to an array that outlives the loop body.
+ *
+ * The inline form arrays.append(ptrs, addr(x)) is already rejected; here the
+ * address is copied into 't' first so it never appears at the call.
+ */
+
+import @arrays
+
+do main() {
+    mut ptrs [^int] = {}
+    for i in range(3) {
+        mut x int = i * 10
+        mut t ^int = addr(x)
+        arrays.append(ptrs, t)
+    }
+    println(ptrs[0]^)
+}

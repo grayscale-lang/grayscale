@@ -883,6 +883,18 @@ static void test_error_E3043_invalid_cast(void) {
     diagnostic_destroy(diagnostics);
 }
 
+static void test_error_E3167_cast_pointer_reinterpret(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const Point struct { x int\n y int }\n"
+        "const Vec struct { a int\n b int }\n"
+        "do main() {\n"
+        "    mut p = new(Point)\n"
+        "    mut q ^Vec = cast(p, ^Vec)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3167"));
+    diagnostic_destroy(diagnostics);
+}
+
 static void test_error_E3045_or_return_no_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do get() -> int { return 42 }\n"
@@ -1338,13 +1350,13 @@ static void test_valid_recursive_pointer_struct(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3063_return_addr_local(void) {
+static void test_error_E3162_return_addr_local(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do bad() -> ptr<int> {\n"
         "  mut x int = 42\n"
         "  return addr(x)\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3063"));
+    ASSERT(has_error_code(diagnostics, "E3162"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -1916,7 +1928,7 @@ static void test_error_E3062_const_handle(void) {
     diagnostic_destroy(diagnostics);
 }
 
-static void test_error_E3064_arena_already_destroyed(void) {
+static void test_error_E3166_arena_already_destroyed(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
         "do main() {\n"
@@ -1924,7 +1936,433 @@ static void test_error_E3064_arena_already_destroyed(void) {
         "  mem.destroy(a)\n"
         "  mem.destroy(a)\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3064"));
+    ASSERT(has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3164_mem_use_after_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mem.destroy(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3164_mem_use_after_cross_function_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do cleanup(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  cleanup(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3166_mem_destroy_forwarded_through_wrapper(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do helper(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do outer(a Arena) {\n"
+        "  helper(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  outer(a)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_premark_loop_body() pre-marks an arena a loop body destroys, so a
+ * dereference textually earlier in the body is still caught as unsafe on a
+ * later iteration. That premark must not make the loop's own (single, real)
+ * destroy statement look like a double-free of itself: `break` right after
+ * the destroy means there is no later iteration at all here, only the one
+ * legitimate destroy and one legitimate post-loop use of the now-dangling
+ * pointer. */
+static void test_no_false_positive_mem_destroy_break_self_collision(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  for i in range(0, 5) {\n"
+        "    if i == 2 {\n"
+        "      mem.destroy(a)\n"
+        "      break\n"
+        "    }\n"
+        "  }\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3166"));
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_premark_loop_body() only recognized a direct mem.destroy()/mem.reset()
+ * call in the loop body — a call to a helper whose own cross-function @mem
+ * summary says it destroys an arena passed to it was invisible, so a
+ * dereference earlier in the loop body wasn't flagged as unsafe on a later
+ * iteration even though the helper genuinely destroys the arena on some
+ * iteration. */
+static void test_error_E3164_mem_use_after_helper_destroy_in_loop(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do cleanup(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  for i in range(0, 3) {\n"
+        "    println(p^)\n"
+        "    if i == 1 {\n"
+        "      cleanup(a)\n"
+        "    }\n"
+        "  }\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* Same helper-destroy-in-loop shape as above, but the destroy is the last
+ * thing before an unconditional break — no later iteration actually exists,
+ * so this must not also collide with itself as E3166 (mirrors the direct-
+ * mem.destroy() case already covered above). */
+static void test_no_false_positive_mem_helper_destroy_break_self_collision(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do cleanup(a Arena) {\n"
+        "  mem.destroy(a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  for i in range(0, 5) {\n"
+        "    if i == 2 {\n"
+        "      cleanup(a)\n"
+        "      break\n"
+        "    }\n"
+        "  }\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_bind_mem_pointer() only tracked a bare pointer variable's own
+ * mem_arena; a @mem pointer buried in a struct field was invisible to
+ * pc_check_mem_deref(), so `b.p^` after the arena backing it is destroyed
+ * went uncaught. field_mem_arena, set at construction (a struct literal)
+ * and at a later field assignment alike, closes both. */
+static void test_error_E3164_mem_use_after_destroy_struct_field_literal(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3164_mem_use_after_destroy_struct_field_assign(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: nil}\n"
+        "  b.p = mem.alloc(a, 42)\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_struct_field_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
+        "  println(b.p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_mem_pointer_in_expr() only recognized a direct mem.init()/mem.alloc()
+ * call, a bare-variable alias, or one buried in a struct/array/map literal
+ * — a pointer returned by a *called* function that itself forwards its own
+ * mem.alloc()/mem.init() result was invisible, so the caller's variable
+ * never got bound to the arena at all. */
+static void test_error_E3164_mem_use_after_destroy_return_forwarded(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> ^int {\n"
+        "  return mem.alloc(a, 42)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_return_forwarded_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> ^int {\n"
+        "  return mem.alloc(a, 42)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = make(a)\n"
+        "  println(p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_is_mem_call() only recognized an arena named by a bare variable — a
+ * struct field holding the arena handle (`mem.destroy(h.a)`) was invisible
+ * to the whole @mem tracker: neither the pointer bound from it nor the
+ * destroy itself were tracked at all. pc_arena_path_key() generalizes the
+ * arena's identity to a dotted field-access key so the rest of the tracker
+ * (unchanged) treats "h.a" as it would any other arena name. */
+static void test_error_E3164_mem_use_after_destroy_arena_in_struct_field(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mem.destroy(h.a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3166_mem_destroy_arena_in_struct_field_twice(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mem.destroy(h.a)\n"
+        "  mem.destroy(h.a)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3166"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_arena_in_struct_field_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  println(p^)\n"
+        "  mem.destroy(h.a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_mem_walk()'s parameter-index matching only recognized a bare parameter
+ * name — a helper destroying an arena reached through a *field* of its own
+ * struct parameter (mem.destroy(h.a) where h is the parameter) never set
+ * destroys_param_arena at all, so the effect didn't propagate to a caller
+ * that only passes h itself. mem_param_field[] plus pc_mem_param_index_for_key()
+ * recover the field suffix so it composes at the call site. */
+static void test_error_E3164_mem_use_after_cross_function_field_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do cleanup(h Holder) {\n"
+        "  mem.destroy(h.a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  cleanup(h)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_cross_function_field_destroy_read_before(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Holder struct {\n a Arena\n}\n"
+        "do cleanup(h Holder) {\n"
+        "  mem.destroy(h.a)\n"
+        "}\n"
+        "do main() {\n"
+        "  mut h Holder = Holder{a: mem.arena(1024)}\n"
+        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  println(p^)\n"
+        "  cleanup(h)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* pc_return_expr_mem_bits() only recognized a directly-returned mem.alloc()/
+ * mem.init() result — one buried in a struct/array/map literal the function
+ * returns was invisible, so returns_param_mem_alloc_field never got set and
+ * the caller's variable was never bound to the arena. */
+static void test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do make(a Arena) -> Box {\n"
+        "  return Box{p: mem.alloc(a, 42)}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(b.p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_return_forwarded_in_literal_read_before(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box struct {\n p ^int\n}\n"
+        "do make(a Arena) -> Box {\n"
+        "  return Box{p: mem.alloc(a, 42)}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = make(a)\n"
+        "  println(b.p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
+    diagnostic_destroy(diagnostics);
+}
+
+/* A @mem pointer buried in a tagged-enum payload (Box.Full(mem.alloc(a,x)))
+ * was untracked two ways at once: pc_mem_pointer_in_expr() didn't recognize
+ * an enum-variant construction as a container the way it already does a
+ * struct/array/map literal, and even if the enum value itself carried
+ * field_mem_arena, when/is pattern binding never propagated it to the
+ * destructured payload variable. */
+static void test_error_E3164_mem_use_after_destroy_tagged_enum_payload(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
+        "  mem.destroy(a)\n"
+        "  when b {\n"
+        "    is Box.Full(p) { println(p^) }\n"
+        "    default {}\n"
+        "  }\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
+        "  when b {\n"
+        "    is Box.Full(p) { println(p^) }\n"
+        "    default {}\n"
+        "  }\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* Multi-return desugars `mut p, n = make(a)` into `mut _tmp = make(a); mut p
+ * = _tmp.v0; mut n = _tmp.v1` — the second statement's value is a
+ * NODE_MEMBER_EXPR, which pc_mem_pointer_in_expr didn't handle at all, so a
+ * @mem pointer returned alongside another value was never bound to `p`.
+ * pc_bind_mem_pointer now binds a CALL_EXPR result to both mem_arena and
+ * field_mem_arena, since a single-return call's result is the pointer
+ * itself but a multi-return temp's per-slot read needs the field slot. */
+static void test_error_E3164_mem_use_after_destroy_multi_return(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> (^int, int) {\n"
+        "  return mem.alloc(a, 42), 1\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int, n = make(a)\n"
+        "  mem.destroy(a)\n"
+        "  println(n)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_no_false_positive_mem_multi_return_read_before_destroy(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do make(a Arena) -> (^int, int) {\n"
+        "  return mem.alloc(a, 42), 1\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int, n = make(a)\n"
+        "  println(n)\n"
+        "  println(p^)\n"
+        "  mem.destroy(a)\n"
+        "}");
+    ASSERT(!has_error_code(diagnostics, "E3164"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3165_mem_use_after_reset(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "import @mem\n"
+        "do main() {\n"
+        "  mut a = mem.arena(1024)\n"
+        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mem.reset(a)\n"
+        "  println(p^)\n"
+        "}");
+    ASSERT(has_error_code(diagnostics, "E3165"));
     diagnostic_destroy(diagnostics);
 }
 
@@ -2249,9 +2687,9 @@ static void test_error_E3122_addr_const_var(void) {
     diagnostic_destroy(diagnostics);
 }
 
-/* --- E3097: addr of inner-scope variable assigned to outer pointer --- */
+/* --- E3163: addr of inner-scope variable assigned to outer pointer --- */
 
-static void test_error_E3097_addr_scope_mismatch(void) {
+static void test_error_E3163_addr_scope_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do setup() -> ^int {\n"
         "  mut outer int = 10\n"
@@ -2262,7 +2700,73 @@ static void test_error_E3097_addr_scope_mismatch(void) {
         "  }\n"
         "  return p\n"
         "}");
-    ASSERT(has_error_code(diagnostics, "E3097"));
+    ASSERT(has_error_code(diagnostics, "E3163"));
+    diagnostic_destroy(diagnostics);
+}
+
+static void test_error_E3163_addr_escapes_through_func_ref_call(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "mut GLOBAL ^int = nil\n"
+        "do stash(x ^int) {\n"
+        "  GLOBAL = x\n"
+        "}\n"
+        "do capture() {\n"
+        "  const f = ()stash\n"
+        "  mut y int = 12\n"
+        "  f(addr(y))\n"
+        "}\n"
+        "do main() { capture() }");
+    ASSERT(has_error_code(diagnostics, "E3163"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A parameter forwarded through a func-ref declared *inside* a helper
+ * function's own body (as opposed to a direct func-ref call, the case
+ * above): the escape summary for that helper is computed structurally, by
+ * escape_walk() walking its AST directly — detached from live scope by
+ * design, since the summary is routinely requested from a different
+ * function's call site. resolve_call_sig_in_body() has to recover the
+ * func-ref's target from the AST itself (local_initializer() style) rather
+ * than a scope lookup for this to be seen at all. */
+static void test_error_E3163_addr_escapes_through_func_ref_in_helper(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "mut GLOBAL ^int = nil\n"
+        "do stash(x ^int) {\n"
+        "  GLOBAL = x\n"
+        "}\n"
+        "do helper(x ^int) {\n"
+        "  const f = ()stash\n"
+        "  f(x)\n"
+        "}\n"
+        "do capture() {\n"
+        "  mut y int = 33\n"
+        "  helper(addr(y))\n"
+        "}\n"
+        "do main() { capture() }");
+    ASSERT(has_error_code(diagnostics, "E3163"));
+    diagnostic_destroy(diagnostics);
+}
+
+/* A func-typed parameter's call (`f(p)` where `f func(T) -> T`) has no
+ * FuncSig, so its escape-summary walk falls back to consulting the call's
+ * already-resolved type via typetable_get() rather than resolving it fresh —
+ * resolving it fresh would run against whatever scope happens to be live
+ * when the summary is first requested (often a different, unrelated
+ * function's), misreporting the parameter and its argument as undefined. */
+static void test_no_false_positive_func_param_call_forward_reference(void) {
+    DiagnosticList *diagnostics = typecheck_diagnostics(
+        "const Pair struct {\n a int\n b int\n}\n"
+        "do double_pair(p Pair) -> Pair {\n"
+        "  return Pair{a: p.a * 2, b: p.b * 2}\n"
+        "}\n"
+        "do main() {\n"
+        "  mut r = apply_pair(()double_pair, Pair{a: 1, b: 2})\n"
+        "  println(r.a)\n"
+        "}\n"
+        "do apply_pair(f func(Pair) -> Pair, p Pair) -> Pair {\n"
+        "  return f(p)\n"
+        "}");
+    ASSERT(diagnostics->count == 0);
     diagnostic_destroy(diagnostics);
 }
 
@@ -2409,6 +2913,7 @@ int main(void) {
     RUN_TEST(test_error_E3041_new_unknown_type);
     RUN_TEST(test_error_E3041_interpolate_void);
     RUN_TEST(test_error_E3043_invalid_cast);
+    RUN_TEST(test_error_E3167_cast_pointer_reinterpret);
     RUN_TEST(test_error_E3045_or_return_no_error);
 
     /* E4xxx: Additional name errors */
@@ -2478,7 +2983,7 @@ int main(void) {
     RUN_TEST(test_error_E3059_const_map);
     RUN_TEST(test_error_E3061_recursive_struct);
     RUN_TEST(test_valid_recursive_pointer_struct);
-    RUN_TEST(test_error_E3063_return_addr_local);
+    RUN_TEST(test_error_E3162_return_addr_local);
     RUN_TEST(test_error_E3072_return_nil_non_pointer);
     RUN_TEST(test_error_E3073_return_in_main);
     RUN_TEST(test_error_E3074_array_compare);
@@ -2535,7 +3040,30 @@ int main(void) {
     RUN_TEST(test_error_E3117_enum_int_compare);
     RUN_TEST(test_error_E3118_int_to_enum_assign);
     RUN_TEST(test_error_E3062_const_handle);
-    RUN_TEST(test_error_E3064_arena_already_destroyed);
+    RUN_TEST(test_error_E3166_arena_already_destroyed);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_cross_function_destroy);
+    RUN_TEST(test_error_E3165_mem_use_after_reset);
+    RUN_TEST(test_error_E3166_mem_destroy_forwarded_through_wrapper);
+    RUN_TEST(test_no_false_positive_mem_destroy_break_self_collision);
+    RUN_TEST(test_error_E3164_mem_use_after_helper_destroy_in_loop);
+    RUN_TEST(test_no_false_positive_mem_helper_destroy_break_self_collision);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_literal);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_struct_field_assign);
+    RUN_TEST(test_no_false_positive_mem_struct_field_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_return_forwarded);
+    RUN_TEST(test_no_false_positive_mem_return_forwarded_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_arena_in_struct_field);
+    RUN_TEST(test_error_E3166_mem_destroy_arena_in_struct_field_twice);
+    RUN_TEST(test_no_false_positive_mem_arena_in_struct_field_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_cross_function_field_destroy);
+    RUN_TEST(test_no_false_positive_mem_cross_function_field_destroy_read_before);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal);
+    RUN_TEST(test_no_false_positive_mem_return_forwarded_in_literal_read_before);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_tagged_enum_payload);
+    RUN_TEST(test_no_false_positive_mem_tagged_enum_payload_read_before_destroy);
+    RUN_TEST(test_error_E3164_mem_use_after_destroy_multi_return);
+    RUN_TEST(test_no_false_positive_mem_multi_return_read_before_destroy);
     RUN_TEST(test_error_E3066_func_ref_sig_mismatch);
     RUN_TEST(test_error_E3027_non_assignable_ref_param);
     RUN_TEST(test_error_E3070_nested_ensure);
@@ -2567,7 +3095,10 @@ int main(void) {
     RUN_TEST(test_error_E3101_mut_func_ref);
     RUN_TEST(test_error_E3102_func_return_to_var);
     RUN_TEST(test_error_E3122_addr_const_var);
-    RUN_TEST(test_error_E3097_addr_scope_mismatch);
+    RUN_TEST(test_error_E3163_addr_scope_mismatch);
+    RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_call);
+    RUN_TEST(test_error_E3163_addr_escapes_through_func_ref_in_helper);
+    RUN_TEST(test_no_false_positive_func_param_call_forward_reference);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

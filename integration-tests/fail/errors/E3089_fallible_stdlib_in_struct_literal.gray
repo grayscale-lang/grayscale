@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot be a struct-literal
+ * field value; the Error would be silently dropped.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @io
+
+const Box struct {
+    lines [string]
+}
+
+do main() {
+    mut b Box = Box{ lines: io.read_lines("/no/such/file.txt", 0) }
+    println("${len(b.lines)}")
+}

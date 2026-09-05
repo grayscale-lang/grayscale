@@ -1,0 +1,7 @@
+// Error Test: E5008 - flush() takes no arguments
+// Expected: "flush()' expects 0 arguments, got 1"
+// expect-error: E5008
+
+do main() {
+    flush(1)
+}

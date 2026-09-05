@@ -117,8 +117,9 @@ typedef struct {
     const char *module;
     const char *path;
     bool is_stdlib;
-    bool is_c_import;   /* import c"header.h" — raw C header include */
+    bool is_c_import;   /* extern import "header.h" — raw C header include */
     const char *source_dir; /* directory of the file containing this import (for transitive resolution) */
+    Token token;        /* the header-path string literal, for diagnostics (C imports only) */
 } ImportItem;
 
 /* When case */
@@ -143,7 +144,16 @@ struct AstNode {
 
     union {
         /* NODE_LABEL */
-        struct { const char *value; } label;
+        struct {
+            const char *value;
+            /* Set by the type checker when this name resolves to a
+             * file-scope variable declared in the entry module (not a
+             * local, parameter, or shadowing binding). Codegen gives such
+             * a global a gray_g_ prefix so a name like `log` or `index`
+             * cannot collide with a libc identifier from the runtime
+             * headers. */
+            bool refers_to_file_global;
+        } label;
 
         /* NODE_INT_VALUE
          * value: low 64 bits of the literal as a signed bit pattern
@@ -375,6 +385,7 @@ struct AstNode {
             int value_count;
             bool is_flags;
             bool is_tagged;  /* true if ANY variant has a payload */
+            bool is_error_code;              /* #error_code attribute */
             bool is_deprecated;              /* #deprecated attribute */
             const char *deprecated_message;  /* NULL if bare #deprecated */
             bool is_private;

@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3162 - cannot return addr() of a local variable
+ *
+ * the local's memory is freed when the function
+ * returns, so the pointer would dangle.
+ */
+
+do bad() -> ^int {
+    mut x int = 42
+    return addr(x)
+}
+
+do main() {
+    mut p ^int = bad()
+    println(p^)
+}

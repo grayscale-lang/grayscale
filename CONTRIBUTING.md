@@ -295,6 +295,17 @@ completing this checklist will not be merged.
 
 All compiler diagnostics are defined in a single file: `grayc/src/util/error_codes.h`. This is the canonical registry.
 
+**Choosing a code.** One error code = one user-visible situation. A custom
+message passed to `diagnostic_error_message` supplies site-specific context (a
+name, a value, a type in the sentence) — not a different *kind* of error. Reach
+for the most specific existing code; if none fits, add a new one at the end of
+its range (never fill historical gaps). Do not reuse a broad code like `E3001`
+("assignment type mismatch") as a catch-all — argument type mismatch is `E5026`,
+a bad number of arguments is `E5008`. `scripts/check_error_codes.gray` runs in CI
+and fails the build on a code that is emitted but unregistered, registered but
+never emitted, duplicated, emitted from both `parser.c` and `typechecker.c`, or
+spread across more than 15 call sites.
+
 1. **Add the code** to the appropriate macro list in `error_codes.h`:
    - `GRAY_ERROR("E####", "category", "message")` — compile-time errors
    - `GRAY_WARNING("W####", "category", "message")` — compile-time warnings

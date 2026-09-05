@@ -1,0 +1,35 @@
+/*
+ * var_decl_call_same_signedness.gray
+ * A mut declaration initialized by a function call whose return type matches
+ * the declared signedness (or widens safely, e.g. byte -> int) must NOT be
+ * rejected by the signedness-crossing guard.
+ */
+
+do get_u() -> uint { return 42 }
+do get_i() -> int { return 7 }
+do get_b() -> byte { return 5 }
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a uint = get_u()
+    mut b int = get_i()
+    mut c int = get_b()      // byte widens to int, no cast needed
+    mut d i64 = get_i()
+
+    if a == 42 && b == 7 && c == 5 && d == 7 {
+        println("  [PASS] same-signedness / safe-widening call initializers")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${a} ${b} ${c} ${d}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

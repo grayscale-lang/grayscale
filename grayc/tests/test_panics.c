@@ -23,6 +23,7 @@
 #include "../src/stdlib/io.h"
 #include "../src/stdlib/math.h"
 #include "../src/stdlib/threads.h"
+#include "../src/stdlib/time.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -39,7 +40,7 @@ static GrayArena *arena;
  * run fn(), check non-zero exit + expected P-code in stderr output.
  * ---------------------------------------------------------------------------*/
 
-static int _assert_panics(const char *expected_code, void (*fn)(void)) {
+static int _assert_panics_impl(const char *expected_code, const char *needle, void (*fn)(void)) {
     int pipefd[2];
     pipe(pipefd);
     fflush(stdout);
@@ -80,13 +81,29 @@ static int _assert_panics(const char *expected_code, void (*fn)(void)) {
     int died = (WIFEXITED(status) && WEXITSTATUS(status) != 0) ||
                WIFSIGNALED(status);
     if (!died) return 0;
-    return strstr(buf, expected_code) != NULL;
+    if (strstr(buf, expected_code) == NULL) return 0;
+    return needle == NULL || strstr(buf, needle) != NULL;
+}
+
+static int _assert_panics(const char *expected_code, void (*fn)(void)) {
+    return _assert_panics_impl(expected_code, NULL, fn);
 }
 
 #define ASSERT_PANICS(code, fn) do { \
     if (!_assert_panics(code, fn)) { \
         fprintf(stderr, "  \033[0;31mFAIL\033[0m %s:%d: expected panic %s from %s\n", \
             __FILE__, __LINE__, code, #fn); \
+        _test_failed_this = 1; return; \
+    } \
+} while(0)
+
+/* Also require `needle` in the panic text — pins that a locationless
+ * gray_panic_code() picks up the statement location generated code stamped
+ * into gray_panic_call_file/line. */
+#define ASSERT_PANICS_AT(code, needle, fn) do { \
+    if (!_assert_panics_impl(code, needle, fn)) { \
+        fprintf(stderr, "  \033[0;31mFAIL\033[0m %s:%d: expected panic %s with '%s' from %s\n", \
+            __FILE__, __LINE__, code, needle, #fn); \
         _test_failed_this = 1; return; \
     } \
 } while(0)
@@ -162,6 +179,19 @@ static void trigger_P0044(void) {
 }
 static void test_panic_P0044(void) { ASSERT_PANICS("P0044", trigger_P0044); }
 
+/* A panic raised from stdlib C code via gray_panic_code() has no location of
+ * its own; it must report whatever generated code last stamped into
+ * gray_panic_call_file/line (the enclosing statement's location). */
+static void trigger_stdlib_panic_location(void) {
+    GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
+    gray_panic_call_file = "caller_probe.gray";
+    gray_panic_call_line = 42;
+    gray_arrays_first_ptr(&a); /* P0045, raised via gray_panic_code() */
+}
+static void test_stdlib_panic_location(void) {
+    ASSERT_PANICS_AT("P0045", "caller_probe.gray:42", trigger_stdlib_panic_location);
+}
+
 static void trigger_P0045(void) {
     GrayArray a = gray_array_new(arena, sizeof(int64_t), 0);
     gray_arrays_first_ptr(&a);
@@ -216,10 +246,45 @@ static void test_panic_P0067(void) { ASSERT_PANICS("P0067", trigger_P0067); }
  * Strconv
  * ===========================================================================*/
 
+static void trigger_P0054(void) {
+    gray_strconv_to_int(gray_string_lit("42"), 0);
+}
+static void test_panic_P0054(void) { ASSERT_PANICS("P0054", trigger_P0054); }
+
+static void trigger_P0055(void) {
+    gray_strconv_to_int(gray_string_lit("abc"), 10);
+}
+static void test_panic_P0055(void) { ASSERT_PANICS("P0055", trigger_P0055); }
+
 static void trigger_P0056(void) {
     gray_strconv_to_uint(gray_string_lit("42"), 0);
 }
 static void test_panic_P0056(void) { ASSERT_PANICS("P0056", trigger_P0056); }
+
+static void trigger_P0057(void) {
+    gray_strconv_to_uint(gray_string_lit("abc"), 10);
+}
+static void test_panic_P0057(void) { ASSERT_PANICS("P0057", trigger_P0057); }
+
+static void trigger_P0058(void) {
+    gray_strconv_to_uint(gray_string_lit("-5"), 10);
+}
+static void test_panic_P0058(void) { ASSERT_PANICS("P0058", trigger_P0058); }
+
+static void trigger_P0059(void) {
+    gray_strconv_to_float(gray_string_lit("xyz"));
+}
+static void test_panic_P0059(void) { ASSERT_PANICS("P0059", trigger_P0059); }
+
+static void trigger_P0060(void) {
+    gray_strconv_to_bool(gray_string_lit("xyz"));
+}
+static void test_panic_P0060(void) { ASSERT_PANICS("P0060", trigger_P0060); }
+
+static void trigger_P0112(void) {
+    gray_strconv_unquote(arena, gray_string_lit("not quoted"));
+}
+static void test_panic_P0112(void) { ASSERT_PANICS("P0112", trigger_P0112); }
 
 /* ===========================================================================
  * Random
@@ -235,10 +300,30 @@ static void test_panic_P0063(void) { ASSERT_PANICS("P0063", trigger_P0063); }
  * Strings
  * ===========================================================================*/
 
+static void trigger_P0071(void) {
+    /* new_s.len is used only arithmetically before the panic check fires —
+     * it's never dereferenced on this path, so a two-byte real buffer
+     * claiming a near-INT32_MAX length is enough to force the overflow
+     * without allocating a real multi-gigabyte string. */
+    GrayString s = gray_string_lit("aa");
+    GrayString old_s = gray_string_lit("a");
+    GrayString new_s = { "x", 2147483647 };
+    gray_strings_replace(arena, s, old_s, new_s);
+}
+static void test_panic_P0071(void) { ASSERT_PANICS("P0071", trigger_P0071); }
+
 static void trigger_P0073(void) {
     gray_strings_repeat(arena, gray_string_lit("abc"), 715827883);
 }
 static void test_panic_P0073(void) { ASSERT_PANICS("P0073", trigger_P0073); }
+
+static void trigger_P0116(void) {
+    /* builder_ensure() only computes the needed size before allocating;
+     * reserving an absurd capacity panics before any real buffer exists. */
+    GrayStringsBuilder *b = gray_strings_builder(arena);
+    gray_strings_builder_reserve(b, INT64_MAX);
+}
+static void test_panic_P0116(void) { ASSERT_PANICS("P0116", trigger_P0116); }
 
 /* ===========================================================================
  * Builtins
@@ -277,6 +362,43 @@ static void trigger_P0089(void) {
     gray_io_copy_file(gray_string_lit("."), gray_string_lit("/tmp/gray_test_P0089"));
 }
 static void test_panic_P0089(void) { ASSERT_PANICS("P0089", trigger_P0089); }
+
+static void trigger_P0103(void) {
+    /* A string literal "ab\0cd" is 6 real bytes ('a','b','\0','c','d','\0');
+     * claiming len=5 makes strlen(data) (2) disagree with path.len (5),
+     * which is exactly the embedded-null-byte case validate_path rejects. */
+    GrayString bad_path = { "ab\0cd", 5 };
+    gray_io_write_file(bad_path, gray_string_lit("x"));
+}
+static void test_panic_P0103(void) { ASSERT_PANICS("P0103", trigger_P0103); }
+
+/* ===========================================================================
+ * Memory
+ * ===========================================================================*/
+
+static void trigger_P0104(void) {
+    GrayArena *a = gray_arena_create(64);
+    a->max_bytes = 64;
+    gray_arena_alloc(a, 10000);
+}
+static void test_panic_P0104(void) { ASSERT_PANICS("P0104", trigger_P0104); }
+
+static void trigger_P0117(void) {
+    GrayArena *a = gray_arena_create(64);
+    int64_t x = 5;
+    a->destroyed = true;
+    gray_mem_check_live(a, &x, __FILE__, __LINE__);
+}
+static void test_panic_P0117(void) { ASSERT_PANICS("P0117", trigger_P0117); }
+
+/* ===========================================================================
+ * Time
+ * ===========================================================================*/
+
+static void trigger_P0105(void) {
+    gray_time_parse(gray_string_lit("not-a-date"), gray_string_lit("2006-01-02"));
+}
+static void test_panic_P0105(void) { ASSERT_PANICS("P0105", trigger_P0105); }
 
 /* ===========================================================================
  * Bigint casts
@@ -390,6 +512,7 @@ int main(void) {
 
     printf("--- Array/String Bounds ---\n");
     RUN_TEST(test_panic_P0044);
+    RUN_TEST(test_stdlib_panic_location);
     RUN_TEST(test_panic_P0045);
     RUN_TEST(test_panic_P0046);
     RUN_TEST(test_panic_P0047);
@@ -402,13 +525,22 @@ int main(void) {
     RUN_TEST(test_panic_P0067);
 
     printf("--- Strconv ---\n");
+    RUN_TEST(test_panic_P0054);
+    RUN_TEST(test_panic_P0055);
     RUN_TEST(test_panic_P0056);
+    RUN_TEST(test_panic_P0057);
+    RUN_TEST(test_panic_P0058);
+    RUN_TEST(test_panic_P0059);
+    RUN_TEST(test_panic_P0060);
+    RUN_TEST(test_panic_P0112);
 
     printf("--- Random ---\n");
     RUN_TEST(test_panic_P0063);
 
     printf("--- Strings ---\n");
+    RUN_TEST(test_panic_P0071);
     RUN_TEST(test_panic_P0073);
+    RUN_TEST(test_panic_P0116);
 
     printf("--- Builtins ---\n");
     RUN_TEST(test_panic_P0084);
@@ -419,6 +551,14 @@ int main(void) {
     RUN_TEST(test_panic_P0087);
     RUN_TEST(test_panic_P0088);
     RUN_TEST(test_panic_P0089);
+    RUN_TEST(test_panic_P0103);
+
+    printf("--- Memory ---\n");
+    RUN_TEST(test_panic_P0104);
+    RUN_TEST(test_panic_P0117);
+
+    printf("--- Time ---\n");
+    RUN_TEST(test_panic_P0105);
 
     printf("--- Bigint Casts ---\n");
     RUN_TEST(test_panic_P0093);

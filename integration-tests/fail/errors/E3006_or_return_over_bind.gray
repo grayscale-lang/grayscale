@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3006 - or_return destructure with more bindings than the
+ * call's non-error return slots. The extra binding was silently typed as
+ * the raw Error slot.
+ */
+
+do two() -> (int, int, Error) { return 10, 20, nil }
+
+do consume() -> (int, Error) {
+    mut a, b, c = two() or_return
+    return a + b, nil
+}
+
+do main() {
+    mut n, e = consume()
+    println("${n}")
+}

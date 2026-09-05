@@ -1,0 +1,12 @@
+// Error Test: E5049 - returning an unsigned variable as a signed return type needs a cast
+// expect-error: E5049
+// expect-error-count: 1
+
+do give() -> int {
+    mut u uint = 18446744073709551615
+    return u
+}
+
+do main() {
+    println("${give()}")
+}

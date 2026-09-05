@@ -1,0 +1,65 @@
+/*
+ * map_sized_element_slots.gray
+ * Map key and value slots for sized-integer and f32 element types are sized
+ * to the annotation (int16_t/uint8_t/float, not int64_t/double). Exercises
+ * every slot path: literal construction, m[k] = v assignment, index read,
+ * and maps.contains_value staging.
+ */
+
+import @maps
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Sized-int value slots.
+    mut mi map[string:i16] = {"a": 1000}
+    mi["b"] = -2000
+    if mi["a"] == 1000 && mi["b"] == -2000 &&
+       maps.contains_value(mi, 1000) && !maps.contains_value(mi, 1234) {
+        println("  [PASS] map[string:i16] value slots")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[string:i16]: ${mi["a"]} ${mi["b"]}")
+        failed += 1
+    }
+
+    mut mu map[string:u8] = {"x": 200}
+    mu["y"] = 255
+    if mu["x"] == 200 && mu["y"] == 255 && maps.contains_value(mu, 200) {
+        println("  [PASS] map[string:u8] value slots")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[string:u8]: ${mu["x"]} ${mu["y"]}")
+        failed += 1
+    }
+
+    // Sized-int key slot.
+    mut mk map[i16:string] = {5: "five"}
+    mk[300] = "three hundred"
+    if mk[5] == "five" && mk[300] == "three hundred" {
+        println("  [PASS] map[i16:string] key slots")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[i16:string]: ${mk[5]} ${mk[300]}")
+        failed += 1
+    }
+
+    // f32 value slot.
+    mut mf map[string:f32] = {"p": cast(1.5, f32)}
+    mf["q"] = cast(2.5, f32)
+    if mf["p"] == cast(1.5, f32) && mf["q"] == cast(2.5, f32) {
+        println("  [PASS] map[string:f32] value slots")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map[string:f32]: ${mf["p"]} ${mf["q"]}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

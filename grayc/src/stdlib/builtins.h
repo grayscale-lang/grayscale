@@ -49,6 +49,16 @@ void gray_builtin_print_bool(bool v);
 void gray_builtin_print_char(int32_t c);
 void gray_builtin_print_addr(uintptr_t v);
 
+/*@man flush
+ *@sig flush()
+ *@desc Flushes buffered stdout so partial-line output (prompts, progress indicators) appears immediately, even when stdout is a pipe or file.
+ *@example
+ *   print("working")
+ *   flush()
+ *@end
+ */
+void gray_builtin_flush(void);
+
 /*@man eprintln
  *@sig eprintln(value T)
  *@desc Prints any value to stderr followed by a newline. Supports all types: string, int, uint, float, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
@@ -366,11 +376,11 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man error
- *@sig error(message string) -> Error
- *@desc Creates an Error value with the given message. Access the message via string interpolation.
+ *@sig error(code ErrorCode = .Unknown, message string = "") -> Error
+ *@desc Creates an Error value. Forms: error("msg") (code defaults to .Unknown), error(.Code), or error(.Code, "msg"). Inspect err.code with == or `when`; err.msg holds the message.
  *@example
- *   mut err Error = error("file not found")
- *   println("${err}")
+ *   mut err Error = error(.NotFound, "file not found")
+ *   when err.code { is .NotFound { println(err.msg) } default { } }
  *@end
  */
 
@@ -385,9 +395,9 @@ void gray_builtin_sleep_ns(int64_t ns);
 
 /*@man c_string
  *@sig c_string(ptr ^u8) -> string
- *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (import c"header.h").
+ *@desc Wraps a null-terminated C char* pointer as a Grayscale string. Only valid with values from C interop (extern import "header.h").
  *@example
- *   import c"mylib.h"
+ *   extern import "mylib.h"
  *   mut s string = c_string(mylib_get_name())
  *@end
  */

@@ -1,0 +1,82 @@
+/*
+ * defer_after_early_return.gray - a defer/ensure only runs for function exits
+ * that occur after control has reached the defer statement. An earlier return
+ * must not splice in the deferred call (which may reference a not-yet-declared
+ * variable, or clean up a resource that was never acquired).
+ */
+
+import @arrays
+
+mut trace [int] = {}
+
+do rec(n int) {
+    arrays.append(trace, n)
+}
+
+/* defer references `resource`, declared after the early return. This must
+ * compile: the early-exit path does not run the defer. */
+do guarded(early bool) -> int {
+    if early {
+        return 1
+    }
+    mut resource int = 7
+    defer rec(resource)
+    return 2
+}
+
+/* defer with no scope dependency still must not fire on the pre-defer path. */
+do no_capture(early bool) -> int {
+    if early {
+        return 1
+    }
+    defer rec(50)
+    return 2
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    trace = {}
+    mut a int = guarded(true)
+    if a == 1 && len(trace) == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] early return ran the later defer: ${len(trace)}")
+        failed += 1
+    }
+
+    trace = {}
+    mut b int = guarded(false)
+    if b == 2 && len(trace) == 1 && trace[0] == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] normal exit did not run the defer")
+        failed += 1
+    }
+
+    trace = {}
+    mut c int = no_capture(true)
+    if c == 1 && len(trace) == 0 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] early return ran a no-capture defer")
+        failed += 1
+    }
+
+    trace = {}
+    mut d int = no_capture(false)
+    if d == 2 && len(trace) == 1 && trace[0] == 50 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] normal exit did not run the no-capture defer")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

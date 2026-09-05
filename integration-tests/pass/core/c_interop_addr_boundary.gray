@@ -1,0 +1,33 @@
+/*
+ * c_interop_addr_boundary.gray - addresses that legitimately cross into C.
+ *
+ * E3154 rejects the address of a local / parameter / block-scoped variable at
+ * a C call. It must NOT reject:
+ *   - addr() of a file-scope variable (outlives the call)
+ *   - a new() heap pointer passed directly
+ *   - a pointer returned from C passed straight into another C call
+ *   - plain value / string-literal arguments
+ */
+
+extern import "string.h"
+extern import "stdlib.h"
+
+mut g_counter int = 0
+
+do main() {
+    // file-scope global address into C
+    extern.memset(addr(g_counter), 0, 8)
+
+    // new() heap pointer passed directly
+    mut n ^int = new(int)
+    extern.memset(n, 0, 8)
+
+    // pointer from C handed straight to another C call
+    mut m ^byte = extern.malloc(16)
+    extern.free(m)
+
+    // plain value + string-literal arguments
+    mut slen i64 = extern.strlen("hello")
+
+    println("ok ${g_counter} ${slen}")
+}

@@ -35,10 +35,10 @@
 - **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
 - **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
-- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
+- **Safety** — An automatic scope-based arena management memory model with a compile-time [pointer checker](STANDARD.md#117-memory-safety) that proves no pointer is ever readable after its memory is reclaimed, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
 ---
 
-## The Standard Library
+## Standard Library Modules
 
 <p align="center">
 
@@ -94,12 +94,14 @@ it does not need to be on `PATH`.
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
 | `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
+| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
 | `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
 | `gray fmt --check <path>` | Check formatting without modifying files (CI gate) | `gray fmt --check ./...` |
 | `gray doc <file>` | Generate docs from `#doc` attributes | `gray doc main.gray` |
 | `gray new <name>` | Scaffold a new project | `gray new myproject` |
 | `gray report` | Print system info for bug reports | `gray report` |
+| `gray verify` | Run the built-in language verification test suite | `gray verify` |
 | `gray update` | Update to the latest stable version | `gray update` |
 | `gray update --pre` | Update to the latest pre-release (alpha/beta) | `gray update --pre` |
 | `gray install <version>` | Install a specific version by semver | `gray install x.y.z` |

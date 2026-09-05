@@ -1,0 +1,43 @@
+/*
+ * main.gray - arrays.append of an inline-constructed tagged-enum value must
+ * emit valid C when the enum is imported from another module. Previously the
+ * append expansion declared the temporary as __auto_type and then spliced
+ * __auto_type into sizeof(), failing C compilation.
+ */
+
+import "./ir"
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Append inline-constructed variants of an imported tagged enum.
+    mut ops [ir.Operand] = {}
+    arrays.append(ops, ir.Operand.Reg(10))
+    arrays.append(ops, ir.Operand.Name("acc"))
+    if len(ops) == 2 {
+        println("  [PASS] append imported tagged enum inline")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len is ${len(ops)}")
+        failed += 1
+    }
+
+    // Same, via a helper in the imported module.
+    mut fromfn [ir.Operand] = ir.build()
+    if len(fromfn) == 6 {
+        println("  [PASS] imported helper appended inline variants")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len is ${len(fromfn)}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

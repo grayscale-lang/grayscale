@@ -1,12 +1,12 @@
 /*
- * c_interop.gray - Test C interop via import c"header.h"
+ * c_interop.gray - Test C interop via extern import "header.h"
  *
  * Covers: calling C functions, accessing C constants,
  * multiple C header imports.
  */
 
-import c "stdio.h"
-import c "stdlib.h"
+extern import "stdio.h"
+extern import "stdlib.h"
 
 do main() {
     println("=== C Interop Test ===")
@@ -14,23 +14,25 @@ do main() {
     mut failed int = 0
 
     // Test 1: call C function
-    c.puts("  hello from c.puts")
+    extern.puts("  hello from extern.puts")
     passed += 1
 
-    // Test 2: access C constants
-    if c.EXIT_SUCCESS == 0 {
-        println("  [PASS] c.EXIT_SUCCESS == 0")
+    // Test 2: access C constants (assign to a typed variable first)
+    mut exit_ok int = extern.EXIT_SUCCESS
+    if exit_ok == 0 {
+        println("  [PASS] extern.EXIT_SUCCESS == 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] c.EXIT_SUCCESS")
+        println("  [FAIL] extern.EXIT_SUCCESS")
         failed += 1
     }
 
-    if c.EXIT_FAILURE == 1 {
-        println("  [PASS] c.EXIT_FAILURE == 1")
+    mut exit_fail int = extern.EXIT_FAILURE
+    if exit_fail == 1 {
+        println("  [PASS] extern.EXIT_FAILURE == 1")
         passed += 1
     } otherwise {
-        println("  [FAIL] c.EXIT_FAILURE")
+        println("  [FAIL] extern.EXIT_FAILURE")
         failed += 1
     }
 

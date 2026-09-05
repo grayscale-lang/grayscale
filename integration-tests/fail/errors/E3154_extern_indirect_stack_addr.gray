@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3154 - the address of a stack local passed to a C function is
+ * rejected even when it is stored in an intermediate pointer variable first,
+ * not only when addr()/ref()/raw() is written inline at the call site.
+ */
+// expect-error: E3154
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut x int = 5
+    mut p ^int = addr(x)
+    extern.free(p)
+}

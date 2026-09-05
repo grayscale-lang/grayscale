@@ -1,0 +1,21 @@
+import @arrays
+
+const Box struct {
+    id int
+    items [string]
+}
+
+do fill(&b Box) {
+    mut lines [string] = {}
+    arrays.append(lines, "alpha")
+    arrays.append(lines, "beta")
+    arrays.append(lines, "gamma")
+    b.items = lines
+}
+
+do vis(b Box, rows int) -> [string] {
+    if len(b.items) == 0 { return {} }
+    mut stop int = rows
+    if stop > len(b.items) { stop = len(b.items) }
+    return arrays.slice(b.items, 0, stop)
+}

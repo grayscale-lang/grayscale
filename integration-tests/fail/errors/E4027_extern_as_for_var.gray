@@ -1,0 +1,10 @@
+/* Error Test: E4027 - a reserved keyword cannot be a for loop variable.
+ * 'for extern in range(...)' previously fell through to a misleading
+ * 'undefined variable' error instead of a reserved-word diagnostic.
+ */
+// expect-error: E4027
+do main() {
+    for extern in range(0, 3) {
+        println("${extern}")
+    }
+}

@@ -1,0 +1,18 @@
+/*
+ * Error Test: E5049 - a C constant/macro (extern.EOF) has no Grayscale type,
+ * exactly like a C call result, so returning one directly from a function with
+ * a declared return type is caught by return-type checking rather than leaking
+ * a C compiler error.
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+do f() -> string {
+    return extern.EOF
+}
+
+do main() {
+    println(f())
+}

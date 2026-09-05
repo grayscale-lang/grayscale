@@ -1,0 +1,65 @@
+/*
+ * error_field_access_positions.gray - .code / .msg / .message work on an
+ * Error in any syntactic position, not just a bare variable: a function
+ * call result and a struct-field chain. The variant selector it feeds
+ * (== .NotFound) must still get its type context.
+ */
+
+const Rec struct {
+    err Error
+}
+
+do f() -> (int, Error) {
+    return 0, error(.NotFound, "not here")
+}
+
+do first_err() -> Error {
+    return error(.Closed, "closed")
+}
+
+do main() {
+    println("=== Error field access positions ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut _, e1 = f()
+    mut r Rec = Rec{ err: e1 }
+
+    // call result
+    if first_err().code == .Closed {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] first_err().code")
+    }
+
+    // struct-field chain
+    if r.err.code == .NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] r.err.code")
+    }
+
+    if r.err.msg == "not here" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] r.err.msg")
+    }
+
+    if first_err().message == "closed" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] first_err().message alias")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

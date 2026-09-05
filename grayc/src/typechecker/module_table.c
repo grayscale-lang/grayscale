@@ -478,6 +478,58 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
         return arena_copy_string(arena, buf);
     }
 
+    /* Typed function reference: func(P1,&P2,...)->R, ->(R1,R2), or a bare
+     * func(...) for void. Each parameter and return type is a written type
+     * of its own — resolved the same recursive way an array element or map
+     * key/value already is above. Without this a module-local struct name
+     * inside a callback signature ("func(Rec)->bool") kept its bare spelling
+     * while every other appearance of that struct was mangled, so the two
+     * spellings of the same struct compared unequal. type_from_name() already
+     * knows how to parse the signature into per-component strings (GrayFuncSig);
+     * reuse that instead of re-parsing it here. */
+    if (len > 5 && strncmp(written, "func(", 5) == 0) {
+        GrayType *ft = type_from_name(written);
+        if (!ft || ft->kind != TK_FUNCTION || !ft->func_sig) return written;
+        GrayFuncSig *fsig = ft->func_sig;
+        bool changed = false;
+        char params_out[MSG_BUF_SIZE];
+        params_out[0] = '\0';
+        for (int i = 0; i < fsig->param_count; i++) {
+            const char *p = fsig->param_types[i];
+            const char *resolved = module_resolve_type_name(table, scope, p);
+            if (resolved != p) changed = true;
+            char piece[MSG_BUF_SIZE];
+            snprintf(piece, sizeof(piece), "%s%s%s", i ? "," : "",
+                fsig->param_mutable[i] ? "&" : "", resolved);
+            strncat(params_out, piece, sizeof(params_out) - strlen(params_out) - 1);
+        }
+        char ret_out[MSG_BUF_SIZE];
+        ret_out[0] = '\0';
+        if (fsig->return_count == 1) {
+            const char *r = fsig->return_types[0];
+            const char *resolved = module_resolve_type_name(table, scope, r);
+            if (resolved != r) changed = true;
+            snprintf(ret_out, sizeof(ret_out), "%s", resolved);
+        } else if (fsig->return_count > 1) {
+            char parts[MSG_BUF_SIZE];
+            parts[0] = '\0';
+            for (int i = 0; i < fsig->return_count; i++) {
+                const char *r = fsig->return_types[i];
+                const char *resolved = module_resolve_type_name(table, scope, r);
+                if (resolved != r) changed = true;
+                char piece[MSG_BUF_SIZE];
+                snprintf(piece, sizeof(piece), "%s%s", i ? "," : "", resolved);
+                strncat(parts, piece, sizeof(parts) - strlen(parts) - 1);
+            }
+            snprintf(ret_out, sizeof(ret_out), "(%s)", parts);
+        }
+        if (!changed) return written;
+        char buf[MSG_BUF_SIZE];
+        if (fsig->return_count > 0) snprintf(buf, sizeof(buf), "func(%s)->%s", params_out, ret_out);
+        else                        snprintf(buf, sizeof(buf), "func(%s)", params_out);
+        return arena_copy_string(arena, buf);
+    }
+
     /* Leaf. Only type declarations name a type; a function or constant that
      * happens to share the spelling must not capture it. */
     DeclEntry *entry = module_resolve_written(table, scope, written);

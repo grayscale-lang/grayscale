@@ -1,0 +1,17 @@
+// Error Test: E3036 - arrays.append/prepend/insert_at reject an out-of-range
+// literal for a narrow element type, the same way `xs[i] = value` does.
+// expect-error: E3036
+// expect-error-count: 3
+
+import @arrays
+
+do main() {
+    mut a [byte] = {}
+    arrays.append(a, 300)
+
+    mut b [i8] = {}
+    arrays.prepend(b, 200)
+
+    mut c [u8] = {}
+    arrays.insert_at(c, 0, 999)
+}

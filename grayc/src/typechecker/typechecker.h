@@ -45,6 +45,39 @@ typedef struct {
 #define PARAM_ESCAPE_NONE   ((signed char)-1)
 #define PARAM_ESCAPE_GLOBAL ((signed char)-2)
 
+/* Pointer checker: the lifetime state of one @mem arena variable within the
+ * function currently being checked. */
+typedef struct {
+    const char *name;      /* arena variable name as written */
+    int  epoch;            /* incremented by each mem.reset() on this arena */
+    bool destroyed;        /* mem.destroy() has run on this arena */
+    const char *end_file;  /* where the destroy/reset that ended it sits */
+    int  end_line;
+    bool end_was_reset;    /* true: last lifetime event was reset, not destroy */
+    /* An `ensure mem.destroy(a)` was seen: the arena WILL be destroyed once
+     * the function returns, no matter what runs between here and then, so a
+     * later explicit mem.destroy(a) (or another ensure mem.destroy(a)) is a
+     * genuine double-free (P0002 at runtime) — but unlike `destroyed`, this
+     * does NOT make an ordinary use of the arena elsewhere in the function
+     * an error; the deferred destroy hasn't actually run yet. */
+    bool ensure_destroy_pending;
+    /* Pre-marked destroyed by pc_premark_loop_body(): some statement later in
+     * this loop body's source text destroys the arena, so a dereference
+     * appearing earlier in the text is still unsafe on any iteration after
+     * the one whose destroy runs. Deliberately kept separate from
+     * `destroyed`: it must make an early dereference in the body an error
+     * (checked wherever `destroyed` is checked for that purpose), but must
+     * NOT make the loop body's own (real, single, textually-later) destroy
+     * statement look like a double-free of itself — that statement is the
+     * one this flag exists to warn about, not a repeat of it. Only
+     * pc_check_mem_deref consults this; the double-destroy guards
+     * (pc_apply_arena_lifecycle, pc_apply_ensure_mem_call) deliberately do
+     * not, and rely on the loop body's real statements — via the same
+     * branch-join machinery used everywhere else — to set `destroyed` for
+     * real once actually walked. */
+    bool premarked_destroyed;
+} ArenaLifetime;
+
 typedef struct {
     /* Function signature for call type checking */
     const char *name;
@@ -82,12 +115,54 @@ typedef struct {
      * by-reference container/struct parameter, a module-level variable, a
      * stdlib container insert, or transitively another escaping call).
      *
-     * Together these let the return and assignment escape checks (E3063,
-     * E3097) follow an address through a function call and through a helper
+     * Together these let the return and assignment escape checks (E3162,
+     * E3163) follow an address through a function call and through a helper
      * that stashes it in caller-visible memory. */
     unsigned char escape_state;
     unsigned long long returns_param_addr;
     signed char param_escape_into[64];
+
+    /* Pointer checker: cross-function @mem summary, filled lazily by
+     * pc_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
+     * 2 = done.
+     *
+     * destroys_param_arena / resets_param_arena: bit i set if some path
+     * through this function's body calls mem.destroy() / mem.reset() on the
+     * @mem arena named by parameter i — directly, or forwarded through
+     * another summarised call (do outer(a Arena) { helper(a) } where helper
+     * destroys its own parameter 0). Lets a call site apply the same effect
+     * to the caller's arena state that a direct mem.destroy(a)/mem.reset(a)
+     * would (E3164/E3165/E3166), closing the "across a function call" gap
+     * STANDARD 11.7 documents as unchecked. */
+    unsigned char mem_state;
+    unsigned long long destroys_param_arena;
+    unsigned long long resets_param_arena;
+    /* mem_param_field[i]: when destroys_param_arena or resets_param_arena
+     * has bit i set because of a mem.destroy()/mem.reset() reaching the
+     * arena through a *field* of parameter i (`mem.destroy(h.a)` where h is
+     * parameter i) rather than the parameter itself, the field-path suffix
+     * (".a", ".inner.a") to append to whatever path the caller's own
+     * argument for parameter i resolves to. NULL when the bit is set by a
+     * bare-parameter arena (the parameter itself names the handle). */
+    const char *mem_param_field[64];
+
+    /* returns_param_mem_alloc[i] / returns_param_mem_alloc_field[i]: bit i
+     * set if some `return` in this function's body yields a @mem pointer
+     * allocated from the arena named by parameter i — directly (the return
+     * value itself is the pointer: mem.alloc(a,x), a local initialised from
+     * one, or forwarded through another summarised call's own _direct bit)
+     * or _field (the pointer is buried in a struct/array/map literal the
+     * function returns, or forwarded through another call's own _field
+     * bit). Lets a call site (pc_bind_mem_pointer, via
+     * pc_mem_pointer_in_expr) bind the result — as mem_arena or
+     * field_mem_arena respectively — to the *caller's* arena variable at
+     * that parameter position, the same way returns_param_addr lets a
+     * return value's escape origin follow a pointer parameter through a
+     * call. Computed alongside destroys_param_arena in the same
+     * pc_mem_walk()/pc_return_stmt_mem_bits() pass. */
+    unsigned long long returns_param_mem_alloc;
+    unsigned long long returns_param_mem_alloc_field;
+
     const char **instantiations;  /* concrete type each call bound `?` to */
     AstNode **instantiation_calls;/* parallel: originating call-site node */
     int instantiation_count;
@@ -127,6 +202,11 @@ typedef struct {
     const char **enum_deprecated_messages; /* parallel to enum_names: NULL if bare #deprecated */
     int enum_count;
     int enum_cap;
+
+    /* Names of user enums carrying #error_code; their variants join the open
+     * builtin ErrorCode enum. "ErrorCode" itself is a normal registered enum. */
+    const char **error_code_enum_names;
+    int error_code_enum_count;
 
     /* Control flow tracking */
     int loop_depth;               /* >0 means inside a loop */
@@ -195,10 +275,15 @@ typedef struct {
     const char *using_visible_file;
     int using_visible_stamp;
 
-    /*  track mem.destroy() calls for double-free detection */
-    const char **destroyed_arenas;
-    int destroyed_arena_count;
-    int destroyed_arena_cap;
+    /* Pointer checker: per-function @mem arena lifetime state. Tracks, per
+     * arena variable in scope, whether mem.destroy() has run and how many
+     * times mem.reset() has (the epoch). Flow-sensitive: saved and joined
+     * around branches so a destroy on one path is seen after the join.
+     * Drives E3164 (use after destroy), E3165 (use after reset), E3166
+     * (destroy/reset of an already-destroyed arena). */
+    ArenaLifetime *arenas;
+    int arena_count;
+    int arena_cap;
 
     /*  true during register_declarations to allow forward references */
     bool registering;

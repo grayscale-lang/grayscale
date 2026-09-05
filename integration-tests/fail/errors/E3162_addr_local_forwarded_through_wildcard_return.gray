@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3162 - addr() of a local forwarded through a wildcard-return
+ * helper (do forward(x ?) -> ? { return x }) before being returned.
+ *
+ * forward's own escape summary must be computed even though its declared
+ * return type '?' resolves to no concrete kind until a call site binds it;
+ * otherwise the address passing through it is invisible to the checker.
+ */
+
+do forward(x ?) -> ? {
+    return x
+}
+
+do make() -> ^int {
+    mut y int = 5
+    return forward(addr(y))
+}
+
+do main() {
+    mut p ^int = make()
+    println(p^)
+}

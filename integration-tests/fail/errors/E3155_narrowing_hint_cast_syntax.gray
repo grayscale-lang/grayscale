@@ -1,0 +1,11 @@
+// Verify that narrowing error hints suggest cast(value, type) syntax.
+// A compound assignment from a wider integer variable narrows and must be
+// rejected (an in-range literal, e.g. `c += 2`, is allowed).
+
+// expect-error: E3155
+
+do main() {
+    mut c u8 = cast(10, u8)
+    mut n int = 2
+    c += n
+}

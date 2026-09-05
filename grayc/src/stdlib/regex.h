@@ -15,6 +15,17 @@
 #include "../runtime/array.h"
 #include "io.h" /* GrayResult_string, GrayResult_array */
 
+/* Basename collides with the POSIX <regex.h>: in a grayc-generated program
+ * this directory shadows libc, so step past it so `extern import "regex.h"`
+ * reaches the real header. See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<regex.h>)
+#      include_next <regex.h>
+#    endif
+#  endif
+#endif
+
 /*@man is_valid
  *@module regex
  *@group Matching

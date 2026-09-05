@@ -15,6 +15,18 @@
 #include "../runtime/array.h"
 #include <stdio.h>
 
+/* Basename collides with the Windows <io.h>: in a grayc-generated program
+ * this directory shadows the SDK header, so step past it so
+ * `extern import "io.h"` reaches the real header where it exists (Windows
+ * targets; absent on Linux/macOS). See math.h for the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<io.h>)
+#      include_next <io.h>
+#    endif
+#  endif
+#endif
+
 /* File reading */
 
 /*@man read_file
@@ -46,17 +58,18 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
 /*@man read_lines
  *@module io
  *@group File Reading
- *@sig read_lines(path string) -> ([string], Error)
- *@desc Reads the file at path and returns its contents split into lines. CR/LF and LF line endings are stripped. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@sig read_lines(path string, limit int = 0) -> ([string], Error)
+ *@desc Reads the file at path line by line and returns the lines. CR/LF and LF line endings are stripped. `limit` caps how many lines are read: a count, not an index, so `limit` of N returns at most N lines; `limit` of 0 (the default) reads to end of file. A negative literal `limit` is a compile error (E3150). Streaming means a small `limit` stays cheap on a large file. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
  *   mut lines, err = io.read_lines("data.txt")
+ *   mut head, _ = io.read_lines("big.log", 100)
  *   for_each line in lines {
  *       println(line)
  *   }
  *@end
  */
-GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path);
+GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
 
 /*@man file_exists
  *@module io
@@ -422,7 +435,7 @@ typedef struct { GrayArray v0; GrayError *v1; } GrayResult_array;
 
 GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_bytes_result(GrayArena *arena, GrayString path);
-GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path);
+GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit);
 GrayResult_int    gray_io_file_size_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);
@@ -442,30 +455,18 @@ GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, G
 GrayResult_string gray_io_temp_file_result(GrayArena *arena);
 GrayResult_string gray_io_temp_dir_result(GrayArena *arena);
 
-/*@man O_RDONLY
+/*@man OpenFlag
  *@module io
- *@group Constants
- *@kind const
- *@sig 0
- *@desc Open for reading only.
- *@end
- */
-
-/*@man O_WRONLY
- *@module io
- *@group Constants
- *@kind const
- *@sig 1
- *@desc Open for writing only.
- *@end
- */
-
-/*@man O_RDWR
- *@module io
- *@group Constants
- *@kind const
- *@sig 2
- *@desc Open for reading and writing.
+ *@group Types
+ *@kind type
+ *@field O_RDONLY
+ *@field O_WRONLY
+ *@field O_RDWR
+ *@desc Mutually-exclusive open modes. Reachable as io.O_RDONLY or OpenFlag.O_RDONLY (same value). Underlying values: O_RDONLY 0, O_WRONLY 1, O_RDWR 2.
+ *@example
+ *   import @io
+ *   mut mode OpenFlag = io.O_RDWR
+ *   when mode { is .O_RDONLY { } is .O_WRONLY { } is .O_RDWR { } default { } }
  *@end
  */
 

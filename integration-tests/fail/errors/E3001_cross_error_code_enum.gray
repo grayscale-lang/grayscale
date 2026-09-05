@@ -1,0 +1,25 @@
+/*
+ * Error Test: E3001 - two distinct #error_code enums do not unify with each
+ * other. A #error_code value widens to ErrorCode, but NetErr and DbErr each
+ * stay their own type (STANDARD 10.5). Without the guard this passed the
+ * typechecker and leaked a -Wenum-conversion warning from the C compiler.
+ * Expected: type mismatch error for the cross-enum assignment.
+ */
+// expect-error: E3001
+
+#error_code
+const DbErr enum {
+    CONN_LOST
+    QUERY_BAD
+}
+
+#error_code
+const NetErr enum {
+    DNS_FAIL
+    REFUSED
+}
+
+do main() {
+    mut d DbErr = NetErr.DNS_FAIL
+    println("${d}")
+}

@@ -25,6 +25,7 @@ static inline int gray_strptr_cmp(const void *a, const void *b) {
 
 static const char *const gray_reserved_type_names[] = {
     "Error",
+    "ErrorCode",
     "SourceLocation",
     "bool",
     "byte",
@@ -77,6 +78,7 @@ static const char *const gray_builtin_func_names[] = {
     "error",
     "exit",
     "fields",
+    "flush",
     "here",
     "input",
     "len",
@@ -159,6 +161,7 @@ static inline bool is_reserved_name(const char *name) {
 
 static const char *const gray_reserved_stdlib_struct_names[] = {
     "Arena",
+    "Builder",
     "Channel",
     "Database",
     "HttpRequest",

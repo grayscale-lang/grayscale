@@ -13,11 +13,25 @@
 #define GRAY_MATH_H
 
 #include "../runtime/runtime.h"
-/* This header is named math.h and generated programs see its directory via
- * -isystem, so a plain #include <math.h> resolves back to this file and the
- * libc math functions are never declared. include_next (GNU C, required by
- * this project) continues the search past this directory to the real one. */
-#include_next <math.h>
+
+/* This header's basename collides with the system <math.h>, and its inline
+ * wrappers below need libc's declarations. In a grayc-generated program this
+ * directory is on -isystem and shadows libc, so a plain `#include <math.h>`
+ * loops back here — step past this directory with include_next. In the
+ * libgrayrt.a build the directory is not on the search path, so a plain
+ * include resolves straight to libc. __has_include_next / include_next are
+ * GNU/Clang, already required by this project; the __has_include_next guard
+ * keeps the mechanism uniform with the other colliding stdlib headers,
+ * whose system namesakes are absent on some platforms. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<math.h>)
+#      include_next <math.h>
+#    endif
+#  endif
+#else
+#  include <math.h>
+#endif
 
 /*@man abs
  *@module math
@@ -525,6 +539,13 @@ int64_t gray_math_factorial(int64_t n);
  *@end
  */
 int64_t gray_math_gcd(int64_t a, int64_t b);
+
+/* Not wired to any Grayscale-callable name (no typechecker/codegen dispatch
+ * targets these); @random's own generator backs random.rand_int/rand_float
+ * instead. Declared here only so the linked, existing symbols are callable
+ * for testing. */
+int64_t gray_math_random_int(int64_t min, int64_t max);
+double gray_math_random_float(double min, double max);
 
 /*@man lcm
  *@module math

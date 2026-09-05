@@ -1,0 +1,33 @@
+/*
+ * Test: calling a func-typed struct field through an explicit pointer
+ * dereference (p^.field()) compiles and works, both for a heap-allocated
+ * pointer and for a pointer field reached through a struct value.
+ */
+
+do triple(x int) -> int { return x * 3 }
+
+const Ops struct {
+    run func(int) -> int
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut o ^Ops = new(Ops)
+    o^.run = ()triple
+    mut r int = o^.run(7)
+    if r == 21 {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] p^.field() call, got ${r}")
+        failed = failed + 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

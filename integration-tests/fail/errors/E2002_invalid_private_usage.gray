@@ -1,8 +1,0 @@
-/*
- * Error Test: E2002 - invalid-private-usage
- * Expected: "private modifier cannot be used here"
- */
-
-do main() {
-    private mut x int = 5  // private not allowed inside functions
-}

@@ -292,7 +292,7 @@ static GrayResult_http http_result(GrayArena *arena, GrayHttpResponse resp, cons
     GrayResult_http r;
     r.v0 = resp;
     if (resp.status == 0) {
-        r.v1 = gray_error_new(arena, gray_string_format(arena, "HTTP %s failed: %.*s",
+        r.v1 = gray_error_new(arena, GRAY_ERR_IoFailure, gray_string_format(arena, "HTTP %s failed: %.*s",
             method, resp.body.len, resp.body.data));
     } else {
         r.v1 = NULL;

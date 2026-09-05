@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3161 - addr() of a map index expression is rejected;
+ * a map value can be relocated by a rehash, leaving the pointer dangling.
+ */
+// expect-error: E3161
+// expect-error-count: 1
+
+do main() {
+    mut scores map[string:int] = {"a": 1}
+    mut p ^int = addr(scores["a"])
+    println("${p^}")
+}

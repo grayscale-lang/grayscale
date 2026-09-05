@@ -1,0 +1,16 @@
+/*
+ * Error Test: E6015 - an `extern import` of a C header that does not exist for
+ * the current target (here a misspelling; equally a wrong-platform header like
+ * "windows.h" on a unix host) is reported as a Grayscale diagnostic anchored
+ * at the import, not as a raw C compiler "file not found" against a temp file.
+ *
+ * No `expect-error:` marker: the check only runs at the C-compile boundary, so
+ * this is a build test whose failure must still carry a Grayscale diagnostic.
+ */
+// expect-contains: error[E6015]
+
+extern import "stdioo.h"
+
+do main() {
+    println("unreachable")
+}

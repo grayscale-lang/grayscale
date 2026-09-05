@@ -1,0 +1,26 @@
+/*
+ * Error Test: E3162 - addr() of a local buried in a struct field, forwarded
+ * through copy(), then returned.
+ *
+ * copy(v) is a builtin, not a resolvable FuncSig, and is disallowed directly
+ * on a pointer (E5037) — it only ever wraps an aggregate, deep-copying its
+ * fields but copying a pointer field's value verbatim, so the buried origin
+ * must travel with the copy the same way it travels through a struct literal
+ * itself.
+ */
+
+const Box struct {
+    p ^int
+}
+
+do make() -> Box {
+    mut x int = 55
+    mut b Box = Box{p: addr(x)}
+    mut b2 Box = copy(b)
+    return b2
+}
+
+do main() {
+    mut r Box = make()
+    println(r.p^)
+}

@@ -1,0 +1,13 @@
+// Error Test: E3019 - a mut unsigned declaration initialized by an
+// int-returning call reinterprets the sign bit and must be rejected.
+// expect-error: E3019
+// expect-error-count: 1
+
+do get_neg() -> int {
+    return -5
+}
+
+do main() {
+    mut u uint = get_neg()
+    println("u=${u}")
+}

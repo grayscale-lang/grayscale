@@ -1,0 +1,9 @@
+// expect-error: E3001
+// A bare int cannot be assigned where the OpenFlag enum is expected.
+
+import @io
+
+do main() {
+    mut f OpenFlag = 1
+    println(f)
+}

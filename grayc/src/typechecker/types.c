@@ -27,6 +27,7 @@ GrayType TYPE_BYTE    = {TK_BYTE,   "byte",   NULL, NULL, NULL, NULL};
 GrayType TYPE_STRING  = {TK_STRING, "string", NULL, NULL, NULL, NULL};
 GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL};
 GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
+GrayType TYPE_C_FUNC  = {TK_C_FUNC, "a C interop value", NULL, NULL, NULL, NULL};
 
 #define TYPE_POOL_CAPACITY 4096
 
@@ -340,7 +341,8 @@ typedef struct {
 } BuiltinTypeEntry;
 
 static BuiltinTypeEntry builtin_types[] = {
-    { "Error",  NULL,         TK_ERROR,   "Error" },
+    { "Error",     NULL,      TK_ERROR,   "Error" },
+    { "ErrorCode", NULL,      TK_ENUM,    "ErrorCode" },
     { "bool",   &TYPE_BOOL,   0, NULL },
     { "byte",   &TYPE_BYTE,   0, NULL },
     { "char",   &TYPE_CHAR,   0, NULL },

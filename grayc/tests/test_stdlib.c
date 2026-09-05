@@ -22,8 +22,12 @@
 #include "../src/stdlib/json.h"
 #include "../src/stdlib/io.h"
 #include "../src/stdlib/regex.h"
+#include "../src/stdlib/builtins.h"
+#include "../src/stdlib/net.h"
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <pthread.h>
 
 static GrayArena *arena;
 
@@ -391,6 +395,25 @@ static void test_arrays_remove_int(void) {
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 1), 3);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 2), 2);
+}
+
+static void test_arrays_remove_float(void) {
+    GrayArray arr = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.5, 3.5, 2.5);
+    gray_arrays_remove_float(&arr, 2.5);
+    ASSERT_EQ(arr.len, 3);
+    ASSERT(GRAY_ARRAY_GET(arr, double, 0) == 1.5);
+    ASSERT(GRAY_ARRAY_GET(arr, double, 1) == 3.5);
+    ASSERT(GRAY_ARRAY_GET(arr, double, 2) == 2.5);
+}
+
+static void test_arrays_remove_str(void) {
+    GrayArray arr = GRAY_ARRAY_FROM_STR(arena,
+        gray_string_lit("a"), gray_string_lit("b"), gray_string_lit("c"), gray_string_lit("b"));
+    gray_arrays_remove_str(&arr, gray_string_lit("b"));
+    ASSERT_EQ(arr.len, 3);
+    ASSERT_GRAY_STR(GRAY_ARRAY_GET(arr, GrayString, 0), "a");
+    ASSERT_GRAY_STR(GRAY_ARRAY_GET(arr, GrayString, 1), "c");
+    ASSERT_GRAY_STR(GRAY_ARRAY_GET(arr, GrayString, 2), "b");
 }
 
 static void test_arrays_clear(void) {
@@ -808,6 +831,24 @@ static void test_math_distance(void) {
     ASSERT_FLOAT_EQ(gray_math_distance(1.0, 1.0, 1.0, 1.0), 0.0);
 }
 
+/* Not currently reachable from Grayscale source (no typechecker/codegen
+ * wiring calls these) — the language-visible random.rand_int/rand_float
+ * go through @random's own generator instead. Tested directly since a
+ * public, linkable C entry point exists regardless. */
+static void test_math_random_int(void) {
+    for (int i = 0; i < 100; i++) {
+        int64_t v = gray_math_random_int(5, 10);
+        ASSERT(v >= 5 && v < 10);
+    }
+}
+
+static void test_math_random_float(void) {
+    for (int i = 0; i < 100; i++) {
+        double v = gray_math_random_float(1.0, 2.0);
+        ASSERT(v >= 1.0 && v < 2.0);
+    }
+}
+
 /* ===== fmt module ===== */
 
 static void test_fmt_pad_left(void) {
@@ -1132,6 +1173,18 @@ static void test_json_encode_array_int(void) {
     ASSERT_GRAY_STR(r, "[1,2,3]");
 }
 
+static void test_json_encode_array_float(void) {
+    GrayArray a = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.0, 3.25);
+    GrayString r = gray_json_encode_array_float(arena, &a);
+    ASSERT_GRAY_STR(r, "[1.5,2,3.25]");
+}
+
+static void test_json_encode_array_bool(void) {
+    GrayArray a = GRAY_ARRAY_FROM_BOOL(arena, true, false, true);
+    GrayString r = gray_json_encode_array_bool(arena, &a);
+    ASSERT_GRAY_STR(r, "[true,false,true]");
+}
+
 static void test_json_encode_array_string(void) {
     GrayArray a = GRAY_ARRAY_FROM_STR(arena, gray_string_lit("a"), gray_string_lit("b"));
     GrayString r = gray_json_encode_array_string(arena, &a);
@@ -1232,10 +1285,16 @@ static void test_io_append_file(void) {
 static void test_io_read_lines(void) {
     GrayString path = io_tmp_path("grayc_ut_lines.txt");
     ASSERT(gray_io_write_file(path, gray_string_lit("one\ntwo\nthree")));
-    GrayArray lines = gray_io_read_lines(arena, path);
+    GrayArray lines = gray_io_read_lines(arena, path, 0);
     ASSERT_EQ(lines.len, 3);
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 0), gray_string_lit("one")));
     ASSERT(gray_string_eq(GRAY_ARRAY_GET(lines, GrayString, 2), gray_string_lit("three")));
+    /* limit caps the count; asking for more than the file has yields all */
+    GrayArray head = gray_io_read_lines(arena, path, 2);
+    ASSERT_EQ(head.len, 2);
+    ASSERT(gray_string_eq(GRAY_ARRAY_GET(head, GrayString, 1), gray_string_lit("two")));
+    GrayArray over = gray_io_read_lines(arena, path, 99);
+    ASSERT_EQ(over.len, 3);
     gray_io_delete_file(path);
 }
 
@@ -1346,6 +1405,72 @@ static void test_regex_find_result_err(void) {
     ASSERT_NOT_NULL(r.v1);
 }
 
+/* ===== builtins module ===== */
+
+/* Not currently reachable from Grayscale source — no bare `sleep()` is
+ * wired into the typechecker/codegen (only @threads' threads.sleep is).
+ * Tested at the zero-duration boundary so the suite doesn't actually wait. */
+static void test_builtin_sleep_s_zero(void) {
+    gray_builtin_sleep_s(0);
+}
+
+static void test_builtin_sleep_ms_zero(void) {
+    gray_builtin_sleep_ms(0);
+}
+
+static void test_builtin_sleep_ns_zero(void) {
+    gray_builtin_sleep_ns(0);
+}
+
+/* ===== net module ===== */
+
+/* gray_net_listen_host, gray_net_accept, gray_net_send, gray_net_recv, and
+ * gray_net_set_timeout have no dedicated coverage anywhere (the integration
+ * suite only exercises resolve/listen/close and a connect-refused error) —
+ * a real accept+send+recv round trip needs a concurrent peer, so the client
+ * side runs on its own thread with its own arena (GrayArena isn't safe to
+ * share across threads without the language's own per-thread isolation). */
+#define TEST_NET_PORT 18734
+
+static void *net_client_thread(void *arg) {
+    (void)arg;
+    GrayArena *client_arena = gray_arena_create(GRAY_DEFAULT_ARENA_SIZE);
+    GraySocket sock = gray_net_dial(client_arena, gray_string_lit("127.0.0.1"), TEST_NET_PORT);
+    gray_net_send(sock, gray_string_lit("hello"));
+    gray_net_close(sock);
+    gray_arena_destroy(client_arena, __FILE__, __LINE__);
+    return NULL;
+}
+
+static void test_net_listen_host_accept_send_recv(void) {
+    GraySocket listener = gray_net_listen_host(arena, gray_string_lit("127.0.0.1"), TEST_NET_PORT);
+    gray_net_set_timeout(listener, 2000);
+
+    pthread_t client;
+    pthread_create(&client, NULL, net_client_thread, NULL);
+
+    GraySocket accepted = gray_net_accept(arena, listener);
+    GrayString received = gray_net_recv(arena, accepted, 64);
+    ASSERT_GRAY_STR(received, "hello");
+
+    pthread_join(client, NULL);
+    gray_net_close(accepted);
+    gray_net_close(listener);
+}
+
+static void test_builtin_input(void) {
+    FILE *saved_stdin = stdin;
+    FILE *tmp = tmpfile();
+    ASSERT_NOT_NULL(tmp);
+    fputs("hello world\n", tmp);
+    rewind(tmp);
+    stdin = tmp;
+    GrayString r = gray_builtin_input(arena);
+    stdin = saved_stdin;
+    fclose(tmp);
+    ASSERT_GRAY_STR(r, "hello world");
+}
+
 /* ===== main ===== */
 
 int main(void) {
@@ -1409,6 +1534,8 @@ int main(void) {
     RUN_TEST(test_arrays_prepend);
     RUN_TEST(test_arrays_remove_at);
     RUN_TEST(test_arrays_remove_int);
+    RUN_TEST(test_arrays_remove_float);
+    RUN_TEST(test_arrays_remove_str);
     RUN_TEST(test_arrays_clear);
     RUN_TEST(test_arrays_fill);
     RUN_TEST(test_arrays_get_first);
@@ -1464,6 +1591,8 @@ int main(void) {
     RUN_TEST(test_math_is_prime);
     RUN_TEST(test_math_lerp);
     RUN_TEST(test_math_distance);
+    RUN_TEST(test_math_random_int);
+    RUN_TEST(test_math_random_float);
 
     printf("--- fmt ---\n");
     RUN_TEST(test_fmt_pad_left);
@@ -1521,6 +1650,8 @@ int main(void) {
     RUN_TEST(test_json_encode_map_float_escaped_key);
     RUN_TEST(test_json_encode_map_bool_escaped_key);
     RUN_TEST(test_json_encode_array_int);
+    RUN_TEST(test_json_encode_array_float);
+    RUN_TEST(test_json_encode_array_bool);
     RUN_TEST(test_json_encode_array_string);
     RUN_TEST(test_json_is_valid);
     RUN_TEST(test_json_decode);
@@ -1553,6 +1684,15 @@ int main(void) {
     RUN_TEST(test_regex_replace);
     RUN_TEST(test_regex_split);
     RUN_TEST(test_regex_find_result_err);
+
+    printf("--- net ---\n");
+    RUN_TEST(test_net_listen_host_accept_send_recv);
+
+    printf("--- builtins ---\n");
+    RUN_TEST(test_builtin_sleep_s_zero);
+    RUN_TEST(test_builtin_sleep_ms_zero);
+    RUN_TEST(test_builtin_sleep_ns_zero);
+    RUN_TEST(test_builtin_input);
 
     PRINT_RESULTS();
     gray_arena_destroy(arena, __FILE__, __LINE__);

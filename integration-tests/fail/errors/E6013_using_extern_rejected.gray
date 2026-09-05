@@ -1,0 +1,11 @@
+// expect-error: E6013
+// C interop symbols must always stay qualified with 'extern.'; bringing them
+// into scope with 'using' is disallowed.
+
+extern import "stdio.h"
+
+using extern
+
+do main() {
+    puts("hello")
+}

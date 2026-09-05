@@ -1,0 +1,29 @@
+/*
+ * pointer_mem_cross_function_no_destroy_ok.gray - passing a @mem arena to a
+ * helper that only allocates from it (never destroys or resets it) does not
+ * poison the caller's arena state; a pointer taken before and after the call
+ * is still valid.
+ */
+
+import @mem
+
+const Point struct {
+    x int
+    y int
+}
+
+do make_point(a Arena, x int, y int) -> ^Point {
+    mut p ^Point = mem.init(a, Point)
+    p^.x = x
+    p^.y = y
+    return p
+}
+
+do main() {
+    mut a = mem.arena(4096)
+    mut p1 ^Point = make_point(a, 1, 2)
+    mut p2 ^Point = make_point(a, 3, 4)
+    println(p1^.x)
+    println(p2^.y)
+    mem.destroy(a)
+}

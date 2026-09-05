@@ -82,6 +82,7 @@
     GRAY_ERROR("E2074", "syntax", "member access cannot have whitespace before the dot; write 'obj.field' or 'Enum.VARIANT' with no space or newline") \
     GRAY_ERROR("E2075", "syntax", "index expressions cannot have whitespace before the opening bracket; write 'arr[i]' with no space or newline") \
     GRAY_ERROR("E2076", "syntax", "postfix operators ('++', '--', '^') cannot have whitespace before them; write 'x++', 'x--', or 'p^' with no space or newline") \
+    GRAY_ERROR("E2077", "syntax", "empty index expression '[]'; indexing requires an expression between the brackets, e.g. 'arr[i]'") \
     GRAY_ERROR("E2079", "syntax", "'nil' is a value, not a type; for a function that returns nothing, omit the '-> ...' clause") \
     GRAY_ERROR("E2080", "syntax", "invalid character in C header path; only [A-Za-z0-9./_+-] are permitted") \
     GRAY_ERROR("E2081", "syntax", "'^' is a dereference operator, not a type modifier; for a pointer return type write '^%s', not '%s^'") \
@@ -96,7 +97,8 @@
     GRAY_ERROR("E2090", "syntax", "duplicate '%s' attribute; each attribute may appear at most once per declaration") \
     GRAY_ERROR("E2091", "syntax", "unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test") \
     GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
-    GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list")
+    GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list") \
+    GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -117,7 +119,7 @@
     GRAY_ERROR("E3016", "types", "cannot dereference non-pointer type '%s'; only ^T types can use ^") \
     GRAY_ERROR("E3017", "types", "'fmt.%s()' cannot format value of type '%s'; use 'println()' for composite types, or access individual fields") \
     GRAY_ERROR("E3018", "types", "type mismatch in 'when'; comparing '%s' with '%s'") \
-    GRAY_ERROR("E3019", "types", "cannot assign signed type '%s' to unsigned type '%s'; value may be negative") \
+    GRAY_ERROR("E3019", "types", "signedness mismatch: cannot convert between '%s' and '%s' without a cast; the value may not round-trip") \
     GRAY_ERROR("E3024", "types", "function '%s' must return a value but has no return statement") \
     GRAY_ERROR("E3027", "types", "cannot pass a constant to a mutable parameter; the function wants to modify this value") \
     GRAY_ERROR("E3031", "types", "function '%s' cannot be used as a value; did you mean '%s()' or '()%s'?") \
@@ -140,7 +142,7 @@
     GRAY_ERROR("E3050", "types", "array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3})") \
     GRAY_ERROR("E3051", "types", "map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1})") \
     GRAY_ERROR("E3052", "types", "too many elements in array initializer; declared size is %d, got %d") \
-    GRAY_ERROR("E3053", "types", "type mismatch in array initializer; expected '%s', got '%s'") \
+    GRAY_ERROR("E3053", "types", "type mismatch in a collection or struct literal; expected '%s', got '%s'") \
     GRAY_ERROR("E3054", "types", "mutable arrays cannot have a fixed size; remove the size or use 'const' (e.g., mut %s %.*s] = ...)") \
     GRAY_ERROR("E3055", "types", "const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...)") \
     GRAY_ERROR("E3056", "types", "#strict when is not exhaustive; missing variant '%s.%s'") \
@@ -150,8 +152,6 @@
     GRAY_ERROR("E3060", "types", "wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type") \
     GRAY_ERROR("E3061", "types", "struct '%s' cannot contain itself by value through '%s'; break the cycle with a pointer field '^%s'") \
     GRAY_ERROR("E3062", "types", "'%s' cannot be declared const; use 'mut' (every operation on a '%s' mutates its state)") \
-    GRAY_ERROR("E3063", "types", "cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns") \
-    GRAY_ERROR("E3064", "types", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3066", "types", "function reference signature mismatch; expected and actual function types differ") \
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
     GRAY_ERROR("E3069", "types", "'&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable") \
@@ -182,7 +182,6 @@
     GRAY_ERROR("E3094", "types", "cannot assign '%s' to element of '%s'") \
     GRAY_ERROR("E3095", "types", "'in' only works with arrays, maps, and strings; got '%s'") \
     GRAY_ERROR("E3096", "types", "cannot negate unsigned type '%s'; negation of unsigned types is not defined") \
-    GRAY_ERROR("E3097", "safety", "pointer '%s' assigned address of inner-scope variable '%s'; the variable's memory is freed when the scope exits") \
     GRAY_ERROR("E3098", "types", "type mismatch: cannot assign '%s' to '%s' through pointer dereference") \
     GRAY_ERROR("E3099", "types", "'%s' is a stdlib type name and the module that provides it is imported; rename this type or drop the import") \
     GRAY_ERROR("E3100", "types", "type name '%s' cannot be used as a value") \
@@ -228,7 +227,32 @@
     GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
     GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
-    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64")
+    GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64") \
+    GRAY_ERROR("E3144", "types", "#error_code attribute can only be applied to enum declarations") \
+    GRAY_ERROR("E3145", "types", "#error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set") \
+    GRAY_ERROR("E3146", "types", "#error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering") \
+    GRAY_ERROR("E3147", "types", "#error_code enum '%s' cannot have payload variants") \
+    GRAY_ERROR("E3148", "types", "ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique") \
+    GRAY_ERROR("E3149", "types", "'when err.code' must have a default branch; ErrorCode is an open enum and can never be exhaustive") \
+    GRAY_ERROR("E3150", "types", "'io.read_lines' line limit cannot be negative; pass 0 to read to end of file") \
+    GRAY_ERROR("E3151", "types", "'when err.code' cannot be #strict; ErrorCode is an open enum and can never be exhaustive") \
+    GRAY_ERROR("E3152", "types", "#error_code enum '%s' cannot also be #flags; ErrorCode is numbered by global slot, not by power-of-2 bit position") \
+    GRAY_ERROR("E3153", "types", "'Error' cannot be an array element or map key/value; wrap it in a struct, or store 'err.code' / 'err.msg' instead") \
+    GRAY_ERROR("E3154", "safety", "cannot pass the address of stack variable '%s' to a C function; the C side may retain it past the variable's scope. Allocate with new() or take the address of a file-scope variable instead") \
+    GRAY_ERROR("E3155", "types", "cannot implicitly narrow %s to %s; use cast(value, %s) to convert explicitly") \
+    GRAY_ERROR("E3156", "types", "cannot compare %s with %s") \
+    GRAY_ERROR("E3157", "types", "cannot use 'nil' here; 'nil' is only valid for pointer and Error types") \
+    GRAY_ERROR("E3158", "types", "type %s cannot cross the C boundary") \
+    GRAY_ERROR("E3159", "types", "wildcard '?' type conflict; '?' was already bound to a different type") \
+    GRAY_ERROR("E3160", "types", "parameter needs a type annotation; add one, or give it a default value whose type can be inferred") \
+    GRAY_ERROR("E3161", "types", "cannot take the address of this index expression; the backing store may move, leaving the pointer dangling") \
+    GRAY_ERROR("E3162", "safety", "cannot return 'addr(%s)'; '%s' is a local variable whose memory is freed when this function returns") \
+    GRAY_ERROR("E3163", "safety", "'%s' outlives the variable '%s' it points to, whose memory is freed when its scope exits") \
+    GRAY_ERROR("E3164", "safety", "'%s' points into arena '%s', which has already been destroyed") \
+    GRAY_ERROR("E3165", "safety", "'%s' points into arena '%s', whose memory was released by 'mem.reset()'") \
+    GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
+    GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
+    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -254,12 +278,16 @@
     GRAY_ERROR("E4023", "names", "module '%s' has no function named '%s'") \
     GRAY_ERROR("E4024", "names", "module '%s' has no member named '%s'") \
     GRAY_ERROR("E4025", "names", "public alias '%s' cannot target private type '%s'; the alias would re-export it, so mark the alias 'private' or make the type public") \
-    GRAY_ERROR("E4026", "names", "'main' is reserved for the program entry point; it can only name a top-level 'do main()' function")
+    GRAY_ERROR("E4026", "names", "'main' is reserved for the program entry point; it can only name a top-level 'do main()' function") \
+    GRAY_ERROR("E4027", "names", "a reserved keyword cannot be used as a name") \
+    GRAY_ERROR("E4028", "names", "a built-in name cannot be used as a user-defined name") \
+    GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations") \
+    GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
     GRAY_ERROR("E5007", "usage", "cannot modify immutable %s '%s'; declare with 'mut' to allow modification") \
-    GRAY_ERROR("E5008", "arguments", "wrong number of arguments; the function expects a different count than was provided") \
+    GRAY_ERROR("E5008", "arguments", "wrong number of arguments; the call passes more or fewer arguments than the function accepts") \
     GRAY_ERROR("E5009", "arguments", "invalid base for integer conversion; base must be between 2 and 36") \
     GRAY_ERROR("E5011", "usage", "return value of '%s' is not used; assign it to a variable or use '_' to discard") \
     GRAY_ERROR("E5012", "usage", "the throwaway '_' is only meaningful when discarding the result of a function call; the right-hand side has no return value to discard") \
@@ -272,7 +300,7 @@
     GRAY_ERROR("E5023", "usage", "cannot use '%s' on type '%s'; only integer types support increment/decrement") \
     GRAY_ERROR("E5024", "usage", "return type mismatch: cannot return signed '%s' as unsigned '%s'") \
     GRAY_ERROR("E5025", "usage", "invalid assignment target; left side of '=' must be a variable, field, or index expression") \
-    GRAY_ERROR("E5026", "arguments", "argument type mismatch; the function expects a different type than what was provided") \
+    GRAY_ERROR("E5026", "arguments", "argument type mismatch; an argument's type does not match the parameter it is bound to") \
     GRAY_ERROR("E5027", "usage", "'embed()' path must not escape the source file's directory tree") \
     GRAY_ERROR("E5028", "usage", "func references are not printable values; func references cannot be passed to print functions") \
     GRAY_ERROR("E5029", "usage", "'copy()' cannot be used on a func reference; func references are compile-time aliases, not copyable values") \
@@ -292,7 +320,9 @@
     GRAY_ERROR("E5044", "usage", "'error()' argument must be a string, got '%s'") \
     GRAY_ERROR("E5045", "arguments", "constant argument is outside the valid domain for this function") \
     GRAY_ERROR("E5046", "usage", "'#test' function '%s' must take no parameters and have no return type") \
-    GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'")
+    GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'") \
+    GRAY_ERROR("E5048", "usage", "'error()' takes an ErrorCode, a message string, or a code and a message; got %s") \
+    GRAY_ERROR("E5049", "arguments", "return type mismatch; the returned value's type does not match the function's declared return type")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -307,7 +337,10 @@
     GRAY_ERROR("E6009", "imports", "'%s' and '%s' produce the same compiled name; one of them would be lost") \
     GRAY_ERROR("E6010", "imports", "unknown module '%s'; no import, struct, or variable by that name is in scope") \
     GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file") \
-    GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file")
+    GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file") \
+    GRAY_ERROR("E6013", "imports", "C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.'") \
+    GRAY_ERROR("E6014", "imports", "malformed import statement") \
+    GRAY_ERROR("E6015", "imports", "C header '%s' could not be found for the current target")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
@@ -444,7 +477,11 @@
     GRAY_PANIC("P0111", "strconv",    "strconv.format_uint: invalid base %lld; must be between 2 and 36") \
     GRAY_PANIC("P0112", "strconv",    "strconv.unquote: cannot unquote '%s'") \
     GRAY_PANIC("P0113", "bounds",     "binary.%s: byte array too short to decode; need %d bytes but have %d") \
-    GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length")
+    GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length") \
+    GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
+    GRAY_PANIC("P0116", "strings",    "string builder size exceeds maximum string length") \
+    GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset") \
+    GRAY_PANIC("P0118", "runtime",    "call through a nil function value")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
@@ -461,7 +498,6 @@
     GRAY_WARNING("W2012", "safety", "'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon'") \
     GRAY_WARNING("W2014", "imports", "intra-directory import already included by directory import") \
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
-    GRAY_WARNING("W3004", "safety", "pointer may reference memory from a scope that has ended; assigning addr() of an inner-scope variable to an outer-scope pointer") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \
     GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored") \
     GRAY_WARNING("W3007", "deprecation", "reference to a function, struct, or enum marked #deprecated")

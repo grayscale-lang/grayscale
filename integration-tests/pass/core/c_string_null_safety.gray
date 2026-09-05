@@ -10,14 +10,14 @@
  * from Grayscale-only code.
  */
 
-import c "stdlib.h"
+extern import "stdlib.h"
 
 do main() {
     println("=== c_string NULL Safety Test ===")
     mut passed int = 0
     mut failed int = 0
 
-    mut ptr = c.getenv("GRAY_TEST_DEFINITELY_NOT_SET_VAR_8729")
+    mut ptr = extern.getenv("GRAY_TEST_DEFINITELY_NOT_SET_VAR_8729")
     mut s string = c_string(ptr)
     if s == "" {
         println("  [PASS] c_string(NULL) returns empty string")

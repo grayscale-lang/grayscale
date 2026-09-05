@@ -1,0 +1,58 @@
+/*
+ * stdlib_platform_enum.gray - os.MAC_OS/LINUX/WINDOWS/OTHER are the Platform
+ * enum, and os.current_os() returns a Platform.
+ */
+
+import @os
+
+do main() {
+    println("=== Platform enum test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut cur Platform = os.current_os()
+
+    if cur == os.MAC_OS || cur == os.LINUX || cur == os.WINDOWS || cur == os.OTHER {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] current_os() is not a known Platform")
+    }
+
+    if os.MAC_OS == Platform.MAC_OS && os.OTHER == Platform.OTHER {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] module and bare Platform spelling disagree")
+    }
+
+    mut n int = 0
+    when cur {
+        is .MAC_OS  { n = 1 }
+        is .LINUX   { n = 2 }
+        is .WINDOWS { n = 3 }
+        is .OTHER   { n = 4 }
+        default     { n = 9 }
+    }
+    if n >= 1 && n <= 4 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] when over Platform: n=${n}")
+    }
+
+    if type_of(cur) == "Platform" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] type_of(cur)")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

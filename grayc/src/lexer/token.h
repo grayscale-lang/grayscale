@@ -88,6 +88,7 @@ typedef enum {
     TOK_DISCARD,        /* #discard */
     TOK_DEPRECATED,     /* #deprecated */
     TOK_TEST,           /* #test */
+    TOK_ERROR_CODE_ATTR, /* #error_code */
 
     /* Keywords */
     TOK_MUT,
@@ -117,6 +118,7 @@ typedef enum {
     TOK_BLANK,
     TOK_ENSURE,
     TOK_OR_RETURN,
+    TOK_EXTERN,
 
     /* Module system keywords */
     TOK_PRIVATE,
@@ -160,6 +162,11 @@ typedef struct {
  * string on a match; returns false (leaving both untouched) for a plain
  * identifier. */
 bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword);
+
+/* Return true if the given token type is produced by the lexer's keyword
+ * table (a reserved word). Derived from that table so the parser's
+ * reserved-word check cannot drift from the lexer. */
+bool token_type_is_keyword(TokenType type);
 
 /* Return human-readable name for a token type */
 const char *token_type_name(TokenType type);

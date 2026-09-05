@@ -1,0 +1,9 @@
+// expect-error: E3144
+// #error_code is only valid on enum declarations.
+
+#error_code
+const Config struct {
+    x int
+}
+
+do main() {}

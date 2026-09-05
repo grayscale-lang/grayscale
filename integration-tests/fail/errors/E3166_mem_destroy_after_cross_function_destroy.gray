@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3166 - mem.destroy() on an arena already destroyed
+ * Expected: the first destroy happens inside a helper function; the
+ * unconditional destroy back in the caller is still caught as a double
+ * destroy.
+ */
+
+import @mem
+
+do cleanup(a Arena) {
+    mem.destroy(a)
+}
+
+do main() {
+    mut a = mem.arena(1024)
+    cleanup(a)
+    mem.destroy(a)
+}

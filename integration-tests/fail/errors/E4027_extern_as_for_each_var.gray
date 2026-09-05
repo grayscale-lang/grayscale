@@ -1,0 +1,11 @@
+/* Error Test: E4027 - a reserved keyword cannot be a for_each loop variable.
+ * 'for_each extern, i in xs' previously emitted the C keyword 'extern'
+ * unmangled into the generated loop, leaking a C compiler error.
+ */
+// expect-error: E4027
+do main() {
+    mut xs [int] = {1, 2}
+    for_each extern, i in xs {
+        println("${i}: ${extern}")
+    }
+}

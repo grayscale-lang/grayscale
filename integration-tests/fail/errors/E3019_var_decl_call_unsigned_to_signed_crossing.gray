@@ -1,0 +1,15 @@
+// Error Test: E3019 - a mut declaration whose initializer is a function call
+// (or an expression containing one) must get the same signedness-crossing
+// diagnostic as `mut s int = uint_var`.
+// expect-error: E3019
+// expect-error-count: 2
+
+do get_max() -> uint {
+    return 18446744073709551615
+}
+
+do main() {
+    mut s int = get_max()
+    mut t int = get_max() + 1
+    println("s=${s} t=${t}")
+}

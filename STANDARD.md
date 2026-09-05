@@ -37,7 +37,7 @@ Grayscale is a programming language for software that's simple to write and safe
 - **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
 - **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
-- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), or threading (`@threads`)
+- **Safety** — An automatic scope-based arena management memory model, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, no implicit narrowing, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
 
 ---
 
@@ -122,7 +122,7 @@ func         int            map         nil         SourceLocation
 string       uint
 ```
 
-`Error` and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
+`Error`, `ErrorCode`, and `SourceLocation` are compiler-provided types (returned by `error()` / fallible calls and by `here()`), so they are always reserved. A stdlib module's opaque type — `Database`, `Router`, `Thread`, `Mutex`, `Channel`, `Socket`, `Listener`, `SpinLock`, `Arena`, `UUID`, `HttpRequest`, `HttpResponse` — or provided enum — `OpenFlag` (`@io`), `Platform` (`@os`) — is reserved only while that module is imported; otherwise the name is free for a user struct or enum.
 
 **Sized types (reserved names):**
 ```
@@ -2056,6 +2056,7 @@ const Person struct {
 | `#doc("...")` | functions, structs, enums, file-scope variables | Documentation metadata, used by `gray doc` |
 | `#json` | structs | Enables JSON serialization for the struct |
 | `#flags` | enums | Marks enum as a bitflag set (values are powers of 2) |
+| `#error_code` | enums | Contributes the enum's variants to the open `ErrorCode` set (see 10.5) |
 | `#strict` | `when` blocks | Requires all enum variants to be handled |
 | `#discard` | functions | Allows callers to ignore the return value without triggering E5011 |
 | `#deprecated` / `#deprecated("...")` | functions, structs, enums | Warns (W3007) at every reference to the item, with an optional replacement message |
@@ -2146,7 +2147,7 @@ const List struct {
 
 **Rules:**
 
-- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2002).
+- `#discard` can only be applied to function declarations. Applying it to structs, enums, or variables is a parse error (E2094).
 - `#discard` cannot be applied to void functions — there is no return value to discard (E5042).
 
 #### 7.5.4 `#deprecated` Attribute
@@ -2195,7 +2196,7 @@ const Container struct {
 
 **Rules:**
 
-- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2002).
+- `#deprecated` can be applied to function, struct, and enum declarations only (module-level or struct-scoped functions). Applying it elsewhere is a parse error (E2094).
 - The message argument, when present, must be a string literal: `#deprecated("...")`.
 - A deprecated function's own recursive calls to itself do not trigger the warning, and code inside a deprecated struct's own struct-functions can reference that struct's type without warning. A struct-function calling a *different* deprecated struct-function or referencing a *different* deprecated type still warns normally.
 - Deprecating a struct does not cascade to its struct-functions, and deprecating a struct-function does not affect the struct itself — the two are independent. Calling a non-deprecated struct-function on an instance of a deprecated struct does not warn.
@@ -2242,7 +2243,7 @@ fails or any file fails to compile.
 **Rules:**
 
 - `#test` can only be applied to top-level function declarations. Applying it to
-  a struct function, enum, variable, or anything else is a parse error (E2002).
+  a struct function, enum, variable, or anything else is a parse error (E2094).
 - A `#test` function must take no parameters and declare no return type (E5046).
 - A `#test` function cannot be called or referenced from other code (E5047) —
   it is invoked only by the test runner. Factor shared logic into a normal
@@ -2283,9 +2284,9 @@ do something() { }
 - Every entry is validated against the following declaration exactly as if it
   had been stacked: order is irrelevant, a repeated attribute is E2090, and a
   misapplied attribute produces the same error the stacked form would (e.g.
-  `#[json]` on a function is E2002).
+  `#[json]` on a function is E2094).
 - The container and the stacked form may be mixed on the same declaration.
-- Not supported on struct functions yet — stack the attributes there (E2002).
+- Not supported on struct functions yet — stack the attributes there (E2094).
 
 ### 7.6 Function References
 
@@ -2911,53 +2912,58 @@ sqrt(16.0)
 
 ### 8.6 C Interop
 
-> ⚠️ **Notice:** C interop will be redesigned before 1.0. Expect breaking changes to the syntax and semantics described in this section.
-
-Grayscale can import C headers and call C functions directly using the `c` prefix:
+Grayscale can import C headers and call C functions directly using the `extern` prefix:
 
 #### Importing C Headers
 
 ```gray
-import c"stdio.h"           // system header → #include <stdio.h>
-import c"./mylib.h"         // local header  → #include "./mylib.h"
+extern import "stdio.h"           // system header → #include <stdio.h>
+extern import "./mylib.h"         // local header  → #include "./mylib.h"
 ```
 
 System headers (no `./` or `../` prefix) emit angle-bracket includes. Local headers emit quoted includes. Multiple C imports can be comma-separated:
 
 ```gray
-import c"stdio.h", c"stdlib.h", c"string.h"
+extern import "stdio.h", "stdlib.h", "string.h"
 ```
 
 C imports can be mixed with Grayscale imports on separate lines:
 
 ```gray
 import @math
-import c"stdio.h"
+extern import "stdio.h"
 ```
 
 #### Calling C Functions
 
-All C functions are accessed via the `c.` prefix:
+All C functions are accessed via the `extern.` prefix:
 
 ```gray
-import c"stdio.h"
+extern import "stdio.h"
 
 do main() {
-    c.puts("hello from C")
-    c.printf("value: %d\n", 42)
+    extern.puts("hello from C")
+    extern.printf("value: %d\n", 42)
 }
 ```
 
+The `extern.` prefix is required at every C call site. `using` and `import ... and use` are not allowed with `extern import`; C symbols must always stay qualified.
+
 #### Accessing C Constants and Macros
 
-C constants and macros are accessed with the same `c.` prefix:
+C constants and macros are accessed with the same `extern.` prefix. Their
+value has no Grayscale type of its own, exactly like a C call result, so the
+same rule applies — assign it to a type-annotated variable before using it
+(see **Return types** below):
 
 ```gray
-import c"stdio.h"
+extern import "stdio.h"
 
 do main() {
-    println(c.EOF)              // -1
-    println(c.EXIT_SUCCESS)     // 0
+    mut eof int = extern.EOF        // -1
+    mut ok int = extern.EXIT_SUCCESS // 0
+    println(eof)
+    println(ok)
 }
 ```
 
@@ -2976,27 +2982,49 @@ do main() {
 | `string` | `char*` | Auto-converted when passed to C functions |
 | `^T` | `T*` | Direct pointer mapping |
 
+**Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Grayscale `int` / `uint` are 64-bit and `float` is 64-bit, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
+
 **String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
 
 ```gray
-import c"stdlib.h"
+extern import "stdlib.h"
 
 do main() {
-    mut home string = c_string(c.getenv("HOME"))
+    mut home string = c_string(extern.getenv("HOME"))
     println(home)
 }
 ```
 
-**Return types:** C function return types are inferred by the C compiler. If Grayscale needs to know the type (e.g., for `println`), add a type annotation:
+**Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
+
+- as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
+- as an argument to **another `extern.` call**
+- through **`c_string()`**, which converts a C `char*` to a Grayscale `string`
+- as the value of a **`cast()`** to one of the annotation-eligible types above
 
 ```gray
-import c"math.h"
+extern import "math.h"
+extern import "stdlib.h"
 
 do main() {
-    mut x float = c.sqrt(2.0)    // type annotation needed
-    println(x)                    // prints 1.4142135623730951
+    mut x float = extern.sqrt(2.0)             // annotated declaration
+    println(x)                                 // prints 1.4142135623730951
+
+    mut home string = c_string(extern.getenv("HOME"))   // text: via c_string()
+    println(home)
 }
 ```
+
+Using an `extern.` call result or constant anywhere else — interpolating it, returning it, passing it to a Grayscale function, combining it in arithmetic, or placing it in an array or struct literal — is a compile error. Assign it to a typed variable first.
+
+#### Safety
+
+`extern import` is an opt-out from Grayscale's memory safety. ASBAM, the pointer escape checks (11.7), and bounds checking reason only about Grayscale code — they cannot analyze a C function, so their guarantees stop at the `extern.` call. Once a program calls into C, "memory safe by default" no longer holds for anything that crosses the boundary.
+
+- **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
+- **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
+- **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
+- **Numeric arguments narrow silently.** Grayscale `int` / `uint` are 64-bit and `float` is 64-bit. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
 #### Restrictions
 
@@ -3005,16 +3033,18 @@ The following Grayscale types cannot be passed to C functions:
 - `i128`, `i256`, `u128`, `u256` — C has no 128/256-bit integer types
 - Arrays and maps — Grayscale-specific types with no C equivalent
 - Grayscale structs — pass individual fields instead
+- Tagged (payload) enums — destructure with `when`/`is` and pass the payload
+- `Error` — a Grayscale runtime type with no C representation; pass `err.code` or `err.msg`
 
 C structs returned from C functions can be passed back to other C functions via `__auto_type` inference.
 
 #### Reserved Name
 
-The module name `c` is reserved for C interop. Files named `c.gray` must use an explicit alias:
+The module name `extern` is reserved for C interop. Files named `extern.gray` must use an explicit alias:
 
 ```gray
-import myc "./c.gray"    // OK, aliased
-import "./c.gray"         // Error: 'c' is reserved
+import mymod "./extern.gray"    // OK, aliased
+import "./extern.gray"          // Error: 'extern' is reserved
 ```
 
 ---
@@ -3035,14 +3065,20 @@ Built-in functions are always available without importing any module.
 | `print` | `(value T)` | Print value without newline. Accepts any type. |
 | `eprintln` | `(value T)` | Print to stderr with newline. Accepts any type. |
 | `eprint` | `(value T)` | Print to stderr without newline. Accepts any type. |
+| `flush` | `()` | Flush buffered stdout so partial-line output appears immediately. |
 
 All types are printable: `string`, `int`, `float`, `bool`, arrays, maps, structs, and pointers.
+
+`stdout` is buffered. `print` output may not appear until a newline is written (on a
+terminal) or the buffer fills (on a pipe or file); call `flush()` to force it out for
+prompts, progress indicators, and spinners. `system` flushes stdout and stderr before
+running the child so output is not reordered.
 
 #### Input Functions
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `input` | `() -> string` | Read line from stdin |
+| `input` | `() -> string` | Read line from stdin. Flushes stdout first so a preceding `print` prompt is visible. |
 
 #### Wide Integer Conversions
 
@@ -3121,8 +3157,8 @@ assert(connected)  // message is optional
 `assert()` is a global builtin — no import required.
 
 **Rules:**
-- The condition must be a `bool`. Passing a non-bool is a compile-time error (E3001).
-- The optional message must be a `string`. Passing any other type is a compile-time error (E3001).
+- The condition must be a `bool`. Passing a non-bool is a compile-time error (E5026).
+- The optional message must be a `string`. Passing any other type is a compile-time error (E5026).
 - If the condition is `true`, the program continues normally. `assert()` has no return value.
 
 **Runtime error code:** `P0075`
@@ -3308,6 +3344,53 @@ result.
 | `slice` | `(s string, start int, end int) -> string` | Extract substring |
 | `to_chars` | `(s string) -> [char]` | Convert string to char array |
 | `from_chars` | `(chars [char]) -> string` | Convert char array to string |
+
+#### Builder
+
+`string` is an immutable value type, so building one with repeated `+=` reallocates
+and copies the whole accumulated content each time — assembling N pieces is O(N²).
+`Builder` is a growable byte accumulator that appends in place and is finalized to a
+`string` once, making the same work amortized O(M) in the total byte count M.
+
+`Builder` is arena-managed like any struct: it goes out of scope with its enclosing
+arena, with no manual free. The buffer grows by doubling. `strings.builder_clear`
+keeps the allocated capacity, so a builder can be reused across frames of a loop
+without reallocating.
+
+Every operation on a `Builder` mutates it, so it must be declared `mut` — a `const`
+builder is a compile error (E3062). The `builder_append*` calls take the builder by
+reference with no `&` at the call site, but — like an array — a function that appends
+to a builder passed in by the caller must take it as `&b Builder`; appending through a
+plain (immutable) parameter is a compile error (E5007).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `builder` | `() -> Builder` | Create an empty builder |
+| `builder_reserve` | `(b Builder, n int) -> void` | Grow the buffer to hold at least `n` bytes; a negative `n` is ignored |
+| `builder_append` | `(b Builder, s string) -> void` | Append the bytes of `s` |
+| `builder_append_char` | `(b Builder, c char) -> void` | Append the codepoint `c`, UTF-8 encoded (1–4 bytes) |
+| `builder_append_bytes` | `(b Builder, data [byte]) -> void` | Append every byte of `data` |
+| `builder_append_int` | `(b Builder, n int) -> void` | Append the decimal text of `n` |
+| `builder_append_line` | `(b Builder, s string) -> void` | Append `s` followed by a newline |
+| `builder_len` | `(b Builder) -> int` | Bytes accumulated so far |
+| `builder_clear` | `(b Builder) -> void` | Reset length to zero, keeping capacity |
+| `build` | `(b Builder) -> string` | Copy the accumulated bytes into a new string; the builder stays usable |
+
+```grayscale
+import @strings
+
+do append_row(&b Builder, row [string]) {
+    strings.builder_append_line(b, strings.join(row, ","))
+}
+
+do rows_to_csv(rows [[string]]) -> string {
+    mut b Builder = strings.builder()
+    for_each row in rows {
+        append_row(b, row)
+    }
+    return strings.build(b)
+}
+```
 
 ### 9.4 Maps Module (`@maps`)
 
@@ -3540,7 +3623,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 |----------|-----------|-------------|
 | `read_file` | `(path string) -> string` | Read entire file as a string |
 | `read_bytes` | `(path string) -> [byte]` | Read entire file as a byte array |
-| `read_lines` | `(path string) -> [string]` | Read file and split into lines (strips `\r\n`) |
+| `read_lines` | `(path string, limit int = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
 
 #### File Writing
 
@@ -3645,13 +3728,24 @@ for_each line in lines {
 mut sz, err = io.file_size("data.txt")
 ```
 
-#### Constants
+#### `OpenFlag` Enum
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `O_RDONLY` | `0` | Open for reading only |
-| `O_WRONLY` | `1` | Open for writing only |
-| `O_RDWR` | `2` | Open for reading and writing |
+`io` provides the `OpenFlag` enum for the mutually-exclusive open modes.
+Reachable as `io.O_RDONLY` or `OpenFlag.O_RDONLY` (both denote the same value).
+Underlying values: `O_RDONLY` 0, `O_WRONLY` 1, `O_RDWR` 2. `OpenFlag` is
+reserved as a type name only while `@io` is imported.
+
+```gray
+import @io
+
+mut mode OpenFlag = io.O_RDWR
+when mode {
+    is .O_RDONLY { }
+    is .O_WRONLY { }
+    is .O_RDWR   { }
+    default      { }
+}
+```
 
 #### Path Resolution
 
@@ -3689,7 +3783,7 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `current_dir` | `() -> string` | Get current working directory |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> int` | Get process ID |
-| `current_os` | `() -> int` | Get current OS as an int matching the constants below (`MAC_OS`, `LINUX`, `WINDOWS`, `OTHER`) |
+| `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
 | `arch` | `() -> string` | Get CPU architecture |
 
 #### Process Execution
@@ -3708,12 +3802,23 @@ if ok && code != 0 {
 }
 ```
 
-#### Constants
+#### `Platform` Enum
 
-- `MAC_OS` = 0
-- `LINUX` = 1
-- `WINDOWS` = 2
-- `OTHER` = 3
+`os` provides the `Platform` enum for the mutually-exclusive host-OS values.
+Reachable as `os.MAC_OS` or `Platform.MAC_OS` (both denote the same value);
+returned by `current_os()`. Underlying values: `MAC_OS` 0, `LINUX` 1,
+`WINDOWS` 2, `OTHER` 3. `Platform` is reserved as a type name only while `@os`
+is imported.
+
+```gray
+import @os
+
+when os.current_os() {
+    is .LINUX { println("linux") }
+    is .MAC_OS { println("macos") }
+    default   { println("other") }
+}
+```
 
 ### 9.11 HTTP Module (`@http`)
 
@@ -4298,41 +4403,95 @@ println(chars.to_upper('5'))   // '5'
 
 ### 10.1 Error Type
 
-The `Error` type represents an error condition. Errors are created with the `error()` function:
+The `Error` type represents an error condition. An `Error` has two fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `code` | `ErrorCode` | classification of the error (see 10.5) |
+| `msg` | `string` | human-facing message (`.message` is an accepted alias) |
+
+Errors are created with the `error()` function, in one of three forms:
 
 ```gray
-mut err Error = error("something went wrong")
+error("something went wrong")          // message only; code defaults to .Unknown
+error(.NotFound)                        // code only; message defaults to ""
+error(.NotFound, "no such file")        // code and message
 ```
+
+`.Unknown` (ErrorCode slot 0) is not a "no error" sentinel — "no error" is `nil`, one level up in the `(T, Error)` tuple. Reading `err.code` at all means you are holding a real error.
+
+An `Error` is usable as a local, a parameter, a return value, and a struct field. It cannot be an array element or a map key/value; to keep a collection of errors, wrap the `Error` in a struct, or store `err.code` / `err.msg`.
 
 ### 10.2 Error Returns
 
 Functions that may fail return a `(T, Error)` tuple; these are fallible functions. Destructuring is required; single-var assignment from a fallible function is a compile error. See [Section 4.5](#45-return-value-handling) for the full rules.
 
-Functions that may fail conventionally return a tuple with the result and an Error:
-
 ```gray
 do read_file(path string) -> (string, Error) {
     if !file_exists(path) {
-        return "", error("file not found")
+        return "", error(.NotFound, "file not found")
     }
     return contents, nil
 }
 ```
 
+Every standard library function that returns an `Error` sets both a specific `ErrorCode` and a fixed message. Only user `error()` calls may omit one.
+
 ### 10.3 Error Checking
 
-Errors are checked by comparing to `nil`:
+Whether an error occurred is checked by comparing to `nil`:
 
 ```gray
 mut content, err = read_file("data.txt")
 if err != nil {
-    println("Error: ${err}")
+    println("Error: ${err}")   // interpolates err.msg
     return
 }
-// Use content
 ```
 
-### 10.4 Runtime Errors
+Which error occurred is checked on `err.code`, either with `==` / `!=` or with `when`:
+
+```gray
+if err.code == .NotFound {
+    content = ""
+}
+
+when err.code {
+    is .NotFound       { use_defaults() }
+    is .PermissionDenied { escalate() }
+    default            { log(err.msg) }
+}
+```
+
+`err.code` is an `ErrorCode`, an open enum (10.5). A `when` on it always requires a `default` branch and can never be `#strict`.
+
+### 10.5 ErrorCode
+
+`ErrorCode` is a single, program-wide enum whose variant set is **open**: it is assembled at compile time from a compiler-owned builtin list plus every user enum marked `#error_code`. The compiler owns the numbering, so `int(someErrorCode)` is that variant's global slot, not a 0-based position within one enum.
+
+Builtin variants:
+
+`Unknown` (slot 0), `NotFound`, `AlreadyExists`, `PermissionDenied`, `InvalidInput`, `OutOfRange`, `Unsupported`, `Timeout`, `Interrupted`, `Closed`, `WouldBlock`, `Unavailable`, `IoFailure`, `ParseFailure`, `EncodingFailure`, `ConversionFailure`, `NotAuthenticated`, `ConnectionRefused`, `ConnectionReset`, `AddressInUse`, `BrokenPipe`, `WriteZero`.
+
+#### `#error_code`
+
+The `#error_code` attribute marks a normal named enum as contributing its variants to the `ErrorCode` set:
+
+```gray
+#error_code
+const PaymentErrors enum {
+    PAYMENT_DECLINED
+    PAYMENT_CANCELED
+    PAYMENT_EXPIRED
+}
+```
+
+- `error(.PAYMENT_DECLINED, ...)`, `when err.code { is .PAYMENT_DECLINED ... }`, and `PaymentErrors.PAYMENT_DECLINED` all denote the same value.
+- The enum must be plain int-backed. String-backed enums, enums with explicit `= N` variant values, tagged (payload) enums, and `#flags` enums are rejected under `#error_code`.
+- Every variant name across the whole `ErrorCode` set must be unique; a name already present (builtin or another `#error_code` enum) is a compile error.
+- `PaymentErrors` stays usable as its own enum type. A `#error_code` enum value and an `ErrorCode` value are freely interchangeable in comparisons and assignments — they share one value space.
+
+### 10.6 Runtime Errors
 
 Certain operations produce runtime errors that terminate program execution:
 
@@ -4386,7 +4545,29 @@ for_each line in lines {
 
 ### 11.2 Reference Semantics
 
-Composite types (arrays, maps) have reference semantics for assignment but value semantics for function parameters (unless the parameter is declared mutable).
+Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, or into an existing struct field, copies it:
+
+```gray
+mut a [int] = {1, 2, 3}
+mut b [int] = a
+b[0] = 99
+println(a[0])   // 1 - b is an independent copy, not an alias
+```
+
+The one place a composite gets aliased instead of copied is a **literal that embeds an existing value** — a struct or array/map literal that names an existing variable as one of its fields/elements shares that variable's backing storage rather than copying it:
+
+```gray
+const Box struct {
+    items [int]
+}
+
+mut arr [int] = {1, 2, 3}
+mut box Box = Box{items: arr}   // struct literal embeds arr
+box.items[0] = 99
+println(arr[0])                  // 99 - box.items aliases arr
+```
+
+The same happens for an array or map literal that embeds an existing array/map as one of its elements/values (`{arr}`, `{"key": existing_map}`). This aliasing is scope-local: if the literal crosses a scope boundary (returned, or otherwise escaping), ASBAM's escape-copy (11.1) still deep-copies it, so it can't produce a dangling reference — but two literals built from the same source *within* the same scope will unexpectedly share mutable storage. Use `copy()` (11.3) when a literal needs to be independent of the value it was built from.
 
 ### 11.3 Deep Copy
 
@@ -4397,6 +4578,23 @@ mut original = Person{name: "Alice", age: 30}
 mut duplicate = copy(original)
 duplicate.age = 31  // original.age is still 30
 ```
+
+**Pointer fields alias, not copy.** A pointer-typed field is deliberately left pointing at its original referent — `copy()` does not follow it and duplicate the pointee. If a struct holds a pointer into itself (a self-referential field), the copy's field still points at the *original* value, not the copy's own:
+
+```gray
+const Node struct {
+    val int
+    self_ptr ^int
+}
+
+mut n Node = Node{val: 1}
+n.self_ptr = addr(n.val)
+mut n2 = copy(n)
+n2.val = 999
+println(n2.self_ptr^)  // 1, not 999 - still aliases n.val
+```
+
+This matches pointer-copy semantics in other systems languages. The pointer checker (11.7) still guarantees safety around it: a copy that carries a pointer aliasing its source is tied to the source's lifetime, so it cannot escape to an outer scope while the source is reclaimed.
 
 ### 11.4 Zero Values
 
@@ -4441,25 +4639,29 @@ mem.destroy(scratch)
 
 ### 11.7 Memory Safety
 
-Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the compiler catches several more at compile time. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, or unsynchronized threading introduces hazards that the programmer is responsible for, and the pointer escape checks below have a known gap. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management.
+Grayscale is **memory safe by default**. ASBAM prevents common memory errors automatically, and the pointer checker — a compile-time pass that traces the lifetime of every pointer value — catches the rest. Memory safety is not unconditionally guaranteed — opting into the `@mem` module, raw pointers, unsynchronized threading, or C interop (`extern import`) introduces hazards that the programmer is responsible for. But for programs that stay within Grayscale's defaults, memory safety holds without annotations or manual management: the pointer checker proves no pointer is ever readable after the memory it points to has been reclaimed.
 
 **Compile-time checked:**
 
 | Hazard | Grayscale Behavior |
 |--------|-------------|
-| Returning address of local variable | `return addr(local)` is rejected. Only the direct form is detected; see the pointer escape limitation below |
-| Cross-scope pointer assignment | Assigning `addr()` of an inner-scope value directly to an outer-scope pointer is rejected. Only the direct form is detected; see the pointer escape limitation below |
+| Returning a pointer to a local variable | `return addr(local)` is rejected, however the address is laundered — through an intermediate variable, a struct field, an array/map literal, a function call that forwards it, or a returned `new()` object's pointer field |
+| Storing a pointer where the destination outlives its referent | Assigning `addr()` of a shorter-lived value into a longer-lived variable, struct field, or array element is rejected; so is passing it to `arrays.append`/`prepend`/`insert_at`/`fill`, and writing it through a pointer or `&mut` parameter (which hands the caller a dangling pointer once the callee returns) |
 | Writing through a pointer to a const-declared variable | `addr()` on a const-declared variable produces a read-only pointer; assignment through it is rejected |
 | Dangling pointer into a relocated container | `addr()`, `raw()`, or `ref()` on a dynamic `[T]` array element or a map value is rejected; the backing store relocates when the array grows or the map rehashes. Fixed-size `[T,N]` array elements are allowed — their storage never moves |
-| Double-free on `@mem` arenas | Straight-line double `mem.destroy()` on the same variable is rejected |
+| Pointer-type reinterpretation | `cast()` between two pointer types is rejected; `cast()` converts values, not pointer identity |
+| Double-`destroy`/`reset` of a `@mem` arena | A second `mem.destroy()` or `mem.reset()` on an arena already destroyed is rejected. Flow-sensitive within the function: a destroy on only one branch of an `if`/`when`, or on an earlier loop iteration, is still seen. Also traced across a function call: a helper that destroys or resets its own arena parameter (directly, or by forwarding it to another helper that does) is treated as destroying/resetting the caller's arena at the call site |
+| Use of a `@mem` pointer after `mem.destroy()` or `mem.reset()` | Dereferencing a pointer into an arena that has been destroyed, or reset past the point the pointer was taken, is rejected — including when the destroy/reset happened on only one branch, on a prior iteration of an enclosing loop, or inside a helper the arena was passed to |
+| A pointer allocated inside a called function and handed back to the caller | Traced the same way as a destroy/reset: a helper that allocates on its own arena parameter and returns the pointer is followed at the call site, so `do make(a Arena) -> ^int { return mem.alloc(a, 1) }` followed by `mem.destroy(a); use(p)` in the caller is a compile error, not a runtime fallback |
+| An arena reached through a struct field | An arena stored in a field and destroyed/reset by reading it back through that same field — including across a function call that takes the struct (or a pointer to it) and destroys the field itself — is traced |
 
 **Prevented by ASBAM:**
 
 | Hazard | How |
 |--------|-----|
 | Memory leaks in long-running programs | Scopes free allocations on exit |
-| Use-after-free (common case) | Out-of-scope values can't be named — if you can't reach it, it's freed |
-| Dangling returns (common case) | Return values are copied to the caller's scope — the data moves, the pointer stays valid |
+| Use-after-free (default arena) | Out-of-scope values can't be named — if you can't reach it, it's freed |
+| Dangling returns (default arena) | Return values are copied to the caller's scope — the data moves, the pointer stays valid |
 | Loop memory accumulation | Each iteration is a scope; temporaries cleaned up on iteration end |
 
 **Runtime-checked (safe by default):**
@@ -4472,21 +4674,27 @@ Grayscale is **memory safe by default**. ASBAM prevents common memory errors aut
 | Division by zero | Runtime panic |
 | Integer overflow | Runtime panic (checked arithmetic) |
 | Stack overflow (deep recursion) | Detected and reported |
-| Double-free on `@mem` arenas (conditional/cross-function) | Runtime panic |
+| Double-`destroy` on a `@mem` arena the checker can't trace to a named arena parameter | Runtime panic (`P0002`) |
+| Allocating (`mem.init()`/`mem.alloc()`) from a `@mem` arena the checker can't trace as already destroyed | Runtime panic (`P0001`) |
+| Dereferencing a `@mem` pointer after its arena was `destroy()`ed, when the checker can't trace the arena at compile time | Runtime panic (`P0117`) whenever the variable holding the pointer was itself directly assigned from `mem.init()`/`mem.alloc()` — the same arena expression used at that call is re-checked at every dereference of that variable, however the arena is reached (global, struct field, chained pointer deref). Not caught this way if the pointer is copied into another variable, struct field, or container before being dereferenced there instead — see "Not checked" below |
 
 **Not checked (programmer responsibility):**
 
 | Hazard | When It Can Happen |
 |--------|-------------------|
-| Use-after-free (`@mem` only) | Holding a pointer to `@mem` arena memory after `mem.destroy()` |
+| An arena reached through an array/map element, or through a global whose value came from a call result | The compile-time trace follows a plain parameter, a struct field, and a pointer-dereference chain of those; an arena reached by indexing a container, or produced by a function call, is not traced. Falls back to the runtime checks below rather than a compile error |
+| A `@mem` pointer copied into another variable, struct field, or container before being dereferenced | Both the compile-time trace and the runtime dereference check (`P0117`) follow the variable a `mem.init()`/`mem.alloc()` result was directly assigned to. Assign that pointer to a second variable, store it in a struct field or container, and dereference it from there instead, and neither catches a subsequent use after the arena is destroyed |
+| Use of a `@mem` pointer after `mem.reset()` (as opposed to `mem.destroy()`) on a path the compile-time checker can't trace | The runtime dereference check only inspects an arena's `destroyed` flag, which `mem.reset()` does not set. A pointer taken before a reset the checker couldn't trace, then dereferenced after it, is not caught at compile time or at runtime — the memory may already have been handed out again by a later allocation |
 | Data races | Multiple threads accessing shared data without `sync.lock()` |
 | Aliased pointer mutation | Two or more pointers to the same variable created via `addr()` or `raw()`. Changes through one are visible through all others. Safe in single-threaded code; requires `sync.lock()` in threaded code. |
 | Nil dereference via `raw()` | `raw()` pointers skip nil checks on dereference. If a `raw()` pointer is nil, behavior is undefined. |
 | Const mutation via `raw()` | `raw()` bypasses const-source write protection. The programmer is responsible for correctness. |
-| Pointer escape through an intermediate variable | The escape checks above match the address expression directly. Assigning `addr()` to a variable first and then returning that variable, or assigning it to an outer-scope pointer, is not currently detected and produces a dangling pointer. |
+| Pointer retained by a C function | Passing `addr()` of a Grayscale value to a C function (`extern import`) that stores the pointer. The value is freed when its scope ends; the pointer the C side still holds dangles. The pointer checker does not cross the `extern.` call. |
+| Memory freed across the C boundary | A C function frees memory Grayscale still references, or a Grayscale-owned allocation is passed to C `free()`. Neither side tracks the other's lifetimes. |
+| Out-of-bounds write by a C function | A C function writes past the end of a buffer passed from Grayscale. Bounds checking does not cross the `extern.` call. |
 | Pointer arithmetic | Not supported in the language (disallowed by design) |
 
-For most Grayscale programs, those that don't use the `@mem` module, raw pointers, or threading, ASBAM combined with compile-time checks and runtime panics provides practical safety without annotations or manual memory management.
+For programs that stay in the safe subset — no `@mem`, no `raw()`, no threading, no C interop — the pointer checker makes use-after-free a compile error, not a runtime hazard. `@mem`, `raw()`, threading, and `extern import` are Grayscale's explicit unsafe opt-outs; reaching for one of them is what puts memory safety back in the programmer's hands.
 
 ### 11.8 Under the Hood
 

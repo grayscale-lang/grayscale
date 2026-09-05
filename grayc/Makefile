@@ -217,7 +217,7 @@ PANIC_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                   src/runtime/test.o \
                   src/stdlib/encoding.o src/stdlib/arrays.o src/stdlib/builtins.o \
                   src/stdlib/strconv.o src/stdlib/random.o src/stdlib/strings.o \
-                  src/stdlib/io.o src/stdlib/threads.o $(ATOMIC_OBJ)
+                  src/stdlib/io.o src/stdlib/threads.o src/stdlib/time.o $(ATOMIC_OBJ)
 
 tests/test_lexer$(EXE): tests/test_lexer.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
@@ -251,10 +251,10 @@ STDLIB_TEST_DEPS = src/runtime/runtime.o src/runtime/array.o src/runtime/map.o \
                    src/stdlib/strings.o src/stdlib/chars.o src/stdlib/arrays.o src/stdlib/maps.o \
                    src/stdlib/math.o src/stdlib/fmt.o src/stdlib/encoding.o \
                    src/stdlib/strconv.o src/stdlib/json.o src/stdlib/io.o \
-                   src/stdlib/regex.o src/stdlib/builtins.o $(ATOMIC_OBJ)
+                   src/stdlib/regex.o src/stdlib/builtins.o src/stdlib/net.o $(ATOMIC_OBJ)
 
 tests/test_stdlib$(EXE): tests/test_stdlib.c $(STDLIB_TEST_DEPS)
-	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
+	$(CC) $(RT_CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS) -lpthread
 
 # test_panics forks a child per case to capture the panic, and there is no
 # fork on Windows. Every other suite runs everywhere.

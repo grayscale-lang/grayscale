@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5026 - same-named structs from different modules are
+ * distinct types; a shapes.Point is not a colors.Point.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import "./shapes.gray"
+import "./colors.gray"
+
+do main() {
+    mut p shapes.Point = shapes.origin()
+    println(colors.describe(p))
+}

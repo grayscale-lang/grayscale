@@ -1,0 +1,116 @@
+/*
+ * strings_builder_c.gray - Integration test for strings.Builder (compiler)
+ * Covers: builder, builder_append, builder_append_char, builder_append_bytes,
+ * builder_append_int, builder_append_line, builder_len, builder_clear, build.
+ */
+
+import @strings
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do check_int(label string, got int, want int, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected ${want}, got ${got}")
+        failed += 1
+    }
+}
+
+// A helper that appends to a caller's builder takes it by reference.
+do append_kv(&b Builder, key string, value string) {
+    strings.builder_append(b, key)
+    strings.builder_append(b, "=")
+    strings.builder_append_line(b, value)
+}
+
+do main() {
+    println("=== Strings Builder Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- empty builder --
+    mut e Builder = strings.builder()
+    check("empty build", strings.build(e), "", passed, failed)
+    check_int("empty len", strings.builder_len(e), 0, passed, failed)
+
+    // -- append strings --
+    mut b Builder = strings.builder()
+    strings.builder_append(b, "Hello")
+    strings.builder_append(b, ", ")
+    strings.builder_append(b, "world")
+    check("append build", strings.build(b), "Hello, world", passed, failed)
+    check_int("append len", strings.builder_len(b), 12, passed, failed)
+
+    // -- build is repeatable and non-destructive --
+    strings.builder_append(b, "!")
+    check("build again", strings.build(b), "Hello, world!", passed, failed)
+
+    // -- append_char with a multi-byte codepoint --
+    mut c Builder = strings.builder()
+    strings.builder_append_char(c, 'A')
+    strings.builder_append_char(c, 'é')
+    strings.builder_append_char(c, '!')
+    check("append_char build", strings.build(c), "Aé!", passed, failed)
+    check_int("append_char byte len", strings.builder_len(c), 4, passed, failed)
+
+    // -- append_int --
+    mut n Builder = strings.builder()
+    strings.builder_append(n, "x=")
+    strings.builder_append_int(n, 2637)
+    strings.builder_append(n, " y=")
+    strings.builder_append_int(n, -42)
+    check("append_int build", strings.build(n), "x=2637 y=-42", passed, failed)
+
+    // -- append_bytes --
+    mut by Builder = strings.builder()
+    mut data [byte] = {104, 105}
+    strings.builder_append_bytes(by, data)
+    check("append_bytes build", strings.build(by), "hi", passed, failed)
+
+    // -- append_line --
+    mut l Builder = strings.builder()
+    strings.builder_append_line(l, "one")
+    strings.builder_append_line(l, "two")
+    check("append_line build", strings.build(l), "one\ntwo\n", passed, failed)
+
+    // -- clear keeps the builder usable --
+    mut r Builder = strings.builder()
+    strings.builder_append(r, "discard me")
+    strings.builder_clear(r)
+    check_int("len after clear", strings.builder_len(r), 0, passed, failed)
+    strings.builder_append(r, "fresh")
+    check("build after clear", strings.build(r), "fresh", passed, failed)
+
+    // -- append through a &Builder helper (buffer must survive the call) --
+    mut kv Builder = strings.builder()
+    append_kv(kv, "host", "localhost")
+    append_kv(kv, "port", "5432")
+    check("append via &Builder helper", strings.build(kv), "host=localhost\nport=5432\n", passed, failed)
+
+    // -- reserve then append past the reservation, forcing a grow --
+    mut g Builder = strings.builder()
+    strings.builder_reserve(g, 8)
+    for i in range(0, 50) {
+        strings.builder_append(g, "ab")
+    }
+    check_int("reserve+grow len", strings.builder_len(g), 100, passed, failed)
+    check("reserve+grow head", strings.slice(strings.build(g), 0, 6), "ababab", passed, failed)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

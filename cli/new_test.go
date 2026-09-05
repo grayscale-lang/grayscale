@@ -34,6 +34,29 @@ func fakeStdin(t *testing.T, input string) {
 	w.Close()
 }
 
+func TestIsValidProjectName(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"myproject", true},
+		{"my-project_2", true},
+		{"", false},
+		{"/etc/passwd", false},
+		{"../escape", false},
+		{"~/home", false},
+		{"has space", false},
+		{"2startswithdigit", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isValidProjectName(c.name); got != c.want {
+				t.Errorf("isValidProjectName(%q) = %v, want %v", c.name, got, c.want)
+			}
+		})
+	}
+}
+
 func TestResolveTemplate(t *testing.T) {
 	cases := []struct {
 		template   string

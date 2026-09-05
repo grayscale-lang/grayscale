@@ -1,0 +1,10 @@
+// expect-error: E3145
+// A #error_code enum must be plain int-backed.
+
+#error_code
+const Codes enum {
+    A = "a"
+    B = "b"
+}
+
+do main() {}

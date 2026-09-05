@@ -1,0 +1,29 @@
+// expect-error: E3162
+// expect-error-count: 1
+/*
+ * Error Test: E3162 - a local's address escapes inside a struct returned by
+ * a called function.
+ *
+ * wrap() puts its pointer parameter into a Box field and returns the Box;
+ * outer() calls it with the address of a local, so the returned Box holds a
+ * pointer to memory freed when outer() returns.
+ */
+
+const Box struct {
+    p ^int
+}
+
+do wrap(q ^int) -> Box {
+    mut b Box = Box{p: q}
+    return b
+}
+
+do outer() -> Box {
+    mut local int = 41
+    return wrap(addr(local))
+}
+
+do main() {
+    mut b Box = outer()
+    println(b.p^)
+}

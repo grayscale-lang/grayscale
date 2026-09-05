@@ -1,0 +1,10 @@
+// expect-error: E3147
+// A #error_code enum cannot have payload (tagged) variants.
+
+#error_code
+const Codes enum {
+    PLAIN
+    WITH_DATA(int)
+}
+
+do main() {}

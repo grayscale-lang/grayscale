@@ -1,0 +1,25 @@
+/*
+ * Error Test: E5049 - a type mismatch in a non-primary return slot is
+ * caught. Only values[0] used to be checked, so `return 0, B{...}` into a
+ * `-> (int, A)` slot passed the typechecker and leaked a C type error.
+ * Expected: return type mismatch for the second slot.
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+const A struct {
+    x int
+}
+
+const B struct {
+    y int
+}
+
+do pair() -> (int, A) {
+    return 0, B{ y: 1 }
+}
+
+do main() {
+    mut _, a = pair()
+    println("${a.x}")
+}

@@ -114,14 +114,14 @@ bool gray_strconv_to_bool(GrayString s) {
 GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
         return (GrayResult_int){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to int");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_int){0, err};
     }
     char *end = NULL;
@@ -129,7 +129,7 @@ GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
     int64_t result = strtoll(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE) {
         GrayString msg = gray_string_lit("cannot convert string to int");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_int){0, err};
     }
     return (GrayResult_int){result, NULL};
@@ -138,21 +138,21 @@ GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
 GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
         return (GrayResult_uint){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to uint");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_uint){0, err};
     }
     /* Reject negative numbers */
     for (int i = 0; i < len; i++) {
         if (buf[i] == '-') {
             GrayString msg = gray_string_lit("cannot convert negative string to uint");
-            GrayError *err = gray_error_new(gray_default_arena, msg);
+            GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
             return (GrayResult_uint){0, err};
         }
         if (!isspace((unsigned char)buf[i])) break;
@@ -162,7 +162,7 @@ GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
     uint64_t result = strtoull(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE) {
         GrayString msg = gray_string_lit("cannot convert string to uint");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_uint){0, err};
     }
     return (GrayResult_uint){result, NULL};
@@ -173,7 +173,7 @@ GrayResult_float gray_strconv_to_float_result(GrayString s) {
     int len = strconv_prepare(s, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to float");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_float){0.0, err};
     }
     char *end = NULL;
@@ -181,7 +181,7 @@ GrayResult_float gray_strconv_to_float_result(GrayString s) {
     double result = strtod(buf, &end);
     if (end == buf || *end != '\0' || errno == ERANGE) {
         GrayString msg = gray_string_lit("cannot convert string to float");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
         return (GrayResult_float){0.0, err};
     }
     return (GrayResult_float){result, NULL};
@@ -195,7 +195,7 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString s) {
         return (GrayResult_bool){false, NULL};
     }
     GrayString msg = gray_string_lit("cannot convert string to bool");
-    GrayError *err = gray_error_new(gray_default_arena, msg);
+    GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
     return (GrayResult_bool){false, err};
 }
 
@@ -374,7 +374,7 @@ GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString s) {
     GrayString out;
     if (!strconv_unquote_into(arena, s, &out)) {
         GrayString msg = gray_string_lit("cannot unquote string");
-        GrayError *err = gray_error_new(gray_default_arena, msg);
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure, msg);
         return (GrayResult_string){{"", 0}, err};
     }
     return (GrayResult_string){out, NULL};

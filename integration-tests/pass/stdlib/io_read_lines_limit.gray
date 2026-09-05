@@ -1,0 +1,90 @@
+/*
+ * io_read_lines_limit.gray - io.read_lines streams line-by-line and honours an
+ * optional line limit.
+ *
+ * Covers: no limit, limit < line count, limit > line count, limit 0, a file
+ * with no trailing newline, and an empty file.
+ */
+
+import @io
+
+do main() {
+    println("=== read_lines limit test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut five string = "/tmp/gray_rl_five.txt"
+    mut _, _ = io.write_file(five, "a\nb\nc\nd\ne\n")
+
+    mut noeol string = "/tmp/gray_rl_noeol.txt"
+    mut _, _ = io.write_file(noeol, "only line")
+
+    mut empty string = "/tmp/gray_rl_empty.txt"
+    mut _, _ = io.write_file(empty, "")
+
+    // no limit -> all lines
+    mut all, _ = io.read_lines(five)
+    if len(all) == 5 && all[0] == "a" && all[4] == "e" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] no limit: got ${len(all)}")
+    }
+
+    // limit < line count
+    mut head, _ = io.read_lines(five, 2)
+    if len(head) == 2 && head[0] == "a" && head[1] == "b" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] limit 2: got ${len(head)}")
+    }
+
+    // limit > line count -> all lines, no error
+    mut over, _ = io.read_lines(five, 100)
+    if len(over) == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] limit 100: got ${len(over)}")
+    }
+
+    // limit 0 -> read to EOF
+    mut zero, _ = io.read_lines(five, 0)
+    if len(zero) == 5 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] limit 0: got ${len(zero)}")
+    }
+
+    // file with no trailing newline
+    mut nl, _ = io.read_lines(noeol, 5)
+    if len(nl) == 1 && nl[0] == "only line" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] no trailing newline: got ${len(nl)}")
+    }
+
+    // empty file -> zero lines
+    mut e, eerr = io.read_lines(empty)
+    if eerr == nil && len(e) == 0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] empty file: got ${len(e)}")
+    }
+
+    mut _, _ = io.delete_file(five)
+    mut _, _ = io.delete_file(noeol)
+    mut _, _ = io.delete_file(empty)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

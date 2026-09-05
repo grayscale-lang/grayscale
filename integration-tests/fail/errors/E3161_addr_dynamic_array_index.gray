@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3161 - addr() rejects a dynamic array index expression;
+ * the backing store relocates when the array grows, leaving the pointer
+ * dangling.
+ */
+// expect-error: E3161
+// expect-error-count: 1
+
+do main() {
+    mut a [int] = {10, 20, 30, 40}
+    mut p ^int = addr(a[1])
+}

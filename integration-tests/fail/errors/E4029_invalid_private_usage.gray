@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4029 - private modifier inside a function
+ * Expected: "private modifier cannot be used here"
+ */
+// expect-error: E4029
+// expect-error-count: 1
+
+do main() {
+    private mut x int = 5  // private not allowed inside functions
+}

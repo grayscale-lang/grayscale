@@ -1,0 +1,12 @@
+/* Error Test: E2094 - #deprecated applied to a struct field */
+// expect-error: E2094
+const Point struct {
+    #deprecated
+    x int
+    y int
+}
+
+do main() {
+    mut p Point = Point{x: 1, y: 2}
+    println("${p.x}")
+}

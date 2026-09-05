@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3160 - a parameter with no type annotation is only allowed
+ * when its default value is an enum member the compiler can infer from.
+ */
+// expect-error: E3160
+// expect-error-count: 1
+
+do scale(factor = 2) -> int {
+    return factor * 10
+}
+
+do main() {
+    println("${scale()}")
+}

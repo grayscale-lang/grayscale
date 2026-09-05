@@ -1,3 +1,4 @@
+// expect-contains: .gray:
 /*
  * Test: E9006 - Cannot modify array during for_each iteration
  * Expected: Runtime panic from arrays.insert_at during a for_each.

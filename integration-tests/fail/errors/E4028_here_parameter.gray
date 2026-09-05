@@ -1,0 +1,13 @@
+/*
+ * Error Test: E4028 - missing symbol; 'here' is rejected by the parser
+ */
+
+// expect-error: E4028
+
+do f(here int) {
+    println("${here}")
+}
+
+do main() {
+    f(1)
+}

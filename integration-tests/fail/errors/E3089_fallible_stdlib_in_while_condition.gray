@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call cannot be an as_long_as
+ * condition; the Error would be silently treated as false.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @io
+
+do main() {
+    as_long_as io.delete_file("/no/such/file.txt") {
+        break
+    }
+}

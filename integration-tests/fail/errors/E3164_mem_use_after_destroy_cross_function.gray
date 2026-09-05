@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3164 - pointer into a @mem arena used after mem.destroy()
+ * Expected: the destroy happens inside a helper function, not the function
+ * holding the pointer; the pointer checker's cross-function @mem summary
+ * still catches the use after the call returns.
+ */
+
+import @mem
+
+do cleanup(a Arena) {
+    mem.destroy(a)
+}
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    cleanup(a)
+    println(p^)
+}

@@ -1,0 +1,16 @@
+/*
+ * Error Test: E5026 - a C interop value has no Grayscale type, so it cannot be
+ * passed to a Grayscale function - including a wildcard `?` parameter, which
+ * previously bound to it and made codegen emit "a C interop value" as a C type.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do wrap(x ?) -> ? { return x }
+
+do main() {
+    mut v = wrap(extern.abs(-3))
+    println("${v}")
+}

@@ -1,0 +1,93 @@
+/*
+ * global_libc_name_collision.gray - file-scope variables whose names collide
+ * with libc identifiers pulled in by the runtime headers (log, index,
+ * getline, ...) must still compile and run.
+ *
+ * Codegen gives every entry-module file-scope variable a gray_g_ prefix, so
+ * the bare name never reaches the C compiler. Locals of the same name still
+ * shadow the global normally.
+ */
+
+import @arrays
+
+mut log [int] = {}
+const index int = 3
+mut getline string = "start"
+
+do overwrite(&s string) { s = "done" }
+
+do bump() { index_sum = index_sum + index }
+
+mut index_sum int = 0
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    arrays.append(log, 10)
+    arrays.append(log, 20)
+    if len(log) == 2 && log[1] == 20 {
+        println("  [PASS] mut global array named 'log'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut global array named 'log'")
+        failed += 1
+    }
+
+    if index == 3 {
+        println("  [PASS] const global named 'index'")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] const global named 'index'")
+        failed += 1
+    }
+
+    overwrite(getline)
+    if getline == "done" {
+        println("  [PASS] mut global passed to reference parameter")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mut global passed to reference parameter: ${getline}")
+        failed += 1
+    }
+
+    bump()
+    bump()
+    if index_sum == 6 {
+        println("  [PASS] global read/write inside another function")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] global read/write inside another function: ${index_sum}")
+        failed += 1
+    }
+
+    mut total int = 0
+    for_each n in log {
+        total += n
+    }
+    if total == 30 {
+        println("  [PASS] for_each over a global collection")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each over a global collection: ${total}")
+        failed += 1
+    }
+
+    mut index int = 99
+    if index == 99 {
+        println("  [PASS] local shadows the global")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] local shadows the global: ${index}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

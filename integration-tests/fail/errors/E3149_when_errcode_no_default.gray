@@ -1,0 +1,13 @@
+// expect-error: E3149
+// ErrorCode is an open enum: `when err.code` always needs a default branch.
+
+do f() -> (int, Error) {
+    return 0, error(.NotFound, "x")
+}
+
+do main() {
+    mut _, err = f()
+    when err.code {
+        is .NotFound { println("nf") }
+    }
+}

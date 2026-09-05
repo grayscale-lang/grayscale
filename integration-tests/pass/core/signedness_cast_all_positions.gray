@@ -1,0 +1,89 @@
+/*
+ * signedness_cast_all_positions.gray - an integer value that crosses signedness
+ * needs an explicit cast() in every position (call argument, array element,
+ * struct field, map value, map assignment), in both the signed -> unsigned and
+ * unsigned -> signed directions.
+ */
+
+const Box struct {
+    v uint
+}
+
+do take_u(u uint) -> uint {
+    return u
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut s int = 7
+
+    // call argument: signed -> unsigned needs the cast
+    mut a uint = take_u(cast(s, uint))
+    if a == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] call argument: ${a}")
+        failed += 1
+    }
+
+    // array element
+    mut arr [uint] = {cast(s, uint)}
+    if arr[0] == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] array element")
+        failed += 1
+    }
+
+    // struct field
+    mut b Box = Box{ v: cast(s, uint) }
+    if b.v == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] struct field")
+        failed += 1
+    }
+
+    // map literal value + map value assignment
+    mut m map[string:uint] = {"a": cast(s, uint)}
+    m["b"] = cast(s, uint)
+    if m["a"] == 7 && m["b"] == 7 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] map value")
+        failed += 1
+    }
+
+    // unsigned -> signed also needs the cast, in every position
+    mut u uint = 42
+    mut back int = cast(u, int)
+    mut arr2 [int] = {cast(u, int)}
+    mut m2 map[string:int] = {"a": cast(u, int)}
+    m2["b"] = cast(u, int)
+    if back == 42 && arr2[0] == 42 && m2["a"] == 42 && m2["b"] == 42 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] unsigned to signed via cast: ${back}")
+        failed += 1
+    }
+
+    // a value-preserving unsigned -> wider-signed widening stays implicit
+    mut by byte = 200
+    mut widened int = by
+    mut wide i128 = u
+    if widened == 200 && wide == i128(42) {
+        passed += 1
+    } otherwise {
+        println("[FAIL] unsigned widening to wider signed: ${widened}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

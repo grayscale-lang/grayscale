@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3040 - multi-return call in map-literal key position
+ * Expected: "'get_key' returns 2 values"
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do get_key() -> (string, int) {
+    return "a", 1
+}
+
+do main() {
+    mut m map[string:int] = { get_key(): 1 }
+}

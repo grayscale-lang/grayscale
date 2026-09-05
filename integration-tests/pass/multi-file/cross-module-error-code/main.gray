@@ -1,0 +1,76 @@
+/*
+ * Test: a #error_code enum declared in an imported file is part of the
+ * program-wide ErrorCode value space — its values are freely
+ * interchangeable with ErrorCode (STANDARD 10.5), not just its .VARIANT
+ * selectors.
+ */
+
+import and use "./errs"
+
+do boom() -> (int, Error) {
+    return 0, error(.BETA, "beta")
+}
+
+do qualified() -> (int, Error) {
+    return 0, error(ModErr.GAMMA, "gamma")
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // == against a qualified imported #error_code variant
+    mut _, e1 = boom()
+    if e1.code == ModErr.BETA {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.code == ModErr.BETA")
+    }
+
+    // != against a qualified imported #error_code variant
+    if e1.code != ModErr.ALPHA {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.code != ModErr.ALPHA")
+    }
+
+    // widening an imported #error_code value to ErrorCode
+    mut c ErrorCode = ModErr.GAMMA
+    if "${c}" == "GAMMA" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] widen ModErr.GAMMA to ErrorCode -> ${c}")
+    }
+
+    // error() with a qualified imported #error_code code
+    mut _, e2 = qualified()
+    if e2.code == ModErr.GAMMA {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] error(ModErr.GAMMA, ...)")
+    }
+
+    // when err.code with a qualified imported variant
+    mut label string = ""
+    when e1.code {
+        is ModErr.BETA { label = "beta" }
+        default        { label = "other" }
+    }
+    if label == "beta" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] when err.code is ModErr.BETA -> ${label}")
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

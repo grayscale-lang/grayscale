@@ -1,9 +1,0 @@
-do main() {
-    mut x int = 1
-    mut s string = "hi"
-    mut p ^int = addr(x)
-    mut q ^string = addr(s)
-    if p == q {
-        println("equal")
-    }
-}

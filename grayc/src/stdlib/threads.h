@@ -15,6 +15,18 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Basename collides with the C11 <threads.h>: in a grayc-generated program
+ * this directory shadows libc, so step past it so `extern import "threads.h"`
+ * reaches the real header where it exists (absent on macOS). See math.h for
+ * the full rationale. */
+#ifdef GRAY_GENERATED_C
+#  ifdef __has_include_next
+#    if __has_include_next(<threads.h>)
+#      include_next <threads.h>
+#    endif
+#  endif
+#endif
+
 typedef struct {
     void *_internal; /* points to an internal {pthread_t, alive flag} */
 } GrayThread;

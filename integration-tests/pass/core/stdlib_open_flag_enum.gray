@@ -1,0 +1,66 @@
+/*
+ * stdlib_open_flag_enum.gray - io.O_RDONLY/O_WRONLY/O_RDWR are the OpenFlag enum.
+ *
+ * Covers: `io.O_RDONLY` and `OpenFlag.O_RDONLY` denote the same value, the
+ * `mut x OpenFlag` annotation, `when` over an OpenFlag, and type_of.
+ */
+
+import @io
+
+do main() {
+    println("=== OpenFlag enum test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut f OpenFlag = io.O_RDONLY
+
+    if f == OpenFlag.O_RDONLY {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] io.O_RDONLY == OpenFlag.O_RDONLY")
+    }
+
+    if io.O_WRONLY == OpenFlag.O_WRONLY && io.O_RDWR == OpenFlag.O_RDWR {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] module and bare spelling disagree")
+    }
+
+    if f != io.O_WRONLY {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] O_RDONLY != O_WRONLY")
+    }
+
+    mut label string = ""
+    when f {
+        is .O_RDONLY { label = "r" }
+        is .O_WRONLY { label = "w" }
+        is .O_RDWR   { label = "rw" }
+        default      { label = "?" }
+    }
+    if label == "r" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] when over OpenFlag: ${label}")
+    }
+
+    if type_of(f) == "OpenFlag" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] type_of(f)")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

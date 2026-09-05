@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3018 - when/is rejects an enum-variant pattern against an
+ * int subject. Previously matched by raw ordinal with no diagnostic.
+ */
+// expect-error: E3018
+// expect-error-count: 1
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut n int = 1
+    when n {
+        is Color.GREEN { println("matched") }
+        default { println("d") }
+    }
+}

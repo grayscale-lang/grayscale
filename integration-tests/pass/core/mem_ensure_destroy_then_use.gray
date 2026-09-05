@@ -1,0 +1,57 @@
+/*
+ * Tests that `ensure mem.destroy(a)` still allows ordinary use of the arena
+ * (and pointers into it) for the rest of the function — the whole point of
+ * scheduling cleanup with `ensure` rather than destroying immediately. Also
+ * covers `ensure mem.reset(a)` followed by an explicit mem.reset(a), which
+ * is safe since neither actually destroys the arena.
+ */
+
+import @mem
+
+do make_value(a Arena) -> int {
+    ensure mem.destroy(a)
+    mut p ^int = mem.init(a, int)
+    p^ = 5
+    return p^
+}
+
+do reset_twice(a Arena) -> int {
+    ensure mem.reset(a)
+    mem.reset(a)
+    mut p ^int = mem.init(a, int)
+    p^ = 8
+    return p^
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a1 = mem.arena(1024)
+    mut v1 int = make_value(a1)
+    if v1 == 5 {
+        println("  [PASS] ensure mem.destroy(a) then use a")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ensure mem.destroy(a) then use a: got ${v1}")
+        failed += 1
+    }
+
+    mut a2 = mem.arena(1024)
+    mut v2 int = reset_twice(a2)
+    if v2 == 8 {
+        println("  [PASS] ensure mem.reset(a) then explicit reset then use a")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ensure mem.reset(a) then explicit reset then use a: got ${v2}")
+        failed += 1
+    }
+    mem.destroy(a2)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

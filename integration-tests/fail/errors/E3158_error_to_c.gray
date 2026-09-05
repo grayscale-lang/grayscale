@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3158 - an Error value cannot be passed to a C function;
+ * it is a Grayscale runtime type with no C representation.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+do maybe_fail() -> (int, Error) {
+    return 5, error("bad")
+}
+
+do main() {
+    mut val, err = maybe_fail()
+    extern.printf("%d\n", err)
+}

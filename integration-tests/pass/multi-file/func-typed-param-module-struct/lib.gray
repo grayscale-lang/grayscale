@@ -1,0 +1,29 @@
+const Rec struct {
+    n int
+}
+
+do positive(r Rec) -> bool {
+    return r.n > 0
+}
+
+do combine(a Rec, b Rec) -> bool {
+    return a.n == b.n
+}
+
+do call_it(r Rec, pred func(Rec) -> bool) -> bool {
+    return pred(r)
+}
+
+do call2(a Rec, b Rec, pred func(Rec, Rec) -> bool) -> bool {
+    return pred(a, b)
+}
+
+do run() -> int {
+    mut passed int = 0
+    mut r Rec = Rec{n: 5}
+    if call_it(r, ()positive) { passed += 1 }
+    mut a Rec = Rec{n: 5}
+    mut b Rec = Rec{n: 5}
+    if call2(a, b, ()combine) { passed += 1 }
+    return passed
+}

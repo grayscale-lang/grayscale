@@ -1,0 +1,203 @@
+//
+// check_error_codes.gray - Recurrence guard for the diagnostic registry
+//
+// Reads the registry (grayc/src/util/error_codes.h) and every emit site in
+// grayc/src/**/*.c, then enforces:
+//
+//   1. every emitted "E####"/"W####" is registered
+//   2. every registered E/W code is emitted at least once
+//   3. no duplicate code in the registry
+//   4. no code is emitted from more than 15 distinct call sites
+//   5. no code is emitted from both parser.c and typechecker.c
+//
+// Any violation prints a report and exits 1 (CI-enforcing).
+//
+// Usage: grayc scripts/check_error_codes.gray && ./check_error_codes
+//
+// Copyright (c) 2025-Present Marshall A Burns
+// Licensed under the MIT License. See LICENSE for details.
+
+import @io, @strings, @arrays
+
+const MAX_SITES int = 15
+
+// is_digit reports whether c is an ASCII digit.
+do is_digit(c char) -> bool {
+    return c >= '0' && c <= '9'
+}
+
+// registry_code returns the code from a GRAY_ERROR("E3001", ...) /
+// GRAY_WARNING("W1001", ...) line, or "" if the line is not such a macro.
+do registry_code(line string) -> string {
+    mut trimmed string = strings.trim_left(line)
+    mut is_err bool = strings.starts_with(trimmed, "GRAY_ERROR(\"")
+    mut is_warn bool = strings.starts_with(trimmed, "GRAY_WARNING(\"")
+    if !is_err && !is_warn {
+        return ""
+    }
+    mut open int = strings.index_of(trimmed, "\"")
+    mut rest string = strings.slice(trimmed, open + 1, len(trimmed))
+    mut close int = strings.index_of(rest, "\"")
+    if close == -1 {
+        return ""
+    }
+    return strings.slice(rest, 0, close)
+}
+
+// scan_line_codes returns every quoted "E####"/"W####" literal on a source line.
+do scan_line_codes(line string) -> [string] {
+    mut found [string] = {}
+    mut n int = len(line)
+    mut i int = 0
+    for i < n - 2 {
+        mut c char = strings.char_at(line, i)
+        mut c1 char = strings.char_at(line, i + 1)
+        mut c2 char = strings.char_at(line, i + 2)
+        if c == '"' && (c1 == 'E' || c1 == 'W') && is_digit(c2) {
+            mut j int = i + 2
+            for j < n && is_digit(strings.char_at(line, j)) {
+                j = j + 1
+            }
+            if j < n && strings.char_at(line, j) == '"' {
+                arrays.append(found, strings.slice(line, i + 1, j))
+            }
+            i = j
+        } otherwise {
+            i = i + 1
+        }
+    }
+    return found
+}
+
+do main() {
+    // --- 1. Load the registry ---------------------------------------------
+    mut reg_lines, reg_err = io.read_lines("grayc/src/util/error_codes.h")
+    if reg_err != nil {
+        println("check_error_codes: cannot read grayc/src/util/error_codes.h")
+        exit(1)
+    }
+
+    mut registered [string] = {}
+    mut duplicates [string] = {}
+    for_each line in reg_lines {
+        mut code string = registry_code(line)
+        if code == "" {
+            continue
+        }
+        if arrays.contains(registered, code) {
+            if !arrays.contains(duplicates, code) {
+                arrays.append(duplicates, code)
+            }
+        } otherwise {
+            arrays.append(registered, code)
+        }
+    }
+
+    // --- 2. Scan every emit site ----------------------------------------------
+    mut walked, walk_err = io.walk("grayc/src")
+    if walk_err != nil {
+        println("check_error_codes: cannot walk grayc/src")
+        exit(1)
+    }
+
+    mut emitted [string] = {}
+    mut site_codes [string] = {}
+    mut site_counts [int] = {}
+    mut in_parser [string] = {}
+    mut in_typechecker [string] = {}
+
+    for_each entry in walked {
+        mut path string = entry
+        if !strings.starts_with(path, "grayc/src") {
+            path = "grayc/src/${entry}"
+        }
+        if !strings.ends_with(path, ".c") {
+            continue
+        }
+        if strings.ends_with(path, "/error_codes.c") {
+            continue
+        }
+        mut is_parser bool = strings.ends_with(path, "/parser.c")
+        mut is_typechecker bool = strings.ends_with(path, "/typechecker.c")
+
+        mut file_lines, file_err = io.read_lines(path)
+        if file_err != nil {
+            continue
+        }
+        for_each src in file_lines {
+            mut codes [string] = scan_line_codes(src)
+            for_each code in codes {
+                if !arrays.contains(emitted, code) {
+                    arrays.append(emitted, code)
+                }
+                mut idx int = arrays.index_of(site_codes, code)
+                if idx == -1 {
+                    arrays.append(site_codes, code)
+                    arrays.append(site_counts, 1)
+                } otherwise {
+                    site_counts[idx] = site_counts[idx] + 1
+                }
+                if is_parser && !arrays.contains(in_parser, code) {
+                    arrays.append(in_parser, code)
+                }
+                if is_typechecker && !arrays.contains(in_typechecker, code) {
+                    arrays.append(in_typechecker, code)
+                }
+            }
+        }
+    }
+
+    // --- 3. Run the checks ---------------------------------------------------
+    mut violations [string] = {}
+
+    // (1) emitted but not registered
+    for_each code in emitted {
+        if !arrays.contains(registered, code) {
+            arrays.append(violations, "unregistered code emitted: ${code}")
+        }
+    }
+
+    // (2) registered but never emitted
+    for_each code in registered {
+        if !arrays.contains(emitted, code) {
+            arrays.append(violations, "registered code never emitted: ${code}")
+        }
+    }
+
+    // (3) duplicate registry entries
+    for_each code in duplicates {
+        arrays.append(violations, "duplicate registry entry: ${code}")
+    }
+
+    // (4) more than MAX_SITES call sites
+    mut i int = 0
+    for i < len(site_codes) {
+        if site_counts[i] > MAX_SITES {
+            arrays.append(violations,
+                "code ${site_codes[i]} emitted from ${site_counts[i]} call sites (max ${MAX_SITES})")
+        }
+        i = i + 1
+    }
+
+    // (5) emitted from both parser.c and typechecker.c
+    for_each code in in_parser {
+        if arrays.contains(in_typechecker, code) {
+            arrays.append(violations,
+                "code ${code} emitted from both parser.c and typechecker.c")
+        }
+    }
+
+    // --- 4. Report ---------------------------------------------------------
+    println("check_error_codes: ${len(registered)} registered, ${len(emitted)} emitted")
+    if len(violations) == 0 {
+        println("check_error_codes: no violations")
+        exit(0)
+    }
+
+    println("")
+    println("check_error_codes: ${len(violations)} violation(s)")
+    for_each v in violations {
+        println("  - ${v}")
+    }
+    exit(1)
+}

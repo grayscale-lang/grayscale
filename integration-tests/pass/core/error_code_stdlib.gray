@@ -1,0 +1,44 @@
+/*
+ * error_code_stdlib.gray - stdlib errors carry a classified ErrorCode.
+ *
+ * Reading a file that does not exist yields an Error whose code is .NotFound.
+ */
+
+import @io
+
+do main() {
+    println("=== stdlib ErrorCode test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut _, err = io.read_file("/definitely/not/a/real/path/xyzzy_8729.txt")
+
+    if err != nil {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] expected an error reading a missing file")
+    }
+
+    if err.code == .NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] expected .NotFound, got ${err.code}")
+    }
+
+    if err.msg != "" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] stdlib error should carry a message")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3167 - cast() cannot reinterpret one pointer type as another
+ * Expected: E3167 "cast() cannot reinterpret pointer types" error
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+const Vec struct {
+    a int
+    b int
+}
+
+do main() {
+    mut p = new(Point)
+    mut q ^Vec = cast(p, ^Vec)
+    println(q^.a)
+}

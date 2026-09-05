@@ -1,0 +1,20 @@
+// expect-error: E3162
+/*
+ * Error Test: E3162 - returning a local's address laundered through an
+ * intermediate pointer
+ *
+ * the address never appears syntactically in the return statement, but
+ * 'local' still dies when the function returns.
+ */
+
+do leak() -> ^int {
+    mut local int = 7
+    mut p ^int = addr(local)
+    mut q ^int = p
+    return q
+}
+
+do main() {
+    mut d ^int = leak()
+    println(d^)
+}

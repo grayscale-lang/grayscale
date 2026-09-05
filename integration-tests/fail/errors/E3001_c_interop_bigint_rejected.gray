@@ -3,9 +3,9 @@
  * Expected: error about i128 at C boundary
  */
 
-import c "stdio.h"
+extern import "stdio.h"
 
 do main() {
     mut x i128 = 42
-    c.printf("%d", x)
+    extern.printf("%d", x)
 }

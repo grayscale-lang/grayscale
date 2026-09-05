@@ -441,7 +441,7 @@ func printBuiltinsIndex() {
 		label string
 		names []string
 	}{
-		{"I/O        ", []string{"println", "print", "eprintln", "eprint", "input"}},
+		{"I/O        ", []string{"println", "print", "eprintln", "eprint", "input", "flush"}},
 		{"Control    ", []string{"exit", "panic", "assert"}},
 		{"Sleep      ", []string{"sleep_s", "sleep_ms", "sleep_ns"}},
 		{"Type casts ", []string{"int", "uint", "float", "string", "char", "byte", "bool", "cast"}},

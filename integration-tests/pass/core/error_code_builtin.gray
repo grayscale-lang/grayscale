@@ -1,0 +1,79 @@
+/*
+ * error_code_builtin.gray - Error carries a typed ErrorCode from the builtin set.
+ *
+ * Covers: error(code, msg), err.code typed as ErrorCode, == / != comparison,
+ * `when err.code` with a default, and string rendering of a code.
+ */
+
+do open_thing(name string) -> (int, Error) {
+    if name == "missing" {
+        return 0, error(.NotFound, "no such thing")
+    }
+    if name == "locked" {
+        return 0, error(.PermissionDenied, "denied")
+    }
+    return 1, nil
+}
+
+do main() {
+    println("=== ErrorCode builtin test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut _, err = open_thing("missing")
+    if err.code == .NotFound {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.code == .NotFound")
+    }
+
+    if err.code != .PermissionDenied {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.code != .PermissionDenied")
+    }
+
+    if err.msg == "no such thing" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] err.msg")
+    }
+
+    mut label string = ""
+    when err.code {
+        is .NotFound { label = "nf" }
+        is .PermissionDenied { label = "pd" }
+        default { label = "other" }
+    }
+    if label == "nf" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] when err.code -> ${label}")
+    }
+
+    if "${err.code}" == "NotFound" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] interpolation of err.code")
+    }
+
+    if type_of(err.code) == "ErrorCode" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] type_of(err.code)")
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

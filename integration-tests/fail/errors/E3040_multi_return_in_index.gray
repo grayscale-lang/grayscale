@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3040 - a user multi-return call cannot appear in an index
+ * expression (either the indexed value or the index); only the first value
+ * is consumed and the rest are dropped.
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do pair() -> ([int], Error) {
+    return {1, 2, 3}, nil
+}
+
+do main() {
+    mut x int = pair()[0]
+    println("${x}")
+}
