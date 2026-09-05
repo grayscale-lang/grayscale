@@ -8377,6 +8377,25 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E5034", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* E4030: codegen emits `mfn(...)` unqualified. A local or parameter
+             * named `mfn` is emitted with its source name and shadows the C
+             * function for this call, which then fails to compile. A file-scope
+             * global is emitted as gray_g_<name> and does not collide. */
+            if (mfn) {
+                Symbol *shadow = scope_lookup(checker->current_scope, mfn);
+                if (shadow) {
+                    Scope *decl_scope = checker->current_scope;
+                    while (decl_scope->parent && !scope_lookup_local(decl_scope, mfn))
+                        decl_scope = decl_scope->parent;
+                    if (decl_scope->parent != NULL) {
+                        char *msg = typechecker_format(checker,
+                            "variable '%s' shadows the C function 'extern.%s' called here; rename the variable",
+                            mfn, mfn);
+                        diagnostic_error_message(checker->diag, "E4030", msg,
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                    }
+                }
+            }
             /* Validate arguments; reject types that don't translate to C */
             for (int argument_index = 0; argument_index < node->data.call.arg_count; argument_index++) {
                 /* E3154: a stack address cannot cross into C. The direct

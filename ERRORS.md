@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 452 codes** (318 errors, 16 warnings, 118 panics)
+**Total: 453 codes** (319 errors, 16 warnings, 118 panics)
 
 ---
 
@@ -263,6 +263,7 @@
 | `E4027` | names | a reserved keyword cannot be used as a name |
 | `E4028` | names | a built-in name cannot be used as a user-defined name |
 | `E4029` | names | the 'private' modifier can only be applied to top-level declarations |
+| `E4030` | names | a local variable or parameter shadows a C function of the same name called via 'extern.' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the call passes more or fewer arguments than the function accepts |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -503,4 +504,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-05 16:20:44 UTC*
+*Generated on 2026-09-05 19:45:49 UTC*

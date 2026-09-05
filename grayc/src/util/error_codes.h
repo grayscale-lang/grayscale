@@ -281,7 +281,8 @@
     GRAY_ERROR("E4026", "names", "'main' is reserved for the program entry point; it can only name a top-level 'do main()' function") \
     GRAY_ERROR("E4027", "names", "a reserved keyword cannot be used as a name") \
     GRAY_ERROR("E4028", "names", "a built-in name cannot be used as a user-defined name") \
-    GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations")
+    GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations") \
+    GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

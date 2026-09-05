@@ -1,0 +1,16 @@
+/*
+ * Error Test: E4030 - codegen emits an extern. call as an unqualified C call,
+ * so a local variable (or parameter) with the same name shadows the C function
+ * for that call and the generated C does not compile. Reported as a Grayscale
+ * diagnostic instead of a raw C error.
+ */
+// expect-error: E4030
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut atoi int = 7
+    mut n i32 = extern.atoi("123")
+    println("${n} ${atoi}")
+}
