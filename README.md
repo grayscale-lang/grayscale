@@ -94,12 +94,14 @@ it does not need to be on `PATH`.
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
 | `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
+| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
 | `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
 | `gray fmt --check <path>` | Check formatting without modifying files (CI gate) | `gray fmt --check ./...` |
 | `gray doc <file>` | Generate docs from `#doc` attributes | `gray doc main.gray` |
 | `gray new <name>` | Scaffold a new project | `gray new myproject` |
 | `gray report` | Print system info for bug reports | `gray report` |
+| `gray verify` | Run the built-in language verification test suite | `gray verify` |
 | `gray update` | Update to the latest stable version | `gray update` |
 | `gray update --pre` | Update to the latest pre-release (alpha/beta) | `gray update --pre` |
 | `gray install <version>` | Install a specific version by semver | `gray install x.y.z` |
