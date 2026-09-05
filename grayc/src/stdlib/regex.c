@@ -78,8 +78,8 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *re, GrayStri
 
         cursor += match.rm_eo;
         if (match.rm_eo == 0) {
-            if (cursor >= txt_buf + (size_t)text.len) break;
-            cursor++;
+            if (*cursor) cursor++;
+            else break;
         }
     }
 
