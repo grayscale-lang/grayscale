@@ -7591,6 +7591,12 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
             for (int variant_index = 0; variant_index < decl->data.enum_decl.value_count; variant_index++) {
                 if (strcmp(decl->data.enum_decl.values[variant_index].name, vname) == 0) { vidx = variant_index; break; }
             }
+            /* Wrapped in an extra pair of parens: a bare compound literal
+             * contains an unparenthesized top-level comma once a payload is
+             * present, which the C preprocessor splits into separate macro
+             * arguments wherever this value lands inside a function-like
+             * macro call (GRAY_ARRAY_SET_AT and friends). */
+            emit(codegen, "(");
             emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s", resolved_ename, resolved_ename, vname);
             if (vidx >= 0 && decl->data.enum_decl.values[vidx].payload_count > 0) {
                 emit_formatted(codegen, ", .data.%s = { ", vname);
@@ -7600,7 +7606,7 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
                 }
                 emit(codegen, " }");
             }
-            emit(codegen, " }");
+            emit(codegen, " })");
             return true;
         }
     }
@@ -7616,6 +7622,7 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
             for (int variant_index = 0; variant_index < decl->data.enum_decl.value_count; variant_index++) {
                 if (strcmp(decl->data.enum_decl.values[variant_index].name, vname) == 0) { vidx = variant_index; break; }
             }
+            emit(codegen, "(");
             emit_formatted(codegen, "(GrayEnum_%s){ .tag = GrayEnum_%s_TAG_%s", ename, ename, vname);
             if (vidx >= 0 && decl->data.enum_decl.values[vidx].payload_count > 0) {
                 emit_formatted(codegen, ", .data.%s = { ", vname);
@@ -7625,7 +7632,7 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
                 }
                 emit(codegen, " }");
             }
-            emit(codegen, " }");
+            emit(codegen, " })");
             return true;
         }
     }
@@ -11789,6 +11796,53 @@ static bool has_stdlib_module(const char *const *modules, int count, const char 
     return false;
 }
 
+/* Emits a struct's C body: `struct GrayStruct_<Name> { ... };`. */
+static void codegen_emit_struct_body(CodeGen *codegen, AstNode *struct_node) {
+    codegen_enter_node(codegen, struct_node);
+    emit_formatted(codegen, "struct GrayStruct_%s {\n",
+        codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
+    for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
+        StructField *field = &struct_node->data.struct_decl.fields[j];
+        emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
+    }
+    emit(codegen, "};\n\n");
+}
+
+/* Emits a tagged enum's C body: any payload structs, then
+ * `struct GrayEnum_<Name> { tag; union { ... } data; };`. */
+static void codegen_emit_tagged_enum_body(CodeGen *codegen, AstNode *enum_node) {
+    codegen_enter_node(codegen, enum_node);
+    const char *ename = codegen_decl_name(codegen, enum_node, enum_node->data.enum_decl.name);
+    for (int j = 0; j < enum_node->data.enum_decl.value_count; j++) {
+        EnumVal *ev = &enum_node->data.enum_decl.values[j];
+        if (ev->payload_count > 0) {
+            emit_formatted(codegen, "typedef struct {");
+            for (int k = 0; k < ev->payload_count; k++) {
+                if (k > 0) emit(codegen, "");
+                emit_formatted(codegen, " %s _%d;", gray_type_to_c_codegen(codegen, ev->payload_types[k]), k);
+            }
+            emit_formatted(codegen, " } GrayEnum_%s_Data_%s;\n", ename, ev->name);
+        }
+    }
+    emit_formatted(codegen, "struct GrayEnum_%s {\n", ename);
+    emit_formatted(codegen, "    GrayEnum_%s_Tag tag;\n", ename);
+    bool has_any_payload = false;
+    for (int j = 0; j < enum_node->data.enum_decl.value_count; j++) {
+        if (enum_node->data.enum_decl.values[j].payload_count > 0) { has_any_payload = true; break; }
+    }
+    if (has_any_payload) {
+        emit_formatted(codegen, "    union {\n");
+        for (int j = 0; j < enum_node->data.enum_decl.value_count; j++) {
+            EnumVal *ev = &enum_node->data.enum_decl.values[j];
+            if (ev->payload_count > 0) {
+                emit_formatted(codegen, "        GrayEnum_%s_Data_%s %s;\n", ename, ev->name, ev->name);
+            }
+        }
+        emit_formatted(codegen, "    } data;\n");
+    }
+    emit_formatted(codegen, "};\n\n");
+}
+
 void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (program->kind != NODE_PROGRAM) return;
 
@@ -12182,132 +12236,133 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         codegen->enum_decls[j+1] = kd;
     }
 
-    /* Emit struct declarations in dependency order (topological sort).
-     * Structs that reference other structs as value fields must come after them.
-     * Forward declarations were already emitted above (before enums). */
+    /* Forward-declare every tagged enum's union struct up front (mirroring
+     * the GrayStruct_ forward declarations emitted above) so a struct field,
+     * a pointer/array/map slot, or another tagged enum's payload can name it
+     * regardless of where the topological sort below places its definition. */
+    {
+        bool any_tagged = false;
+        for (int i = 0; i < enum_bucket_count; i++) {
+            AstNode *stmt = enum_bucket[i];
+            if (!stmt->data.enum_decl.is_tagged) continue;
+            const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
+            emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
+            any_tagged = true;
+        }
+        if (any_tagged) emit(codegen, "\n");
+    }
+
+    /* Emit struct and tagged-enum definitions together in dependency order
+     * (topological sort). A struct can hold a tagged enum by value (a field
+     * of that type) and a tagged enum can hold a struct by value (a payload
+     * field of that type), so either kind of declaration may need to come
+     * first — both are sorted together against one shared "emitted" set. */
     {
         int struct_count = codegen->struct_decl_count < MAX_STRUCT_DECLS
                          ? codegen->struct_decl_count : MAX_STRUCT_DECLS;
         AstNode **structs = codegen->struct_decls;
 
-        /* Simple topological sort: repeatedly emit structs with no unresolved deps */
-        bool emitted[MAX_STRUCT_DECLS] = {false};
+        int tagged_count = 0;
+        AstNode **tagged_enums = enum_bucket_count > 0
+            ? xmalloc(sizeof(AstNode *) * (size_t)enum_bucket_count) : NULL;
+        for (int i = 0; i < enum_bucket_count; i++) {
+            if (enum_bucket[i]->data.enum_decl.is_tagged) tagged_enums[tagged_count++] = enum_bucket[i];
+        }
+        int total = struct_count + tagged_count;
+
+        bool *emitted = xmalloc(sizeof(bool) * (size_t)(total > 0 ? total : 1));
+        for (int i = 0; i < total; i++) emitted[i] = false;
         int emit_count = 0;
-        for (int pass = 0; pass < struct_count && emit_count < struct_count; pass++) {
-            for (int i = 0; i < struct_count; i++) {
-                if (emitted[i]) continue;
-                AstNode *struct_node = structs[i];
+
+        /* Simple topological sort: repeatedly emit nodes with no unresolved deps. */
+        for (int pass = 0; pass < total && emit_count < total; pass++) {
+            for (int idx = 0; idx < total; idx++) {
+                if (emitted[idx]) continue;
+                bool is_struct_node = idx < struct_count;
+                AstNode *node = is_struct_node ? structs[idx] : tagged_enums[idx - struct_count];
+                codegen_enter_node(codegen, node);
+
+                /* A field/payload names its type as written in its own
+                 * module's file, while a declaration is known by its C name.
+                 * Resolve both sides before comparing: a bare `Inner` written
+                 * inside module lib is the declaration named lib_Inner. */
+                const char *dep_types[64];
+                int dep_count = 0;
+                if (is_struct_node) {
+                    for (int j = 0; j < node->data.struct_decl.field_count && dep_count < 64; j++) {
+                        const char *field_type = node->data.struct_decl.fields[j].type_name;
+                        if (!field_type) continue;
+                        /* Only a by-value field constrains the order; a
+                         * pointer, array or map field is satisfied by the
+                         * forward declaration already emitted above. */
+                        if (field_type[0] == '^' || field_type[0] == '[' ||
+                            strncmp(field_type, "map[", 4) == 0) continue;
+                        dep_types[dep_count++] = codegen_resolve_type(codegen, field_type);
+                    }
+                } else {
+                    for (int j = 0; j < node->data.enum_decl.value_count; j++) {
+                        EnumVal *ev = &node->data.enum_decl.values[j];
+                        for (int k = 0; k < ev->payload_count && dep_count < 64; k++) {
+                            const char *payload_type = ev->payload_types[k];
+                            if (!payload_type) continue;
+                            if (payload_type[0] == '^' || payload_type[0] == '[' ||
+                                strncmp(payload_type, "map[", 4) == 0) continue;
+                            dep_types[dep_count++] = codegen_resolve_type(codegen, payload_type);
+                        }
+                    }
+                }
+
                 bool deps_met = true;
-                /* A field names its type as written in its own module's file,
-                 * while a declaration is known by its C name. Resolve both
-                 * sides before comparing: a bare `Inner` written inside module
-                 * lib is the declaration named lib_Inner. Comparing the two
-                 * spellings directly finds no dependency, and the struct is
-                 * emitted before the one it holds by value. */
-                codegen_enter_node(codegen, struct_node);
-                for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
-                    const char *field_type = struct_node->data.struct_decl.fields[j].type_name;
-                    if (!field_type) continue;
-                    /* Only a by-value field constrains the order; a pointer,
-                     * array or map field is satisfied by the forward
-                     * declaration already emitted above. */
-                    if (field_type[0] == '^' || field_type[0] == '[' ||
-                        strncmp(field_type, "map[", 4) == 0) continue;
-                    const char *dep = codegen_resolve_type(codegen, field_type);
-                    /* Check if this field type is another user struct */
+                for (int d = 0; d < dep_count && deps_met; d++) {
                     for (int k = 0; k < struct_count; k++) {
-                        if (k != i && !emitted[k] &&
-                            strcmp(codegen_decl_name(codegen, structs[k],
-                                                     structs[k]->data.struct_decl.name),
-                                   dep) == 0) {
+                        if (k == idx) continue;
+                        if (emitted[k]) continue;
+                        if (strcmp(codegen_decl_name(codegen, structs[k], structs[k]->data.struct_decl.name),
+                                   dep_types[d]) == 0) {
                             deps_met = false;
                             break;
                         }
                     }
                     if (!deps_met) break;
-                }
-                if (deps_met) {
-                    emitted[i] = true;
-                    emit_count++;
-                    /* : skip generic structs here; they're
-                     * emitted per-instantiation below. */
-                    if (struct_node->data.struct_decl.is_generic) continue;
-                    /* Field types written bare name this struct's module. */
-                    codegen_enter_node(codegen, struct_node);
-                    emit_formatted(codegen, "struct GrayStruct_%s {\n",
-                        codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
-                    for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
-                        StructField *field = &struct_node->data.struct_decl.fields[j];
-                        emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
+                    for (int k = 0; k < tagged_count; k++) {
+                        int gk = struct_count + k;
+                        if (gk == idx) continue;
+                        if (emitted[gk]) continue;
+                        if (strcmp(codegen_decl_name(codegen, tagged_enums[k], tagged_enums[k]->data.enum_decl.name),
+                                   dep_types[d]) == 0) {
+                            deps_met = false;
+                            break;
+                        }
                     }
-                    emit(codegen, "};\n\n");
+                }
+                if (!deps_met) continue;
+
+                emitted[idx] = true;
+                emit_count++;
+                if (is_struct_node) {
+                    /* Skip generic structs here; they're emitted
+                     * per-instantiation below. */
+                    if (node->data.struct_decl.is_generic) continue;
+                    codegen_emit_struct_body(codegen, node);
+                } else {
+                    codegen_emit_tagged_enum_body(codegen, node);
                 }
             }
         }
-        /* If any structs couldn't be emitted (circular deps), emit them anyway */
-        for (int i = 0; i < struct_count; i++) {
-            if (!emitted[i]) {
-                AstNode *struct_node = structs[i];
-                codegen_enter_node(codegen, struct_node);
-                emit_formatted(codegen, "struct GrayStruct_%s {\n",
-                    codegen_decl_name(codegen, struct_node, struct_node->data.struct_decl.name));
-                for (int j = 0; j < struct_node->data.struct_decl.field_count; j++) {
-                    StructField *field = &struct_node->data.struct_decl.fields[j];
-                    emit_formatted(codegen, "    %s %s;\n", gray_type_to_c_codegen(codegen, field->type_name), sanitize_name(field->name));
-                }
-                emit(codegen, "};\n\n");
-            }
-        }
-    }
-
-    /* Emit deferred tagged enum typedefs now that full struct
-     * definitions are available for by-value payload fields. */
-
-    /* Forward-declare all tagged enum types so self-referential
-     * pointer payloads (e.g. ^Expr inside Expr) can resolve. */
-    for (int i = 0; i < enum_bucket_count; i++) {
-        AstNode *stmt = enum_bucket[i];
-        if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
-        emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
-    }
-
-    for (int i = 0; i < enum_bucket_count; i++) {
-        AstNode *stmt = enum_bucket[i];
-        if (!stmt->data.enum_decl.is_tagged) continue;
-        const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
-
-        /* Payload structs (only for variants with payloads) */
-        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-            EnumVal *ev = &stmt->data.enum_decl.values[j];
-            if (ev->payload_count > 0) {
-                emit_formatted(codegen, "typedef struct {");
-                for (int k = 0; k < ev->payload_count; k++) {
-                    if (k > 0) emit(codegen, "");
-                    emit_formatted(codegen, " %s _%d;", gray_type_to_c_codegen(codegen, ev->payload_types[k]), k);
-                }
-                emit_formatted(codegen, " } GrayEnum_%s_Data_%s;\n", ename, ev->name);
+        /* If any nodes couldn't be emitted (circular deps), emit them anyway. */
+        for (int idx = 0; idx < total; idx++) {
+            if (emitted[idx]) continue;
+            bool is_struct_node = idx < struct_count;
+            AstNode *node = is_struct_node ? structs[idx] : tagged_enums[idx - struct_count];
+            if (is_struct_node) {
+                codegen_emit_struct_body(codegen, node);
+            } else {
+                codegen_emit_tagged_enum_body(codegen, node);
             }
         }
 
-        /* Tagged union struct (matches forward declaration above) */
-        emit_formatted(codegen, "struct GrayEnum_%s {\n", ename);
-        emit_formatted(codegen, "    GrayEnum_%s_Tag tag;\n", ename);
-        bool has_any_payload = false;
-        for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-            if (stmt->data.enum_decl.values[j].payload_count > 0) { has_any_payload = true; break; }
-        }
-        if (has_any_payload) {
-            emit_formatted(codegen, "    union {\n");
-            for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
-                EnumVal *ev = &stmt->data.enum_decl.values[j];
-                if (ev->payload_count > 0) {
-                    emit_formatted(codegen, "        GrayEnum_%s_Data_%s %s;\n", ename, ev->name, ev->name);
-                }
-            }
-            emit_formatted(codegen, "    } data;\n");
-        }
-        emit_formatted(codegen, "};\n\n");
+        free(emitted);
+        if (tagged_enums) free(tagged_enums);
     }
 
     /* : emit per-instantiation typedefs for generic (wildcard) structs.

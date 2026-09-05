@@ -1,0 +1,54 @@
+/*
+ * Test: a struct field of a tagged-enum type compiles and works, and
+ * assigning a tagged-enum variant with a payload into an array slot
+ * compiles and works.
+ */
+
+const Shape enum {
+    Circle(float)
+    Point
+}
+
+const Obj struct {
+    shape Shape
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut o Obj = Obj{shape: Shape.Circle(3.0)}
+    mut kind string = ""
+    when o.shape {
+        is Circle(r) { kind = "circle:${r}" }
+        default { kind = "other" }
+    }
+    if kind == "circle:3.0" {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] struct field of tagged-enum type, got '${kind}'")
+        failed = failed + 1
+    }
+
+    mut shapes [Shape] = {Shape.Point, Shape.Point}
+    shapes[0] = Shape.Circle(5.0)
+    mut s Shape = shapes[0]
+    mut kind2 string = ""
+    when s {
+        is Circle(r) { kind2 = "circle:${r}" }
+        default { kind2 = "other" }
+    }
+    if kind2 == "circle:5.0" {
+        passed = passed + 1
+    } otherwise {
+        println("[FAIL] array-element assignment of tagged-enum value, got '${kind2}'")
+        failed = failed + 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
