@@ -4022,8 +4022,32 @@ static bool is_int_kind(TypeKind k) {
 /* Returns true if src can be assigned to dest under the standard coercion rules.
  * Does NOT cover context-specific exceptions (nil→ptr, ref→ptr, struct↔int)
  * which callers handle separately. */
+/* True for a Grayscale type C can hand back directly through a value return:
+ * the number families, bool, char, byte, and any pointer. A C function result
+ * annotated with one of these is the user asserting the C return type
+ * (STANDARD.md 8.6). string / array / map / struct / enum have no such direct
+ * form — string goes through c_string(), aggregates through individual fields. */
+static bool c_func_result_fits(GrayType *t) {
+    if (!t) return false;
+    if (t->name && (strcmp(t->name, "i128") == 0 || strcmp(t->name, "i256") == 0 ||
+                    strcmp(t->name, "u128") == 0 || strcmp(t->name, "u256") == 0))
+        return false;
+    switch (t->kind) {
+    case TK_INT: case TK_UINT: case TK_FLOAT:
+    case TK_BOOL: case TK_CHAR: case TK_BYTE: case TK_POINTER:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src) {
     if (!dest || !src) return false;
+    /* A C function result carries no statically known Grayscale type; it is
+     * incompatible with everything. The one allowed meeting point — an
+     * explicitly annotated declaration — is handled at the declaration site,
+     * not here. */
+    if (src->kind == TK_C_FUNC || dest->kind == TK_C_FUNC) return false;
     /* Pointer types must match element types (^int != ^float) */
     if (dest->kind == TK_POINTER && src->kind == TK_POINTER) {
         if (dest->element_type && src->element_type)
@@ -6850,7 +6874,8 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         if (node->data.call.arg_count >= 1) {
             GrayType *arg0 = resolve_expression(checker, node->data.call.args[0]);
-            if (arg0 && arg0->kind != TK_POINTER && arg0->kind != TK_UNKNOWN) {
+            if (arg0 && arg0->kind != TK_POINTER && arg0->kind != TK_UNKNOWN &&
+                arg0->kind != TK_C_FUNC) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "'c_string()' requires a raw C pointer; '%s' is not a pointer type. "
@@ -7002,6 +7027,10 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         if (node->data.call.arg_count >= 1) {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+            if (at->kind == TK_C_FUNC) {
+                diagnostic_error_code(checker->diag, "E3168",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
             if (at->kind == TK_FUNCTION) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
@@ -7031,6 +7060,10 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         }
         if (node->data.call.arg_count >= 1) {
             GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+            if (at->kind == TK_C_FUNC) {
+                diagnostic_error_code(checker->diag, "E3168",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
             if (at->kind == TK_FUNCTION) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
@@ -8332,24 +8365,22 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                  * new() (heap arena) and file-scope variables outlive the
                  * call and are allowed. */
                 AstNode *ca = node->data.call.args[argument_index];
-                if (checker->current_func_scope_depth > 0 &&
-                    ca && ca->kind == NODE_CALL_EXPR &&
-                    ca->data.call.function->kind == NODE_LABEL &&
-                    ca->data.call.arg_count == 1 &&
-                    (strcmp(ca->data.call.function->data.label.value, "addr") == 0 ||
-                     strcmp(ca->data.call.function->data.label.value, "ref") == 0 ||
-                     strcmp(ca->data.call.function->data.label.value, "raw") == 0)) {
-                    const char *root = assignment_target_root_name(ca->data.call.args[0]);
-                    int d = root
-                        ? symbol_scope_depth(checker->current_scope, root) : 0;
-                    if (d > 0 && d >= checker->current_func_scope_depth) {
+                if (checker->current_func_scope_depth > 0 && ca) {
+                    /* Value-flow, not AST shape: the address of a stack local
+                     * is rejected whether it is written inline as
+                     * addr()/ref()/raw() or laundered through an intermediate
+                     * pointer variable, a struct field, or a call that forwards
+                     * one of its pointer arguments. */
+                    const char *root = NULL;
+                    int d = expression_origin(checker, ca, &root);
+                    if (d > 0 && d >= checker->current_func_scope_depth && root) {
                         diagnostic_error_code_formatted(checker->diag, "E3154",
                             NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0,
                             root);
                     }
                 }
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
-                if (!arg_t || arg_t->kind == TK_UNKNOWN) continue;
+                if (!arg_t || arg_t->kind == TK_UNKNOWN || arg_t->kind == TK_C_FUNC) continue;
                 /* Reject bigint types */
                 if (arg_t->name &&
                     (strcmp(arg_t->name, "i128") == 0 || strcmp(arg_t->name, "i256") == 0 ||
@@ -8383,8 +8414,27 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                         NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                         node->data.call.args[argument_index]->token.column, 0);
                 }
+                /* Reject tagged (payload) enums — they compile to a tag+union C
+                 * struct with no stable layout a C function could expect, and
+                 * pass silently by value producing a garbage payload. */
+                if (arg_t->kind == TK_ENUM && arg_t->name &&
+                    typechecker_enum_is_tagged(checker, arg_t->name)) {
+                    char *msg = typechecker_format(checker,
+                        "cannot pass tagged enum '%s' to a C function; destructure it with when/is and pass the payload",
+                        enum_display_name(checker, arg_t->name));
+                    diagnostic_error_message(checker->diag, "E3158", msg,
+                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
+                        node->data.call.args[argument_index]->token.column, 0);
+                }
+                /* Reject Error — a Grayscale-runtime type with no C meaning. */
+                if (arg_t->kind == TK_ERROR) {
+                    diagnostic_error_message(checker->diag, "E3158",
+                        "cannot pass an Error value to a C function; pass 'err.code' or 'err.msg' instead",
+                        NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
+                        node->data.call.args[argument_index]->token.column, 0);
+                }
             }
-            result = &TYPE_UNKNOWN;
+            result = &TYPE_C_FUNC;
             return result;
         }
         /* Skip stdlib dispatch if this module is a user import, not stdlib.
@@ -8467,6 +8517,17 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     /* E3040: multi-return calls cannot appear as operands */
     reject_multi_return_in_single_position(checker, node->data.infix.left);
     reject_multi_return_in_single_position(checker, node->data.infix.right);
+
+    /* E3168: a C interop result has no Grayscale type to check the operator
+     * against; the C expression it lowers to would reach the C compiler
+     * unvalidated (e.g. char* + int). */
+    if ((left && left->kind == TK_C_FUNC) || (right && right->kind == TK_C_FUNC)) {
+        AstNode *bad = (left && left->kind == TK_C_FUNC)
+            ? node->data.infix.left : node->data.infix.right;
+        diagnostic_error_code(checker->diag, "E3168",
+            NODE_FILE(checker, bad), bad->token.line, bad->token.column, 0);
+        return &TYPE_UNKNOWN;
+    }
 
     /* String ordering operators not supported; use strings.compare() */
     if ((left->kind == TK_STRING || right->kind == TK_STRING) &&
@@ -9750,6 +9811,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3041",
                     "cannot interpolate void expression; the function does not return a value",
                     NODE_FILE(checker, node), line, col, 0);
+            } else if (pt->kind == TK_C_FUNC) {
+                /* Codegen would fall back to "%lld" + a long-long cast, silently
+                 * truncating a real double/pointer return value. */
+                diagnostic_error_code(checker->diag, "E3168",
+                    NODE_FILE(checker, node), line, col, 0);
             } else if (pt->kind == TK_ENUM && pt->name && typechecker_enum_is_tagged(checker, pt->name)) {
                 char *msg = typechecker_format(checker,
                     "cannot interpolate tagged enum '%s'; use when/is to destructure the payload first",
@@ -10189,7 +10255,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             for (int i = 1; i < node->data.array_value.count; i++) {
                 GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
                 reject_multi_return_in_single_position(checker, node->data.array_value.elements[i]);
-                if (!element_resolved || element_resolved->kind == TK_UNKNOWN || !first || first->kind == TK_UNKNOWN)
+                if (!element_resolved || element_resolved->kind == TK_UNKNOWN || !first ||
+                    first->kind == TK_UNKNOWN ||
+                    /* A C interop element has no Grayscale type to compare;
+                     * the element-vs-declared check (E3053) reports it. */
+                    first->kind == TK_C_FUNC || element_resolved->kind == TK_C_FUNC)
                     continue;
                 /* Strict type equality for array elements — no coercions */
                 bool compatible = (first->kind == element_resolved->kind);
@@ -10366,6 +10436,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* Same kind is always allowed (identity cast) */
             if (src_t->kind == dst_t->kind && src_t->kind != TK_ARRAY &&
                 src_t->kind != TK_MAP && src_t->kind != TK_STRUCT)
+                allowed = true;
+            /* A C interop result carries no Grayscale type; cast() to a
+             * C-representable scalar is the inline form of the
+             * annotated-declaration assertion (STANDARD.md 8.6). */
+            if (src_t->kind == TK_C_FUNC && c_func_result_fits(dst_t))
                 allowed = true;
             /* Numeric <-> Numeric (int, uint, float, char, byte, sized types) */
             if (type_is_numeric(src_t) && type_is_numeric(dst_t))
@@ -11633,6 +11708,18 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         /* If no declared type, infer from value */
         if (declared->kind == TK_UNKNOWN) {
             declared = value_type;
+        } else if (value_type->kind == TK_C_FUNC) {
+            /* The single place a C function result may meet a declared type:
+             * the annotation is the user asserting the C return type
+             * (STANDARD.md 8.6). Allowed only when C can hand that type back
+             * directly; string routes through c_string(), aggregates through
+             * individual fields. */
+            if (!c_func_result_fits(declared)) {
+                char *msg = typechecker_format(checker,
+                    "type mismatch: cannot assign %s to %s; convert it with c_string() for text, or read individual fields",
+                    type_display_name(checker, value_type), type_display_name(checker, declared));
+                tc_err_assign_type(checker, node, msg);
+            }
         } else if (!func_decl_reported &&
                    value_type->kind != TK_UNKNOWN &&
                    value_type->kind != TK_VOID &&
@@ -14282,7 +14369,10 @@ static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     if (expr && expr->kind == NODE_CALL_EXPR && expr_t &&
-        expr_t->kind != TK_VOID && expr_t->kind != TK_UNKNOWN) {
+        expr_t->kind != TK_VOID && expr_t->kind != TK_UNKNOWN &&
+        /* An extern. C call as a statement is a side-effect call; C code
+         * routinely ignores return values (free(), printf(), ...). */
+        expr_t->kind != TK_C_FUNC) {
         AstNode *fn = expr->data.call.function;
         const char *function_name = NULL;
         if (fn->kind == NODE_LABEL) function_name = fn->data.label.value;

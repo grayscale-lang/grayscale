@@ -2988,16 +2988,27 @@ do main() {
 }
 ```
 
-**Return types:** C function return types are inferred by the C compiler. If Grayscale needs to know the type (e.g., for `println`), add a type annotation:
+**Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
+
+- as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
+- as an argument to **another `extern.` call**
+- through **`c_string()`**, which converts a C `char*` to a Grayscale `string`
+- as the value of a **`cast()`** to one of the annotation-eligible types above
 
 ```gray
 extern import "math.h"
+extern import "stdlib.h"
 
 do main() {
-    mut x float = extern.sqrt(2.0)    // type annotation needed
-    println(x)                        // prints 1.4142135623730951
+    mut x float = extern.sqrt(2.0)             // annotated declaration
+    println(x)                                 // prints 1.4142135623730951
+
+    mut home string = c_string(extern.getenv("HOME"))   // text: via c_string()
+    println(home)
 }
 ```
+
+Using an `extern.` call result anywhere else — interpolating it, returning it, passing it to a Grayscale function, combining it in arithmetic, or placing it in an array or struct literal — is a compile error. Assign it to a typed variable first.
 
 #### Safety
 
@@ -3014,6 +3025,8 @@ The following Grayscale types cannot be passed to C functions:
 - `i128`, `i256`, `u128`, `u256` — C has no 128/256-bit integer types
 - Arrays and maps — Grayscale-specific types with no C equivalent
 - Grayscale structs — pass individual fields instead
+- Tagged (payload) enums — destructure with `when`/`is` and pass the payload
+- `Error` — a Grayscale runtime type with no C representation; pass `err.code` or `err.msg`
 
 C structs returned from C functions can be passed back to other C functions via `__auto_type` inference.
 

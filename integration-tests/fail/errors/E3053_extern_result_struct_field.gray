@@ -1,0 +1,17 @@
+/*
+ * Error Test: E3053 - an extern. C call result assigned to a struct literal
+ * field is caught instead of silently compiling to a zero-length string.
+ */
+// expect-error: E3053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+const Env struct {
+    home string
+}
+
+do main() {
+    mut e Env = Env{home: extern.getenv("HOME")}
+    println(e.home)
+}

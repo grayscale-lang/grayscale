@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3001 - an extern. C call result cannot initialise a string
+ * declaration directly; it must be converted with c_string(). A direct
+ * assignment silently compiles to a zero-length string.
+ */
+// expect-error: E3001
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut home string = extern.getenv("HOME")
+    println(home)
+}

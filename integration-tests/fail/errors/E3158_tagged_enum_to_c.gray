@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3158 - a tagged (payload) enum cannot cross the C boundary;
+ * it compiles to a tag+union C struct and passes silently as a garbage value.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+const Shape enum {
+    CIRCLE(float),
+    SQUARE(float)
+}
+
+do main() {
+    mut s Shape = Shape.CIRCLE(2.0)
+    extern.printf("%f\n", s)
+}

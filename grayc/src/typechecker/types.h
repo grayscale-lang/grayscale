@@ -31,6 +31,13 @@ typedef enum {
     TK_ERROR,
     TK_FUNCTION,
     TK_NIL,
+    /* The result of an `extern.` C function call. Its real type is known only
+     * to the C compiler, so it is deliberately incompatible with every
+     * Grayscale type: it may only be consumed by an explicitly type-annotated
+     * declaration, another `extern.` call, `c_string()`, or `cast()`. Distinct
+     * from TK_UNKNOWN so the type-compatibility checks (which skip TK_UNKNOWN
+     * for error recovery) still run against it. */
+    TK_C_FUNC,
     TK_UNKNOWN,
 } TypeKind;
 
@@ -66,6 +73,7 @@ extern GrayType TYPE_BYTE;
 extern GrayType TYPE_STRING;
 extern GrayType TYPE_NIL;
 extern GrayType TYPE_UNKNOWN;
+extern GrayType TYPE_C_FUNC;
 
 /* Type constructors */
 GrayType *type_array(const char *elem_type);

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3168 - an extern. C call result combined with a typed value in
+ * an arithmetic expression is caught before it reaches the C compiler.
+ */
+// expect-error: E3168
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut y int = extern.getenv("HOME") + 5
+    println(y)
+}

@@ -1,0 +1,17 @@
+/*
+ * Error Test: E5026 - an extern. C call result passed directly as an argument
+ * to a Grayscale function whose parameter has a concrete type is caught by the
+ * typechecker instead of leaking a raw C compiler error.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do use_string(s string) {
+    println(s)
+}
+
+do main() {
+    use_string(extern.getenv("HOME"))
+}

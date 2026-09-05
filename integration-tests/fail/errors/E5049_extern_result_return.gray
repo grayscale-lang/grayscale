@@ -1,0 +1,16 @@
+/*
+ * Error Test: E5049 - returning an extern. C call result directly from a
+ * function with a declared return type is caught by return-type checking.
+ */
+// expect-error: E5049
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do get_home() -> string {
+    return extern.getenv("HOME")
+}
+
+do main() {
+    println(get_home())
+}

@@ -251,7 +251,8 @@
     GRAY_ERROR("E3164", "safety", "'%s' points into arena '%s', which has already been destroyed") \
     GRAY_ERROR("E3165", "safety", "'%s' points into arena '%s', whose memory was released by 'mem.reset()'") \
     GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
-    GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported")
+    GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
+    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

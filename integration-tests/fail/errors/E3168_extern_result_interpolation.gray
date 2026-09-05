@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3168 - interpolating an extern. C call result is rejected;
+ * codegen would otherwise format it as an integer, silently truncating a
+ * real double return value.
+ */
+// expect-error: E3168
+// expect-error-count: 1
+
+extern import "math.h"
+
+do main() {
+    println("value: ${extern.sqrt(2.0)}")
+}

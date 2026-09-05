@@ -27,6 +27,7 @@ GrayType TYPE_BYTE    = {TK_BYTE,   "byte",   NULL, NULL, NULL, NULL};
 GrayType TYPE_STRING  = {TK_STRING, "string", NULL, NULL, NULL, NULL};
 GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL};
 GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
+GrayType TYPE_C_FUNC  = {TK_C_FUNC, "a C interop value", NULL, NULL, NULL, NULL};
 
 #define TYPE_POOL_CAPACITY 4096
 
