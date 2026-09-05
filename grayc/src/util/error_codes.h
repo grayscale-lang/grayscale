@@ -477,7 +477,8 @@
     GRAY_PANIC("P0114", "io",         "csv.read_file: input exceeds maximum string length") \
     GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
     GRAY_PANIC("P0116", "strings",    "string builder size exceeds maximum string length") \
-    GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset")
+    GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset") \
+    GRAY_PANIC("P0118", "runtime",    "call through a nil function value")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

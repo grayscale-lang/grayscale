@@ -1,0 +1,10 @@
+/* Panic Test: P0118 - call through a nil function value */
+const Ops struct {
+    name string
+    run  func() -> int
+}
+
+do main() {
+    mut o Ops = Ops{name: "x"}
+    println("${o.run()}")
+}

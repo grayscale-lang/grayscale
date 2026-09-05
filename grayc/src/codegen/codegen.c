@@ -7639,6 +7639,40 @@ static bool emit_tagged_enum_construction(CodeGen *codegen, AstNode *node) {
     return false;
 }
 
+/* Emits a call through a func-typed struct field: `obj.field(args)`, or
+ * `obj->field(args)` when `ptr_obj` (the object itself has pointer type,
+ * so its field needs an arrow rather than a dot). An unset `func` field is
+ * a NULL C function pointer with no other guard on the safe subset, so the
+ * call is wrapped in a nil check that panics (P0118) instead of jumping
+ * through NULL — which crashes with an uncatchable SIGILL and no
+ * Grayscale diagnostic. */
+static void emit_func_field_call(CodeGen *codegen, AstNode *node, AstNode *obj,
+                                  const char *member, bool ptr_obj) {
+    int nargs = node->data.call.arg_count;
+    if (nargs > 0 && !node->data.call.args) nargs = 0;
+    GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+    const char *c_ret = (ret_t && ret_t->kind != TK_UNKNOWN && ret_t->kind != TK_VOID)
+        ? gray_type_to_c_codegen(codegen, type_name(ret_t)) : "int64_t";
+    if (ret_t && ret_t->kind == TK_VOID) c_ret = "void";
+    emit_formatted(codegen, "((%s (*)(", c_ret);
+    for (int ai = 0; ai < nargs; ai++) {
+        if (ai > 0) emit(codegen, ", ");
+        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[ai]) : NULL;
+        emit(codegen, arg_type ? gray_type_to_c_codegen(codegen, type_name(arg_type)) : "int64_t");
+    }
+    emit(codegen, "))");
+    emit(codegen, "({ void *_fp = (void *)(");
+    emit_expression(codegen, obj);
+    emit_formatted(codegen, "%s%s); if (!_fp) { gray_panic_code_at(\"%s\", %d, \"P0118\", \"call through a nil function value\"); } _fp; })",
+        ptr_obj ? "->" : ".", member, codegen->file, node->token.line);
+    emit(codegen, ")(");
+    for (int ai = 0; ai < nargs; ai++) {
+        if (ai > 0) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[ai]);
+    }
+    emit(codegen, ")");
+}
+
 /* Struct-namespaced (Name.func()) calls and mod.Struct.func() chains.
  * Returns true when it emitted the call; false to fall through to the
  * general function-call path. */
@@ -7647,6 +7681,62 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.call.function->data.member.object;
         const char *member = node->data.call.function->data.member.member;
+
+        /* A call through a func-typed struct field on an explicit pointer
+         * dereference (`p^.field()`) is never touched by the typechecker's
+         * instance-dispatch rewrite — that rewrite only fires for a real
+         * struct function (retarget_member_object) — so `p^` reaches
+         * codegen exactly as written. Nothing ever resolves that `p^`
+         * expression node on its own (the typechecker reads the pointee
+         * type off `p`'s symbol directly via ast_member_base_qualifier
+         * without visiting the dereference), so it has no type_table
+         * entry; resolve the pointee struct the same ways the label-object
+         * path below resolves a plain `p.field()`. */
+        if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET &&
+            obj->data.postfix.left->kind == NODE_LABEL) {
+            const char *vname = obj->data.postfix.left->data.label.value;
+            const char *sn = NULL;
+            GrayType *ptr_t = codegen->type_table ? typetable_get(codegen->type_table, obj->data.postfix.left) : NULL;
+            if (ptr_t && ptr_t->kind == TK_POINTER && ptr_t->element_type) sn = ptr_t->element_type;
+            if (!sn) {
+                for (int si = 0; si < codegen->func_count && !sn; si++) {
+                    AstNode *fd = codegen->all_funcs[si];
+                    if (!fd->data.func_decl.body) continue;
+                    for (int bi = 0; bi < fd->data.func_decl.body->data.block.count && !sn; bi++) {
+                        AstNode *st = fd->data.func_decl.body->data.block.stmts[bi];
+                        if (st->kind != NODE_VAR_DECL || strcmp(st->data.var_decl.name, vname) != 0) continue;
+                        const char *tn = st->data.var_decl.type_name;
+                        if (tn && tn[0] == '^' && find_struct_declaration(codegen, tn + 1)) { sn = tn + 1; break; }
+                        if (st->data.var_decl.value && st->data.var_decl.value->kind == NODE_NEW_EXPR &&
+                            st->data.var_decl.value->data.new_expr.type_name) {
+                            sn = st->data.var_decl.value->data.new_expr.type_name;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!sn) {
+                build_function_field_index(codegen);
+                for (int i = 0; i < codegen->func_field_count; i++) {
+                    if (strcmp(codegen->func_field_index[i].field_name, member) == 0) {
+                        sn = codegen->func_field_index[i].struct_name;
+                        break;
+                    }
+                }
+            }
+            AstNode *sdecl = sn ? find_struct_declaration(codegen, sn) : NULL;
+            if (sdecl) {
+                for (int field_index = 0; field_index < sdecl->data.struct_decl.field_count; field_index++) {
+                    StructField *sf = &sdecl->data.struct_decl.fields[field_index];
+                    if (strcmp(sf->name, member) == 0 && sf->type_name &&
+                        (strcmp(sf->type_name, "func") == 0 || strncmp(sf->type_name, "func(", 5) == 0)) {
+                        emit_func_field_call(codegen, node, obj, member, false);
+                        return true;
+                    }
+                }
+            }
+        }
+
         /* Handle mod.Struct.func() triple chain: geometry.Vec2.create().
          * The struct the qualified name refers to is on the object node; the
          * function is that struct's, namespaced under it. */
@@ -7801,26 +7891,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                             if (strcmp(sdecl->data.struct_decl.fields[field_index].name, member) == 0 &&
                                 sdecl->data.struct_decl.fields[field_index].type_name &&
                                 (strcmp(sdecl->data.struct_decl.fields[field_index].type_name, "func") == 0 || strncmp(sdecl->data.struct_decl.fields[field_index].type_name, "func(", 5) == 0)) {
-                                int nargs = node->data.call.arg_count;
-                                if (nargs > 0 && !node->data.call.args) nargs = 0;
-                                GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
-                                const char *c_ret = (ret_t && ret_t->kind != TK_UNKNOWN && ret_t->kind != TK_VOID)
-                                    ? gray_type_to_c_codegen(codegen, type_name(ret_t)) : "int64_t";
-                                if (ret_t && ret_t->kind == TK_VOID) c_ret = "void";
-                                emit_formatted(codegen, "((%s (*)(", c_ret);
-                                for (int ai = 0; ai < nargs; ai++) {
-                                    if (ai > 0) emit(codegen, ", ");
-                                    GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[ai]) : NULL;
-                                    emit(codegen, arg_type ? gray_type_to_c_codegen(codegen, type_name(arg_type)) : "int64_t");
-                                }
-                                emit(codegen, "))");
-                                emit_expression(codegen, obj);
-                                emit_formatted(codegen, "%s%s)(", obj_is_ptr ? "->" : ".", member);
-                                for (int ai = 0; ai < nargs; ai++) {
-                                    if (ai > 0) emit(codegen, ", ");
-                                    emit_expression(codegen, node->data.call.args[ai]);
-                                }
-                                emit(codegen, ")");
+                                emit_func_field_call(codegen, node, obj, member, obj_is_ptr);
                                 return true;
                             }
                         }

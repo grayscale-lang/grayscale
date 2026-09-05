@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 449 codes** (316 errors, 16 warnings, 117 panics)
+**Total: 450 codes** (316 errors, 16 warnings, 118 panics)
 
 ---
 
@@ -476,6 +476,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0115` | runtime | read of '%s' on a nil Error; check the error is non-nil before reading its fields |
 | `P0116` | strings | string builder size exceeds maximum string length |
 | `P0117` | memory | dereferenced a pointer into an arena that has been destroyed or reset |
+| `P0118` | runtime | call through a nil function value |
 
 ---
 
@@ -500,4 +501,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-04 17:37:11 UTC*
+*Generated on 2026-09-05 10:39:09 UTC*
