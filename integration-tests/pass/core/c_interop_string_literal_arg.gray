@@ -1,0 +1,57 @@
+/*
+ * c_interop_string_literal_arg.gray - a string literal passed to an extern.
+ * call is lowered to a real C string literal ("..."), not
+ * gray_string_lit("...").data. This keeps -Wformat-security quiet on the
+ * printf family and lets the C compiler check their varargs; it must also
+ * still behave as a plain char* for every other C function.
+ */
+
+extern import "string.h"
+extern import "stdlib.h"
+extern import "stdio.h"
+
+do main() {
+    println("=== C interop: string literal argument ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // strcmp on two literals
+    mut cmp int = extern.strcmp("abc", "abc")
+    if cmp == 0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] strcmp literal")
+    }
+
+    // strstr: literal needle found inside a literal haystack
+    mut hit string = c_string(extern.strstr("abcdefXYZ", "XYZ"))
+    if hit == "XYZ" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] strstr literal, got '${hit}'")
+    }
+
+    // atoi on a literal
+    mut n int = extern.atoi("123")
+    if n == 123 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] atoi literal")
+    }
+
+    // printf with a literal format string and an escape (compiles clean,
+    // output goes to stdout)
+    extern.printf("  [INFO] printf literal format: %d\n", 7)
+    passed += 1
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

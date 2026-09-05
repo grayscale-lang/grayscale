@@ -1616,36 +1616,11 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
     }
 }
 
-static void emit_string_value(CodeGen *codegen, AstNode *node) {
-    /* Emit string literal, breaking hex escapes to prevent C's greedy \x parsing.
-     * "A\x42C" → "A\x42" "C" (C string concatenation) */
+/* Emit the escaped body of a C string literal for `node` (a NODE_STRING_VALUE),
+ * without the surrounding quotes or any gray_string_lit wrapper. Hex escapes are
+ * split with string concatenation ("A\x42" "C") to stop C's greedy \x parsing. */
+static void emit_c_string_body(CodeGen *codegen, AstNode *node) {
     const char *cursor = node->data.string_value.value;
-    /* Check for null bytes; if present, use gray_string_lit_len with explicit length
-     * since strlen() would truncate at the null */
-    bool has_null = false;
-    int str_len = 0;
-    for (const char *scan = cursor; *scan; scan++) {
-        if (scan[0] == '\\' && scan[1] == 'x' && scan[2] == '0' && scan[3] == '0') {
-            has_null = true;
-            str_len++; /* \x00 = 1 byte */
-            scan += 3;
-        } else if (scan[0] == '\\' && scan[1] == '0') {
-            has_null = true;
-            str_len++; /* \0 = 1 byte */
-            scan += 1;
-        } else if (scan[0] == '\\' && scan[1]) {
-            str_len++; /* other escape = 1 byte */
-            scan += 1;
-        } else {
-            str_len++;
-        }
-    }
-    /* Use macro form for file-scope compatibility */
-    if (has_null && codegen->indent > 0) {
-        emit_formatted(codegen, "gray_string_lit_len(\"");
-    } else {
-        emit(codegen, (codegen->indent == 0) ? "GRAY_STRING_LIT(\"" : "gray_string_lit(\"");
-    }
     if (node->data.string_value.is_raw) {
         /* Raw string; escape special characters for C output */
         while (*cursor) {
@@ -1695,6 +1670,36 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
             }
         }
     }
+}
+
+static void emit_string_value(CodeGen *codegen, AstNode *node) {
+    /* Check for null bytes; if present, use gray_string_lit_len with explicit
+     * length since strlen() would truncate at the null. */
+    bool has_null = false;
+    int str_len = 0;
+    for (const char *scan = node->data.string_value.value; *scan; scan++) {
+        if (scan[0] == '\\' && scan[1] == 'x' && scan[2] == '0' && scan[3] == '0') {
+            has_null = true;
+            str_len++; /* \x00 = 1 byte */
+            scan += 3;
+        } else if (scan[0] == '\\' && scan[1] == '0') {
+            has_null = true;
+            str_len++; /* \0 = 1 byte */
+            scan += 1;
+        } else if (scan[0] == '\\' && scan[1]) {
+            str_len++; /* other escape = 1 byte */
+            scan += 1;
+        } else {
+            str_len++;
+        }
+    }
+    /* Use macro form for file-scope compatibility */
+    if (has_null && codegen->indent > 0) {
+        emit_formatted(codegen, "gray_string_lit_len(\"");
+    } else {
+        emit(codegen, (codegen->indent == 0) ? "GRAY_STRING_LIT(\"" : "gray_string_lit(\"");
+    }
+    emit_c_string_body(codegen, node);
     if (has_null && codegen->indent > 0) {
         emit_formatted(codegen, "\", %d)", str_len);
     } else {
@@ -7772,15 +7777,26 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "%s(", member);
                 for (int i = 0; i < node->data.call.arg_count; i++) {
                     if (i > 0) emit(codegen, ", ");
+                    AstNode *arg = node->data.call.args[i];
+                    /* A string literal becomes a real C string literal, not
+                     * gray_string_lit("...").data. A C literal is a valid
+                     * const char*, so -Wformat-security stops firing and clang
+                     * can check the printf family's varargs against it. */
+                    if (arg->kind == NODE_STRING_VALUE) {
+                        emit(codegen, "\"");
+                        emit_c_string_body(codegen, arg);
+                        emit(codegen, "\"");
+                        continue;
+                    }
                     /* Auto-convert GrayString to char* for C functions */
                     GrayType *arg_t = codegen->type_table
-                        ? typetable_get(codegen->type_table, node->data.call.args[i])
+                        ? typetable_get(codegen->type_table, arg)
                         : NULL;
                     if (arg_t && arg_t->kind == TK_STRING) {
-                        emit_expression(codegen, node->data.call.args[i]);
+                        emit_expression(codegen, arg);
                         emit(codegen, ".data");
                     } else {
-                        emit_expression(codegen, node->data.call.args[i]);
+                        emit_expression(codegen, arg);
                     }
                 }
                 emit(codegen, ")");
