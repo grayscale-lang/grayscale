@@ -17,8 +17,9 @@ do main() {
     extern.puts("  hello from extern.puts")
     passed += 1
 
-    // Test 2: access C constants
-    if extern.EXIT_SUCCESS == 0 {
+    // Test 2: access C constants (assign to a typed variable first)
+    mut exit_ok int = extern.EXIT_SUCCESS
+    if exit_ok == 0 {
         println("  [PASS] extern.EXIT_SUCCESS == 0")
         passed += 1
     } otherwise {
@@ -26,7 +27,8 @@ do main() {
         failed += 1
     }
 
-    if extern.EXIT_FAILURE == 1 {
+    mut exit_fail int = extern.EXIT_FAILURE
+    if exit_fail == 1 {
         println("  [PASS] extern.EXIT_FAILURE == 1")
         passed += 1
     } otherwise {

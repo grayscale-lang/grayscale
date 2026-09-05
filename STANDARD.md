@@ -2951,14 +2951,19 @@ The `extern.` prefix is required at every C call site. `using` and `import ... a
 
 #### Accessing C Constants and Macros
 
-C constants and macros are accessed with the same `extern.` prefix:
+C constants and macros are accessed with the same `extern.` prefix. Their
+value has no Grayscale type of its own, exactly like a C call result, so the
+same rule applies — assign it to a type-annotated variable before using it
+(see **Return types** below):
 
 ```gray
 extern import "stdio.h"
 
 do main() {
-    println(extern.EOF)              // -1
-    println(extern.EXIT_SUCCESS)     // 0
+    mut eof int = extern.EOF        // -1
+    mut ok int = extern.EXIT_SUCCESS // 0
+    println(eof)
+    println(ok)
 }
 ```
 
@@ -2988,7 +2993,7 @@ do main() {
 }
 ```
 
-**Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
+**Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
 - as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
 - as an argument to **another `extern.` call**
@@ -3008,7 +3013,7 @@ do main() {
 }
 ```
 
-Using an `extern.` call result anywhere else — interpolating it, returning it, passing it to a Grayscale function, combining it in arithmetic, or placing it in an array or struct literal — is a compile error. Assign it to a typed variable first.
+Using an `extern.` call result or constant anywhere else — interpolating it, returning it, passing it to a Grayscale function, combining it in arithmetic, or placing it in an array or struct literal — is a compile error. Assign it to a typed variable first.
 
 #### Safety
 

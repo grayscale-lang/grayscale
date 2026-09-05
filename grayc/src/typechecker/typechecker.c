@@ -9083,9 +9083,12 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             return result;
         }
 
-        /* C interop constant access: extern.EOF, extern.NULL, etc. */
+        /* C interop constant/macro access: extern.EOF, extern.M_PI, etc.
+         * A C constant has no Grayscale type the compiler can know, exactly
+         * like a C call result, so it carries TYPE_C_FUNC and is confined to
+         * the same positions by the E3168 checks. */
         if (strcmp(obj_name, "extern") == 0 && typechecker_is_imported_module(checker, "extern")) {
-            result = &TYPE_UNKNOWN;
+            result = &TYPE_C_FUNC;
             return result;
         }
 

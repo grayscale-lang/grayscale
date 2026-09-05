@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3168 - a C constant/macro (extern.M_PI) has no Grayscale type,
+ * exactly like a C call result, so interpolating one is rejected rather than
+ * being silently formatted (and truncated) as an integer.
+ */
+// expect-error: E3168
+// expect-error-count: 1
+
+extern import "math.h"
+
+do main() {
+    println("pi: ${extern.M_PI}")
+}

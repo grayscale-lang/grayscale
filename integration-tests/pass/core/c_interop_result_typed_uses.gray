@@ -1,9 +1,9 @@
 /*
- * c_interop_result_typed_uses.gray - the ways an extern. C call result may be
- * consumed. Its type is known only to the C compiler, so it is valid only in a
- * type-annotated declaration, as an argument to another extern. call, through
- * c_string(), or through cast(). Every other position is a compile error
- * (covered by the fail/ suite).
+ * c_interop_result_typed_uses.gray - the ways an extern. C call result or
+ * constant may be consumed. Its type is known only to the C compiler, so it is
+ * valid only in a type-annotated declaration, as an argument to another extern.
+ * call, through c_string(), or through cast(). Every other position is a
+ * compile error (covered by the fail/ suite).
  */
 
 extern import "math.h"
@@ -64,8 +64,9 @@ do main() {
         println("  [FAIL] cast() path")
     }
 
-    // C constants remain plain integer-like values
-    if extern.EXIT_SUCCESS == 0 {
+    // C constants follow the same rule: annotate, then use
+    mut exit_ok int = extern.EXIT_SUCCESS
+    if exit_ok == 0 {
         passed += 1
     } otherwise {
         failed += 1
