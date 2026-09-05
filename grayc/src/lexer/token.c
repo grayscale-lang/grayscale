@@ -102,6 +102,13 @@ bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, con
     return false;
 }
 
+bool token_type_is_keyword(TokenType type) {
+    for (size_t i = 0; i < KEYWORD_COUNT; i++) {
+        if (keywords[i].type == type) return true;
+    }
+    return false;
+}
+
 /* Return the spelling a keyword token was actually written with, so
  * diagnostics quote the user's source rather than the canonical spelling of
  * an aliased keyword (`while` must not be reported as `as_long_as`). The

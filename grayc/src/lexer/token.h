@@ -163,6 +163,11 @@ typedef struct {
  * identifier. */
 bool token_lookup_keyword_n(const char *ident, int len, TokenType *out_type, const char **out_keyword);
 
+/* Return true if the given token type is produced by the lexer's keyword
+ * table (a reserved word). Derived from that table so the parser's
+ * reserved-word check cannot drift from the lexer. */
+bool token_type_is_keyword(TokenType type);
+
 /* Return human-readable name for a token type */
 const char *token_type_name(TokenType type);
 

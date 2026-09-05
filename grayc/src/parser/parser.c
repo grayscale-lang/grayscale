@@ -199,23 +199,12 @@ static bool expect_peek_token(Parser *parser, TokenType type) {
     return false;
 }
 
-/* Check if a token type is a keyword (reserved word) */
+/* Check if a token type is a keyword (reserved word). Derived from the
+ * lexer's keyword table so this cannot drift as keywords are added.
+ * `_` (TOK_BLANK) is excluded: it is the blank identifier and is valid in
+ * binding positions. */
 static bool is_keyword_token(TokenType type) {
-    switch (type) {
-    case TOK_MUT: case TOK_CONST: case TOK_DO: case TOK_RETURN:
-    case TOK_IF: case TOK_OR_KW: case TOK_OTHERWISE:
-    case TOK_FOR: case TOK_FOR_EACH: case TOK_AS_LONG_AS:
-    case TOK_LOOP: case TOK_BREAK: case TOK_CONTINUE:
-    case TOK_IN: case TOK_NOT_IN: case TOK_RANGE:
-    case TOK_IMPORT: case TOK_USING: case TOK_STRUCT: case TOK_ENUM:
-    case TOK_NIL: case TOK_NEW: case TOK_TRUE: case TOK_FALSE:
-    case TOK_ENSURE: case TOK_OR_RETURN: case TOK_WHEN:
-    case TOK_PRIVATE: case TOK_ALIAS:
-    case TOK_IS: case TOK_DEFAULT:
-        return true;
-    default:
-        return false;
-    }
+    return type != TOK_BLANK && token_type_is_keyword(type);
 }
 
 
@@ -2995,6 +2984,20 @@ static AstNode *parse_ensure_statement(Parser *parser) {
     return node;
 }
 
+/* Reject a reserved keyword used as a loop variable name. Expects the
+ * candidate name at cur_token; emits E4027 and synchronizes on a match. */
+static bool reject_keyword_as_loop_var(Parser *parser) {
+    if (!is_keyword_token(parser->cur_token.type)) return false;
+    char msg[MSG_BUF_SIZE];
+    snprintf(msg, sizeof(msg),
+        "'%s' is a reserved keyword and cannot be used as a loop variable name",
+        parser->cur_token.literal);
+    diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
+        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+    synchronize_parser(parser);
+    return true;
+}
+
 static AstNode *parse_for_statement(Parser *parser) {
     Token for_tok = parser->cur_token;
 
@@ -3033,6 +3036,13 @@ static AstNode *parse_for_statement(Parser *parser) {
         /* else: cur_token = IDENT, fall through to while-style */
     } else {
         next_token(parser);  /* advance to condition start token */
+        /* `for <keyword> in ...` — keyword used as a loop variable name.
+         * (A while-style condition may legitimately start with a keyword
+         * such as `true`, so only a following `in` marks a binding.) */
+        if (is_keyword_token(parser->cur_token.type) && peek_token_is(parser, TOK_IN)) {
+            reject_keyword_as_loop_var(parser);
+            return NULL;
+        }
     }
 
     /* --- while-style: for condition { } --- */
@@ -3053,6 +3063,7 @@ static AstNode *parse_for_each_statement(Parser *parser) {
     bool has_paren = current_token_is(parser, TOK_LPAREN);
     if (has_paren) next_token(parser);
 
+    if (reject_keyword_as_loop_var(parser)) return NULL;
     node->data.for_each.index_name = NULL;
     node->data.for_each.var_name = parser->cur_token.literal;
 
@@ -3061,6 +3072,7 @@ static AstNode *parse_for_each_statement(Parser *parser) {
         node->data.for_each.index_name = node->data.for_each.var_name;
         next_token(parser); /* skip comma */
         next_token(parser);
+        if (reject_keyword_as_loop_var(parser)) return NULL;
         node->data.for_each.var_name = parser->cur_token.literal;
     }
 
