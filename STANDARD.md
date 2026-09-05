@@ -2982,6 +2982,8 @@ do main() {
 | `string` | `char*` | Auto-converted when passed to C functions |
 | `^T` | `T*` | Direct pointer mapping |
 
+**Argument width:** an `extern.` call passes each argument at its Grayscale width and relies on C's implicit conversion to adjust it to the parameter type. Grayscale `int` / `uint` are 64-bit and `float` is 64-bit, so when the C parameter is narrower — C `int`, `unsigned int`, `short`, `float`, or `size_t` on a 32-bit target — the value is **silently truncated or narrowed** with no check and no panic. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly to match the C parameter. See **Safety** below.
+
 **String conversion:** Grayscale strings are automatically converted to `char*` when passed to C functions. To convert a C `char*` return value back to a Grayscale string, use the `c_string()` builtin:
 
 ```gray
@@ -3022,6 +3024,7 @@ Using an `extern.` call result or constant anywhere else — interpolating it, r
 - **Pointers returned from C are unmanaged.** ASBAM does not track them, their lifetime is whatever the C library defines, and dereferencing one carries no nil-check unless you first route it through normal `^T` handling.
 - **`addr()` of a local passed to C is unchecked.** If the C function retains the pointer past the enclosing Grayscale scope, the pointee is freed and the retained pointer dangles. The escape checks only match addresses that escape through Grayscale code.
 - **Lifetime, bounds, and freeing across the boundary are the programmer's responsibility.** A C function can free memory Grayscale still references, or write past the end of a buffer passed from Grayscale; neither is checked.
+- **Numeric arguments narrow silently.** Grayscale `int` / `uint` are 64-bit and `float` is 64-bit. When a C function's parameter is narrower, the argument is passed unchanged and C's implicit conversion truncates the integer or narrows the float — no diagnostic, no overflow panic, and for most functions no C warning either. The overflow panics and range-checked casts that guard a type-annotated extern *return* value do not apply to an extern *argument*. `extern.srand(4294967299)` seeds with `3`; `extern.abs(3000000001)` returns `1294967295`. Pass `i32` / `u32` / `f32` (or the matching sized type) explicitly when the C parameter is narrower than 64-bit.
 
 #### Restrictions
 
