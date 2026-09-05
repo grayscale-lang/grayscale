@@ -8367,6 +8367,16 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         if (strcmp(mod, "extern") == 0 && mod_imported) {
             /* Mark all C imports as used */
             mark_import_used(checker, "extern");
+            /* E5034: C functions have no parameter names; grayc cannot see the
+             * C signature, so a label would be silently dropped and the
+             * arguments passed in written order. Reject before codegen. */
+            if (typechecker_has_named_arguments(node)) {
+                char *msg = typechecker_format(checker,
+                    "named arguments are not supported for C interop calls; "
+                    "pass arguments to 'extern.%s' positionally", mfn);
+                diagnostic_error_message(checker->diag, "E5034", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
             /* Validate arguments; reject types that don't translate to C */
             for (int argument_index = 0; argument_index < node->data.call.arg_count; argument_index++) {
                 /* E3154: a stack address cannot cross into C. The direct

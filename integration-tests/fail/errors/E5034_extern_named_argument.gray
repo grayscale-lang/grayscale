@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5034 - a C function has no parameter names, so grayc cannot
+ * reorder named arguments and would silently drop the labels and pass the
+ * arguments in written order. An extern. call with a named argument is
+ * rejected, the same as a builtin.
+ */
+// expect-error: E5034
+// expect-error-count: 1
+
+extern import "string.h"
+
+do main() {
+    mut n i64 = extern.strlen(s: "hello")
+    println("${n}")
+}
