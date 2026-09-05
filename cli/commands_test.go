@@ -14,6 +14,49 @@ import (
 	"testing"
 )
 
+func TestLangDisplayName(t *testing.T) {
+	cases := []struct{ key, want string }{
+		{"string_type", "string"},
+		{"int_type", "int"},
+		{"do", "do"},
+		{"mut", "mut"},
+	}
+	for _, c := range cases {
+		t.Run(c.key, func(t *testing.T) {
+			if got := langDisplayName(c.key); got != c.want {
+				t.Errorf("langDisplayName(%q) = %q, want %q", c.key, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseArenaLimit(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    uint64
+		wantErr bool
+	}{
+		{"", 0, false},
+		{"512KB", 512 * 1024, false},
+		{"2MB", 2 * 1024 * 1024, false},
+		{"1GB", 1024 * 1024 * 1024, false},
+		{"1gb", 1024 * 1024 * 1024, false},
+		{"256", 0, true},
+		{"abcMB", 0, true},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			got, err := parseArenaLimit(c.in)
+			if (err != nil) != c.wantErr {
+				t.Fatalf("parseArenaLimit(%q) error = %v, wantErr %v", c.in, err, c.wantErr)
+			}
+			if err == nil && got != c.want {
+				t.Errorf("parseArenaLimit(%q) = %d, want %d", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	r, w, err := os.Pipe()

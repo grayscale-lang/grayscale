@@ -15,6 +15,43 @@ import (
 	"testing"
 )
 
+func TestGraycBinaryName(t *testing.T) {
+	want := "grayc"
+	if runtime.GOOS == "windows" {
+		want = "grayc.exe"
+	}
+	if got := graycBinaryName(); got != want {
+		t.Errorf("graycBinaryName() = %q, want %q", got, want)
+	}
+}
+
+func TestExecuteSilent(t *testing.T) {
+	shell := "/bin/sh"
+	if runtime.GOOS == "windows" {
+		t.Skip("no /bin/sh on windows")
+	}
+
+	code, err := executeSilent(shell, []string{"-c", "exit 0"})
+	if err != nil {
+		t.Fatalf("executeSilent success case: %v", err)
+	}
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0", code)
+	}
+
+	code, err = executeSilent(shell, []string{"-c", "exit 3"})
+	if err != nil {
+		t.Fatalf("executeSilent nonzero-exit case: %v", err)
+	}
+	if code != 3 {
+		t.Errorf("exit code = %d, want 3", code)
+	}
+
+	if _, err := executeSilent("/no/such/binary", nil); err == nil {
+		t.Error("expected an error when the binary does not exist")
+	}
+}
+
 func TestStatFile(t *testing.T) {
 	dir := t.TempDir()
 

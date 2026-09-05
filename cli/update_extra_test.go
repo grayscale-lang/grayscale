@@ -9,6 +9,14 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -260,6 +268,177 @@ func TestParseReleaseBody_Empty(t *testing.T) {
 	cl := parseReleaseBody("")
 	if len(cl.Features) != 0 || len(cl.BugFixes) != 0 {
 		t.Errorf("empty body should produce empty changelog, got %+v", cl)
+	}
+}
+
+func TestIsTrustedUpdateURL(t *testing.T) {
+	cases := []struct {
+		url  string
+		want bool
+	}{
+		{"https://github.com/grayscale-lang/grayscale/releases/download/v1.0.0/gray-linux", true},
+		{"http://github.com/grayscale-lang/grayscale/releases/download/v1.0.0/gray-linux", false},
+		{"https://evil.com/grayscale-lang/grayscale/releases/download/v1.0.0/gray-linux", false},
+		{"https://github.com/some-other-org/repo/releases/download/v1.0.0/gray-linux", false},
+		{"not a url at all\x7f", false},
+	}
+	for _, c := range cases {
+		t.Run(c.url, func(t *testing.T) {
+			if got := isTrustedUpdateURL(c.url); got != c.want {
+				t.Errorf("isTrustedUpdateURL(%q) = %v, want %v", c.url, got, c.want)
+			}
+		})
+	}
+}
+
+func TestFormatChangelog(t *testing.T) {
+	releases := []GitHubRelease{
+		{TagName: "v1.1.0", Body: "### Features\n- New thing (#1)\n"},
+		{TagName: "v1.0.1", Body: "no notable changes"},
+	}
+	out := formatChangelog(releases, "v1.0.0", "v1.1.0")
+	if !strings.Contains(out, "Updating from v1.0.0 -> v1.1.0") {
+		t.Errorf("formatChangelog missing version header, got: %q", out)
+	}
+	if !strings.Contains(out, "v1.1.0") {
+		t.Errorf("formatChangelog missing release tag, got: %q", out)
+	}
+	if !strings.Contains(out, "New thing") {
+		t.Errorf("formatChangelog missing feature text, got: %q", out)
+	}
+	if strings.Contains(out, "v1.0.1") {
+		t.Errorf("formatChangelog should skip a release with no features/fixes, got: %q", out)
+	}
+}
+
+func TestExtractTarGz(t *testing.T) {
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "release.tar.gz")
+
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+	files := map[string]string{"gray": "gray-binary-contents", "readme.txt": "ignored"}
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(content)), Mode: 0o755}); err != nil {
+			t.Fatalf("write tar header: %v", err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatalf("write tar content: %v", err)
+		}
+	}
+	tw.Close()
+	gzw.Close()
+	if err := os.WriteFile(archivePath, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	destDir := t.TempDir()
+	binPath, err := extractTarGz(archivePath, destDir)
+	if err != nil {
+		t.Fatalf("extractTarGz: %v", err)
+	}
+	got, err := os.ReadFile(binPath)
+	if err != nil {
+		t.Fatalf("read extracted binary: %v", err)
+	}
+	if string(got) != "gray-binary-contents" {
+		t.Errorf("extracted content = %q, want %q", got, "gray-binary-contents")
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "readme.txt")); !os.IsNotExist(err) {
+		t.Errorf("readme.txt should not have been extracted")
+	}
+}
+
+func TestExtractTarGz_MissingBinary(t *testing.T) {
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "release.tar.gz")
+
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+	tw.WriteHeader(&tar.Header{Name: "readme.txt", Size: 4, Mode: 0o644})
+	tw.Write([]byte("nope"))
+	tw.Close()
+	gzw.Close()
+	if err := os.WriteFile(archivePath, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	if _, err := extractTarGz(archivePath, t.TempDir()); err == nil {
+		t.Error("expected an error when the archive has no gray binary")
+	}
+}
+
+func TestExtractZip(t *testing.T) {
+	dir := t.TempDir()
+	archivePath := filepath.Join(dir, "release.zip")
+
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	files := map[string]string{"gray": "gray-binary-contents", "readme.txt": "ignored"}
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zip create %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("zip write %s: %v", name, err)
+		}
+	}
+	zw.Close()
+	if err := os.WriteFile(archivePath, buf.Bytes(), 0o644); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+
+	destDir := t.TempDir()
+	binPath, err := extractZip(archivePath, destDir)
+	if err != nil {
+		t.Fatalf("extractZip: %v", err)
+	}
+	got, err := os.ReadFile(binPath)
+	if err != nil {
+		t.Fatalf("read extracted binary: %v", err)
+	}
+	if string(got) != "gray-binary-contents" {
+		t.Errorf("extracted content = %q, want %q", got, "gray-binary-contents")
+	}
+	if _, err := os.Stat(filepath.Join(destDir, "readme.txt")); !os.IsNotExist(err) {
+		t.Errorf("readme.txt should not have been extracted")
+	}
+}
+
+func TestCopyFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.bin")
+	dst := filepath.Join(dir, "dst.bin")
+	if err := os.WriteFile(src, []byte("payload"), 0o755); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile: %v", err)
+	}
+	got, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read dst: %v", err)
+	}
+	if string(got) != "payload" {
+		t.Errorf("dst content = %q, want %q", got, "payload")
+	}
+}
+
+func TestGetAssetName(t *testing.T) {
+	name := getAssetName()
+	wantPrefix := "gray-" + runtime.GOOS + "-" + runtime.GOARCH
+	if !strings.HasPrefix(name, wantPrefix) {
+		t.Errorf("getAssetName() = %q, want prefix %q", name, wantPrefix)
+	}
+	wantExt := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		wantExt = ".zip"
+	}
+	if !strings.HasSuffix(name, wantExt) {
+		t.Errorf("getAssetName() = %q, want suffix %q", name, wantExt)
 	}
 }
 

@@ -18,6 +18,72 @@ import (
 	"testing"
 )
 
+func TestExtractFuncName(t *testing.T) {
+	cases := []struct{ line, want string }{
+		{"do add(a int, b int) -> int {", "add"},
+		{"private do helper() {", "helper"},
+		{"do main() {", "main"},
+	}
+	for _, c := range cases {
+		t.Run(c.want, func(t *testing.T) {
+			if got := extractFuncName(c.line); got != c.want {
+				t.Errorf("extractFuncName(%q) = %q, want %q", c.line, got, c.want)
+			}
+		})
+	}
+}
+
+func TestExtractStructEnumName(t *testing.T) {
+	cases := []struct{ line, want string }{
+		{"const Point struct {", "Point"},
+		{"const Color enum {", "Color"},
+	}
+	for _, c := range cases {
+		t.Run(c.want, func(t *testing.T) {
+			if got := extractStructEnumName(c.line); got != c.want {
+				t.Errorf("extractStructEnumName(%q) = %q, want %q", c.line, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsVarDecl(t *testing.T) {
+	cases := []struct {
+		line string
+		want bool
+	}{
+		{"const PI float = 3.14", true},
+		{"mut counter int = 0", true},
+		{"private const MAX int = 100", true},
+		{"const Point struct {", false},
+		{"const Color enum {", false},
+		{"do main() {", false},
+		{"const NoValue int", false},
+	}
+	for _, c := range cases {
+		t.Run(c.line, func(t *testing.T) {
+			if got := isVarDecl(c.line); got != c.want {
+				t.Errorf("isVarDecl(%q) = %v, want %v", c.line, got, c.want)
+			}
+		})
+	}
+}
+
+func TestExtractVarName(t *testing.T) {
+	cases := []struct{ line, want string }{
+		{"const PI float = 3.14", "PI"},
+		{"mut counter int = 0", "counter"},
+		{"private const MAX int = 100", "MAX"},
+	}
+	for _, c := range cases {
+		t.Run(c.want, func(t *testing.T) {
+			if got := extractVarName(c.line); got != c.want {
+				t.Errorf("extractVarName(%q) = %q, want %q", c.line, got, c.want)
+			}
+		})
+	}
+}
+
 // writeGraySource writes a tiny .gray source file with one documented
 // function so generateDocs has at least one entry to emit.
 func writeGraySource(t *testing.T, dir string) string {
