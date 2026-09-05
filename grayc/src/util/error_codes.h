@@ -338,7 +338,8 @@
     GRAY_ERROR("E6011", "imports", "module '%s' is already imported in this file") \
     GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file") \
     GRAY_ERROR("E6013", "imports", "C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.'") \
-    GRAY_ERROR("E6014", "imports", "malformed import statement")
+    GRAY_ERROR("E6014", "imports", "malformed import statement") \
+    GRAY_ERROR("E6015", "imports", "C header '%s' could not be found for the current target")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \

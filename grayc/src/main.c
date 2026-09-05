@@ -247,6 +247,95 @@ static const char *detect_cc(void) {
     return gray_find_cc_fallback();
 }
 
+/* A C header path written as a local include: "./x.h" or "../x.h". */
+static bool c_header_is_local(const char *path) {
+    return path[0] == '.' && (path[1] == '/' ||
+           (path[1] == '.' && path[2] == '/'));
+}
+
+/* Preflight every distinct C header named by an `extern import` before the
+ * real compile. A header that is missing, misspelled, or exists only on
+ * another platform otherwise surfaces as the C compiler's own "file not
+ * found" against a temp .c path the user never wrote. Reports a diagnostic
+ * anchored at the import instead. `cc_cmd` / `cc_is_command` are what the real
+ * build will invoke, so a cross-compile target's headers are what is checked.
+ * Returns false when at least one header could not be resolved. */
+static bool preflight_c_headers(AstNode *program, DiagnosticList *diag, Arena *arena,
+                                const char *cc_cmd, bool cc_is_command,
+                                const char *entry_file) {
+    const char *seen[MAX_CC_ARGS];
+    int seen_count = 0;
+    bool ok = true;
+
+    for (int si = 0; si < program->data.program.stmt_count; si++) {
+        AstNode *stmt = program->data.program.stmts[si];
+        if (stmt->kind != NODE_IMPORT_STMT) continue;
+        for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
+            ImportItem *item = &stmt->data.import_stmt.items[ii];
+            if (!item->is_c_import || !item->path) continue;
+
+            bool dup = false;
+            for (int k = 0; k < seen_count; k++)
+                if (strcmp(seen[k], item->path) == 0) { dup = true; break; }
+            if (dup) continue;
+            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item->path;
+
+            bool found;
+            if (c_header_is_local(item->path)) {
+                /* Resolve against the directory of the importing file. */
+                char base[PATH_BUF_SIZE];
+                const char *dir = item->source_dir;
+                if (!dir) {
+                    snprintf(base, sizeof(base), "%s", entry_file);
+                    char *sep = gray_path_rsep(base);
+                    if (sep) sep[1] = '\0';
+                    else snprintf(base, sizeof(base), "./");
+                    dir = base;
+                }
+                char resolved[PATH_BUF_SIZE];
+                snprintf(resolved, sizeof(resolved), "%s%s", dir, item->path);
+                found = gray_file_readable(resolved);
+            } else {
+                /* Angle-bracket header: ask the target compiler whether it
+                 * can find it. -fsyntax-only stops before codegen. */
+                char stub[PATH_BUF_SIZE];
+                int sn = gray_temp_path(stub, sizeof(stub), "gray_hdrcheck_", ".c");
+                if (sn < 0 || (size_t)sn >= sizeof(stub))
+                    continue; /* cannot check — let the real compile report it */
+                char body[PATH_BUF_SIZE];
+                snprintf(body, sizeof(body),
+                    "#include <%s>\nint main(void){return 0;}\n", item->path);
+                if (!write_file(stub, body)) { gray_remove_file(stub); continue; }
+
+                ArgV a = {0};
+                if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
+                else argv_push(&a, cc_cmd);
+                argv_push(&a, "-fsyntax-only");
+                argv_push(&a, "-x");
+                argv_push(&a, "c");
+                argv_push(&a, stub);
+                argv_end(&a);
+                found = !a.overflow && gray_spawn_quiet(a.v) == 0;
+                gray_remove_file(stub);
+            }
+
+            if (!found) {
+                ok = false;
+                char help[512];
+                snprintf(help, sizeof(help),
+                    "'%s' is not available for this target, or the library that "
+                    "provides it is not installed. Platform-specific C headers "
+                    "must be guarded per target.", item->path);
+                diagnostic_error_code_formatted_help(diag, "E6015",
+                    item->token.file ? item->token.file : entry_file,
+                    item->token.line, item->token.column, 0,
+                    arena_copy_string(arena, help), item->path);
+            }
+        }
+    }
+    return ok;
+}
+
 /* Command-line configuration, filled by parse_args() and read-only after. */
 typedef struct {
     const char *input_file;
@@ -689,6 +778,23 @@ int main(int argc, char **argv) {
         return 1;
     }
 #endif
+
+    /* Preflight C-interop headers so a missing or wrong-platform header is a
+     * Grayscale diagnostic anchored at the `extern import`, not a raw C
+     * compiler error against a temp file. */
+    if (!preflight_c_headers(program, diag, arena, cc_cmd,
+                             opts.cc_override != NULL, opts.input_file)) {
+        gray_remove_file(c_file);
+        diagnostic_print_all(diag);
+        diagnostic_print_summary(diag);
+        diagnostic_destroy(diag);
+        codegen_destroy(&codegen);
+        typechecker_free(checker);
+        arena_destroy(arena);
+        free(source);
+        free(default_output);
+        return 1;
+    }
 
     /* Compile the generated C code.
      * Try linking against pre-compiled libgrayrt.a first (fast path).

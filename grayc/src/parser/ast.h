@@ -119,6 +119,7 @@ typedef struct {
     bool is_stdlib;
     bool is_c_import;   /* extern import "header.h" — raw C header include */
     const char *source_dir; /* directory of the file containing this import (for transitive resolution) */
+    Token token;        /* the header-path string literal, for diagnostics (C imports only) */
 } ImportItem;
 
 /* When case */

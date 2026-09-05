@@ -2255,6 +2255,7 @@ static AstNode *parse_import_statement(Parser *parser) {
             item->is_c_import = true;
             item->is_stdlib = false;
             item->path = parser->cur_token.literal;
+            item->token = parser->cur_token;
             item->alias = "extern";
             item->module = "extern";
             /* Validate path: only [A-Za-z0-9./_+-] permitted to prevent injection */
@@ -2306,6 +2307,7 @@ static AstNode *parse_import_statement(Parser *parser) {
                 item->is_c_import = true;
                 item->is_stdlib = false;
                 item->path = parser->cur_token.literal;
+                item->token = parser->cur_token;
                 item->alias = "extern";
                 item->module = "extern";
                 goto import_item_done;
