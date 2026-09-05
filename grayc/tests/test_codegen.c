@@ -1605,8 +1605,10 @@ static void test_e2e_c_interop(void) {
         ""
         "extern import \"stdlib.h\"\n"
         "do main() {\n"
-        "  println(extern.EXIT_SUCCESS)\n"
-        "  println(extern.EXIT_FAILURE)\n"
+        "  mut ok int = extern.EXIT_SUCCESS\n"
+        "  mut fail int = extern.EXIT_FAILURE\n"
+        "  println(ok)\n"
+        "  println(fail)\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "0\n1");
