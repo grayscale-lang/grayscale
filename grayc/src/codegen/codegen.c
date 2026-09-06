@@ -323,18 +323,26 @@ static int int_type_rank(const char *type_name) {
 /* Look up sized-integer bounds for overflow checking.
  * Returns true if the type is a sized integer, populating the out params.
  * For unsigned types, *is_unsigned is set and *min_out is NULL. */
+/* min_out/max_out/is_unsigned may each be NULL when the caller wants only
+ * the others. min_out stays NULL for unsigned types (their min is 0). */
 static bool sized_int_bounds(const char *type_name,
                              const char **min_out, const char **max_out,
                              bool *is_unsigned) {
-    *min_out = NULL; *max_out = NULL; *is_unsigned = false;
-    if (!type_name) return false;
-    if (strcmp(type_name, "i8") == 0)  { *min_out = "-128"; *max_out = "127"; return true; }
-    if (strcmp(type_name, "i16") == 0) { *min_out = "-32768"; *max_out = "32767"; return true; }
-    if (strcmp(type_name, "i32") == 0) { *min_out = "-2147483648LL"; *max_out = "2147483647LL"; return true; }
-    if (strcmp(type_name, "u8") == 0 || strcmp(type_name, "byte") == 0)  { *is_unsigned = true; *max_out = "255"; return true; }
-    if (strcmp(type_name, "u16") == 0) { *is_unsigned = true; *max_out = "65535"; return true; }
-    if (strcmp(type_name, "u32") == 0) { *is_unsigned = true; *max_out = "4294967295ULL"; return true; }
-    return false;
+    const char *min = NULL, *max = NULL;
+    bool u = false, known = true;
+    if (!type_name) known = false;
+    else if (strcmp(type_name, "i8") == 0)  { min = "-128"; max = "127"; }
+    else if (strcmp(type_name, "i16") == 0) { min = "-32768"; max = "32767"; }
+    else if (strcmp(type_name, "i32") == 0) { min = "-2147483648LL"; max = "2147483647LL"; }
+    else if (strcmp(type_name, "u8") == 0 || strcmp(type_name, "byte") == 0) { u = true; max = "255"; }
+    else if (strcmp(type_name, "u16") == 0) { u = true; max = "65535"; }
+    else if (strcmp(type_name, "u32") == 0) { u = true; max = "4294967295ULL"; }
+    else known = false;
+
+    if (min_out) *min_out = min;
+    if (max_out) *max_out = max;
+    if (is_unsigned) *is_unsigned = u;
+    return known;
 }
 
 /* Return the runtime overflow-check function name for a compound assignment
@@ -2656,8 +2664,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
             const char *signed_min = NULL;
             if (is_signed) {
                 const char *sized_name = (left_type && left_type->name) ? left_type->name : ((right_type && right_type->name) ? right_type->name : NULL);
-                const char *_unused_max; bool _unused_u;
-                if (!sized_name || !sized_int_bounds(sized_name, &signed_min, &_unused_max, &_unused_u))
+                if (!sized_name || !sized_int_bounds(sized_name, &signed_min, NULL, NULL))
                     signed_min = "(-9223372036854775807LL - 1)";
             }
             emit(codegen, "({ __auto_type _dv = ");
@@ -10399,8 +10406,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 bool unsigned_op = (tgt_t->kind == TK_UINT || tgt_t->kind == TK_BYTE);
                 const char *signed_min = NULL;
                 if (!unsigned_op) {
-                    const char *_unused_max; bool _unused_u;
-                    if (!sn || !sized_int_bounds(sn, &signed_min, &_unused_max, &_unused_u))
+                    if (!sn || !sized_int_bounds(sn, &signed_min, NULL, NULL))
                         signed_min = "(-9223372036854775807LL - 1)";
                 }
                 const char *binop = (aop == TOK_SLASH_ASSIGN) ? "/" : "%";
