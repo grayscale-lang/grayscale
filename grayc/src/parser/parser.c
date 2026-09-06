@@ -67,7 +67,7 @@ typedef enum {
 
 /* Returns true when this attribute was already applied to the current
  * declaration, emitting E2090 at the current token in that case. */
-static bool note_dup_attr(Parser *parser, AttrBit bit, const char *name) {
+static bool reject_duplicate_attr(Parser *parser, AttrBit bit, const char *name) {
     if (parser->attr_seen_mask & bit) {
         diagnostic_error_code_formatted(parser->diag, "E2090",
             parser->file, parser->cur_token.line, parser->cur_token.column, 0, name);
@@ -80,7 +80,7 @@ static bool note_dup_attr(Parser *parser, AttrBit bit, const char *name) {
 /* Emits E2094 for an attribute applied to the wrong kind of declaration, or
  * with a malformed argument. Pins the code so the situation stays 1:1 with its
  * diagnostic (see scripts/check_error_codes.gray). `msg` is arena-owned. */
-static void parser_err_attr(Parser *parser, const char *msg, int line, int col) {
+static void emit_attr_error(Parser *parser, const char *msg, int line, int col) {
     diagnostic_error_message(parser->diag, "E2094", msg, parser->file, line, col, 0);
 }
 
@@ -110,25 +110,25 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_test = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "discard") == 0) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_discard = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "json") == 0) {
         if (stmt && stmt->kind == NODE_STRUCT_DECL) {
             stmt->data.struct_decl.is_json = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#json attribute can only be applied to struct declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "flags") == 0) {
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), where.line, where.column);
         }
     } else if (strcmp(name, "error_code") == 0) {
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
@@ -141,7 +141,7 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
         if (stmt && stmt->kind == NODE_WHEN_STMT) {
             stmt->data.when_stmt.is_strict = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), where.line, where.column);
         }
     } else if (strcmp(name, "deprecated") == 0) {
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
@@ -154,7 +154,7 @@ static void apply_named_attribute(Parser *parser, AstNode *stmt,
             stmt->data.enum_decl.is_deprecated = true;
             stmt->data.enum_decl.deprecated_message = dep_msg;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), where.line, where.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), where.line, where.column);
         }
     }
     /* "doc": the parser discards #doc metadata today, so there is nothing to
@@ -2523,7 +2523,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * stack the attributes instead. Emit one error and skip the list so the
          * body keeps parsing. */
         if (current_token_is(parser, TOK_HASH_LBRACKET)) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "'#[...]' attribute lists are not supported on struct functions; stack the attributes one per line instead"), parser->cur_token.line, parser->cur_token.column);
             while (!current_token_is(parser, TOK_RBRACKET) && !current_token_is(parser, TOK_EOF)
                    && !current_token_is(parser, TOK_RBRACE)) {
                 next_token(parser);
@@ -2535,7 +2535,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * the attribute + any parenthesised args, then continue so
          * the next token (do/private do) is handled normally. */
         if (current_token_is(parser, TOK_DOC)) {
-            note_dup_attr(parser, ATTR_DOC, "#doc");
+            reject_duplicate_attr(parser, ATTR_DOC, "#doc");
             if (peek_token_is(parser, TOK_LPAREN)) {
                 next_token(parser);
                 while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF))
@@ -2547,7 +2547,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* #discard inside struct body: set pending flag, then the
          * next iteration will attach it to the parsed function. */
         if (current_token_is(parser, TOK_DISCARD)) {
-            note_dup_attr(parser, ATTR_DISCARD, "#discard");
+            reject_duplicate_attr(parser, ATTR_DISCARD, "#discard");
             pending_discard = true;
             next_token(parser);
             continue;
@@ -2555,14 +2555,14 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* #test is not allowed on struct functions — a test function must be
          * a top-level 'do' so the runner can call it directly. */
         if (current_token_is(parser, TOK_TEST)) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to top-level function declarations, not struct functions"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to top-level function declarations, not struct functions"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser);
             continue;
         }
         /* #deprecated inside struct body: same pending-flag treatment,
          * independent of pending_discard so both can stack on one function. */
         if (current_token_is(parser, TOK_DEPRECATED)) {
-            bool dup = note_dup_attr(parser, ATTR_DEPRECATED, "#deprecated");
+            bool dup = reject_duplicate_attr(parser, ATTR_DEPRECATED, "#deprecated");
             next_token(parser); /* consume #deprecated */
             pending_deprecated = true;
             if (!dup) pending_deprecated_message = NULL;
@@ -2572,12 +2572,12 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                     if (!dup) pending_deprecated_message = arena_copy_string(parser->arena, parser->cur_token.literal);
                     next_token(parser); /* consume string */
                 } else {
-                    parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
+                    emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
                 }
                 if (current_token_is(parser, TOK_RPAREN)) {
                     next_token(parser); /* consume ) */
                 } else {
-                    parser_err_attr(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
+                    emit_attr_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
                 }
             }
             continue;
@@ -2678,7 +2678,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Same for #deprecated. Clearing the pending state is what stops the
          * attribute from drifting onto the next struct function in the body. */
         if (pending_deprecated) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
             pending_deprecated = false;
             pending_deprecated_message = NULL;
         }
@@ -2814,12 +2814,12 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             continue;
         }
         if (current_token_is(parser, TOK_TEST)) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations, not enum variants"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations, not enum variants"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser);
             continue;
         }
         if (current_token_is(parser, TOK_DEPRECATED)) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
             next_token(parser); /* consume #deprecated */
             /* Consume an optional ("message") so it is not read as a variant */
             if (current_token_is(parser, TOK_LPAREN)) {
@@ -3460,31 +3460,31 @@ static AstNode *parse_statement(Parser *parser) {
         return parse_alias_declaration(parser);
     case TOK_STRICT: {
         /* #strict; applies to the next when statement */
-        bool dup = note_dup_attr(parser, ATTR_STRICT, "#strict");
+        bool dup = reject_duplicate_attr(parser, ATTR_STRICT, "#strict");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_WHEN_STMT) {
             stmt->data.when_stmt.is_strict = true;
         } else if (!dup) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#strict attribute can only be applied to when statements"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_FLAGS: {
         /* #flags; applies to the next enum declaration */
-        note_dup_attr(parser, ATTR_FLAGS, "#flags");
+        reject_duplicate_attr(parser, ATTR_FLAGS, "#flags");
         next_token(parser); /* skip #flags */
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
             stmt->data.enum_decl.is_flags = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#flags attribute can only be applied to enum declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_ERROR_CODE_ATTR: {
         /* #error_code; contributes an enum's variants to the ErrorCode set */
-        note_dup_attr(parser, ATTR_ERROR_CODE, "#error_code");
+        reject_duplicate_attr(parser, ATTR_ERROR_CODE, "#error_code");
         next_token(parser); /* skip #error_code */
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_ENUM_DECL) {
@@ -3497,44 +3497,44 @@ static AstNode *parse_statement(Parser *parser) {
     }
     case TOK_JSON_ATTR: {
         /* #json; applies to the next struct declaration */
-        note_dup_attr(parser, ATTR_JSON, "#json");
+        reject_duplicate_attr(parser, ATTR_JSON, "#json");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_STRUCT_DECL) {
             stmt->data.struct_decl.is_json = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena,"#json attribute can only be applied to struct declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_DISCARD: {
         /* #discard; applies to the next function declaration */
-        note_dup_attr(parser, ATTR_DISCARD, "#discard");
+        reject_duplicate_attr(parser, ATTR_DISCARD, "#discard");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_discard = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#discard attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_TEST: {
         /* #test; applies to the next function declaration */
-        note_dup_attr(parser, ATTR_TEST, "#test");
+        reject_duplicate_attr(parser, ATTR_TEST, "#test");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
         if (stmt && stmt->kind == NODE_FUNC_DECL) {
             stmt->data.func_decl.is_test = true;
         } else {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#test attribute can only be applied to function declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_DEPRECATED: {
         /* #deprecated or #deprecated("message"); applies to the next
          * function, struct, or enum declaration. */
-        bool dup = note_dup_attr(parser, ATTR_DEPRECATED, "#deprecated");
+        bool dup = reject_duplicate_attr(parser, ATTR_DEPRECATED, "#deprecated");
         next_token(parser); /* consume #deprecated */
         const char *message = NULL;
         if (current_token_is(parser, TOK_LPAREN)) {
@@ -3543,12 +3543,12 @@ static AstNode *parse_statement(Parser *parser) {
                 message = arena_copy_string(parser->arena, parser->cur_token.literal);
                 next_token(parser); /* consume string */
             } else {
-                parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
+                emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated expects a string literal message, e.g. #deprecated(\"use x() instead\")"), parser->cur_token.line, parser->cur_token.column);
             }
             if (current_token_is(parser, TOK_RPAREN)) {
                 next_token(parser); /* consume ) */
             } else {
-                parser_err_attr(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
+                emit_attr_error(parser, arena_copy_string(parser->arena, "expected ')' after #deprecated message"), parser->cur_token.line, parser->cur_token.column);
             }
         }
         AstNode *stmt = parse_statement(parser);
@@ -3562,13 +3562,13 @@ static AstNode *parse_statement(Parser *parser) {
             stmt->data.enum_decl.is_deprecated = true;
             if (!dup) stmt->data.enum_decl.deprecated_message = message;
         } else if (!dup) {
-            parser_err_attr(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
+            emit_attr_error(parser, arena_copy_string(parser->arena, "#deprecated attribute can only be applied to function, struct, or enum declarations"), parser->cur_token.line, parser->cur_token.column);
         }
         return stmt;
     }
     case TOK_DOC:
         /* Skip #doc attribute tokens; consume args if present */
-        note_dup_attr(parser, ATTR_DOC, "#doc");
+        reject_duplicate_attr(parser, ATTR_DOC, "#doc");
         if (peek_token_is(parser, TOK_LPAREN)) {
             next_token(parser);
             while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
@@ -3680,7 +3680,7 @@ static AstNode *parse_statement(Parser *parser) {
 
             char canonical_name[24];
             snprintf(canonical_name, sizeof(canonical_name), "#%s", attr_name);
-            if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canonical_name)) && count < 7) {
+            if (!reject_duplicate_attr(parser, bit, arena_copy_string(parser->arena, canonical_name)) && count < 7) {
                 names[count]    = arena_copy_string(parser->arena, attr_name);
                 dep_msgs[count] = dep_msg;
                 sites[count]    = site;
