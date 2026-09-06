@@ -1,0 +1,41 @@
+# Vendored third-party C source tracked into this repository.
+#
+# Every file under grayc/src/vendor/ that is not first-party Grayscale code
+# must be covered by an entry here. `scripts/check_vendor.sh` verifies the
+# recorded SHA256 of each listed file and queries OSV.dev for published
+# advisories against each pinned version.
+#
+# Bumping a vendored dependency: see CONTRIBUTING.md ->
+# "Updating a Vendored Dependency".
+
+[dependencies.sqlite]
+version = "3.47.2"
+# Upstream amalgamation archive the vendored files were taken from:
+upstream = "https://www.sqlite.org/2024/sqlite-amalgamation-3470200.zip"
+# SHA256 of that archive (sqlite-amalgamation-3470200.zip):
+archive_sha256 = "aa73d8748095808471deaa8e6f34aa700e37f2f787f4425744f53fdd15a89c40"
+# Fossil check-in the amalgamation was generated from (SQLITE_SOURCE_ID):
+source_id = "2024-12-07 20:39:59 2aabe05e2e8cae4847a802ee2daddc1d7413d8fc560254d93ee3e72c14685b6c"
+# SPDX identifier for the SQLite Blessing (a public-domain dedication):
+license = "blessing"
+# Local changes to the vendored files, or "none". The vendored sqlite3.c and
+# sqlite3.h are byte-identical to the files in the upstream archive above.
+modifications = "none"
+# Date a human last triaged the OSV advisory list for this version.
+advisories_reviewed_through = "2026-09-06"
+
+# SHA256 of each vendored file exactly as checked in, relative to this
+# directory. Recomputed and verified by scripts/check_vendor.sh.
+[dependencies.sqlite.files]
+"sqlite3.c" = "b947b84b8c45d1513ecf2df8f46bf099d9f6d7a0acac0928061ddbb4ea6fe54b"
+"sqlite3.h" = "b4b4cbcc2bd6dda8eaf348103c330c971676a59b3732cca068098f574de43994"
+
+# OSV.dev query parameters for this dependency. SQLite has no first-party OSV
+# ecosystem; the Bitnami vulnerability database (github.com/bitnami/vulndb,
+# ingested by OSV) tracks advisories against upstream SQLite version numbers,
+# so an ecosystem="Bitnami" query is version-matched server-side and returns
+# a precise list. `advisories_reviewed_through` above records that the list
+# has been triaged by a human.
+[dependencies.sqlite.osv]
+name = "sqlite"
+ecosystem = "Bitnami"

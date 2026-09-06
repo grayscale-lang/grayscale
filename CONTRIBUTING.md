@@ -320,6 +320,35 @@ spread across more than 15 call sites.
 
 4. **Add a fail test** in `integration-tests/fail/errors/` named `E####_short_description.gray` that triggers the new error and verifies the compiler rejects it.
 
+### Updating a Vendored Dependency
+
+Third-party C source under `grayc/src/vendor/` (currently SQLite) is tracked in
+`grayc/src/vendor/MANIFEST.toml`: pinned version, upstream URL, archive and
+per-file SHA256, SPDX license, local modifications, and the date its advisories
+were last reviewed. `scripts/check_vendor.sh` verifies every recorded hash and
+prints OSV.dev advisories for each pinned version; a scheduled CI job runs it
+monthly so new CVEs against a pinned version surface.
+
+To bump a vendored dependency:
+
+1. Replace the vendored file(s) with the new upstream release, verbatim where
+   possible. Keep any local change minimal and list it under `modifications`.
+2. Update that dependency's `MANIFEST.toml` entry: `version`, `upstream`,
+   `archive_sha256`, `source_id` (if the upstream records one), `license` if it
+   changed, `modifications`, and every hash in the `[dependencies.<name>.files]`
+   table.
+3. Run `./scripts/check_vendor.sh`. Every file must report `ok`. Triage the
+   advisory list, then set `advisories_reviewed_through` to today's date.
+4. Commit the source and manifest change together: `chore(vendor): bump sqlite
+   to <version>`.
+
+Adding a **new** vendored dependency: add a `[dependencies.<name>]` block with
+the same fields, a `[dependencies.<name>.files]` table for every file you check
+in, and a `[dependencies.<name>.osv]` block (`name`, and `ecosystem` when OSV
+has one that tracks the upstream version — the Bitnami database covers many C
+libraries). `check_vendor.sh` fails if a tracked file under `grayc/src/vendor/`
+is not listed.
+
 ---
 
 ## Project Structure
@@ -531,6 +560,7 @@ type(scope): short description
 | `tests` | Test additions or test infrastructure |
 | `docs` | Documentation only |
 | `ci` | GitHub Actions, release workflows |
+| `vendor` | Vendored third-party source (`grayc/src/vendor/`) |
 
 Examples:
 
