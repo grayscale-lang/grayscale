@@ -32,7 +32,7 @@
 
 ## Why Grayscale?
 
-- **Simplicity** — Readable syntax with customizable keyword aliases. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray fmt`, `gray new`, and `gray watch`.
+- **Simplicity** — Readable, opinionated syntax — bitwise and membership operators are real keywords (`bit_and`, `bit_xor`, `not_in`), not punctuation — with familiar per-file aliases (`fn`, `switch`/`case`, `elif`/`else`, `while`, `defer`) for those who prefer them. Helpful compile-time errors & warnings and runtime panics. Useful CLI commands like `gray man`, `gray check`, `gray new`, and `gray watch`.
 - **Flexibility** — Build Scripts, microservices, CLI tools, or projects where you want to learn systems programming fundamentals
 - **Modularity** — Beyond a small builtin core, everything else needs an import. Stdlib modules, your own `.gray` files, and C headers can all be imported.
 - **Safety** — An automatic scope-based arena management memory model with a compile-time [pointer checker](STANDARD.md#117-memory-safety) that proves no pointer is ever readable after its memory is reclaimed, bounds-checked arrays, strings, and maps, overflow-checked arithmetic, division-by-zero protection, nil pointer checks, stack depth guards, **NO** pointer arithmetic. The guardrails are on unless you explicitly opt in to unsafe operations like raw pointers (`raw()`), manual memory management (`@mem`), threading (`@threads`), or C interop (`extern import`)
@@ -42,9 +42,9 @@
 
 <p align="center">
 
-`@arrays` · `@strings` · `@maps` · `@math` · `@time` · `@random` · `@json` · `@io` · `@os`
-`@http` · `@server` · `@crypto` · `@encoding` · `@uuid` · `@binary` · `@sqlite`
-`@regex` · `@csv` · `@net` · `@threads` · `@sync` · `@channels` · `@mem` · `@atomic` · `@fmt` · `@strconv` · `@chars` · `@runtime`
+`@arrays` · `@atomic` · `@binary` · `@channels` · `@chars` · `@crypto` · `@csv` · `@encoding` · `@fmt` · `@http`
+`@io` · `@json` · `@maps` · `@math` · `@mem` · `@net` · `@os` · `@random` · `@regex`
+`@runtime` · `@server` · `@sqlite` · `@strconv` · `@strings` · `@sync` · `@threads` · `@time` · `@uuid`
 
 </p>
 
