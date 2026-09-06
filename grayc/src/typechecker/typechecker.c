@@ -2855,6 +2855,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"random", "seed",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "void"},
     {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     /* regex */
+    {"regex", "count",    2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"regex", "escape",   1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
     {"regex", "find",     2, 2, true,  FT_STRING,       2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
     {"regex", "find_all", 2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
     {"regex", "is_match", 2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},

@@ -359,6 +359,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"regex.find_all":                  {Module: "regex", Group: "Search", Kind: "func", Sig: "find_all(pattern string, text string) -> ([string], Error)", Fields: "", Desc: "Return all non-overlapping matches of pattern in text. Always use destructuring (`mut matches, err = ...` or `mut matches, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, an empty array.", Example: "import @regex\nmut matches, err = regex.find_all(\"[0-9]+\", \"a1b2c3\")"},
 	"regex.replace":                   {Module: "regex", Group: "Transform", Kind: "func", Sig: "replace(pattern string, text string, replacement string) -> (string, Error)", Fields: "", Desc: "Replace all matches of pattern in text with replacement. Always use destructuring (`mut result, err = ...` or `mut result, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, the original text.", Example: "import @regex\nmut result, err = regex.replace(\"[0-9]+\", \"a1b2\", \"X\")\nprintln(result)"},
 	"regex.split":                     {Module: "regex", Group: "Transform", Kind: "func", Sig: "split(pattern string, text string) -> ([string], Error)", Fields: "", Desc: "Split text on all matches of pattern. Always use destructuring (`mut parts, err = ...` or `mut parts, _ = ...`) — single-variable assignment is a compile error. An invalid pattern yields a non-nil error and, with `_`, a single-element array holding the original text.", Example: "import @regex\nmut parts, err = regex.split(\"[,;]+\", \"a,b;;c\")"},
+	"regex.count":                     {Module: "regex", Group: "Search", Kind: "func", Sig: "count(pattern string, text string) -> int", Fields: "", Desc: "Return the number of non-overlapping matches of pattern in text. An invalid pattern returns 0.", Example: "import @regex\nprintln(regex.count(\"[0-9]+\", \"a1b22c333\"))   // 3"},
+	"regex.escape":                    {Module: "regex", Group: "Utility", Kind: "func", Sig: "escape(s string) -> string", Fields: "", Desc: "Backslash-escape every character that is special in a POSIX extended regex, so s matches literally when spliced into a pattern.", Example: "import @regex\nmut pat string = regex.escape(\"a.b(c)\") + \"+\""},
 	"runtime.arena_usage":             {Module: "runtime", Group: "Memory", Kind: "func", Sig: "arena_usage() -> int", Fields: "", Desc: "Return the number of bytes currently used in the default (scope) arena.", Example: "import @runtime\nprintln(\"${runtime.arena_usage()} bytes\")"},
 	"runtime.heap_usage":              {Module: "runtime", Group: "Memory", Kind: "func", Sig: "heap_usage() -> int", Fields: "", Desc: "Return the number of bytes currently used in the heap arena (backs new()).", Example: "import @runtime\nprintln(\"${runtime.heap_usage()} bytes\")"},
 	"runtime.total_usage":             {Module: "runtime", Group: "Memory", Kind: "func", Sig: "total_usage() -> int", Fields: "", Desc: "Return the combined bytes used across the default and heap arenas.", Example: "import @runtime\nprintln(\"${runtime.total_usage()} bytes\")"},
@@ -542,7 +544,7 @@ var stdlibModules = map[string][]string{
 	"net":      {"connect", "listen", "accept", "send", "receive", "close", "set_timeout", "resolve"},
 	"os":       {"args", "get_env", "set_env", "unset_env", "current_dir", "hostname", "Platform", "current_os", "arch", "pid", "cpu_count", "is_tty", "exec"},
 	"random":   {"rand_float", "rand_int", "rand_bool", "rand_byte", "rand_char", "rand_string", "choice", "shuffle", "sample", "seed"},
-	"regex":    {"is_valid", "is_match", "find", "find_all", "replace", "split"},
+	"regex":    {"is_valid", "is_match", "find", "find_all", "replace", "split", "count", "escape"},
 	"runtime":  {"arena_usage", "heap_usage", "total_usage", "peak_usage", "alloc_count", "arena_blocks", "heap_blocks", "arena_limit", "version", "call_depth", "call_limit", "uptime"},
 	"server":   {"HttpRequest", "HttpResponse", "Router", "add_router", "add_route", "listen", "cors", "use", "text", "json", "html", "redirect"},
 	"sqlite":   {"open", "close", "exec", "exec_params", "query", "query_params"},
@@ -680,8 +682,9 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 	},
 	"regex": {
 		{Label: "Matching      ", Names: []string{"is_valid", "is_match"}},
-		{Label: "Search        ", Names: []string{"find", "find_all"}},
+		{Label: "Search        ", Names: []string{"find", "find_all", "count"}},
 		{Label: "Transform     ", Names: []string{"replace", "split"}},
+		{Label: "Utility       ", Names: []string{"escape"}},
 	},
 	"runtime": {
 		{Label: "Memory        ", Names: []string{"arena_usage", "heap_usage", "total_usage", "peak_usage", "alloc_count", "arena_blocks", "heap_blocks", "arena_limit"}},

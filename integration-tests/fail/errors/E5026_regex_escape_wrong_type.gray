@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - wrong argument type to regex.escape
+ * Expected: regex.escape() expects string, got int
+ */
+
+// expect-error: E5026
+
+import @regex
+
+do main() {
+    mut s string = regex.escape(42)
+    println(s)
+}

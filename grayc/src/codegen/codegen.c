@@ -5975,6 +5975,20 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "count") == 0 && node->data.call.arg_count == 2) {
+        emit(codegen, "gray_regex_count(");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "escape") == 0 && node->data.call.arg_count == 1) {
+        emit(codegen, "gray_regex_escape(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(func, "find") == 0 && node->data.call.arg_count == 2) {
         bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_find%s(gray_default_arena, ", is_multi_var ? "_result" : "");

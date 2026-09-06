@@ -106,6 +106,32 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
 /* regex.split(pattern, text) -> [string] */
 GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text);
 
+/*@man count
+ *@module regex
+ *@group Search
+ *@sig count(pattern string, text string) -> int
+ *@desc Return the number of non-overlapping matches of pattern in text. An invalid pattern returns 0.
+ *@example
+ *   import @regex
+ *   println(regex.count("[0-9]+", "a1b22c333"))   // 3
+ *@end
+ */
+/* regex.count(pattern, text) -> int */
+int64_t gray_regex_count(GrayString pattern, GrayString text);
+
+/*@man escape
+ *@module regex
+ *@group Utility
+ *@sig escape(s string) -> string
+ *@desc Backslash-escape every character that is special in a POSIX extended regex, so s matches literally when spliced into a pattern.
+ *@example
+ *   import @regex
+ *   mut pat string = regex.escape("a.b(c)") + "+"
+ *@end
+ */
+/* regex.escape(s) -> string */
+GrayString gray_regex_escape(GrayArena *arena, GrayString str);
+
 /* _result variants */
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text);
 GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern, GrayString text);

@@ -170,6 +170,45 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *re, GrayString 
     return arr;
 }
 
+int64_t gray_regex_count(GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0) return 0;
+
+    char txt_buf[GRAY_REGEX_TXT_BUF];
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
+
+    const char *cursor = txt_buf;
+    regmatch_t match;
+    int64_t count = 0;
+
+    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+        count++;
+        cursor += match.rm_eo;
+        if (match.rm_eo == 0) {
+            if (*cursor) cursor++;
+            else break;
+        }
+    }
+
+    regfree(&re);
+    return count;
+}
+
+GrayString gray_regex_escape(GrayArena *arena, GrayString str) {
+    /* Worst case: every character needs a backslash. */
+    char *out = (char *)gray_arena_alloc_uninitialized(arena, (size_t)str.len * 2 + 1);
+    int32_t j = 0;
+    for (int32_t i = 0; i < str.len; i++) {
+        char c = str.data[i];
+        if (c != '\0' && strchr(".^$*+?()[]{}|\\", c) != NULL) {
+            out[j++] = '\\';
+        }
+        out[j++] = c;
+    }
+    out[j] = '\0';
+    return (GrayString){ out, j };
+}
+
 /* Public API — compile, delegate to _compiled helper, free. */
 
 GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text) {

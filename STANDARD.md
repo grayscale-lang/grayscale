@@ -4103,6 +4103,8 @@ Regular expression operations using POSIX extended regex syntax.
 | `find_all` | `(pattern string, text string) -> ([string], Error)` | All matches — always use destructuring |
 | `replace` | `(pattern string, text string, replacement string) -> (string, Error)` | Replace matches — always use destructuring |
 | `split` | `(pattern string, text string) -> ([string], Error)` | Split by pattern — always use destructuring |
+| `count` | `(pattern string, text string) -> int` | Number of non-overlapping matches; 0 for an invalid pattern |
+| `escape` | `(s string) -> string` | Backslash-escape regex metacharacters so `s` matches literally |
 
 `find`, `find_all`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 

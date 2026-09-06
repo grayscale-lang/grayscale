@@ -1,0 +1,66 @@
+/*
+ * regex_escape_count.gray - Integration test for regex.escape and regex.count
+ */
+
+import @regex
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do check_int(label string, got int, want int) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // count: non-overlapping matches
+    passed += check_int("count digits", regex.count("[0-9]+", "a1b22c333"), 3)
+    passed += check_int("count none", regex.count("z+", "abc"), 0)
+    passed += check_int("count invalid pattern", regex.count("[unclosed", "abc"), 0)
+    passed += check_int("count single", regex.count("cat", "cat cat dog cat"), 3)
+
+    // count agrees with find_all
+    mut hits, _ = regex.find_all("[a-z]+", "one two three")
+    passed += check_int("count matches find_all", regex.count("[a-z]+", "one two three"), len(hits))
+
+    // escape: metacharacters get a backslash
+    passed += check("escape dots and parens", regex.escape("a.b(c)"), "a\\.b\\(c\\)")
+    passed += check("escape plain text", regex.escape("hello"), "hello")
+    passed += check("escape backslash", regex.escape("a\\b"), "a\\\\b")
+
+    // escaped text matches literally
+    mut literal string = regex.escape("1+1=2")
+    if regex.is_match(literal, "1+1=2") {
+        println("  [PASS] escaped pattern matches literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] escaped pattern matches literal")
+    }
+    if regex.is_match(literal, "111=2") == false {
+        println("  [PASS] escaped '+' is not a quantifier")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] escaped '+' is not a quantifier")
+    }
+
+    println("")
+    println("Results: ${passed}/10 passed")
+    if passed == 10 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
