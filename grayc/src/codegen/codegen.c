@@ -12980,12 +12980,10 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 name, fn->data.func_decl.name, codegen->file, fn->token.line);
         }
         emit(codegen, "    int _gray_test_rc = gray_test_end();\n");
-        emit(codegen, "    gray_runtime_shutdown();\n");
         emit(codegen, "    return _gray_test_rc;\n");
         emit(codegen, "}\n");
     } else {
         emit(codegen, "    gray_fn_main();\n");
-        emit(codegen, "    gray_runtime_shutdown();\n");
         emit(codegen, "    return 0;\n");
         emit(codegen, "}\n");
     }

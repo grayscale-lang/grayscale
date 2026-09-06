@@ -292,6 +292,10 @@ void gray_runtime_init(size_t arena_limit) {
         gray_heap_arena->max_bytes = arena_limit;
     }
     clock_gettime(CLOCK_MONOTONIC, &gray_rt_start_time);
+    /* Tear the runtime down at process exit rather than at the end of main, so
+     * that a user callback registered with atexit() (which libc runs LIFO,
+     * before this handler) still sees a live arena. */
+    atexit(gray_runtime_shutdown);
 }
 
 double gray_runtime_uptime(void) {

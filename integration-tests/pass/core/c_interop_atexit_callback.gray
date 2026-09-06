@@ -1,0 +1,39 @@
+/*
+ * c_interop_atexit_callback.gray - a Grayscale function registered with
+ * extern.atexit() runs after main returns without crashing.
+ *
+ * The runtime is now torn down via atexit() (LIFO) rather than explicitly at
+ * the end of main, so the user's handler still sees a live arena: it can format
+ * strings, allocate, and print.
+ */
+
+extern import "stdlib.h"
+
+do on_exit() {
+    mut parts [string] = {"cleanup", "ran", "fine"}
+    println("  [exit] ${parts[0]} ${parts[1]} ${parts[2]}")
+}
+
+do main() {
+    println("=== C Interop atexit Callback Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut rc i32 = extern.atexit(()on_exit)
+    if rc == 0 {
+        println("  [PASS] extern.atexit accepted the handler")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] extern.atexit returned ${rc}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
