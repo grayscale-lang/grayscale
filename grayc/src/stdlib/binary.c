@@ -11,6 +11,10 @@
 #include "binary.h"
 #include <string.h>
 
+/* Byte width of the wide integer types. */
+#define WIDE128_BYTES 16
+#define WIDE256_BYTES 32
+
 static GrayArray make_bytes(GrayArena *arena, const void *data, int32_t size) {
     GrayArray arr = gray_array_new(arena, sizeof(uint8_t), size);
     for (int32_t i = 0; i < size; i++) {
@@ -98,42 +102,42 @@ BINARY_CODEC(f32, float, 4)
 BINARY_CODEC(f64, double, 8)
 
 /* --- 128-bit (custom BE decode for multi-limb struct layout) --- */
-BINARY_ENCODE_LE(i128, gray_i128, 16)
-BINARY_ENCODE_BE(i128, gray_i128, 16)
-BINARY_DECODE_LE(i128, gray_i128, 16)
+BINARY_ENCODE_LE(i128, gray_i128, WIDE128_BYTES)
+BINARY_ENCODE_BE(i128, gray_i128, WIDE128_BYTES)
+BINARY_DECODE_LE(i128, gray_i128, WIDE128_BYTES)
 gray_i128 gray_binary_decode_i128_be(GrayArray *bytes, const char *file, int line) {
-    gray_binary_check_len(bytes, 16, "decode_i128_be", file, line);
+    gray_binary_check_len(bytes, WIDE128_BYTES, "decode_i128_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_i128 v;
     uint64_t high = 0, low = 0;
     for (int i = 0; i < 8; i++) high = (high << 8) | d[i];
-    for (int i = 8; i < 16; i++) low = (low << 8) | d[i];
+    for (int i = 8; i < WIDE128_BYTES; i++) low = (low << 8) | d[i];
     v.hi = (int64_t)high;
     v.lo = low;
     return v;
 }
 
-BINARY_ENCODE_LE(u128, gray_u128, 16)
-BINARY_ENCODE_BE(u128, gray_u128, 16)
-BINARY_DECODE_LE(u128, gray_u128, 16)
+BINARY_ENCODE_LE(u128, gray_u128, WIDE128_BYTES)
+BINARY_ENCODE_BE(u128, gray_u128, WIDE128_BYTES)
+BINARY_DECODE_LE(u128, gray_u128, WIDE128_BYTES)
 gray_u128 gray_binary_decode_u128_be(GrayArray *bytes, const char *file, int line) {
-    gray_binary_check_len(bytes, 16, "decode_u128_be", file, line);
+    gray_binary_check_len(bytes, WIDE128_BYTES, "decode_u128_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_u128 v;
     uint64_t high = 0, low = 0;
     for (int i = 0; i < 8; i++) high = (high << 8) | d[i];
-    for (int i = 8; i < 16; i++) low = (low << 8) | d[i];
+    for (int i = 8; i < WIDE128_BYTES; i++) low = (low << 8) | d[i];
     v.hi = high;
     v.lo = low;
     return v;
 }
 
 /* --- 256-bit (custom BE decode for 4-limb struct layout) --- */
-BINARY_ENCODE_LE(i256, gray_i256, 32)
-BINARY_ENCODE_BE(i256, gray_i256, 32)
-BINARY_DECODE_LE(i256, gray_i256, 32)
+BINARY_ENCODE_LE(i256, gray_i256, WIDE256_BYTES)
+BINARY_ENCODE_BE(i256, gray_i256, WIDE256_BYTES)
+BINARY_DECODE_LE(i256, gray_i256, WIDE256_BYTES)
 gray_i256 gray_binary_decode_i256_be(GrayArray *bytes, const char *file, int line) {
-    gray_binary_check_len(bytes, 32, "decode_i256_be", file, line);
+    gray_binary_check_len(bytes, WIDE256_BYTES, "decode_i256_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_i256 v;
     for (int w = 3; w >= 0; w--) {
@@ -144,11 +148,11 @@ gray_i256 gray_binary_decode_i256_be(GrayArray *bytes, const char *file, int lin
     return v;
 }
 
-BINARY_ENCODE_LE(u256, gray_u256, 32)
-BINARY_ENCODE_BE(u256, gray_u256, 32)
-BINARY_DECODE_LE(u256, gray_u256, 32)
+BINARY_ENCODE_LE(u256, gray_u256, WIDE256_BYTES)
+BINARY_ENCODE_BE(u256, gray_u256, WIDE256_BYTES)
+BINARY_DECODE_LE(u256, gray_u256, WIDE256_BYTES)
 gray_u256 gray_binary_decode_u256_be(GrayArray *bytes, const char *file, int line) {
-    gray_binary_check_len(bytes, 32, "decode_u256_be", file, line);
+    gray_binary_check_len(bytes, WIDE256_BYTES, "decode_u256_be", file, line);
     uint8_t *d = (uint8_t *)bytes->data;
     gray_u256 v;
     for (int w = 3; w >= 0; w--) {

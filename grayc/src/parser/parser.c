@@ -24,6 +24,9 @@
 #define FLOAT_LIT_BUF    128
 #define TMP_NAME_BUF     32
 #define FIELD_NAME_BUF           8
+/* Attributes collected from one `#[a, b, ...]` list before they are applied
+ * to the following declaration. */
+#define MAX_ATTR_LIST_ENTRIES 7
 
 /* Operator precedence levels */
 typedef enum {
@@ -3588,9 +3591,9 @@ static AstNode *parse_statement(Parser *parser) {
         Token open = parser->cur_token;
         next_token(parser); /* consume '#[' */
 
-        const char *names[7];
-        const char *dep_msgs[7];
-        Token sites[7];
+        const char *names[MAX_ATTR_LIST_ENTRIES];
+        const char *dep_msgs[MAX_ATTR_LIST_ENTRIES];
+        Token sites[MAX_ATTR_LIST_ENTRIES];
         int count = 0;
         int seen = 0;
         bool malformed = false;
@@ -3680,7 +3683,7 @@ static AstNode *parse_statement(Parser *parser) {
 
             char canonical_name[24];
             snprintf(canonical_name, sizeof(canonical_name), "#%s", attr_name);
-            if (!reject_duplicate_attr(parser, bit, arena_copy_string(parser->arena, canonical_name)) && count < 7) {
+            if (!reject_duplicate_attr(parser, bit, arena_copy_string(parser->arena, canonical_name)) && count < MAX_ATTR_LIST_ENTRIES) {
                 names[count]    = arena_copy_string(parser->arena, attr_name);
                 dep_msgs[count] = dep_msg;
                 sites[count]    = site;

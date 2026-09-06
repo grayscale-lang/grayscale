@@ -10172,7 +10172,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         int depth = 0;
         AstNode *cur = node->data.assign.target;
         AstNode *ptr_root = NULL;
-        while (cur->kind == NODE_MEMBER_EXPR && depth < 32) {
+        while (cur->kind == NODE_MEMBER_EXPR && depth < MAX_MEMBER_CHAIN) {
             chain[depth++] = cur->data.member.member;
             AstNode *obj = cur->data.member.object;
             GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
@@ -10786,7 +10786,7 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
             emit_formatted(codegen, "_esc_err->msg = gray_string_new(_func_saved, _ret.v%d->msg.data, _ret.v%d->msg.len); ", i, i);
             emit_formatted(codegen, "_ret.v%d = _esc_err; } ", i);
         } else if (type_needs_deep_copy(codegen, type_str)) {
-            char field[32];
+            char field[SHORT_VAR_BUF];
             snprintf(field, sizeof(field), "_ret.v%d", i);
             emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = _func_saved; _ret.v%d = ", i);
             emit_value_deep_copy(codegen, type_str, field);
@@ -10955,7 +10955,7 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
         emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
         emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
         codegen->loop_scope_depth++;
-        char av[32], sv[32];
+        char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
         snprintf(av, sizeof(av), "_if_arena_%d", isc);
         snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
         scope_arena_push(codegen, av, sv);
@@ -11050,7 +11050,7 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
     emit_formatted(codegen, "gray_default_arena = _iter_arena_%d;\n", depth);
     codegen->loop_scope_depth++;
     {
-        char av[32], sv[32];
+        char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
         snprintf(av, sizeof(av), "_iter_arena_%d", depth);
         snprintf(sv, sizeof(sv), "_saved_arena_%d", depth);
         scope_arena_push(codegen, av, sv);
@@ -11071,7 +11071,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     AstNode *iter = node->data.for_stmt.iterable;
     if (iter && iter->kind == NODE_RANGE_EXPR) {
         /* for i in range(start, end) or range(start, end, step) */
-        char blank_for_buf[64];
+        char blank_for_buf[VAR_NAME_BUF];
         const char *var;
         if (strcmp(node->data.for_stmt.var_name, "_") == 0) {
             snprintf(blank_for_buf, sizeof(blank_for_buf), "_gray_for_blank_%d", codegen_next_id(codegen));
@@ -11726,7 +11726,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         /* Evaluate the match expression once into a temporary so that
          * side-effecting expressions (function calls, increments, etc.)
          * are not re-executed for each is-arm. */
-        char when_tmp[64];
+        char when_tmp[VAR_NAME_BUF];
         snprintf(when_tmp, sizeof(when_tmp), "_gray_when%d", codegen_next_id(codegen));
         emit_indent(codegen);
         emit_formatted(codegen, "__auto_type %s = ", when_tmp);

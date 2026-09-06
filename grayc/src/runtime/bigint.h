@@ -21,6 +21,9 @@ typedef struct { uint64_t lo; uint64_t hi; } gray_u128;
 typedef struct { uint64_t w[4]; } gray_i256;  /* w[0]=lo ... w[3]=hi */
 typedef struct { uint64_t w[4]; } gray_u256;
 
+/* Low 32 bits of a uint64_t — the halves the schoolbook multiplies split on. */
+#define LOW32_MASK 0xFFFFFFFFu
+
 /* --- Max decimal digits for string rendering --- */
 #define I128_MAX_DIGITS     21
 #define U128_MAX_DIGITS     21
@@ -228,8 +231,8 @@ static inline gray_i128 gray_i128_mul(gray_i128 left, gray_i128 right) {
     uint64_t a_hi = (uint64_t)left.hi, b_hi = (uint64_t)right.hi;
 
     /* Split each 64-bit value into 32-bit halves for overflow-safe multiply */
-    uint64_t a0 = a_lo & 0xFFFFFFFF, a1 = a_lo >> 32;
-    uint64_t b0 = b_lo & 0xFFFFFFFF, b1 = b_lo >> 32;
+    uint64_t a0 = a_lo & LOW32_MASK, a1 = a_lo >> 32;
+    uint64_t b0 = b_lo & LOW32_MASK, b1 = b_lo >> 32;
 
     uint64_t p00 = a0 * b0;
     uint64_t p01 = a0 * b1;
@@ -237,7 +240,7 @@ static inline gray_i128 gray_i128_mul(gray_i128 left, gray_i128 right) {
     uint64_t p11 = a1 * b1;
 
     uint64_t mid = p01 + (p00 >> 32);
-    uint64_t carry = ((mid & 0xFFFFFFFF) + p10) >> 32;
+    uint64_t carry = ((mid & LOW32_MASK) + p10) >> 32;
 
     gray_i128 result;
     result.lo = a_lo * b_lo;
@@ -345,8 +348,8 @@ static inline gray_u128 gray_u128_sub(gray_u128 left, gray_u128 right) {
 }
 
 static inline gray_u128 gray_u128_mul(gray_u128 left, gray_u128 right) {
-    uint64_t a0 = left.lo & 0xFFFFFFFF, a1 = left.lo >> 32;
-    uint64_t b0 = right.lo & 0xFFFFFFFF, b1 = right.lo >> 32;
+    uint64_t a0 = left.lo & LOW32_MASK, a1 = left.lo >> 32;
+    uint64_t b0 = right.lo & LOW32_MASK, b1 = right.lo >> 32;
 
     uint64_t p00 = a0 * b0;
     uint64_t p01 = a0 * b1;
@@ -354,7 +357,7 @@ static inline gray_u128 gray_u128_mul(gray_u128 left, gray_u128 right) {
     uint64_t p11 = a1 * b1;
 
     uint64_t mid = p01 + (p00 >> 32);
-    uint64_t carry = ((mid & 0xFFFFFFFF) + p10) >> 32;
+    uint64_t carry = ((mid & LOW32_MASK) + p10) >> 32;
 
     gray_u128 result;
     result.lo = left.lo * right.lo;
@@ -427,18 +430,18 @@ static inline gray_i256 gray_i256_mul(gray_i256 left, gray_i256 right) {
         uint64_t carry = 0;
         for (int j = 0; j < 4 - i; j++) {
             /* Multiply left.w[j] * right.w[i] and add to result.w[i+j] */
-            uint64_t a_lo = left.w[j] & 0xFFFFFFFF, a_hi = left.w[j] >> 32;
-            uint64_t b_lo = right.w[i] & 0xFFFFFFFF, b_hi = right.w[i] >> 32;
+            uint64_t a_lo = left.w[j] & LOW32_MASK, a_hi = left.w[j] >> 32;
+            uint64_t b_lo = right.w[i] & LOW32_MASK, b_hi = right.w[i] >> 32;
             uint64_t p00 = a_lo * b_lo;
             uint64_t p01 = a_lo * b_hi;
             uint64_t p10 = a_hi * b_lo;
             uint64_t p11 = a_hi * b_hi;
             uint64_t mid = p01 + (p00 >> 32);
-            uint64_t lo = (p00 & 0xFFFFFFFF) | ((mid & 0xFFFFFFFF) << 32) + (p10 << 32);
+            uint64_t lo = (p00 & LOW32_MASK) | ((mid & LOW32_MASK) << 32) + (p10 << 32);
 
             /* Simpler approach: just use the truncating product */
             lo = left.w[j] * right.w[i];
-            uint64_t hi_part = p11 + (mid >> 32) + (((mid & 0xFFFFFFFF) + p10) >> 32);
+            uint64_t hi_part = p11 + (mid >> 32) + (((mid & LOW32_MASK) + p10) >> 32);
 
             uint64_t old = result.w[i + j];
             result.w[i + j] = old + lo + carry;
@@ -568,15 +571,15 @@ static inline gray_u256 gray_u256_mul(gray_u256 left, gray_u256 right) {
     for (int i = 0; i < 4; i++) {
         uint64_t carry = 0;
         for (int j = 0; j < 4 - i; j++) {
-            uint64_t a_lo = left.w[j] & 0xFFFFFFFF, a_hi = left.w[j] >> 32;
-            uint64_t b_lo = right.w[i] & 0xFFFFFFFF, b_hi = right.w[i] >> 32;
+            uint64_t a_lo = left.w[j] & LOW32_MASK, a_hi = left.w[j] >> 32;
+            uint64_t b_lo = right.w[i] & LOW32_MASK, b_hi = right.w[i] >> 32;
             uint64_t p00 = a_lo * b_lo;
             uint64_t p01 = a_lo * b_hi;
             uint64_t p10 = a_hi * b_lo;
             uint64_t p11 = a_hi * b_hi;
             uint64_t mid = p01 + (p00 >> 32);
             uint64_t lo = left.w[j] * right.w[i];
-            uint64_t hi_part = p11 + (mid >> 32) + (((mid & 0xFFFFFFFF) + p10) >> 32);
+            uint64_t hi_part = p11 + (mid >> 32) + (((mid & LOW32_MASK) + p10) >> 32);
 
             uint64_t old = result.w[i + j];
             result.w[i + j] = old + lo + carry;

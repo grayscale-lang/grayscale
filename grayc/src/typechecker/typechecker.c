@@ -25,6 +25,11 @@
 
 #define MAX_STRUCT_DEPTH 32
 
+/* Per-parameter escape / @mem effects are tracked as one bit per parameter in
+ * an `unsigned long long`, so only the first 64 parameters of a function carry
+ * flow information. Every loop that writes such a mask is bounded by this. */
+#define MAX_TRACKED_PARAMS 64
+
 /* True when `path` is `dir` itself or sits underneath it. Both arguments must
  * already be canonicalized. Used to keep embed() from reaching outside the
  * source tree. */
@@ -1337,7 +1342,7 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
     switch (node->kind) {
     case NODE_LABEL: {
         int param_count = fs->decl->data.func_decl.param_count;
-        for (int i = 0; i < param_count && i < 64; i++) {
+        for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (pn && strcmp(pn, node->data.label.value) == 0)
                 return 1ull << i;
@@ -1434,7 +1439,7 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
         unsigned long long callee_bits = returns_param_address(checker, callee);
         unsigned long long out = 0;
         for (int i = 0; i < callee->param_count &&
-                        i < node->data.call.arg_count && i < 64; i++)
+                        i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
             if (callee_bits & (1ull << i))
                 out |= return_expr_param_bits(checker, fs, node->data.call.args[i]);
         return out;
@@ -1568,7 +1573,7 @@ static signed char escape_dest_for_root(TypeChecker *checker, FuncSig *fs,
                                         const char *root, AstNode *body) {
     if (!root) return PARAM_ESCAPE_NONE;
     int param_count = fs->decl->data.func_decl.param_count;
-    for (int i = 0; i < param_count && i < 64; i++) {
+    for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
         const char *pn = fs->decl->data.func_decl.params[i].name;
         if (pn && strcmp(pn, root) == 0) return (signed char)i;
     }
@@ -1609,7 +1614,7 @@ static const ContainerSink *find_container_sink(TypeChecker *checker, AstNode *c
 
 static void record_param_escape(FuncSig *fs, unsigned long long bits,
                                 signed char dest) {
-    for (int i = 0; i < fs->param_count && i < 64; i++) {
+    for (int i = 0; i < fs->param_count && i < MAX_TRACKED_PARAMS; i++) {
         if (!(bits & (1ull << i))) continue;
         if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE ||
             dest == PARAM_ESCAPE_GLOBAL)
@@ -1648,7 +1653,7 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
         if (callee && callee != fs) {
             ensure_escape_summary(checker, callee);
             for (int k = 0; k < callee->param_count &&
-                            k < node->data.call.arg_count && k < 64; k++) {
+                            k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
                 signed char cdest = callee->param_escape_into[k];
                 if (cdest == PARAM_ESCAPE_NONE) continue;
                 unsigned long long bits = return_expr_param_bits(checker, fs,
@@ -1767,7 +1772,7 @@ static void pointer_checker_ensure_mem_summary(TypeChecker *checker, FuncSig *fs
 static int pointer_checker_mem_param_index_for_key(FuncSig *fs, const char *key, const char **out_suffix) {
     if (!fs->decl || !key) return -1;
     int param_count = fs->decl->data.func_decl.param_count;
-    for (int i = 0; i < param_count && i < 64; i++) {
+    for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
         const char *pn = fs->decl->data.func_decl.params[i].name;
         if (!pn) continue;
         size_t pnlen = strlen(pn);
@@ -1822,7 +1827,7 @@ static void pointer_checker_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode 
             if (callee && callee != fs) {
                 pointer_checker_ensure_mem_summary(checker, callee);
                 for (int k = 0; k < callee->param_count &&
-                                k < node->data.call.arg_count && k < 64; k++) {
+                                k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
                     unsigned long long keffect =
                         (callee->destroys_param_arena | callee->resets_param_arena) &
                         (1ull << k);
@@ -1945,7 +1950,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
     const char *fn = NULL, *arena = NULL;
     if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
-        for (int i = 0; i < param_count && i < 64; i++) {
+        for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (pn && strcmp(pn, arena) == 0) *out_direct |= 1ull << i;
         }
@@ -1955,7 +1960,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
     if (!callee || callee == fs) return;
     pointer_checker_ensure_mem_summary(checker, callee);
     for (int k = 0; k < callee->param_count &&
-                    k < node->data.call.arg_count && k < 64; k++) {
+                    k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
         unsigned long long callee_bit = 1ull << k;
         if (!((callee->returns_param_mem_alloc | callee->returns_param_mem_alloc_field) &
               callee_bit))
@@ -1963,7 +1968,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
         AstNode *arg = node->data.call.args[k];
         if (arg->kind != NODE_LABEL) continue;
         bool via_field = (callee->returns_param_mem_alloc_field & callee_bit) != 0;
-        for (int i = 0; i < param_count && i < 64; i++) {
+        for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (!pn || strcmp(pn, arg->data.label.value) != 0) continue;
             if (via_field) *out_field |= 1ull << i;
@@ -2047,7 +2052,7 @@ static int call_result_origin(TypeChecker *checker, AstNode *call,
     int best = 0;
     const char *best_name = NULL;
     for (int i = 0; i < fs->param_count &&
-                    i < call->data.call.arg_count && i < 64; i++) {
+                    i < call->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++) {
         if (!(bits & (1ull << i))) continue;
         const char *nm = NULL;
         int d = pointer_origin_of(checker, call->data.call.args[i], &nm);
@@ -2218,7 +2223,7 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
     if (!csig) return;
     int argc = node->data.call.arg_count;
     ensure_escape_summary(checker, csig);
-    for (int a = 0; a < argc && a < csig->param_count && a < 64; a++) {
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
         signed char pe = csig->param_escape_into[a];
         if (pe == PARAM_ESCAPE_NONE) continue;
         if ((reported_arg >> a) & 1) continue;
@@ -2254,7 +2259,7 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
     pointer_checker_ensure_mem_summary(checker, csig);
     unsigned long long mem_effect =
         csig->destroys_param_arena | csig->resets_param_arena;
-    for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS && mem_effect; a++) {
         if (!(mem_effect & (1ull << a))) continue;
         const char *key = pointer_checker_mem_forward_key(checker, node->data.call.args[a],
                                              csig->mem_param_field[a]);
@@ -2414,6 +2419,10 @@ typedef enum {
 } FallibleType;
 
 #define STDLIB_MAX_ARG_CHECKS 5
+
+/* max_args sentinel for a variadic stdlib function (fmt.printf, sqlite.exec):
+ * any argument count at or above min_args is accepted. */
+#define STDLIB_ARGS_VARIADIC 99
 
 typedef struct {
     const char *mod;
@@ -2590,8 +2599,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"encoding", "url_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* fmt */
     {"fmt", "center",        3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
-    {"fmt", "eprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
-    {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "eprintf",       1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "eprintfln",     1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}, "string"},
     {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}, "string"},
     {"fmt", "format_bytes",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -2601,10 +2610,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "pad_left",      3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
     {"fmt", "pad_right",     3, 3,  false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_CHAR}}, "string"},
-    {"fmt", "printf",        1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
-    {"fmt", "printfln",      1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
-    {"fmt", "sprintf",       1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
-    {"fmt", "sprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"fmt", "printf",        1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "printfln",      1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
+    {"fmt", "sprintf",       1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"fmt", "sprintfln",     1, STDLIB_ARGS_VARIADIC, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* http */
     {"http", "delete", 2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}, "HttpResponse"},
     {"http", "get",    2, 2, true, FT_STRUCT_HTTP_RESPONSE, 2, {{0, ARG_STRING}, {1, ARG_MAP}}, "HttpResponse"},
@@ -2790,10 +2799,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"server", "use",        2, 2, false, FT_NONE, 0, {{0}},"void"},
     /* sqlite */
     {"sqlite", "close",        1, 1,  false, FT_NONE,            0, {{0}},"void"},
-    {"sqlite", "exec",         2, 99, true,  FT_BOOL,            0, {{0}},"bool"},
+    {"sqlite", "exec",         2, STDLIB_ARGS_VARIADIC, true,  FT_BOOL,            0, {{0}},"bool"},
     {"sqlite", "exec_params",  3, 3,  true,  FT_BOOL,            1, {{2, ARG_ARRAY}}, "bool"},
     {"sqlite", "open",         1, 1,  true,  FT_STRUCT_DATABASE,  1, {{0, ARG_STRING}}, "Database"},
-    {"sqlite", "query",        2, 99, true,  FT_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
+    {"sqlite", "query",        2, STDLIB_ARGS_VARIADIC, true,  FT_ARRAY_MAP,       0, {{0}},"[map[string:string]]"},
     {"sqlite", "query_params", 3, 3,  true,  FT_ARRAY_MAP,       1, {{2, ARG_ARRAY}}, "[map[string:string]]"},
     /* strconv */
     {"strconv", "format_int",  2, 2, false, FT_NONE,  2, {{0, ARG_INT}, {1, ARG_INT}}, "string"},
@@ -8086,7 +8095,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
      * argument positions this heuristic already flagged so the summary-driven
      * check below does not report the same store twice. */
     unsigned long long reported_arg = 0;
-    for (int i = 0; i < node->data.call.arg_count && i < 64; i++) {
+    for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++) {
         AstNode *arg = node->data.call.args[i];
         if (arg->kind == NODE_CALL_EXPR &&
             arg->data.call.function &&
@@ -14215,7 +14224,7 @@ static bool pointer_checker_mem_pointer_in_expr(TypeChecker *checker, AstNode *v
         if (!callee) return false;
         pointer_checker_ensure_mem_summary(checker, callee);
         for (int k = 0; k < callee->param_count &&
-                        k < value->data.call.arg_count && k < 64; k++) {
+                        k < value->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
             unsigned long long bit = 1ull << k;
             if (!((callee->returns_param_mem_alloc | callee->returns_param_mem_alloc_field) & bit))
                 continue;
@@ -14453,7 +14462,7 @@ static void pointer_checker_premark_loop_body(TypeChecker *checker, AstNode *nod
                 unsigned long long effect =
                     callee->destroys_param_arena | callee->resets_param_arena;
                 for (int k = 0; k < callee->param_count &&
-                                k < node->data.call.arg_count && k < 64 && effect; k++) {
+                                k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS && effect; k++) {
                     if (!(effect & (1ull << k))) continue;
                     AstNode *arg = node->data.call.args[k];
                     const char *root = (arg->kind == NODE_LABEL)
