@@ -196,9 +196,9 @@ int64_t gray_errno_code(int err) {
 
 /* --- String --- */
 
-GrayString gray_string_new(GrayArena *arena, const char *s, int32_t len) {
+GrayString gray_string_new(GrayArena *arena, const char *text, int32_t len) {
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
-    memcpy(data, s, (size_t)len);
+    memcpy(data, text, (size_t)len);
     data[len] = '\0';
     GrayString str;
     str.data = data;
@@ -206,16 +206,16 @@ GrayString gray_string_new(GrayArena *arena, const char *s, int32_t len) {
     return str;
 }
 
-GrayString gray_c_string_dup(GrayArena *arena, const char *s) {
-    if (s == NULL) return gray_string_lit("");
-    size_t n = strlen(s);
-    if (n > (size_t)INT32_MAX) n = (size_t)INT32_MAX;
-    char *data = (char *)gray_arena_alloc_uninitialized(arena, n + 1);
-    memcpy(data, s, n);
-    data[n] = '\0';
+GrayString gray_c_string_dup(GrayArena *arena, const char *text) {
+    if (text == NULL) return gray_string_lit("");
+    size_t len = strlen(text);
+    if (len > (size_t)INT32_MAX) len = (size_t)INT32_MAX;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, len + 1);
+    memcpy(data, text, len);
+    data[len] = '\0';
     GrayString str;
     str.data = data;
-    str.len = (int32_t)n;
+    str.len = (int32_t)len;
     return str;
 }
 
@@ -240,27 +240,27 @@ GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
     return str;
 }
 
-GrayString gray_string_concat(GrayArena *arena, GrayString a, GrayString b) {
-    if (b.len > INT32_MAX - a.len) {
+GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right) {
+    if (right.len > INT32_MAX - left.len) {
         fprintf(stderr, "Grayscale runtime: string concatenation overflow\n");
         exit(1);
     }
-    int32_t new_len = a.len + b.len;
+    int32_t new_len = left.len + right.len;
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
-    memcpy(data, a.data, (size_t)a.len);
-    memcpy(data + a.len, b.data, (size_t)b.len);
+    memcpy(data, left.data, (size_t)left.len);
+    memcpy(data + left.len, right.data, (size_t)right.len);
     data[new_len] = '\0';
-    GrayString s = { data, new_len };
-    return s;
+    GrayString result = { data, new_len };
+    return result;
 }
 
 /* --- Scope-based memory management --- */
 
 GrayScopeMark gray_scope_save(GrayArena *arena) {
-    GrayScopeMark m;
-    m.block = arena->current;
-    m.used = arena->current ? arena->current->used : 0;
-    return m;
+    GrayScopeMark mark;
+    mark.block = arena->current;
+    mark.used = arena->current ? arena->current->used : 0;
+    return mark;
 }
 
 void gray_scope_restore(GrayArena *arena, GrayScopeMark mark) {
