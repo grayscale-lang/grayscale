@@ -233,6 +233,37 @@ static void synchronize_parser(Parser *parser) {
     }
 }
 
+/* --- Speculative-parse snapshots ---
+ * Save the full lexer + token position, try a parse that may not pan out, and
+ * restore on failure. Used wherever the grammar needs unbounded lookahead:
+ * module-qualified struct literals, `const Name struct`, when-patterns. */
+typedef struct {
+    int position, read_position;
+    char ch;
+    int line, column;
+    Token cur_token, peek_token;
+} ParserSnapshot;
+
+static void parser_snapshot_save(Parser *parser, ParserSnapshot *snap) {
+    snap->position = parser->lexer->position;
+    snap->read_position = parser->lexer->read_position;
+    snap->ch = parser->lexer->ch;
+    snap->line = parser->lexer->line;
+    snap->column = parser->lexer->column;
+    snap->cur_token = parser->cur_token;
+    snap->peek_token = parser->peek_token;
+}
+
+static void parser_snapshot_restore(Parser *parser, const ParserSnapshot *snap) {
+    parser->lexer->position = snap->position;
+    parser->lexer->read_position = snap->read_position;
+    parser->lexer->ch = snap->ch;
+    parser->lexer->line = snap->line;
+    parser->lexer->column = snap->column;
+    parser->cur_token = snap->cur_token;
+    parser->peek_token = snap->peek_token;
+}
+
 static Precedence get_token_precedence(TokenType type) {
     switch (type) {
     case TOK_OR:              return PREC_OR;
@@ -955,14 +986,8 @@ static AstNode *parse_prefix(Parser *parser) {
         if (peek_token_is(parser, TOK_DOT)) {
             const char *mod = parser->cur_token.literal;
             if (mod[0] >= 'a' && mod[0] <= 'z') {
-                /* Save state for lookahead */
-                Token saved_cur = parser->cur_token;
-                Token saved_peek = parser->peek_token;
-                int saved_pos = parser->lexer->position;
-                int saved_rpos = parser->lexer->read_position;
-                char saved_ch = parser->lexer->ch;
-                int saved_line = parser->lexer->line;
-                int saved_col = parser->lexer->column;
+                ParserSnapshot snap;
+                parser_snapshot_save(parser, &snap);
 
                 next_token(parser); /* consume . */
                 next_token(parser); /* move to potential type name */
@@ -976,14 +1001,7 @@ static AstNode *parse_prefix(Parser *parser) {
                     return parse_struct_literal(parser, prefixed);
                 }
 
-                /* Not a struct literal; restore state */
-                parser->cur_token = saved_cur;
-                parser->peek_token = saved_peek;
-                parser->lexer->position = saved_pos;
-                parser->lexer->read_position = saved_rpos;
-                parser->lexer->ch = saved_ch;
-                parser->lexer->line = saved_line;
-                parser->lexer->column = saved_col;
+                parser_snapshot_restore(parser, &snap); /* not a struct literal */
             }
         }
         /* Check for struct literal: Name{ ... }
@@ -3142,35 +3160,6 @@ static AstNode *parse_loop_statement(Parser *parser) {
     return node;
 }
 
-/* --- Speculative parse helpers for when-pattern detection --- */
-
-typedef struct {
-    int position, read_position;
-    char ch;
-    int line, column;
-    Token cur_token, peek_token;
-} ParserSnapshot;
-
-static void parser_snapshot_save(Parser *parser, ParserSnapshot *snap) {
-    snap->position = parser->lexer->position;
-    snap->read_position = parser->lexer->read_position;
-    snap->ch = parser->lexer->ch;
-    snap->line = parser->lexer->line;
-    snap->column = parser->lexer->column;
-    snap->cur_token = parser->cur_token;
-    snap->peek_token = parser->peek_token;
-}
-
-static void parser_snapshot_restore(Parser *parser, const ParserSnapshot *snap) {
-    parser->lexer->position = snap->position;
-    parser->lexer->read_position = snap->read_position;
-    parser->lexer->ch = snap->ch;
-    parser->lexer->line = snap->line;
-    parser->lexer->column = snap->column;
-    parser->cur_token = snap->cur_token;
-    parser->peek_token = snap->peek_token;
-}
-
 /* Check if current position holds IDENT(IDENT, ..., IDENT).
  * Assumes cur_token is the IDENT before LPAREN and peek is LPAREN.
  * Consumes tokens past the closing paren (caller must restore). */
@@ -3430,14 +3419,8 @@ static AstNode *parse_statement(Parser *parser) {
         }
         /* Check if this is a struct or enum declaration: const Name struct { */
         if (parser->cur_token.type == TOK_CONST && peek_token_is(parser, TOK_IDENT)) {
-            /* Save full parser state for lookahead */
-            Token saved_cur = parser->cur_token;
-            Token saved_peek = parser->peek_token;
-            int saved_pos = parser->lexer->position;
-            int saved_rpos = parser->lexer->read_position;
-            char saved_ch = parser->lexer->ch;
-            int saved_line = parser->lexer->line;
-            int saved_col = parser->lexer->column;
+            ParserSnapshot snap;
+            parser_snapshot_save(parser, &snap);
 
             next_token(parser); /* now on IDENT (name) */
             if (peek_token_is(parser, TOK_STRUCT)) {
@@ -3446,14 +3429,7 @@ static AstNode *parse_statement(Parser *parser) {
             if (peek_token_is(parser, TOK_ENUM)) {
                 return parse_enum_declaration(parser);
             }
-            /* Not struct/enum; restore full state */
-            parser->cur_token = saved_cur;
-            parser->peek_token = saved_peek;
-            parser->lexer->position = saved_pos;
-            parser->lexer->read_position = saved_rpos;
-            parser->lexer->ch = saved_ch;
-            parser->lexer->line = saved_line;
-            parser->lexer->column = saved_col;
+            parser_snapshot_restore(parser, &snap); /* not struct/enum */
         }
         return parse_var_declaration(parser);
     case TOK_DO:
