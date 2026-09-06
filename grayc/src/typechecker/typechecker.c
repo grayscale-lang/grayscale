@@ -1622,6 +1622,22 @@ static void record_param_escape(FuncSig *fs, unsigned long long bits,
     }
 }
 
+/* True if `call`'s target is one of `fs`'s own function-typed parameters — an
+ * indirect call whose real callee is not statically known. Escape analysis
+ * cannot see into it, so every argument such a call receives must be treated
+ * as escaping to an unknown, program-lifetime sink (#2692). */
+static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_LABEL || !fs->decl) return false;
+    int param_count = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
+        const Param *p = &fs->decl->data.func_decl.params[i];
+        if (p->name && strcmp(p->name, fn->data.label.value) == 0)
+            return p->type_name && strncmp(p->type_name, "func(", 5) == 0;
+    }
+    return false;
+}
+
 /* Scan a function body for places a parameter's address is stored into
  * caller-visible memory: an assignment whose target roots at another
  * parameter or a module-level variable, a stdlib container insert, or a
@@ -1668,6 +1684,10 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                         record_param_escape(fs, bits, dest);
                 }
             }
+        } else if (!callee && call_targets_func_typed_param(fs, node)) {
+            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
+                record_param_escape(fs, return_expr_param_bits(checker, fs,
+                    node->data.call.args[i]), PARAM_ESCAPE_GLOBAL);
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
             escape_walk(checker, fs, body, node->data.call.args[i]);
