@@ -11,96 +11,96 @@
 #include "maps.h"
 #include <string.h>
 
-GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *m) {
-    GrayArray arr = gray_array_new(arena, m->key_size, m->count > 0 ? m->count : 4);
+GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map) {
+    GrayArray arr = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4);
     /* Iterate in insertion order */
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t slot = m->order[order_index];
-        if (slot >= 0 && m->states[slot] == 1) {
-            void *key = (char *)m->keys + (size_t)slot * (size_t)m->key_size;
+    for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
+        int32_t slot = map->order[order_index];
+        if (slot >= 0 && map->states[slot] == 1) {
+            void *key = (char *)map->keys + (size_t)slot * (size_t)map->key_size;
             GRAY_ARRAY_PUSH(arena, &arr, key);
         }
     }
     return arr;
 }
 
-GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *m) {
-    GrayArray arr = gray_array_new(arena, m->value_size, m->count > 0 ? m->count : 4);
+GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map) {
+    GrayArray arr = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4);
     /* Iterate in insertion order */
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t slot = m->order[order_index];
-        if (slot >= 0 && m->states[slot] == 1) {
-            void *val = (char *)m->values + (size_t)slot * (size_t)m->value_size;
+    for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
+        int32_t slot = map->order[order_index];
+        if (slot >= 0 && map->states[slot] == 1) {
+            void *val = (char *)map->values + (size_t)slot * (size_t)map->value_size;
             GRAY_ARRAY_PUSH(arena, &arr, val);
         }
     }
     return arr;
 }
 
-bool gray_maps_has_key(GrayMap *m, const void *key) {
-    return gray_map_has(m, key);
+bool gray_maps_has_key(GrayMap *map, const void *key) {
+    return gray_map_has(map, key);
 }
 
-bool gray_maps_is_empty(GrayMap *m) {
-    return m->count == 0;
+bool gray_maps_is_empty(GrayMap *map) {
+    return map->count == 0;
 }
 
-GrayMap gray_maps_merge(GrayArena *arena, GrayMap *m1, GrayMap *m2) {
-    GrayMap result = gray_map_new_kind(arena, m1->key_size, m1->value_size,
-        m1->count + m2->count > 8 ? (m1->count + m2->count) * 2 : 8,
-        m1->key_kind);
-    /* Copy all entries from m1 */
-    for (int32_t order_index = 0; order_index < m1->order_len; order_index++) {
-        int32_t slot = m1->order[order_index];
-        if (slot >= 0 && m1->states[slot] == 1) {
-            void *key = (char *)m1->keys + (size_t)slot * (size_t)m1->key_size;
-            void *val = (char *)m1->values + (size_t)slot * (size_t)m1->value_size;
+GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right) {
+    GrayMap result = gray_map_new_kind(arena, left->key_size, left->value_size,
+        left->count + right->count > 8 ? (left->count + right->count) * 2 : 8,
+        left->key_kind);
+    /* Copy all entries from left */
+    for (int32_t order_index = 0; order_index < left->order_len; order_index++) {
+        int32_t slot = left->order[order_index];
+        if (slot >= 0 && left->states[slot] == 1) {
+            void *key = (char *)left->keys + (size_t)slot * (size_t)left->key_size;
+            void *val = (char *)left->values + (size_t)slot * (size_t)left->value_size;
             GRAY_MAP_SET(arena, &result, key, val);
         }
     }
-    /* Copy all entries from m2 (overwrites m1 on conflict) */
-    for (int32_t order_index = 0; order_index < m2->order_len; order_index++) {
-        int32_t slot = m2->order[order_index];
-        if (slot >= 0 && m2->states[slot] == 1) {
-            void *key = (char *)m2->keys + (size_t)slot * (size_t)m2->key_size;
-            void *val = (char *)m2->values + (size_t)slot * (size_t)m2->value_size;
+    /* Copy all entries from right (overwrites left on conflict) */
+    for (int32_t order_index = 0; order_index < right->order_len; order_index++) {
+        int32_t slot = right->order[order_index];
+        if (slot >= 0 && right->states[slot] == 1) {
+            void *key = (char *)right->keys + (size_t)slot * (size_t)right->key_size;
+            void *val = (char *)right->values + (size_t)slot * (size_t)right->value_size;
             GRAY_MAP_SET(arena, &result, key, val);
         }
     }
     return result;
 }
 
-bool gray_maps_contains_value(GrayMap *m, const void *value) {
-    for (int32_t order_index = 0; order_index < m->order_len; order_index++) {
-        int32_t slot = m->order[order_index];
-        if (slot >= 0 && m->states[slot] == 1) {
-            void *val = (char *)m->values + (size_t)slot * (size_t)m->value_size;
-            if (memcmp(val, value, (size_t)m->value_size) == 0) return true;
+bool gray_maps_contains_value(GrayMap *map, const void *value) {
+    for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
+        int32_t slot = map->order[order_index];
+        if (slot >= 0 && map->states[slot] == 1) {
+            void *val = (char *)map->values + (size_t)slot * (size_t)map->value_size;
+            if (memcmp(val, value, (size_t)map->value_size) == 0) return true;
         }
     }
     return false;
 }
 
-bool gray_maps_is_equal(GrayMap *a, GrayMap *b, bool str_keys, bool str_values) {
-    if (a->count != b->count) return false;
-    if (a->key_size != b->key_size) return false;
-    if (a->value_size != b->value_size) return false;
-    for (int32_t order_index = 0; order_index < a->order_len; order_index++) {
-        int32_t slot = a->order[order_index];
-        if (slot < 0 || a->states[slot] != 1) continue;
-        void *ka = (char *)a->keys + (size_t)slot * (size_t)a->key_size;
-        void *va = (char *)a->values + (size_t)slot * (size_t)a->value_size;
-        void *vb = str_keys
-            ? gray_map_get_str(b, *(GrayString *)ka)
-            : gray_map_get(b, ka);
-        if (!vb) return false;
+bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_values) {
+    if (left->count != right->count) return false;
+    if (left->key_size != right->key_size) return false;
+    if (left->value_size != right->value_size) return false;
+    for (int32_t order_index = 0; order_index < left->order_len; order_index++) {
+        int32_t slot = left->order[order_index];
+        if (slot < 0 || left->states[slot] != 1) continue;
+        void *left_key = (char *)left->keys + (size_t)slot * (size_t)left->key_size;
+        void *left_val = (char *)left->values + (size_t)slot * (size_t)left->value_size;
+        void *right_val = str_keys
+            ? gray_map_get_str(right, *(GrayString *)left_key)
+            : gray_map_get(right, left_key);
+        if (!right_val) return false;
         if (str_values) {
-            GrayString *sa = (GrayString *)va;
-            GrayString *sb = (GrayString *)vb;
-            if (sa->len != sb->len) return false;
-            if (sa->len > 0 && memcmp(sa->data, sb->data, (size_t)sa->len) != 0) return false;
+            GrayString *left_str = (GrayString *)left_val;
+            GrayString *right_str = (GrayString *)right_val;
+            if (left_str->len != right_str->len) return false;
+            if (left_str->len > 0 && memcmp(left_str->data, right_str->data, (size_t)left_str->len) != 0) return false;
         } else {
-            if (memcmp(va, vb, (size_t)a->value_size) != 0) return false;
+            if (memcmp(left_val, right_val, (size_t)left->value_size) != 0) return false;
         }
     }
     return true;

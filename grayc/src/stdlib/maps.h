@@ -27,7 +27,7 @@
  *@end
  */
 /* maps.keys(m) — return array of keys */
-GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *m);
+GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map);
 
 /*@man get_values
  *@module maps
@@ -41,7 +41,7 @@ GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *m);
  *@end
  */
 /* maps.values(m) — return array of values */
-GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *m);
+GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map);
 
 /*@man has_key
  *@module maps
@@ -56,7 +56,7 @@ GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *m);
  *@end
  */
 /* maps.has_key(m, key) — check if key exists */
-bool gray_maps_has_key(GrayMap *m, const void *key);
+bool gray_maps_has_key(GrayMap *map, const void *key);
 
 /*@man is_empty
  *@module maps
@@ -70,7 +70,7 @@ bool gray_maps_has_key(GrayMap *m, const void *key);
  *@end
  */
 /* maps.is_empty(m) — true if map has no entries */
-bool gray_maps_is_empty(GrayMap *m);
+bool gray_maps_is_empty(GrayMap *map);
 
 /*@man contains_value
  *@module maps
@@ -84,7 +84,7 @@ bool gray_maps_is_empty(GrayMap *m);
  *@end
  */
 /* maps.contains_value(m, value) — check if any entry has the given value */
-bool gray_maps_contains_value(GrayMap *m, const void *value);
+bool gray_maps_contains_value(GrayMap *map, const void *value);
 
 /*@man is_equal
  *@module maps
@@ -103,7 +103,7 @@ bool gray_maps_contains_value(GrayMap *m, const void *value);
  * str_values: true if values are GrayString (compare contents, not blob)
  * Composite key/value types (nested arrays, maps, structs) are rejected
  * at typecheck and never reach this function. */
-bool gray_maps_is_equal(GrayMap *a, GrayMap *b, bool str_keys, bool str_values);
+bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_values);
 
 /*@man merge
  *@module maps
@@ -118,7 +118,7 @@ bool gray_maps_is_equal(GrayMap *a, GrayMap *b, bool str_keys, bool str_values);
  *@end
  */
 /* maps.merge(m1, m2) — combine two maps (m2 overwrites m1 on conflict) */
-GrayMap gray_maps_merge(GrayArena *arena, GrayMap *m1, GrayMap *m2);
+GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right);
 
 /*@man get_or_default
  *@module maps
