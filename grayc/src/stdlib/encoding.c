@@ -15,55 +15,55 @@
 
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString s) {
-    int32_t output_length = ((s.len + 2) / 3) * 4;
+GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString str) {
+    int32_t output_length = ((str.len + 2) / 3) * 4;
     char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     int j = 0;
-    for (int i = 0; i < s.len; i += 3) {
-        uint32_t a = (uint8_t)s.data[i];
-        uint32_t b = (i + 1 < s.len) ? (uint8_t)s.data[i + 1] : 0;
-        uint32_t c = (i + 2 < s.len) ? (uint8_t)s.data[i + 2] : 0;
+    for (int i = 0; i < str.len; i += 3) {
+        uint32_t a = (uint8_t)str.data[i];
+        uint32_t b = (i + 1 < str.len) ? (uint8_t)str.data[i + 1] : 0;
+        uint32_t c = (i + 2 < str.len) ? (uint8_t)str.data[i + 2] : 0;
         uint32_t triple = (a << 16) | (b << 8) | c;
         out[j++] = b64_table[(triple >> 18) & 0x3F];
         out[j++] = b64_table[(triple >> 12) & 0x3F];
-        out[j++] = (i + 1 < s.len) ? b64_table[(triple >> 6) & 0x3F] : '=';
-        out[j++] = (i + 2 < s.len) ? b64_table[triple & 0x3F] : '=';
+        out[j++] = (i + 1 < str.len) ? b64_table[(triple >> 6) & 0x3F] : '=';
+        out[j++] = (i + 2 < str.len) ? b64_table[triple & 0x3F] : '=';
     }
     out[j] = '\0';
-    GrayString r = { out, (int32_t)j };
-    return r;
+    GrayString result = { out, (int32_t)j };
+    return result;
 }
 
-static int b64_val(char c) {
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
+static int b64_val(char ch) {
+    if (ch >= 'A' && ch <= 'Z') return ch - 'A';
+    if (ch >= 'a' && ch <= 'z') return ch - 'a' + 26;
+    if (ch >= '0' && ch <= '9') return ch - '0' + 52;
+    if (ch == '+') return 62;
+    if (ch == '/') return 63;
     return -1;
 }
 
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s) {
-    if (s.len == 0) return gray_string_lit("");
-    if (s.len % 4 != 0) {
+GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString str) {
+    if (str.len == 0) return gray_string_lit("");
+    if (str.len % 4 != 0) {
         gray_panic_code("P0036",
             "encoding.base64_decode: input length %d is not a multiple of 4",
-            s.len);
+            str.len);
     }
 
     /* Padding is only valid in the last quad: 0, 1, or 2 '=' at the end. */
     int32_t pad = 0;
-    if (s.data[s.len - 1] == '=') pad++;
-    if (s.len >= 2 && s.data[s.len - 2] == '=') pad++;
+    if (str.data[str.len - 1] == '=') pad++;
+    if (str.len >= 2 && str.data[str.len - 2] == '=') pad++;
 
-    int32_t output_length = (s.len / 4) * 3 - pad;
+    int32_t output_length = (str.len / 4) * 3 - pad;
     char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     int32_t j = 0;
 
-    for (int32_t i = 0; i < s.len; i += 4) {
-        int last_quad = (i + 4 == s.len);
-        char c_ch = s.data[i + 2];
-        char d_ch = s.data[i + 3];
+    for (int32_t i = 0; i < str.len; i += 4) {
+        int last_quad = (i + 4 == str.len);
+        char c_ch = str.data[i + 2];
+        char d_ch = str.data[i + 3];
         int c_pad = (c_ch == '=');
         int d_pad = (d_ch == '=');
 
@@ -75,8 +75,8 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s) {
             gray_panic_code("P0038", "encoding.base64_decode: invalid padding");
         }
 
-        int a = b64_val(s.data[i]);
-        int b = b64_val(s.data[i + 1]);
+        int a = b64_val(str.data[i]);
+        int b = b64_val(str.data[i + 1]);
         int c = c_pad ? 0 : b64_val(c_ch);
         int d = d_pad ? 0 : b64_val(d_ch);
         if (a < 0 || b < 0 || c < 0 || d < 0) {
@@ -90,30 +90,30 @@ GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s) {
         if (!d_pad) out[j++] = (char)(triple & 0xFF);
     }
     out[j] = '\0';
-    GrayString r = { out, j };
-    return r;
+    GrayString result = { out, j };
+    return result;
 }
 
-GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString s) {
-    int32_t output_length = s.len * 2;
+GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString str) {
+    int32_t output_length = str.len * 2;
     char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
-    for (int i = 0; i < s.len; i++) {
-        snprintf(out + i * 2, 3, "%02x", (uint8_t)s.data[i]);
+    for (int i = 0; i < str.len; i++) {
+        snprintf(out + i * 2, 3, "%02x", (uint8_t)str.data[i]);
     }
     out[output_length] = '\0';
-    GrayString r = { out, output_length };
-    return r;
+    GrayString result = { out, output_length };
+    return result;
 }
 
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s) {
-    if (s.len % 2 != 0) {
-        gray_panic_code("P0040", "encoding.hex_decode: input length %d is not even", s.len);
+GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString str) {
+    if (str.len % 2 != 0) {
+        gray_panic_code("P0040", "encoding.hex_decode: input length %d is not even", str.len);
     }
-    int32_t output_length = s.len / 2;
+    int32_t output_length = str.len / 2;
     char *out = gray_arena_alloc_uninitialized(arena, (size_t)output_length + 1);
     for (int i = 0; i < output_length; i++) {
-        unsigned char hi = (unsigned char)s.data[i * 2];
-        unsigned char lo = (unsigned char)s.data[i * 2 + 1];
+        unsigned char hi = (unsigned char)str.data[i * 2];
+        unsigned char lo = (unsigned char)str.data[i * 2 + 1];
         if (!isxdigit(hi) || !isxdigit(lo)) {
             gray_panic_code("P0041", "encoding.hex_decode: invalid hex character at position %d", i * 2);
         }
@@ -122,16 +122,16 @@ GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s) {
         out[i] = (char)((hi_v << 4) | lo_v);
     }
     out[output_length] = '\0';
-    GrayString r = { out, output_length };
-    return r;
+    GrayString result = { out, output_length };
+    return result;
 }
 
-GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s) {
+GrayString gray_encoding_url_encode(GrayArena *arena, GrayString str) {
     /* Worst case: every char becomes %XX (3x) */
-    char *out = gray_arena_alloc_uninitialized(arena, (size_t)s.len * 3 + 1);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)str.len * 3 + 1);
     int j = 0;
-    for (int i = 0; i < s.len; i++) {
-        unsigned char c = (unsigned char)s.data[i];
+    for (int i = 0; i < str.len; i++) {
+        unsigned char c = (unsigned char)str.data[i];
         if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
             out[j++] = c;
         } else {
@@ -139,17 +139,17 @@ GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s) {
         }
     }
     out[j] = '\0';
-    GrayString r = { out, (int32_t)j };
-    return r;
+    GrayString result = { out, (int32_t)j };
+    return result;
 }
 
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString s) {
-    char *out = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
+GrayString gray_encoding_url_decode(GrayArena *arena, GrayString str) {
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
     int j = 0;
-    for (int i = 0; i < s.len; i++) {
-        if (s.data[i] == '%' && i + 2 < s.len) {
-            unsigned char hi = (unsigned char)s.data[i + 1];
-            unsigned char lo = (unsigned char)s.data[i + 2];
+    for (int i = 0; i < str.len; i++) {
+        if (str.data[i] == '%' && i + 2 < str.len) {
+            unsigned char hi = (unsigned char)str.data[i + 1];
+            unsigned char lo = (unsigned char)str.data[i + 2];
             if (!isxdigit(hi) || !isxdigit(lo)) {
                 gray_panic_code("P0042", "encoding.url_decode: invalid percent-escape at position %d", i);
             }
@@ -157,23 +157,23 @@ GrayString gray_encoding_url_decode(GrayArena *arena, GrayString s) {
             int lo_v = (lo <= '9') ? lo - '0' : (lo <= 'F') ? lo - 'A' + 10 : lo - 'a' + 10;
             out[j++] = (char)((hi_v << 4) | lo_v);
             i += 2;
-        } else if (s.data[i] == '+') {
+        } else if (str.data[i] == '+') {
             out[j++] = ' ';
         } else {
-            out[j++] = s.data[i];
+            out[j++] = str.data[i];
         }
     }
     out[j] = '\0';
-    GrayString r = { out, (int32_t)j };
-    return r;
+    GrayString result = { out, (int32_t)j };
+    return result;
 }
 
 /* --- Byte conversion functions (formerly @bytes module) --- */
 
-GrayArray gray_encoding_from_string(GrayArena *arena, GrayString s) {
-    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), s.len);
-    for (int32_t i = 0; i < s.len; i++) {
-        uint8_t b = (uint8_t)s.data[i];
+GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str) {
+    GrayArray arr = gray_array_new(arena, sizeof(uint8_t), str.len);
+    for (int32_t i = 0; i < str.len; i++) {
+        uint8_t b = (uint8_t)str.data[i];
         GRAY_ARRAY_PUSH(arena, &arr, &b);
     }
     return arr;
@@ -203,8 +203,8 @@ GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes) {
         snprintf(hex + i * 2, 3, "%02x", data[i]);
     }
     hex[output_length] = '\0';
-    GrayString r = { hex, output_length };
-    return r;
+    GrayString result = { hex, output_length };
+    return result;
 }
 
 GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString b64) {
@@ -213,6 +213,6 @@ GrayArray gray_encoding_from_base64(GrayArena *arena, GrayString b64) {
 }
 
 GrayString gray_encoding_to_base64(GrayArena *arena, GrayArray *bytes) {
-    GrayString s = gray_encoding_to_string(arena, bytes);
-    return gray_encoding_base64_encode(arena, s);
+    GrayString str = gray_encoding_to_string(arena, bytes);
+    return gray_encoding_base64_encode(arena, str);
 }

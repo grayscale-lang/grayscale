@@ -149,15 +149,15 @@
  */
 
 /* String encoding functions */
-GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString s);
+GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_url_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_url_decode(GrayArena *arena, GrayString str);
 
 /* Byte conversion functions (formerly @bytes module) */
-GrayArray gray_encoding_from_string(GrayArena *arena, GrayString s);
+GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str);
 GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes);
 GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex);
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes);
