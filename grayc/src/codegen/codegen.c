@@ -5,6 +5,9 @@
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
  * Licensed under the MIT License. See LICENSE for details.
+ *
+ * Contributors:
+ *  - @sjh9714
  */
 
 #include "codegen.h"
@@ -10753,9 +10756,6 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
 }
 
 static void emit_return_statement(CodeGen *codegen, AstNode *node) {
-    /* Emit ensure cleanup before return */
-    emit_ensure_cleanup(codegen);
-
     /* Caller-arena functions have no _scope_mark to restore. */
     bool caller_arena = codegen->current_func &&
                         function_uses_caller_arena(codegen, codegen->current_func);
@@ -10764,6 +10764,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     if (node->data.return_stmt.count > 0 && !node->data.return_stmt.values) {
         emit_indent(codegen);
         emit(codegen, "{ ");
+        emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
         if (caller_arena) {
             emit(codegen, "gray_exit_func(); return; }\n");
@@ -10786,6 +10787,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, node->data.return_stmt.values[i]);
         }
         emit(codegen, "}; ");
+        emit_ensure_cleanup(codegen);
         emit_multi_function_return_escape(codegen);
         emit(codegen, "gray_exit_func(); return _ret; }\n");
     } else if (node->data.return_stmt.count == 1 && codegen->current_func &&
@@ -10815,6 +10817,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, node->data.return_stmt.values[0]);
         }
         emit(codegen, "}; ");
+        emit_ensure_cleanup(codegen);
         emit_multi_function_return_escape(codegen);
         emit(codegen, "gray_exit_func(); return _ret; }\n");
     } else if (codegen->current_func &&
@@ -10822,6 +10825,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         /* Void function */
         emit_indent(codegen);
         emit(codegen, "{ ");
+        emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
         if (caller_arena) {
             emit(codegen, "gray_exit_func(); return; }\n");
@@ -10838,6 +10842,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         if (!emit_bigint_coerced(codegen, ret_bi, node->data.return_stmt.values[0]))
             emit_expression(codegen, node->data.return_stmt.values[0]);
         emit(codegen, "; ");
+        emit_ensure_cleanup(codegen);
         if (codegen->current_func && codegen->current_func->data.func_decl.return_type_count > 0) {
             const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
             emit_function_return_escape(codegen, ret_tn);
@@ -10852,6 +10857,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
             emit_indent(codegen);
             emit_formatted(codegen, "{ __auto_type _ret = %s; ",
                 sanitize_name(codegen->current_func->data.func_decl.return_names[0]));
+            emit_ensure_cleanup(codegen);
             emit_function_return_escape(codegen, codegen->current_func->data.func_decl.return_types[0]);
             emit(codegen, "gray_exit_func(); return _ret; }\n");
         } else {
@@ -10867,6 +10873,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
                 }
             }
             emit(codegen, "}; ");
+            emit_ensure_cleanup(codegen);
             emit_multi_function_return_escape(codegen);
             emit(codegen, "gray_exit_func(); return _ret; }\n");
         }
@@ -10874,6 +10881,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         /* Bare return (no value, non-void; shouldn't happen but handle gracefully) */
         emit_indent(codegen);
         emit(codegen, "{ ");
+        emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
         if (caller_arena) {
             emit(codegen, "gray_exit_func(); return; }\n");
