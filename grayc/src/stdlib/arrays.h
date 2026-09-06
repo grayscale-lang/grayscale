@@ -249,8 +249,8 @@ int64_t gray_arrays_count(GrayArray *arr, int64_t value);
  *   println(arrays.is_equal(a, b))
  *@end
  */
-bool gray_arrays_is_equal_prim(GrayArray *a, GrayArray *b);
-bool gray_arrays_is_equal_str(GrayArray *a, GrayArray *b);
+bool gray_arrays_is_equal_prim(GrayArray *left, GrayArray *right);
+bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
 
 /*@man is_sorted
  *@module arrays
@@ -307,7 +307,7 @@ GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int
  *   println(arrays.concat(a, b))
  *@end
  */
-GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *a, GrayArray *b);
+GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *left, GrayArray *right);
 
 /*@man deduplicate
  *@module arrays
@@ -360,7 +360,7 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size
  *   println(arrays.pair(keys, vals))
  *@end
  */
-GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *a, GrayArray *b);
+GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right);
 
 /* Computation */
 
