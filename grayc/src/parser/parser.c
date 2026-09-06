@@ -267,12 +267,9 @@ static Precedence get_token_precedence(TokenType type) {
 
 /* --- Expression Parsing --- */
 
-/* Read a type name: simple (int, Person) or qualified (models.Task).
- * Assumes current token is the first identifier. Returns arena-allocated string. */
-/* Wildcard type placeholder for generics. Stored as the
- * string "?" in the same slot as any other type name so the rest of
- * the compiler can carry it through unchanged until typechecker
- * instantiation (slice 2) replaces it with a concrete type. */
+/* True when a type spelling contains the generic wildcard `?`. The wildcard is
+ * stored as the literal string "?" in the same slot as any other type name and
+ * carried unchanged until the typechecker replaces it with a concrete type. */
 static bool type_string_has_wildcard(const char *type_name) {
     if (!type_name) return false;
     for (const char *ch = type_name; *ch; ch++) {
@@ -281,6 +278,8 @@ static bool type_string_has_wildcard(const char *type_name) {
     return false;
 }
 
+/* Read a type name: simple (int, Person) or qualified (models.Task).
+ * Assumes current token is the first identifier. Returns arena-allocated string. */
 static const char *read_type_name(Parser *parser) {
     /* Wildcard type placeholder: `?` in a type position */
     if (current_token_is(parser, TOK_QUESTION)) {
@@ -1637,8 +1636,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
      * wildcard `?` in a var_decl flows through parse_complex_type and
      * lands on the existing E2070 diagnostic below; without it, the
      * token falls through to the generic "unexpected token" fallback
-     * and the user gets no hint about why `?` isn't allowed here
-     * (). */
+     * and the user gets no hint about why `?` isn't allowed here. */
     /* E2079: reject 'nil' as a type annotation. nil is a value per the
      * language, not a type; consume the token to avoid a cascading
      * "nil is an unexpected expression statement" diagnostic. */
@@ -2633,11 +2631,11 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         ARENA_GROW(parser->arena, node->data.struct_decl.fields,
             node->data.struct_decl.field_count, field_cap);
 
-        /* E2070 ( follow-up): wildcard `?` in field-name position
-         * used to slip past the struct-field guard; the existing check
-         * further down only inspects the type slot; and embed '?' in
-         * the generated C struct identifier, where clang rejected it
-         * with a raw C error. Catch it here before reading the name. */
+        /* E2070: wildcard `?` in field-name position used to slip past the
+         * struct-field guard (the check further down only inspects the type
+         * slot) and embed '?' in the generated C struct identifier, where
+         * clang rejected it with a raw C error. Catch it here before reading
+         * the name. */
         if (current_token_is(parser, TOK_QUESTION)) {
             diagnostic_error_message(parser->diag, "E2070",
                 arena_copy_string(parser->arena,
@@ -2832,10 +2830,10 @@ static AstNode *parse_enum_declaration(Parser *parser) {
             continue;
         }
 
-        /* E2070 ( follow-up): wildcard `?` in variant-name position
-         * used to slip past the parser and embed '?' in the generated C
-         * enum identifier, where clang rejected it with a raw C error.
-         * Catch it here before reading the variant name. */
+        /* E2070: wildcard `?` in variant-name position used to slip past the
+         * parser and embed '?' in the generated C enum identifier, where clang
+         * rejected it with a raw C error. Catch it here before reading the
+         * variant name. */
         if (current_token_is(parser, TOK_QUESTION)) {
             diagnostic_error_message(parser->diag, "E2070",
                 arena_copy_string(parser->arena,
@@ -3522,7 +3520,7 @@ static AstNode *parse_statement(Parser *parser) {
         return stmt;
     }
     case TOK_JSON_ATTR: {
-        /* #json; applies to the next struct declaration () */
+        /* #json; applies to the next struct declaration */
         note_dup_attr(parser, ATTR_JSON, "#json");
         next_token(parser);
         AstNode *stmt = parse_statement(parser);
