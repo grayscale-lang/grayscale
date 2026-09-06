@@ -4047,7 +4047,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
     /* try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
      * type_from_name returns TK_STRUCT for any capitalized name
-     * even if the struct isn'resolved_type registered, so check is_struct_name
+     * even if the struct isn't registered, so check is_struct_name
      * to see if the bare name actually exists before giving up. */
     if (name && name[0] >= 'A' && name[0] <= 'Z' &&
         !is_struct_name(checker, name) && !is_enum_name(checker, name)) {
@@ -4060,7 +4060,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             if (is_struct_name(checker, prefixed)) return type_struct(prefixed);
         }
         /* after registration completes, reject uppercase names that
-         * aren'resolved_type registered as structs or enums. During registration we must
+         * aren't registered as structs or enums. During registration we must
          * allow forward references, so only enforce this in later passes.
          * Exempt built-in types that are mapped directly in codegen without
          * struct registration (e.g. Error → GrayError*). */
