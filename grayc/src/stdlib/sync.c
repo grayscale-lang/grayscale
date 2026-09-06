@@ -13,35 +13,35 @@
 #include <stdlib.h>
 
 GrayMutex gray_sync_mutex(void) {
-    pthread_mutex_t *m = malloc(sizeof(pthread_mutex_t));
-    pthread_mutex_init(m, NULL);
+    pthread_mutex_t *handle = malloc(sizeof(pthread_mutex_t));
+    pthread_mutex_init(handle, NULL);
     GrayMutex result;
-    result._internal = m;
+    result._internal = handle;
     return result;
 }
 
-void gray_sync_lock(GrayMutex m) {
-    if (m._internal) {
-        pthread_mutex_lock((pthread_mutex_t *)m._internal);
+void gray_sync_lock(GrayMutex mutex) {
+    if (mutex._internal) {
+        pthread_mutex_lock((pthread_mutex_t *)mutex._internal);
     }
 }
 
-void gray_sync_unlock(GrayMutex m) {
-    if (m._internal) {
-        pthread_mutex_unlock((pthread_mutex_t *)m._internal);
+void gray_sync_unlock(GrayMutex mutex) {
+    if (mutex._internal) {
+        pthread_mutex_unlock((pthread_mutex_t *)mutex._internal);
     }
 }
 
-bool gray_sync_try_lock(GrayMutex m) {
-    if (m._internal) {
-        return pthread_mutex_trylock((pthread_mutex_t *)m._internal) == 0;
+bool gray_sync_try_lock(GrayMutex mutex) {
+    if (mutex._internal) {
+        return pthread_mutex_trylock((pthread_mutex_t *)mutex._internal) == 0;
     }
     return false;
 }
 
-void gray_sync_destroy(GrayMutex m) {
-    if (m._internal) {
-        pthread_mutex_destroy((pthread_mutex_t *)m._internal);
-        free(m._internal);
+void gray_sync_destroy(GrayMutex mutex) {
+    if (mutex._internal) {
+        pthread_mutex_destroy((pthread_mutex_t *)mutex._internal);
+        free(mutex._internal);
     }
 }
