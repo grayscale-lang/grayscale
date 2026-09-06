@@ -152,7 +152,7 @@ static int gray_path_cmp(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
 
-struct scan_ctx {
+struct gray_file_scan {
     const char *dir_path;
     Arena *arena;
     char (*paths)[PATH_BUF_SIZE];
@@ -160,8 +160,8 @@ struct scan_ctx {
     int cap;
 };
 
-static bool scan_visitor(const char *name, void *arg) {
-    struct scan_ctx *ctx = arg;
+static bool collect_gray_file(const char *name, void *arg) {
+    struct gray_file_scan *ctx = arg;
     if (name[0] == '.') return true; /* skip hidden files */
     size_t nlen = strlen(name);
     if (nlen < GRAY_EXT_LEN + 1 || strcmp(name + nlen - GRAY_EXT_LEN, GRAY_EXT) != 0)
@@ -176,8 +176,8 @@ static bool scan_visitor(const char *name, void *arg) {
  * read. *out_paths receives an arena-allocated array of that many paths. */
 static int scan_gray_files(Arena *arena, const char *dir_path,
                            char (**out_paths)[PATH_BUF_SIZE]) {
-    struct scan_ctx ctx = { dir_path, arena, NULL, 0, 0 };
-    if (!gray_scandir(dir_path, scan_visitor, &ctx)) return -1;
+    struct gray_file_scan ctx = { dir_path, arena, NULL, 0, 0 };
+    if (!gray_scandir(dir_path, collect_gray_file, &ctx)) return -1;
 
     /* Sort alphabetically for deterministic import order */
     qsort(ctx.paths, (size_t)ctx.count, PATH_BUF_SIZE, gray_path_cmp);
