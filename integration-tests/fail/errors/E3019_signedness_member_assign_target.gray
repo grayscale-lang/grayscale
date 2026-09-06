@@ -1,0 +1,17 @@
+// Error Test: E3019 - an unsigned value assigned into a signed member target
+// (s.field and p^.field), not just a struct-literal initializer
+// expect-error: E3019
+// expect-error-count: 2
+
+const S struct {
+    n int
+}
+
+do main() {
+    mut s S = S{ n: 0 }
+    mut p ^S = new(S)
+    mut u uint = 18446744073709551615
+    s.n = u
+    p^.n = u
+    println("${s.n} ${p^.n}")
+}

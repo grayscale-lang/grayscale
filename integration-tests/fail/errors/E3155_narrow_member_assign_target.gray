@@ -1,0 +1,14 @@
+// Error Test: E3155 - a wider integer implicitly narrowed into a member target
+// expect-error: E3155
+// expect-error-count: 1
+
+const S struct {
+    b byte
+}
+
+do main() {
+    mut s S = S{ b: 0 }
+    mut big int = 300
+    s.b = big
+    println("${s.b}")
+}

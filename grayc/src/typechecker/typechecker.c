@@ -13350,6 +13350,29 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+    /* E3155 / E3019: non-literal narrowing or signedness crossing into an
+     * integer member target (s.field, o.a.b, p^.field). target_t is already
+     * the resolved field type. Literal values are left to the range check
+     * above; this mirrors the NODE_LABEL reassignment guards below. */
+    if (target->kind == NODE_MEMBER_EXPR && node->data.assign.value &&
+        target_t && target_t->name && value_t && value_t->name &&
+        is_int_kind(target_t->kind) && is_int_kind(value_t->kind)) {
+        int64_t member_lit_probe;
+        if (!try_get_literal_int(node->data.assign.value, &member_lit_probe)) {
+            int declared_rank = int_type_name_rank(target_t->name);
+            int value_rank = int_type_name_rank(value_t->name);
+            if (declared_rank > 0 && value_rank > 0 && declared_rank < value_rank) {
+                char *msg = typechecker_format(checker,
+                    "type mismatch: cannot implicitly narrow %s to %s field '%s'; use cast(value, %s) to convert explicitly",
+                    value_t->name, target_t->name, target->data.member.member, target_t->name);
+                diagnostic_error_message(checker->diag, "E3155", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            } else {
+                check_signedness_crossing(checker, target_t->name,
+                    node->data.assign.value, value_t, node->data.assign.value);
+            }
+        }
+    }
     /* Reject integer assigned to enum variable */
     if (target->kind == NODE_LABEL && target_t->kind == TK_ENUM &&
         is_int_kind(value_t->kind)) {
