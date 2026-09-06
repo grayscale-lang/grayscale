@@ -223,8 +223,8 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
  *   mut val, err = time.parse("not a date", "%Y-%m-%d")
  *@end
  */
-int64_t gray_time_parse(GrayString s, GrayString layout);
-GrayResult_int gray_time_parse_result(GrayString s, GrayString layout);
+int64_t gray_time_parse(GrayString text, GrayString layout);
+GrayResult_int gray_time_parse_result(GrayString text, GrayString layout);
 
 /* Arithmetic */
 
@@ -241,7 +241,7 @@ GrayResult_int gray_time_parse_result(GrayString s, GrayString layout);
  *   println(delta)
  *@end
  */
-int64_t gray_time_diff(int64_t t1, int64_t t2);
+int64_t gray_time_diff(int64_t start, int64_t end);
 
 /*@man since
  *@module time
@@ -255,7 +255,7 @@ int64_t gray_time_diff(int64_t t1, int64_t t2);
  *   println(elapsed)
  *@end
  */
-int64_t gray_time_since(int64_t t);
+int64_t gray_time_since(int64_t start);
 
 /* Performance */
 
@@ -310,8 +310,8 @@ GrayString gray_time_humanize(GrayArena *arena, int64_t seconds);
  *   mut secs, err = time.parse_duration("1h30m")
  *@end
  */
-int64_t gray_time_parse_duration(GrayString s);
-GrayResult_int gray_time_parse_duration_result(GrayString s);
+int64_t gray_time_parse_duration(GrayString text);
+GrayResult_int gray_time_parse_duration_result(GrayString text);
 
 /*@man format_duration
  *@module time
@@ -335,7 +335,7 @@ GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds);
  *   mut tomorrow int = time.add_days(time.now(), 1)
  *@end
  */
-int64_t gray_time_add_days(int64_t timestamp, int64_t n);
+int64_t gray_time_add_days(int64_t timestamp, int64_t days);
 
 /*@man add_hours
  *@module time
@@ -347,7 +347,7 @@ int64_t gray_time_add_days(int64_t timestamp, int64_t n);
  *   mut later int = time.add_hours(time.now(), -2)
  *@end
  */
-int64_t gray_time_add_hours(int64_t timestamp, int64_t n);
+int64_t gray_time_add_hours(int64_t timestamp, int64_t hours);
 
 /*@man add_seconds
  *@module time
@@ -359,7 +359,7 @@ int64_t gray_time_add_hours(int64_t timestamp, int64_t n);
  *   mut soon int = time.add_seconds(time.now(), 30)
  *@end
  */
-int64_t gray_time_add_seconds(int64_t timestamp, int64_t n);
+int64_t gray_time_add_seconds(int64_t timestamp, int64_t seconds);
 
 /*@man start_of_day
  *@module time
