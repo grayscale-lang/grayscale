@@ -3025,8 +3025,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
     {"uuid", "parse",                 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "UUID"},
+    {"uuid", "timestamp",             1, 1, false, FT_NONE, 0, {{0}},"int"},
     {"uuid", "to_bytes",              1, 1, false, FT_NONE, 0, {{0}},"[byte]"},
     {"uuid", "to_string",             1, 1, false, FT_NONE, 0, {{0}},"string"},
+    {"uuid", "version",               1, 1, false, FT_NONE, 0, {{0}},"int"},
 };
 
 static int stdlib_meta_compare(const void *a, const void *b) {
@@ -3629,6 +3631,7 @@ typedef struct {
 static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"channels", "try_receive", 2, {&TYPE_INT, &TYPE_BOOL}},
     {"math",     "modf",        2, {&TYPE_FLOAT, &TYPE_FLOAT}},
+    {"uuid",     "timestamp",   2, {&TYPE_INT, &TYPE_BOOL}},
     {"os",       "exec",        4, {&TYPE_INT, &TYPE_STRING, &TYPE_STRING, &TYPE_BOOL}},
     {NULL, NULL, 0, {NULL}}
 };

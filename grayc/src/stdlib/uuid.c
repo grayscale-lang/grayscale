@@ -114,6 +114,42 @@ GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes) {
     return uuid;
 }
 
+int64_t gray_uuid_version(GrayUUID id) {
+    uint8_t bytes[16];
+    uuid_to_bytes16(id, bytes);
+    return (bytes[6] >> 4) & 0x0F;
+}
+
+GrayUuidTimestamp gray_uuid_timestamp(GrayUUID id) {
+    uint8_t b[16];
+    uuid_to_bytes16(id, b);
+    GrayUuidTimestamp r = { 0, false };
+    int version = (b[6] >> 4) & 0x0F;
+
+    if (version == 7) {
+        /* RFC 9562 §5.7: bytes 0..5 are a 48-bit big-endian Unix ms count. */
+        uint64_t ms = ((uint64_t)b[0] << 40) | ((uint64_t)b[1] << 32) |
+                      ((uint64_t)b[2] << 24) | ((uint64_t)b[3] << 16) |
+                      ((uint64_t)b[4] << 8)  | (uint64_t)b[5];
+        r.v0 = (int64_t)ms;
+        r.v1 = true;
+    } else if (version == 1) {
+        /* RFC 4122 §4.1.2: 60-bit count of 100ns intervals since the Gregorian
+         * epoch (1582-10-15), split across time_low / time_mid / time_hi. */
+        uint64_t time_low = ((uint64_t)b[0] << 24) | ((uint64_t)b[1] << 16) |
+                            ((uint64_t)b[2] << 8)  | (uint64_t)b[3];
+        uint64_t time_mid = ((uint64_t)b[4] << 8) | (uint64_t)b[5];
+        uint64_t time_hi  = (((uint64_t)b[6] & 0x0F) << 8) | (uint64_t)b[7];
+        uint64_t ticks = (time_hi << 48) | (time_mid << 32) | time_low;
+        uint64_t gregorian_offset = 0x01B21DD213814000ULL; /* 100ns from 1582 to 1970 */
+        if (ticks >= gregorian_offset) {
+            r.v0 = (int64_t)((ticks - gregorian_offset) / 10000ULL);
+            r.v1 = true;
+        }
+    }
+    return r;
+}
+
 GrayUUID gray_uuid_generate(GrayArena *arena) {
     uint8_t bytes[16];
     GrayUUID uuid;

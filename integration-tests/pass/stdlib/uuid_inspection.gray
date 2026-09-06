@@ -1,0 +1,78 @@
+/*
+ * uuid_inspection.gray - Integration test for uuid.version and uuid.timestamp
+ */
+
+import @uuid
+import @time
+
+do main() {
+    mut passed int = 0
+
+    // version nibble
+    if uuid.version(uuid.generate()) == 4 {
+        println("  [PASS] v4 version")
+        passed += 1
+    } otherwise { println("  [FAIL] v4 version") }
+
+    if uuid.version(uuid.generate_time_ordered()) == 7 {
+        println("  [PASS] v7 version")
+        passed += 1
+    } otherwise { println("  [FAIL] v7 version") }
+
+    if uuid.version(uuid.parse("00000000-0000-0000-0000-000000000000")) == 0 {
+        println("  [PASS] nil version 0")
+        passed += 1
+    } otherwise { println("  [FAIL] nil version 0") }
+
+    if uuid.version(uuid.parse("550e8400-e29b-41d4-a716-446655440000")) == 4 {
+        println("  [PASS] parsed v4")
+        passed += 1
+    } otherwise { println("  [FAIL] parsed v4") }
+
+    // timestamp: v7 carries one, v4 does not
+    mut ms, ok = uuid.timestamp(uuid.generate_time_ordered())
+    if ok {
+        println("  [PASS] v7 has timestamp")
+        passed += 1
+    } otherwise { println("  [FAIL] v7 has timestamp") }
+
+    mut now int = time.now_ms()
+    if ms >= now - 5000 {
+        if ms <= now + 5000 {
+            println("  [PASS] v7 timestamp near now")
+            passed += 1
+        } otherwise { println("  [FAIL] v7 timestamp too late: ${ms} vs ${now}") }
+    } otherwise { println("  [FAIL] v7 timestamp too early: ${ms} vs ${now}") }
+
+    mut ms4, ok4 = uuid.timestamp(uuid.generate())
+    if ok4 == false {
+        println("  [PASS] v4 has no timestamp")
+        passed += 1
+    } otherwise { println("  [FAIL] v4 has no timestamp") }
+    if ms4 == 0 {
+        println("  [PASS] v4 timestamp value 0")
+        passed += 1
+    } otherwise { println("  [FAIL] v4 timestamp value: ${ms4}") }
+
+    // known v1 UUID: 1970-2020 era timestamp
+    mut v1ms, v1ok = uuid.timestamp(uuid.parse("a8098c1a-f86e-11da-bd1a-00112444be1e"))
+    if v1ok {
+        println("  [PASS] v1 has timestamp")
+        passed += 1
+    } otherwise { println("  [FAIL] v1 has timestamp") }
+    if v1ms > 1000000000000 {
+        if v1ms < 2000000000000 {
+            println("  [PASS] v1 timestamp in plausible range")
+            passed += 1
+        } otherwise { println("  [FAIL] v1 timestamp too large: ${v1ms}") }
+    } otherwise { println("  [FAIL] v1 timestamp too small: ${v1ms}") }
+
+    println("")
+    println("Results: ${passed}/10 passed")
+    if passed == 10 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

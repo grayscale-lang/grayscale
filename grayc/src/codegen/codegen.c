@@ -5965,6 +5965,16 @@ static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")"); return true;
     }
+    if (strcmp(func, "version") == 0) {
+        emit(codegen, "gray_uuid_version(");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")"); return true;
+    }
+    if (strcmp(func, "timestamp") == 0) {
+        emit(codegen, "gray_uuid_timestamp(");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")"); return true;
+    }
     return false;
 }
 

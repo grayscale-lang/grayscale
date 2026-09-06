@@ -120,6 +120,30 @@
  *@end
  */
 
+/*@man version
+ *@module uuid
+ *@group Inspection
+ *@sig version(id UUID) -> int
+ *@desc Returns the UUID's version number from its version nibble (1 through 8 for the RFC-defined versions). The nil UUID reports 0.
+ *@example
+ *   import @uuid
+ *   println(uuid.version(uuid.generate()))            // 4
+ *   println(uuid.version(uuid.generate_time_ordered())) // 7
+ *@end
+ */
+
+/*@man timestamp
+ *@module uuid
+ *@group Inspection
+ *@sig timestamp(id UUID) -> (int, bool)
+ *@desc Extracts the embedded creation time as Unix milliseconds. The second value is true for a version 1 or version 7 UUID and false for any other version, where the first value is 0. Always destructure the result.
+ *@example
+ *   import @uuid
+ *   mut ms, ok = uuid.timestamp(uuid.generate_time_ordered())
+ *   if ok { println(ms) }
+ *@end
+ */
+
 /*@man NIL_UUID
  *@module uuid
  *@group Constants
@@ -133,9 +157,18 @@ typedef struct {
     GrayString value;
 } GrayUUID;
 
+/* Layout must match the {int64_t v0; bool v1;} tuple codegen emits for a
+ * multi-return stdlib call. */
+typedef struct {
+    int64_t v0;
+    bool v1;
+} GrayUuidTimestamp;
+
 GrayUUID gray_uuid_generate(GrayArena *arena);
 GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id);
 GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes);
+int64_t gray_uuid_version(GrayUUID id);
+GrayUuidTimestamp gray_uuid_timestamp(GrayUUID id);
 GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id);
 GrayUUID gray_uuid_generate_random(GrayArena *arena);
 GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena);

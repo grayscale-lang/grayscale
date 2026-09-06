@@ -3938,6 +3938,8 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 | `to_string` | `(id UUID) -> string` | Convert UUID to its 36-char hyphenated string representation |
 | `to_bytes` | `(id UUID) -> [byte]` | The 16 raw bytes, big-endian order |
 | `from_bytes` | `(bytes [byte]) -> UUID` | Build a UUID from 16 raw bytes, verbatim. Panics if fewer than 16 |
+| `version` | `(id UUID) -> int` | The version nibble (1–8); 0 for the nil UUID |
+| `timestamp` | `(id UUID) -> (int, bool)` | Embedded creation time as Unix ms; the bool is true only for v1/v7 — always destructure |
 | `is_valid` | `(s string) -> bool` | Validate UUID format |
 
 | Constant | Type | Value |

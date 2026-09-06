@@ -525,6 +525,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"uuid.to_bytes":                   {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "to_bytes(id UUID) -> [byte]", Fields: "", Desc: "Returns the UUID's 16 raw bytes in big-endian (network) order.", Example: "import @uuid\nmut id UUID = uuid.generate()\nmut raw [byte] = uuid.to_bytes(id)"},
 	"uuid.from_bytes":                 {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "from_bytes(bytes [byte]) -> UUID", Fields: "", Desc: "Builds a UUID from 16 raw bytes in big-endian order. The bytes are used verbatim — no version or variant bits are forced. Panics if fewer than 16 bytes are given.", Example: "import @uuid\nmut id UUID = uuid.from_bytes(uuid.to_bytes(uuid.generate()))"},
 	"uuid.is_valid":                   {Module: "uuid", Group: "Validation", Kind: "func", Sig: "is_valid(s string) -> bool", Fields: "", Desc: "Reports whether s is a well-formed 36-character hyphenated UUID string.", Example: "import @uuid\nif uuid.is_valid(\"not-a-uuid\") == false { println(\"rejected\") }"},
+	"uuid.version":                    {Module: "uuid", Group: "Inspection", Kind: "func", Sig: "version(id UUID) -> int", Fields: "", Desc: "Returns the UUID's version number from its version nibble (1 through 8 for the RFC-defined versions). The nil UUID reports 0.", Example: "import @uuid\nprintln(uuid.version(uuid.generate()))            // 4\nprintln(uuid.version(uuid.generate_time_ordered())) // 7"},
+	"uuid.timestamp":                  {Module: "uuid", Group: "Inspection", Kind: "func", Sig: "timestamp(id UUID) -> (int, bool)", Fields: "", Desc: "Extracts the embedded creation time as Unix milliseconds. The second value is true for a version 1 or version 7 UUID and false for any other version, where the first value is 0. Always destructure the result.", Example: "import @uuid\nmut ms, ok = uuid.timestamp(uuid.generate_time_ordered())\nif ok { println(ms) }"},
 	"uuid.NIL_UUID":                   {Module: "uuid", Group: "Constants", Kind: "const", Sig: "00000000-0000-0000-0000-000000000000", Fields: "", Desc: "The all-zero UUID.", Example: ""},
 }
 
@@ -557,7 +559,7 @@ var stdlibModules = map[string][]string{
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
 	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "yield", "sleep", "thread_count"},
 	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms", "humanize", "parse_duration", "format_duration", "add_days", "add_hours", "add_seconds", "start_of_day", "end_of_day", "days_in_month", "day_of_year", "weekday_name", "month_name"},
-	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "to_bytes", "from_bytes", "is_valid", "NIL_UUID"},
+	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "to_bytes", "from_bytes", "is_valid", "version", "timestamp", "NIL_UUID"},
 }
 
 // stdlibGroup is one labeled group of names within a module index.
@@ -743,6 +745,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Generation    ", Names: []string{"generate", "generate_random", "generate_time_ordered"}},
 		{Label: "Conversion    ", Names: []string{"generate_compact", "parse", "to_string", "to_bytes", "from_bytes"}},
 		{Label: "Validation    ", Names: []string{"is_valid"}},
+		{Label: "Inspection    ", Names: []string{"version", "timestamp"}},
 		{Label: "Constants     ", Names: []string{"NIL_UUID"}},
 	},
 }
