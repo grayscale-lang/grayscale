@@ -46,7 +46,7 @@
  * than #ifdef'd, so both platforms run the same code. Copies at most `n`
  * bytes, stopping early at a NUL, and always NUL-terminates. Returns NULL on
  * allocation failure. Caller owns the result and must free() it. */
-char *gray_strndup(const char *s, size_t n);
+char *gray_strndup(const char *str, size_t max_len);
 
 /* --- Console --- */
 
@@ -85,7 +85,7 @@ bool gray_path_is_root(const char *path);
 /* Join `a` and `b` with exactly one GRAY_PATH_SEP between them, collapsing a
  * trailing separator on `a` and a leading one on `b`. Returns the length that
  * would have been written (snprintf semantics), so >= n means truncation. */
-int gray_path_join(char *dst, size_t n, const char *a, const char *b);
+int gray_path_join(char *dst, size_t dst_size, const char *base, const char *tail);
 
 /* True for a path that does not depend on the current directory: "/..." on
  * POSIX, plus "C:\...", "C:/...", and "\\server\share" on Windows. */
@@ -98,11 +98,11 @@ char *gray_realpath(const char *path);
 
 /* gray_realpath() into a caller-supplied buffer. Returns false if the path
  * cannot be resolved or does not fit. */
-bool gray_realpath_into(const char *path, char *buf, size_t n);
+bool gray_realpath_into(const char *path, char *buf, size_t buf_size);
 
 /* Compare two paths for equality, honoring the filesystem's case sensitivity
  * and separator conventions. Use instead of strcmp() on canonicalized paths. */
-bool gray_path_equal(const char *a, const char *b);
+bool gray_path_equal(const char *left, const char *right);
 
 /* --- Filesystem --- */
 
@@ -110,7 +110,7 @@ bool gray_file_readable(const char *path);
 bool gray_is_file(const char *path);
 bool gray_is_dir(const char *path);
 bool gray_remove_file(const char *path);
-bool gray_getcwd(char *buf, size_t n);
+bool gray_getcwd(char *buf, size_t buf_size);
 
 /* Write `len` bytes to `path`, truncating it, creating it 0644 if absent.
  * Binary mode: bytes land on disk exactly as given on every platform. */
@@ -132,7 +132,7 @@ typedef bool (*gray_dir_visitor)(const char *name, void *ctx);
 /* Iterate over entries in `dir_path`, calling `fn` for each one (excluding
  * "." and ".."). Returns true on success, false if the directory cannot be
  * opened. */
-bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx);
+bool gray_scandir(const char *dir_path, gray_dir_visitor visit, void *ctx);
 
 /* --- Self and temp locations --- */
 
@@ -147,7 +147,7 @@ const char *gray_temp_dir(void);
 /* Build a collision-resistant path in the temp directory of the form
  * <tmp>/<prefix><pid>-<n><suffix>. Does not create the file. snprintf
  * semantics: >= n means truncation. */
-int gray_temp_path(char *dst, size_t n, const char *prefix, const char *suffix);
+int gray_temp_path(char *dst, size_t dst_size, const char *prefix, const char *suffix);
 
 /* Open an anonymous read/write temp file that is removed when closed. */
 FILE *gray_tmpfile(void);

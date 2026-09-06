@@ -84,12 +84,12 @@ extern char **environ;
 
 /* --- Strings --- */
 
-char *gray_strndup(const char *s, size_t n) {
+char *gray_strndup(const char *str, size_t max_len) {
     size_t len = 0;
-    while (len < n && s[len] != '\0') len++;
+    while (len < max_len && str[len] != '\0') len++;
     char *out = malloc(len + 1);
     if (!out) return NULL;
-    memcpy(out, s, len);
+    memcpy(out, str, len);
     out[len] = '\0';
     return out;
 }
@@ -170,18 +170,18 @@ bool gray_path_is_root(const char *path) {
     return *p == '\0';
 }
 
-int gray_path_join(char *dst, size_t n, const char *a, const char *b) {
-    size_t alen = strlen(a);
-    while (alen > 0 && gray_is_path_sep(a[alen - 1])) alen--;
-    while (gray_is_path_sep(*b)) b++;
+int gray_path_join(char *dst, size_t dst_size, const char *base, const char *tail) {
+    size_t base_len = strlen(base);
+    while (base_len > 0 && gray_is_path_sep(base[base_len - 1])) base_len--;
+    while (gray_is_path_sep(*tail)) tail++;
 
-    if (alen == 0) {
-        /* `a` was empty, or was nothing but separators (a root). */
-        if (*a) return snprintf(dst, n, GRAY_PATH_SEP_STR "%s", b);
-        return snprintf(dst, n, "%s", b);
+    if (base_len == 0) {
+        /* `base` was empty, or was nothing but separators (a root). */
+        if (*base) return snprintf(dst, dst_size, GRAY_PATH_SEP_STR "%s", tail);
+        return snprintf(dst, dst_size, "%s", tail);
     }
-    if (*b == '\0') return snprintf(dst, n, "%.*s", (int)alen, a);
-    return snprintf(dst, n, "%.*s" GRAY_PATH_SEP_STR "%s", (int)alen, a, b);
+    if (*tail == '\0') return snprintf(dst, dst_size, "%.*s", (int)base_len, base);
+    return snprintf(dst, dst_size, "%.*s" GRAY_PATH_SEP_STR "%s", (int)base_len, base, tail);
 }
 
 bool gray_path_is_absolute(const char *path) {
@@ -209,29 +209,29 @@ char *gray_realpath(const char *path) {
 #endif
 }
 
-bool gray_realpath_into(const char *path, char *buf, size_t n) {
+bool gray_realpath_into(const char *path, char *buf, size_t buf_size) {
     char *resolved = gray_realpath(path);
     if (!resolved) return false;
-    bool ok = strlen(resolved) < n;
+    bool ok = strlen(resolved) < buf_size;
     if (ok) memcpy(buf, resolved, strlen(resolved) + 1);
     free(resolved);
     return ok;
 }
 
-bool gray_path_equal(const char *a, const char *b) {
+bool gray_path_equal(const char *left, const char *right) {
 #if GRAY_OS_WINDOWS
     /* NTFS is case-insensitive, and either separator may appear. */
-    for (;; a++, b++) {
-        char ca = *a, cb = *b;
-        if (gray_is_path_sep(ca)) ca = GRAY_PATH_SEP;
-        if (gray_is_path_sep(cb)) cb = GRAY_PATH_SEP;
-        ca = (char)tolower((unsigned char)ca);
-        cb = (char)tolower((unsigned char)cb);
-        if (ca != cb) return false;
-        if (ca == '\0') return true;
+    for (;; left++, right++) {
+        char left_ch = *left, right_ch = *right;
+        if (gray_is_path_sep(left_ch)) left_ch = GRAY_PATH_SEP;
+        if (gray_is_path_sep(right_ch)) right_ch = GRAY_PATH_SEP;
+        left_ch = (char)tolower((unsigned char)left_ch);
+        right_ch = (char)tolower((unsigned char)right_ch);
+        if (left_ch != right_ch) return false;
+        if (left_ch == '\0') return true;
     }
 #else
-    return strcmp(a, b) == 0;
+    return strcmp(left, right) == 0;
 #endif
 }
 
@@ -267,16 +267,16 @@ bool gray_remove_file(const char *path) {
     return gray_sys_unlink(path) == 0;
 }
 
-bool gray_getcwd(char *buf, size_t n) {
+bool gray_getcwd(char *buf, size_t buf_size) {
 #if GRAY_OS_WINDOWS
-    if (n > (size_t)INT_MAX) n = (size_t)INT_MAX;
-    return _getcwd(buf, (int)n) != NULL;
+    if (buf_size > (size_t)INT_MAX) buf_size = (size_t)INT_MAX;
+    return _getcwd(buf, (int)buf_size) != NULL;
 #else
-    return getcwd(buf, n) != NULL;
+    return getcwd(buf, buf_size) != NULL;
 #endif
 }
 
-bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx) {
+bool gray_scandir(const char *dir_path, gray_dir_visitor visit, void *ctx) {
 #if GRAY_OS_WINDOWS
     char pattern[GRAY_PATH_BUF];
     int len = snprintf(pattern, sizeof(pattern), "%s\\*", dir_path);
@@ -291,7 +291,7 @@ bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx) {
         if (name[0] == '.' && (name[1] == '\0' ||
             (name[1] == '.' && name[2] == '\0')))
             continue;
-        if (!fn(name, ctx)) break;
+        if (!visit(name, ctx)) break;
     } while (FindNextFileA(h, &fd));
 
     FindClose(h);
@@ -306,7 +306,7 @@ bool gray_scandir(const char *dir_path, gray_dir_visitor fn, void *ctx) {
         if (name[0] == '.' && (name[1] == '\0' ||
             (name[1] == '.' && name[2] == '\0')))
             continue;
-        if (!fn(name, ctx)) break;
+        if (!visit(name, ctx)) break;
     }
 
     closedir(d);
@@ -417,12 +417,12 @@ const char *gray_temp_dir(void) {
     return buf;
 }
 
-int gray_temp_path(char *dst, size_t n, const char *prefix, const char *suffix) {
+int gray_temp_path(char *dst, size_t dst_size, const char *prefix, const char *suffix) {
     static unsigned counter = 0;
     char name[256];
     snprintf(name, sizeof(name), "%s%d-%u%s", prefix, (int)gray_sys_getpid(), counter++,
         suffix ? suffix : "");
-    return gray_path_join(dst, n, gray_temp_dir(), name);
+    return gray_path_join(dst, dst_size, gray_temp_dir(), name);
 }
 
 FILE *gray_tmpfile(void) {
@@ -447,7 +447,7 @@ FILE *gray_tmpfile(void) {
 
 #if GRAY_OS_WINDOWS
 
-static int spawn_impl(const char *const *argv, bool search_path) {
+static int spawn_child(const char *const *argv, bool search_path) {
     intptr_t rc = search_path ? _spawnvp(_P_WAIT, argv[0], argv)
                               : _spawnv(_P_WAIT, argv[0], argv);
     /* _P_WAIT yields the child's exit code directly; -1 means it never ran. */
@@ -456,7 +456,7 @@ static int spawn_impl(const char *const *argv, bool search_path) {
 
 #else
 
-static int spawn_impl(const char *const *argv, bool search_path) {
+static int spawn_child(const char *const *argv, bool search_path) {
     pid_t pid = 0;
     /* posix_spawn takes a non-const argv purely for historical reasons; it does
      * not modify the strings. */
@@ -481,11 +481,11 @@ static int spawn_impl(const char *const *argv, bool search_path) {
 #endif
 
 int gray_spawn_path(const char *const *argv) {
-    return spawn_impl(argv, true);
+    return spawn_child(argv, true);
 }
 
 int gray_spawn_exact(const char *const *argv) {
-    return spawn_impl(argv, false);
+    return spawn_child(argv, false);
 }
 
 int gray_spawn_quiet(const char *const *argv) {
@@ -500,7 +500,7 @@ int gray_spawn_quiet(const char *const *argv) {
     gray_sys_dup2(devnull, 1);
     gray_sys_dup2(devnull, 2);
 
-    int rc = spawn_impl(argv, true);
+    int rc = spawn_child(argv, true);
 
     if (saved_out >= 0) {
         gray_sys_dup2(saved_out, 1);
@@ -521,10 +521,10 @@ void gray_ensure_tool_dir_on_path(const char *cmd) {
     /* First whitespace-delimited token — the same split argv_push_command
      * applies to multi-word compiler commands. */
     char head[GRAY_PATH_BUF];
-    size_t n = strcspn(cmd, " \t");
-    if (n == 0 || n >= sizeof(head)) return;
-    memcpy(head, cmd, n);
-    head[n] = '\0';
+    size_t head_len = strcspn(cmd, " \t");
+    if (head_len == 0 || head_len >= sizeof(head)) return;
+    memcpy(head, cmd, head_len);
+    head[head_len] = '\0';
 
     char *sep = gray_path_rsep(head);
     if (!sep) return; /* bare command name — PATH already resolves it */
