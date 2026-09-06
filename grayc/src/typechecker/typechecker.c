@@ -1763,7 +1763,8 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
         for (int i = 0; i < fs->return_count; i++) {
             GrayType *rt = fs->return_types[i];
             if (rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
-                       rt->kind == TK_ARRAY || rt->kind == TK_MAP))
+                       rt->kind == TK_ARRAY || rt->kind == TK_MAP ||
+                       rt->kind == TK_ENUM))
                 escapable_ret = true;
             else if (i < decl_ret_count &&
                      type_name_has_wildcard(fs->decl->data.func_decl.return_types[i]))
@@ -15729,13 +15730,24 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                                 node->data.when_stmt.value);
                             Symbol *subj_sym = subj_root
                                 ? scope_lookup(case_outer, subj_root) : NULL;
-                            if (subj_sym && subj_sym->field_mem_arena) {
+                            if (subj_sym) {
                                 for (int bi = 0; bi < limit; bi++) {
                                     Symbol *bsym = scope_lookup_local(checker->current_scope,
                                         val_i->data.when_pattern.bindings[bi]);
-                                    if (bsym) {
+                                    if (!bsym) continue;
+                                    if (subj_sym->field_mem_arena) {
                                         bsym->mem_arena = subj_sym->field_mem_arena;
                                         bsym->mem_epoch = subj_sym->field_mem_epoch;
+                                    }
+                                    /* Escape analysis: a pointer buried in the
+                                     * enum payload keeps the subject's lifetime
+                                     * origin once destructured, so storing the
+                                     * binding into a longer-lived location is
+                                     * still E3162/E3163. Same single-slot
+                                     * approximation as field_mem_arena above. */
+                                    if (subj_sym->field_origin_depth) {
+                                        bsym->origin_depth = subj_sym->field_origin_depth;
+                                        bsym->origin_name  = subj_sym->field_origin_name;
                                     }
                                 }
                             }

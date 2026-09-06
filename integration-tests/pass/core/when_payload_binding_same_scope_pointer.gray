@@ -1,0 +1,57 @@
+/*
+ * A pointer carried in a tagged-enum payload and read back through a
+ * `when ... is Variant(binding)` pattern is fine to dereference while the
+ * pointee is still in scope. Propagating the subject's origin onto the
+ * payload binding (#2694) must not turn ordinary in-scope use into a false
+ * E3162/E3163.
+ */
+
+const Result enum {
+    Found(^int),
+    Missing
+}
+
+do lookup(cond bool, p ^int) -> Result {
+    if cond { return Result.Found(p) }
+    return Result.Missing
+}
+
+do main() {
+    mut passed int = 0
+
+    mut x int = 20
+    mut r Result = Result.Found(addr(x))
+    when r {
+        is Found(ptr) {
+            if ptr^ == 20 {
+                println("  [PASS] deref payload binding, direct construction")
+                passed += 1
+            } otherwise {
+                println("  [FAIL] direct: ${ptr^}")
+            }
+        }
+        default { println("  [FAIL] direct: took default") }
+    }
+
+    mut y int = 22
+    mut r2 Result = lookup(true, addr(y))
+    when r2 {
+        is Found(ptr) {
+            mut local int = ptr^          // copy out — a value, not the pointer
+            if local + x == 42 {
+                println("  [PASS] deref payload binding, helper-returned enum")
+                passed += 1
+            } otherwise {
+                println("  [FAIL] helper: ${local}")
+            }
+        }
+        default { println("  [FAIL] helper: took default") }
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}
