@@ -16200,7 +16200,11 @@ static void register_stdlib_module(TypeChecker *checker, const char *module) {
         if (strcmp(stdlib_func_meta[i].mod, module) != 0) continue;
         DeclEntry *entry = module_table_declare_synthetic(checker->modules, module,
             DECL_FUNC, stdlib_func_meta[i].fn, NULL);
-        if (entry) { entry->external = true; entry->registry_index = i; }
+        /* No registry_index: the stdlib keeps its own registries and is not in
+         * the FuncSig table. find_func() reads registry_index as an index into
+         * checker->funcs, so a meta index here makes a bare stdlib name resolve
+         * to an unrelated user function. */
+        if (entry) entry->external = true;
     }
 }
 

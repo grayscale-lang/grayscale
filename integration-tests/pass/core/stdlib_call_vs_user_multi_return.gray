@@ -1,0 +1,47 @@
+/*
+ * Test: a stdlib member call (arrays.concat) is typed from the stdlib
+ * registry, not by treating its position in that registry as an index
+ * into the user function table. With enough user functions declared, the
+ * slot that index lands on held a multi-return function, and the call was
+ * wrongly rejected with E3040 ("concat returns 2 values").
+ */
+
+import @arrays
+
+do one() -> int { return 1 }
+do two() -> int { return 2 }
+do three() -> int { return 3 }
+do four() -> int { return 4 }
+do five() -> int { return 5 }
+do two_values() -> (int, int) { return 6, 7 }
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut sum int = one() + two() + three() + four() + five()
+    mut a int, b int = two_values()
+    sum += a + b
+
+    if sum == 28 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] helper functions: got ${sum}")
+        failed += 1
+    }
+
+    mut joined [int] = arrays.concat({1, 2}, {3, 4})
+    if len(joined) == 4 && joined[0] == 1 && joined[3] == 4 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] arrays.concat: got ${joined}")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
