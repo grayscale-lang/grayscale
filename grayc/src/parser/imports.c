@@ -42,7 +42,7 @@
 
 typedef struct {
     const char *path;
-    const char *mod;
+    const char *module;
     const char *from;   /* file whose import statement first pulled this path in */
 } ImportHashEntry;
 
@@ -58,12 +58,12 @@ static uint32_t import_path_hash(const char *s) {
 
 /* Place an entry during a rehash, where the key is known to be unique. */
 static void import_hash_place(ImportHashEntry *table, uint32_t buckets,
-                              const char *path, const char *mod, const char *from) {
+                              const char *path, const char *module, const char *from) {
     uint32_t slot = import_path_hash(path) & (buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (buckets - 1)) {
         if (!table[i].path) {
             table[i].path = path;
-            table[i].mod = mod;
+            table[i].module = module;
             table[i].from = from;
             return;
         }
@@ -82,7 +82,7 @@ static void import_hash_reserve(void) {
     for (uint32_t i = 0; i < import_hash_buckets; i++) {
         if (import_hash[i].path)
             import_hash_place(new_table, new_buckets,
-                import_hash[i].path, import_hash[i].mod, import_hash[i].from);
+                import_hash[i].path, import_hash[i].module, import_hash[i].from);
     }
     free(import_hash);
     import_hash = new_table;
@@ -103,7 +103,7 @@ static const char *imported_by_module(const char *path) {
     uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) return NULL;
-        if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].mod;
+        if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].module;
     }
 }
 
@@ -119,13 +119,13 @@ static const char *imported_by_file(const char *path) {
     }
 }
 
-static void mark_imported_from(const char *path, const char *mod, const char *from) {
+static void mark_imported_from(const char *path, const char *module, const char *from) {
     import_hash_reserve();
     uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
         if (!import_hash[i].path) {
             import_hash[i].path = path;
-            import_hash[i].mod = mod;
+            import_hash[i].module = module;
             import_hash[i].from = from;
             imported_file_count++;
             return;
@@ -147,8 +147,7 @@ static void mark_imported(const char *path) {
     mark_imported_from(path, NULL, NULL);
 }
 
-/* Scan a directory for .gray files. Returns count of files found.
- * Fills paths[] with full file paths (dir_path + "/" + filename). */
+/* qsort comparator over the fixed-width path buffers scan_gray_files fills. */
 static int gray_path_cmp(const void *a, const void *b) {
     return strcmp((const char *)a, (const char *)b);
 }
@@ -224,17 +223,6 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
         char *last_sep = gray_path_rsep(input_dir);
         if (last_sep) *(last_sep + 1) = '\0';
         else { input_dir[0] = '.'; input_dir[1] = '/'; input_dir[2] = '\0'; }
-
-        /* Snapshot of original main-program nodes taken before any imports are merged.
-         * The outer rewrite pass after each import only needs to update these nodes;
-         * imported nodes are already rewritten inline during the rewrite+merge pass.
-         * A plain pointer would be invalidated by in-place memmoves, so we copy
-         * the AstNode* array into a stable arena allocation here. */
-        int main_stmt_snapshot_count = program->data.program.stmt_count;
-        AstNode **main_stmt_snapshot = arena_alloc(arena,
-            sizeof(AstNode *) * (main_stmt_snapshot_count > 0 ? main_stmt_snapshot_count : 1));
-        memcpy(main_stmt_snapshot, program->data.program.stmts,
-            sizeof(AstNode *) * main_stmt_snapshot_count);
 
         /* Seed import queue once from the initial program stmts — O(N), done once.
          * Transitive imports push onto the tail as they are discovered, so the
