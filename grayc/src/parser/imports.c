@@ -199,10 +199,10 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
          * different relative paths are still detected as duplicates. */
         const char *entry_real_path;
         {
-            char *rp = gray_realpath(input_file);
-            entry_real_path = rp ? arena_copy_string(arena, rp) : input_file;
+            char *real_path = gray_realpath(input_file);
+            entry_real_path = real_path ? arena_copy_string(arena, real_path) : input_file;
             mark_imported(entry_real_path);
-            free(rp);
+            free(real_path);
         }
 
         /* Derive main file's module name for circular import resolution */
@@ -229,11 +229,11 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
          * queue drains naturally without re-scanning the growing program AST. */
         AstNode **import_queue = NULL;
         int import_queue_cap = 0;
-        int iq_head = 0, iq_tail = 0;
+        int queue_head = 0, queue_tail = 0;
         for (int si = 0; si < program->data.program.stmt_count; si++) {
             if (program->data.program.stmts[si]->kind == NODE_IMPORT_STMT) {
-                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
-                import_queue[iq_tail++] = program->data.program.stmts[si];
+                ARENA_GROW(arena, import_queue, queue_tail, import_queue_cap);
+                import_queue[queue_tail++] = program->data.program.stmts[si];
             }
         }
 
@@ -244,8 +244,8 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
         int seen_cap = 0;
         int seen_count = 0;
 
-        while (iq_head < iq_tail) {
-            AstNode *stmt = import_queue[iq_head++];
+        while (queue_head < queue_tail) {
+            AstNode *stmt = import_queue[queue_head++];
             /* Line and column below come from this import statement, so the
              * file has to as well. Reporting them against the entry file put
              * the caret on whatever that file happens to have on the line,
@@ -264,16 +264,16 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                     const char *std_name = item->alias ? item->alias : item->module;
                     if (!std_name) continue;
                     bool bound = false;
-                    for (int sm = 0; sm < seen_count; sm++) {
-                        if (strcmp(seen_modules[sm], std_name) != 0) continue;
-                        if (!seen_is_stdlib[sm]) {
+                    for (int seen_index = 0; seen_index < seen_count; seen_index++) {
+                        if (strcmp(seen_modules[seen_index], std_name) != 0) continue;
+                        if (!seen_is_stdlib[seen_index]) {
                             char msg[MSG_BUF_SIZE];
                             snprintf(msg, sizeof(msg),
                                 "module name '%s' is already imported; use an alias to distinguish them",
                                 std_name);
                             diagnostic_error_message(diag, "E6001", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
-                        } else if (same_import_file(seen_files[sm], stmt_file)) {
+                        } else if (same_import_file(seen_files[seen_index], stmt_file)) {
                             /* One file importing the same module twice. Reached
                              * from two different files it is a diamond, which is
                              * ordinary and stays silent. */
@@ -411,11 +411,11 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                 /* Normalize import_path so diamond deps resolve to the same canonical path */
                 char norm_import[PATH_BUF_SIZE];
                 {
-                    char *rp = gray_realpath(import_path);
-                    if (rp) {
-                        strncpy(norm_import, rp, sizeof(norm_import) - 1);
+                    char *real_path = gray_realpath(import_path);
+                    if (real_path) {
+                        strncpy(norm_import, real_path, sizeof(norm_import) - 1);
                         norm_import[sizeof(norm_import) - 1] = '\0';
-                        free(rp);
+                        free(real_path);
                     } else {
                         strncpy(norm_import, import_path, sizeof(norm_import) - 1);
                         norm_import[sizeof(norm_import) - 1] = '\0';
@@ -429,10 +429,10 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                  * entirely, which left the second name registered and never
                  * populated. */
                 bool collision = false;
-                for (int sm = 0; sm < seen_count; sm++) {
-                    if (seen_is_stdlib[sm] || !seen_paths[sm]) continue;
-                    if (strcmp(seen_paths[sm], norm_import) != 0) continue;
-                    if (!same_import_file(seen_files[sm], stmt_file)) continue;
+                for (int seen_index = 0; seen_index < seen_count; seen_index++) {
+                    if (seen_is_stdlib[seen_index] || !seen_paths[seen_index]) continue;
+                    if (strcmp(seen_paths[seen_index], norm_import) != 0) continue;
+                    if (!same_import_file(seen_files[seen_index], stmt_file)) continue;
                     char msg[MSG_BUF_SIZE];
                     snprintf(msg, sizeof(msg),
                         "module '%s' is already imported in this file", mod_name);
@@ -446,9 +446,9 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                  * file's own module name. Diamond dependencies (the same file
                  * reached from two different files) are silently deduped rather
                  * than causing a false E6001 error. */
-                for (int sm = 0; sm < seen_count && !collision; sm++) {
-                    if (strcmp(seen_modules[sm], mod_name) != 0) continue;
-                    if (!seen_is_stdlib[sm] && strcmp(seen_paths[sm], norm_import) == 0) {
+                for (int seen_index = 0; seen_index < seen_count && !collision; seen_index++) {
+                    if (strcmp(seen_modules[seen_index], mod_name) != 0) continue;
+                    if (!seen_is_stdlib[seen_index] && strcmp(seen_paths[seen_index], norm_import) == 0) {
                         /* Same target, same module name, different importing
                          * file — a diamond dependency. */
                         collision = true;
@@ -596,8 +596,8 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         char cur_dir[PATH_BUF_SIZE];
                         strncpy(cur_dir, cur_file_path, sizeof(cur_dir) - 1);
                         cur_dir[sizeof(cur_dir) - 1] = '\0';
-                        char *cd_sep = gray_path_rsep(cur_dir);
-                        if (cd_sep) *(cd_sep + 1) = '\0';
+                        char *cur_dir_sep = gray_path_rsep(cur_dir);
+                        if (cur_dir_sep) *(cur_dir_sep + 1) = '\0';
                         else { cur_dir[0] = '.'; cur_dir[1] = '/'; cur_dir[2] = '\0'; }
                         const char *src_dir = arena_copy_string(arena, cur_dir);
 
@@ -612,12 +612,12 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         int seen_sibling_count = 0, seen_sibling_cap = 0;
 
                         for (int ti = 0; ti < imp_program->data.program.stmt_count; ti++) {
-                            AstNode *ts = imp_program->data.program.stmts[ti];
-                            if (ts->kind != NODE_IMPORT_STMT) continue;
+                            AstNode *transitive_stmt = imp_program->data.program.stmts[ti];
+                            if (transitive_stmt->kind != NODE_IMPORT_STMT) continue;
 
                             bool all_sibling = true;
-                            for (int xi = 0; xi < ts->data.import_stmt.count; xi++) {
-                                ImportItem *titem = &ts->data.import_stmt.items[xi];
+                            for (int xi = 0; xi < transitive_stmt->data.import_stmt.count; xi++) {
+                                ImportItem *titem = &transitive_stmt->data.import_stmt.items[xi];
                                 if (titem->is_stdlib || titem->is_c_import) {
                                     all_sibling = false;
                                     continue;
@@ -625,28 +625,28 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                                 if (!titem->path) continue;
 
                                 /* Resolve the transitive import path */
-                                const char *trel = titem->path;
-                                if (trel[0] == '.' && trel[1] == '/') trel += 2;
-                                char tres[PATH_BUF_SIZE];
-                                snprintf(tres, sizeof(tres), "%s%s", src_dir, trel);
+                                const char *transitive_rel = titem->path;
+                                if (transitive_rel[0] == '.' && transitive_rel[1] == '/') transitive_rel += 2;
+                                char transitive_path[PATH_BUF_SIZE];
+                                snprintf(transitive_path, sizeof(transitive_path), "%s%s", src_dir, transitive_rel);
 
                                 /* Check if it resolves to a file inside the same directory */
-                                size_t trlen = strlen(tres);
+                                size_t trlen = strlen(transitive_path);
                                 bool is_sibling = false;
                                 /* Try with .gray extension if not already present */
-                                char tres_gray[PATH_BUF_SIZE];
-                                const char *tres_check = tres;
-                                if (trlen < GRAY_EXT_LEN || strcmp(tres + trlen - GRAY_EXT_LEN, GRAY_EXT) != 0) {
-                                    snprintf(tres_gray, sizeof(tres_gray), "%s.gray", tres);
-                                    tres_check = tres_gray;
+                                char transitive_path_gray[PATH_BUF_SIZE];
+                                const char *transitive_path_check = transitive_path;
+                                if (trlen < GRAY_EXT_LEN || strcmp(transitive_path + trlen - GRAY_EXT_LEN, GRAY_EXT) != 0) {
+                                    snprintf(transitive_path_gray, sizeof(transitive_path_gray), "%s.gray", transitive_path);
+                                    transitive_path_check = transitive_path_gray;
                                 }
-                                char *norm_tres = gray_realpath(tres_check);
-                                const char *sibling_path = norm_tres
-                                    ? arena_copy_string(arena, norm_tres) : NULL;
-                                if (norm_tres && norm_import_dir) {
+                                char *norm_transitive = gray_realpath(transitive_path_check);
+                                const char *sibling_path = norm_transitive
+                                    ? arena_copy_string(arena, norm_transitive) : NULL;
+                                if (norm_transitive && norm_import_dir) {
                                     /* Check if the file's directory matches import_path.
                                      * Both buffers are ours to truncate in place. */
-                                    char *tsep = gray_path_rsep(norm_tres);
+                                    char *tsep = gray_path_rsep(norm_transitive);
                                     if (tsep) {
                                         *tsep = '\0';
                                         /* Strip trailing separator from norm_import_dir */
@@ -654,23 +654,23 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                                         if (imp_dir_len > 0 &&
                                             gray_is_path_sep(norm_import_dir[imp_dir_len - 1]))
                                             norm_import_dir[imp_dir_len - 1] = '\0';
-                                        if (gray_path_equal(norm_tres, norm_import_dir)) {
+                                        if (gray_path_equal(norm_transitive, norm_import_dir)) {
                                             is_sibling = true;
                                         }
                                     }
                                 }
-                                free(norm_tres);
+                                free(norm_transitive);
 
                                 if (is_sibling) {
                                     bool sibling_dup = false;
-                                    for (int sx = 0; sx < seen_sibling_count && sibling_path; sx++) {
-                                        if (strcmp(seen_siblings[sx], sibling_path) != 0) continue;
+                                    for (int sibling_index = 0; sibling_index < seen_sibling_count && sibling_path; sibling_index++) {
+                                        if (strcmp(seen_siblings[sibling_index], sibling_path) != 0) continue;
                                         char msg[MSG_BUF_LARGE];
                                         snprintf(msg, sizeof(msg),
                                             "'%s' is already imported in this file", titem->path);
                                         diagnostic_error_help(diag, "E6011", strdup(msg),
-                                            ts->token.file ? ts->token.file : cur_file_path,
-                                            ts->token.line, ts->token.column, 0,
+                                            transitive_stmt->token.file ? transitive_stmt->token.file : cur_file_path,
+                                            transitive_stmt->token.line, transitive_stmt->token.column, 0,
                                             "remove the duplicate import");
                                         sibling_dup = true;
                                         break;
@@ -687,7 +687,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                                     const char *sib_alias = titem->alias;
                                     if (!sib_alias) {
                                         /* Derive alias from path (filename without .gray) */
-                                        const char *sib_base = gray_path_basename(trel);
+                                        const char *sib_base = gray_path_basename(transitive_rel);
                                         char sib_buf[MSG_BUF_SIZE];
                                         size_t sib_len = strlen(sib_base);
                                         if (sib_len > GRAY_EXT_LEN && strcmp(sib_base + sib_len - GRAY_EXT_LEN, GRAY_EXT) == 0) {
@@ -725,9 +725,9 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                             if (!all_sibling) {
                                 ARENA_GROW(arena, program->data.program.stmts,
                                     program->data.program.stmt_count, program->data.program.stmt_cap);
-                                ARENA_GROW(arena, import_queue, iq_tail, import_queue_cap);
-                                import_queue[iq_tail++] = ts;
-                                program->data.program.stmts[program->data.program.stmt_count++] = ts;
+                                ARENA_GROW(arena, import_queue, queue_tail, import_queue_cap);
+                                import_queue[queue_tail++] = transitive_stmt;
+                                program->data.program.stmts[program->data.program.stmt_count++] = transitive_stmt;
                             }
                         }
                         free(norm_import_dir);
@@ -809,7 +809,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                 /* Mark this import item as fully processed. */
                 item->path = NULL;
             }
-        } /* end while (iq_head < iq_tail) */
+        } /* end while (queue_head < queue_tail) */
 
     out->files = module_files;
     out->modules = module_names;
