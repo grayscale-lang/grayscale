@@ -126,7 +126,7 @@ GrayRouter gray_server_router(void);
  *@end
  */
 /* Register a route: server.route(router, method, pattern, handler) */
-void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
+void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern,
                      GrayResponse (*handler)(GrayRequest));
 
 /*@man listen
@@ -142,8 +142,8 @@ void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
  *@end
  */
 /* Start listening — blocks until killed */
-void gray_server_listen(int64_t port, GrayRouter *r);
-void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r);
+void gray_server_listen(int64_t port, GrayRouter *router);
+void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *router);
 
 /*@man cors
  *@module server
@@ -157,7 +157,7 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r);
  *@end
  */
 /* Enable CORS with the given origin (e.g. "*" or "http://example.com") */
-void gray_server_cors(GrayRouter *r, GrayString origin);
+void gray_server_cors(GrayRouter *router, GrayString origin);
 
 /*@man use
  *@module server
@@ -171,7 +171,7 @@ void gray_server_cors(GrayRouter *r, GrayString origin);
  *@end
  */
 /* Register a middleware function */
-void gray_server_use(GrayRouter *r, GrayMiddleware fn);
+void gray_server_use(GrayRouter *router, GrayMiddleware fn);
 
 /*@man text
  *@module server
