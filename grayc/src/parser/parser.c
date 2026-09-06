@@ -1255,10 +1255,10 @@ static AstNode *parse_infix_expression(Parser *parser, AstNode *left) {
      * already-suppressed context — `if a == 1 && b {` — would otherwise hand
      * the rest of the condition back an enabled flag, and `b {` would parse
      * as a struct literal. */
-    bool saved_nsl = parser->no_struct_literal;
+    bool saved_no_struct_lit = parser->no_struct_literal;
     if (suppress_struct_lit) parser->no_struct_literal = true;
     node->data.infix.right = parse_expression(parser, prec);
-    parser->no_struct_literal = saved_nsl;
+    parser->no_struct_literal = saved_no_struct_lit;
     return node;
 }
 
@@ -1674,10 +1674,10 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
      * but `mut _ foo()` is caught before the leftover tokens desync the parser. */
     if (strcmp(node->data.var_decl.name, "_") == 0 &&
         !peek_token_is(parser, TOK_ASSIGN) && !peek_token_is(parser, TOK_COMMA)) {
-        const char *kw = node->data.var_decl.mutable ? "mut" : "const";
+        const char *keyword = node->data.var_decl.mutable ? "mut" : "const";
         char msg[MSG_BUF_SIZE];
         snprintf(msg, sizeof(msg),
-            "blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result", kw);
+            "blank identifier '_' requires '='; use '%s _ = <expr>' to discard a result", keyword);
         diagnostic_error_message(parser->diag, "E2084", arena_copy_string(parser->arena, msg),
             parser->file, node->token.line, node->token.column, 0);
         synchronize_parser(parser);
@@ -2002,18 +2002,18 @@ static AstNode *parse_func_declaration(Parser *parser) {
 
     /* Backfill grouped param types and defaults (a, b int = 0 → both get int, both default to 0) */
     for (int i = node->data.func_decl.param_count - 1; i >= 0; i--) {
-        Param *p_i = &node->data.func_decl.params[i];
-        if (!p_i->type_name && i + 1 < node->data.func_decl.param_count) {
-            p_i->type_name = node->data.func_decl.params[i + 1].type_name;
-            if (!p_i->default_value && node->data.func_decl.params[i + 1].default_value) {
-                p_i->default_value = node->data.func_decl.params[i + 1].default_value;
+        Param *param = &node->data.func_decl.params[i];
+        if (!param->type_name && i + 1 < node->data.func_decl.param_count) {
+            param->type_name = node->data.func_decl.params[i + 1].type_name;
+            if (!param->default_value && node->data.func_decl.params[i + 1].default_value) {
+                param->default_value = node->data.func_decl.params[i + 1].default_value;
             }
         }
-        if (!p_i->type_name && !p_i->default_value) {
+        if (!param->type_name && !param->default_value) {
             char buf[MSG_BUF_SIZE];
             snprintf(buf, sizeof(buf),
                 "parameter '%s' is missing a type; every parameter must have a type (e.g., %s int)",
-                p_i->name, p_i->name);
+                param->name, param->name);
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, node->token.line, node->token.column, 0);
         }
@@ -2440,10 +2440,10 @@ static AstNode *parse_if_statement(Parser *parser) {
      * same way it does after a `when` subject. This used to be settled by
      * requiring an initial capital on a literal's type name, which made every
      * lowercase-named struct unusable everywhere else. */
-    bool saved_nsl = parser->no_struct_literal;
+    bool saved_no_struct_lit = parser->no_struct_literal;
     parser->no_struct_literal = true;
     node->data.if_stmt.condition = parse_expression(parser, PREC_LOWEST);
-    parser->no_struct_literal = saved_nsl;
+    parser->no_struct_literal = saved_no_struct_lit;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.if_stmt.consequence = parse_block_statement(parser);
@@ -2732,9 +2732,9 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         /* Parse optional default value: `= expr` */
         if (current_token_is(parser, TOK_ASSIGN)) {
             next_token(parser); /* skip '=' */
-            AstNode *def = parse_expression(parser, PREC_LOWEST);
+            AstNode *default_value = parse_expression(parser, PREC_LOWEST);
             for (int i = group_start; i < node->data.struct_decl.field_count; i++) {
-                node->data.struct_decl.fields[i].default_value = def;
+                node->data.struct_decl.fields[i].default_value = default_value;
             }
             next_token(parser);
         }
@@ -3046,12 +3046,12 @@ static AstNode *parse_for_statement(Parser *parser) {
     }
 
     /* --- while-style: for condition { } --- */
-    AstNode *wnode = ast_alloc(parser->arena, NODE_WHILE_STMT, for_tok);
-    wnode->data.while_stmt.condition = parse_expression(parser, PREC_LOWEST);
+    AstNode *while_node = ast_alloc(parser->arena, NODE_WHILE_STMT, for_tok);
+    while_node->data.while_stmt.condition = parse_expression(parser, PREC_LOWEST);
     if (has_parens && peek_token_is(parser, TOK_RPAREN)) next_token(parser);
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
-    wnode->data.while_stmt.body = parse_block_statement(parser);
-    return wnode;
+    while_node->data.while_stmt.body = parse_block_statement(parser);
+    return while_node;
 }
 
 static AstNode *parse_for_each_statement(Parser *parser) {
@@ -3122,10 +3122,10 @@ static AstNode *parse_while_statement(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_WHILE_STMT, parser->cur_token);
 
     next_token(parser);
-    bool saved_nsl = parser->no_struct_literal;
+    bool saved_no_struct_lit = parser->no_struct_literal;
     parser->no_struct_literal = true;
     node->data.while_stmt.condition = parse_expression(parser, PREC_LOWEST);
-    parser->no_struct_literal = saved_nsl;
+    parser->no_struct_literal = saved_no_struct_lit;
 
     if (!expect_peek_token(parser, TOK_LBRACE)) return NULL;
     node->data.while_stmt.body = parse_block_statement(parser);
@@ -3646,11 +3646,11 @@ static AstNode *parse_statement(Parser *parser) {
             }
 
             Token site = parser->cur_token;
-            const char *nm = parser->cur_token.literal;
-            AttrBit bit = attr_bit_for_name(nm);
+            const char *attr_name = parser->cur_token.literal;
+            AttrBit bit = attr_bit_for_name(attr_name);
             if (bit == (AttrBit)0) {
                 diagnostic_error_code_formatted(parser->diag, "E2091",
-                    parser->file, site.line, site.column, 0, nm);
+                    parser->file, site.line, site.column, 0, attr_name);
                 malformed = true;
                 break;
             }
@@ -3661,7 +3661,7 @@ static AstNode *parse_statement(Parser *parser) {
                 /* Entry arguments are validated exactly as the stacked form
                  * does: only 'deprecated' and 'doc' accept a '(...)', and
                  * 'deprecated' requires exactly one string literal. */
-                if (strcmp(nm, "deprecated") == 0) {
+                if (strcmp(attr_name, "deprecated") == 0) {
                     next_token(parser); /* consume '(' */
                     if (!current_token_is(parser, TOK_STRING)) {
                         diagnostic_error_code_help(parser->diag, "E2093",
@@ -3680,7 +3680,7 @@ static AstNode *parse_statement(Parser *parser) {
                         break;
                     }
                     next_token(parser); /* consume ')' */
-                } else if (strcmp(nm, "doc") == 0) {
+                } else if (strcmp(attr_name, "doc") == 0) {
                     /* doc() args are accepted and discarded, as in the stacked form. */
                     next_token(parser); /* consume '(' */
                     while (!current_token_is(parser, TOK_RPAREN) && !current_token_is(parser, TOK_EOF)) {
@@ -3691,7 +3691,7 @@ static AstNode *parse_statement(Parser *parser) {
                     }
                 } else {
                     char help[48];
-                    snprintf(help, sizeof(help), "'%s' takes no arguments", nm);
+                    snprintf(help, sizeof(help), "'%s' takes no arguments", attr_name);
                     diagnostic_error_code_help(parser->diag, "E2093",
                         parser->file, parser->cur_token.line, parser->cur_token.column, 0,
                         arena_copy_string(parser->arena, help));
@@ -3702,10 +3702,10 @@ static AstNode *parse_statement(Parser *parser) {
 
             seen++;
 
-            char canon[24];
-            snprintf(canon, sizeof(canon), "#%s", nm);
-            if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canon)) && count < 7) {
-                names[count]    = arena_copy_string(parser->arena, nm);
+            char canonical_name[24];
+            snprintf(canonical_name, sizeof(canonical_name), "#%s", attr_name);
+            if (!note_dup_attr(parser, bit, arena_copy_string(parser->arena, canonical_name)) && count < 7) {
+                names[count]    = arena_copy_string(parser->arena, attr_name);
                 dep_msgs[count] = dep_msg;
                 sites[count]    = site;
                 count++;
@@ -3824,8 +3824,8 @@ static AstNode *parse_statement(Parser *parser) {
          * error from the call's return tuple. */
         if (peek_token_is(parser, TOK_OR_RETURN)) {
             next_token(parser); /* consume or_return */
-            AstNode *fb[MAX_MULTI_VARS];
-            int fbc = parse_or_return_fallbacks(parser, fb);
+            AstNode *fallback_buf[MAX_MULTI_VARS];
+            int fallback_count = parse_or_return_fallbacks(parser, fallback_buf);
             char *tmp_name = make_or_return_temp_name(parser->arena);
 
             AstNode *block = ast_alloc(parser->arena, NODE_BLOCK_STMT, parser->cur_token);
@@ -3842,7 +3842,7 @@ static AstNode *parse_statement(Parser *parser) {
             block->data.block.stmts[block->data.block.count++] = tmp_decl;
 
             block->data.block.stmts[block->data.block.count++] =
-                build_or_return_guard(parser, tmp_name, fb, fbc);
+                build_or_return_guard(parser, tmp_name, fallback_buf, fallback_count);
             return block;
         }
 
