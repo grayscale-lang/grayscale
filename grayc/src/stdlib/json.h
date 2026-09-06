@@ -16,8 +16,8 @@
 #include "../runtime/map.h"
 
 /* JSON string escaping helpers (used by generated #json struct code) */
-size_t json_escaped_len(GrayString s);
-void json_append_escaped(char *buf, int *pos, GrayString s);
+size_t json_escaped_len(GrayString str);
+void json_append_escaped(char *buf, int *pos, GrayString str);
 
 /*@man encode
  *@module json
@@ -35,7 +35,7 @@ void json_append_escaped(char *buf, int *pos, GrayString s);
  *@end
  */
 /* json.encode(value) — convert map to JSON string */
-GrayString gray_json_encode_map(GrayArena *arena, GrayMap *m);
+GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map);
 
 /* json.encode(array) — convert typed arrays to JSON */
 GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr);
@@ -44,9 +44,9 @@ GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr);
 
 /* json.encode(map) — convert typed maps to JSON */
-GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *m);
-GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *m);
-GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *m);
+GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
 
 /*@man stringify
  *@module json
@@ -128,7 +128,7 @@ bool gray_json_is_valid(GrayString text);
  *@end
  */
 /* json.pretty(value, indent) — pretty-print JSON */
-GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *m, int64_t indent);
+GrayString gray_json_pretty_map(GrayArena *arena, GrayMap *map, int64_t indent_size);
 
 /* json array splitting: returns an GrayArray of GrayString, each being one
  * top-level JSON element from a JSON array string like "[{...},{...}]". */
