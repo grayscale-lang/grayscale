@@ -51,6 +51,13 @@ typedef struct {
      * field. */
     const char *field_mem_arena;
     int field_mem_epoch;
+    /* Pointer checker: for a @mem arena *handle* variable (mut a =
+     * mem.arena(n)) or an alias of one (mut b mem.Arena = a, mut h ^mem.Arena
+     * = addr(a)), the stable identity key of the arena it refers to. Lets a
+     * mem.destroy()/mem.reset() reached through any alias update the one
+     * shared ArenaLifetime, so E3164/E3165/E3166 fire regardless of which
+     * name the lifecycle call went through. */
+    const char *arena_id;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

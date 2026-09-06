@@ -184,6 +184,8 @@ static bool pointer_checker_is_mem_call(TypeChecker *checker, AstNode *call,
 static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *at, const char *disp);
 static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expr);
+static void pointer_checker_bind_arena_handle(TypeChecker *checker, Symbol *sym,
+                                              AstNode *value, const char *bind_name);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
@@ -1864,6 +1866,21 @@ static void pointer_checker_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode 
                         fs->resets_param_arena |= 1ull << i;
                     if (suffix) fs->mem_param_field[i] = suffix;
                 }
+            } else if (!callee && call_targets_func_typed_param(fs, node)) {
+                /* An indirect call through a func-typed parameter: the real
+                 * callee is unknown, so conservatively assume any arena
+                 * handle it receives is destroyed (shared root cause with
+                 * #2692). */
+                for (int k = 0; k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
+                    const char *suffix = NULL;
+                    int i = pointer_checker_mem_param_index_for_key(fs,
+                        pointer_checker_arena_path_key(checker, node->data.call.args[k]), &suffix);
+                    if (i < 0) continue;
+                    const char *ptn = fs->decl->data.func_decl.params[i].type_name;
+                    if (!ptn || !strstr(ptn, "Arena")) continue;
+                    fs->destroys_param_arena |= 1ull << i;
+                    if (suffix) fs->mem_param_field[i] = suffix;
+                }
             }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
@@ -2056,9 +2073,12 @@ static void pointer_checker_ensure_mem_summary(TypeChecker *checker, FuncSig *fs
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
+        bool saved = checker->pointer_checker_in_mem_summary;
+        checker->pointer_checker_in_mem_summary = true;
         pointer_checker_mem_walk(checker, fs, body);
         pointer_checker_return_stmt_mem_bits(checker, fs, body,
             &fs->returns_param_mem_alloc, &fs->returns_param_mem_alloc_field);
+        checker->pointer_checker_in_mem_summary = saved;
     }
     fs->mem_state = 2;
 }
@@ -12776,6 +12796,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 pointer_checker_apply_mem_call(checker, node->data.var_decl.value, node,
                                   node->data.var_decl.name);
                 pointer_checker_bind_mem_pointer(checker, dst_sym, node->data.var_decl.value);
+                pointer_checker_bind_arena_handle(checker, dst_sym,
+                    node->data.var_decl.value, node->data.var_decl.name);
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -12966,7 +12988,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         Symbol *tsym = scope_lookup(checker->current_scope, aname);
         if (tsym) {
             tsym->mem_arena = NULL;
+            tsym->arena_id = NULL;
             pointer_checker_bind_mem_pointer(checker, tsym, node->data.assign.value);
+            pointer_checker_bind_arena_handle(checker, tsym, node->data.assign.value, aname);
         }
     }
 
@@ -14064,7 +14088,30 @@ static ArenaLifetime *pointer_checker_arena_ensure(TypeChecker *checker, const c
  * than risk two different arenas colliding on the same key. */
 static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expr) {
     if (!expr) return NULL;
-    if (expr->kind == NODE_LABEL) return expr->data.label.value;
+    if (expr->kind == NODE_LABEL) {
+        /* An arena-handle alias resolves to the arena it was copied from, so
+         * a lifecycle call through any name reaches the one shared state. Not
+         * during the structural summary walk: current_scope is the caller's
+         * there, not the summarised function's, so the name stays literal. */
+        if (!checker->pointer_checker_in_mem_summary && checker->current_scope) {
+            Symbol *s = scope_lookup(checker->current_scope, expr->data.label.value);
+            if (s && s->arena_id) return s->arena_id;
+        }
+        return expr->data.label.value;
+    }
+    /* See through `addr(a)` / `ref(a)` and a `h^` dereference: a pointer to an
+     * arena handle (or to a struct holding one) names the same arena its
+     * pointee does. */
+    if (expr->kind == NODE_POSTFIX_EXPR && expr->data.postfix.op == TOK_CARET)
+        return pointer_checker_arena_path_key(checker, expr->data.postfix.left);
+    if (expr->kind == NODE_CALL_EXPR) {
+        AstNode *f = expr->data.call.function;
+        if (f && f->kind == NODE_LABEL && expr->data.call.arg_count == 1 &&
+            (strcmp(f->data.label.value, "addr") == 0 ||
+             strcmp(f->data.label.value, "ref") == 0))
+            return pointer_checker_arena_path_key(checker, expr->data.call.args[0]);
+        return NULL;
+    }
     if (expr->kind == NODE_MEMBER_EXPR) {
         const char *base = pointer_checker_arena_path_key(checker, expr->data.member.object);
         if (!base || !expr->data.member.member) return NULL;
@@ -14365,6 +14412,26 @@ static void pointer_checker_bind_mem_pointer(TypeChecker *checker, Symbol *sym, 
         sym->mem_arena = arena;
         sym->mem_epoch = epoch;
     }
+}
+
+/* Record an arena *handle* identity on a freshly bound symbol: a fresh
+ * `mut a = mem.arena(n)` (identity = its own bind name), or an alias whose
+ * initializer roots at an existing arena handle — `mut b mem.Arena = a`,
+ * `mut h ^mem.Arena = addr(a)`, `mut b = holder.a`. A lifecycle call through
+ * any such alias then resolves back to the one shared ArenaLifetime. */
+static void pointer_checker_bind_arena_handle(TypeChecker *checker, Symbol *sym,
+                                              AstNode *value, const char *bind_name) {
+    if (!sym || !value || !bind_name) return;
+    const char *fn = NULL, *arena = NULL;
+    if (value->kind == NODE_CALL_EXPR &&
+        pointer_checker_is_mem_call(checker, value, &fn, &arena) &&
+        strcmp(fn, "arena") == 0) {
+        sym->arena_id = bind_name;
+        return;
+    }
+    const char *src = pointer_checker_arena_path_key(checker, value);
+    if (src && pointer_checker_arena_get(checker, src))
+        sym->arena_id = src;
 }
 
 /* A dereference `ptr_expr^` (as `p^`, `p^.field`, `p^[i]`). If ptr_expr roots

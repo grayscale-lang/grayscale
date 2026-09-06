@@ -284,6 +284,12 @@ typedef struct {
     ArenaLifetime *arenas;
     int arena_count;
     int arena_cap;
+    /* True while a structural cross-function @mem summary walk is in progress.
+     * That walk runs detached from the summarised function's scope, so arena
+     * path keys must be taken literally (a parameter's own name) rather than
+     * resolved through checker->current_scope, which belongs to whichever
+     * caller triggered the lazy summary. */
+    bool pointer_checker_in_mem_summary;
 
     /*  true during register_declarations to allow forward references */
     bool registering;

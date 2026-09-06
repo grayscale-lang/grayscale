@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3164 - an arena is destroyed by a call routed through a
+ * function-typed parameter (#2693, shared root cause with #2692). The real
+ * callee is not statically known, so `run` is treated as destroying any
+ * arena handle it forwards into the indirect call; the later p^ is caught.
+ */
+
+import @mem
+
+do kill(a mem.Arena) { mem.destroy(a) }
+
+do run(f func(mem.Arena), a mem.Arena) { f(a) }
+
+do main() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 5)
+    const g func(mem.Arena) = ()kill
+    run(g, a)
+    println(p^)
+}

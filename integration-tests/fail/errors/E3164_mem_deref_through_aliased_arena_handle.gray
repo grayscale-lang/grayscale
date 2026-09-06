@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3164 - a pointer into a @mem arena is dereferenced after the
+ * arena is destroyed through a *copied* handle (#2693). `b` is another name
+ * for the same arena as `a`; mem.destroy(b) must update the shared arena
+ * state so the later p^ (p allocated from `a`) is caught.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut b mem.Arena = a
+    mut p ^int = mem.alloc(a, 5)
+    mem.destroy(b)
+    println(p^)
+}
