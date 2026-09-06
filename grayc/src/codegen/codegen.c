@@ -8327,16 +8327,16 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                      * symbol, so leave those to it. */
                     if (uf && func_is_generic(uf)) uf = NULL;
                     if (uf) {
-                        int pc = uf->data.func_decl.param_count;
+                        int param_count = uf->data.func_decl.param_count;
                         int ac = node->data.call.arg_count;
-                        int total = ac < pc ? pc : ac;
+                        int total = ac < param_count ? param_count : ac;
                         emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
                         for (int i = 0; i < total; i++) {
                             if (i > 0) emit(codegen, ", ");
                             if (i < ac) {
-                                bool mut_param = i < pc && uf->data.func_decl.params[i].mutable;
+                                bool mut_param = i < param_count && uf->data.func_decl.params[i].mutable;
                                 emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
-                            } else if (i < pc && uf->data.func_decl.params[i].default_value) {
+                            } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
                                 emit_expression(codegen, uf->data.func_decl.params[i].default_value);
                             }
                         }
@@ -8390,9 +8390,9 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
              * first '?' slot and reading the matching arg's type. */
             const char *binding = NULL;
             char *dynamic_binding = NULL;
-            int pc = target_func->data.func_decl.param_count;
+            int param_count = target_func->data.func_decl.param_count;
             int ac = node->data.call.arg_count;
-            int cc = pc < ac ? pc : ac;
+            int cc = param_count < ac ? param_count : ac;
             for (int pi = 0; pi < cc && !binding; pi++) {
                 /* Type parameter: binding is the arg label directly.
                  * When forwarding (T→"?"), resolve via the outer binding. */

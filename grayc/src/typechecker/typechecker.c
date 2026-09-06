@@ -1336,8 +1336,8 @@ static unsigned long long return_expr_param_bits(TypeChecker *checker,
     if (!node || !fs->decl) return 0;
     switch (node->kind) {
     case NODE_LABEL: {
-        int pc = fs->decl->data.func_decl.param_count;
-        for (int i = 0; i < pc && i < 64; i++) {
+        int param_count = fs->decl->data.func_decl.param_count;
+        for (int i = 0; i < param_count && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (pn && strcmp(pn, node->data.label.value) == 0)
                 return 1ull << i;
@@ -1567,8 +1567,8 @@ static bool is_module_level_var(TypeChecker *checker, const char *name) {
 static signed char escape_dest_for_root(TypeChecker *checker, FuncSig *fs,
                                         const char *root, AstNode *body) {
     if (!root) return PARAM_ESCAPE_NONE;
-    int pc = fs->decl->data.func_decl.param_count;
-    for (int i = 0; i < pc && i < 64; i++) {
+    int param_count = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < param_count && i < 64; i++) {
         const char *pn = fs->decl->data.func_decl.params[i].name;
         if (pn && strcmp(pn, root) == 0) return (signed char)i;
     }
@@ -1766,8 +1766,8 @@ static void pointer_checker_ensure_mem_summary(TypeChecker *checker, FuncSig *fs
  * unrelated local, or simply not a match. */
 static int pointer_checker_mem_param_index_for_key(FuncSig *fs, const char *key, const char **out_suffix) {
     if (!fs->decl || !key) return -1;
-    int pc = fs->decl->data.func_decl.param_count;
-    for (int i = 0; i < pc && i < 64; i++) {
+    int param_count = fs->decl->data.func_decl.param_count;
+    for (int i = 0; i < param_count && i < 64; i++) {
         const char *pn = fs->decl->data.func_decl.params[i].name;
         if (!pn) continue;
         size_t pnlen = strlen(pn);
@@ -1903,7 +1903,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
             pointer_checker_return_expr_mem_bits(checker, fs, init, out_direct, out_field);
         return;
     }
-    int pc = fs->decl->data.func_decl.param_count;
+    int param_count = fs->decl->data.func_decl.param_count;
     switch (node->kind) {
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < node->data.struct_value.count; i++) {
@@ -1945,7 +1945,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
     const char *fn = NULL, *arena = NULL;
     if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
-        for (int i = 0; i < pc && i < 64; i++) {
+        for (int i = 0; i < param_count && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (pn && strcmp(pn, arena) == 0) *out_direct |= 1ull << i;
         }
@@ -1963,7 +1963,7 @@ static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *
         AstNode *arg = node->data.call.args[k];
         if (arg->kind != NODE_LABEL) continue;
         bool via_field = (callee->returns_param_mem_alloc_field & callee_bit) != 0;
-        for (int i = 0; i < pc && i < 64; i++) {
+        for (int i = 0; i < param_count && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
             if (!pn || strcmp(pn, arg->data.label.value) != 0) continue;
             if (via_field) *out_field |= 1ull << i;
