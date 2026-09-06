@@ -342,12 +342,6 @@ static _Noreturn void gray_panic_impl(const char *code, const char *file,
     exit(1);
 }
 
-void gray_panic(const char *file, int line, const char *fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    gray_panic_impl(NULL, file, line, fmt, args);
-}
-
 void gray_panic_code(const char *code, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

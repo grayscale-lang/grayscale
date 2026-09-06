@@ -196,9 +196,6 @@ void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
 extern _Thread_local const char *gray_panic_call_file;
 extern _Thread_local int gray_panic_call_line;
 
-void gray_panic(const char *file, int line, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4), noreturn));
-
 void gray_panic_code(const char *code, const char *fmt, ...)
     __attribute__((format(printf, 2, 3), noreturn));
 
