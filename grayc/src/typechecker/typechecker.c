@@ -2635,8 +2635,15 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"channels", "try_receive", 1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "int"},
     {"channels", "try_send",    2, 2, false, FT_NONE, 2, {{0, ARG_CHANNEL}, {1, ARG_INT}}, "bool"},
     /* chars */
-    {"chars", "to_lower", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
-    {"chars", "to_upper", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "escape",       1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "string"},
+    {"chars", "is_ascii",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "is_control",   1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "is_hex_digit", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "is_printable", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "is_punct",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "is_word_char", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "to_lower",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "to_upper",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     /* crypto */
     {"crypto", "constant_time_equal", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"crypto", "crc32",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "uint"},

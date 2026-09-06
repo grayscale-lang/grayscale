@@ -4429,26 +4429,53 @@ Read-only introspection into the compiler-managed arenas (default + heap), execu
 
 ### 9.29 Chars Module (`@chars`)
 
-Scalar operations on a single `char`. `strings` already provides the char classification
-predicates (`is_alpha`, `is_upper`, `is_lower`, …); `chars` adds ASCII case folding, which
-cannot live in `strings` because `to_upper`/`to_lower` there operate on a `string`.
+Scalar operations on a single `char`. `strings` provides the general classification
+predicates (`is_alpha`, `is_digit`, `is_upper`, `is_lower`, …); `chars` adds ASCII case
+folding plus the lexer-flavored predicates and an escape renderer.
+
+#### Case
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `to_upper` | `(c char) -> char` | ASCII uppercase |
 | `to_lower` | `(c char) -> char` | ASCII lowercase |
 
+Only the 26 ASCII letters in the relevant case are folded. Digits, symbols, whitespace, and
+non-ASCII codepoints (`char` is a full Unicode codepoint) are returned unchanged.
+
+#### Classification
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `is_ascii` | `(c char) -> bool` | 7-bit ASCII codepoint (0–127) |
+| `is_control` | `(c char) -> bool` | ASCII control char: C0 range (0–31) or DEL (127) |
+| `is_printable` | `(c char) -> bool` | Printable ASCII, space (32) through `~` (126) |
+| `is_punct` | `(c char) -> bool` | Printable ASCII that is not a letter, digit, or space |
+| `is_hex_digit` | `(c char) -> bool` | `0`–`9`, `a`–`f`, or `A`–`F` |
+| `is_word_char` | `(c char) -> bool` | Identifier char: `[A-Za-z0-9_]` |
+
+Every predicate is ASCII-only: a non-ASCII codepoint always returns `false`.
+
+#### Transform
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `escape` | `(c char) -> string` | Printable rendering for debugging or codegen |
+
+`escape` renders backslash and the common control characters (`\n`, `\t`, `\r`, `\0`) as
+two-character escapes, other control characters and DEL as `\xNN`, non-ASCII codepoints as
+`\u{...}`, and printable ASCII unchanged.
+
 **Behavior:**
-- Only the 26 ASCII letters in the relevant case are folded. Digits, symbols, whitespace, and
-  non-ASCII codepoints (`char` is a full Unicode codepoint) are returned unchanged.
-- Neither function fails.
+- No function in this module fails.
 
 ```gray
 import @chars
 
-println(chars.to_upper('a'))   // 'A'
-println(chars.to_lower('Z'))   // 'z'
-println(chars.to_upper('5'))   // '5'
+println(chars.to_upper('a'))       // 'A'
+println(chars.is_word_char('_'))   // true
+println(chars.is_hex_digit('g'))   // false
+println(chars.escape('\t'))        // \t
 ```
 
 ---

@@ -7559,9 +7559,11 @@ static bool emit_threads_call(CodeGen *codegen, AstNode *node, const char *func)
 /* --- chars module --- */
 
 static bool emit_chars_call(CodeGen *codegen, AstNode *node, const char *func) {
+    bool needs_arena = (strcmp(func, "escape") == 0);
     emit_formatted(codegen, "gray_chars_%s(", func);
+    if (needs_arena) emit(codegen, "gray_default_arena");
     for (int i = 0; i < node->data.call.arg_count; i++) {
-        if (i > 0) emit(codegen, ", ");
+        if (i > 0 || needs_arena) emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[i]);
     }
     emit(codegen, ")");
