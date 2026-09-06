@@ -17,6 +17,7 @@
 
 #include "uuid.h"
 #include "builtins.h"
+#include "crypto.h"
 #include <time.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -162,6 +163,31 @@ GrayUUID gray_uuid_generate(GrayArena *arena) {
     char buf[GRAY_UUID_LEN + 1];
     gray_uuid_format_hyphenated(bytes, buf);
     uuid.value = gray_string_new(arena, buf, GRAY_UUID_LEN);
+    return uuid;
+}
+
+GrayUUID gray_uuid_generate_v5(GrayArena *arena, GrayUUID namespace_id, GrayString name) {
+    uint8_t ns[16];
+    uuid_to_bytes16(namespace_id, ns);
+
+    /* SHA-1 over the namespace bytes followed by the name. */
+    size_t len = 16 + (size_t)name.len;
+    uint8_t *buf = (uint8_t *)gray_arena_alloc_uninitialized(arena, len);
+    memcpy(buf, ns, 16);
+    if (name.len > 0) memcpy(buf + 16, name.data, (size_t)name.len);
+
+    uint8_t digest[20];
+    gray_crypto_sha1_raw(arena, buf, len, digest);
+
+    uint8_t out[16];
+    memcpy(out, digest, 16);
+    out[6] = (out[6] & 0x0F) | 0x50; /* version 5 */
+    out[8] = (out[8] & 0x3F) | 0x80; /* variant 1 (RFC 4122) */
+
+    char strbuf[GRAY_UUID_LEN + 1];
+    gray_uuid_format_hyphenated(out, strbuf);
+    GrayUUID uuid;
+    uuid.value = gray_string_new(arena, strbuf, GRAY_UUID_LEN);
     return uuid;
 }
 

@@ -1,0 +1,63 @@
+/*
+ * uuid_v5.gray - Integration test for uuid.generate_v5 (name-based, SHA-1)
+ */
+
+import @uuid
+
+do main() {
+    mut passed int = 0
+
+    mut dns UUID = uuid.parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+
+    // Known RFC test vector: v5(DNS, "example.com")
+    mut id UUID = uuid.generate_v5(dns, "example.com")
+    if uuid.to_string(id) == "cfbff0d1-9375-5685-968c-48ce8b15ae17" {
+        println("  [PASS] known v5 vector")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] known v5 vector: ${uuid.to_string(id)}")
+    }
+
+    // version nibble is 5
+    if uuid.version(id) == 5 {
+        println("  [PASS] version is 5")
+        passed += 1
+    } otherwise { println("  [FAIL] version is 5: ${uuid.version(id)}") }
+
+    // deterministic: same inputs -> same output
+    mut again UUID = uuid.generate_v5(dns, "example.com")
+    if uuid.to_string(id) == uuid.to_string(again) {
+        println("  [PASS] deterministic")
+        passed += 1
+    } otherwise { println("  [FAIL] deterministic") }
+
+    // different name -> different UUID
+    mut other UUID = uuid.generate_v5(dns, "example.org")
+    if uuid.to_string(id) != uuid.to_string(other) {
+        println("  [PASS] name changes the result")
+        passed += 1
+    } otherwise { println("  [FAIL] name changes the result") }
+
+    // different namespace -> different UUID
+    mut url_ns UUID = uuid.parse("6ba7b811-9dad-11d1-80b4-00c04fd430c8")
+    mut ns_diff UUID = uuid.generate_v5(url_ns, "example.com")
+    if uuid.to_string(id) != uuid.to_string(ns_diff) {
+        println("  [PASS] namespace changes the result")
+        passed += 1
+    } otherwise { println("  [FAIL] namespace changes the result") }
+
+    // valid canonical form
+    if uuid.is_valid(uuid.to_string(id)) {
+        println("  [PASS] result is a valid UUID")
+        passed += 1
+    } otherwise { println("  [FAIL] result is a valid UUID") }
+
+    println("")
+    println("Results: ${passed}/6 passed")
+    if passed == 6 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

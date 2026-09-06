@@ -164,6 +164,10 @@ static void sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t 
     }
 }
 
+void gray_crypto_sha1_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[20]) {
+    sha1_raw(arena, data, len, out);
+}
+
 GrayString gray_crypto_sha1(GrayArena *arena, GrayString data) {
     uint8_t digest[SHA1_DIGEST_LEN];
     sha1_raw(arena, (const uint8_t *)data.data, (size_t)data.len, digest);

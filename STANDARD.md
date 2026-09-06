@@ -3933,6 +3933,7 @@ UUID is a struct type wrapping a canonical 36-character hyphenated string. All g
 | `generate` | `() -> UUID` | Generate UUID v4 (hyphenated, 36 chars) |
 | `generate_random` | `() -> UUID` | RFC 4122 v4 (random), hyphenated, lowercase |
 | `generate_time_ordered` | `() -> UUID` | RFC 9562 v7 (time-ordered), hyphenated, lowercase. Sorts by creation time |
+| `generate_v5` | `(namespace UUID, name string) -> UUID` | Deterministic RFC 4122 v5 (name-based, SHA-1) |
 | `generate_compact` | `(id UUID) -> string` | Strip hyphens from a UUID, returning a 32-char hex string |
 | `parse` | `(s string) -> UUID` | Validate and normalize a 36-char hyphenated UUID to lowercase. Panics on invalid input — gate with `is_valid()` for a non-panicking check |
 | `to_string` | `(id UUID) -> string` | Convert UUID to its 36-char hyphenated string representation |

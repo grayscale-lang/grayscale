@@ -5937,6 +5937,13 @@ static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "generate_random") == 0) {
         emit(codegen, "gray_uuid_generate_random(gray_default_arena)"); return true;
     }
+    if (strcmp(func, "generate_v5") == 0) {
+        emit(codegen, "gray_uuid_generate_v5(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")"); return true;
+    }
     if (strcmp(func, "generate_time_ordered") == 0) {
         emit(codegen, "gray_uuid_generate_time_ordered(gray_default_arena)"); return true;
     }

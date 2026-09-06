@@ -519,6 +519,7 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"uuid.generate":                   {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate() -> UUID", Fields: "", Desc: "Generates a random RFC 4122 version 4 UUID as a 36-character lowercase hyphenated value.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.to_string(id))"},
 	"uuid.generate_random":            {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_random() -> UUID", Fields: "", Desc: "Generates an RFC 4122 version 4 (random) UUID, 36-character lowercase hyphenated. The version nibble is 4.", Example: "import @uuid\nmut id UUID = uuid.generate_random()\nprintln(uuid.to_string(id))"},
 	"uuid.generate_time_ordered":      {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_time_ordered() -> UUID", Fields: "", Desc: "Generates an RFC 9562 version 7 (time-ordered) UUID, 36-character lowercase hyphenated. Values sort by creation time.", Example: "import @uuid\nmut id UUID = uuid.generate_time_ordered()\nprintln(uuid.to_string(id))"},
+	"uuid.generate_v5":                {Module: "uuid", Group: "Generation", Kind: "func", Sig: "generate_v5(namespace UUID, name string) -> UUID", Fields: "", Desc: "Generates a deterministic RFC 4122 version 5 (name-based, SHA-1) UUID. The same namespace and name always produce the same UUID.", Example: "import @uuid\nmut ns UUID = uuid.parse(\"6ba7b810-9dad-11d1-80b4-00c04fd430c8\")\nmut id UUID = uuid.generate_v5(ns, \"example.com\")"},
 	"uuid.generate_compact":           {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "generate_compact(id UUID) -> string", Fields: "", Desc: "Returns the UUID with its hyphens stripped, as a 32-character hex string.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.generate_compact(id))"},
 	"uuid.parse":                      {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "parse(s string) -> UUID", Fields: "", Desc: "Validates and normalizes a 36-character hyphenated UUID string to lowercase. Panics on invalid input; gate with is_valid for a non-panicking check.", Example: "import @uuid\nmut id UUID = uuid.parse(\"550E8400-E29B-41D4-A716-446655440000\")\nprintln(uuid.to_string(id))"},
 	"uuid.to_string":                  {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "to_string(id UUID) -> string", Fields: "", Desc: "Returns the UUID's canonical 36-character hyphenated string representation.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.to_string(id))"},
@@ -559,7 +560,7 @@ var stdlibModules = map[string][]string{
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
 	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "yield", "sleep", "thread_count"},
 	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms", "humanize", "parse_duration", "format_duration", "add_days", "add_hours", "add_seconds", "start_of_day", "end_of_day", "days_in_month", "day_of_year", "weekday_name", "month_name"},
-	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "to_bytes", "from_bytes", "is_valid", "version", "timestamp", "NIL_UUID"},
+	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_v5", "generate_compact", "parse", "to_string", "to_bytes", "from_bytes", "is_valid", "version", "timestamp", "NIL_UUID"},
 }
 
 // stdlibGroup is one labeled group of names within a module index.
@@ -742,7 +743,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 		{Label: "Performance   ", Names: []string{"tick", "elapsed_ms"}},
 	},
 	"uuid": {
-		{Label: "Generation    ", Names: []string{"generate", "generate_random", "generate_time_ordered"}},
+		{Label: "Generation    ", Names: []string{"generate", "generate_random", "generate_time_ordered", "generate_v5"}},
 		{Label: "Conversion    ", Names: []string{"generate_compact", "parse", "to_string", "to_bytes", "from_bytes"}},
 		{Label: "Validation    ", Names: []string{"is_valid"}},
 		{Label: "Inspection    ", Names: []string{"version", "timestamp"}},

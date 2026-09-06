@@ -50,6 +50,18 @@
  *@end
  */
 
+/*@man generate_v5
+ *@module uuid
+ *@group Generation
+ *@sig generate_v5(namespace UUID, name string) -> UUID
+ *@desc Generates a deterministic RFC 4122 version 5 (name-based, SHA-1) UUID. The same namespace and name always produce the same UUID.
+ *@example
+ *   import @uuid
+ *   mut ns UUID = uuid.parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+ *   mut id UUID = uuid.generate_v5(ns, "example.com")
+ *@end
+ */
+
 /*@man generate_compact
  *@module uuid
  *@group Conversion
@@ -165,6 +177,7 @@ typedef struct {
 } GrayUuidTimestamp;
 
 GrayUUID gray_uuid_generate(GrayArena *arena);
+GrayUUID gray_uuid_generate_v5(GrayArena *arena, GrayUUID namespace_id, GrayString name);
 GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id);
 GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes);
 int64_t gray_uuid_version(GrayUUID id);

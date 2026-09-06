@@ -3021,6 +3021,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"uuid", "from_bytes",           1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "UUID"},
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
+    {"uuid", "generate_v5",           2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "UUID"},
     {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
