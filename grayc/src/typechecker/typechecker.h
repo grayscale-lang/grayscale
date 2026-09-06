@@ -129,6 +129,13 @@ typedef struct {
     unsigned char escape_state;
     unsigned long long returns_param_addr;
     signed char param_escape_into[64];
+    /* param_escape_global_name[i]: when param_escape_into[i] is
+     * PARAM_ESCAPE_GLOBAL because parameter i's address is stored into a
+     * *named* module-level variable, that variable's name, so the E3163 at
+     * the call site can name the real destination. NULL when the
+     * global-lifetime sink has no single name (a forward through a
+     * func-typed parameter or an opaque indirect call). */
+    const char *param_escape_global_name[64];
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
      * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,

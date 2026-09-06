@@ -1,0 +1,25 @@
+// expect-error: E3163
+// expect-error-count: 1
+/*
+ * Error Test: E3163 - a call whose target is a func value read from an array
+ * element (`handlers[0](...)`) cannot be pinned to one declaration, so every
+ * pointer argument is treated as escaping to an unknown sink (#2661). Here
+ * the called function stashes its argument into a global; `x` is freed when
+ * `leak` returns.
+ */
+
+mut GLOBAL ^int = nil
+
+do stash(p ^int) { GLOBAL = p }
+
+mut handlers [func] = {ref(stash)}
+
+do leak() {
+    mut x int = 42
+    handlers[0](addr(x))
+}
+
+do main() {
+    leak()
+    println("unreachable")
+}

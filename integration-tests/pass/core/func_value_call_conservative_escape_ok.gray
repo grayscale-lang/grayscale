@@ -1,0 +1,55 @@
+/*
+ * Treating a call through a func value (array element, func-typed parameter,
+ * or func-typed local) as a conservative escape point (#2661) must not
+ * flag a call that passes no local address: by-value arguments, and
+ * pointers into memory that outlives the function, are fine.
+ */
+
+mut g_slot int = 0
+
+do add_to_slot(n int) { g_slot += n }
+
+do bump(p ^int) { p^ += 1 }
+
+mut adders [func] = {ref(add_to_slot)}
+
+do run_ptr(f func(^int), p ^int) { f(p) }
+
+do main() {
+    mut passed int = 0
+
+    // 1. array-indexed call, by-value argument
+    adders[0](42)
+    if g_slot == 42 {
+        println("  [PASS] array-indexed func call, value arg")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array-indexed: ${g_slot}")
+    }
+
+    // 2. func-typed parameter call with a pointer to a global (outlives the call)
+    run_ptr(ref(bump), addr(g_slot))
+    if g_slot == 43 {
+        println("  [PASS] func-typed param call, pointer to global")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] func param: ${g_slot}")
+    }
+
+    // 3. func-typed local, by-value argument
+    const local_fn func(int) = ref(add_to_slot)
+    local_fn(7)
+    if g_slot == 50 {
+        println("  [PASS] func-typed local call, value arg")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] func local: ${g_slot}")
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 3 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -966,6 +966,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->escape_state = 0;
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
+    memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
@@ -1616,12 +1617,15 @@ static const ContainerSink *find_container_sink(TypeChecker *checker, AstNode *c
 }
 
 static void record_param_escape(FuncSig *fs, unsigned long long bits,
-                                signed char dest) {
+                                signed char dest, const char *global_name) {
     for (int i = 0; i < fs->param_count && i < MAX_TRACKED_PARAMS; i++) {
         if (!(bits & (1ull << i))) continue;
         if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE ||
-            dest == PARAM_ESCAPE_GLOBAL)
+            dest == PARAM_ESCAPE_GLOBAL) {
             fs->param_escape_into[i] = dest;
+            if (dest == PARAM_ESCAPE_GLOBAL)
+                fs->param_escape_global_name[i] = global_name;
+        }
     }
 }
 
@@ -1641,6 +1645,17 @@ static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
     return false;
 }
 
+/* True when a call's target is a func *value* that cannot be pinned to one
+ * declaration — a func read from an array/map element (`arr[i](...)`), or one
+ * of `fs`'s own func-typed parameters. Structural (no live scope), for the
+ * summary walks. Such a call may forward any pointer argument anywhere
+ * (#2661). */
+static bool call_target_is_opaque_func(FuncSig *fs, AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (fn && fn->kind == NODE_INDEX_EXPR) return true;
+    return call_targets_func_typed_param(fs, call);
+}
+
 /* Scan a function body for places a parameter's address is stored into
  * caller-visible memory: an assignment whose target roots at another
  * parameter or a module-level variable, a stdlib container insert, or a
@@ -1650,11 +1665,12 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
     if (!node) return;
     switch (node->kind) {
     case NODE_ASSIGN_STMT: {
-        signed char dest = escape_dest_for_root(checker, fs,
-            escape_root_name(node->data.assign.target), body);
+        const char *troot = escape_root_name(node->data.assign.target);
+        signed char dest = escape_dest_for_root(checker, fs, troot, body);
         if (dest != PARAM_ESCAPE_NONE)
             record_param_escape(fs, return_expr_param_bits(checker, fs,
-                node->data.assign.value), dest);
+                node->data.assign.value), dest,
+                dest == PARAM_ESCAPE_GLOBAL ? troot : NULL);
         escape_walk(checker, fs, body, node->data.assign.value);
         break;
     }
@@ -1662,11 +1678,13 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
         const ContainerSink *sink = find_container_sink(checker, node);
         if (sink && node->data.call.arg_count > sink->value_arg &&
             node->data.call.arg_count > sink->container_arg) {
-            signed char dest = escape_dest_for_root(checker, fs,
-                escape_root_name(node->data.call.args[sink->container_arg]), body);
+            const char *croot =
+                escape_root_name(node->data.call.args[sink->container_arg]);
+            signed char dest = escape_dest_for_root(checker, fs, croot, body);
             if (dest != PARAM_ESCAPE_NONE)
                 record_param_escape(fs, return_expr_param_bits(checker, fs,
-                    node->data.call.args[sink->value_arg]), dest);
+                    node->data.call.args[sink->value_arg]), dest,
+                    dest == PARAM_ESCAPE_GLOBAL ? croot : NULL);
         }
         FuncSig *callee = resolve_call_sig_in_body(checker, body, node);
         if (callee && callee != fs) {
@@ -1679,18 +1697,21 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                     node->data.call.args[k]);
                 if (!bits) continue;
                 if (cdest == PARAM_ESCAPE_GLOBAL) {
-                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL);
+                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL,
+                        callee->param_escape_global_name[k]);
                 } else if (cdest < node->data.call.arg_count) {
-                    signed char dest = escape_dest_for_root(checker, fs,
-                        escape_root_name(node->data.call.args[cdest]), body);
+                    const char *droot =
+                        escape_root_name(node->data.call.args[cdest]);
+                    signed char dest = escape_dest_for_root(checker, fs, droot, body);
                     if (dest != PARAM_ESCAPE_NONE)
-                        record_param_escape(fs, bits, dest);
+                        record_param_escape(fs, bits, dest,
+                            dest == PARAM_ESCAPE_GLOBAL ? droot : NULL);
                 }
             }
-        } else if (!callee && call_targets_func_typed_param(fs, node)) {
+        } else if (!callee && call_target_is_opaque_func(fs, node)) {
             for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
                 record_param_escape(fs, return_expr_param_bits(checker, fs,
-                    node->data.call.args[i]), PARAM_ESCAPE_GLOBAL);
+                    node->data.call.args[i]), PARAM_ESCAPE_GLOBAL, NULL);
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
             escape_walk(checker, fs, body, node->data.call.args[i]);
@@ -1748,6 +1769,7 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     fs->escape_state = 1;
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
+    memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
@@ -1868,11 +1890,11 @@ static void pointer_checker_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode 
                         fs->resets_param_arena |= 1ull << i;
                     if (suffix) fs->mem_param_field[i] = suffix;
                 }
-            } else if (!callee && call_targets_func_typed_param(fs, node)) {
-                /* An indirect call through a func-typed parameter: the real
-                 * callee is unknown, so conservatively assume any arena
-                 * handle it receives is destroyed (shared root cause with
-                 * #2692). */
+            } else if (!callee && call_target_is_opaque_func(fs, node)) {
+                /* An indirect call through a func-typed parameter or an
+                 * array/map-held func value: the real callee is unknown, so
+                 * conservatively assume any arena handle it receives is
+                 * destroyed (#2661, #2692). */
                 for (int k = 0; k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
                     const char *suffix = NULL;
                     int i = pointer_checker_mem_param_index_for_key(fs,
@@ -2282,8 +2304,13 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         int sink_depth;
         const char *sink_name;
         if (pe == PARAM_ESCAPE_GLOBAL) {
-            sink_depth = 0;
-            sink_name = onm;
+            /* A global outlives the program, so only an origin genuinely
+             * local to *this* function escapes it — a module-level source
+             * (addr of another global) is program-lifetime and fine. */
+            sink_depth = checker->current_func_scope_depth > 0
+                ? checker->current_func_scope_depth - 1 : 0;
+            sink_name = (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
+                ? csig->param_escape_global_name[a] : onm;
         } else {
             const char *droot = (pe < argc)
                 ? assignment_target_root_name(node->data.call.args[pe])
@@ -8210,6 +8237,38 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * once that rewrite has happened. */
         apply_call_param_escape_and_mem_effects(checker,
             node, resolve_call_sig(checker, node), reported_arg);
+
+        /* E3163: an opaque call target — a func value read from an array/map
+         * element, or a func-typed variable the checker cannot pin to one
+         * declaration — could stash any pointer argument anywhere. Treat
+         * every argument whose address roots at a local as escaping to an
+         * unknown, program-lifetime sink (#2661). */
+        if (!resolve_call_sig(checker, node)) {
+            AstNode *cfn = node->data.call.function;
+            bool opaque = false;
+            if (cfn && cfn->kind == NODE_INDEX_EXPR) {
+                opaque = true;
+            } else if (cfn && cfn->kind == NODE_LABEL) {
+                Symbol *cs = scope_lookup(checker->current_scope,
+                                          cfn->data.label.value);
+                opaque = cs && cs->type && cs->type->kind == TK_FUNCTION &&
+                         !cs->func_ref_name;
+            }
+            if (opaque) {
+                for (int i = 0; i < argc && i < MAX_TRACKED_PARAMS; i++) {
+                    if ((reported_arg >> i) & 1) continue;
+                    AstNode *arg = node->data.call.args[i];
+                    const char *onm = NULL;
+                    int od = expression_origin(checker, arg, &onm);
+                    if (od > 0 && od >= checker->current_func_scope_depth) {
+                        diagnostic_error_code_formatted(checker->diag, "E3163",
+                            NODE_FILE(checker, arg), arg->token.line,
+                            arg->token.column, 0, onm, onm);
+                        reported_arg |= 1ull << i;
+                    }
+                }
+            }
+        }
     }
 
     /* Resolve function return type */
