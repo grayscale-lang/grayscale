@@ -1523,6 +1523,13 @@ static bool is_result_temporary(const char *name) {
            strncmp(name, GRAY_SYNTH_OR, sizeof(GRAY_SYNTH_OR) - 1) == 0;
 }
 
+/* The value being emitted is bound to a compiler-generated destructuring
+ * temporary (a multi-return capture or an or_return result), not a
+ * user-named variable. */
+static bool current_var_is_result_temporary(CodeGen *codegen) {
+    return is_result_temporary(codegen->current_var_name);
+}
+
 static int function_name_compare(const void *left, const void *right) {
     const AstNode *left_func = *(const AstNode *const *)left;
     const AstNode *right_func = *(const AstNode *const *)right;
@@ -5877,7 +5884,7 @@ static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool is_fallible = (strcmp(func, "parse") == 0 || strcmp(func, "parse_duration") == 0);
 
     if (is_fallible) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, is_multi_var ? "gray_time_%s_result(" : "gray_time_%s(", func);
         for (int i = 0; i < node->data.call.arg_count; i++) {
             if (i > 0) emit(codegen, ", ");
@@ -5962,7 +5969,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "find") == 0 && node->data.call.arg_count == 2) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_find%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
@@ -5971,7 +5978,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "find_all") == 0 && node->data.call.arg_count == 2) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_find_all%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
@@ -5980,7 +5987,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "replace") == 0 && node->data.call.arg_count == 3) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_replace%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
@@ -5991,7 +5998,7 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "split") == 0 && node->data.call.arg_count == 2) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_split%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
@@ -6095,7 +6102,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
 /* --- @http module --- */
 
 static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *func) {
-    bool is_multi_var = is_result_temporary(codegen->current_var_name);
+    bool is_multi_var = current_var_is_result_temporary(codegen);
     const char *sfx = is_multi_var ? "_result" : "";
     if (strcmp(func, "get") == 0 && node->data.call.arg_count == 2) {
         emit_formatted(codegen, "gray_http_get%s(gray_default_arena, ", sfx);
@@ -6157,7 +6164,7 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *func) {
 /* --- @net module --- */
 
 static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *func) {
-    bool is_multi_var = is_result_temporary(codegen->current_var_name);
+    bool is_multi_var = current_var_is_result_temporary(codegen);
     if (strcmp(func, "connect") == 0 && node->data.call.arg_count == 2) {
         emit_formatted(codegen, "gray_net_dial%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
@@ -6291,7 +6298,7 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
 /* --- @csv module --- */
 
 static bool emit_csv_call(CodeGen *codegen, AstNode *node, const char *func) {
-    bool is_multi_var = is_result_temporary(codegen->current_var_name);
+    bool is_multi_var = current_var_is_result_temporary(codegen);
     if (strcmp(func, "parse") == 0) {
         emit(codegen, "gray_csv_parse(gray_default_arena, ");
         emit_expression(codegen, node->data.call.args[0]);
@@ -6451,7 +6458,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "decode") == 0) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_json_decode%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ")");
@@ -6531,7 +6538,7 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *func) 
     bool is_fallible = (strcmp(func, "open") == 0 || strcmp(func, "exec") == 0 ||
         strcmp(func, "query") == 0 || strcmp(func, "exec_params") == 0 ||
         strcmp(func, "query_params") == 0);
-    bool is_multi_var = is_result_temporary(codegen->current_var_name);
+    bool is_multi_var = current_var_is_result_temporary(codegen);
     if (strcmp(func, "open") == 0) {
         emit_formatted(codegen, "gray_sqlite_open%s(gray_default_arena, ", (is_fallible && is_multi_var) ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
@@ -7283,7 +7290,7 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *func) {
         /* Use non-result version when assigned to a single variable (typed or
          * inferred).  Use _result version only for multi-var destructuring
          * (temp vars prefixed with _gray_tmp). */
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         bool use_non_result = !is_multi_var;
         if (use_non_result) {
             if (needs_arena) {
@@ -7573,7 +7580,7 @@ static bool emit_strconv_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "unquote") == 0);
 
     if (is_fallible) {
-        bool is_multi_var = is_result_temporary(codegen->current_var_name);
+        bool is_multi_var = current_var_is_result_temporary(codegen);
         if (is_multi_var) {
             emit_formatted(codegen, "gray_strconv_%s_result(", func);
         } else {
