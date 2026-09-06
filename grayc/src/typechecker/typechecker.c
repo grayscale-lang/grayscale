@@ -9878,8 +9878,7 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
                 else buf_len = (int)buffer_size - 1;
             }
         }
-        char *encoded = strdup(buffer);
-        result = type_from_name(encoded);
+        result = type_from_name(buffer);
     } else {
         /* Unknown function: fall back to bare-func type
          * so downstream "is this callable" checks don't crash. */
