@@ -868,7 +868,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name);
 
 static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name, const char *field) {
     StructInfo *si = find_struct(checker, struct_name);
-    /* : for mangled generic struct names (Pair__int), fall back
+    /* for mangled generic struct names (Pair__int), fall back
      * to the base name (Pair) since fields are registered there.
      * When the field type is "?", substitute the concrete binding
      * extracted from the mangled suffix. */
@@ -889,7 +889,7 @@ static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name
     if (!si) return &TYPE_UNKNOWN;
     for (int i = 0; i < si->field_count; i++) {
         if (strcmp(si->field_names[i], field) == 0) {
-            /* : if the field type is ? (registered as TK_UNKNOWN)
+            /* if the field type is ? (registered as TK_UNKNOWN)
              * and we have a generic binding from the mangled name,
              * substitute to the concrete type. Check the raw decl
              * type_name since the resolved GrayType lost the "?" marker. */
@@ -1128,7 +1128,7 @@ static void finalize_generic_signature(FuncSig *fs, AstNode *decl) {
 static bool record_instantiation(FuncSig *fs, const char *concrete,
                                   AstNode *call_site) {
     if (!fs || !concrete) return false;
-    /* : reject "unknown" as a concrete binding. This comes from
+    /* reject "unknown" as a concrete binding. This comes from
      * the main-pass walk of a generic body where the inner call's
      * arguments are still `?` (TK_UNKNOWN). The real bindings are
      * recorded during the slice-4 re-check pass once the outer
@@ -3475,7 +3475,7 @@ static void typechecker_resolve_named_arguments(TypeChecker *checker, AstNode *n
 }
 
 
-/* : stdlib constants reachable via `import and use` / `using`. */
+/* stdlib constants reachable via `import and use` / `using`. */
 typedef struct {
     const char *name;
     const char *mod;
@@ -4044,7 +4044,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
      * module whose own name contains one (foo_bar_Baz). */
     if (name && is_struct_name(checker, name)) return type_struct(name);
     GrayType *resolved_type = type_from_name(name);
-    /* : try prefixed type names from using-modules so bare
+    /* try prefixed type names from using-modules so bare
      * "Point" resolves to "shapes_Point" when shapes is using'd.
      * type_from_name returns TK_STRUCT for any capitalized name
      * even if the struct isn'resolved_type registered, so check is_struct_name
@@ -4059,7 +4059,7 @@ static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *na
             if (is_enum_name(checker, prefixed)) return type_enum(prefixed);
             if (is_struct_name(checker, prefixed)) return type_struct(prefixed);
         }
-        /* : after registration completes, reject uppercase names that
+        /* after registration completes, reject uppercase names that
          * aren'resolved_type registered as structs or enums. During registration we must
          * allow forward references, so only enforce this in later passes.
          * Exempt built-in types that are mapped directly in codegen without
@@ -4580,7 +4580,7 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
 
 /* --- Expression type resolution --- */
 
-/* : shared void-expression guard. Emits E3038 at `expr` when `t`
+/* shared void-expression guard. Emits E3038 at `expr` when `t`
  * is TK_VOID. `context` is a short phrase describing what the
  * position wants ("println argument", "map value", "binary operand",
  * etc.). If `expr` is a direct call to a named function, the error
@@ -4662,7 +4662,7 @@ static void reject_multi_return_in_single_position(TypeChecker *checker, AstNode
     reject_multi_value_call(checker, expr, expr);
 }
 
-/* : emit E4005 at a stdlib call site where the function name
+/* emit E4005 at a stdlib call site where the function name
  * isn't recognized. Shared between every module dispatch branch that
  * has a fallthrough "unknown function" else. Without this, typing
  * `strings.totally_fake_function()` silently types as `string` (or
@@ -6062,7 +6062,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 const char *struct_name = sym->type->kind == TK_POINTER
                     ? sym->type->element_type : sym->type->name;
                 const char *display_sname = struct_display_name(checker, struct_name);
-                /* : check if `mfn` is a data field of type func
+                /* check if `mfn` is a data field of type func
                  * before trying struct-function dispatch. A func-typed
                  * field should be called as a function pointer, not
                  * mistaken for a struct function. The bare "func" type
@@ -7440,7 +7440,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
         /* Use the user-facing name in error messages, never
          * the module-prefixed internal key. */
         function_name = func_display_name(sig);
-        /* : if this bare name is a using-module alias,
+        /* if this bare name is a using-module alias,
          * also mark the prefixed sig + import as used so
          * W1002/W1003 don't fire on the source. */
         for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
@@ -7658,7 +7658,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             FuncSig *ref_sig = fn_sym->func_ref_name
                 ? find_func(checker, fn_sym->func_ref_name) : NULL;
             if (ref_sig) {
-                /* : compute min arity by counting
+                /* compute min arity by counting
                  * params without default values. */
                 int min_arity = ref_sig->param_count;
                 if (ref_sig->decl && ref_sig->decl->kind == NODE_FUNC_DECL) {
@@ -8643,7 +8643,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     GrayType *right = resolve_expression(checker, node->data.infix.right);
     checker->expected_type = saved_infix_expected;
 
-    /* : track whether any op-specific check has rejected the
+    /* track whether any op-specific check has rejected the
      * expression so the final result can be collapsed to TK_UNKNOWN
      * instead of one operand's type. Otherwise `mut x int = true +
      * 1` fires E3002 at the '+' and then cascades into E3001 "can't
@@ -8651,7 +8651,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
      * the left operand rather than a real result type. */
     bool infix_errored = false;
 
-    /* : void operands never make sense in any binary
+    /* void operands never make sense in any binary
      * operator. Check both sides at the kind level before any
      * op-specific diagnostic runs, so `1 + nothing()` and
      * `nothing() == x` report a clean E3038 instead of
@@ -9111,7 +9111,7 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
     } else {
         result = left;
     }
-    /* : if any op-level check rejected the expression, drop
+    /* if any op-level check rejected the expression, drop
      * result to TK_UNKNOWN so downstream var_decl / return / etc.
      * checks that already skip TK_UNKNOWN don't cascade a second
      * diagnostic off one of the (invalid) operand types. */
@@ -9635,7 +9635,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             }
         }
     }
-    /* : for generic structs, infer the wildcard binding from
+    /* for generic structs, infer the wildcard binding from
      * the field values and record the instantiation on the struct
      * decl so codegen can emit per-binding typedefs. */
     AstNode *sdecl = find_struct_in_program(checker->program, struct_name);
@@ -9909,7 +9909,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
      * multiple times (e.g. builtin call args resolved by both the general
      * call path and the builtin-specific path).
      *
-     * : skip the cache for call expressions during the re-check
+     * skip the cache for call expressions during the re-check
      * pass (suppress_typetable_writes is true). The re-check walks
      * generic bodies with concrete parameter bindings; inner calls to
      * other generic functions need to re-run the dispatch to record
@@ -9917,7 +9917,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
      * TK_UNKNOWN from the main pass short-circuits the resolution and
      * the inner function's binding never gets recorded. */
     GrayType *cached = typetable_get(checker->type_table, node);
-    /* : bypass the cache entirely during the re-check pass
+    /* bypass the cache entirely during the re-check pass
      * (suppress_typetable_writes). The re-check walks generic bodies
      * with concrete param bindings; stale TK_UNKNOWN entries from the
      * main pass prevent inner generic calls from resolving their
@@ -9989,7 +9989,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             } else if (pt->kind == TK_STRUCT ||
                        pt->kind == TK_POINTER ||
                        is_func_type) {
-                /* : interpolation codegen only handles scalars,
+                /* interpolation codegen only handles scalars,
                  * strings, arrays, and maps. Structs, pointers, and
                  * func references fall through to a `%lld` + long-long
                  * cast in the generated C, which clang rejects. Catch
@@ -10446,7 +10446,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         for (int i = 0; i < node->data.map_value.count; i++) {
             GrayType *kt = resolve_expression(checker, node->data.map_value.keys[i]);
             GrayType *vt = resolve_expression(checker, node->data.map_value.values[i]);
-            /* : void can't be a map key or value. */
+            /* void can't be a map key or value. */
             reject_void_in_context(checker, node->data.map_value.keys[i], kt, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], vt, "map value");
             /* E3040: multi-return call in single-value map position */
@@ -11742,7 +11742,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        /* : when a func-pointer call returns TK_UNKNOWN but
+        /* when a func-pointer call returns TK_UNKNOWN but
          * the assignment target has a concrete declared type,
          * push the declared type onto the call node's typetable
          * entry so codegen can derive the correct function-pointer
@@ -11919,7 +11919,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
         }
         /* Struct-to-struct name mismatch (both TK_STRUCT but different names).
-         * : skip when one name is a module-prefixed alias of the
+         * skip when one name is a module-prefixed alias of the
          * other (e.g. "Point" vs "shapes_Point" via import and use). */
         bool struct_alias_match = false;
         if (declared->kind == TK_STRUCT && value_type->kind == TK_STRUCT &&
@@ -12208,7 +12208,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
-            /* : map literal key/value type mismatch. Parallel
+            /* map literal key/value type mismatch. Parallel
              * to the array E3053 check above; walks NODE_MAP_VALUE
              * pairs and rejects entries whose key or value type
              * doesn't match the declared map's K/V. The void case is
@@ -13785,7 +13785,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
         /* Check first return value type (skip for or_return synthetic returns) */
         GrayType *ret_t = resolve_expression(checker, node->data.return_stmt.values[0]);
         GrayType *expected = checker->current_return_types[0];
-        /* : same push as var_decl; when a func-pointer call
+        /* same push as var_decl; when a func-pointer call
          * is the return value and the function's declared return
          * type is concrete, push it onto the call node so codegen
          * uses the right function-pointer return cast. */
@@ -13871,7 +13871,7 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
-        /* : pointer depth mismatch (e.g. returning ^^int
+        /* pointer depth mismatch (e.g. returning ^^int
          * from a function declared -> ^int). Both sides are
          * TK_POINTER so the kind check above passes, but the
          * element_type strings differ ("int" vs "^int"). */
@@ -15175,7 +15175,7 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
         checker->current_return_count = 0;
     }
 
-    /* : main() is always void, and E4008 was already emitted
+    /* main() is always void, and E4008 was already emitted
      * by register_declarations when the user attached a return
      * type. Treat main's effective return type as void for the
      * body walk so downstream "must return a value" (E3024),
@@ -15984,7 +15984,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 /* --- Registration pass --- */
 
 
-/* : returns true if any NODE_STRUCT_DECL in the program has the given
+/* returns true if any NODE_STRUCT_DECL in the program has the given
  * name. Used by pointer-field pointee validation to accept forward
  * references and self-recursion before the struct is registered. */
 static bool struct_name_declared(AstNode *program, const char *name) {
@@ -15998,7 +15998,7 @@ static bool struct_name_declared(AstNode *program, const char *name) {
     return false;
 }
 
-/* : look up a struct declaration in the program by name. Returns
+/* look up a struct declaration in the program by name. Returns
  * NULL if no struct with the given name exists. Used by the by-value
  * recursion detector below. */
 static AstNode *find_struct_in_program(AstNode *program, const char *name) {
@@ -16013,7 +16013,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name) {
     return NULL;
 }
 
-/* : depth-first walk of a struct's by-value field graph, testing
+/* depth-first walk of a struct's by-value field graph, testing
  * whether `target` appears transitively. Pointer fields (^T), arrays
  * ([T]), and maps (map[K:V]) are treated as heap-indirected; they
  * break the chain since the inner type lives behind a fat-pointer

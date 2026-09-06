@@ -2515,7 +2515,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             if (current_token_is(parser, TOK_RBRACKET)) next_token(parser);
             continue;
         }
-        /* : skip #doc attributes on struct functions. Consume
+        /* skip #doc attributes on struct functions. Consume
          * the attribute + any parenthesised args, then continue so
          * the next token (do/private do) is handled normally. */
         if (current_token_is(parser, TOK_DOC)) {

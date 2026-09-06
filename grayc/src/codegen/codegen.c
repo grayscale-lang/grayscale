@@ -1595,7 +1595,7 @@ static void build_function_field_index(CodeGen *codegen) {
 static void emit_label(CodeGen *codegen, AstNode *node) {
     const char *name = sanitize_name(node->data.label.value);
     const char *raw = node->data.label.value;
-    /* : bare stdlib constants from using-modules */
+    /* bare stdlib constants from using-modules */
     static const struct { const char *n; const char *mod; const char *val; } _cg_consts[] = {
         {"PI","math","3.14159265358979323846"},{"E","math","2.71828182845904523536"},
         {"TAU","math","6.28318530717958647692"},{"PHI","math","1.61803398874989484820"},
@@ -2208,7 +2208,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
      * value lands inside a function-like macro call (GRAY_ARRAY_SET_AT and
      * friends). ((T){.a=x, .b=y}) reads as one token run everywhere. */
     emit(codegen, "(");
-    /* : use mangled name for generic struct instantiations */
+    /* use mangled name for generic struct instantiations */
     if (node->data.struct_value.wildcard_binding) {
         const char *binding = node->data.struct_value.wildcard_binding;
         char mangled[MSG_BUF_SIZE];
@@ -6457,7 +6457,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
-    /* : json.parse(); dispatch to per-struct helper when the
+    /* json.parse(); dispatch to per-struct helper when the
      * call node's typetable entry is a #json struct (pushed by the
      * var_decl handler via ). Falls back to gray_json_decode for
      * the map-based path. */
@@ -6488,7 +6488,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
-    /* : json.stringify(); dispatch to per-struct helper when
+    /* json.stringify(); dispatch to per-struct helper when
      * the argument is a #json struct. */
     if (strcmp(func, "stringify") == 0 && node->data.call.arg_count >= 1) {
         AstNode *arg = node->data.call.args[0];
@@ -6767,7 +6767,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_formatted(codegen, "{ %s _av = ", c_elem);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; ");
-        /* : escape arena-allocated data to the outer arena when
+        /* escape arena-allocated data to the outer arena when
          * inside a loop scope. Strings get a simple copy; arrays, maps,
          * and structs with embedded pointers need a full deep copy. */
         if (codegen->loop_scope_depth > 0) {
@@ -8000,7 +8000,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             bool instance_dispatch = false;
             bool obj_is_ptr = false;
             if (!ns_func) {
-                /* : check if `member` is a func-typed data field
+                /* check if `member` is a func-typed data field
                  * on the struct. If so, emit as a function-pointer call
                  * through the field access. We get here when the variable
                  * has a struct type but neither <struct>_<member> nor
@@ -9372,7 +9372,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         } else if (val->kind == NODE_MAP_VALUE) {
             c_type = "GrayMap";
         } else if (val->kind == NODE_STRUCT_VALUE) {
-            /* : use mangled name for generic struct instantiations */
+            /* use mangled name for generic struct instantiations */
             if (val->data.struct_value.wildcard_binding) {
                 const char *binding = val->data.struct_value.wildcard_binding;
                 const char *base = val->data.struct_value.name;
@@ -10520,7 +10520,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
     }
 
-    /* : when inside a loop scope and assigning a string/container
+    /* when inside a loop scope and assigning a string/container
      * value to a plain variable with =, escape the value to the outer
      * arena so it survives the iteration arena's destruction. */
     if (codegen->loop_scope_depth > 0 && node->data.assign.op == TOK_ASSIGN &&
@@ -10719,7 +10719,7 @@ static void emit_loop_exit_unwind(CodeGen *codegen) {
     }
 }
 
-/* : emit escape + cleanup for a non-void function return.
+/* emit escape + cleanup for a non-void function return.
  * Escapes the return value (_ret) to _func_saved, then unwinds any
  * nested scratch arenas live at this exit point, then
  * destroys the function arena. The escape must run first because it
@@ -10928,7 +10928,7 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
-    /* : per-block arena for if/otherwise so temporaries are freed */
+    /* per-block arena for if/otherwise so temporaries are freed */
     int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
     bool scoped = !current_function_uses_caller_arena(codegen);
@@ -11165,7 +11165,7 @@ static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
     emit(codegen, "}\n");
 }
 
-/* : extract the base (unmangled) function name for multi-return
+/* extract the base (unmangled) function name for multi-return
  * struct references. The monomorphiser temporarily renames functions
  * to `<name>__<binding>`, but the GrayMulti typedef is emitted once
  * under the original name. Returns a pointer to a small ring of
@@ -11235,10 +11235,10 @@ static const char *function_return_type(CodeGen *codegen, AstNode *node) {
         }
     }
     if (!has_wc_ret) {
-        /* : strip __<binding> suffix; shared struct. */
+        /* strip __<binding> suffix; shared struct. */
         snprintf(buffer, sizeof(buffer), "GrayMulti_%s", multi_return_base_name(fn_name));
     } else {
-        /* : use the full (possibly mangled) name; per-instantiation
+        /* use the full (possibly mangled) name; per-instantiation
          * struct. The wildcard_binding is active so gray_type_to_c_codegen will
          * substitute '?' in the struct fields. */
         snprintf(buffer, sizeof(buffer), "GrayMulti_%s", fn_name);
@@ -11279,7 +11279,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     emit(codegen, " {\n");
     codegen->indent++;
 
-    /* : scope-based memory management.
+    /* scope-based memory management.
      * Void functions: save/restore arena watermark to free temporaries.
      * Non-void functions: create a per-function arena so temporaries
      * are freed, and escape the return value to the caller's arena. */
@@ -11335,7 +11335,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
         emit_block(codegen, node->data.func_decl.body);
         /* Emit ensure cleanup at end of function (for implicit returns) */
         emit_ensure_cleanup(codegen);
-        /* : cleanup function-scoped memory */
+        /* cleanup function-scoped memory */
         if (!is_main && !caller_arena) {
             if (is_void_fn) {
                 emit_indent(codegen);
@@ -12627,7 +12627,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         if (tagged_enums) free(tagged_enums);
     }
 
-    /* : emit per-instantiation typedefs for generic (wildcard) structs.
+    /* emit per-instantiation typedefs for generic (wildcard) structs.
      * For each recorded binding, substitute ? → concrete in field types
      * and emit under a mangled name (e.g. GrayStruct_Pair__int). */
     for (int i = 0; i < codegen->struct_decl_count; i++) {
@@ -12651,7 +12651,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         }
     }
 
-    /* : emit JSON parse/stringify helpers for #json structs. Each
+    /* emit JSON parse/stringify helpers for #json structs. Each
      * #json struct gets two static functions:
      *   - gray_json_parse_<Name>(arena, json_string) → GrayStruct_<Name>
      *   - gray_json_stringify_<Name>(arena, struct_value) → GrayString
@@ -12873,7 +12873,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
              * function_return_type sees the right name for multi-return
              * structs  + ). */
             if (has_wc) stmt->data.func_decl.name = mangled;
-            /* : emit per-instantiation multi-return typedef
+            /* emit per-instantiation multi-return typedef
              * before the forward declaration that references it. */
             if (has_wc && stmt->data.func_decl.return_type_count > 1) {
                 bool has_wc_ret = false;
