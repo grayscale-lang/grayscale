@@ -42,8 +42,8 @@ static void ensure_seed(void) {
         /* rand_s is RtlGenRandom under the hood: CSPRNG, no extra link lib. */
         if (rand_s(&seed) != 0) seed = (unsigned)time(NULL) ^ (unsigned)_getpid();
 #else
-        FILE *f = fopen("/dev/urandom", "rb");
-        if (f) { fread(&seed, sizeof(seed), 1, f); fclose(f); }
+        FILE *urandom = fopen("/dev/urandom", "rb");
+        if (urandom) { fread(&seed, sizeof(seed), 1, urandom); fclose(urandom); }
         else { seed = (unsigned)time(NULL) ^ (unsigned)getpid(); }
 #endif
         srand(seed);
@@ -75,28 +75,28 @@ static uint64_t rand64(void) {
                ((uint64_t)(unsigned)rand() << 2)  ^
                ((uint64_t)(unsigned)rand());
     }
-    uint64_t v;
+    uint64_t bits;
 #if defined(__APPLE__) || defined(__FreeBSD__)
-    arc4random_buf(&v, sizeof(v));
+    arc4random_buf(&bits, sizeof(bits));
 #elif defined(_WIN32)
     unsigned int hi, lo;
     if (rand_s(&hi) == 0 && rand_s(&lo) == 0) {
-        v = ((uint64_t)hi << 32) | lo;
+        bits = ((uint64_t)hi << 32) | lo;
     } else {
-        v = ((uint64_t)(unsigned)rand() << 33) ^
+        bits = ((uint64_t)(unsigned)rand() << 33) ^
             ((uint64_t)(unsigned)rand() << 2)  ^
             ((uint64_t)(unsigned)rand());
     }
 #else
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (f) { fread(&v, sizeof(v), 1, f); fclose(f); }
+    FILE *urandom = fopen("/dev/urandom", "rb");
+    if (urandom) { fread(&bits, sizeof(bits), 1, urandom); fclose(urandom); }
     else {
-        v = ((uint64_t)(unsigned)rand() << 33) ^
+        bits = ((uint64_t)(unsigned)rand() << 33) ^
             ((uint64_t)(unsigned)rand() << 2)  ^
             ((uint64_t)(unsigned)rand());
     }
 #endif
-    return v;
+    return bits;
 }
 
 int64_t gray_random_int_max(int64_t max) {
@@ -155,23 +155,23 @@ GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
     /* Scratch slot sized to the actual element width. The previous
      * fixed char tmp[64] overflowed the stack for any element type
      * larger than 64 bytes (struct arrays, nested arrays/maps). */
-    void *tmp = gray_arena_alloc_uninitialized(arena, element_size);
+    void *scratch = gray_arena_alloc_uninitialized(arena, element_size);
     for (int32_t i = result.len - 1; i > 0; i--) {
-        int32_t j = rand() % (i + 1);
-        memcpy(tmp, data + i * element_size, element_size);
-        memcpy(data + i * element_size, data + j * element_size, element_size);
-        memcpy(data + j * element_size, tmp, element_size);
+        int32_t swap_index = rand() % (i + 1);
+        memcpy(scratch, data + i * element_size, element_size);
+        memcpy(data + i * element_size, data + swap_index * element_size, element_size);
+        memcpy(data + swap_index * element_size, scratch, element_size);
     }
     return result;
 }
 
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t n) {
-    if (n > arr->len)
-        gray_panic_code("P0062", "random.sample() count %d exceeds array length %d", (int)n, (int)arr->len);
-    if (n < 0)
-        gray_panic_code("P0063", "random.sample() count cannot be negative (%d)", (int)n);
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t count) {
+    if (count > arr->len)
+        gray_panic_code("P0062", "random.sample() count %d exceeds array length %d", (int)count, (int)arr->len);
+    if (count < 0)
+        gray_panic_code("P0063", "random.sample() count cannot be negative (%d)", (int)count);
     GrayArray shuffled = gray_random_shuffle(arena, arr);
-    shuffled.len = n;
+    shuffled.len = count;
     return shuffled;
 }
 

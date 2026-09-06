@@ -145,7 +145,7 @@ int32_t gray_random_char_range(int32_t min, int32_t max);
 
 /* Array operations */
 GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr);
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t n);
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t count);
 
 /* Explicit seeding */
 void gray_random_seed(int64_t value);
