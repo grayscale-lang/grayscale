@@ -208,19 +208,19 @@ GrayString gray_io_path_join(GrayArena *arena, GrayArray parts) {
     if (parts.len == 0) return gray_string_lit(".");
     GrayString result = GRAY_ARRAY_GET(parts, GrayString, 0);
     for (int32_t i = 1; i < parts.len; i++) {
-        GrayString seg = GRAY_ARRAY_GET(parts, GrayString, i);
-        if (seg.len == 0) continue;
+        GrayString segment = GRAY_ARRAY_GET(parts, GrayString, i);
+        if (segment.len == 0) continue;
         /* Absolute segment replaces accumulated path */
-        if (seg.data[0] == '/' || seg.data[0] == '\\') {
-            result = seg;
+        if (segment.data[0] == '/' || segment.data[0] == '\\') {
+            result = segment;
             continue;
         }
         bool already_separated = result.len > 0 &&
             (result.data[result.len - 1] == '/' || result.data[result.len - 1] == '\\');
         if (already_separated)
-            result = gray_string_format(arena, "%.*s%.*s", result.len, result.data, seg.len, seg.data);
+            result = gray_string_format(arena, "%.*s%.*s", result.len, result.data, segment.len, segment.data);
         else
-            result = gray_string_format(arena, "%.*s/%.*s", result.len, result.data, seg.len, seg.data);
+            result = gray_string_format(arena, "%.*s/%.*s", result.len, result.data, segment.len, segment.data);
     }
     return result;
 }
@@ -300,13 +300,13 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
     /* Split into segments */
     char *segments[GRAY_IO_MAX_SEGMENTS];
     int seg_count = 0;
-    char *tok = buf;
-    while (*tok) {
-        while (*tok == '/') tok++;
-        if (*tok == '\0') break;
-        char *seg_start = tok;
-        while (*tok && *tok != '/') tok++;
-        if (*tok) { *tok = '\0'; tok++; }
+    char *cursor = buf;
+    while (*cursor) {
+        while (*cursor == '/') cursor++;
+        if (*cursor == '\0') break;
+        char *seg_start = cursor;
+        while (*cursor && *cursor != '/') cursor++;
+        if (*cursor) { *cursor = '\0'; cursor++; }
         if (strcmp(seg_start, ".") == 0) continue;
         if (strcmp(seg_start, "..") == 0) {
             if (seg_count > 0 && strcmp(segments[seg_count - 1], "..") != 0) {
@@ -346,16 +346,16 @@ GrayString gray_io_normalize(GrayArena *arena, GrayString path) {
  *
  * Not static: csv.c's gray_csv_read/gray_csv_read_result share this
  * instead of re-deriving the same seek/streaming logic. */
-GrayString gray_io_read_file_impl(GrayArena *arena, FILE *f) {
+GrayString gray_io_read_file_impl(GrayArena *arena, FILE *file) {
     long size = -1;
-    if (fseek(f, 0, SEEK_END) == 0) {
-        size = ftell(f);
-        if (size >= 0) (void)fseek(f, 0, SEEK_SET);
+    if (fseek(file, 0, SEEK_END) == 0) {
+        size = ftell(file);
+        if (size >= 0) (void)fseek(file, 0, SEEK_SET);
     }
 
     if (size >= 0 && size <= INT32_MAX) {
         char *buf = gray_arena_alloc_uninitialized(arena, (size_t)size + 1);
-        size_t bytes = fread(buf, 1, (size_t)size, f);
+        size_t bytes = fread(buf, 1, (size_t)size, file);
         buf[bytes] = '\0';
         return (GrayString){ buf, (int32_t)bytes };
     }
@@ -364,7 +364,7 @@ GrayString gray_io_read_file_impl(GrayArena *arena, FILE *f) {
     }
 
     /* Streaming fallback for non-seekable inputs. */
-    clearerr(f);
+    clearerr(file);
     size_t capacity = GRAY_IO_READ_BUF;
     size_t len = 0;
     char *buf = gray_arena_alloc_uninitialized(arena, capacity);
@@ -379,7 +379,7 @@ GrayString gray_io_read_file_impl(GrayArena *arena, FILE *f) {
             buf = new_buffer;
             capacity = new_capacity;
         }
-        size_t got = fread(buf + len, 1, capacity - len, f);
+        size_t got = fread(buf + len, 1, capacity - len, file);
         if (got == 0) break;
         len += got;
     }
@@ -397,10 +397,10 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0086", "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents");
-    FILE *f = fopen(path.data, "rb");
-    if (!f) return gray_string_lit("");
-    GrayString result = gray_io_read_file_impl(arena, f);
-    fclose(f);
+    FILE *file = fopen(path.data, "rb");
+    if (!file) return gray_string_lit("");
+    GrayString result = gray_io_read_file_impl(arena, file);
+    fclose(file);
     if (result.data == NULL)
         gray_panic_code("P0053", "io.read_file: input exceeds maximum string length");
     return result;
@@ -411,16 +411,16 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0086", "io.read_bytes() cannot read a directory");
-    FILE *f = fopen(path.data, "rb");
+    FILE *file = fopen(path.data, "rb");
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
-    if (!f) return arr;
+    if (!file) return arr;
     uint8_t buf[GRAY_IO_READ_BUF];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        for (size_t i = 0; i < n; i++)
+    size_t bytes_read;
+    while ((bytes_read = fread(buf, 1, sizeof(buf), file)) > 0) {
+        for (size_t i = 0; i < bytes_read; i++)
             GRAY_ARRAY_PUSH(arena, &arr, &buf[i]);
     }
-    fclose(f);
+    fclose(file);
     return arr;
 }
 
@@ -434,9 +434,9 @@ GrayString gray_io_read_stdin_all(GrayArena *arena) {
 GrayArray gray_io_read_stdin_bytes(GrayArena *arena) {
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
     uint8_t buf[GRAY_IO_READ_BUF];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
-        for (size_t i = 0; i < n; i++)
+    size_t bytes_read;
+    while ((bytes_read = fread(buf, 1, sizeof(buf), stdin)) > 0) {
+        for (size_t i = 0; i < bytes_read; i++)
             GRAY_ARRAY_PUSH(arena, &arr, &buf[i]);
     }
     return arr;
@@ -446,20 +446,20 @@ GrayArray gray_io_read_stdin_bytes(GrayArena *arena) {
  * limit > 0 stops after that many lines; limit <= 0 reads to end of file.
  * Streaming keeps `limit` cheap on large files and avoids the read_file
  * max-string-length panic when the caller only wants the first few lines. */
-static void io_stream_lines(GrayArena *arena, FILE *f, int64_t limit, GrayArray *arr) {
+static void io_stream_lines(GrayArena *arena, FILE *file, int64_t limit, GrayArray *arr) {
     char *line = NULL;
-    size_t cap = 0;
+    size_t capacity = 0;
     ssize_t got;
     int64_t count = 0;
-    while ((limit <= 0 || count < limit) && (got = getline(&line, &cap, f)) != -1) {
+    while ((limit <= 0 || count < limit) && (got = getline(&line, &capacity, file)) != -1) {
         size_t len = (size_t)got;
         if (len > 0 && line[len - 1] == '\n') len--;
         if (len > 0 && line[len - 1] == '\r') len--;
         char *linebuf = gray_arena_alloc_uninitialized(arena, len + 1);
         memcpy(linebuf, line, len);
         linebuf[len] = '\0';
-        GrayString gs = { linebuf, (int32_t)len };
-        GRAY_ARRAY_PUSH(arena, arr, &gs);
+        GrayString line_str = { linebuf, (int32_t)len };
+        GRAY_ARRAY_PUSH(arena, arr, &line_str);
         count++;
     }
     free(line);
@@ -471,10 +471,10 @@ GrayArray gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0086", "io.read_lines() cannot read a directory");
-    FILE *f = fopen(path.data, "rb");
-    if (!f) return arr;
-    io_stream_lines(arena, f, limit, &arr);
-    fclose(f);
+    FILE *file = fopen(path.data, "rb");
+    if (!file) return arr;
+    io_stream_lines(arena, file, limit, &arr);
+    fclose(file);
     return arr;
 }
 
@@ -518,10 +518,10 @@ bool gray_io_write_file(GrayString path, GrayString content) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0087", "io.write_file() cannot write to a directory");
-    FILE *f = fopen(path.data, "wb");
-    if (!f) return false;
-    size_t written = fwrite(content.data, 1, (size_t)content.len, f);
-    fclose(f);
+    FILE *file = fopen(path.data, "wb");
+    if (!file) return false;
+    size_t written = fwrite(content.data, 1, (size_t)content.len, file);
+    fclose(file);
     return written == (size_t)content.len;
 }
 
@@ -530,10 +530,10 @@ bool gray_io_append_file(GrayString path, GrayString content) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0088", "io.append_file() cannot append to a directory");
-    FILE *f = fopen(path.data, "ab");
-    if (!f) return false;
-    size_t written = fwrite(content.data, 1, (size_t)content.len, f);
-    fclose(f);
+    FILE *file = fopen(path.data, "ab");
+    if (!file) return false;
+    size_t written = fwrite(content.data, 1, (size_t)content.len, file);
+    fclose(file);
     return written == (size_t)content.len;
 }
 
@@ -542,10 +542,10 @@ bool gray_io_write_bytes(GrayString path, GrayArray data) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0087", "io.write_bytes() cannot write to a directory");
-    FILE *f = fopen(path.data, "wb");
-    if (!f) return false;
-    size_t written = fwrite(data.data, 1, (size_t)data.len, f);
-    fclose(f);
+    FILE *file = fopen(path.data, "wb");
+    if (!file) return false;
+    size_t written = fwrite(data.data, 1, (size_t)data.len, file);
+    fclose(file);
     return written == (size_t)data.len;
 }
 
@@ -554,10 +554,10 @@ bool gray_io_append_bytes(GrayString path, GrayArray data) {
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
         gray_panic_code("P0088", "io.append_bytes() cannot append to a directory");
-    FILE *f = fopen(path.data, "ab");
-    if (!f) return false;
-    size_t written = fwrite(data.data, 1, (size_t)data.len, f);
-    fclose(f);
+    FILE *file = fopen(path.data, "ab");
+    if (!file) return false;
+    size_t written = fwrite(data.data, 1, (size_t)data.len, file);
+    fclose(file);
     return written == (size_t)data.len;
 }
 
@@ -627,10 +627,10 @@ bool gray_io_copy_file(GrayString src, GrayString dst) {
     FILE *out = fdopen(out_fd, "wb");
     if (!out) { close(out_fd); fclose(in); return false; }
     char buf[GRAY_IO_COPY_BUF];
-    size_t n;
+    size_t bytes_read;
     bool ok = true;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
-        if (fwrite(buf, 1, n, out) != n) { ok = false; break; }
+    while ((bytes_read = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, bytes_read, out) != bytes_read) { ok = false; break; }
     }
     fclose(in);
     fclose(out);
@@ -650,10 +650,10 @@ bool gray_io_move_file(GrayString src, GrayString dst) {
 
 /* Read directory entries from an already-opened DIR handle.
  * Caller is responsible for closedir. */
-static GrayArray io_list_dir_from(GrayArena *arena, DIR *d) {
+static GrayArray io_list_dir_from(GrayArena *arena, DIR *dir) {
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
     struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         GrayString name = gray_string_format(arena, "%s", ent->d_name);
         GRAY_ARRAY_PUSH(arena, &arr, &name);
@@ -663,10 +663,10 @@ static GrayArray io_list_dir_from(GrayArena *arena, DIR *d) {
 
 GrayArray gray_io_list_dir(GrayArena *arena, GrayString path) {
     validate_path(path);
-    DIR *d = opendir(path.data);
-    if (!d) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    GrayArray arr = io_list_dir_from(arena, d);
-    closedir(d);
+    DIR *dir = opendir(path.data);
+    if (!dir) return gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayArray arr = io_list_dir_from(arena, dir);
+    closedir(dir);
     return arr;
 }
 
@@ -698,11 +698,11 @@ bool gray_io_remove_dir(GrayString path) {
 }
 
 static bool remove_dir_recursive(const char *path) {
-    DIR *d = opendir(path);
-    if (!d) return false;
+    DIR *dir = opendir(path);
+    if (!dir) return false;
     struct dirent *ent;
     bool ok = true;
-    while ((ent = readdir(d)) != NULL) {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         char child[GRAY_IO_PATH_BUF];
         snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
@@ -714,7 +714,7 @@ static bool remove_dir_recursive(const char *path) {
             if (unlink(child) != 0) ok = false;
         }
     }
-    closedir(d);
+    closedir(dir);
     if (rmdir(path) != 0) ok = false;
     return ok;
 }
@@ -731,10 +731,10 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *rel, 
     } else {
         snprintf(full, sizeof(full), "%s/%s", base, rel);
     }
-    DIR *d = opendir(full);
-    if (!d) return;
+    DIR *dir = opendir(full);
+    if (!dir) return;
     struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         GrayString child_rel;
         if (rel[0] == '\0') {
@@ -750,7 +750,7 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *rel, 
             walk_recursive(arena, base, child_rel.data, out);
         }
     }
-    closedir(d);
+    closedir(dir);
 }
 
 GrayArray gray_io_walk(GrayArena *arena, GrayString path) {
@@ -766,8 +766,8 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern) {
     glob_t gl;
     if (glob(pattern.data, GLOB_NOSORT, NULL, &gl) == 0) {
         for (size_t i = 0; i < gl.gl_pathc; i++) {
-            GrayString s = gray_string_format(arena, "%s", gl.gl_pathv[i]);
-            GRAY_ARRAY_PUSH(arena, &arr, &s);
+            GrayString entry = gray_string_format(arena, "%s", gl.gl_pathv[i]);
+            GRAY_ARRAY_PUSH(arena, &arr, &entry);
         }
         globfree(&gl);
     }
@@ -778,93 +778,93 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern) {
 
 GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayResult_string r;
+    GrayResult_string result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
-        return r;
+        return result;
     }
-    FILE *f = fopen(path.data, "rb");
-    if (!f) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read '%s'", path.data));
-        return r;
+    FILE *file = fopen(path.data, "rb");
+    if (!file) {
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read '%s'", path.data));
+        return result;
     }
-    GrayString result = gray_io_read_file_impl(arena, f);
-    fclose(f);
-    if (result.data == NULL) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, GRAY_ERR_OutOfRange, gray_string_format(arena,
+    GrayString content = gray_io_read_file_impl(arena, file);
+    fclose(file);
+    if (content.data == NULL) {
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, GRAY_ERR_OutOfRange, gray_string_format(arena,
             "cannot read '%s': file exceeds maximum string length", path.data));
-        return r;
+        return result;
     }
-    r.v0 = result;
-    r.v1 = NULL;
-    return r;
+    result.v0 = content;
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content) {
     validate_path(path);
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot write '%s': is a directory", path.data));
-        return r;
+        return result;
     }
-    FILE *f = fopen(path.data, "wb");
-    if (!f) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
-        return r;
+    FILE *file = fopen(path.data, "wb");
+    if (!file) {
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
+        return result;
     }
-    fwrite(content.data, 1, (size_t)content.len, f);
-    fclose(f);
-    r.v0 = true;
-    r.v1 = NULL;
-    return r;
+    fwrite(content.data, 1, (size_t)content.len, file);
+    fclose(file);
+    result.v0 = true;
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat st;
     if (stat(path.data, &st) == 0 && S_ISDIR(st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot delete '%s': is a directory; use io.remove_dir() for directories", path.data));
-        return r;
+        return result;
     }
     if (unlink(path.data) == 0) {
-        r.v0 = true;
-        r.v1 = NULL;
+        result.v0 = true;
+        result.v1 = NULL;
     } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot delete '%s'", path.data));
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot delete '%s'", path.data));
     }
-    return r;
+    return result;
 }
 
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content) {
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot append to '%s': is a directory", path.data));
-        return r;
+        return result;
     }
     if (gray_io_append_file(path, content)) {
-        r.v0 = true;
-        r.v1 = NULL;
+        result.v0 = true;
+        result.v1 = NULL;
     } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
     }
-    return r;
+    return result;
 }
 
 GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path, GrayString new_path) {
@@ -873,22 +873,22 @@ GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path
 }
 
 GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayString dst) {
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat _st;
     if (stat(src.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot copy '%s': is a directory", src.data));
-        return r;
+        return result;
     }
     if (gray_io_copy_file(src, dst)) {
-        r.v0 = true;
-        r.v1 = NULL;
+        result.v0 = true;
+        result.v1 = NULL;
     } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot copy '%s' to '%s'", src.data, dst.data));
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot copy '%s' to '%s'", src.data, dst.data));
     }
-    return r;
+    return result;
 }
 
 GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayString dst) {
@@ -898,17 +898,17 @@ GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayS
 
 GrayResult_array gray_io_list_dir_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayResult_array r;
-    DIR *d = opendir(path.data);
-    if (!d) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot list directory '%s'", path.data));
-        return r;
+    GrayResult_array result;
+    DIR *dir = opendir(path.data);
+    if (!dir) {
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot list directory '%s'", path.data));
+        return result;
     }
-    r.v0 = io_list_dir_from(arena, d);
-    closedir(d);
-    r.v1 = NULL;
-    return r;
+    result.v0 = io_list_dir_from(arena, dir);
+    closedir(dir);
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_bool gray_io_make_dir_result(GrayArena *arena, GrayString path) {
@@ -933,198 +933,198 @@ GrayResult_bool gray_io_remove_dir_all_result(GrayArena *arena, GrayString path)
 
 GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayResult_array r;
+    GrayResult_array result;
     struct stat st;
     if (stat(path.data, &st) != 0 || !S_ISDIR(st.st_mode)) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot walk directory '%s'", path.data));
-        return r;
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot walk directory '%s'", path.data));
+        return result;
     }
-    r.v0 = gray_io_walk(arena, path);
-    r.v1 = NULL;
-    return r;
+    result.v0 = gray_io_walk(arena, path);
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    GrayResult_array r;
+    GrayResult_array result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
-        return r;
+        return result;
     }
-    FILE *f = fopen(path.data, "rb");
-    if (!f) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read '%s'", path.data));
-        return r;
+    FILE *file = fopen(path.data, "rb");
+    if (!file) {
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot read '%s'", path.data));
+        return result;
     }
-    r.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
     uint8_t buf[GRAY_IO_READ_BUF];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
-        for (size_t i = 0; i < n; i++)
-            GRAY_ARRAY_PUSH(arena, &r.v0, &buf[i]);
+    size_t bytes_read;
+    while ((bytes_read = fread(buf, 1, sizeof(buf), file)) > 0) {
+        for (size_t i = 0; i < bytes_read; i++)
+            GRAY_ARRAY_PUSH(arena, &result.v0, &buf[i]);
     }
-    fclose(f);
-    r.v1 = NULL;
-    return r;
+    fclose(file);
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
-    GrayResult_array r;
-    r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
+    GrayResult_array result;
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
-        return r;
+        return result;
     }
-    FILE *f = fopen(path.data, "rb");
-    if (!f) {
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena,
+    FILE *file = fopen(path.data, "rb");
+    if (!file) {
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena,
             "cannot read '%s'", path.data));
-        return r;
+        return result;
     }
-    io_stream_lines(arena, f, limit, &r.v0);
-    fclose(f);
-    r.v1 = NULL;
-    return r;
+    io_stream_lines(arena, file, limit, &result.v0);
+    fclose(file);
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern) {
     validate_path(pattern);
-    GrayResult_array r;
+    GrayResult_array result;
     glob_t gl;
     int rc = glob(pattern.data, GLOB_NOSORT, NULL, &gl);
     if (rc != 0 && rc != GLOB_NOMATCH) {
-        r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "glob pattern failed: '%s'", pattern.data));
-        return r;
+        return result;
     }
-    r.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), (int32_t)gl.gl_pathc);
+    result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), (int32_t)gl.gl_pathc);
     for (size_t i = 0; i < gl.gl_pathc; i++) {
-        GrayString s = gray_string_format(arena, "%s", gl.gl_pathv[i]);
-        GRAY_ARRAY_PUSH(arena, &r.v0, &s);
+        GrayString entry = gray_string_format(arena, "%s", gl.gl_pathv[i]);
+        GRAY_ARRAY_PUSH(arena, &result.v0, &entry);
     }
     globfree(&gl);
-    r.v1 = NULL;
-    return r;
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_bool gray_io_write_bytes_result(GrayArena *arena, GrayString path, GrayArray data) {
     validate_path(path);
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot write '%s': is a directory", path.data));
-        return r;
+        return result;
     }
-    FILE *f = fopen(path.data, "wb");
-    if (!f) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
-        return r;
+    FILE *file = fopen(path.data, "wb");
+    if (!file) {
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot write '%s'", path.data));
+        return result;
     }
-    fwrite(data.data, 1, (size_t)data.len, f);
-    fclose(f);
-    r.v0 = true;
-    r.v1 = NULL;
-    return r;
+    fwrite(data.data, 1, (size_t)data.len, file);
+    fclose(file);
+    result.v0 = true;
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, GrayArray data) {
     validate_path(path);
-    GrayResult_bool r;
+    GrayResult_bool result;
     struct stat _st;
     if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot append to '%s': is a directory", path.data));
-        return r;
+        return result;
     }
     if (gray_io_append_bytes(path, data)) {
-        r.v0 = true;
-        r.v1 = NULL;
+        result.v0 = true;
+        result.v1 = NULL;
     } else {
-        r.v0 = false;
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
+        result.v0 = false;
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
     }
-    return r;
+    return result;
 }
 
 GrayResult_string gray_io_temp_file_result(GrayArena *arena) {
-    GrayResult_string r;
+    GrayResult_string result;
 #if GRAY_RT_WINDOWS
     char tmp[MAX_PATH];
     if (!GetTempPathA(sizeof(tmp), tmp)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
+        return result;
     }
     char path[MAX_PATH];
     if (!GetTempFileNameA(tmp, "gray", 0, path)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
+        return result;
     }
     temp_registry_add(path);
-    r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
+    result.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
 #else
     char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     int fd = mkstemp(tmpl);
     if (fd < 0) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary file"));
+        return result;
     }
     close(fd);
     temp_registry_add(tmpl);
-    r.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+    result.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
 #endif
-    r.v1 = NULL;
-    return r;
+    result.v1 = NULL;
+    return result;
 }
 
 GrayResult_string gray_io_temp_dir_result(GrayArena *arena) {
-    GrayResult_string r;
+    GrayResult_string result;
 #if GRAY_RT_WINDOWS
     char tmp[MAX_PATH];
     if (!GetTempPathA(sizeof(tmp), tmp)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
+        return result;
     }
     char path[MAX_PATH];
     if (!GetTempFileNameA(tmp, "gray", 0, path)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
+        return result;
     }
     DeleteFileA(path);
     if (!CreateDirectoryA(path, NULL)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
+        return result;
     }
     temp_registry_add(path);
-    r.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
+    result.v0 = gray_string_new(arena, path, (int32_t)strlen(path));
 #else
     char tmpl[] = GRAY_IO_TEMP_TEMPLATE;
     if (!mkdtemp(tmpl)) {
-        r.v0 = gray_string_lit("");
-        r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
-        return r;
+        result.v0 = gray_string_lit("");
+        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot create temporary directory"));
+        return result;
     }
     temp_registry_add(tmpl);
-    r.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
+    result.v0 = gray_string_new(arena, tmpl, (int32_t)strlen(tmpl));
 #endif
-    r.v1 = NULL;
-    return r;
+    result.v1 = NULL;
+    return result;
 }
