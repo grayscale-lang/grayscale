@@ -538,7 +538,7 @@ int64_t gray_math_factorial(int64_t n);
  *   println(math.gcd(12, 8))
  *@end
  */
-int64_t gray_math_gcd(int64_t a, int64_t b);
+int64_t gray_math_gcd(int64_t left, int64_t right);
 
 /* Not wired to any Grayscale-callable name (no typechecker/codegen dispatch
  * targets these); @random's own generator backs random.rand_int/rand_float
@@ -557,7 +557,7 @@ double gray_math_random_float(double min, double max);
  *   println(math.lcm(4, 6))
  *@end
  */
-int64_t gray_math_lcm(int64_t a, int64_t b);
+int64_t gray_math_lcm(int64_t left, int64_t right);
 
 /*@man is_prime
  *@module math
@@ -687,7 +687,7 @@ typedef struct { double v0; double v1; } GrayMathModf;
  *   println(frac)
  *@end
  */
-GrayMathModf gray_math_modf(double x);
+GrayMathModf gray_math_modf(double value);
 
 /*@man is_power_of_two
  *@module math

@@ -26,8 +26,8 @@ static void ensure_seeded(void) {
 #if defined(__APPLE__) || defined(__FreeBSD__)
         arc4random_buf(&seed, sizeof(seed));
 #else
-        FILE *f = fopen("/dev/urandom", "rb");
-        if (f) { fread(&seed, sizeof(seed), 1, f); fclose(f); }
+        FILE *urandom = fopen("/dev/urandom", "rb");
+        if (urandom) { fread(&seed, sizeof(seed), 1, urandom); fclose(urandom); }
         else { seed = (unsigned)time(NULL) ^ (unsigned)getpid(); }
 #endif
         srand(seed);
@@ -54,24 +54,24 @@ int64_t gray_math_factorial(int64_t n) {
     return result;
 }
 
-int64_t gray_math_gcd(int64_t a, int64_t b) {
-    if (a < 0) a = -a;
-    if (b < 0) b = -b;
-    while (b != 0) { int64_t t = b; b = a % b; a = t; }
-    return a;
+int64_t gray_math_gcd(int64_t left, int64_t right) {
+    if (left < 0) left = -left;
+    if (right < 0) right = -right;
+    while (right != 0) { int64_t temp = right; right = left % right; left = temp; }
+    return left;
 }
 
-int64_t gray_math_lcm(int64_t a, int64_t b) {
-    if (a == 0 || b == 0) return 0;
-    int64_t g = gray_math_gcd(a, b);
-    return (a / g) * b;
+int64_t gray_math_lcm(int64_t left, int64_t right) {
+    if (left == 0 || right == 0) return 0;
+    int64_t divisor = gray_math_gcd(left, right);
+    return (left / divisor) * right;
 }
 
-GrayMathModf gray_math_modf(double x) {
+GrayMathModf gray_math_modf(double value) {
     double integral;
-    double frac = modf(x, &integral);
-    GrayMathModf r = { integral, frac };
-    return r;
+    double frac = modf(value, &integral);
+    GrayMathModf result = { integral, frac };
+    return result;
 }
 
 bool gray_math_is_power_of_two(int64_t n) {
@@ -86,9 +86,9 @@ int64_t gray_math_next_power_of_two(int64_t n) {
         gray_panic_code("P0106",
             "math.next_power_of_two() result is too large for int, got %lld", (long long)n);
     }
-    int64_t p = 1;
-    while (p < n) p <<= 1;
-    return p;
+    int64_t power = 1;
+    while (power < n) power <<= 1;
+    return power;
 }
 
 bool gray_math_is_prime(int64_t n) {
