@@ -167,18 +167,18 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
 /* Forward declarations — pointer checker @mem lifetime helpers, defined near
  * check_expr_stmt but hooked into expression resolution and var-decl. */
-static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
+static void pointer_checker_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
                               const char *bind_name);
-static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
-static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
-static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
+static void pointer_checker_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value);
+static void pointer_checker_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at);
+static bool pointer_checker_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
                                    const char **out_arena, int *out_epoch,
                                    bool *out_via_field);
-static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
+static bool pointer_checker_is_mem_call(TypeChecker *checker, AstNode *call,
                            const char **out_fn, const char **out_arena);
-static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
+static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *at, const char *disp);
-static const char *pc_arena_path_key(TypeChecker *checker, AstNode *expr);
+static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expr);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
@@ -1286,7 +1286,7 @@ static const char *func_ref_target_name(AstNode *value) {
  * declared inside `body` — `const f = ()target; f(...)` or `const f =
  * ref(target); f(...)`. resolve_call_sig()'s own func-ref branch depends on
  * a live checker->current_scope, which the structural summary walks
- * (escape_walk, return_expr_param_bits, pc_mem_walk) never set: they run
+ * (escape_walk, return_expr_param_bits, pointer_checker_mem_walk) never set: they run
  * detached from scope by design, over whichever function's AST they were
  * asked to summarise, which is routinely a different function from whatever
  * is actually being type-checked at the moment the summary is first
@@ -1755,16 +1755,16 @@ static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *f
     return fs->returns_param_addr;
 }
 
-/* --- pc_mem_walk: cross-function @mem summary --- */
+/* --- pointer_checker_mem_walk: cross-function @mem summary --- */
 
-static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs);
+static void pointer_checker_ensure_mem_summary(TypeChecker *checker, FuncSig *fs);
 
 /* Which of fs's own parameters `key` is rooted at, by index, and the
  * field-path suffix beyond that parameter (NULL if key IS the bare
  * parameter itself, e.g. key "h.a" against parameter "h" yields suffix
  * ".a"). -1 if key doesn't root at any parameter of fs — a global, an
  * unrelated local, or simply not a match. */
-static int pc_mem_param_index_for_key(FuncSig *fs, const char *key, const char **out_suffix) {
+static int pointer_checker_mem_param_index_for_key(FuncSig *fs, const char *key, const char **out_suffix) {
     if (!fs->decl || !key) return -1;
     int pc = fs->decl->data.func_decl.param_count;
     for (int i = 0; i < pc && i < 64; i++) {
@@ -1783,12 +1783,12 @@ static int pc_mem_param_index_for_key(FuncSig *fs, const char *key, const char *
 /* The path key an arena reference resolves to at a call site, given a
  * callee's arena-carrying parameter and its recorded field suffix (NULL for
  * a bare parameter). `arg` is this call's own argument expression for that
- * parameter — pc_arena_path_key() resolves it whether it's itself a bare
+ * parameter — pointer_checker_arena_path_key() resolves it whether it's itself a bare
  * name or already a field chain, so a suffix composes through any depth of
  * forwarding (`cleanup(h)` where cleanup destroys `h.a`, called as
  * `cleanup(outer.h)`, yields "outer.h.a"). */
-static const char *pc_mem_forward_key(TypeChecker *checker, AstNode *arg, const char *suffix) {
-    const char *base = pc_arena_path_key(checker, arg);
+static const char *pointer_checker_mem_forward_key(TypeChecker *checker, AstNode *arg, const char *suffix) {
+    const char *base = pointer_checker_arena_path_key(checker, arg);
     if (!base) return NULL;
     if (!suffix) return base;
     char buf[MSG_BUF_SIZE];
@@ -1802,15 +1802,15 @@ static const char *pc_mem_forward_key(TypeChecker *checker, AstNode *arg, const 
  * here is one of `fs`'s own parameters — so the effect forwards through a
  * wrapper like `do outer(a Arena) { helper(a) }`. Structural, like
  * escape_walk: looks only at the AST while the summary is being built. */
-static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
+static void pointer_checker_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
     if (!node || !fs->decl) return;
     switch (node->kind) {
     case NODE_CALL_EXPR: {
         const char *fn = NULL, *arena = NULL;
-        if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+        if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
             (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0)) {
             const char *suffix = NULL;
-            int i = pc_mem_param_index_for_key(fs, arena, &suffix);
+            int i = pointer_checker_mem_param_index_for_key(fs, arena, &suffix);
             if (i >= 0) {
                 if (strcmp(fn, "destroy") == 0) fs->destroys_param_arena |= 1ull << i;
                 else fs->resets_param_arena |= 1ull << i;
@@ -1820,18 +1820,18 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
             FuncSig *callee = resolve_call_sig_in_body(checker,
                 fs->decl->data.func_decl.body, node);
             if (callee && callee != fs) {
-                pc_ensure_mem_summary(checker, callee);
+                pointer_checker_ensure_mem_summary(checker, callee);
                 for (int k = 0; k < callee->param_count &&
                                 k < node->data.call.arg_count && k < 64; k++) {
                     unsigned long long keffect =
                         (callee->destroys_param_arena | callee->resets_param_arena) &
                         (1ull << k);
                     if (!keffect) continue;
-                    const char *key = pc_mem_forward_key(checker,
+                    const char *key = pointer_checker_mem_forward_key(checker,
                         node->data.call.args[k], callee->mem_param_field[k]);
                     if (!key) continue;
                     const char *suffix = NULL;
-                    int i = pc_mem_param_index_for_key(fs, key, &suffix);
+                    int i = pointer_checker_mem_param_index_for_key(fs, key, &suffix);
                     if (i < 0) continue;
                     if (callee->destroys_param_arena & (1ull << k))
                         fs->destroys_param_arena |= 1ull << i;
@@ -1842,37 +1842,37 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
             }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
-            pc_mem_walk(checker, fs, node->data.call.args[i]);
+            pointer_checker_mem_walk(checker, fs, node->data.call.args[i]);
         break;
     }
     case NODE_VAR_DECL:
-        pc_mem_walk(checker, fs, node->data.var_decl.value);
+        pointer_checker_mem_walk(checker, fs, node->data.var_decl.value);
         break;
     case NODE_ASSIGN_STMT:
-        pc_mem_walk(checker, fs, node->data.assign.value);
+        pointer_checker_mem_walk(checker, fs, node->data.assign.value);
         break;
     case NODE_BLOCK_STMT:
         for (int i = 0; i < node->data.block.count; i++)
-            pc_mem_walk(checker, fs, node->data.block.stmts[i]);
+            pointer_checker_mem_walk(checker, fs, node->data.block.stmts[i]);
         break;
     case NODE_IF_STMT:
-        pc_mem_walk(checker, fs, node->data.if_stmt.consequence);
-        pc_mem_walk(checker, fs, node->data.if_stmt.alternative);
+        pointer_checker_mem_walk(checker, fs, node->data.if_stmt.consequence);
+        pointer_checker_mem_walk(checker, fs, node->data.if_stmt.alternative);
         break;
     case NODE_WHEN_STMT:
         for (int i = 0; i < node->data.when_stmt.case_count; i++)
-            pc_mem_walk(checker, fs, node->data.when_stmt.cases[i].body);
-        pc_mem_walk(checker, fs, node->data.when_stmt.default_body);
+            pointer_checker_mem_walk(checker, fs, node->data.when_stmt.cases[i].body);
+        pointer_checker_mem_walk(checker, fs, node->data.when_stmt.default_body);
         break;
-    case NODE_FOR_STMT:      pc_mem_walk(checker, fs, node->data.for_stmt.body); break;
-    case NODE_FOR_EACH_STMT: pc_mem_walk(checker, fs, node->data.for_each.body); break;
-    case NODE_WHILE_STMT:    pc_mem_walk(checker, fs, node->data.while_stmt.body); break;
-    case NODE_LOOP_STMT:     pc_mem_walk(checker, fs, node->data.loop_stmt.body); break;
-    case NODE_EXPR_STMT:     pc_mem_walk(checker, fs, node->data.expr_stmt.expr); break;
-    case NODE_ENSURE_STMT:   pc_mem_walk(checker, fs, node->data.ensure_stmt.expr); break;
+    case NODE_FOR_STMT:      pointer_checker_mem_walk(checker, fs, node->data.for_stmt.body); break;
+    case NODE_FOR_EACH_STMT: pointer_checker_mem_walk(checker, fs, node->data.for_each.body); break;
+    case NODE_WHILE_STMT:    pointer_checker_mem_walk(checker, fs, node->data.while_stmt.body); break;
+    case NODE_LOOP_STMT:     pointer_checker_mem_walk(checker, fs, node->data.loop_stmt.body); break;
+    case NODE_EXPR_STMT:     pointer_checker_mem_walk(checker, fs, node->data.expr_stmt.expr); break;
+    case NODE_ENSURE_STMT:   pointer_checker_mem_walk(checker, fs, node->data.ensure_stmt.expr); break;
     case NODE_RETURN_STMT:
         for (int i = 0; i < node->data.return_stmt.count; i++)
-            pc_mem_walk(checker, fs, node->data.return_stmt.values[i]);
+            pointer_checker_mem_walk(checker, fs, node->data.return_stmt.values[i]);
         break;
     default:
         break;
@@ -1890,9 +1890,9 @@ static void pc_mem_walk(TypeChecker *checker, FuncSig *fs, AstNode *node) {
  * struct/array/map literal, or a call forwarding one — with such a pointer
  * buried inside it) for a return-value expression. A bit is set in at most
  * one of the two; mirrors the mem_arena / field_mem_arena split
- * pc_bind_mem_pointer() records on a Symbol, but for a FuncSig's summary of
+ * pointer_checker_bind_mem_pointer() records on a Symbol, but for a FuncSig's summary of
  * its own return value instead. */
-static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
+static void pointer_checker_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
                                     unsigned long long *out_direct,
                                     unsigned long long *out_field) {
     if (!node || !fs->decl) return;
@@ -1900,7 +1900,7 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
         AstNode *init = local_initializer(fs->decl->data.func_decl.body,
                                           node->data.label.value);
         if (init && init != node)
-            pc_return_expr_mem_bits(checker, fs, init, out_direct, out_field);
+            pointer_checker_return_expr_mem_bits(checker, fs, init, out_direct, out_field);
         return;
     }
     int pc = fs->decl->data.func_decl.param_count;
@@ -1908,7 +1908,7 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < node->data.struct_value.count; i++) {
             unsigned long long d = 0, f = 0;
-            pc_return_expr_mem_bits(checker, fs,
+            pointer_checker_return_expr_mem_bits(checker, fs,
                 node->data.struct_value.field_values[i], &d, &f);
             *out_field |= d | f;
         }
@@ -1916,7 +1916,7 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     case NODE_ARRAY_VALUE:
         for (int i = 0; i < node->data.array_value.count; i++) {
             unsigned long long d = 0, f = 0;
-            pc_return_expr_mem_bits(checker, fs,
+            pointer_checker_return_expr_mem_bits(checker, fs,
                 node->data.array_value.elements[i], &d, &f);
             *out_field |= d | f;
         }
@@ -1924,7 +1924,7 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     case NODE_MAP_VALUE:
         for (int i = 0; i < node->data.map_value.count; i++) {
             unsigned long long d = 0, f = 0;
-            pc_return_expr_mem_bits(checker, fs, node->data.map_value.values[i], &d, &f);
+            pointer_checker_return_expr_mem_bits(checker, fs, node->data.map_value.values[i], &d, &f);
             *out_field |= d | f;
         }
         return;
@@ -1934,16 +1934,16 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     if (node->kind != NODE_CALL_EXPR) return;
     if (is_tagged_enum_variant_call(checker, node)) {
         /* Enum.Variant(args): same treatment as a struct/array/map literal
-         * above — see pc_mem_pointer_in_expr's identical case. */
+         * above — see pointer_checker_mem_pointer_in_expr's identical case. */
         for (int i = 0; i < node->data.call.arg_count; i++) {
             unsigned long long d = 0, f = 0;
-            pc_return_expr_mem_bits(checker, fs, node->data.call.args[i], &d, &f);
+            pointer_checker_return_expr_mem_bits(checker, fs, node->data.call.args[i], &d, &f);
             *out_field |= d | f;
         }
         return;
     }
     const char *fn = NULL, *arena = NULL;
-    if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+    if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
         for (int i = 0; i < pc && i < 64; i++) {
             const char *pn = fs->decl->data.func_decl.params[i].name;
@@ -1953,7 +1953,7 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     }
     FuncSig *callee = resolve_call_sig_in_body(checker, fs->decl->data.func_decl.body, node);
     if (!callee || callee == fs) return;
-    pc_ensure_mem_summary(checker, callee);
+    pointer_checker_ensure_mem_summary(checker, callee);
     for (int k = 0; k < callee->param_count &&
                     k < node->data.call.arg_count && k < 64; k++) {
         unsigned long long callee_bit = 1ull << k;
@@ -1972,44 +1972,44 @@ static void pc_return_expr_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
     }
 }
 
-/* OR together pc_return_expr_mem_bits() over every `return` reachable in a
+/* OR together pointer_checker_return_expr_mem_bits() over every `return` reachable in a
  * statement subtree. Mirrors return_stmt_param_bits. */
-static void pc_return_stmt_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
+static void pointer_checker_return_stmt_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *node,
                                     unsigned long long *out_direct,
                                     unsigned long long *out_field) {
     if (!node) return;
     switch (node->kind) {
     case NODE_RETURN_STMT:
         for (int i = 0; i < node->data.return_stmt.count; i++)
-            pc_return_expr_mem_bits(checker, fs, node->data.return_stmt.values[i],
+            pointer_checker_return_expr_mem_bits(checker, fs, node->data.return_stmt.values[i],
                                     out_direct, out_field);
         break;
     case NODE_BLOCK_STMT:
         for (int i = 0; i < node->data.block.count; i++)
-            pc_return_stmt_mem_bits(checker, fs, node->data.block.stmts[i],
+            pointer_checker_return_stmt_mem_bits(checker, fs, node->data.block.stmts[i],
                                     out_direct, out_field);
         break;
     case NODE_IF_STMT:
-        pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.consequence, out_direct, out_field);
-        pc_return_stmt_mem_bits(checker, fs, node->data.if_stmt.alternative, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.if_stmt.consequence, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.if_stmt.alternative, out_direct, out_field);
         break;
     case NODE_WHEN_STMT:
         for (int i = 0; i < node->data.when_stmt.case_count; i++)
-            pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.cases[i].body,
+            pointer_checker_return_stmt_mem_bits(checker, fs, node->data.when_stmt.cases[i].body,
                                     out_direct, out_field);
-        pc_return_stmt_mem_bits(checker, fs, node->data.when_stmt.default_body, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.when_stmt.default_body, out_direct, out_field);
         break;
     case NODE_FOR_STMT:
-        pc_return_stmt_mem_bits(checker, fs, node->data.for_stmt.body, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.for_stmt.body, out_direct, out_field);
         break;
     case NODE_FOR_EACH_STMT:
-        pc_return_stmt_mem_bits(checker, fs, node->data.for_each.body, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.for_each.body, out_direct, out_field);
         break;
     case NODE_WHILE_STMT:
-        pc_return_stmt_mem_bits(checker, fs, node->data.while_stmt.body, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.while_stmt.body, out_direct, out_field);
         break;
     case NODE_LOOP_STMT:
-        pc_return_stmt_mem_bits(checker, fs, node->data.loop_stmt.body, out_direct, out_field);
+        pointer_checker_return_stmt_mem_bits(checker, fs, node->data.loop_stmt.body, out_direct, out_field);
         break;
     default:
         break;
@@ -2020,7 +2020,7 @@ static void pc_return_stmt_mem_bits(TypeChecker *checker, FuncSig *fs, AstNode *
  * ensure_escape_summary: a function caught mid-computation (recursion) is
  * left with whatever partial summary it has — conservative, never a false
  * negative turned into a crash, just a possibly-missed forwarding case. */
-static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
+static void pointer_checker_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
     if (!fs || fs->mem_state != 0) return;
     fs->mem_state = 1;
     fs->destroys_param_arena = 0;
@@ -2031,8 +2031,8 @@ static void pc_ensure_mem_summary(TypeChecker *checker, FuncSig *fs) {
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
-        pc_mem_walk(checker, fs, body);
-        pc_return_stmt_mem_bits(checker, fs, body,
+        pointer_checker_mem_walk(checker, fs, body);
+        pointer_checker_return_stmt_mem_bits(checker, fs, body,
             &fs->returns_param_mem_alloc, &fs->returns_param_mem_alloc_field);
     }
     fs->mem_state = 2;
@@ -2248,19 +2248,19 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
      * @mem arena parameters — the parameter itself, or a field of it
      * (csig->mem_param_field) — applies that same effect to the caller's
      * arena state here, at the call site — closing the "across a function
-     * call" gap in E3164/E3165/E3166. Only an argument pc_arena_path_key()
+     * call" gap in E3164/E3165/E3166. Only an argument pointer_checker_arena_path_key()
      * can name (a bare variable, or a field-access chain) is traced;
      * anything else is left alone. */
-    pc_ensure_mem_summary(checker, csig);
+    pointer_checker_ensure_mem_summary(checker, csig);
     unsigned long long mem_effect =
         csig->destroys_param_arena | csig->resets_param_arena;
     for (int a = 0; a < argc && a < csig->param_count && a < 64 && mem_effect; a++) {
         if (!(mem_effect & (1ull << a))) continue;
-        const char *key = pc_mem_forward_key(checker, node->data.call.args[a],
+        const char *key = pointer_checker_mem_forward_key(checker, node->data.call.args[a],
                                              csig->mem_param_field[a]);
         if (!key) continue;
         bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
-        pc_apply_arena_lifecycle(checker, key, destroys,
+        pointer_checker_apply_arena_lifecycle(checker, key, destroys,
                                  node, func_display_name(csig));
     }
 }
@@ -10259,7 +10259,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.postfix.op == TOK_CARET) {
             /* Pointer checker: dereferencing a pointer into a @mem arena that
              * has been destroyed (E3164) or reset (E3165). */
-            pc_check_mem_deref(checker, node->data.postfix.left, node);
+            pointer_checker_check_mem_deref(checker, node->data.postfix.left, node);
             if (left_t->kind == TK_POINTER) {
                 /* Dereference: ^T^ → T */
                 result = typechecker_type_from_name(checker, left_t->element_type);
@@ -12744,9 +12744,9 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 dst_sym->field_origin_name = field_origin_name;
                 /* Pointer checker: a @mem arena handle (mut a = mem.arena(n)),
                  * or a pointer into one (mut p = mem.init(a, T)). */
-                pc_apply_mem_call(checker, node->data.var_decl.value, node,
+                pointer_checker_apply_mem_call(checker, node->data.var_decl.value, node,
                                   node->data.var_decl.name);
-                pc_bind_mem_pointer(checker, dst_sym, node->data.var_decl.value);
+                pointer_checker_bind_mem_pointer(checker, dst_sym, node->data.var_decl.value);
             }
         }
         /* Track referenced function for func-typed vars so calls through
@@ -12933,11 +12933,11 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     if (node->data.assign.target->kind == NODE_LABEL &&
         node->data.assign.op == TOK_ASSIGN) {
         const char *aname = node->data.assign.target->data.label.value;
-        pc_apply_mem_call(checker, node->data.assign.value, node, aname);
+        pointer_checker_apply_mem_call(checker, node->data.assign.value, node, aname);
         Symbol *tsym = scope_lookup(checker->current_scope, aname);
         if (tsym) {
             tsym->mem_arena = NULL;
-            pc_bind_mem_pointer(checker, tsym, node->data.assign.value);
+            pointer_checker_bind_mem_pointer(checker, tsym, node->data.assign.value);
         }
     }
 
@@ -13551,8 +13551,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             }
             /* Pointer checker: `b.p = mem.alloc(a, x)` binds a @mem arena
              * into a field, the same as a struct literal doing it at
-             * construction (pc_bind_mem_pointer) — track it on the root
-             * aggregate's field_mem_arena so pc_check_mem_deref() catches
+             * construction (pointer_checker_bind_mem_pointer) — track it on the root
+             * aggregate's field_mem_arena so pointer_checker_check_mem_deref() catches
              * `b.p^` after `a` is destroyed. Always the field slot here
              * (never root_sym's own mem_arena): the target is a field of
              * root, not root itself. */
@@ -13562,10 +13562,10 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 int mepoch = 0;
                 bool mvia_field = false;
                 /* Always the field slot here, regardless of what
-                 * pc_mem_pointer_in_expr reports: the assignment target is
+                 * pointer_checker_mem_pointer_in_expr reports: the assignment target is
                  * root.<field>, not root itself. */
                 if (root_sym &&
-                    pc_mem_pointer_in_expr(checker, node->data.assign.value,
+                    pointer_checker_mem_pointer_in_expr(checker, node->data.assign.value,
                                            &marena, &mepoch, &mvia_field)) {
                     root_sym->field_mem_arena = marena;
                     root_sym->field_mem_epoch = mepoch;
@@ -14004,14 +14004,14 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
  * `mem.destroy(a); mem.destroy(a)` form.
  * ========================================================================== */
 
-static ArenaLifetime *pc_arena_get(TypeChecker *checker, const char *name) {
+static ArenaLifetime *pointer_checker_arena_get(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->arena_count; i++)
         if (strcmp(checker->arenas[i].name, name) == 0) return &checker->arenas[i];
     return NULL;
 }
 
-static ArenaLifetime *pc_arena_ensure(TypeChecker *checker, const char *name) {
-    ArenaLifetime *a = pc_arena_get(checker, name);
+static ArenaLifetime *pointer_checker_arena_ensure(TypeChecker *checker, const char *name) {
+    ArenaLifetime *a = pointer_checker_arena_get(checker, name);
     if (a) return a;
     GROW_ARRAY(checker->arenas, checker->arena_count, checker->arena_cap);
     a = &checker->arenas[checker->arena_count++];
@@ -14033,11 +14033,11 @@ static ArenaLifetime *pc_arena_ensure(TypeChecker *checker, const char *name) {
  * chain is recognized (no array index, no pointer deref) — the common case
  * an arena struct field actually takes; anything else returns NULL rather
  * than risk two different arenas colliding on the same key. */
-static const char *pc_arena_path_key(TypeChecker *checker, AstNode *expr) {
+static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expr) {
     if (!expr) return NULL;
     if (expr->kind == NODE_LABEL) return expr->data.label.value;
     if (expr->kind == NODE_MEMBER_EXPR) {
-        const char *base = pc_arena_path_key(checker, expr->data.member.object);
+        const char *base = pointer_checker_arena_path_key(checker, expr->data.member.object);
         if (!base || !expr->data.member.member) return NULL;
         char buf[MSG_BUF_SIZE];
         snprintf(buf, sizeof(buf), "%s.%s", base, expr->data.member.member);
@@ -14046,7 +14046,7 @@ static const char *pc_arena_path_key(TypeChecker *checker, AstNode *expr) {
     return NULL;
 }
 
-static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
+static bool pointer_checker_is_mem_call(TypeChecker *checker, AstNode *call,
                            const char **out_fn, const char **out_arena) {
     if (!call || call->kind != NODE_CALL_EXPR || call->data.call.arg_count < 1)
         return false;
@@ -14071,7 +14071,7 @@ static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
         return false;
     *out_fn = fname;
     if (strcmp(fname, "arena") == 0) { *out_arena = NULL; return true; }
-    const char *key = pc_arena_path_key(checker, call->data.call.args[0]);
+    const char *key = pointer_checker_arena_path_key(checker, call->data.call.args[0]);
     if (!key) return false;
     *out_arena = key;
     return true;
@@ -14085,9 +14085,9 @@ static bool pc_is_mem_call(TypeChecker *checker, AstNode *call,
  * message (e.g. "mem.destroy", or a callee name for a cross-function
  * destroy applied on the caller's behalf at a call site). Shared by the
  * direct mem.destroy()/mem.reset() form and the cross-function summary. */
-static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
+static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const char *arena_name,
                                      bool is_destroy, AstNode *at, const char *disp) {
-    ArenaLifetime *a = pc_arena_ensure(checker, arena_name);
+    ArenaLifetime *a = pointer_checker_arena_ensure(checker, arena_name);
     /* A destroy scheduled via `ensure` still runs, at scope exit, no matter
      * what happens between now and then — so an explicit destroy reaching
      * here after one is already pending is a second destroy too, same as
@@ -14111,17 +14111,17 @@ static void pc_apply_arena_lifecycle(TypeChecker *checker, const char *arena_nam
 }
 
 /* ensure mem.destroy(a): mark the destroy pending rather than applying it
- * immediately through pc_apply_arena_lifecycle. The arena is not actually
+ * immediately through pointer_checker_apply_arena_lifecycle. The arena is not actually
  * freed until this function returns, so an ordinary use of it in the
  * statements that follow (the entire point of scheduling cleanup with
  * `ensure`) must stay legal — only a second destroy attempt on the same
  * arena, explicit or via another ensure, is the genuine double-free E3166
  * exists to catch. */
-static void pc_apply_ensure_mem_call(TypeChecker *checker, AstNode *call, AstNode *at) {
+static void pointer_checker_apply_ensure_mem_call(TypeChecker *checker, AstNode *call, AstNode *at) {
     const char *fn = NULL, *arena = NULL;
-    if (!pc_is_mem_call(checker, call, &fn, &arena)) return;
+    if (!pointer_checker_is_mem_call(checker, call, &fn, &arena)) return;
     if (!arena || strcmp(fn, "destroy") != 0) return;
-    ArenaLifetime *a = pc_arena_ensure(checker, arena);
+    ArenaLifetime *a = pointer_checker_arena_ensure(checker, arena);
     const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
         ? "mem.destroy" : fn;
     if (a->destroyed || a->ensure_destroy_pending) {
@@ -14133,14 +14133,14 @@ static void pc_apply_ensure_mem_call(TypeChecker *checker, AstNode *call, AstNod
     a->ensure_destroy_pending = true;
 }
 
-static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
+static void pointer_checker_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
                               const char *bind_name) {
     const char *fn = NULL, *arena = NULL;
-    if (!pc_is_mem_call(checker, call, &fn, &arena)) return;
+    if (!pointer_checker_is_mem_call(checker, call, &fn, &arena)) return;
 
     if (strcmp(fn, "arena") == 0) {
         if (bind_name) {
-            ArenaLifetime *a = pc_arena_ensure(checker, bind_name);
+            ArenaLifetime *a = pointer_checker_arena_ensure(checker, bind_name);
             a->destroyed = false;
             a->epoch = 0;
         }
@@ -14152,10 +14152,10 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
         const char *disp = (call->data.call.function->kind == NODE_MEMBER_EXPR)
             ? (strcmp(fn, "destroy") == 0 ? "mem.destroy" : "mem.reset")
             : fn;
-        pc_apply_arena_lifecycle(checker, arena, strcmp(fn, "destroy") == 0, at, disp);
+        pointer_checker_apply_arena_lifecycle(checker, arena, strcmp(fn, "destroy") == 0, at, disp);
     }
     /* init / alloc: no lifetime effect; the pointer binding is recorded at the
-     * var-decl (pc_bind_mem_pointer). */
+     * var-decl (pointer_checker_bind_mem_pointer). */
 }
 
 /* Deepest @mem arena binding an expression carries: a direct mem.init()/
@@ -14165,15 +14165,15 @@ static void pc_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
  * element. Mirrors container_literal_origin()'s walk, for @mem arenas
  * instead of scope depth. Fills out_arena and out_epoch and returns true on
  * a match; leaves them untouched and returns false otherwise. */
-static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
+static bool pointer_checker_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
                                    const char **out_arena, int *out_epoch,
                                    bool *out_via_field) {
     if (!value) return false;
     const char *fn = NULL, *arena = NULL;
     if (value->kind == NODE_CALL_EXPR &&
-        pc_is_mem_call(checker, value, &fn, &arena) && arena &&
+        pointer_checker_is_mem_call(checker, value, &fn, &arena) && arena &&
         (strcmp(fn, "init") == 0 || strcmp(fn, "alloc") == 0)) {
-        ArenaLifetime *a = pc_arena_ensure(checker, arena);
+        ArenaLifetime *a = pointer_checker_arena_ensure(checker, arena);
         *out_arena = arena;
         *out_epoch = a->epoch;
         *out_via_field = false;
@@ -14190,7 +14190,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
          * checker). */
         bool inner_via_field = false;
         for (int i = 0; i < value->data.call.arg_count; i++)
-            if (pc_mem_pointer_in_expr(checker, value->data.call.args[i],
+            if (pointer_checker_mem_pointer_in_expr(checker, value->data.call.args[i],
                                        out_arena, out_epoch, &inner_via_field)) {
                 *out_via_field = true;
                 return true;
@@ -14213,7 +14213,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
          * caller performs after the call still be seen. */
         FuncSig *callee = resolve_call_sig(checker, value);
         if (!callee) return false;
-        pc_ensure_mem_summary(checker, callee);
+        pointer_checker_ensure_mem_summary(checker, callee);
         for (int k = 0; k < callee->param_count &&
                         k < value->data.call.arg_count && k < 64; k++) {
             unsigned long long bit = 1ull << k;
@@ -14221,7 +14221,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
                 continue;
             AstNode *arg = value->data.call.args[k];
             if (arg->kind != NODE_LABEL) continue;
-            ArenaLifetime *a = pc_arena_get(checker, arg->data.label.value);
+            ArenaLifetime *a = pointer_checker_arena_get(checker, arg->data.label.value);
             *out_arena = arg->data.label.value;
             *out_epoch = a ? a->epoch : 0;
             *out_via_field = (callee->returns_param_mem_alloc_field & bit) != 0;
@@ -14274,7 +14274,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
     switch (value->kind) {
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < value->data.struct_value.count; i++)
-            if (pc_mem_pointer_in_expr(checker, value->data.struct_value.field_values[i],
+            if (pointer_checker_mem_pointer_in_expr(checker, value->data.struct_value.field_values[i],
                                        out_arena, out_epoch, &inner_via_field)) {
                 *out_via_field = true;
                 return true;
@@ -14282,7 +14282,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         return false;
     case NODE_ARRAY_VALUE:
         for (int i = 0; i < value->data.array_value.count; i++)
-            if (pc_mem_pointer_in_expr(checker, value->data.array_value.elements[i],
+            if (pointer_checker_mem_pointer_in_expr(checker, value->data.array_value.elements[i],
                                        out_arena, out_epoch, &inner_via_field)) {
                 *out_via_field = true;
                 return true;
@@ -14290,7 +14290,7 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
         return false;
     case NODE_MAP_VALUE:
         for (int i = 0; i < value->data.map_value.count; i++)
-            if (pc_mem_pointer_in_expr(checker, value->data.map_value.values[i],
+            if (pointer_checker_mem_pointer_in_expr(checker, value->data.map_value.values[i],
                                        out_arena, out_epoch, &inner_via_field)) {
                 *out_via_field = true;
                 return true;
@@ -14306,18 +14306,18 @@ static bool pc_mem_pointer_in_expr(TypeChecker *checker, AstNode *value,
  * or an alias of an already-tracked pointer), or that it's an aggregate
  * carrying one buried in a field/element (a struct/array/map literal, or a
  * call forwarding one). Which of the two applies comes from
- * pc_mem_pointer_in_expr() itself — not merely value's own AST shape, since
+ * pointer_checker_mem_pointer_in_expr() itself — not merely value's own AST shape, since
  * a CALL_EXPR can return either a bare pointer or an aggregate. */
-static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
+static void pointer_checker_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *value) {
     if (!sym || !value) return;
     const char *arena = NULL;
     int epoch = 0;
     bool via_field = false;
-    if (!pc_mem_pointer_in_expr(checker, value, &arena, &epoch, &via_field)) return;
+    if (!pointer_checker_mem_pointer_in_expr(checker, value, &arena, &epoch, &via_field)) return;
     /* A call's result is ambiguous at this point: a single-return call's
      * result *is* the symbol (direct — `p^` would deref it), but a
      * multi-return call's result is a synthetic temp whose per-slot reads
-     * desugar to `_tmp.v0` (field — pc_mem_pointer_in_expr's own
+     * desugar to `_tmp.v0` (field — pointer_checker_mem_pointer_in_expr's own
      * NODE_MEMBER_EXPR case, added for exactly this, consults
      * field_mem_arena). Nothing at bind time says which shape this
      * particular call has, so bind both; only one of the two ever gets
@@ -14340,7 +14340,7 @@ static void pc_bind_mem_pointer(TypeChecker *checker, Symbol *sym, AstNode *valu
 
 /* A dereference `ptr_expr^` (as `p^`, `p^.field`, `p^[i]`). If ptr_expr roots
  * at a mem-bound pointer, verify its arena is still alive. */
-static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at) {
+static void pointer_checker_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode *at) {
     AstNode *inner = ptr_expr;
     while (inner && inner->kind == NODE_POSTFIX_EXPR &&
            inner->data.postfix.op == TOK_CARET)
@@ -14358,7 +14358,7 @@ static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode 
     const char *arena = is_bare ? sym->mem_arena : sym->field_mem_arena;
     int bound_epoch = is_bare ? sym->mem_epoch : sym->field_mem_epoch;
     if (!arena) return;
-    ArenaLifetime *a = pc_arena_get(checker, arena);
+    ArenaLifetime *a = pointer_checker_arena_get(checker, arena);
     if (!a) return;
     if (a->destroyed || a->premarked_destroyed) {
         diagnostic_error_code_formatted(checker->diag, "E3164",
@@ -14373,10 +14373,10 @@ static void pc_check_mem_deref(TypeChecker *checker, AstNode *ptr_expr, AstNode 
 
 /* --- branch-sensitive snapshot / join --- */
 
-typedef struct { ArenaLifetime *rows; int count; } PcArenaSnap;
+typedef struct { ArenaLifetime *rows; int count; } PointerCheckerArenaSnap;
 
-static PcArenaSnap pc_snap(TypeChecker *checker) {
-    PcArenaSnap s;
+static PointerCheckerArenaSnap pointer_checker_snap(TypeChecker *checker) {
+    PointerCheckerArenaSnap s;
     s.count = checker->arena_count;
     s.rows = s.count ? xmalloc(sizeof(ArenaLifetime) * (size_t)s.count) : NULL;
     if (s.count)
@@ -14384,12 +14384,12 @@ static PcArenaSnap pc_snap(TypeChecker *checker) {
     return s;
 }
 
-static void pc_snap_free(PcArenaSnap s) { free(s.rows); }
+static void pointer_checker_snap_free(PointerCheckerArenaSnap s) { free(s.rows); }
 
 /* Restore live state to a snapshot. Arena rows are append-only and
  * index-stable within a function, and any handle a branch declared is
  * block-scoped, so truncating back to the snapshot's count is correct. */
-static void pc_restore(TypeChecker *checker, PcArenaSnap s) {
+static void pointer_checker_restore(TypeChecker *checker, PointerCheckerArenaSnap s) {
     for (int i = 0; i < s.count && i < checker->arena_count; i++)
         checker->arenas[i] = s.rows[i];
     checker->arena_count = s.count;
@@ -14397,7 +14397,7 @@ static void pc_restore(TypeChecker *checker, PcArenaSnap s) {
 
 /* Merge `other` into the live state: an arena is destroyed after the join if
  * destroyed on either path; its epoch is the higher of the two. */
-static void pc_join(TypeChecker *checker, PcArenaSnap other) {
+static void pointer_checker_join(TypeChecker *checker, PointerCheckerArenaSnap other) {
     for (int i = 0; i < other.count && i < checker->arena_count; i++) {
         ArenaLifetime *live = &checker->arenas[i];
         ArenaLifetime *o = &other.rows[i];
@@ -14421,15 +14421,15 @@ static void pc_join(TypeChecker *checker, PcArenaSnap other) {
 /* Pre-mark every arena a loop body destroys or resets, so a dereference on a
  * later iteration is caught. A handle declared inside the body is fresh each
  * iteration and is left alone (the idiomatic per-iteration scratch arena). */
-static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *body) {
+static void pointer_checker_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *body) {
     if (!node) return;
     switch (node->kind) {
     case NODE_CALL_EXPR: {
         const char *fn = NULL, *arena = NULL;
-        if (pc_is_mem_call(checker, node, &fn, &arena) && arena &&
+        if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
             (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0) &&
             !declared_in_subtree(body, arena)) {
-            ArenaLifetime *a = pc_arena_ensure(checker, arena);
+            ArenaLifetime *a = pointer_checker_arena_ensure(checker, arena);
             /* premarked_destroyed, not destroyed — see the field comment.
              * The body's own walk (below) applies this destroy for real when
              * it reaches the statement; premarking it here as `destroyed`
@@ -14439,7 +14439,7 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
         } else {
             /* A call to a helper whose own cross-function @mem summary says
              * it destroys/resets an arena passed to it — same cross-
-             * function effect pc_mem_walk()/resolve_call_expr() apply at an
+             * function effect pointer_checker_mem_walk()/resolve_call_expr() apply at an
              * ordinary (non-loop) call site, needed here too: a loop that
              * hands the arena to a cleanup helper on some iteration is the
              * same hazard as calling mem.destroy(a) directly in the body.
@@ -14449,7 +14449,7 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
              * through a func-ref call here too. */
             FuncSig *callee = resolve_call_sig(checker, node);
             if (callee) {
-                pc_ensure_mem_summary(checker, callee);
+                pointer_checker_ensure_mem_summary(checker, callee);
                 unsigned long long effect =
                     callee->destroys_param_arena | callee->resets_param_arena;
                 for (int k = 0; k < callee->param_count &&
@@ -14460,10 +14460,10 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
                         ? arg->data.label.value
                         : assignment_target_root_name(arg);
                     if (!root || declared_in_subtree(body, root)) continue;
-                    const char *key = pc_mem_forward_key(checker, arg,
+                    const char *key = pointer_checker_mem_forward_key(checker, arg,
                         callee->mem_param_field[k]);
                     if (!key) continue;
-                    ArenaLifetime *a = pc_arena_ensure(checker, key);
+                    ArenaLifetime *a = pointer_checker_arena_ensure(checker, key);
                     if (callee->destroys_param_arena & (1ull << k))
                         a->premarked_destroyed = true;
                     else
@@ -14472,35 +14472,35 @@ static void pc_premark_loop_body(TypeChecker *checker, AstNode *node, AstNode *b
             }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
-            pc_premark_loop_body(checker, node->data.call.args[i], body);
+            pointer_checker_premark_loop_body(checker, node->data.call.args[i], body);
         break;
     }
     case NODE_VAR_DECL:
-        pc_premark_loop_body(checker, node->data.var_decl.value, body);
+        pointer_checker_premark_loop_body(checker, node->data.var_decl.value, body);
         break;
     case NODE_ASSIGN_STMT:
-        pc_premark_loop_body(checker, node->data.assign.value, body);
+        pointer_checker_premark_loop_body(checker, node->data.assign.value, body);
         break;
     case NODE_EXPR_STMT:
-        pc_premark_loop_body(checker, node->data.expr_stmt.expr, body);
+        pointer_checker_premark_loop_body(checker, node->data.expr_stmt.expr, body);
         break;
     case NODE_BLOCK_STMT:
         for (int i = 0; i < node->data.block.count; i++)
-            pc_premark_loop_body(checker, node->data.block.stmts[i], body);
+            pointer_checker_premark_loop_body(checker, node->data.block.stmts[i], body);
         break;
     case NODE_IF_STMT:
-        pc_premark_loop_body(checker, node->data.if_stmt.consequence, body);
-        pc_premark_loop_body(checker, node->data.if_stmt.alternative, body);
+        pointer_checker_premark_loop_body(checker, node->data.if_stmt.consequence, body);
+        pointer_checker_premark_loop_body(checker, node->data.if_stmt.alternative, body);
         break;
     case NODE_WHEN_STMT:
         for (int i = 0; i < node->data.when_stmt.case_count; i++)
-            pc_premark_loop_body(checker, node->data.when_stmt.cases[i].body, body);
-        pc_premark_loop_body(checker, node->data.when_stmt.default_body, body);
+            pointer_checker_premark_loop_body(checker, node->data.when_stmt.cases[i].body, body);
+        pointer_checker_premark_loop_body(checker, node->data.when_stmt.default_body, body);
         break;
-    case NODE_FOR_STMT:      pc_premark_loop_body(checker, node->data.for_stmt.body, body); break;
-    case NODE_FOR_EACH_STMT: pc_premark_loop_body(checker, node->data.for_each.body, body); break;
-    case NODE_WHILE_STMT:    pc_premark_loop_body(checker, node->data.while_stmt.body, body); break;
-    case NODE_LOOP_STMT:     pc_premark_loop_body(checker, node->data.loop_stmt.body, body); break;
+    case NODE_FOR_STMT:      pointer_checker_premark_loop_body(checker, node->data.for_stmt.body, body); break;
+    case NODE_FOR_EACH_STMT: pointer_checker_premark_loop_body(checker, node->data.for_each.body, body); break;
+    case NODE_WHILE_STMT:    pointer_checker_premark_loop_body(checker, node->data.while_stmt.body, body); break;
+    case NODE_LOOP_STMT:     pointer_checker_premark_loop_body(checker, node->data.loop_stmt.body, body); break;
     default: break;
     }
 }
@@ -14581,7 +14581,7 @@ static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
      * mem.destroy(a) / mem.reset(a). Updates arena lifetime state and reports
      * E3166 for a repeat destroy/reset. */
     if (expr && expr->kind == NODE_CALL_EXPR)
-        pc_apply_mem_call(checker, expr, node, NULL);
+        pointer_checker_apply_mem_call(checker, expr, node, NULL);
 }
 
 static void check_if_stmt(TypeChecker *checker, AstNode *node) {
@@ -14619,14 +14619,14 @@ static void check_if_stmt(TypeChecker *checker, AstNode *node) {
     Scope *if_outer = checker->current_scope;
     /* Pointer checker: check each arm from the pre-branch arena state, then
      * join — an arena destroyed on either path is destroyed after the merge. */
-    PcArenaSnap pc_pre = pc_snap(checker);
+    PointerCheckerArenaSnap pointer_checker_pre = pointer_checker_snap(checker);
     Scope *if_body = scope_create(if_outer);
     checker->current_scope = if_body;
     check_block(checker, node->data.if_stmt.consequence);
     checker->current_scope = if_outer;
     scope_destroy(if_body);
-    PcArenaSnap pc_then = pc_snap(checker);
-    pc_restore(checker, pc_pre);
+    PointerCheckerArenaSnap pointer_checker_then = pointer_checker_snap(checker);
+    pointer_checker_restore(checker, pointer_checker_pre);
     if (node->data.if_stmt.alternative) {
         Scope *else_body = scope_create(if_outer);
         checker->current_scope = else_body;
@@ -14634,9 +14634,9 @@ static void check_if_stmt(TypeChecker *checker, AstNode *node) {
         checker->current_scope = if_outer;
         scope_destroy(else_body);
     }
-    pc_join(checker, pc_then);
-    pc_snap_free(pc_then);
-    pc_snap_free(pc_pre);
+    pointer_checker_join(checker, pointer_checker_then);
+    pointer_checker_snap_free(pointer_checker_then);
+    pointer_checker_snap_free(pointer_checker_pre);
 }
 
 static void check_for_stmt(TypeChecker *checker, AstNode *node) {
@@ -14685,7 +14685,7 @@ static void check_for_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     checker->loop_depth++;
-    pc_premark_loop_body(checker, node->data.for_stmt.body, node->data.for_stmt.body);
+    pointer_checker_premark_loop_body(checker, node->data.for_stmt.body, node->data.for_stmt.body);
     check_block(checker, node->data.for_stmt.body);
     checker->loop_depth--;
     checker->current_scope = outer;
@@ -14787,7 +14787,7 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     checker->loop_depth++;
-    pc_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
+    pointer_checker_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
     check_block(checker, node->data.for_each.body);
     checker->loop_depth--;
     checker->current_scope = outer;
@@ -14832,7 +14832,7 @@ static void check_while_stmt(TypeChecker *checker, AstNode *node) {
     Scope *wh_scope = scope_create(wh_outer);
     checker->current_scope = wh_scope;
     checker->loop_depth++;
-    pc_premark_loop_body(checker, node->data.while_stmt.body, node->data.while_stmt.body);
+    pointer_checker_premark_loop_body(checker, node->data.while_stmt.body, node->data.while_stmt.body);
     check_block(checker, node->data.while_stmt.body);
     checker->loop_depth--;
     checker->current_scope = wh_outer;
@@ -15528,9 +15528,9 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
     /* Pointer checker: each case body and the default run from the pre-when
      * arena state; the state after the when is the join of every branch (plus
      * the fall-through path when there is no default). */
-    PcArenaSnap pc_pre = pc_snap(checker);
-    PcArenaSnap pc_merged = { NULL, 0 };
-    bool pc_have = false;
+    PointerCheckerArenaSnap pointer_checker_pre = pointer_checker_snap(checker);
+    PointerCheckerArenaSnap pointer_checker_merged = { NULL, 0 };
+    bool pointer_checker_have = false;
     for (int i = 0; i < node->data.when_stmt.case_count; i++) {
         for (int j = 0; j < node->data.when_stmt.cases[i].value_count; j++) {
             AstNode *val_i = node->data.when_stmt.cases[i].values[j];
@@ -15648,11 +15648,11 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        pc_restore(checker, pc_pre);
+        pointer_checker_restore(checker, pointer_checker_pre);
         check_block(checker, node->data.when_stmt.cases[i].body);
-        if (!pc_have) { pc_merged = pc_snap(checker); pc_have = true; }
-        else { PcArenaSnap m = pc_merged; pc_join(checker, m);
-               pc_merged = pc_snap(checker); pc_snap_free(m); }
+        if (!pointer_checker_have) { pointer_checker_merged = pointer_checker_snap(checker); pointer_checker_have = true; }
+        else { PointerCheckerArenaSnap m = pointer_checker_merged; pointer_checker_join(checker, m);
+               pointer_checker_merged = pointer_checker_snap(checker); pointer_checker_snap_free(m); }
         checker->current_scope = case_outer;
         scope_destroy(case_body);
     }
@@ -15661,11 +15661,11 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         Scope *def_outer = checker->current_scope;
         Scope *def_body = scope_create(def_outer);
         checker->current_scope = def_body;
-        pc_restore(checker, pc_pre);
+        pointer_checker_restore(checker, pointer_checker_pre);
         check_block(checker, node->data.when_stmt.default_body);
-        if (!pc_have) { pc_merged = pc_snap(checker); pc_have = true; }
-        else { PcArenaSnap m = pc_merged; pc_join(checker, m);
-               pc_merged = pc_snap(checker); pc_snap_free(m); }
+        if (!pointer_checker_have) { pointer_checker_merged = pointer_checker_snap(checker); pointer_checker_have = true; }
+        else { PointerCheckerArenaSnap m = pointer_checker_merged; pointer_checker_join(checker, m);
+               pointer_checker_merged = pointer_checker_snap(checker); pointer_checker_snap_free(m); }
         checker->current_scope = def_outer;
         scope_destroy(def_body);
         /* W3006: empty default branch */
@@ -15798,17 +15798,17 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
     /* Pointer checker: settle the joined arena state. A when with no default
      * (and not #strict) may match nothing, so the pre-when state is also a
      * possible outcome. */
-    if (pc_have && !node->data.when_stmt.is_strict &&
+    if (pointer_checker_have && !node->data.when_stmt.is_strict &&
         !node->data.when_stmt.default_body) {
-        PcArenaSnap m = pc_merged;
-        pc_restore(checker, pc_pre);
-        pc_join(checker, m);
-        pc_merged = pc_snap(checker);
-        pc_snap_free(m);
+        PointerCheckerArenaSnap m = pointer_checker_merged;
+        pointer_checker_restore(checker, pointer_checker_pre);
+        pointer_checker_join(checker, m);
+        pointer_checker_merged = pointer_checker_snap(checker);
+        pointer_checker_snap_free(m);
     }
-    if (pc_have) { pc_restore(checker, pc_merged); pc_snap_free(pc_merged); }
-    else pc_restore(checker, pc_pre);
-    pc_snap_free(pc_pre);
+    if (pointer_checker_have) { pointer_checker_restore(checker, pointer_checker_merged); pointer_checker_snap_free(pointer_checker_merged); }
+    else pointer_checker_restore(checker, pointer_checker_pre);
+    pointer_checker_snap_free(pointer_checker_pre);
 }
 
 static void check_statement(TypeChecker *checker, AstNode *node) {
@@ -15885,7 +15885,7 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
         Scope *lp_scope = scope_create(lp_outer);
         checker->current_scope = lp_scope;
         checker->loop_depth++;
-        pc_premark_loop_body(checker, node->data.loop_stmt.body, node->data.loop_stmt.body);
+        pointer_checker_premark_loop_body(checker, node->data.loop_stmt.body, node->data.loop_stmt.body);
         check_block(checker, node->data.loop_stmt.body);
         checker->loop_depth--;
         checker->current_scope = lp_outer;
@@ -15938,14 +15938,14 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
             diagnostic_error_code(checker->diag, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* Pointer checker: ensure mem.destroy(a) — mark the destroy pending
-         * (pc_apply_ensure_mem_call), not applied via pc_apply_mem_call like
+         * (pointer_checker_apply_ensure_mem_call), not applied via pointer_checker_apply_mem_call like
          * a bare statement would be: that sets the arena destroyed
          * immediately, which would flag every ordinary use of it for the
          * rest of the function — exactly the pattern `ensure mem.destroy`
          * exists to let the caller write. */
         if (node->data.ensure_stmt.expr &&
             node->data.ensure_stmt.expr->kind == NODE_CALL_EXPR)
-            pc_apply_ensure_mem_call(checker, node->data.ensure_stmt.expr, node);
+            pointer_checker_apply_ensure_mem_call(checker, node->data.ensure_stmt.expr, node);
         break;
 
     case NODE_STRUCT_DECL:

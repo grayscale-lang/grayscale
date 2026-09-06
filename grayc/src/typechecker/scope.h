@@ -45,7 +45,7 @@ typedef struct {
     int mem_epoch;
     /* Same, for a pointer buried in a *field* of this aggregate variable — a
      * struct/array/map literal initialised or updated with a pointer bound
-     * to a @mem arena. Lets pc_check_mem_deref() catch `b.p^` after the
+     * to a @mem arena. Lets pointer_checker_check_mem_deref() catch `b.p^` after the
      * arena backing `b.p` is destroyed, the same way field_origin_depth lets
      * the escape checks see through a struct carrying a dangling pointer
      * field. */
