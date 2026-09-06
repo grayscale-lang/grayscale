@@ -76,6 +76,14 @@ typedef struct {
      * branch-join machinery used everywhere else — to set `destroyed` for
      * real once actually walked. */
     bool premarked_destroyed;
+    /* Some statement anywhere in the current function destroys or resets this
+     * arena. Consulted only by the escape checks (E3169): a pointer that
+     * leaves the function via `return` or a store into caller-visible memory
+     * must stay valid for the caller, so it must not root at an arena this
+     * function ever tears down — regardless of statement order. Ordinary
+     * in-function use is unaffected; that is what the flow-sensitive
+     * `destroyed` / epoch state is for. */
+    bool destroyed_in_fn;
 } ArenaLifetime;
 
 typedef struct {

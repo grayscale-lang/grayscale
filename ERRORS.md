@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 463 codes** (319 errors, 16 warnings, 128 panics)
+**Total: 464 codes** (320 errors, 16 warnings, 128 panics)
 
 ---
 
@@ -237,6 +237,7 @@
 | `E3166` | safety | '%s(%s)' called again; '%s' was already destroyed |
 | `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
 | `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
+| `E3169` | safety | '%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -514,4 +515,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-05 22:29:20 UTC*
+*Generated on 2026-09-06 19:22:13 UTC*

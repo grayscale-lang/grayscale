@@ -1,0 +1,39 @@
+/*
+ * Returning a pointer into an arena the *caller* owns is fine — this
+ * function never tears that arena down. A private scratch arena destroyed
+ * before the return must not make the escape check (#2696) fire on the
+ * unrelated returned pointer.
+ */
+
+import @mem
+
+do build(keep mem.Arena) -> ^int {
+    mut scratch = mem.arena(64)
+    mut tmp ^int = mem.alloc(scratch, 7)
+    tmp^ = tmp^ + 1
+    mem.destroy(scratch)                 // private scratch, torn down here
+
+    mut result ^int = mem.alloc(keep, 100)   // into the caller's arena
+    return result
+}
+
+do main() {
+    mut passed int = 0
+
+    mut a = mem.arena(1024)
+    mut r ^int = build(a)
+    if r^ == 100 {
+        println("  [PASS] returned pointer into caller-owned arena")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${r^}")
+    }
+    mem.destroy(a)
+
+    println("Results: ${passed} passed")
+    if passed == 1 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

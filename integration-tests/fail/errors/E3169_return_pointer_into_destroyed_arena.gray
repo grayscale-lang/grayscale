@@ -1,0 +1,32 @@
+// expect-error: E3169
+// expect-error-count: 2
+/*
+ * Error Test: E3169 - returning a pointer into a @mem arena that this
+ * function tears down (#2696). The pointer dangles the moment the arena is
+ * freed, and once the region is recycled by a later arena there is no
+ * runtime guard. Caught for an explicit mem.destroy and for the idiomatic
+ * `defer mem.destroy` (which shares the pending-teardown path with
+ * `ensure mem.destroy`).
+ */
+
+import @mem
+
+do explicit_destroy() -> ^int {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    mem.destroy(a)
+    return p
+}
+
+do deferred_destroy() -> ^int {
+    mut a = mem.arena(1024)
+    defer mem.destroy(a)
+    mut p ^int = mem.alloc(a, 42)
+    return p
+}
+
+do main() {
+    mut d1 ^int = explicit_destroy()
+    mut d2 ^int = deferred_destroy()
+    println("unreachable")
+}

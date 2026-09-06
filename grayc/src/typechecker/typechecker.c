@@ -186,6 +186,7 @@ static void pointer_checker_apply_arena_lifecycle(TypeChecker *checker, const ch
 static const char *pointer_checker_arena_path_key(TypeChecker *checker, AstNode *expr);
 static void pointer_checker_bind_arena_handle(TypeChecker *checker, Symbol *sym,
                                               AstNode *value, const char *bind_name);
+static void pointer_checker_check_mem_escape(TypeChecker *checker, AstNode *expr, AstNode *at);
 
 /* Return the user-facing display string for an operator TokenType.
  * Used in error messages that embed the operator name. */
@@ -2271,7 +2272,13 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         AstNode *arg = node->data.call.args[a];
         const char *onm = NULL;
         int od = expression_origin(checker, arg, &onm);
-        if (od <= 0) continue;
+        if (od <= 0) {
+            /* Not a stack pointer, but maybe a @mem arena pointer laundered
+             * into caller-visible storage by this helper — same E3169 as a
+             * direct `g = p` when this function later tears the arena down. */
+            pointer_checker_check_mem_escape(checker, arg, arg);
+            continue;
+        }
         int sink_depth;
         const char *sink_name;
         if (pe == PARAM_ESCAPE_GLOBAL) {
@@ -13543,6 +13550,14 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
      * pointer field. The origin travels through intermediate pointers, so
      * `tmp = addr(local); out^ = tmp` is caught too (#2650). */
     bool caller_mem = assign_target_outlives_locals(checker, target);
+    /* E3169: an arena-backed pointer stored where it outlives this function —
+     * caller memory through a parameter, or a module-level global — dangles
+     * once this function tears the arena down. */
+    {
+        const char *tgt_root = escape_root_name(target);
+        if (tgt_root && (caller_mem || is_module_level_var(checker, tgt_root)))
+            pointer_checker_check_mem_escape(checker, node->data.assign.value, node);
+    }
     if (caller_mem) {
         const char *origin_name = NULL;
         int origin_depth = expression_origin(checker, node->data.assign.value,
@@ -13733,6 +13748,9 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), return_val->token.line,
                 return_val->token.column, 0, origin_name, origin_name);
         }
+        /* E3169: the returned pointer roots at a @mem arena this function
+         * tears down — it dangles before the caller can use it. */
+        pointer_checker_check_mem_escape(checker, return_val, return_val);
     }
     /* E3071: `return nil` from a function whose return type contains
      * '?' is unsound; nil isn't a value for every binding (int,
@@ -14602,6 +14620,94 @@ static void pointer_checker_premark_loop_body(TypeChecker *checker, AstNode *nod
     }
 }
 
+/* Pre-pass over a whole function body: flag every @mem arena that any
+ * statement destroys or resets (directly, or via a helper's cross-function
+ * summary), so the escape checks (E3169) are order-independent —
+ * `stash(p); mem.destroy(a)` is caught the same as `mem.destroy(a); return
+ * p`. Unlike pointer_checker_premark_loop_body there is no "skip a handle
+ * declared here" rule: the body IS the function, and a function-local arena
+ * is exactly what must not back a pointer that leaves the function. */
+static void pointer_checker_premark_fn_destroys(TypeChecker *checker, AstNode *node) {
+    if (!node) return;
+    switch (node->kind) {
+    case NODE_CALL_EXPR: {
+        const char *fn = NULL, *arena = NULL;
+        if (pointer_checker_is_mem_call(checker, node, &fn, &arena) && arena &&
+            (strcmp(fn, "destroy") == 0 || strcmp(fn, "reset") == 0)) {
+            pointer_checker_arena_ensure(checker, arena)->destroyed_in_fn = true;
+        } else {
+            FuncSig *callee = resolve_call_sig(checker, node);
+            if (callee) {
+                pointer_checker_ensure_mem_summary(checker, callee);
+                unsigned long long effect =
+                    callee->destroys_param_arena | callee->resets_param_arena;
+                for (int k = 0; k < callee->param_count &&
+                                k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS && effect; k++) {
+                    if (!(effect & (1ull << k))) continue;
+                    const char *key = pointer_checker_mem_forward_key(checker,
+                        node->data.call.args[k], callee->mem_param_field[k]);
+                    if (key)
+                        pointer_checker_arena_ensure(checker, key)->destroyed_in_fn = true;
+                }
+            }
+        }
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            pointer_checker_premark_fn_destroys(checker, node->data.call.args[i]);
+        break;
+    }
+    case NODE_VAR_DECL:    pointer_checker_premark_fn_destroys(checker, node->data.var_decl.value); break;
+    case NODE_ASSIGN_STMT: pointer_checker_premark_fn_destroys(checker, node->data.assign.value); break;
+    case NODE_EXPR_STMT:   pointer_checker_premark_fn_destroys(checker, node->data.expr_stmt.expr); break;
+    case NODE_ENSURE_STMT: pointer_checker_premark_fn_destroys(checker, node->data.ensure_stmt.expr); break;
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            pointer_checker_premark_fn_destroys(checker, node->data.return_stmt.values[i]);
+        break;
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            pointer_checker_premark_fn_destroys(checker, node->data.block.stmts[i]);
+        break;
+    case NODE_IF_STMT:
+        pointer_checker_premark_fn_destroys(checker, node->data.if_stmt.consequence);
+        pointer_checker_premark_fn_destroys(checker, node->data.if_stmt.alternative);
+        break;
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            pointer_checker_premark_fn_destroys(checker, node->data.when_stmt.cases[i].body);
+        pointer_checker_premark_fn_destroys(checker, node->data.when_stmt.default_body);
+        break;
+    case NODE_FOR_STMT:      pointer_checker_premark_fn_destroys(checker, node->data.for_stmt.body); break;
+    case NODE_FOR_EACH_STMT: pointer_checker_premark_fn_destroys(checker, node->data.for_each.body); break;
+    case NODE_WHILE_STMT:    pointer_checker_premark_fn_destroys(checker, node->data.while_stmt.body); break;
+    case NODE_LOOP_STMT:     pointer_checker_premark_fn_destroys(checker, node->data.loop_stmt.body); break;
+    default: break;
+    }
+}
+
+/* A pointer leaving the function — via `return`, or a store into a global or
+ * caller-visible memory. If it roots at a @mem pointer whose arena this
+ * function tears down (already, a pending defer/ensure, or anywhere in the
+ * body per pointer_checker_premark_fn_destroys), it dangles the moment that
+ * arena is freed: E3169. pointer_checker_check_mem_deref() only ever runs at
+ * a dereference, so an escape position needs its own check. */
+static void pointer_checker_check_mem_escape(TypeChecker *checker, AstNode *expr, AstNode *at) {
+    if (!expr) return;
+    const char *arena = NULL;
+    int bound_epoch = 0;
+    bool via_field = false;
+    if (!pointer_checker_mem_pointer_in_expr(checker, expr, &arena, &bound_epoch, &via_field))
+        return;
+    ArenaLifetime *a = pointer_checker_arena_get(checker, arena);
+    if (!a) return;
+    if (!(a->destroyed || a->premarked_destroyed || a->ensure_destroy_pending ||
+          a->destroyed_in_fn || a->epoch > bound_epoch))
+        return;
+    const char *root = assignment_target_root_name(expr);
+    diagnostic_error_code_formatted(checker->diag, "E3169",
+        NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+        root ? root : arena, arena);
+}
+
 static void check_expr_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *expr_t = resolve_expression(checker, node->data.expr_stmt.expr);
     /* E3081: bare function name used as statement without call */
@@ -15300,6 +15406,11 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
         (strcmp(node->data.func_decl.name, "main") == 0);
     AstNode *saved_func_decl = checker->current_func_decl;
     checker->current_func_decl = node;
+
+    /* Pointer checker: flag arenas this function tears down anywhere, so a
+     * pointer into one escaping via `return` / a global store is caught
+     * regardless of statement order (E3169). */
+    pointer_checker_premark_fn_destroys(checker, node->data.func_decl.body);
 
     check_block(checker, node->data.func_decl.body);
 
