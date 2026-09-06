@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3089 - regex.find_groups result not fully handled
+ * Expected: error on single-var assignment of a can-fail stdlib function
+ */
+
+// expect-error: E3089
+
+import @regex
+
+do main() {
+    mut groups = regex.find_groups("([0-9]+)", "abc123")
+    println(groups)
+}

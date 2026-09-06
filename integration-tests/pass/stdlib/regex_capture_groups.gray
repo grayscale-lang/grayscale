@@ -1,0 +1,44 @@
+/*
+ * regex_capture_groups.gray - Integration test for regex.find_groups and
+ * regex.find_all_groups.
+ */
+
+import @regex
+
+do main() {
+    mut passed int = 0
+
+    // find_groups: index 0 is the whole match, 1..n the parenthesized groups
+    mut g, err = regex.find_groups("([0-9]+)-([0-9]+)", "order 12-345 shipped")
+    if err == nil { passed += 1 } otherwise { println("  [FAIL] find_groups err") }
+    if len(g) == 3 { passed += 1 } otherwise { println("  [FAIL] group count: ${len(g)}") }
+    if g[0] == "12-345" { passed += 1 } otherwise { println("  [FAIL] whole match: ${g[0]}") }
+    if g[1] == "12" { passed += 1 } otherwise { println("  [FAIL] group 1: ${g[1]}") }
+    if g[2] == "345" { passed += 1 } otherwise { println("  [FAIL] group 2: ${g[2]}") }
+
+    // no match -> empty array
+    mut none, _ = regex.find_groups("([0-9]+)", "no digits")
+    if len(none) == 0 { passed += 1 } otherwise { println("  [FAIL] no-match not empty") }
+
+    // invalid pattern -> error, empty array with _
+    mut bad, berr = regex.find_groups("([0-9", "123")
+    if berr != nil { passed += 1 } otherwise { println("  [FAIL] invalid pattern no err") }
+    if len(bad) == 0 { passed += 1 } otherwise { println("  [FAIL] invalid pattern not empty") }
+
+    // find_all_groups: one group array per match
+    mut all, aerr = regex.find_all_groups("([a-z])([0-9])", "a1 b2 c3")
+    if aerr == nil { passed += 1 } otherwise { println("  [FAIL] find_all_groups err") }
+    if len(all) == 3 { passed += 1 } otherwise { println("  [FAIL] match count: ${len(all)}") }
+    if all[0][0] == "a1" { passed += 1 } otherwise { println("  [FAIL] all[0][0]: ${all[0][0]}") }
+    if all[1][1] == "b" { passed += 1 } otherwise { println("  [FAIL] all[1][1]: ${all[1][1]}") }
+    if all[2][2] == "3" { passed += 1 } otherwise { println("  [FAIL] all[2][2]: ${all[2][2]}") }
+
+    println("")
+    println("Results: ${passed}/13 passed")
+    if passed == 13 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

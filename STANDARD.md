@@ -4101,12 +4101,14 @@ Regular expression operations using POSIX extended regex syntax.
 | `is_match` | `(pattern string, text string) -> bool` | Check if pattern matches text |
 | `find` | `(pattern string, text string) -> (string, Error)` | First match — always use destructuring |
 | `find_all` | `(pattern string, text string) -> ([string], Error)` | All matches — always use destructuring |
+| `find_groups` | `(pattern string, text string) -> ([string], Error)` | Capture groups of the first match (index 0 is the whole match) — always use destructuring |
+| `find_all_groups` | `(pattern string, text string) -> ([[string]], Error)` | Capture groups for every match — always use destructuring |
 | `replace` | `(pattern string, text string, replacement string) -> (string, Error)` | Replace matches — always use destructuring |
 | `split` | `(pattern string, text string) -> ([string], Error)` | Split by pattern — always use destructuring |
 | `count` | `(pattern string, text string) -> int` | Number of non-overlapping matches; 0 for an invalid pattern |
 | `escape` | `(s string) -> string` | Backslash-escape regex metacharacters so `s` matches literally |
 
-`find`, `find_all`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
+`find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
 ### 9.19 CSV Module (`@csv`)
 

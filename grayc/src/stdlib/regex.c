@@ -209,6 +209,79 @@ GrayString gray_regex_escape(GrayArena *arena, GrayString str) {
     return (GrayString){ out, j };
 }
 
+/* Capture-group extraction. pmatch[0] is the whole match, pmatch[1..] the
+ * parenthesized groups; a group that did not participate has rm_so == -1 and
+ * becomes an empty string. */
+#define GRAY_REGEX_MAX_GROUPS 64
+
+static GrayArray regex_groups_of_match(GrayArena *arena, const char *base,
+                                      const regmatch_t *pmatch, size_t ngroups) {
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), (int32_t)ngroups);
+    for (size_t g = 0; g < ngroups; g++) {
+        GrayString s;
+        if (pmatch[g].rm_so < 0) {
+            s = (GrayString){"", 0};
+        } else {
+            s = gray_string_new(arena, base + pmatch[g].rm_so,
+                                (int32_t)(pmatch[g].rm_eo - pmatch[g].rm_so));
+        }
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
+    }
+    return arr;
+}
+
+GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0)
+        return gray_array_new(arena, sizeof(GrayString), 0);
+
+    size_t ngroups = re.re_nsub + 1;
+    if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
+
+    char txt_buf[GRAY_REGEX_TXT_BUF];
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
+
+    regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
+    GrayArray arr;
+    if (regexec(&re, txt_buf, ngroups, pmatch, 0) != 0) {
+        arr = gray_array_new(arena, sizeof(GrayString), 0);
+    } else {
+        arr = regex_groups_of_match(arena, txt_buf, pmatch, ngroups);
+    }
+    regfree(&re);
+    return arr;
+}
+
+GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayString text) {
+    regex_t re;
+    if (compile_pattern(pattern, &re, 0) != 0)
+        return gray_array_new(arena, sizeof(GrayArray), 0);
+
+    size_t ngroups = re.re_nsub + 1;
+    if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
+
+    char txt_buf[GRAY_REGEX_TXT_BUF];
+    gray_cstr(text, txt_buf, sizeof(txt_buf));
+
+    GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 8);
+    const char *cursor = txt_buf;
+    regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
+
+    while (regexec(&re, cursor, ngroups, pmatch, 0) == 0) {
+        GrayArray inner = regex_groups_of_match(arena, cursor, pmatch, ngroups);
+        GRAY_ARRAY_PUSH(arena, &outer, &inner);
+
+        int advance = (int)pmatch[0].rm_eo;
+        cursor += advance;
+        if (advance == 0) {
+            if (*cursor) cursor++;
+            else break;
+        }
+    }
+    regfree(&re);
+    return outer;
+}
+
 /* Public API — compile, delegate to _compiled helper, free. */
 
 GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text) {
@@ -278,6 +351,32 @@ GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern
     }
     r.v0 = regex_find_all_compiled(arena, &re, text);
     regfree(&re);
+    r.v1 = NULL;
+    return r;
+}
+
+GrayResult_array gray_regex_find_groups_result(GrayArena *arena, GrayString pattern, GrayString text) {
+    GrayResult_array r;
+    if (!gray_regex_is_valid(pattern)) {
+        r.v0 = gray_array_new(arena, sizeof(GrayString), 0);
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena,
+            "invalid regex pattern '%.*s'", pattern.len, pattern.data));
+        return r;
+    }
+    r.v0 = gray_regex_find_groups(arena, pattern, text);
+    r.v1 = NULL;
+    return r;
+}
+
+GrayResult_array gray_regex_find_all_groups_result(GrayArena *arena, GrayString pattern, GrayString text) {
+    GrayResult_array r;
+    if (!gray_regex_is_valid(pattern)) {
+        r.v0 = gray_array_new(arena, sizeof(GrayArray), 0);
+        r.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena,
+            "invalid regex pattern '%.*s'", pattern.len, pattern.data));
+        return r;
+    }
+    r.v0 = gray_regex_find_all_groups(arena, pattern, text);
     r.v1 = NULL;
     return r;
 }

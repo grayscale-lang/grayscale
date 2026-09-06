@@ -2859,6 +2859,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"regex", "escape",   1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "string"},
     {"regex", "find",     2, 2, true,  FT_STRING,       2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
     {"regex", "find_all", 2, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
+    {"regex", "find_all_groups", 2, 2, true, FT_NESTED_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[[string]]"},
+    {"regex", "find_groups",     2, 2, true, FT_ARRAY_STRING,        2, {{0, ARG_STRING}, {1, ARG_STRING}}, "[string]"},
     {"regex", "is_match", 2, 2, false, FT_NONE,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"regex", "is_valid", 1, 1, false, FT_NONE,         1, {{0, ARG_STRING}}, "bool"},
     {"regex", "replace",  3, 3, true,  FT_STRING,       3, {{0, ARG_STRING}, {1, ARG_STRING}, {2, ARG_STRING}}, "string"},

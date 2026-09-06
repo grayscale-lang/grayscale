@@ -6007,6 +6007,24 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "find_groups") == 0 && node->data.call.arg_count == 2) {
+        bool is_multi_var = current_var_is_result_temporary(codegen);
+        emit_formatted(codegen, "gray_regex_find_groups%s(gray_default_arena, ", is_multi_var ? "_result" : "");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "find_all_groups") == 0 && node->data.call.arg_count == 2) {
+        bool is_multi_var = current_var_is_result_temporary(codegen);
+        emit_formatted(codegen, "gray_regex_find_all_groups%s(gray_default_arena, ", is_multi_var ? "_result" : "");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
     if (strcmp(func, "replace") == 0 && node->data.call.arg_count == 3) {
         bool is_multi_var = current_var_is_result_temporary(codegen);
         emit_formatted(codegen, "gray_regex_replace%s(gray_default_arena, ", is_multi_var ? "_result" : "");
