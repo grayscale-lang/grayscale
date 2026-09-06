@@ -3903,10 +3903,15 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 |----------|-----------|-------------|
 | `base64_encode` | `(s string) -> string` | Encode to base64 |
 | `base64_decode` | `(s string) -> string` | Decode from base64 |
+| `base64_url_encode` | `(s string) -> string` | Encode to unpadded URL-safe base64 (`-_`, no `=`) |
+| `base64_url_decode` | `(s string) -> string` | Decode URL-safe base64, with or without padding |
 | `hex_encode` | `(s string) -> string` | Encode to hex |
 | `hex_decode` | `(s string) -> string` | Decode from hex |
 | `url_encode` | `(s string) -> string` | URL percent-encode |
 | `url_decode` | `(s string) -> string` | URL percent-decode |
+| `html_escape` | `(s string) -> string` | Escape `& < > " '` as HTML entities |
+| `html_unescape` | `(s string) -> string` | Resolve named and numeric HTML entities |
+| `shell_escape` | `(s string) -> string` | Quote a string as one POSIX shell argument |
 
 #### Byte Conversion
 

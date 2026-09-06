@@ -2675,8 +2675,13 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     /* encoding */
     {"encoding", "base64_decode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"encoding", "base64_encode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "base64_url_decode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "base64_url_encode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "html_escape",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "html_unescape", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"encoding", "hex_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"encoding", "hex_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"encoding", "shell_escape",  1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"encoding", "url_decode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"encoding", "url_encode",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     /* fmt */

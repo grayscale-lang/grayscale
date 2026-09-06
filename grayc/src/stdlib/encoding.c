@@ -168,6 +168,176 @@ GrayString gray_encoding_url_decode(GrayArena *arena, GrayString str) {
     return result;
 }
 
+GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString str) {
+    GrayString std = gray_encoding_base64_encode(arena, str);
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)std.len + 1);
+    int32_t j = 0;
+    for (int32_t i = 0; i < std.len; i++) {
+        char c = std.data[i];
+        if (c == '=') break;
+        out[j++] = (c == '+') ? '-' : (c == '/') ? '_' : c;
+    }
+    out[j] = '\0';
+    GrayString result = { out, j };
+    return result;
+}
+
+GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString str) {
+    int32_t pad = (4 - (str.len % 4)) % 4;
+    int32_t buf_len = str.len + pad;
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)buf_len + 1);
+    for (int32_t i = 0; i < str.len; i++) {
+        char c = str.data[i];
+        if (c == '-') buf[i] = '+';
+        else if (c == '_') buf[i] = '/';
+        else buf[i] = c;
+    }
+    for (int32_t i = 0; i < pad; i++) buf[str.len + i] = '=';
+    buf[buf_len] = '\0';
+    GrayString std = { buf, buf_len };
+    return gray_encoding_base64_decode(arena, std);
+}
+
+GrayString gray_encoding_html_escape(GrayArena *arena, GrayString str) {
+    /* Worst case is "&quot;" / "&#39;" — 6 bytes per input byte. */
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)str.len * 6 + 1);
+    int32_t j = 0;
+    for (int32_t i = 0; i < str.len; i++) {
+        switch (str.data[i]) {
+        case '&':  memcpy(out + j, "&amp;",  5); j += 5; break;
+        case '<':  memcpy(out + j, "&lt;",   4); j += 4; break;
+        case '>':  memcpy(out + j, "&gt;",   4); j += 4; break;
+        case '"':  memcpy(out + j, "&quot;", 6); j += 6; break;
+        case '\'': memcpy(out + j, "&#39;",  5); j += 5; break;
+        default:   out[j++] = str.data[i]; break;
+        }
+    }
+    out[j] = '\0';
+    GrayString result = { out, j };
+    return result;
+}
+
+/* Encode a Unicode codepoint as UTF-8 into out (up to 4 bytes). Returns the
+ * byte count, or 0 for an out-of-range codepoint. */
+static int32_t encoding_utf8_encode(uint32_t cp, char *out) {
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+        return 1;
+    } else if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    } else if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    } else if (cp <= 0x10FFFF) {
+        out[0] = (char)(0xF0 | (cp >> 18));
+        out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (char)(0x80 | (cp & 0x3F));
+        return 4;
+    }
+    return 0;
+}
+
+GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString str) {
+    /* Output is never longer than the input. */
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
+    int32_t j = 0;
+    int32_t i = 0;
+    while (i < str.len) {
+        if (str.data[i] != '&') { out[j++] = str.data[i++]; continue; }
+
+        /* Locate the terminating ';' within a bounded window. */
+        int32_t semi = -1;
+        for (int32_t k = i + 1; k < str.len && k - i <= 10; k++) {
+            if (str.data[k] == ';') { semi = k; break; }
+        }
+        if (semi < 0) { out[j++] = str.data[i++]; continue; }
+
+        const char *body = str.data + i + 1;
+        int32_t blen = semi - i - 1;
+        int32_t consumed = 0;
+
+        if (blen == 3 && memcmp(body, "amp", 3) == 0)       { out[j++] = '&';  consumed = 1; }
+        else if (blen == 2 && memcmp(body, "lt", 2) == 0)   { out[j++] = '<';  consumed = 1; }
+        else if (blen == 2 && memcmp(body, "gt", 2) == 0)   { out[j++] = '>';  consumed = 1; }
+        else if (blen == 4 && memcmp(body, "quot", 4) == 0) { out[j++] = '"';  consumed = 1; }
+        else if (blen == 4 && memcmp(body, "apos", 4) == 0) { out[j++] = '\''; consumed = 1; }
+        else if (blen >= 2 && body[0] == '#') {
+            uint32_t cp = 0;
+            int ok = 1;
+            if (body[1] == 'x' || body[1] == 'X') {
+                if (blen < 3) ok = 0;
+                for (int32_t k = 2; k < blen && ok; k++) {
+                    char d = body[k];
+                    cp *= 16;
+                    if (d >= '0' && d <= '9') cp += (uint32_t)(d - '0');
+                    else if (d >= 'a' && d <= 'f') cp += (uint32_t)(d - 'a' + 10);
+                    else if (d >= 'A' && d <= 'F') cp += (uint32_t)(d - 'A' + 10);
+                    else ok = 0;
+                    if (cp > 0x10FFFF) ok = 0;
+                }
+            } else {
+                for (int32_t k = 1; k < blen && ok; k++) {
+                    char d = body[k];
+                    if (d < '0' || d > '9') { ok = 0; break; }
+                    cp = cp * 10 + (uint32_t)(d - '0');
+                    if (cp > 0x10FFFF) ok = 0;
+                }
+            }
+            if (ok) {
+                int32_t n = encoding_utf8_encode(cp, out + j);
+                if (n > 0) { j += n; consumed = 1; }
+            }
+        }
+
+        if (consumed) {
+            i = semi + 1;
+        } else {
+            out[j++] = str.data[i++];
+        }
+    }
+    out[j] = '\0';
+    GrayString result = { out, j };
+    return result;
+}
+
+GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString str) {
+    if (str.len == 0) return gray_string_lit("''");
+
+    int safe = 1;
+    for (int32_t i = 0; i < str.len; i++) {
+        char c = str.data[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') ||
+              c == '_' || c == '-' || c == '.' || c == '/' || c == ',' ||
+              c == ':' || c == '@' || c == '+' || c == '=' || c == '%')) {
+            safe = 0;
+            break;
+        }
+    }
+    if (safe) return gray_string_new(arena, str.data, str.len);
+
+    /* Wrap in single quotes; each embedded ' becomes '\'' (4 chars). */
+    char *out = gray_arena_alloc_uninitialized(arena, (size_t)str.len * 4 + 3);
+    int32_t j = 0;
+    out[j++] = '\'';
+    for (int32_t i = 0; i < str.len; i++) {
+        if (str.data[i] == '\'') {
+            out[j++] = '\''; out[j++] = '\\'; out[j++] = '\''; out[j++] = '\'';
+        } else {
+            out[j++] = str.data[i];
+        }
+    }
+    out[j++] = '\'';
+    out[j] = '\0';
+    GrayString result = { out, j };
+    return result;
+}
+
 /* --- Byte conversion functions (formerly @bytes module) --- */
 
 GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str) {

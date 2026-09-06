@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - wrong argument type to encoding.shell_escape
+ * Expected: encoding.shell_escape() expects string, got int
+ */
+
+// expect-error: E5026
+
+import @encoding
+
+do main() {
+    mut s string = encoding.shell_escape(123)
+    println(s)
+}

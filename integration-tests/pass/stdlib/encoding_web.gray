@@ -1,0 +1,67 @@
+/*
+ * Test: encoding module - URL-safe base64, HTML escaping, shell escaping
+ * Verifies encoding.base64_url_encode / base64_url_decode roundtrip,
+ * encoding.html_escape / html_unescape, and encoding.shell_escape.
+ */
+
+import @encoding
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // base64_url: standard "aGVsbG8/" becomes "aGVsbG8_", unpadded
+    passed += check("base64_url_encode", encoding.base64_url_encode("hello?"), "aGVsbG8_")
+    passed += check("base64_url_decode", encoding.base64_url_decode("aGVsbG8_"), "hello?")
+
+    // padding is dropped on encode and optional on decode
+    passed += check("base64_url_encode pad", encoding.base64_url_encode("hi"), "aGk")
+    passed += check("base64_url_decode nopad", encoding.base64_url_decode("aGk"), "hi")
+    passed += check("base64_url_decode pad", encoding.base64_url_decode("aGk="), "hi")
+
+    // roundtrip through both directions
+    mut original string = "Any carnal pleasure!"
+    passed += check("base64_url roundtrip",
+        encoding.base64_url_decode(encoding.base64_url_encode(original)), original)
+
+    // html_escape covers all five significant characters
+    passed += check("html_escape",
+        encoding.html_escape("<a href=\"x\">'"),
+        "&lt;a href=&quot;x&quot;&gt;&#39;")
+
+    // html_unescape resolves named + decimal + hex references
+    passed += check("html_unescape",
+        encoding.html_unescape("a &amp; b &#39;c&#39; &#x41;"),
+        "a & b 'c' A")
+
+    // unknown entity is left untouched
+    passed += check("html_unescape unknown",
+        encoding.html_unescape("x &bogus; y"), "x &bogus; y")
+
+    passed += check("html roundtrip",
+        encoding.html_unescape(encoding.html_escape("<tag a='1' b=\"2\">&")),
+        "<tag a='1' b=\"2\">&")
+
+    // shell_escape: safe strings pass through, unsafe ones get quoted
+    passed += check("shell_escape safe", encoding.shell_escape("safe_value-1.txt"), "safe_value-1.txt")
+    passed += check("shell_escape empty", encoding.shell_escape(""), "''")
+    passed += check("shell_escape quote", encoding.shell_escape("it's here"), "'it'\\''s here'")
+    passed += check("shell_escape space", encoding.shell_escape("a b"), "'a b'")
+
+    println("")
+    println("Results: ${passed}/14 passed")
+    if passed == 14 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
