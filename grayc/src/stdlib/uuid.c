@@ -37,24 +37,24 @@
  * (RtlGenRandom under the hood, no extra link library). On failure, returns
  * false; callers should treat that as fatal since UUID uniqueness is the
  * whole point. */
-static bool gray_uuid_random_bytes(uint8_t *buf, size_t n) {
+static bool gray_uuid_random_bytes(uint8_t *buf, size_t count) {
 #ifdef _WIN32
-    for (size_t i = 0; i < n; i += sizeof(unsigned int)) {
-        unsigned int r;
-        if (rand_s(&r) != 0) return false;
-        size_t chunk = (n - i < sizeof(r)) ? n - i : sizeof(r);
-        memcpy(buf + i, &r, chunk);
+    for (size_t i = 0; i < count; i += sizeof(unsigned int)) {
+        unsigned int random_word;
+        if (rand_s(&random_word) != 0) return false;
+        size_t chunk = (count - i < sizeof(random_word)) ? count - i : sizeof(random_word);
+        memcpy(buf + i, &random_word, chunk);
     }
     return true;
 #else
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__linux__)
-    if (n <= 256 && getentropy(buf, n) == 0) return true;
+    if (count <= 256 && getentropy(buf, count) == 0) return true;
 #endif
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (!f) return false;
-    size_t got = fread(buf, 1, n, f);
-    fclose(f);
-    return got == n;
+    FILE *urandom = fopen("/dev/urandom", "rb");
+    if (!urandom) return false;
+    size_t bytes_read = fread(buf, 1, count, urandom);
+    fclose(urandom);
+    return bytes_read == count;
 #endif
 }
 
@@ -86,10 +86,10 @@ GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id) {
     /* Strip hyphens from the canonical 36-char hyphenated form. */
     if (id.value.len != GRAY_UUID_LEN) return gray_string_lit("");
     char buf[GRAY_UUID_COMPACT_LEN + 1];
-    int j = 0;
+    int out_pos = 0;
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
         if (id.value.data[i] != '-') {
-            buf[j++] = id.value.data[i];
+            buf[out_pos++] = id.value.data[i];
         }
     }
     buf[GRAY_UUID_COMPACT_LEN] = '\0';
@@ -135,14 +135,14 @@ GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena) {
     return uuid;
 }
 
-bool gray_uuid_is_valid(GrayString s) {
-    if (s.len != GRAY_UUID_LEN) return false;
+bool gray_uuid_is_valid(GrayString str) {
+    if (str.len != GRAY_UUID_LEN) return false;
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
         if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (s.data[i] != '-') return false;
+            if (str.data[i] != '-') return false;
         } else {
-            char c = s.data[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            char ch = str.data[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')))
                 return false;
         }
     }
@@ -152,14 +152,14 @@ bool gray_uuid_is_valid(GrayString s) {
 /* Strict parser: panics on invalid input. Callers that want a fallible
  * check should gate with gray_uuid_is_valid() first. Returns the input
  * normalized to lowercase, wrapped in a UUID struct. */
-GrayUUID gray_uuid_parse(GrayArena *arena, GrayString s) {
-    if (!gray_uuid_is_valid(s)) {
+GrayUUID gray_uuid_parse(GrayArena *arena, GrayString str) {
+    if (!gray_uuid_is_valid(str)) {
         gray_builtin_panic_msg(gray_string_lit("uuid.parse: invalid UUID string"));
     }
     char *buf = (char *)gray_arena_alloc_uninitialized(arena, GRAY_UUID_LEN + 1);
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
-        char c = s.data[i];
-        buf[i] = (c >= 'A' && c <= 'F') ? (char)(c - 'A' + 'a') : c;
+        char ch = str.data[i];
+        buf[i] = (ch >= 'A' && ch <= 'F') ? (char)(ch - 'A' + 'a') : ch;
     }
     buf[GRAY_UUID_LEN] = '\0';
     GrayUUID uuid;

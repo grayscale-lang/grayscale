@@ -113,8 +113,8 @@ GrayUUID gray_uuid_generate(GrayArena *arena);
 GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id);
 GrayUUID gray_uuid_generate_random(GrayArena *arena);
 GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena);
-bool gray_uuid_is_valid(GrayString s);
-GrayUUID gray_uuid_parse(GrayArena *arena, GrayString s);
+bool gray_uuid_is_valid(GrayString str);
+GrayUUID gray_uuid_parse(GrayArena *arena, GrayString str);
 GrayString gray_uuid_to_string(GrayUUID id);
 GrayUUID gray_uuid_nil(void);
 
