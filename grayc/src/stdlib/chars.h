@@ -24,7 +24,7 @@
  *   println(chars.to_upper('5'))   // '5'
  *@end
  */
-int32_t gray_chars_to_upper(int32_t c);
+int32_t gray_chars_to_upper(int32_t codepoint);
 
 /*@man to_lower
  *@module chars
@@ -37,6 +37,6 @@ int32_t gray_chars_to_upper(int32_t c);
  *   println(chars.to_lower('#'))   // '#'
  *@end
  */
-int32_t gray_chars_to_lower(int32_t c);
+int32_t gray_chars_to_lower(int32_t codepoint);
 
 #endif

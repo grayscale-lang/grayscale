@@ -108,7 +108,7 @@ int64_t gray_mem_usage(GrayArena *arena);
  *@end
  */
 /* mem.copy(dest, src, n) — copy n bytes from src to dest (memcpy) */
-void gray_mem_copy(void *dest, const void *src, int64_t n);
+void gray_mem_copy(void *dest, const void *src, int64_t byte_count);
 
 /*@man zero
  *@module mem
@@ -121,7 +121,7 @@ void gray_mem_copy(void *dest, const void *src, int64_t n);
  *@end
  */
 /* mem.zero(ptr, n) — zero n bytes starting at ptr (memset 0) */
-void gray_mem_zero(void *ptr, int64_t n);
+void gray_mem_zero(void *ptr, int64_t byte_count);
 
 /*@man fill
  *@module mem
@@ -134,7 +134,7 @@ void gray_mem_zero(void *ptr, int64_t n);
  *@end
  */
 /* mem.set(ptr, val, n) — set n bytes to val (memset) */
-void gray_mem_set(void *ptr, int64_t val, int64_t n);
+void gray_mem_set(void *ptr, int64_t value, int64_t byte_count);
 
 
 #endif

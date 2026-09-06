@@ -11,10 +11,10 @@
 
 #include "chars.h"
 
-int32_t gray_chars_to_upper(int32_t c) {
-    return (c >= 'a' && c <= 'z') ? c - ('a' - 'A') : c;
+int32_t gray_chars_to_upper(int32_t codepoint) {
+    return (codepoint >= 'a' && codepoint <= 'z') ? codepoint - ('a' - 'A') : codepoint;
 }
 
-int32_t gray_chars_to_lower(int32_t c) {
-    return (c >= 'A' && c <= 'Z') ? c + ('a' - 'A') : c;
+int32_t gray_chars_to_lower(int32_t codepoint) {
+    return (codepoint >= 'A' && codepoint <= 'Z') ? codepoint + ('a' - 'A') : codepoint;
 }
