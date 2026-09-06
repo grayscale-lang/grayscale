@@ -16,6 +16,7 @@
 #include "../util/xalloc.h"
 #include "../util/reserved.h"
 #include "../util/error_code_builtins.h"
+#include "../util/error_codes.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -248,6 +249,29 @@ static void emit_formatted(CodeGen *codegen, const char *format, ...) {
 
 static void emit_indent(CodeGen *codegen) {
     append_indent_to_buffer(&codegen->output, codegen->indent);
+}
+
+/* The C text for a runtime panic call — spliced into an emit_formatted via %s:
+ *
+ *     emit_formatted(cg, "if (!_dp) { %s; } ", panic_call(cg, node, "P0080", ""));
+ *
+ * The message comes from the error_codes.h registry (the single source of
+ * truth); it is never re-typed at the call site. Any printf conversion in the
+ * message is the runtime's, so `c_args` carries the matching C argument
+ * expressions with a leading ", " (e.g. ", (long long)_sa"), or "" when the
+ * message takes none. `loc` supplies the .gray line reported to the user. */
+static const char *panic_call(CodeGen *codegen, const AstNode *loc,
+                              const char *code, const char *c_args) {
+    const char *msg = gray_error_message(code);
+    if (!msg) msg = "runtime panic";  /* unregistered code: still emit valid C */
+    const char *file = codegen->file ? codegen->file : "";
+    int line = loc ? loc->token.line : 0;
+    if (!c_args) c_args = "";
+    const char *fmt = "gray_panic_code_at(\"%s\", %d, \"%s\", \"%s\"%s)";
+    int need = snprintf(NULL, 0, fmt, file, line, code, msg, c_args);
+    char *buf = arena_alloc(codegen->modules->arena, (size_t)need + 1);
+    snprintf(buf, (size_t)need + 1, fmt, file, line, code, msg, c_args);
+    return buf;
 }
 
 /* Internal compiler error; emit a clear message instead of segfaulting.
@@ -2444,7 +2468,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         bool left_is_literal = node->data.infix.left->kind == NODE_INT_VALUE;
         emit(codegen, "({ int64_t _sa = (int64_t)(");
         emit_expression(codegen, node->data.infix.right);
-        emit_formatted(codegen, "); if (_sa < 0 || _sa >= 64) { gray_panic_code_at(\"%s\", %d, \"P0092\", \"shift amount %%lld is out of range; must be in [0, 63]\", (long long)_sa); } (", codegen->file, node->token.line);
+        emit_formatted(codegen, "); if (_sa < 0 || _sa >= 64) { %s; } (", panic_call(codegen, node, "P0092", ", (long long)_sa"));
         if (left_is_literal) emit(codegen, "(int64_t)");
         emit_expression(codegen, node->data.infix.left);
         emit_formatted(codegen, ") %s (int)_sa; })", c_op);
@@ -2613,7 +2637,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
             /* Float division: check for zero (Grayscale panics, no IEEE 754 inf) */
             emit(codegen, "({ double _dv = (double)");
             emit_expression(codegen, node->data.infix.right);
-            emit_formatted(codegen, "; if (_dv == 0.0) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } (double)(", codegen->file, node->token.line);
+            emit_formatted(codegen, "; if (_dv == 0.0) { %s; } (double)(", panic_call(codegen, node, "P0078", ""));
             emit_expression(codegen, node->data.infix.left);
             emit_formatted(codegen, ") %s _dv; })", operator_to_c_string(op));
             return;
@@ -2631,13 +2655,15 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
             }
             emit(codegen, "({ __auto_type _dv = ");
             emit_expression(codegen, node->data.infix.right);
-            emit_formatted(codegen, "; if (!_dv) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } ", codegen->file, node->token.line);
+            emit_formatted(codegen, "; if (!_dv) { %s; } ", panic_call(codegen, node, "P0078", ""));
             if (is_signed) {
-                const char *opname = (op == TOK_SLASH) ? "division" : "modulo";
                 emit(codegen, "__auto_type _dn = ");
                 emit_expression(codegen, node->data.infix.left);
-                emit_formatted(codegen, "; if ((int64_t)_dn == %s && _dv == -1) { gray_panic_code_at(\"%s\", %d, \"P0079\", \"%s result is too large; value exceeds the range of this type\"); } _dn %s _dv; })",
-                    signed_min, codegen->file, node->token.line, opname, operator_to_c_string(op));
+                emit_formatted(codegen, "; if ((int64_t)_dn == %s && _dv == -1) { %s; } _dn %s _dv; })",
+                    signed_min,
+                    panic_call(codegen, node, "P0079",
+                               (op == TOK_SLASH) ? ", \"division\"" : ", \"modulo\""),
+                    operator_to_c_string(op));
             } else {
                 emit(codegen, "(");
                 emit_expression(codegen, node->data.infix.left);
@@ -2782,7 +2808,7 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
             } else {
                 emit(codegen, "({ __auto_type _dp = ");
                 emit_expression(codegen, _dp_left);
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
                 if (mem_arena) {
                     emit(codegen, "*(__typeof__(_dp))gray_mem_check_live(");
                     emit_expression(codegen, mem_arena);
@@ -2810,8 +2836,8 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, ptr_node);
             emit(codegen, "; ");
             if (!_raw) {
-                emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
-                    codegen->file, node->token.line);
+                emit_formatted(codegen, "if (!_dp) { %s; } ",
+                    panic_call(codegen, node, "P0080", ""));
             }
             if (smax) {
                 if (su) {
@@ -2849,8 +2875,8 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, _mobj);
                 emit(codegen, "; ");
                 if (!_raw) {
-                    emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
-                        codegen->file, node->token.line);
+                    emit_formatted(codegen, "if (!_dp) { %s; } ",
+                        panic_call(codegen, node, "P0080", ""));
                 }
                 if (smax) {
                     if (su) {
@@ -2911,8 +2937,8 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, ptr_node);
             emit(codegen, "; ");
             if (!_raw) {
-                emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
-                    codegen->file, node->token.line);
+                emit_formatted(codegen, "if (!_dp) { %s; } ",
+                    panic_call(codegen, node, "P0080", ""));
             }
             if (smax) {
                 if (su) {
@@ -2950,8 +2976,8 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, _mobj);
                 emit(codegen, "; ");
                 if (!_raw) {
-                    emit_formatted(codegen, "if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
-                        codegen->file, node->token.line);
+                    emit_formatted(codegen, "if (!_dp) { %s; } ",
+                        panic_call(codegen, node, "P0080", ""));
                 }
                 if (smax) {
                     if (su) {
@@ -3261,8 +3287,8 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
                 } else {
                     emit(codegen, "({ __auto_type _dp = ");
                     emit_expression(codegen, node->data.member.object);
-                    emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _dp->%s; })",
-                        codegen->file, node->token.line, sanitize_name(node->data.member.member));
+                    emit_formatted(codegen, "; if (!_dp) { %s; } _dp->%s; })",
+                        panic_call(codegen, node, "P0080", ""), sanitize_name(node->data.member.member));
                 }
             }
         } else if (!obj_is_ref && obj_t && obj_t->kind == TK_ERROR) {
@@ -3275,8 +3301,10 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
             const char *field = strcmp(m, "message") == 0 ? "msg" : sanitize_name(m);
             emit(codegen, "({ __auto_type _err_v = ");
             emit_expression(codegen, node->data.member.object);
-            emit_formatted(codegen, "; if (!_err_v) { gray_panic_code_at(\"%s\", %d, \"P0115\", \"read of '%%s' on a nil Error; check the error is non-nil before reading its fields\", \"%s\"); } _err_v->%s; })",
-                codegen->file, node->token.line, m, field);
+            char p0115_arg[MSG_BUF_SIZE];
+            snprintf(p0115_arg, sizeof(p0115_arg), ", \"%s\"", m);
+            emit_formatted(codegen, "; if (!_err_v) { %s; } _err_v->%s; })",
+                panic_call(codegen, node, "P0115", p0115_arg), field);
         } else {
             emit_expression(codegen, node->data.member.object);
             emit_formatted(codegen, ".%s", sanitize_name(node->data.member.member));
@@ -3369,9 +3397,9 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
                       my_dp, sanitize_name(arr_ptr_field), c_elem);
             } else {
-                emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                emit_formatted(codegen, "; if (!_adp%d) { %s; } "
                           "GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, codegen->file, node->token.line, my_dp, sanitize_name(arr_ptr_field), c_elem);
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field), c_elem);
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
@@ -3387,9 +3415,9 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
                       my_dp, c_elem);
             } else {
-                emit_formatted(codegen, "; if (!_adp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                emit_formatted(codegen, "; if (!_adp%d) { %s; } "
                           "GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
-                      my_dp, codegen->file, node->token.line, my_dp, c_elem);
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, c_elem);
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
@@ -3440,14 +3468,14 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.index_expr.left);
             emit_formatted(codegen, "; %s _mk = ", c_key);
             emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
-            emit_formatted(codegen, "; void *_mv = gray_map_get(&_mt, &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
+            emit_formatted(codegen, "; void *_mv = gray_map_get(&_mt, &_mk); if (!_mv) { %s; } ", panic_call(codegen, node, "P0081", ""));
             emit(codegen, "_mv; }))");
         } else {
             emit_formatted(codegen, "(*(%s *)({ %s _mk = ", c_val, c_key);
             emit_map_slot_value(codegen, left_t->key_type, node->data.index_expr.index);
             emit_formatted(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, node->data.index_expr.left);
-            emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
+            emit_formatted(codegen, ", &_mk); if (!_mv) { %s; } ", panic_call(codegen, node, "P0081", ""));
             emit(codegen, "_mv; }))");
         }
     } else if (left_t && left_t->kind == TK_STRING) {
@@ -3456,7 +3484,7 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         emit_expression(codegen, node->data.index_expr.left);
         emit_formatted(codegen, "; int32_t _ei = (int32_t)(");
         emit_expression(codegen, node->data.index_expr.index);
-        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { gray_panic_code_at(\"%s\", %d, \"P0082\", \"string index %%d out of bounds (length %%d)\", _ei, _es.len); } ", codegen->file, node->token.line);
+        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { %s; } ", panic_call(codegen, node, "P0082", ", _ei, _es.len"));
         emit(codegen, "(int32_t)(unsigned char)_es.data[_ei]; })");
     } else {
         /* Fallback */
@@ -4953,9 +4981,9 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             int my_dp = codegen_next_id(codegen);
             emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
             emit_expression(codegen, addr_ptr_expr);
-            emit_formatted(codegen, "; if (!_aadp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+            emit_formatted(codegen, "; if (!_aadp%d) { %s; } "
                       "&_aadp%d->%s; })",
-                  my_dp, codegen->file, node->token.line, my_dp, sanitize_name(addr_field));
+                  my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(addr_field));
         } else if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
             /* addr(p^): &(*p) simplifies to p; nil-check p first */
             AstNode *inner = arg->data.postfix.left;
@@ -4967,8 +4995,8 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 int my_dp = codegen_next_id(codegen);
                 emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
                 emit_expression(codegen, inner);
-                emit_formatted(codegen, "; if (!_aadp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } _aadp%d; })",
-                      my_dp, codegen->file, node->token.line, my_dp);
+                emit_formatted(codegen, "; if (!_aadp%d) { %s; } _aadp%d; })",
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp);
             }
         } else {
             /* addr() returns a pointer to the argument */
@@ -5607,8 +5635,8 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
         if (raw) {
             emit(codegen, "; ");
         } else {
-            emit_formatted(codegen, "; if (!_ap%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ",
-                id, codegen->file, expr->token.line);
+            emit_formatted(codegen, "; if (!_ap%d) { %s; } ",
+                id, panic_call(codegen, expr, "P0080", ""));
         }
         if (field_depth > 0) {
             emit_formatted(codegen, "&_ap%d", id);
@@ -5686,8 +5714,8 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
             emit_map_slot_value(codegen, left_t->key_type, arg->data.index_expr.index);
             emit(codegen, "; void *_mv = gray_map_get(&");
             emit_expression(codegen, arg->data.index_expr.left);
-            emit_formatted(codegen, ", &_mk); if (!_mv) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
-                codegen->file, arg->token.line);
+            emit_formatted(codegen, ", &_mk); if (!_mv) { %s; } ",
+                panic_call(codegen, arg, "P0081", ""));
             /* Computed here, after c_key has been emitted: both share the
              * one static buffer gray_type_to_c_codegen returns. */
             const char *c_val = left_t->value_type
@@ -7110,7 +7138,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _av_src = ");
         emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, "; if (_av_src.len == 0) { gray_panic_code(\"P0121\", \"arrays.average called on an empty array\"); } ");
+        emit_formatted(codegen, "; if (_av_src.len == 0) { %s; } ", panic_call(codegen, node, "P0121", ""));
         emit(codegen, "double _av_sum = 0.0; ");
         emit_formatted(codegen, "for (int32_t _av_i = 0; _av_i < _av_src.len; _av_i++) { _av_sum += (double)((%s *)_av_src.data)[_av_i]; } ", c_elem);
         emit(codegen, "_av_sum / (double)_av_src.len; })");
@@ -7808,8 +7836,8 @@ static void emit_func_field_call(CodeGen *codegen, AstNode *node, AstNode *obj,
     emit(codegen, "))");
     emit(codegen, "({ void *_fp = (void *)(");
     emit_expression(codegen, obj);
-    emit_formatted(codegen, "%s%s); if (!_fp) { gray_panic_code_at(\"%s\", %d, \"P0118\", \"call through a nil function value\"); } _fp; })",
-        ptr_obj ? "->" : ".", member, codegen->file, node->token.line);
+    emit_formatted(codegen, "%s%s); if (!_fp) { %s; } _fp; })",
+        ptr_obj ? "->" : ".", member, panic_call(codegen, node, "P0118", ""));
     emit(codegen, ")(");
     for (int ai = 0; ai < nargs; ai++) {
         if (ai > 0) emit(codegen, ", ");
@@ -9710,9 +9738,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
                               my_dp, sanitize_name(_set_ptr_field), c_elem);
                     } else {
-                        emit_formatted(codegen, "; if (!_asdp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                        emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
                                   "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              my_dp, codegen->file, node->token.line, my_dp, sanitize_name(_set_ptr_field), c_elem);
+                              my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(_set_ptr_field), c_elem);
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
@@ -9752,9 +9780,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
                           my_dp, c_elem);
                 } else {
-                    emit_formatted(codegen, "; if (!_asdp%d) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                    emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
                               "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                          my_dp, codegen->file, node->token.line, my_dp, c_elem);
+                          my_dp, panic_call(codegen, node, "P0080", ""), my_dp, c_elem);
                 }
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
@@ -9947,34 +9975,35 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, map_ptr_obj);
                     if (map_raw) {
                         emit_formatted(codegen, "; void *_cur = gray_map_get(&_mp->%s, &_mk); "
-                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
+                              "if (!_cur) { %s; } ",
                               sanitize_name(left->data.member.member),
-                              codegen->file, node->token.line);
+                              panic_call(codegen, node, "P0081", ""));
                     } else {
-                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                        emit_formatted(codegen, "; if (!_mp) { %s; } "
                               "void *_cur = gray_map_get(&_mp->%s, &_mk); "
-                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
-                              codegen->file, node->token.line, sanitize_name(left->data.member.member),
-                              codegen->file, node->token.line);
+                              "if (!_cur) { %s; } ",
+                              panic_call(codegen, node, "P0080", ""),
+                              sanitize_name(left->data.member.member),
+                              panic_call(codegen, node, "P0081", ""));
                     }
                 } else if (map_direct_deref) {
                     emit_formatted(codegen, "__auto_type _mp = ");
                     emit_expression(codegen, left->data.postfix.left);
                     if (map_deref_raw) {
                         emit_formatted(codegen, "; void *_cur = gray_map_get(_mp, &_mk); "
-                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
-                              codegen->file, node->token.line);
+                              "if (!_cur) { %s; } ",
+                              panic_call(codegen, node, "P0081", ""));
                     } else {
-                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                        emit_formatted(codegen, "; if (!_mp) { %s; } "
                               "void *_cur = gray_map_get(_mp, &_mk); "
-                              "if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ",
-                              codegen->file, node->token.line,
-                              codegen->file, node->token.line);
+                              "if (!_cur) { %s; } ",
+                              panic_call(codegen, node, "P0080", ""),
+                              panic_call(codegen, node, "P0081", ""));
                     }
                 } else {
                     emit_formatted(codegen, "void *_cur = gray_map_get(&");
                     emit_expression(codegen, left);
-                    emit_formatted(codegen, ", &_mk); if (!_cur) { gray_panic_code_at(\"%s\", %d, \"P0081\", \"key not found in map\"); } ", codegen->file, node->token.line);
+                    emit_formatted(codegen, ", &_mk); if (!_cur) { %s; } ", panic_call(codegen, node, "P0081", ""));
                 }
             }
             const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
@@ -10025,9 +10054,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         emit_formatted(codegen, "; gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
                             ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
                     } else {
-                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                        emit_formatted(codegen, "; if (!_mp) { %s; } "
                             "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
-                            codegen->file, node->token.line, ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+                            panic_call(codegen, node, "P0080", ""), ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
                     }
                 }
             } else if (map_direct_deref) {
@@ -10042,9 +10071,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         emit_formatted(codegen, "; gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
                             ms_arena, codegen->file, node->token.line);
                     } else {
-                        emit_formatted(codegen, "; if (!_mp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } "
+                        emit_formatted(codegen, "; if (!_mp) { %s; } "
                             "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
-                            codegen->file, node->token.line, ms_arena, codegen->file, node->token.line);
+                            panic_call(codegen, node, "P0080", ""), ms_arena, codegen->file, node->token.line);
                     }
                 }
             } else {
@@ -10068,7 +10097,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "{ __auto_type _dp = ");
         emit_expression(codegen, ptr_node);
         if (!_deref_raw) {
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
         } else {
             emit(codegen, "; ");
         }
@@ -10099,7 +10128,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         if (_fld_raw) {
             emit(codegen, "; ");
         } else {
-            emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+            emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
         }
         char _ref2[MSG_BUF_SIZE];
         snprintf(_ref2, sizeof(_ref2), "_dp->%s", field);
@@ -10147,7 +10176,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             if (_nest_raw) {
                 emit(codegen, "; ");
             } else {
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
             }
             /* Build the field reference string for the chain */
             char _ref3[MSG_BUF_SIZE];
@@ -10187,7 +10216,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     if (_pf_raw) {
                         emit(codegen, "; ");
                     } else {
-                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
                     }
                     char _ref_h[MSG_BUF_SIZE];
                     snprintf(_ref_h, sizeof(_ref_h), "_dp->%s", sanitize_name(field));
@@ -10209,7 +10238,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     if (_pf_raw) {
                         emit(codegen, "; ");
                     } else {
-                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
                     }
                     emit_formatted(codegen, "{ GrayArray _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
@@ -10225,7 +10254,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     if (_pf_raw) {
                         emit(codegen, "; ");
                     } else {
-                        emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                        emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
                     }
                     emit_formatted(codegen, "{ GrayString _esc_v = ");
                     emit_expression(codegen, node->data.assign.value);
@@ -10239,7 +10268,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             if (_pf_raw) {
                 emit(codegen, "; ");
             } else {
-                emit_formatted(codegen, "; if (!_dp) { gray_panic_code_at(\"%s\", %d, \"P0080\", \"nil pointer dereference\"); } ", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (!_dp) { %s; } ", panic_call(codegen, node, "P0080", ""));
             }
             char _ref4[MSG_BUF_SIZE];
             snprintf(_ref4, sizeof(_ref4), "_dp->%s", sanitize_name(field));
@@ -10367,16 +10396,17 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     if (!sn || !sized_int_bounds(sn, &signed_min, &_unused_max, &_unused_u))
                         signed_min = "(-9223372036854775807LL - 1)";
                 }
-                const char *opname = (aop == TOK_SLASH_ASSIGN) ? "division" : "modulo";
                 const char *binop = (aop == TOK_SLASH_ASSIGN) ? "/" : "%";
                 emit(codegen, "{ __auto_type _tgt_ref = &(");
                 emit_expression(codegen, node->data.assign.target);
                 emit(codegen, "); __auto_type _dv = ");
                 emit_expression(codegen, node->data.assign.value);
-                emit_formatted(codegen, "; if (!_dv) { gray_panic_code_at(\"%s\", %d, \"P0078\", \"division by zero\"); } ", codegen->file, node->token.line);
+                emit_formatted(codegen, "; if (!_dv) { %s; } ", panic_call(codegen, node, "P0078", ""));
                 if (!unsigned_op) {
-                    emit_formatted(codegen, "if ((int64_t)*_tgt_ref == %s && _dv == -1) { gray_panic_code_at(\"%s\", %d, \"P0079\", \"%s result is too large; value exceeds the range of this type\"); } ",
-                        signed_min, codegen->file, node->token.line, opname);
+                    emit_formatted(codegen, "if ((int64_t)*_tgt_ref == %s && _dv == -1) { %s; } ",
+                        signed_min,
+                        panic_call(codegen, node, "P0079",
+                                   (aop == TOK_SLASH_ASSIGN) ? ", \"division\"" : ", \"modulo\""));
                 }
                 emit_formatted(codegen, "*_tgt_ref %s= _dv; }\n", binop);
                 return;
@@ -11066,7 +11096,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ";\n");
                 /* P0090: zero step at runtime is always a panic */
                 emit_indent(codegen);
-                emit_formatted(codegen, "if (_gray_step_%d == 0) { gray_panic_code_at(\"%s\", %d, \"P0090\", \"range step cannot be zero\"); }\n", svc, codegen->file, node->token.line);
+                emit_formatted(codegen, "if (_gray_step_%d == 0) { %s; }\n", svc, panic_call(codegen, node, "P0090", ""));
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", var);
                 emit_expression(codegen, iter->data.range_expr.start);
@@ -11074,7 +11104,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "; %s = gray_add_check(%s, _gray_step_%d, \"%s\", %d)", var, var, svc, codegen->file, node->token.line);
             } else if (zero_step) {
                 /* P0090: literal zero step always panics; emit panic then a dead loop */
-                emit_formatted(codegen, "gray_panic_code_at(\"%s\", %d, \"P0090\", \"range step cannot be zero\");\n", codegen->file, node->token.line);
+                emit_formatted(codegen, "%s;\n", panic_call(codegen, node, "P0090", ""));
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = 0; 0; (void)0", var);
             } else {
