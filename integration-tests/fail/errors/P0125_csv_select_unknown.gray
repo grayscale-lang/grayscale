@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0125 - csv.select with a name not in the header */
+import @csv
+
+do main() {
+    mut rows [[string]] = csv.parse("name,age\nAda,36")
+    println(len(csv.select(rows, {"name", "salary"})))
+}

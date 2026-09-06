@@ -1,0 +1,95 @@
+/*
+ * crypto_hmac_totp_c.gray - Integration test for the crypto
+ * sha1, sha512, hmac_sha256, hmac_sha1,
+ * constant_time_equal, crc32, entropy, totp.
+ */
+
+import @crypto
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== crypto HMAC / TOTP Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- sha1 / sha512 (known vectors) --
+    check("sha1 empty", crypto.sha1(""), "da39a3ee5e6b4b0d3255bfef95601890afd80709", passed, failed)
+    check("sha1 abc", crypto.sha1("abc"), "a9993e364706816aba3e25717850c26c9cd0d89d", passed, failed)
+    check("sha512 abc", crypto.sha512("abc"),
+        "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+        passed, failed)
+
+    // -- HMAC (RFC vectors) --
+    check("hmac_sha1 empty", crypto.hmac_sha1("", ""),
+        "fbdb1d1b18aa6c08324b7d64b71fb76370690e1d", passed, failed)
+    check("hmac_sha256 fox", crypto.hmac_sha256("key", "The quick brown fox jumps over the lazy dog"),
+        "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8", passed, failed)
+
+    // -- constant_time_equal --
+    if crypto.constant_time_equal("secret", "secret") &&
+       !crypto.constant_time_equal("secret", "secreT") &&
+       !crypto.constant_time_equal("secret", "sec") &&
+       crypto.constant_time_equal("", "") {
+        println("  [PASS] constant_time_equal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] constant_time_equal")
+        failed += 1
+    }
+
+    // -- crc32 --
+    if crypto.crc32("123456789") == 3421780262 {
+        println("  [PASS] crc32 check value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] crc32: got ${crypto.crc32("123456789")}")
+        failed += 1
+    }
+    if crypto.crc32("") == 0 {
+        println("  [PASS] crc32 of empty is 0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] crc32 empty")
+        failed += 1
+    }
+
+    // -- entropy --
+    if crypto.entropy("") == 0.0 && crypto.entropy("aaaaaaaa") == 0.0 {
+        println("  [PASS] entropy zero cases")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] entropy zero cases")
+        failed += 1
+    }
+    mut e float = crypto.entropy("ab")
+    if e > 0.99 && e < 1.01 {
+        println("  [PASS] entropy of two equal symbols is ~1 bit")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] entropy two symbols: ${e}")
+        failed += 1
+    }
+
+    // -- totp (RFC 6238 test vectors, SHA-1, seed "12345678901234567890") --
+    check("totp t=59", crypto.totp("12345678901234567890", 59, 8), "94287082", passed, failed)
+    check("totp t=1111111109", crypto.totp("12345678901234567890", 1111111109, 8), "07081804", passed, failed)
+    check("totp 6 digits", crypto.totp("12345678901234567890", 59, 6), "287082", passed, failed)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -424,6 +424,24 @@ GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     return arr;
 }
 
+GrayString gray_io_read_stdin_all(GrayArena *arena) {
+    GrayString result = gray_io_read_file_impl(arena, stdin);
+    if (result.data == NULL)
+        gray_panic_code("P0124", "io.read_stdin_all: input exceeds maximum string length");
+    return result;
+}
+
+GrayArray gray_io_read_stdin_bytes(GrayArena *arena) {
+    GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
+    uint8_t buf[GRAY_IO_READ_BUF];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
+        for (size_t i = 0; i < n; i++)
+            GRAY_ARRAY_PUSH(arena, &arr, &buf[i]);
+    }
+    return arr;
+}
+
 /* Stream lines from f into arr, stripping a trailing LF and (for CRLF) CR.
  * limit > 0 stops after that many lines; limit <= 0 reads to end of file.
  * Streaming keeps `limit` cheap on large files and avoids the read_file

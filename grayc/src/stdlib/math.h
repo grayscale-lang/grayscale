@@ -584,6 +584,38 @@ bool gray_math_is_prime(int64_t n);
  */
 static inline double gray_math_lerp(double a, double b, double t) { return a + (b - a) * t; }
 
+/*@man remap
+ *@module math
+ *@group Utility
+ *@sig remap(v float, in_lo float, in_hi float, out_lo float, out_hi float) -> float
+ *@desc Linearly maps v from the range [in_lo, in_hi] onto [out_lo, out_hi] without clamping. Pairs with lerp. Panics if in_lo equals in_hi.
+ *@example
+ *   import @math
+ *   println(math.remap(5.0, 0.0, 10.0, 0.0, 100.0))
+ *@end
+ */
+static inline double gray_math_remap(double v, double in_lo, double in_hi,
+                                     double out_lo, double out_hi) {
+    if (in_lo == in_hi) {
+        gray_panic_code("P0122", "math.remap: input range is empty (in_lo == in_hi)");
+    }
+    return out_lo + (v - in_lo) * (out_hi - out_lo) / (in_hi - in_lo);
+}
+
+/*@man approx_equal
+ *@module math
+ *@group Comparison
+ *@sig approx_equal(a float, b float, epsilon float) -> bool
+ *@desc Returns true if the absolute difference between a and b is at most epsilon.
+ *@example
+ *   import @math
+ *   println(math.approx_equal(0.1 + 0.2, 0.3, 0.0001))
+ *@end
+ */
+static inline bool gray_math_approx_equal(double a, double b, double epsilon) {
+    return fabs(a - b) <= epsilon;
+}
+
 /*@man distance
  *@module math
  *@group Utility

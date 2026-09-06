@@ -252,6 +252,21 @@ int64_t gray_arrays_count(GrayArray *arr, int64_t value);
 bool gray_arrays_is_equal_prim(GrayArray *a, GrayArray *b);
 bool gray_arrays_is_equal_str(GrayArray *a, GrayArray *b);
 
+/*@man is_sorted
+ *@module arrays
+ *@group Query
+ *@sig is_sorted(arr [T]) -> bool
+ *@desc Returns true if the elements of arr are in ascending order (each element is <= the next). Empty and single-element arrays are sorted. T must be comparable, as for sort_asc.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {1, 2, 2, 5}
+ *   println(arrays.is_sorted(nums))
+ *@end
+ */
+bool gray_arrays_is_sorted(GrayArray *arr);
+bool gray_arrays_is_sorted_float(GrayArray *arr);
+bool gray_arrays_is_sorted_str(GrayArray *arr);
+
 /* Transformation */
 
 /*@man reverse
@@ -422,7 +437,60 @@ void gray_arrays_sort_desc(GrayArray *arr);
 void gray_arrays_sort_desc_float(GrayArray *arr);
 void gray_arrays_sort_desc_str(GrayArray *arr);
 
+/*@man swap
+ *@module arrays
+ *@group Modification
+ *@sig swap(&arr [T], i int, j int)
+ *@desc Swaps the elements at indices i and j in place. Panics if either index is out of bounds.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {1, 2, 3}
+ *   arrays.swap(nums, 0, 2)
+ *   println(nums)
+ *@end
+ */
+void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j);
+
 /* Higher-Order */
+
+/*@man average
+ *@module arrays
+ *@group Computation
+ *@sig average(arr [T]) -> float
+ *@desc Returns the arithmetic mean of arr as a float. T must be numeric. Panics on an empty array.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {2, 4, 6}
+ *   println(arrays.average(nums))
+ *@end
+ */
+
+/*@man find
+ *@module arrays
+ *@group Higher-Order
+ *@sig find(arr [T], predicate func(T) -> bool) -> (T, bool)
+ *@desc Returns the first element for which predicate returns true and the boolean true, or the zero value and false when no element matches. The result must be destructured.
+ *@example
+ *   import @arrays
+ *   do is_even(x int) -> bool { return x % 2 == 0 }
+ *   mut nums [int] = {1, 3, 4, 7}
+ *   mut hit int, ok bool = arrays.find(nums, ()is_even)
+ *   println("${hit} ${ok}")
+ *@end
+ */
+
+/*@man find_index
+ *@module arrays
+ *@group Higher-Order
+ *@sig find_index(arr [T], predicate func(T) -> bool) -> int
+ *@desc Returns the index of the first element for which predicate returns true, or -1 when no element matches.
+ *@example
+ *   import @arrays
+ *   do is_even(x int) -> bool { return x % 2 == 0 }
+ *   mut nums [int] = {1, 3, 4, 7}
+ *   println(arrays.find_index(nums, ()is_even))
+ *@end
+ */
 
 /*@man map
  *@module arrays

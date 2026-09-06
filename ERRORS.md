@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 453 codes** (319 errors, 16 warnings, 118 panics)
+**Total: 463 codes** (319 errors, 16 warnings, 128 panics)
 
 ---
 
@@ -480,6 +480,16 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0116` | strings | string builder size exceeds maximum string length |
 | `P0117` | memory | dereferenced a pointer into an arena that has been destroyed or reset |
 | `P0118` | runtime | call through a nil function value |
+| `P0119` | strings | strings.truncate: max is smaller than the ellipsis length |
+| `P0120` | bounds | arrays.swap: index out of bounds for an array of length %d |
+| `P0121` | arrays | arrays.average called on an empty array |
+| `P0122` | math | math.remap: input range is empty (in_lo == in_hi) |
+| `P0123` | random | random.rand_string: alphabet is empty but length is greater than 0 |
+| `P0124` | io | io.read_stdin_all: input exceeds maximum string length |
+| `P0125` | csv | csv: referenced a column that is not in the header |
+| `P0126` | crypto | crypto.totp: digits must be between 1 and 9 |
+| `P0127` | time | time.parse_duration: cannot parse the duration string |
+| `P0128` | time | time.days_in_month: month must be between 1 and 12 |
 
 ---
 
@@ -504,4 +514,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-05 20:44:06 UTC*
+*Generated on 2026-09-05 22:29:20 UTC*

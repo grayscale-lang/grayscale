@@ -2413,7 +2413,7 @@ typedef enum {
     FT_STRUCT_HTTP_RESPONSE, FT_STRUCT_MAP,
 } FallibleType;
 
-#define STDLIB_MAX_ARG_CHECKS 4
+#define STDLIB_MAX_ARG_CHECKS 5
 
 typedef struct {
     const char *mod;
@@ -2432,6 +2432,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "all",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "any",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "append",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
+    {"arrays", "average",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
     {"arrays", "clear",        1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, NULL},
     {"arrays", "contains",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
@@ -2439,6 +2440,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "deduplicate",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "fill",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "filter",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "find",         2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "find_index",   2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"arrays", "flatten",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "get_first",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "get_last",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
@@ -2449,6 +2452,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "insert_at",    3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "is_empty",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "bool"},
+    {"arrays", "is_sorted",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[int]]"},
     {"arrays", "prepend",      2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
@@ -2462,6 +2466,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "split_every",  2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "[[int]]"},
+    {"arrays", "swap",         3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     /* atomic */
     {"atomic", "add",              2, 2, false, FT_NONE, 0, {{0}},"int"},
     {"atomic", "and",              2, 2, false, FT_NONE, 0, {{0}},"int"},
@@ -2549,14 +2554,32 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"chars", "to_lower", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     {"chars", "to_upper", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     /* crypto */
+    {"crypto", "constant_time_equal", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
+    {"crypto", "crc32",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "uint"},
+    {"crypto", "entropy",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "float"},
+    {"crypto", "hmac_sha1",  2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
+    {"crypto", "hmac_sha256", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "string"},
     {"crypto", "md5",        1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"crypto", "random_hex", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"crypto", "sha1",       1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"crypto", "sha256",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"crypto", "sha512",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"crypto", "totp",       3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_INT}}, "string"},
     /* csv */
+    {"csv", "column",     2, 2, false, FT_NONE,                2, {{0, ARG_ARRAY}, {1, ARG_STRING}}, "[string]"},
+    {"csv", "detect_delimiter", 1, 1, false, FT_NONE,          1, {{0, ARG_STRING}}, "char"},
     {"csv", "encode",     1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "string"},
+    {"csv", "filter_rows", 2, 2, false, FT_NONE,               1, {{0, ARG_ARRAY}}, "[[string]]"},
+    {"csv", "from_maps",  1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "[[string]]"},
     {"csv", "headers",    1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "[string]"},
     {"csv", "parse",      1, 1, false, FT_NONE,                1, {{0, ARG_STRING}}, "[[string]]"},
+    {"csv", "parse_delimited", 2, 2, false, FT_NONE,           2, {{0, ARG_STRING}, {1, ARG_CHAR}}, "[[string]]"},
     {"csv", "read_file",  1, 1, true,  FT_NESTED_ARRAY_STRING, 1, {{0, ARG_STRING}}, "[[string]]"},
+    {"csv", "select",     2, 2, false, FT_NONE,                2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[string]]"},
+    {"csv", "sort_by_column", 2, 2, false, FT_NONE,            2, {{0, ARG_ARRAY}, {1, ARG_STRING}}, "[[string]]"},
+    {"csv", "to_json",    1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "string"},
+    {"csv", "to_maps",    1, 1, false, FT_NONE,                1, {{0, ARG_ARRAY}}, "[map[string:string]]"},
+    {"csv", "to_markdown", 1, 1, false, FT_NONE,               1, {{0, ARG_ARRAY}}, "string"},
     {"csv", "write_file", 2, 2, true,  FT_BOOL,                2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     /* encoding */
     {"encoding", "base64_decode", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
@@ -2571,6 +2594,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"fmt", "eprintfln",     1, 99, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
     {"fmt", "float_fixed",   2, 2,  false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_INT}}, "string"},
     {"fmt", "float_sci",     1, 1,  false, FT_NONE, 1, {{0, ARG_NUMBER}}, "string"},
+    {"fmt", "format_bytes",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
+    {"fmt", "format_number", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_binary", 1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_hex",    1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"fmt", "int_to_octal",  1, 1,  false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
@@ -2610,6 +2635,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"io", "read_bytes",     1, 1, true,  FT_ARRAY_BYTE,   1, {{0, ARG_STRING}}, "[byte]"},
     {"io", "read_file",      1, 1, true,  FT_STRING,       1, {{0, ARG_STRING}}, "string"},
     {"io", "read_lines",     1, 2, true,  FT_ARRAY_STRING, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "[string]"},
+    {"io", "read_stdin_all",   0, 0, false, FT_NONE,       0, {{0}},"string"},
+    {"io", "read_stdin_bytes", 0, 0, false, FT_NONE,       0, {{0}},"[byte]"},
     {"io", "remove_dir",     1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
     {"io", "remove_dir_all", 1, 1, true,  FT_BOOL,         1, {{0, ARG_STRING}}, "bool"},
     {"io", "rename_file",    2, 2, true,  FT_BOOL,         2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -2639,6 +2666,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     /* math */
     {"math", "abs",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, NULL},
     {"math", "acos",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "approx_equal", 3, 3, false, FT_NONE, 3, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}}, "bool"},
     {"math", "asin",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "atan",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "atan2",       2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
@@ -2678,6 +2706,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"math", "next_power_of_two", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"math", "pow",         2, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"math", "rad_to_deg",  1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
+    {"math", "remap",       5, 5, false, FT_NONE, 5, {{0, ARG_NUMBER}, {1, ARG_NUMBER}, {2, ARG_NUMBER}, {3, ARG_NUMBER}, {4, ARG_NUMBER}}, "float"},
     {"math", "round",       1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
     {"math", "sign",        1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "int"},
     {"math", "sin",         1, 1, false, FT_NONE, 1, {{0, ARG_NUMBER}}, "float"},
@@ -2708,11 +2737,13 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     /* os */
     {"os", "arch",        0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "args",        0, 0, false, FT_NONE, 0, {{0}},"[string]"},
+    {"os", "cpu_count",   0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "current_dir", 0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"Platform"},
     {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"os", "hostname",    0, 0, false, FT_NONE, 0, {{0}},"string"},
+    {"os", "is_tty",      0, 0, false, FT_NONE, 0, {{0}},"bool"},
     {"os", "pid",         0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "void"},
     {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
@@ -2723,6 +2754,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"random", "rand_char",  0, 2, false, FT_NONE, 2, {{0, ARG_CHAR}, {1, ARG_CHAR}}, "char"},
     {"random", "rand_float", 0, 2, false, FT_NONE, 2, {{0, ARG_NUMBER}, {1, ARG_NUMBER}}, "float"},
     {"random", "rand_int",   1, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"random", "rand_string", 2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_STRING}}, "string"},
     {"random", "sample",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
     {"random", "seed",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "void"},
     {"random", "shuffle",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
@@ -2790,6 +2822,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "builder_clear",       1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "void"},
     {"strings", "builder_len",         1, 1, false, FT_NONE, 1, {{0, ARG_BUILDER}}, "int"},
     {"strings", "builder_reserve",     2, 2, false, FT_NONE, 2, {{0, ARG_BUILDER}, {1, ARG_INT}}, "void"},
+    {"strings", "capitalize",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "char_at",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "char"},
     {"strings", "compare",       2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
     {"strings", "contains",      2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
@@ -2824,13 +2857,17 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"strings", "starts_with",   2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"strings", "to_camel_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_chars",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[char]"},
+    {"strings", "to_kebab_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_lower",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "to_pascal_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "to_screaming_snake_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_snake_case", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_title",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "to_upper",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "trim",          1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "trim_left",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"strings", "trim_right",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"strings", "truncate",      3, 3, false, FT_NONE, 3, {{0, ARG_STRING}, {1, ARG_INT}, {2, ARG_STRING}}, "string"},
     /* sync */
     {"sync", "destroy",  1, 1, false, FT_NONE, 0, {{0}},"void"},
     {"sync", "lock",     1, 1, false, FT_NONE, 0, {{0}},"void"},
@@ -2848,25 +2885,37 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"threads", "thread_count", 0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"threads", "yield",        0, 0, false, FT_NONE, 0, {{0}},"void"},
     /* time */
+    {"time", "add_days",    2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"time", "add_hours",   2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
+    {"time", "add_seconds", 2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"time", "date",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "day",        1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "day_of_year", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "days_in_month", 2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"time", "diff",       2, 2, false, FT_NONE, 2, {{0, ARG_INT}, {1, ARG_INT}}, "int"},
     {"time", "elapsed_ms", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "end_of_day", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "format",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_INT}}, "string"},
+    {"time", "format_duration", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "hour",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "humanize",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "is_leap_year", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "bool"},
     {"time", "minute",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "month",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "month_name", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "now",        0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "now_ms",     0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "now_ns",     0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "parse",      2, 2, true,  FT_INT,  2, {{0, ARG_STRING}, {1, ARG_STRING}}, "int"},
+    {"time", "parse_duration", 1, 1, true, FT_INT, 1, {{0, ARG_STRING}}, "int"},
     {"time", "second",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "since",      1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "start_of_day", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     {"time", "tick",       0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"time", "to_clock",   1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "to_iso",     1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "weekday",    1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
+    {"time", "weekday_name", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "year",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     /* uuid */
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
@@ -3517,7 +3566,22 @@ static void set_temp_return_slots(TypeChecker *checker, const char *tmp_name,
  * the fallible (T, Error) shape and the non-fallible multi-value functions.
  * Returns true when slots were applied. */
 static bool apply_stdlib_call_returns(TypeChecker *checker, const char *tmp_name,
-                                      const char *mod, const char *fn) {
+                                      const char *mod, const char *fn, AstNode *call) {
+    /* arrays.find(arr [T], pred) -> (T, bool): the first slot is the array's
+     * element type, derived from the call's first argument. */
+    if (strcmp(mod, "arrays") == 0 && strcmp(fn, "find") == 0) {
+        GrayType *elem = &TYPE_INT;
+        if (call && call->kind == NODE_CALL_EXPR && call->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, call->data.call.args[0]);
+            if (arr_t && arr_t->element_type)
+                elem = type_from_name(arr_t->element_type);
+        }
+        GrayType **rt = xmalloc(sizeof(GrayType *) * 2);
+        rt[0] = elem;
+        rt[1] = &TYPE_BOOL;
+        set_temp_return_slots(checker, tmp_name, rt, 2);
+        return true;
+    }
     const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, fn);
     if (mr) {
         GrayType **rt = xmalloc(sizeof(GrayType *) * (size_t)mr->count);
@@ -4579,6 +4643,9 @@ static void reject_multi_value_call(TypeChecker *checker, AstNode *call_expr,
         if (typechecker_is_fallible_stdlib(mod, name)) {
             diagnostic_error_code_formatted(checker->diag, "E3089", file, line, col, 0,
                 name, name, name);
+        } else if (mod && strcmp(mod, "arrays") == 0 && strcmp(name, "find") == 0) {
+            diagnostic_error_code_formatted(checker->diag, "E3040", file, line, col, 0,
+                name, 2, name);
         } else {
             const StdlibMultiReturn *mr = find_stdlib_multi_return(mod, name);
             if (mr) {
@@ -4925,7 +4992,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
              strcmp(mfn, "remove") == 0 || strcmp(mfn, "remove_at") == 0 ||
              strcmp(mfn, "remove_last") == 0 ||
              strcmp(mfn, "remove_first") == 0 || strcmp(mfn, "prepend") == 0 ||
-             strcmp(mfn, "fill") == 0 ||
+             strcmp(mfn, "fill") == 0 || strcmp(mfn, "swap") == 0 ||
              strcmp(mfn, "sort_asc") == 0 || strcmp(mfn, "sort_desc") == 0 ||
              strcmp(mfn, "clear") == 0) &&
             node->data.call.arg_count > 0) {
@@ -5016,6 +5083,19 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
+        /* E9002: arrays.average requires a numeric array. Stricter than the
+         * sum/min/max check above (bad codegen on a struct array leaks a C
+         * error), so it rejects every non-numeric element type. */
+        if (strcmp(mfn, "average") == 0 && node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            GrayType *arr_t = resolve_expression(checker, arg0);
+            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                if (!type_is_numeric(elem_t)) {
+                    diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
+                }
+            }
+        }
         /* E5026: arrays.concat element type mismatch */
         if (strcmp(mfn, "concat") == 0 && node->data.call.arg_count >= 2) {
             AstNode *a0 = node->data.call.args[0];
@@ -5073,7 +5153,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         /* E9003/E9004: map/filter/reduce callback validation */
         if ((strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
              strcmp(mfn, "reduce") == 0 ||
-             strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0) && node->data.call.arg_count >= 2) {
+             strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0 ||
+             strcmp(mfn, "find") == 0 || strcmp(mfn, "find_index") == 0) && node->data.call.arg_count >= 2) {
             int cb_idx = (strcmp(mfn, "reduce") == 0) ? 2 : 1;
             if (cb_idx < node->data.call.arg_count) {
                 AstNode *cb_arg = node->data.call.args[cb_idx];
@@ -5131,7 +5212,9 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                 }
                             } else if (strcmp(mfn, "filter") == 0 ||
                                        strcmp(mfn, "any") == 0 ||
-                                       strcmp(mfn, "all") == 0) {
+                                       strcmp(mfn, "all") == 0 ||
+                                       strcmp(mfn, "find") == 0 ||
+                                       strcmp(mfn, "find_index") == 0) {
                                 if (cb_fs->param_count != 1) {
                                     char *msg = NULL;
                                     msg = typechecker_format(checker,
@@ -5292,6 +5375,30 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         }
     } else if (strcmp(mod, "csv") == 0) {
+        /* E9003: csv.filter_rows second arg must be a function reference */
+        if (strcmp(mfn, "filter_rows") == 0 && node->data.call.arg_count >= 2) {
+            AstNode *cb_arg = node->data.call.args[1];
+            bool is_ref_call = cb_arg->kind == NODE_CALL_EXPR &&
+                cb_arg->data.call.function->kind == NODE_LABEL &&
+                strcmp(cb_arg->data.call.function->data.label.value, "ref") == 0;
+            if (cb_arg->kind != NODE_FUNC_REF && !is_ref_call) {
+                char *msg = typechecker_format(checker,
+                    "'csv.filter_rows()' requires a function reference; use '()func_name' to pass a function");
+                diagnostic_error_message(checker->diag, "E5026", msg,
+                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0);
+            } else if (cb_arg->kind == NODE_FUNC_REF &&
+                       cb_arg->data.func_ref.function->kind == NODE_LABEL) {
+                FuncSig *cb_fs = find_func(checker,
+                    cb_arg->data.func_ref.function->data.label.value);
+                if (cb_fs && (cb_fs->param_count != 1 || cb_fs->return_count < 1 ||
+                              cb_fs->return_types[0]->kind != TK_BOOL)) {
+                    char *msg = typechecker_format(checker,
+                        "'csv.filter_rows()' callback must be func([string]) -> bool");
+                    diagnostic_error_message(checker->diag, "E5026", msg,
+                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0);
+                }
+            }
+        }
         /* E5026: csv.write_file second arg must be an array */
         if (strcmp(mfn, "write_file") == 0 && node->data.call.arg_count >= 2) {
             GrayType *arg2_type = resolve_expression(checker, node->data.call.args[1]);
@@ -12489,7 +12596,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     const char *umod = find_using_stdlib_module(checker, fn->data.label.value);
                     if (umod) {
                         apply_stdlib_call_returns(checker, node->data.var_decl.name,
-                                                  umod, fn->data.label.value);
+                                                  umod, fn->data.label.value,
+                                                  node->data.var_decl.value);
                     } else {
                         /* Not a declared function either — maybe a func-typed
                          * local or parameter holding a multi-return callback
@@ -12569,7 +12677,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             if (call_qualifier) {
                 const char *mfn = fn->data.member.member;
                 apply_stdlib_call_returns(checker, node->data.var_decl.name,
-                                          call_qualifier, mfn);
+                                          call_qualifier, mfn,
+                                          node->data.var_decl.value);
             }
             /* User-defined module calls (mod.func); look up the prefixed
              * function signature and propagate multi-return types so

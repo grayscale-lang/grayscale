@@ -1,0 +1,39 @@
+/*
+ * os_cpu_tty_c.gray - Integration test for os.cpu_count and os.is_tty
+import @os
+
+do main() {
+    println("=== os.cpu_count / os.is_tty Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut n int = os.cpu_count()
+    if n >= 1 {
+        println("  [PASS] cpu_count is at least 1 (${n})")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] cpu_count: got ${n}")
+        failed += 1
+    }
+
+    // is_tty returns a bool; value depends on how the test is run. Just verify
+    // it is callable and stable across calls.
+    mut a bool = os.is_tty()
+    mut b bool = os.is_tty()
+    if a == b {
+        println("  [PASS] is_tty is stable (${a})")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_tty changed between calls")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

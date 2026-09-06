@@ -71,6 +71,32 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
  */
 GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
 
+/*@man read_stdin_all
+ *@module io
+ *@group Standard Input
+ *@sig read_stdin_all() -> string
+ *@desc Reads all of standard input to end of file and returns it as one string.
+ *@example
+ *   import @io
+ *   mut input string = io.read_stdin_all()
+ *   println("read ${len(input)} bytes")
+ *@end
+ */
+GrayString gray_io_read_stdin_all(GrayArena *arena);
+
+/*@man read_stdin_bytes
+ *@module io
+ *@group Standard Input
+ *@sig read_stdin_bytes() -> [byte]
+ *@desc Reads all of standard input to end of file and returns it as a packed byte array.
+ *@example
+ *   import @io
+ *   mut data [byte] = io.read_stdin_bytes()
+ *   println(len(data))
+ *@end
+ */
+GrayArray gray_io_read_stdin_bytes(GrayArena *arena);
+
 /*@man file_exists
  *@module io
  *@group File Operations

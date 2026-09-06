@@ -152,6 +152,30 @@ GrayString gray_os_arch(void);
 /* os.pid() */
 int64_t gray_os_pid(void);
 
+/*@man cpu_count
+ *@module os
+ *@group System
+ *@sig cpu_count() -> int
+ *@desc Returns the number of logical CPUs available to the process. Falls back to 1 if the count cannot be determined.
+ *@example
+ *   import @os
+ *   println(os.cpu_count())
+ *@end
+ */
+int64_t gray_os_cpu_count(void);
+
+/*@man is_tty
+ *@module os
+ *@group System
+ *@sig is_tty() -> bool
+ *@desc Returns true if standard output is connected to a terminal, false when it is redirected to a file or pipe.
+ *@example
+ *   import @os
+ *   if os.is_tty() { println("interactive") }
+ *@end
+ */
+bool gray_os_is_tty(void);
+
 /* Store argc/argv from main for os.args() */
 void gray_os_init(int argc, char **argv);
 

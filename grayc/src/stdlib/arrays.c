@@ -456,3 +456,51 @@ void gray_arrays_sort_desc_str(GrayArray *arr) {
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
 }
+
+/* is_sorted mirrors the comparator split sort_asc uses: an int64 read for the
+ * default path, dedicated float and string variants. Empty and single-element
+ * arrays are sorted by definition. */
+bool gray_arrays_is_sorted(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        int64_t a = *(int64_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        int64_t b = *(int64_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (a > b) return false;
+    }
+    return true;
+}
+
+bool gray_arrays_is_sorted_float(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        double a = *(double *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        double b = *(double *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (a > b) return false;
+    }
+    return true;
+}
+
+bool gray_arrays_is_sorted_str(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        const GrayString *a = (const GrayString *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        const GrayString *b = (const GrayString *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (cmp_str_asc(a, b) > 0) return false;
+    }
+    return true;
+}
+
+/* In-place swap of the elem_size bytes at i and j. */
+void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j) {
+    ARRAY_CHECK_ITER(arr);
+    if (i < 0 || i >= arr->len || j < 0 || j >= arr->len) {
+        gray_panic_code("P0120",
+            "arrays.swap: index out of bounds for an array of length %d", arr->len);
+    }
+    if (i == j) return;
+    size_t es = (size_t)arr->elem_size;
+    char *a = (char *)arr->data + (size_t)i * es;
+    char *b = (char *)arr->data + (size_t)j * es;
+    for (size_t k = 0; k < es; k++) {
+        char t = a[k];
+        a[k] = b[k];
+        b[k] = t;
+    }
+}

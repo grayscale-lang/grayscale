@@ -1,0 +1,130 @@
+/*
+ * csv_records_c.gray - Integration test for the csv record/format functions
+ * added in to_maps, from_maps, column, select,
+ * filter_rows, sort_by_column, parse_delimited, detect_delimiter, to_json,
+ * to_markdown.
+ */
+
+import @csv
+import @strconv
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do adult(row [string]) -> bool {
+    mut n, _ = strconv.to_int(row[1], 10)
+    return n >= 18
+}
+
+do main() {
+    println("=== csv records / formatting Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut rows [[string]] = csv.parse("name,age\nAda,36\nBob,12\nCy,20")
+
+    // -- to_maps / from_maps --
+    mut recs = csv.to_maps(rows)
+    if len(recs) == 3 {
+        println("  [PASS] to_maps row count")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_maps row count: ${len(recs)}")
+        failed += 1
+    }
+    check("to_maps keyed access", recs[0]["name"], "Ada", passed, failed)
+
+    mut short = csv.to_maps(csv.parse("a,b,c\n1,2"))
+    if len(short[0]) == 2 {
+        println("  [PASS] to_maps short row omits missing key")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_maps short row: len ${len(short[0])}")
+        failed += 1
+    }
+
+    mut back = csv.from_maps(recs)
+    check("from_maps header", csv.encode({back[0]}), "name,age\n", passed, failed)
+    check("from_maps row", csv.encode({back[2]}), "Bob,12\n", passed, failed)
+
+    mut few = csv.to_maps(csv.parse("only-header"))
+    if len(few) == 0 {
+        println("  [PASS] to_maps with a lone header is empty")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_maps lone header: ${len(few)}")
+        failed += 1
+    }
+
+    // -- column --
+    check("column", csv.encode({csv.column(rows, "age")}), "36,12,20\n", passed, failed)
+
+    // -- select --
+    mut slim = csv.select(rows, {"age", "name"})
+    check("select header order", csv.encode({slim[0]}), "age,name\n", passed, failed)
+    check("select row", csv.encode({slim[1]}), "36,Ada\n", passed, failed)
+
+    // -- filter_rows --
+    mut adults = csv.filter_rows(rows, ()adult)
+    if len(adults) == 3 {
+        println("  [PASS] filter_rows keeps header + matching rows")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] filter_rows len ${len(adults)}")
+        failed += 1
+    }
+    check("filter_rows kept header", csv.encode({adults[0]}), "name,age\n", passed, failed)
+
+    // -- sort_by_column --
+    mut sorted = csv.sort_by_column(csv.parse("name\nCy\nAda\nBob"), "name")
+    check("sort_by_column header first", sorted[0][0], "name", passed, failed)
+    check("sort_by_column first data row", sorted[1][0], "Ada", passed, failed)
+    check("sort_by_column last data row", sorted[3][0], "Cy", passed, failed)
+
+    // -- parse_delimited --
+    mut tsv = csv.parse_delimited("a\tb\n1\t2", '\t')
+    check("parse_delimited", csv.encode(tsv), "a,b\n1,2\n", passed, failed)
+
+    // -- detect_delimiter --
+    if csv.detect_delimiter("a;b;c\n1;2;3") == ';' {
+        println("  [PASS] detect_delimiter semicolon")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] detect_delimiter")
+        failed += 1
+    }
+    if csv.detect_delimiter("plain text no delimiters") == ',' {
+        println("  [PASS] detect_delimiter default comma")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] detect_delimiter default")
+        failed += 1
+    }
+
+    // -- to_json --
+    check("to_json", csv.to_json(rows),
+        "[{\"name\":\"Ada\",\"age\":\"36\"},{\"name\":\"Bob\",\"age\":\"12\"},{\"name\":\"Cy\",\"age\":\"20\"}]",
+        passed, failed)
+
+    // -- to_markdown --
+    check("to_markdown", csv.to_markdown(csv.parse("a,b\n1,2")),
+        "|a|b|\n|---|---|\n|1|2|\n", passed, failed)
+    check("to_markdown escapes pipe", csv.to_markdown(csv.parse("h\nx|y")),
+        "|h|\n|---|\n|x\\|y|\n", passed, failed)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

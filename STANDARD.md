@@ -3206,6 +3206,7 @@ do main() {
 | `index_of` | `(arr [T], value T) -> int` | First index of value (-1 if not found) |
 | `count` | `(arr [T], value T) -> int` | Count occurrences of value |
 | `is_equal` | `(a [T], b [T]) -> bool` | Structural equality. Compares length first, then elements. `T` must be a primitive (`int`, `uint`, `float`, `bool`, `char`, `byte`, sized variants) or `string`; arrays of nested composites are rejected at compile time. |
+| `is_sorted` | `(arr [T]) -> bool` | True if elements are in ascending order (each `<=` the next). Empty and single-element arrays are sorted. `T` must be comparable, as for `sort_asc`. |
 
 The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b)` for equality.
 
@@ -3231,6 +3232,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `fill` | `(&arr [T], value T, count int)` | Fill array with N copies of value |
 | `sort_asc` | `(&arr [T])` | Sort ascending in-place |
 | `sort_desc` | `(&arr [T])` | Sort descending in-place |
+| `swap` | `(&arr [T], i int, j int)` | Swap the elements at `i` and `j` in place; panics if either index is out of bounds |
 
 #### Transformation Functions
 
@@ -3251,6 +3253,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `get_sum` | `(arr [T]) -> T` | Sum all elements. Accepts int, float, or any sized integer/float type. |
 | `get_min` | `(arr [T]) -> T` | Minimum element |
 | `get_max` | `(arr [T]) -> T` | Maximum element |
+| `average` | `(arr [T]) -> float` | Arithmetic mean as a `float`. `T` must be numeric; panics on an empty array. |
 
 #### Higher-Order Functions
 
@@ -3261,6 +3264,8 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `reduce` | `(arr [T], initial T, accumulator func(T, T) -> T) -> T` | Reduces the array to a single value by applying `accumulator(acc, element)` for each element, starting with `initial`. |
 | `any` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if at least one element satisfies `predicate`. Returns false on an empty array. |
 | `all` | `(arr [T], predicate func(T) -> bool) -> bool` | Returns true if every element satisfies `predicate`. Returns true on an empty array. |
+| `find` | `(arr [T], predicate func(T) -> bool) -> (T, bool)` | Returns the first matching element and `true`, or the zero value and `false`. Must be destructured. |
+| `find_index` | `(arr [T], predicate func(T) -> bool) -> int` | Returns the index of the first matching element, or `-1`. |
 
 ### 9.3 Strings Module (`@strings`)
 
@@ -3273,6 +3278,10 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `to_title` | `(s string) -> string` | Capitalize the first letter of each whitespace-separated word, lowercase the rest |
 | `to_snake_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and hyphens to snake_case; acronym runs stay together (`HTTPServer` → `http_server`) |
 | `to_camel_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to camelCase |
+| `to_kebab_case` | `(s string) -> string` | Convert camelCase, PascalCase, spaces, and underscores to kebab-case (same word boundaries as `to_snake_case`) |
+| `to_pascal_case` | `(s string) -> string` | Convert snake_case, spaces, and hyphens to PascalCase (like `to_camel_case`, but the first word is capitalized too) |
+| `to_screaming_snake_case` | `(s string) -> string` | `to_snake_case` followed by `to_upper` (`SCREAMING_SNAKE_CASE`) |
+| `capitalize` | `(s string) -> string` | Uppercase the first character, leave the rest untouched; `""` returns `""` |
 
 #### Access Functions
 
@@ -3332,6 +3341,7 @@ result.
 | `replace` | `(s string, old string, new string) -> string` | Replace all occurrences |
 | `repeat` | `(s string, count int) -> string` | Repeat string |
 | `reverse` | `(s string) -> string` | Reverse string |
+| `truncate` | `(s string, max int, ellipsis string) -> string` | Return `s` unchanged if `len(s) <= max`, else the first `max - len(ellipsis)` bytes plus `ellipsis` (total byte length exactly `max`); panics if `max < len(ellipsis)` |
 
 #### Conversion Functions
 
@@ -3507,6 +3517,8 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `lerp` | `(a T, b T, t T) -> float` | Linear interpolation between a and b by factor t |
+| `remap` | `(v float, in_lo float, in_hi float, out_lo float, out_hi float) -> float` | Linearly map `v` from `[in_lo, in_hi]` onto `[out_lo, out_hi]` without clamping; panics (`P0122`) if `in_lo == in_hi` |
+| `approx_equal` | `(a float, b float, epsilon float) -> bool` | True if `abs(a - b) <= epsilon` |
 | `distance` | `(x1 T, y1 T, x2 T, y2 T) -> float` | Euclidean distance between two 2D points |
 
 #### Constants
@@ -3547,6 +3559,10 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `minute` | `(timestamp int) -> int` | Get minute |
 | `second` | `(timestamp int) -> int` | Get second |
 | `weekday` | `(timestamp int) -> int` | Get day of week (0=Sunday) |
+| `weekday_name` | `(timestamp int) -> string` | English weekday name (`"Sunday"`..`"Saturday"`), matching `weekday()` numbering |
+| `month_name` | `(timestamp int) -> string` | English month name (`"January"`..`"December"`) |
+| `day_of_year` | `(timestamp int) -> int` | Day of the year, 1–366 |
+| `days_in_month` | `(year int, month int) -> int` | Days in `month` (1–12) of `year`, leap-year aware; panics (`P0128`) if `month` is outside 1–12 |
 | `is_leap_year` | `(year int) -> bool` | Check if year is a leap year |
 
 #### Formatting
@@ -3557,15 +3573,18 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 | `to_iso` | `(timestamp int) -> string` | ISO 8601 string |
 | `date` | `(timestamp int) -> string` | Date (YYYY-MM-DD) |
 | `to_clock` | `(timestamp int) -> string` | Time (HH:MM:SS) |
+| `humanize` | `(seconds int) -> string` | Relative phrase for a signed delta: positive is past (`"2 days ago"`), negative is future (`"in 1 hour"`), `0` is `"just now"`; largest whole unit only |
+| `format_duration` | `(seconds int) -> string` | `"1h 30m 15s"`; capped at hours (no days), zero components omitted unless the whole value is zero (`"0s"`), negative gets a leading `-` |
 
 #### Parsing
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `parse` | `(s string, layout string) -> (int, Error)` | Parse a time string into a Unix timestamp using strftime-style layout directives |
+| `parse_duration` | `(s string) -> (int, Error)` | Parse `"1h30m"`, `"90s"`, `"2d"`, `"1h30m15s"` (units `s m h d`) into total seconds; bad input yields a non-nil error and `0` |
 
 **Behavior:**
-- `parse` is a fallible function. Single-variable assignment (`mut ts int = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
+- `parse` and `parse_duration` are fallible functions. Single-variable assignment (`mut ts int = time.parse(...)`) is a compile-time error (`E3089`); the result must be destructured.
 - `mut ts, err = time.parse(...)` — inspect `err` (non-nil on invalid input).
 - `mut ts, _ = time.parse(...)` — discard the error; on invalid input `ts` is `0`.
 
@@ -3575,6 +3594,11 @@ Unless noted otherwise, all math functions accept `int`, `float`, and sized nume
 |----------|-----------|-------------|
 | `diff` | `(t1 int, t2 int) -> int` | Difference in seconds (t2 - t1); negative if t1 is after t2 |
 | `since` | `(t int) -> int` | Seconds elapsed from t to now; equivalent to `diff(t, now())` |
+| `add_days` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` days (`n` may be negative); pure Unix arithmetic, no calendar/DST logic |
+| `add_hours` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` hours |
+| `add_seconds` | `(timestamp int, n int) -> int` | `timestamp` shifted by `n` seconds |
+| `start_of_day` | `(timestamp int) -> int` | Unix timestamp of `00:00:00` UTC on the same day |
+| `end_of_day` | `(timestamp int) -> int` | Unix timestamp of `23:59:59` UTC on the same day (`start_of_day + 86399`) |
 
 #### Performance Timing
 
@@ -3597,6 +3621,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | `rand_byte` | `() -> byte` | Random byte [0, 255] |
 | `rand_char` | `() -> char` | Random printable char |
 | `rand_char` | `(min char, max char) -> char` | Random char in range |
+| `rand_string` | `(length int, alphabet string) -> string` | String of `length` characters drawn uniformly from `alphabet`; `length` 0 returns `""`; panics (`P0123`) if `alphabet` is empty and `length > 0` |
 | `choice` | `(arr [T]) -> T` | Random element from array |
 | `shuffle` | `(arr [T]) -> [T]` | Return shuffled copy |
 | `sample` | `(arr [T], n int) -> [T]` | Return n unique random elements |
@@ -3624,6 +3649,13 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 | `read_file` | `(path string) -> string` | Read entire file as a string |
 | `read_bytes` | `(path string) -> [byte]` | Read entire file as a byte array |
 | `read_lines` | `(path string, limit int = 0) -> [string]` | Read the file line by line (strips `\r\n`). `limit` caps how many lines are returned — a count, like `range(0, N)`; `0` reads to EOF. A negative literal `limit` is a compile error (E3150). |
+
+#### Standard Input
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `read_stdin_all` | `() -> string` | Read all of standard input to EOF as one string |
+| `read_stdin_bytes` | `() -> [byte]` | Read all of standard input to EOF as a packed byte array |
 
 #### File Writing
 
@@ -3785,6 +3817,8 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 | `pid` | `() -> int` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
 | `arch` | `() -> string` | Get CPU architecture |
+| `cpu_count` | `() -> int` | Number of logical CPUs available to the process; falls back to 1 |
+| `is_tty` | `() -> bool` | True if standard output is a terminal (not a file or pipe) |
 
 #### Process Execution
 
@@ -3850,7 +3884,15 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `sha256` | `(data string) -> string` | SHA-256 hash (hex) |
+| `sha1` | `(data string) -> string` | SHA-1 hash (hex). Broken for collision resistance; ships for HMAC-SHA1 / TOTP |
+| `sha512` | `(data string) -> string` | SHA-512 hash (hex) |
 | `md5` | `(data string) -> string` | MD5 hash (hex) |
+| `hmac_sha256` | `(key string, data string) -> string` | RFC 2104 HMAC-SHA-256 (hex) |
+| `hmac_sha1` | `(key string, data string) -> string` | RFC 2104 HMAC-SHA-1 (hex) |
+| `constant_time_equal` | `(a string, b string) -> bool` | Compare without an early return on mismatch; a length difference is folded into the result |
+| `crc32` | `(data string) -> uint` | IEEE CRC-32 checksum (polynomial `0xEDB88320`). A checksum, not a cryptographic hash |
+| `entropy` | `(data string) -> float` | Shannon entropy of `data` in bits per byte (0.0–8.0); `""` returns `0.0` |
+| `totp` | `(secret string, timestamp int, digits int) -> string` | RFC 6238 TOTP over the raw secret bytes (SHA-1, 30 s step), zero-padded to `digits`; panics (`P0126`) if `digits` is outside 1–9 |
 | `random_hex` | `(length int) -> string` | Cryptographically secure random hex string |
 
 ### 9.13 Encoding Module (`@encoding`)
@@ -4066,10 +4108,20 @@ Reading and writing CSV (Comma-Separated Values) data.
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `parse` | `(csv_string string) -> [[string]]` | Parse CSV string to 2D array |
+| `parse_delimited` | `(csv_string string, delimiter char) -> [[string]]` | Like `parse`, but fields split on `delimiter` (e.g. `'\t'`, `';'`); RFC 4180 quoting still applies |
+| `detect_delimiter` | `(sample string) -> char` | Most frequent of `,` `;` `\t` `\|` on the first line of `sample`, defaulting to `,` |
 | `encode` | `(data [[string]]) -> string` | Encode 2D array to CSV string |
 | `read_file` | `(path string) -> ([[string]], Error)` | Read and parse CSV file — always use destructuring |
 | `write_file` | `(path string, data [[string]]) -> (bool, Error)` | Write 2D array to CSV file — always use destructuring |
 | `headers` | `(data [[string]]) -> [string]` | Extract header row from parsed CSV data |
+| `to_maps` | `(data [[string]]) -> [map[string:string]]` | Rows 1..N as maps keyed by header name (short row omits keys, long row drops extras); `<= 1` row gives an empty array |
+| `from_maps` | `(rows [map[string:string]]) -> [[string]]` | Inverse of `to_maps`; header is the union of keys in first-seen order, a missing key becomes `""` |
+| `column` | `(data [[string]], name string) -> [string]` | Values under header `name`, excluding the header cell; panics (`P0125`) if `name` is not a header |
+| `select` | `(data [[string]], names [string]) -> [[string]]` | Project the named columns in order, keeping the header row; panics (`P0125`) on an unknown name |
+| `filter_rows` | `(data [[string]], predicate func([string]) -> bool) -> [[string]]` | Keep row 0 unconditionally and each later row where `predicate` is true; the header is never passed to `predicate` |
+| `sort_by_column` | `(data [[string]], name string) -> [[string]]` | New array with data rows stably sorted ascending lexicographically by column `name`; header stays first; panics (`P0125`) on an unknown name |
+| `to_json` | `(data [[string]]) -> string` | Compact JSON array of objects (via `to_maps`); every value is a JSON string |
+| `to_markdown` | `(data [[string]]) -> string` | GitHub-flavored Markdown table; row 0 is the header plus a `---` separator, `\|` in a cell is escaped, trailing newline |
 
 ### 9.20 Net Module (`@net`)
 
@@ -4249,6 +4301,8 @@ mut s string = fmt.sprintf("x = %d", x)   // "x = 7"
 | `int_to_octal` | `(n int) -> string` | Format integer as octal |
 | `float_fixed` | `(f float, decimals int) -> string` | Format float with fixed decimal places |
 | `float_sci` | `(f float) -> string` | Format float in scientific notation |
+| `format_number` | `(n int) -> string` | Decimal string with ASCII comma thousands separators (`1234567` → `"1,234,567"`, `-1000` → `"-1,000"`) |
+| `format_bytes` | `(n int) -> string` | Human-readable byte count in binary units B/KiB/MiB/GiB/TiB/PiB; whole bytes below 1024 (`"1023 B"`), one decimal above (`"1.5 KiB"`) |
 
 Formatted output functions take one argument per format directive; each is independently `int`, `uint`, `float`, `string`, `bool`, `char`, or a bigint (`i128`/`u128`/`i256`/`u256`, integer directives only). Composite types (structs, arrays, maps) are not supported. Use `println` for printing composite types.
 

@@ -1,0 +1,67 @@
+/*
+ * math_remap_approx_c.gray - Integration test for the math module's functions
+ * added in remap, approx_equal.
+ */
+
+import @math
+
+do main() {
+    println("=== Math remap / approx_equal Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- remap --
+    if math.remap(5.0, 0.0, 10.0, 0.0, 100.0) == 50.0 {
+        println("  [PASS] remap midpoint")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] remap midpoint: got ${math.remap(5.0, 0.0, 10.0, 0.0, 100.0)}")
+        failed += 1
+    }
+    if math.remap(15.0, 0.0, 10.0, 0.0, 100.0) == 150.0 {
+        println("  [PASS] remap does not clamp")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] remap clamped")
+        failed += 1
+    }
+    if math.remap(0.0, -1.0, 1.0, 10.0, 20.0) == 15.0 {
+        println("  [PASS] remap negative input range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] remap negative input range")
+        failed += 1
+    }
+
+    // -- approx_equal --
+    if math.approx_equal(0.1 + 0.2, 0.3, 0.0001) {
+        println("  [PASS] approx_equal within epsilon")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] approx_equal within epsilon")
+        failed += 1
+    }
+    if !math.approx_equal(1.0, 1.5, 0.1) {
+        println("  [PASS] approx_equal outside epsilon")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] approx_equal outside epsilon")
+        failed += 1
+    }
+    if math.approx_equal(2.0, 2.0, 0.0) {
+        println("  [PASS] approx_equal exact with zero epsilon")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] approx_equal exact with zero epsilon")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

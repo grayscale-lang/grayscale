@@ -132,6 +132,21 @@ int32_t gray_random_char_range(int32_t min, int32_t max) {
     return min + (int32_t)(rand() % (max - min));
 }
 
+GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alphabet) {
+    if (length <= 0) return gray_string_lit("");
+    if (alphabet.len == 0) {
+        gray_panic_code("P0123",
+            "random.rand_string: alphabet is empty but length is %lld", (long long)length);
+    }
+    ensure_seed();
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)length + 1);
+    for (int64_t i = 0; i < length; i++) {
+        buf[i] = alphabet.data[rand() % alphabet.len];
+    }
+    buf[length] = '\0';
+    return gray_string_new(arena, buf, (int32_t)length);
+}
+
 GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
     ensure_seed();
     GrayArray result = gray_array_copy(arena, arr);

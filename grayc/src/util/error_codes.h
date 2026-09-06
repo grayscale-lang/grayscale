@@ -481,7 +481,17 @@
     GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
     GRAY_PANIC("P0116", "strings",    "string builder size exceeds maximum string length") \
     GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset") \
-    GRAY_PANIC("P0118", "runtime",    "call through a nil function value")
+    GRAY_PANIC("P0118", "runtime",    "call through a nil function value") \
+    GRAY_PANIC("P0119", "strings",    "strings.truncate: max is smaller than the ellipsis length") \
+    GRAY_PANIC("P0120", "bounds",     "arrays.swap: index out of bounds for an array of length %d") \
+    GRAY_PANIC("P0121", "arrays",     "arrays.average called on an empty array") \
+    GRAY_PANIC("P0122", "math",       "math.remap: input range is empty (in_lo == in_hi)") \
+    GRAY_PANIC("P0123", "random",     "random.rand_string: alphabet is empty but length is greater than 0") \
+    GRAY_PANIC("P0124", "io",         "io.read_stdin_all: input exceeds maximum string length") \
+    GRAY_PANIC("P0125", "csv",        "csv: referenced a column that is not in the header") \
+    GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
+    GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
+    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

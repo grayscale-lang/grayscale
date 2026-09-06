@@ -95,3 +95,40 @@ GrayString gray_fmt_float_sci(GrayArena *arena, double f) {
     memcpy(buf, tmp, (size_t)len);
     return (GrayString){buf, len};
 }
+
+GrayString gray_fmt_format_number(GrayArena *arena, int64_t n) {
+    bool neg = n < 0;
+    /* Negate into uint64 without overflowing on INT64_MIN. */
+    uint64_t v = neg ? (uint64_t)(-(n + 1)) + 1u : (uint64_t)n;
+    char digits[GRAY_FMT_INT_BUF];
+    int dlen = snprintf(digits, sizeof(digits), "%" PRIu64, v);
+    int commas = (dlen - 1) / 3;
+    int total = dlen + commas + (neg ? 1 : 0);
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)total);
+    int bi = 0;
+    if (neg) buf[bi++] = '-';
+    for (int i = 0; i < dlen; i++) {
+        if (i > 0 && (dlen - i) % 3 == 0) buf[bi++] = ',';
+        buf[bi++] = digits[i];
+    }
+    return (GrayString){buf, total};
+}
+
+GrayString gray_fmt_format_bytes(GrayArena *arena, int64_t n) {
+    static const char *const units[] = {"B", "KiB", "MiB", "GiB", "TiB", "PiB"};
+    bool neg = n < 0;
+    uint64_t v = neg ? (uint64_t)(-(n + 1)) + 1u : (uint64_t)n;
+    char tmp[GRAY_FMT_FLOAT_BUF];
+    int len;
+    if (v < 1024) {
+        len = snprintf(tmp, sizeof(tmp), "%s%" PRIu64 " B", neg ? "-" : "", v);
+    } else {
+        double d = (double)v;
+        int u = 0;
+        while (d >= 1024.0 && u < 5) { d /= 1024.0; u++; }
+        len = snprintf(tmp, sizeof(tmp), "%s%.1f %s", neg ? "-" : "", d, units[u]);
+    }
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len);
+    memcpy(buf, tmp, (size_t)len);
+    return (GrayString){buf, len};
+}

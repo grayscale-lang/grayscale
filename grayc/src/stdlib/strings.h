@@ -86,6 +86,54 @@ GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s);
  */
 GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s);
 
+/*@man to_kebab_case
+ *@module strings
+ *@group Case
+ *@sig to_kebab_case(s string) -> string
+ *@desc Converts camelCase, PascalCase, spaces, and underscores to kebab-case. Uses the same word boundaries as to_snake_case, with '-' as the separator.
+ *@example
+ *   import @strings
+ *   println(strings.to_kebab_case("helloWorld"))
+ *@end
+ */
+GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString s);
+
+/*@man to_pascal_case
+ *@module strings
+ *@group Case
+ *@sig to_pascal_case(s string) -> string
+ *@desc Converts snake_case, spaces, and hyphens to PascalCase. Like to_camel_case, but the first word is also capitalized.
+ *@example
+ *   import @strings
+ *   println(strings.to_pascal_case("hello_world"))
+ *@end
+ */
+GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString s);
+
+/*@man to_screaming_snake_case
+ *@module strings
+ *@group Case
+ *@sig to_screaming_snake_case(s string) -> string
+ *@desc Converts to snake_case and then uppercases every letter, producing SCREAMING_SNAKE_CASE.
+ *@example
+ *   import @strings
+ *   println(strings.to_screaming_snake_case("helloWorld"))
+ *@end
+ */
+GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString s);
+
+/*@man capitalize
+ *@module strings
+ *@group Case
+ *@sig capitalize(s string) -> string
+ *@desc Returns a copy of s with the first character uppercased and the rest left untouched. An empty string is returned unchanged.
+ *@example
+ *   import @strings
+ *   println(strings.capitalize("hello"))
+ *@end
+ */
+GrayString gray_strings_capitalize(GrayArena *arena, GrayString s);
+
 /*@man trim
  *@module strings
  *@group Trim
@@ -307,6 +355,18 @@ GrayString gray_strings_repeat(GrayArena *arena, GrayString s, int64_t count);
  *@end
  */
 GrayString gray_strings_reverse(GrayArena *arena, GrayString s);
+
+/*@man truncate
+ *@module strings
+ *@group Transformation
+ *@sig truncate(s string, max int, ellipsis string) -> string
+ *@desc Returns s unchanged when its byte length is at most max. Otherwise returns the first (max - len(ellipsis)) bytes of s followed by ellipsis, for a total byte length of exactly max. Panics if max is smaller than the byte length of ellipsis.
+ *@example
+ *   import @strings
+ *   println(strings.truncate("hello world", 8, "..."))
+ *@end
+ */
+GrayString gray_strings_truncate(GrayArena *arena, GrayString s, int64_t max, GrayString ellipsis);
 
 /*@man slice
  *@module strings

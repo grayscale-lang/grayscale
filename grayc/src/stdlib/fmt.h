@@ -192,4 +192,28 @@ GrayString gray_fmt_float_fixed(GrayArena *arena, double f, int64_t decimals);
  */
 GrayString gray_fmt_float_sci(GrayArena *arena, double f);
 
+/*@man format_number
+ *@module fmt
+ *@group Number Formatting
+ *@sig format_number(n int) -> string
+ *@desc Returns n as a decimal string with ASCII comma thousands separators (no locale). 1234567 becomes "1,234,567"; -1000 becomes "-1,000".
+ *@example
+ *   import @fmt
+ *   println(fmt.format_number(1234567))
+ *@end
+ */
+GrayString gray_fmt_format_number(GrayArena *arena, int64_t n);
+
+/*@man format_bytes
+ *@module fmt
+ *@group Number Formatting
+ *@sig format_bytes(n int) -> string
+ *@desc Returns n formatted as a human-readable byte count using binary units (B, KiB, MiB, GiB, TiB, PiB). Values below 1024 are shown as whole bytes ("1023 B"); larger values use one decimal place ("1.5 KiB"). A negative n keeps a leading minus on the magnitude.
+ *@example
+ *   import @fmt
+ *   println(fmt.format_bytes(1536))
+ *@end
+ */
+GrayString gray_fmt_format_bytes(GrayArena *arena, int64_t n);
+
 #endif

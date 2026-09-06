@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0126 - crypto.totp with digits out of range */
+import @crypto
+
+do main() {
+    println(crypto.totp("secret", 59, 10))
+}

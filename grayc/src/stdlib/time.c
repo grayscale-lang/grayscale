@@ -135,3 +135,143 @@ int64_t gray_time_tick(void) {
 int64_t gray_time_elapsed_ms(int64_t start_tick) {
     return (gray_time_tick() - start_tick) / NS_PER_MS;
 }
+
+#define SECONDS_PER_DAY 86400
+#define SECONDS_PER_HOUR 3600
+#define SECONDS_PER_MINUTE 60
+
+static int64_t time_floordiv(int64_t a, int64_t b) {
+    int64_t q = a / b, r = a % b;
+    if (r != 0 && ((r < 0) != (b < 0))) q--;
+    return q;
+}
+
+GrayString gray_time_humanize(GrayArena *arena, int64_t seconds) {
+    if (seconds == 0) return gray_string_lit("just now");
+    bool past = seconds > 0;
+    int64_t s = past ? seconds : -seconds;
+    static const struct { int64_t size; const char *name; } units[] = {
+        {31536000, "year"}, {2592000, "month"}, {604800, "week"},
+        {SECONDS_PER_DAY, "day"}, {SECONDS_PER_HOUR, "hour"}, {SECONDS_PER_MINUTE, "minute"}, {1, "second"}
+    };
+    for (int i = 0; i < 7; i++) {
+        if (s >= units[i].size) {
+            int64_t n = s / units[i].size;
+            const char *plural = n == 1 ? "" : "s";
+            return past
+                ? gray_string_format(arena, "%lld %s%s ago", (long long)n, units[i].name, plural)
+                : gray_string_format(arena, "in %lld %s%s", (long long)n, units[i].name, plural);
+        }
+    }
+    return gray_string_lit("just now"); /* unreachable: s >= 1 */
+}
+
+/* Parse "1h30m15s" style durations. Units: s m h d. Returns false on an empty
+ * string, a number with no unit, or an unknown unit. */
+static bool time_parse_duration_impl(GrayString s, int64_t *out) {
+    int64_t total = 0;
+    int32_t i = 0;
+    bool any = false;
+    while (i < s.len) {
+        if (s.data[i] < '0' || s.data[i] > '9') return false;
+        int64_t num = 0;
+        while (i < s.len && s.data[i] >= '0' && s.data[i] <= '9') {
+            num = num * 10 + (s.data[i] - '0');
+            i++;
+        }
+        if (i >= s.len) return false; /* trailing number with no unit */
+        int64_t mult;
+        switch (s.data[i++]) {
+            case 's': mult = 1; break;
+            case 'm': mult = SECONDS_PER_MINUTE; break;
+            case 'h': mult = SECONDS_PER_HOUR; break;
+            case 'd': mult = SECONDS_PER_DAY; break;
+            default: return false;
+        }
+        total += num * mult;
+        any = true;
+    }
+    if (!any) return false;
+    *out = total;
+    return true;
+}
+
+int64_t gray_time_parse_duration(GrayString s) {
+    int64_t v;
+    if (!time_parse_duration_impl(s, &v))
+        gray_panic_code("P0127", "time.parse_duration: cannot parse '%s'", s.data);
+    return v;
+}
+
+GrayResult_int gray_time_parse_duration_result(GrayString s) {
+    int64_t v;
+    if (!time_parse_duration_impl(s, &v)) {
+        GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure,
+            gray_string_format(gray_default_arena,
+                "cannot parse duration '%.*s'", s.len, s.data));
+        return (GrayResult_int){0, err};
+    }
+    return (GrayResult_int){v, NULL};
+}
+
+/* Space-separated "1h 30m 15s". Capped at hours (no days bucket), so
+ * 90000 seconds is "25h 0m 0s". A lone zero is "0s". Negative gets a
+ * leading minus. Not a strict inverse of parse_duration. */
+GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds) {
+    if (seconds == 0) return gray_string_lit("0s");
+    bool neg = seconds < 0;
+    int64_t s = neg ? -seconds : seconds;
+    int64_t h = s / SECONDS_PER_HOUR;
+    int64_t m = (s % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
+    int64_t sec = s % SECONDS_PER_MINUTE;
+
+    char buf[64];
+    int pos = 0;
+    if (neg) buf[pos++] = '-';
+    if (h > 0)
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%lldh %lldm %llds",
+                        (long long)h, (long long)m, (long long)sec);
+    else if (m > 0)
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%lldm %llds",
+                        (long long)m, (long long)sec);
+    else
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%llds", (long long)sec);
+    return gray_string_new(arena, buf, pos);
+}
+
+int64_t gray_time_add_days(int64_t ts, int64_t n)    { return gray_add_check(ts, n * SECONDS_PER_DAY, __FILE__, __LINE__); }
+int64_t gray_time_add_hours(int64_t ts, int64_t n)   { return gray_add_check(ts, n * SECONDS_PER_HOUR, __FILE__, __LINE__); }
+int64_t gray_time_add_seconds(int64_t ts, int64_t n) { return gray_add_check(ts, n, __FILE__, __LINE__); }
+
+int64_t gray_time_start_of_day(int64_t ts) { return time_floordiv(ts, SECONDS_PER_DAY) * SECONDS_PER_DAY; }
+int64_t gray_time_end_of_day(int64_t ts)   { return gray_time_start_of_day(ts) + SECONDS_PER_DAY - 1; }
+
+int64_t gray_time_days_in_month(int64_t year, int64_t month) {
+    if (month < 1 || month > 12) {
+        gray_panic_code("P0128", "time.days_in_month: month must be 1-12 (got %lld)", (long long)month);
+    }
+    static const int mdays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    if (month == 2 && gray_time_is_leap_year(year)) return 29;
+    return mdays[month - 1];
+}
+
+int64_t gray_time_day_of_year(int64_t ts) { return get_tm(ts)->tm_yday + 1; }
+
+GrayString gray_time_weekday_name(GrayArena *arena, int64_t ts) {
+    static const char *const names[] = {
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+    };
+    int w = get_tm(ts)->tm_wday;
+    if (w < 0 || w > 6) w = 0;
+    return gray_string_new(arena, names[w], (int32_t)strlen(names[w]));
+}
+
+GrayString gray_time_month_name(GrayArena *arena, int64_t ts) {
+    static const char *const names[] = {
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    };
+    int mo = get_tm(ts)->tm_mon;
+    if (mo < 0 || mo > 11) mo = 0;
+    return gray_string_new(arena, names[mo], (int32_t)strlen(names[mo]));
+}

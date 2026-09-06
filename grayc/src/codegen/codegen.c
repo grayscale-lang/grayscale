@@ -5840,8 +5840,10 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 static bool emit_time_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool needs_arena = (strcmp(func, "format") == 0 || strcmp(func, "to_iso") == 0 ||
-        strcmp(func, "date") == 0 || strcmp(func, "to_clock") == 0);
-    bool is_fallible = (strcmp(func, "parse") == 0);
+        strcmp(func, "date") == 0 || strcmp(func, "to_clock") == 0 ||
+        strcmp(func, "humanize") == 0 || strcmp(func, "format_duration") == 0 ||
+        strcmp(func, "weekday_name") == 0 || strcmp(func, "month_name") == 0);
+    bool is_fallible = (strcmp(func, "parse") == 0 || strcmp(func, "parse_duration") == 0);
 
     if (is_fallible) {
         bool is_multi_var = is_result_temporary(codegen->current_var_name);
@@ -6216,8 +6218,15 @@ static bool emit_encoding_call(CodeGen *codegen, AstNode *node, const char *func
 /* --- @crypto module --- */
 
 static bool emit_crypto_call(CodeGen *codegen, AstNode *node, const char *func) {
-    emit_formatted(codegen, "gray_crypto_%s(gray_default_arena, ", func);
-    emit_expression(codegen, node->data.call.args[0]);
+    /* crc32 / entropy / constant_time_equal take no arena and return a scalar. */
+    bool no_arena = strcmp(func, "crc32") == 0 || strcmp(func, "entropy") == 0 ||
+                    strcmp(func, "constant_time_equal") == 0;
+    emit_formatted(codegen, "gray_crypto_%s(", func);
+    if (!no_arena) emit(codegen, "gray_default_arena, ");
+    for (int i = 0; i < node->data.call.arg_count; i++) {
+        if (i > 0) emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[i]);
+    }
     emit(codegen, ")");
     return true;
 }
@@ -6274,6 +6283,58 @@ static bool emit_csv_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, "({ GrayArray _csv_a = ");
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, "; gray_csv_headers(gray_default_arena, &_csv_a); })");
+        return true;
+    }
+    if (strcmp(func, "parse_delimited") == 0 && node->data.call.arg_count == 2) {
+        emit(codegen, "gray_csv_parse_delimited(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "detect_delimiter") == 0 && node->data.call.arg_count == 1) {
+        emit(codegen, "gray_csv_detect_delimiter(");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
+    /* Single-array-arg record views: to_maps / from_maps / to_json / to_markdown */
+    if ((strcmp(func, "to_maps") == 0 || strcmp(func, "from_maps") == 0 ||
+         strcmp(func, "to_json") == 0 || strcmp(func, "to_markdown") == 0) &&
+        node->data.call.arg_count == 1) {
+        emit_formatted(codegen, "({ GrayArray _csv_a = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; gray_csv_%s(gray_default_arena, &_csv_a); })", func);
+        return true;
+    }
+    /* (array, string) record views: column / sort_by_column */
+    if ((strcmp(func, "column") == 0 || strcmp(func, "sort_by_column") == 0) &&
+        node->data.call.arg_count == 2) {
+        emit_formatted(codegen, "({ GrayArray _csv_a = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; gray_csv_%s(gray_default_arena, &_csv_a, ", func);
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, "); })");
+        return true;
+    }
+    if (strcmp(func, "select") == 0 && node->data.call.arg_count == 2) {
+        emit(codegen, "({ GrayArray _csv_a = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, "; GrayArray _csv_n = ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, "; gray_csv_select(gray_default_arena, &_csv_a, &_csv_n); })");
+        return true;
+    }
+    if (strcmp(func, "filter_rows") == 0 && node->data.call.arg_count == 2) {
+        emit(codegen, "({ GrayArray _cf_src = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, "; bool (*_cf_fn)(GrayArray) = (void *)");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, "; GrayArray _cf_res = gray_array_new(gray_default_arena, sizeof(GrayArray), _cf_src.len); ");
+        emit(codegen, "for (int32_t _cf_i = 0; _cf_i < _cf_src.len; _cf_i++) { ");
+        emit(codegen, "GrayArray _cf_row = ((GrayArray *)_cf_src.data)[_cf_i]; ");
+        emit(codegen, "if (_cf_i == 0 || _cf_fn(_cf_row)) { GRAY_ARRAY_PUSH(gray_default_arena, &_cf_res, &_cf_row); } } _cf_res; })");
         return true;
     }
     if (strcmp(func, "write_file") == 0) {
@@ -6540,6 +6601,14 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
         } else {
             emit(codegen, "gray_random_char()");
         }
+        return true;
+    }
+    if (strcmp(func, "rand_string") == 0 && node->data.call.arg_count == 2) {
+        emit(codegen, "gray_random_string(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
         return true;
     }
     if (strcmp(func, "shuffle") == 0) {
@@ -7004,6 +7073,59 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_formatted(codegen, "_r_acc = _r_fn(_r_acc, ((%s *)_r_src.data)[_r_i]); } _r_acc; })", c_elem);
         return true;
     }
+    if (strcmp(func, "find_index") == 0 && node->data.call.arg_count == 2) {
+        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
+        const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+        emit(codegen, "({ GrayArray _fi_src = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; bool (*_fi_fn)(%s) = (void *)", c_elem);
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, "; int64_t _fi_res = -1; ");
+        emit_formatted(codegen, "for (int32_t _fi_i = 0; _fi_i < _fi_src.len; _fi_i++) { ");
+        emit_formatted(codegen, "if (_fi_fn(((%s *)_fi_src.data)[_fi_i])) { _fi_res = _fi_i; break; } } _fi_res; })", c_elem);
+        return true;
+    }
+    if (strcmp(func, "find") == 0 && node->data.call.arg_count == 2) {
+        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
+        const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+        emit(codegen, "({ GrayArray _fd_src = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; bool (*_fd_fn)(%s) = (void *)", c_elem);
+        emit_expression(codegen, node->data.call.args[1]);
+        emit_formatted(codegen, "; %s _fd_v0 = (%s){0}; bool _fd_ok = false; ", c_elem, c_elem);
+        emit_formatted(codegen, "for (int32_t _fd_i = 0; _fd_i < _fd_src.len; _fd_i++) { ");
+        emit_formatted(codegen, "%s _fd_e = ((%s *)_fd_src.data)[_fd_i]; ", c_elem, c_elem);
+        emit(codegen, "if (_fd_fn(_fd_e)) { _fd_v0 = _fd_e; _fd_ok = true; break; } } ");
+        emit_formatted(codegen, "(struct { %s v0; bool v1; }){ _fd_v0, _fd_ok }; })", c_elem);
+        return true;
+    }
+    if (strcmp(func, "average") == 0 && node->data.call.arg_count == 1) {
+        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
+        const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
+        emit(codegen, "({ GrayArray _av_src = ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, "; if (_av_src.len == 0) { gray_panic_code(\"P0121\", \"arrays.average called on an empty array\"); } ");
+        emit(codegen, "double _av_sum = 0.0; ");
+        emit_formatted(codegen, "for (int32_t _av_i = 0; _av_i < _av_src.len; _av_i++) { _av_sum += (double)((%s *)_av_src.data)[_av_i]; } ", c_elem);
+        emit(codegen, "_av_sum / (double)_av_src.len; })");
+        return true;
+    }
+    if (strcmp(func, "is_sorted") == 0 && node->data.call.arg_count == 1) {
+        GrayType *is_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *is_elem = (is_t && is_t->kind == TK_ARRAY) ? is_t->element_type : NULL;
+        if (is_elem && strcmp(is_elem, "float") == 0)
+            emit(codegen, "gray_arrays_is_sorted_float(");
+        else if (is_elem && strcmp(is_elem, "string") == 0)
+            emit(codegen, "gray_arrays_is_sorted_str(");
+        else
+            emit(codegen, "gray_arrays_is_sorted(");
+        emit_array_argument_address(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
 
     /* Generic: arrays.func(&arr, ...) or arrays.func(arena, &arr, ...) */
     bool needs_arena = (strcmp(func, "reverse") == 0 || strcmp(func, "slice") == 0 ||
@@ -7060,6 +7182,8 @@ static bool emit_os_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "current_os") == 0) { emit(codegen, "gray_os_current_os()"); return true; }
     if (strcmp(func, "arch") == 0) { emit(codegen, "gray_os_arch()"); return true; }
     if (strcmp(func, "pid") == 0) { emit(codegen, "gray_os_pid()"); return true; }
+    if (strcmp(func, "cpu_count") == 0) { emit(codegen, "gray_os_cpu_count()"); return true; }
+    if (strcmp(func, "is_tty") == 0) { emit(codegen, "gray_os_is_tty()"); return true; }
     if (strcmp(func, "set_env") == 0) {
         emit(codegen, "gray_os_set_env(");
         emit_expression(codegen, node->data.call.args[0]);
@@ -7112,6 +7236,8 @@ static bool emit_io_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool needs_arena = (strcmp(func, "read_file") == 0 ||
         strcmp(func, "read_bytes") == 0 ||
         strcmp(func, "read_lines") == 0 ||
+        strcmp(func, "read_stdin_all") == 0 ||
+        strcmp(func, "read_stdin_bytes") == 0 ||
         strcmp(func, "list_dir") == 0 ||
         strcmp(func, "walk") == 0 ||
         strcmp(func, "glob") == 0 ||
@@ -7185,7 +7311,10 @@ static bool emit_strings_call(CodeGen *codegen, AstNode *node, const char *func)
         strcmp(func, "slice") == 0 || strcmp(func, "split") == 0 ||
         strcmp(func, "split_whitespace") == 0 || strcmp(func, "split_n") == 0 ||
         strcmp(func, "to_title") == 0 || strcmp(func, "to_snake_case") == 0 ||
-        strcmp(func, "to_camel_case") == 0 ||
+        strcmp(func, "to_camel_case") == 0 || strcmp(func, "to_kebab_case") == 0 ||
+        strcmp(func, "to_pascal_case") == 0 ||
+        strcmp(func, "to_screaming_snake_case") == 0 ||
+        strcmp(func, "capitalize") == 0 || strcmp(func, "truncate") == 0 ||
         strcmp(func, "join") == 0 ||
         strcmp(func, "builder") == 0 || strcmp(func, "build") == 0 ||
         strcmp(func, "append_char") == 0 || strcmp(func, "prepend_char") == 0 ||
@@ -7312,6 +7441,14 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
 
     if (strcmp(func, "float_sci") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_fmt_float_sci(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
+
+    if ((strcmp(func, "format_number") == 0 || strcmp(func, "format_bytes") == 0) &&
+        node->data.call.arg_count == 1) {
+        emit_formatted(codegen, "gray_fmt_%s(gray_default_arena, ", func);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;

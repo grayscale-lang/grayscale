@@ -49,20 +49,22 @@ GrayString gray_strings_to_title(GrayArena *arena, GrayString s) {
     return r;
 }
 
-/* Every character can emit at most one separator plus itself, so the worst
- * case is twice the input length. */
-GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
+/* Word-boundary splitter shared by to_snake_case / to_kebab_case /
+ * to_screaming_snake_case. Every character can emit at most one separator plus
+ * itself, so the worst case is twice the input length.
+ *
+ * The separator is deferred rather than emitted on sight, so it only produces a
+ * character once a real character arrives to follow it. That drops trailing
+ * separators for free and collapses runs, the same way to_camel_case defers its
+ * capitalization. */
+static GrayString strings_delimit_words(GrayArena *arena, GrayString s, char sep) {
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len * 2 + 1);
     int32_t pos = 0;
-    /* Deferred rather than emitted on sight, so a separator only produces a
-     * '_' once a real character arrives to follow it. That drops trailing
-     * separators for free and collapses runs, the same way to_camel_case
-     * defers its capitalization. */
     bool pending_sep = false;
     for (int32_t i = 0; i < s.len; i++) {
         unsigned char c = (unsigned char)s.data[i];
         if (c == ' ' || c == '-' || c == '_') {
-            /* Leading separators are dropped rather than opening with '_'. */
+            /* Leading separators are dropped rather than opening with sep. */
             pending_sep = pos > 0;
             continue;
         }
@@ -75,7 +77,7 @@ GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
             if (boundary && pos > 0) pending_sep = true;
         }
         if (pending_sep) {
-            buf[pos++] = '_';
+            buf[pos++] = sep;
             pending_sep = false;
         }
         buf[pos++] = (char)tolower(c);
@@ -85,16 +87,30 @@ GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
     return r;
 }
 
-GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s) {
+GrayString gray_strings_to_snake_case(GrayArena *arena, GrayString s) {
+    return strings_delimit_words(arena, s, '_');
+}
+
+GrayString gray_strings_to_kebab_case(GrayArena *arena, GrayString s) {
+    return strings_delimit_words(arena, s, '-');
+}
+
+GrayString gray_strings_to_screaming_snake_case(GrayArena *arena, GrayString s) {
+    return gray_strings_to_upper(arena, strings_delimit_words(arena, s, '_'));
+}
+
+/* Shared by to_camel_case (first_upper = false) and to_pascal_case
+ * (first_upper = true). */
+static GrayString strings_camelish(GrayArena *arena, GrayString s, bool first_upper) {
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
     int32_t pos = 0;
-    bool upper_next = false;
+    bool upper_next = first_upper;
     for (int32_t i = 0; i < s.len; i++) {
         unsigned char c = (unsigned char)s.data[i];
         if (c == '_' || c == '-' || c == ' ') {
-            /* Leading separators are dropped rather than capitalizing the
-             * first word. */
-            upper_next = pos > 0;
+            /* A leading separator still leaves the first real character cased by
+             * first_upper; a later one always capitalizes the next word. */
+            upper_next = first_upper || pos > 0;
             continue;
         }
         buf[pos++] = upper_next ? (char)toupper(c) : (char)tolower(c);
@@ -102,6 +118,43 @@ GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s) {
     }
     buf[pos] = '\0';
     GrayString r = { buf, pos };
+    return r;
+}
+
+GrayString gray_strings_to_camel_case(GrayArena *arena, GrayString s) {
+    return strings_camelish(arena, s, false);
+}
+
+GrayString gray_strings_to_pascal_case(GrayArena *arena, GrayString s) {
+    return strings_camelish(arena, s, true);
+}
+
+GrayString gray_strings_capitalize(GrayArena *arena, GrayString s) {
+    if (s.len == 0) return gray_string_lit("");
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
+    memcpy(buf, s.data, (size_t)s.len);
+    buf[0] = (char)toupper((unsigned char)buf[0]);
+    buf[s.len] = '\0';
+    GrayString r = { buf, s.len };
+    return r;
+}
+
+/* Byte-oriented like the rest of the module (slice, char_at, len): max and the
+ * ellipsis length are byte counts. */
+GrayString gray_strings_truncate(GrayArena *arena, GrayString s, int64_t max, GrayString ellipsis) {
+    if (max < ellipsis.len) {
+        gray_panic_code("P0119",
+            "strings.truncate: max (%lld) is smaller than the ellipsis length (%d)",
+            (long long)max, (int)ellipsis.len);
+    }
+    if (s.len <= max) return s;
+    int32_t head = (int32_t)(max - ellipsis.len);
+    int32_t new_len = head + ellipsis.len;
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    memcpy(buf, s.data, (size_t)head);
+    memcpy(buf + head, ellipsis.data, (size_t)ellipsis.len);
+    buf[new_len] = '\0';
+    GrayString r = { buf, new_len };
     return r;
 }
 
