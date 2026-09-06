@@ -106,7 +106,7 @@
  *   println(fmt.pad_left("42", 5, '0'))
  *@end
  */
-GrayString gray_fmt_pad_left(GrayArena *arena, GrayString s, int64_t width, char ch);
+GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, char ch);
 
 /*@man pad_right
  *@module fmt
@@ -118,7 +118,7 @@ GrayString gray_fmt_pad_left(GrayArena *arena, GrayString s, int64_t width, char
  *   println(fmt.pad_right("hi", 6, '.'))
  *@end
  */
-GrayString gray_fmt_pad_right(GrayArena *arena, GrayString s, int64_t width, char ch);
+GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, char ch);
 
 /*@man center
  *@module fmt
@@ -130,7 +130,7 @@ GrayString gray_fmt_pad_right(GrayArena *arena, GrayString s, int64_t width, cha
  *   println(fmt.center("hi", 8, '-'))
  *@end
  */
-GrayString gray_fmt_center(GrayArena *arena, GrayString s, int64_t width, char ch);
+GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, char ch);
 
 /*@man int_to_hex
  *@module fmt
@@ -142,7 +142,7 @@ GrayString gray_fmt_center(GrayArena *arena, GrayString s, int64_t width, char c
  *   println(fmt.int_to_hex(255))
  *@end
  */
-GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t n);
+GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t value);
 
 /*@man int_to_binary
  *@module fmt
@@ -154,7 +154,7 @@ GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t n);
  *   println(fmt.int_to_binary(10))
  *@end
  */
-GrayString gray_fmt_int_to_binary(GrayArena *arena, int64_t n);
+GrayString gray_fmt_int_to_binary(GrayArena *arena, int64_t value);
 
 /*@man int_to_octal
  *@module fmt
@@ -166,7 +166,7 @@ GrayString gray_fmt_int_to_binary(GrayArena *arena, int64_t n);
  *   println(fmt.int_to_octal(8))
  *@end
  */
-GrayString gray_fmt_int_to_octal(GrayArena *arena, int64_t n);
+GrayString gray_fmt_int_to_octal(GrayArena *arena, int64_t value);
 
 /*@man float_fixed
  *@module fmt
@@ -178,7 +178,7 @@ GrayString gray_fmt_int_to_octal(GrayArena *arena, int64_t n);
  *   println(fmt.float_fixed(3.14159, 2))
  *@end
  */
-GrayString gray_fmt_float_fixed(GrayArena *arena, double f, int64_t decimals);
+GrayString gray_fmt_float_fixed(GrayArena *arena, double value, int64_t decimals);
 
 /*@man float_sci
  *@module fmt
@@ -190,7 +190,7 @@ GrayString gray_fmt_float_fixed(GrayArena *arena, double f, int64_t decimals);
  *   println(fmt.float_sci(0.000123))
  *@end
  */
-GrayString gray_fmt_float_sci(GrayArena *arena, double f);
+GrayString gray_fmt_float_sci(GrayArena *arena, double value);
 
 /*@man format_number
  *@module fmt
@@ -202,7 +202,7 @@ GrayString gray_fmt_float_sci(GrayArena *arena, double f);
  *   println(fmt.format_number(1234567))
  *@end
  */
-GrayString gray_fmt_format_number(GrayArena *arena, int64_t n);
+GrayString gray_fmt_format_number(GrayArena *arena, int64_t value);
 
 /*@man format_bytes
  *@module fmt
@@ -214,6 +214,6 @@ GrayString gray_fmt_format_number(GrayArena *arena, int64_t n);
  *   println(fmt.format_bytes(1536))
  *@end
  */
-GrayString gray_fmt_format_bytes(GrayArena *arena, int64_t n);
+GrayString gray_fmt_format_bytes(GrayArena *arena, int64_t value);
 
 #endif
