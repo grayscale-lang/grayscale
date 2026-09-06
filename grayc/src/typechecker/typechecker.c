@@ -14989,6 +14989,30 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
         scope_define(loop_scope, node->data.for_each.var_name, elem_t, false);
     }
 
+    /* Escape analysis: a pointer read out of a tracked container keeps the
+     * container's lifetime origin (and @mem arena), so returning or storing
+     * the loop variable is still E3162/E3163/E3164 — the same single-slot
+     * approximation the `when` payload binder and field_mem_arena use.
+     * Applied to var_name (map key iteration binds it to the key; a pointer
+     * key is rare but costs nothing to cover). */
+    {
+        const char *coll_root =
+            assignment_target_root_name(node->data.for_each.collection);
+        Symbol *coll_sym = coll_root ? scope_lookup(outer, coll_root) : NULL;
+        const char *vn = node->data.for_each.var_name;
+        Symbol *lv = (coll_sym && vn) ? scope_lookup_local(loop_scope, vn) : NULL;
+        if (lv) {
+            if (coll_sym->field_origin_depth) {
+                lv->origin_depth = coll_sym->field_origin_depth;
+                lv->origin_name  = coll_sym->field_origin_name;
+            }
+            if (coll_sym->field_mem_arena) {
+                lv->mem_arena = coll_sym->field_mem_arena;
+                lv->mem_epoch = coll_sym->field_mem_epoch;
+            }
+        }
+    }
+
     checker->loop_depth++;
     pointer_checker_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
     check_block(checker, node->data.for_each.body);
