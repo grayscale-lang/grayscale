@@ -8328,12 +8328,12 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     if (uf && func_is_generic(uf)) uf = NULL;
                     if (uf) {
                         int param_count = uf->data.func_decl.param_count;
-                        int ac = node->data.call.arg_count;
-                        int total = ac < param_count ? param_count : ac;
+                        int arg_count = node->data.call.arg_count;
+                        int slot_count = arg_count < param_count ? param_count : arg_count;
                         emit_formatted(codegen, "gray_fn_%s_%s(", real_mod, func);
-                        for (int i = 0; i < total; i++) {
+                        for (int i = 0; i < slot_count; i++) {
                             if (i > 0) emit(codegen, ", ");
-                            if (i < ac) {
+                            if (i < arg_count) {
                                 bool mut_param = i < param_count && uf->data.func_decl.params[i].mutable;
                                 emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
                             } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
@@ -8391,27 +8391,27 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
             const char *binding = NULL;
             char *dynamic_binding = NULL;
             int param_count = target_func->data.func_decl.param_count;
-            int ac = node->data.call.arg_count;
-            int cc = param_count < ac ? param_count : ac;
-            for (int pi = 0; pi < cc && !binding; pi++) {
+            int arg_count = node->data.call.arg_count;
+            int paired_count = param_count < arg_count ? param_count : arg_count;
+            for (int param_index = 0; param_index < paired_count && !binding; param_index++) {
                 /* Type parameter: binding is the arg label directly.
                  * When forwarding (T→"?"), resolve via the outer binding. */
-                if (target_func->data.func_decl.params[pi].is_type_param) {
-                    if (node->data.call.args[pi]->kind == NODE_LABEL) {
-                        const char *lbl = node->data.call.args[pi]->data.label.value;
-                        if (strcmp(lbl, "?") == 0 && codegen->wildcard_binding)
+                if (target_func->data.func_decl.params[param_index].is_type_param) {
+                    if (node->data.call.args[param_index]->kind == NODE_LABEL) {
+                        const char *label = node->data.call.args[param_index]->data.label.value;
+                        if (strcmp(label, "?") == 0 && codegen->wildcard_binding)
                             binding = codegen->wildcard_binding;
                         else
-                            binding = lbl;
+                            binding = label;
                     }
                     continue;
                 }
-                const char *ptn = target_func->data.func_decl.params[pi].type_name;
-                if (!ptn || !strchr(ptn, '?')) continue;
+                const char *param_type_name = target_func->data.func_decl.params[param_index].type_name;
+                if (!param_type_name || !strchr(param_type_name, '?')) continue;
                 GrayType *arg_type = codegen->type_table
-                    ? typetable_get(codegen->type_table, node->data.call.args[pi]) : NULL;
+                    ? typetable_get(codegen->type_table, node->data.call.args[param_index]) : NULL;
                 if (!arg_type) continue;
-                if (strcmp(ptn, "?") == 0) {
+                if (strcmp(param_type_name, "?") == 0) {
                     /* Inside a generic body the arg's typetable entry is still
                      * TK_UNKNOWN from the main-pass walk; use the outer binding. */
                     const char *type_str = type_name(arg_type);
@@ -8424,7 +8424,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 } else {
                     /* Composite param type (e.g. [[?]], [map[K:?]], map[K:[?]]).
                      * Use the recursive helper to peel layers until '?' is reached. */
-                    char *derived = codegen_bind_wildcard(ptn, type_name(arg_type));
+                    char *derived = codegen_bind_wildcard(param_type_name, type_name(arg_type));
                     if (derived) {
                         free(dynamic_binding);
                         dynamic_binding = derived;
