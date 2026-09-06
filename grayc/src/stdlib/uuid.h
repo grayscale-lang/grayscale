@@ -12,6 +12,7 @@
 #define GRAY_UUID_H
 
 #include "../runtime/runtime.h"
+#include "../runtime/array.h"
 
 /*@man generate
  *@module uuid
@@ -85,6 +86,29 @@
  *@end
  */
 
+/*@man to_bytes
+ *@module uuid
+ *@group Conversion
+ *@sig to_bytes(id UUID) -> [byte]
+ *@desc Returns the UUID's 16 raw bytes in big-endian (network) order.
+ *@example
+ *   import @uuid
+ *   mut id UUID = uuid.generate()
+ *   mut raw [byte] = uuid.to_bytes(id)
+ *@end
+ */
+
+/*@man from_bytes
+ *@module uuid
+ *@group Conversion
+ *@sig from_bytes(bytes [byte]) -> UUID
+ *@desc Builds a UUID from 16 raw bytes in big-endian order. The bytes are used verbatim — no version or variant bits are forced. Panics if fewer than 16 bytes are given.
+ *@example
+ *   import @uuid
+ *   mut id UUID = uuid.from_bytes(uuid.to_bytes(uuid.generate()))
+ *@end
+ */
+
 /*@man is_valid
  *@module uuid
  *@group Validation
@@ -110,6 +134,8 @@ typedef struct {
 } GrayUUID;
 
 GrayUUID gray_uuid_generate(GrayArena *arena);
+GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id);
+GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes);
 GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id);
 GrayUUID gray_uuid_generate_random(GrayArena *arena);
 GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena);

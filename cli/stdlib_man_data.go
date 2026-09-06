@@ -522,6 +522,8 @@ var stdlibManDocs = map[string]StdlibManEntry{
 	"uuid.generate_compact":           {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "generate_compact(id UUID) -> string", Fields: "", Desc: "Returns the UUID with its hyphens stripped, as a 32-character hex string.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.generate_compact(id))"},
 	"uuid.parse":                      {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "parse(s string) -> UUID", Fields: "", Desc: "Validates and normalizes a 36-character hyphenated UUID string to lowercase. Panics on invalid input; gate with is_valid for a non-panicking check.", Example: "import @uuid\nmut id UUID = uuid.parse(\"550E8400-E29B-41D4-A716-446655440000\")\nprintln(uuid.to_string(id))"},
 	"uuid.to_string":                  {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "to_string(id UUID) -> string", Fields: "", Desc: "Returns the UUID's canonical 36-character hyphenated string representation.", Example: "import @uuid\nmut id UUID = uuid.generate()\nprintln(uuid.to_string(id))"},
+	"uuid.to_bytes":                   {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "to_bytes(id UUID) -> [byte]", Fields: "", Desc: "Returns the UUID's 16 raw bytes in big-endian (network) order.", Example: "import @uuid\nmut id UUID = uuid.generate()\nmut raw [byte] = uuid.to_bytes(id)"},
+	"uuid.from_bytes":                 {Module: "uuid", Group: "Conversion", Kind: "func", Sig: "from_bytes(bytes [byte]) -> UUID", Fields: "", Desc: "Builds a UUID from 16 raw bytes in big-endian order. The bytes are used verbatim — no version or variant bits are forced. Panics if fewer than 16 bytes are given.", Example: "import @uuid\nmut id UUID = uuid.from_bytes(uuid.to_bytes(uuid.generate()))"},
 	"uuid.is_valid":                   {Module: "uuid", Group: "Validation", Kind: "func", Sig: "is_valid(s string) -> bool", Fields: "", Desc: "Reports whether s is a well-formed 36-character hyphenated UUID string.", Example: "import @uuid\nif uuid.is_valid(\"not-a-uuid\") == false { println(\"rejected\") }"},
 	"uuid.NIL_UUID":                   {Module: "uuid", Group: "Constants", Kind: "const", Sig: "00000000-0000-0000-0000-000000000000", Fields: "", Desc: "The all-zero UUID.", Example: ""},
 }
@@ -555,7 +557,7 @@ var stdlibModules = map[string][]string{
 	"sync":     {"mutex", "lock", "unlock", "try_lock", "destroy"},
 	"threads":  {"spawn", "spawn_arg", "join", "detach", "is_alive", "get_id", "yield", "sleep", "thread_count"},
 	"time":     {"now", "now_ms", "now_ns", "year", "month", "day", "hour", "minute", "second", "weekday", "is_leap_year", "format", "to_iso", "date", "to_clock", "parse", "diff", "since", "tick", "elapsed_ms", "humanize", "parse_duration", "format_duration", "add_days", "add_hours", "add_seconds", "start_of_day", "end_of_day", "days_in_month", "day_of_year", "weekday_name", "month_name"},
-	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "is_valid", "NIL_UUID"},
+	"uuid":     {"generate", "generate_random", "generate_time_ordered", "generate_compact", "parse", "to_string", "to_bytes", "from_bytes", "is_valid", "NIL_UUID"},
 }
 
 // stdlibGroup is one labeled group of names within a module index.
@@ -739,7 +741,7 @@ var stdlibModuleGroups = map[string][]stdlibGroup{
 	},
 	"uuid": {
 		{Label: "Generation    ", Names: []string{"generate", "generate_random", "generate_time_ordered"}},
-		{Label: "Conversion    ", Names: []string{"generate_compact", "parse", "to_string"}},
+		{Label: "Conversion    ", Names: []string{"generate_compact", "parse", "to_string", "to_bytes", "from_bytes"}},
 		{Label: "Validation    ", Names: []string{"is_valid"}},
 		{Label: "Constants     ", Names: []string{"NIL_UUID"}},
 	},

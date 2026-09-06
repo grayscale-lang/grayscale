@@ -5955,6 +5955,16 @@ static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ")"); return true;
     }
+    if (strcmp(func, "to_bytes") == 0) {
+        emit(codegen, "gray_uuid_to_bytes(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")"); return true;
+    }
+    if (strcmp(func, "from_bytes") == 0) {
+        emit(codegen, "gray_uuid_from_bytes(gray_default_arena, ");
+        emit_address_of(codegen, node->data.call.args[0]);
+        emit(codegen, ")"); return true;
+    }
     return false;
 }
 

@@ -3018,12 +3018,14 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"time", "weekday_name", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "year",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     /* uuid */
+    {"uuid", "from_bytes",           1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "UUID"},
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
     {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
     {"uuid", "parse",                 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "UUID"},
+    {"uuid", "to_bytes",              1, 1, false, FT_NONE, 0, {{0}},"[byte]"},
     {"uuid", "to_string",             1, 1, false, FT_NONE, 0, {{0}},"string"},
 };
 

@@ -67,6 +67,53 @@ static void gray_uuid_format_hyphenated(const uint8_t *bytes, char *buf) {
         bytes[12], bytes[13], bytes[14], bytes[15]);
 }
 
+static int uuid_hex_val(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return 0;
+}
+
+/* Decode the canonical 36-char hyphenated form into 16 bytes. A value that
+ * is not 36 chars (failed generate, or the default-zero struct) yields the
+ * nil UUID's bytes. */
+static void uuid_to_bytes16(GrayUUID id, uint8_t out[16]) {
+    if (id.value.len != GRAY_UUID_LEN) {
+        memset(out, 0, 16);
+        return;
+    }
+    int b = 0;
+    for (int i = 0; i < GRAY_UUID_LEN && b < 16; i++) {
+        if (id.value.data[i] == '-') continue;
+        out[b++] = (uint8_t)((uuid_hex_val(id.value.data[i]) << 4) |
+                             uuid_hex_val(id.value.data[i + 1]));
+        i++;
+    }
+}
+
+GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id) {
+    uint8_t bytes[16];
+    uuid_to_bytes16(id, bytes);
+    return gray_array_from(arena, bytes, sizeof(uint8_t), 16);
+}
+
+GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes) {
+    if (bytes->len < 16) {
+        gray_builtin_panic_msg(gray_string_lit("uuid.from_bytes: need 16 bytes"));
+    }
+    uint8_t raw[16];
+    for (int i = 0; i < 16; i++) {
+        raw[i] = (bytes->elem_size == 1)
+            ? ((const uint8_t *)bytes->data)[i]
+            : (uint8_t)((const int64_t *)bytes->data)[i];
+    }
+    char buf[GRAY_UUID_LEN + 1];
+    gray_uuid_format_hyphenated(raw, buf);
+    GrayUUID uuid;
+    uuid.value = gray_string_new(arena, buf, GRAY_UUID_LEN);
+    return uuid;
+}
+
 GrayUUID gray_uuid_generate(GrayArena *arena) {
     uint8_t bytes[16];
     GrayUUID uuid;

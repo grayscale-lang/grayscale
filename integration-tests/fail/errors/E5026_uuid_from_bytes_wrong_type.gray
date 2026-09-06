@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - wrong argument type to uuid.from_bytes
+ * Expected: uuid.from_bytes() expects array, got string
+ */
+
+// expect-error: E5026
+
+import @uuid
+
+do main() {
+    mut id UUID = uuid.from_bytes("550e8400")
+    println(uuid.to_string(id))
+}
