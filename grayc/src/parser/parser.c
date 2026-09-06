@@ -25,8 +25,10 @@
 #define TMP_NAME_BUF     32
 #define FIELD_NAME_BUF           8
 /* Attributes collected from one `#[a, b, ...]` list before they are applied
- * to the following declaration. */
-#define MAX_ATTR_LIST_ENTRIES 7
+ * to the following declaration. One slot per AttrBit: duplicates are rejected
+ * as they are parsed, so a list can never hold more distinct entries than
+ * there are attributes. */
+#define MAX_ATTR_LIST_ENTRIES 8
 
 /* Operator precedence levels */
 typedef enum {
