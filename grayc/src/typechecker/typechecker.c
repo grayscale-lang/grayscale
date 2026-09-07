@@ -3665,6 +3665,36 @@ static const char *find_using_stdlib_module(TypeChecker *checker, const char *fn
     return NULL;
 }
 
+/* Distinct in-scope `using` modules that make a bare call name callable (a
+ * stdlib function or a non-private user-module function). Fills mod_a/mod_b
+ * with the first two for the E4031 message. A bare call resolves first-wins,
+ * so two providers means one is silently unreachable. */
+static int count_using_call_providers(TypeChecker *checker, const char *fn,
+                                      const char **mod_a, const char **mod_b) {
+    int count = 0;
+    for (int i = 0; i < checker->using_module_count; i++) {
+        if (!using_module_accessible(checker, i)) continue;
+        const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[i]);
+        bool provides = find_stdlib_meta(real_mod, fn) != NULL;
+        if (!provides) {
+            FuncSig *sig = find_module_func(checker, real_mod, fn);
+            provides = sig && !sig->is_private;
+        }
+        if (!provides) continue;
+        /* One module reached under two names (alias + real) is not a clash. */
+        if (count == 1 && strcmp(real_mod, *mod_a) == 0) continue;
+        if (count == 0) {
+            *mod_a = real_mod;
+            count = 1;
+        } else {
+            *mod_b = real_mod;
+            count = 2;
+            break;
+        }
+    }
+    return count;
+}
+
 static void set_temp_return_slots(TypeChecker *checker, const char *tmp_name,
                                   GrayType **slots, int count) {
     Symbol *sym = scope_lookup_local(checker->current_scope, tmp_name);
@@ -7533,6 +7563,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
 
 static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
+    const char *bare_name = function_name; /* before any struct-context rewrite */
     FuncSig *sig = find_func(checker, function_name);
     /* A bare name inside a struct function body falls back to the enclosing
      * struct's namespace, where struct functions are registered as
@@ -7559,6 +7590,30 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
     }
     if (sig) {
         sig->used = true;
+        /* E4031: the bare name reached a function through `using`, but another
+         * in-scope module also provides it — the pick was import order, and
+         * the other one is unreachable. A user's own top-level function of
+         * that name wins unambiguously and is exempt. */
+        {
+            DeclEntry *be = checker_resolve_entry(checker, bare_name);
+            if (be && be->module_name && be->module_name[0] && !be->module_is_entry) {
+                const char *amb_a = NULL, *amb_b = NULL;
+                if (count_using_call_providers(checker, bare_name, &amb_a, &amb_b) >= 2) {
+                    AstNode *fn_node = node->data.call.function;
+                    int el = fn_node ? fn_node->token.line : node->token.line;
+                    int ec = fn_node ? fn_node->token.column : node->token.column;
+                    diagnostic_error_code_formatted(checker->diag, "E4031",
+                        NODE_FILE(checker, node), el, ec, 0,
+                        bare_name, amb_a, amb_b, amb_a, bare_name);
+                    /* Both modules genuinely contribute the name; don't also
+                     * warn that the losing one is unused. */
+                    FuncSig *other = find_module_func(checker, amb_b, bare_name);
+                    if (other) other->used = true;
+                    mark_import_used(checker, amb_a);
+                    mark_import_used(checker, amb_b);
+                }
+            }
+        }
         warn_if_func_deprecated(checker, node, sig);
         reject_test_fn_reference(checker, node, sig);
         /* Use the user-facing name in error messages, never
@@ -7906,6 +7961,30 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
             /* Set when the bare name resolves to a stdlib function, so the
              * same signature checks the qualified form gets can run below. */
             const char *using_stdlib_mod = NULL;
+            /* E4031: two in-scope `using` modules provide this name. Resolution
+             * is first-wins, so one is silently unreachable — make the user
+             * qualify the call. */
+            {
+                const char *amb_a = NULL, *amb_b = NULL;
+                if (count_using_call_providers(checker, function_name, &amb_a, &amb_b) >= 2) {
+                    AstNode *fn_node = node->data.call.function;
+                    int el = fn_node ? fn_node->token.line : node->token.line;
+                    int ec = fn_node ? fn_node->token.column : node->token.column;
+                    diagnostic_error_code_formatted(checker->diag, "E4031",
+                        NODE_FILE(checker, node), el, ec, 0,
+                        function_name, amb_a, amb_b, amb_a, function_name);
+                    found_in_using = true; /* skip resolution + "undefined function" */
+                    /* Both modules genuinely contribute the name — don't also
+                     * warn that one is unused. */
+                    for (int ui = 0; ui < checker->using_module_count; ui++) {
+                        const char *rm = typechecker_resolve_alias(checker, checker->using_modules[ui]);
+                        if (strcmp(rm, amb_a) == 0 || strcmp(rm, amb_b) == 0) {
+                            mark_import_used(checker, checker->using_modules[ui]);
+                            mark_import_used(checker, rm);
+                        }
+                    }
+                }
+            }
             /* Check for math functions whose return type depends on argument */
             if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0 ||
                 strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||

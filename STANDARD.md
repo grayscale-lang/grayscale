@@ -1655,7 +1655,7 @@ when direction {
 
 When a `when` statement matches on enum values (i.e. one or more `is` branches use `EnumName.VARIANT` patterns) and has no `default` branch, the compiler warns if `#strict` is not present. This warns that exhaustiveness is not being checked. The fix is to either add `#strict` to enforce exhaustive coverage or add a `default` branch. This applies at any nesting depth.
 
-An empty `default {}` branch emits a warning. Unmatched values are silently ignored, which is almost never intentional. Either handle the case or add a comment explaining the intent.
+An empty `default {}` branch emits a warning. Unmatched values are silently ignored, which is almost never intentional. Handle the case or drop the `default` branch and use `#strict`.
 
 ### 6.6 Ensure Statement
 
@@ -2892,6 +2892,10 @@ Multiple modules can be listed:
 ```gray
 using arrays, strings
 ```
+
+If two modules in scope both provide a name (for example `arrays.contains` and
+`strings.contains`), calling it unqualified is an error (`E4031`) — write the
+call with its module prefix.
 
 ### 8.5 Module Member Access
 
