@@ -5098,6 +5098,18 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             } else {
                 result = &TYPE_INT;
             }
+        } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
+                   strcmp(mfn, "get_max") == 0) {
+            /* A float array yields a float; every integer element width folds
+             * back to int (matches math.min/max). */
+            result = &TYPE_INT;
+            if (node->data.call.arg_count > 0) {
+                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+                if (arr_t && arr_t->element_type &&
+                    type_from_name(arr_t->element_type)->kind == TK_FLOAT) {
+                    result = &TYPE_FLOAT;
+                }
+            }
         }
         /* E5007: mutating array functions on const array */
         if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "insert_at") == 0 ||

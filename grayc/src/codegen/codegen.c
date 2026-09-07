@@ -6926,19 +6926,39 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "remove") == 0 && node->data.call.arg_count == 2) {
         GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-            strcmp(arr_t->element_type, "string") == 0) {
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_remove_str(");
-        } else if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-                   strcmp(arr_t->element_type, "float") == 0) {
-            emit(codegen, "gray_arrays_remove_float(");
-        } else {
-            emit(codegen, "gray_arrays_remove_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
         }
+        if (elem_tn && is_bigint_type(elem_tn)) {
+            emit(codegen, "gray_arrays_remove_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        /* Find the first slot equal to the value (reading it as its real C
+         * type, widened for the compare) and drop it; remove_at is
+         * width-agnostic. */
+        char c_elem[MSG_BUF_SIZE];
+        snprintf(c_elem, sizeof(c_elem), "%s",
+            gray_type_to_c_codegen(codegen, elem_tn ? elem_tn : "int"));
+        const char *w = (type_from_name(elem_tn ? elem_tn : "int")->kind == TK_FLOAT)
+            ? "double" : "int64_t";
+        int tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "{ GrayArray *_rm%d = ", tag);
         emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
+        emit_formatted(codegen, "; %s _rv%d = ", w, tag);
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
+        emit_formatted(codegen, "; for (int32_t _ri%d = 0; _ri%d < _rm%d->len; _ri%d++) { "
+            "if ((%s)((%s *)_rm%d->data)[_ri%d] == _rv%d) { gray_arrays_remove_at(_rm%d, _ri%d); break; } } }",
+            tag, tag, tag, tag, w, c_elem, tag, tag, tag, tag, tag);
         return true;
     }
     if (strcmp(func, "clear") == 0 && node->data.call.arg_count == 1) {
@@ -6981,16 +7001,40 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "contains") == 0 && node->data.call.arg_count == 2) {
         GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-            strcmp(arr_t->element_type, "string") == 0) {
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_contains_str(");
-        } else {
-            emit(codegen, "gray_arrays_contains_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
         }
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
+        if (elem_tn && is_bigint_type(elem_tn)) {
+            emit(codegen, "gray_arrays_contains_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        /* Every other element type: read each slot as its real C type so the
+         * stride and width are correct ([byte], [char], [f32], sized ints all
+         * broke when read as int64), then widen both sides for the compare so
+         * an out-of-range needle can't truncate. */
+        char c_elem[MSG_BUF_SIZE];
+        snprintf(c_elem, sizeof(c_elem), "%s",
+            gray_type_to_c_codegen(codegen, elem_tn ? elem_tn : "int"));
+        const char *w = (type_from_name(elem_tn ? elem_tn : "int")->kind == TK_FLOAT)
+            ? "double" : "int64_t";
+        int tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _ct%d = ", tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; %s _cv%d = ", w, tag);
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
+        emit_formatted(codegen, "; bool _cr%d = false; for (int32_t _ci%d = 0; _ci%d < _ct%d.len; _ci%d++) { "
+            "if ((%s)((%s *)_ct%d.data)[_ci%d] == _cv%d) { _cr%d = true; break; } } _cr%d; })",
+            tag, tag, tag, tag, tag, w, c_elem, tag, tag, tag, tag, tag);
         return true;
     }
     if (strcmp(func, "is_equal") == 0 && node->data.call.arg_count == 2) {
@@ -7009,16 +7053,73 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "index_of") == 0 && node->data.call.arg_count == 2) {
         GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-            strcmp(arr_t->element_type, "string") == 0) {
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_index_of_str(");
-        } else {
-            emit(codegen, "gray_arrays_index_of_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
         }
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
+        if (elem_tn && is_bigint_type(elem_tn)) {
+            emit(codegen, "gray_arrays_index_of_int(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        char c_elem[MSG_BUF_SIZE];
+        snprintf(c_elem, sizeof(c_elem), "%s",
+            gray_type_to_c_codegen(codegen, elem_tn ? elem_tn : "int"));
+        const char *w = (type_from_name(elem_tn ? elem_tn : "int")->kind == TK_FLOAT)
+            ? "double" : "int64_t";
+        int tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _ix%d = ", tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; %s _iv%d = ", w, tag);
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
+        emit_formatted(codegen, "; int64_t _ir%d = -1; for (int32_t _ii%d = 0; _ii%d < _ix%d.len; _ii%d++) { "
+            "if ((%s)((%s *)_ix%d.data)[_ii%d] == _iv%d) { _ir%d = _ii%d; break; } } _ir%d; })",
+            tag, tag, tag, tag, tag, w, c_elem, tag, tag, tag, tag, tag, tag);
+        return true;
+    }
+    if (strcmp(func, "count") == 0 && node->data.call.arg_count == 2) {
+        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        int tag = codegen_next_id(codegen);
+        if (elem_tn && strcmp(elem_tn, "string") == 0) {
+            emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; GrayString _cv%d = ", tag);
+            emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen, "; int64_t _cr%d = 0; for (int32_t _ci%d = 0; _ci%d < _cn%d.len; _ci%d++) { "
+                "GrayString _ce%d = ((GrayString *)_cn%d.data)[_ci%d]; "
+                "if (_ce%d.len == _cv%d.len && memcmp(_ce%d.data, _cv%d.data, (size_t)_ce%d.len) == 0) _cr%d++; } _cr%d; })",
+                tag, tag, tag, tag, tag, tag, tag, tag, tag, tag, tag, tag, tag, tag, tag);
+            return true;
+        }
+        if (elem_tn && is_bigint_type(elem_tn)) {
+            emit(codegen, "gray_arrays_count(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        char c_elem[MSG_BUF_SIZE];
+        snprintf(c_elem, sizeof(c_elem), "%s",
+            gray_type_to_c_codegen(codegen, elem_tn ? elem_tn : "int"));
+        const char *w = (type_from_name(elem_tn ? elem_tn : "int")->kind == TK_FLOAT)
+            ? "double" : "int64_t";
+        emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; %s _cv%d = ", w, tag);
+        emit_expression(codegen, node->data.call.args[1]);
+        emit_formatted(codegen, "; int64_t _cr%d = 0; for (int32_t _ci%d = 0; _ci%d < _cn%d.len; _ci%d++) { "
+            "if ((%s)((%s *)_cn%d.data)[_ci%d] == _cv%d) _cr%d++; } _cr%d; })",
+            tag, tag, tag, tag, tag, w, c_elem, tag, tag, tag, tag, tag);
         return true;
     }
     /* prepend/fill need special value wrapping */
@@ -7215,6 +7316,39 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, "double _av_sum = 0.0; ");
         emit_formatted(codegen, "for (int32_t _av_i = 0; _av_i < _av_src.len; _av_i++) { _av_sum += (double)((%s *)_av_src.data)[_av_i]; } ", c_elem);
         emit(codegen, "_av_sum / (double)_av_src.len; })");
+        return true;
+    }
+    if ((strcmp(func, "get_sum") == 0 || strcmp(func, "get_min") == 0 ||
+         strcmp(func, "get_max") == 0) && node->data.call.arg_count == 1) {
+        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
+        if (is_bigint_type(elem_tn)) {
+            emit_formatted(codegen, "gray_arrays_%s(", func);
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ")");
+            return true;
+        }
+        char c_elem[MSG_BUF_SIZE];
+        snprintf(c_elem, sizeof(c_elem), "%s", gray_type_to_c_codegen(codegen, elem_tn));
+        bool is_float = type_from_name(elem_tn)->kind == TK_FLOAT;
+        const char *acc = is_float ? "double" : "int64_t";
+        int tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _ag%d = ", tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; %s _ar%d = 0; ", acc, tag);
+        if (strcmp(func, "get_sum") == 0) {
+            emit_formatted(codegen, "for (int32_t _ai%d = 0; _ai%d < _ag%d.len; _ai%d++) { "
+                "_ar%d += (%s)((%s *)_ag%d.data)[_ai%d]; } _ar%d; })",
+                tag, tag, tag, tag, tag, acc, c_elem, tag, tag, tag);
+        } else {
+            const char *cmp = (strcmp(func, "get_max") == 0) ? ">" : "<";
+            emit_formatted(codegen, "if (_ag%d.len > 0) { _ar%d = (%s)((%s *)_ag%d.data)[0]; "
+                "for (int32_t _ai%d = 1; _ai%d < _ag%d.len; _ai%d++) { "
+                "%s _av%d = (%s)((%s *)_ag%d.data)[_ai%d]; if (_av%d %s _ar%d) _ar%d = _av%d; } } _ar%d; })",
+                tag, tag, acc, c_elem, tag,
+                tag, tag, tag, tag,
+                acc, tag, acc, c_elem, tag, tag, tag, cmp, tag, tag, tag, tag);
+        }
         return true;
     }
     if (strcmp(func, "is_sorted") == 0 && node->data.call.arg_count == 1) {

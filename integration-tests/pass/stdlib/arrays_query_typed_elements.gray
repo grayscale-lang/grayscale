@@ -1,0 +1,85 @@
+/*
+ * arrays_query_typed_elements.gray - arrays.contains / index_of / count /
+ * remove / get_sum / get_min / get_max must read each element as its real
+ * type. Reading a [byte]/[char]/[f32] slot as int64 gave wrong results and
+ * over-ran the allocation.
+ */
+
+import @arrays
+
+do check(label string, ok bool) -> int {
+    if ok {
+        return 1
+    }
+    println("FAIL: ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut total int = 0
+
+    // --- [byte] ---
+    mut b [byte] = {85, 226, 3, 4}
+    passed += check("byte contains", arrays.contains(b, 85) && arrays.contains(b, 226) && !arrays.contains(b, 9))
+    passed += check("byte index_of", arrays.index_of(b, 226) == 1 && arrays.index_of(b, 9) == -1)
+    passed += check("byte count", arrays.count(b, 3) == 1)
+    passed += check("byte sum/min/max", arrays.get_max(b) == 226 && arrays.get_min(b) == 3 && arrays.get_sum(b) == 318)
+    total += 4
+
+    mut br [byte] = {10, 20, 30, 20}
+    arrays.remove(br, 20)
+    passed += check("byte remove", len(br) == 3 && arrays.get_sum(br) == 60)
+    total += 1
+
+    // --- [char] ---
+    mut c [char] = {'a', 'b', 'c', 'b'}
+    passed += check("char contains", arrays.contains(c, 'b') && !arrays.contains(c, 'z'))
+    passed += check("char index_of/count", arrays.index_of(c, 'c') == 2 && arrays.count(c, 'b') == 2)
+    total += 2
+
+    // --- [float] ---
+    mut f [float] = {1.5, 2.5, 3.5}
+    passed += check("float contains/index_of", arrays.contains(f, 2.5) && arrays.index_of(f, 3.5) == 2)
+    mut fsum float = arrays.get_sum(f)
+    mut fmax float = arrays.get_max(f)
+    passed += check("float sum/max", fsum == 7.5 && fmax == 3.5)
+    total += 2
+
+    // --- [f32] ---
+    mut g [f32] = {10.0, 5.0, 20.0}
+    mut gmax f32 = arrays.get_max(g)
+    passed += check("f32", arrays.contains(g, 5.0) && gmax == 20.0)
+    total += 1
+
+    // --- [int] regression ---
+    mut i [int] = {5, 3, 8, 3}
+    passed += check("int query", arrays.contains(i, 8) && arrays.index_of(i, 3) == 1 && arrays.count(i, 3) == 2)
+    passed += check("int sum/min/max", arrays.get_sum(i) == 19 && arrays.get_max(i) == 8 && arrays.get_min(i) == 3)
+    total += 2
+
+    // --- [string] regression (count previously leaked a C error) ---
+    mut s [string] = {"x", "y", "x", "z"}
+    passed += check("string query", arrays.contains(s, "y") && arrays.index_of(s, "x") == 0 && arrays.count(s, "x") == 2)
+    arrays.remove(s, "x")
+    passed += check("string remove", len(s) == 3 && arrays.index_of(s, "x") == 1)
+    total += 2
+
+    // --- [i16] sized int ---
+    mut w [i16] = {300, 100, 200}
+    passed += check("i16", arrays.contains(w, 300) && arrays.get_max(w) == 300 && arrays.get_sum(w) == 600)
+    total += 1
+
+    // --- empty array ---
+    mut e [byte] = {}
+    passed += check("empty", !arrays.contains(e, 1) && arrays.index_of(e, 1) == -1 && arrays.get_max(e) == 0)
+    total += 1
+
+    println("passed: ${passed}/${total}")
+    if passed == total {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
