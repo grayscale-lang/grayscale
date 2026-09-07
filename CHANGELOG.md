@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.8.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.7.0...grayscale-v0.8.0) (2026-09-07)
+
+
+### Features
+
+* **stdlib:** add capture-group extraction to regex module ([35593ac](https://github.com/grayscale-lang/grayscale/commit/35593ac9ef0b941714d94da40a6f3b532187f494))
+* **stdlib:** add classification and escape functions to chars module ([d0e043a](https://github.com/grayscale-lang/grayscale/commit/d0e043a6e36d40c8e3604746ee6784db3305862b))
+* **stdlib:** add count and escape to regex module ([9f71fa0](https://github.com/grayscale-lang/grayscale/commit/9f71fa0fac046388a4318e32fadd6760f1fbb1da))
+* **stdlib:** add generate_v5 to uuid module ([b44d03f](https://github.com/grayscale-lang/grayscale/commit/b44d03f73f231dbe61930edace7dacfa3c554b59))
+* **stdlib:** add to_bytes and from_bytes to uuid module ([782fa5a](https://github.com/grayscale-lang/grayscale/commit/782fa5a2760c8f6f9c15fdc91a21754bc561122f))
+* **stdlib:** add version and timestamp inspectors to uuid module ([2b766fa](https://github.com/grayscale-lang/grayscale/commit/2b766fac215f749266457fc70e851e920659dd68))
+* **stdlib:** add web-escaping functions to encoding module ([7267dd5](https://github.com/grayscale-lang/grayscale/commit/7267dd576077baca004620057ca55e8d55b4b923))
+* **stdlib:** expand os, time, random, arrays, crypto, csv, fmt stdlib modules ([120db38](https://github.com/grayscale-lang/grayscale/commit/120db38aa5526b4108642210f28d75ffaa18b67f))
+* **stdlib:** json.encode accepts every primitive type ([edb594f](https://github.com/grayscale-lang/grayscale/commit/edb594f64d57d1ca8eac9f9237193f22d92a0f6f))
+
+
+### Bug Fixes
+
+* **arrays:** read the real element type in contains/index_of/count/remove/get_sum/get_min/get_max ([ec8975b](https://github.com/grayscale-lang/grayscale/commit/ec8975b53cfc89d184df3abb01aa576fc8ef104d))
+* **codegen:** escape the string in scalar json.encode ([9bcd965](https://github.com/grayscale-lang/grayscale/commit/9bcd965f88dc4602a1b5a848b36b62fa4049e6cb))
+* **codegen:** evaluate return values before deferred calls ([1a800e0](https://github.com/grayscale-lang/grayscale/commit/1a800e00e7181c6d0d34fda70b8cad9bd3f8030e))
+* **codegen:** evaluate return values before deferred calls ([b8c0d33](https://github.com/grayscale-lang/grayscale/commit/b8c0d330e0709eaf43ad4ca5dc2c9466ec010e08))
+* **codegen:** materialize each subscript's base in a chain on an rvalue ([045c8f1](https://github.com/grayscale-lang/grayscale/commit/045c8f1abd97a6f7ec09e4923ff6522586e12306))
+* **codegen:** parenthesize scalar when/is pattern expressions ([c0bc132](https://github.com/grayscale-lang/grayscale/commit/c0bc13268278190d343301afc5e7fc6635a1278f))
+* **codegen:** widen for_each-over-string bytes unsigned ([d3b6abe](https://github.com/grayscale-lang/grayscale/commit/d3b6abe51ea4feb09357b75444115e52fb7aa80f))
+* **compiler:** compile generated programs with the runtime's POSIX feature macro ([#2678](https://github.com/grayscale-lang/grayscale/issues/2678)) ([f78cbf4](https://github.com/grayscale-lang/grayscale/commit/f78cbf4dd12e31e1168cba76a67b342d83689d30))
+* **lexer:** allow char-literal escapes inside string interpolation ([a9a1a61](https://github.com/grayscale-lang/grayscale/commit/a9a1a614356fda516976261de6768ee143dede32))
+* memory leaks in typechecker ([c744f77](https://github.com/grayscale-lang/grayscale/commit/c744f7705be8fc197079fb8987157711ee48ae9b))
+* **parser:** apply the last attribute in a full #[...] list ([85067cf](https://github.com/grayscale-lang/grayscale/commit/85067cf233d5fd0302ced752cbcbfcdf890dee30))
+* **runtime:** honor REG_NOTBOL in the Windows regex shim ([9e3b9e9](https://github.com/grayscale-lang/grayscale/commit/9e3b9e93995aba3ec9619c6e7971112ffe0fc7ca))
+* **runtime:** tear down the runtime via atexit so extern.atexit callbacks run ([#2675](https://github.com/grayscale-lang/grayscale/issues/2675)) ([dd1d1e3](https://github.com/grayscale-lang/grayscale/commit/dd1d1e3180ae0c8fa436b7ecb8d02aafbe819c69))
+* **stdlib:** apply RFC 4180 field quoting in csv.encode ([718723b](https://github.com/grayscale-lang/grayscale/commit/718723bad946d4581bd6df8543df918e0832ebf1))
+* **stdlib:** keep regex anchors bound to the string ends during multi-match scans ([52bc841](https://github.com/grayscale-lang/grayscale/commit/52bc841dee7ca4e8ccfdd66a4cb5d57b9c0c63be))
+* **stdlib:** regex.split no longer splits on zero-width matches or drops characters ([b742c2b](https://github.com/grayscale-lang/grayscale/commit/b742c2bb8fe5f2c2d101757e76497ac523fb051f))
+* **stdlib:** reject regex patterns using \d \w \s \b as invalid ([d5280cd](https://github.com/grayscale-lang/grayscale/commit/d5280cd827c7696d885997ca604b44b32506eac1))
+* **stdlib:** render a nil UUID canonically in to_string and generate_compact ([8e93a30](https://github.com/grayscale-lang/grayscale/commit/8e93a309b0bd44849a4599e124b6427bb593c53c))
+* **stdlib:** serialize regex operations across threads ([54e65f1](https://github.com/grayscale-lang/grayscale/commit/54e65f10005a7275f565855c87c92e753292f198))
+* **stdlib:** size regex text buffers to the input instead of a fixed 8 KB ([9ed531a](https://github.com/grayscale-lang/grayscale/commit/9ed531a96f251267a3f55ebb0f6b48e3fabfb465))
+* **stdlib:** stop clamping regex capture groups to 64 ([9b8ec80](https://github.com/grayscale-lang/grayscale/commit/9b8ec804c55d16bdec3ee6d6d8ed6396a7908660))
+* **typechecker:** check arena lifetime at pointer escape positions ([#2696](https://github.com/grayscale-lang/grayscale/issues/2696)) ([1c80c6e](https://github.com/grayscale-lang/grayscale/commit/1c80c6e4928146a1ac12e447c1b8437404e325bd))
+* **typechecker:** flag addr(local) laundered through a func-typed parameter ([#2692](https://github.com/grayscale-lang/grayscale/issues/2692)) ([caa6f0b](https://github.com/grayscale-lang/grayscale/commit/caa6f0bafa6bed2f2d27e5fc9c73a40428baf1d6))
+* **typechecker:** guard signedness and narrowing on member assignment targets ([#2641](https://github.com/grayscale-lang/grayscale/issues/2641)) ([7707ed1](https://github.com/grayscale-lang/grayscale/commit/7707ed148cd13f373ac136557867263a11222e46))
+* **typechecker:** keep stdlib functions out of the user FuncSig table ([7457d47](https://github.com/grayscale-lang/grayscale/commit/7457d471c9ff776e42c30eaaac67549383518164))
+* **typechecker:** keep the pointer origin across a for_each loop variable ([#2695](https://github.com/grayscale-lang/grayscale/issues/2695)) ([fdc6baa](https://github.com/grayscale-lang/grayscale/commit/fdc6baa0179a6569e4512a37b669dd8c962341c0))
+* **typechecker:** keep the pointer origin across a when payload binding ([#2694](https://github.com/grayscale-lang/grayscale/issues/2694)) ([29318b7](https://github.com/grayscale-lang/grayscale/commit/29318b73444973bad356a328633ae3ff422d298a))
+* **typechecker:** only reject an opaque-type struct literal when the module is imported ([2496289](https://github.com/grayscale-lang/grayscale/commit/2496289b3a53501306763d9ac023b8d548968bb3))
+* **typechecker:** reject a struct literal of a stdlib opaque type ([495f99e](https://github.com/grayscale-lang/grayscale/commit/495f99e10bc4fc730da6b1618110087937038932))
+* **typechecker:** reject an unqualified call two used modules both provide (E4031) ([ef77a55](https://github.com/grayscale-lang/grayscale/commit/ef77a55b4c0bc4c1c341eeae64956ca63f978e5b))
+* **typechecker:** resolve arena-handle aliases in the lifetime checker ([#2693](https://github.com/grayscale-lang/grayscale/issues/2693)) ([6078fc4](https://github.com/grayscale-lang/grayscale/commit/6078fc41714e4170b7d230fdbf74447dc3565fd9))
+* **typechecker:** trace pointer escape through opaque func-value calls ([#2661](https://github.com/grayscale-lang/grayscale/issues/2661)) ([556a955](https://github.com/grayscale-lang/grayscale/commit/556a955dbd8c5d37636b99b003c7e510ea30f259))
+* **typechecker:** type-check UUID and [byte] stdlib arguments ([ed233cf](https://github.com/grayscale-lang/grayscale/commit/ed233cf8d92aec7405a79af10f7c8fb45d675637))
+* **typechecker:** validate json.encode / csv.encode argument types ([1b4087b](https://github.com/grayscale-lang/grayscale/commit/1b4087bbb8c0cecabb1dffcbb007f0c1020769f3))
+
 ## [0.7.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.6.0...grayscale-v0.7.0) (2026-09-05)
 
 
