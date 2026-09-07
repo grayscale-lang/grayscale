@@ -9785,14 +9785,27 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
      * not struct-registered, so find_struct fails below and the !si branch
      * reports E4016 — but UUID is registered (so ARG_UUID checks can match a
      * value), which lets `UUID{}` slip through to codegen and emit an
-     * undeclared C type. Reject it here, the same way Mutex{} is rejected. */
-    if (is_reserved_stdlib_struct_name(unqualified_display_name(struct_name))) {
-        char *msg = typechecker_format(checker,
-            "undefined type '%s'; check the spelling or import the module that defines it",
-            unqualified_display_name(struct_name));
-        diagnostic_error_message(checker->diag, "E4016", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        return &TYPE_UNKNOWN;
+     * undeclared C type. Reject it here, the same way Mutex{} is rejected —
+     * but only when the owning module is imported and no user type shadows
+     * the name, since `Database` etc. are free for a user struct otherwise. */
+    {
+        const char *opaque_bare = unqualified_display_name(struct_name);
+        const char *opaque_owner = stdlib_opaque_module(opaque_bare);
+        if (opaque_owner && typechecker_is_imported_module(checker, opaque_owner)) {
+            /* The name resolves to the stdlib opaque type unless a user
+             * struct/enum shadows it (only possible when the module is not
+             * imported — but be defensive). A compiler-declared entry is
+             * `external`; a user declaration is not. */
+            DeclEntry *e = checker_resolve_entry(checker, struct_name);
+            if (!e || e->external) {
+                char *msg = typechecker_format(checker,
+                    "undefined type '%s'; check the spelling or import the module that defines it",
+                    opaque_bare);
+                diagnostic_error_message(checker->diag, "E4016", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                return &TYPE_UNKNOWN;
+            }
+        }
     }
     {
         DeclEntry *entry = checker_cache_resolution(checker, node, struct_name);
