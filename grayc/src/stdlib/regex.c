@@ -17,6 +17,7 @@
 #endif
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
 
 
 /* POSIX ERE has no \d \w \s \b (or \D \W \S \B). regcomp accepts them and
@@ -43,18 +44,40 @@ static char *regex_cstr(GrayArena *arena, GrayString s) {
     return buf;
 }
 
+/* The platform regex engine is not thread-safe: macOS libc regexec races on
+ * process-global scratch even when each thread owns its regex_t, so two regex
+ * calls on different threads corrupt each other's results. Serialize every
+ * compile/exec/free session on this lock. compile_pattern acquires it on
+ * success; regex_session_end releases it. (regex_win.h's engine is reentrant,
+ * but one code path is simpler and the lock is uncontended single-threaded.) */
+static pthread_mutex_t gray_regex_lock = PTHREAD_MUTEX_INITIALIZER;
+
 /* Helper: compile pattern into a null-terminated C string and regex_t.
- * Returns 0 on success, non-zero on error. Caller must regfree on success. */
+ * Returns 0 on success (with gray_regex_lock held — release it with
+ * regex_session_end), non-zero on error (lock not held). */
 static int compile_pattern(GrayString pattern, regex_t *re, int flags) {
     char *pat_buf = regex_cstr(gray_default_arena, pattern);
-    if (pattern_has_unsupported_escape(pat_buf)) return REG_BADPAT;
-    return regcomp(re, pat_buf, flags | REG_EXTENDED);
+    pthread_mutex_lock(&gray_regex_lock);
+    if (pattern_has_unsupported_escape(pat_buf)) {
+        pthread_mutex_unlock(&gray_regex_lock);
+        return REG_BADPAT;
+    }
+    int rc = regcomp(re, pat_buf, flags | REG_EXTENDED);
+    if (rc != 0) pthread_mutex_unlock(&gray_regex_lock);
+    return rc;
+}
+
+/* Pairs with the lock compile_pattern took: free the compiled pattern and
+ * release the regex engine for other threads. */
+static void regex_session_end(regex_t *re) {
+    regfree(re);
+    pthread_mutex_unlock(&gray_regex_lock);
 }
 
 bool gray_regex_is_valid(GrayString pattern) {
     regex_t re;
     if (compile_pattern(pattern, &re, REG_EXTENDED | REG_NOSUB) != 0) return false;
-    regfree(&re);
+    regex_session_end(&re);
     return true;
 }
 
@@ -65,12 +88,12 @@ bool gray_regex_match(GrayString pattern, GrayString text) {
     char *txt_buf = regex_cstr(gray_default_arena, text);
 
     int result = regexec(&re, txt_buf, 0, NULL, 0);
-    regfree(&re);
+    regex_session_end(&re);
     return result == 0;
 }
 
 /* Internal helpers that operate on a pre-compiled regex_t.
- * Caller owns the regex_t lifetime (compile + regfree). */
+ * Caller owns the regex_t lifetime (compile_pattern + regex_session_end). */
 
 static GrayString regex_find_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     char *txt_buf = regex_cstr(arena, text);
@@ -217,7 +240,7 @@ int64_t gray_regex_count(GrayString pattern, GrayString text) {
         }
     }
 
-    regfree(&re);
+    regex_session_end(&re);
     return count;
 }
 
@@ -273,7 +296,7 @@ GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayStrin
     } else {
         arr = regex_groups_of_match(arena, txt_buf, pmatch, ngroups);
     }
-    regfree(&re);
+    regex_session_end(&re);
     return arr;
 }
 
@@ -299,7 +322,7 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
             else break;
         }
     }
-    regfree(&re);
+    regex_session_end(&re);
     return outer;
 }
 
@@ -310,7 +333,7 @@ GrayString gray_regex_find(GrayArena *arena, GrayString pattern, GrayString text
     if (compile_pattern(pattern, &re, 0) != 0)
         return (GrayString){"", 0};
     GrayString result = regex_find_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     return result;
 }
 
@@ -319,7 +342,7 @@ GrayArray gray_regex_find_all(GrayArena *arena, GrayString pattern, GrayString t
     if (compile_pattern(pattern, &re, 0) != 0)
         return gray_array_new(arena, sizeof(GrayString), 8);
     GrayArray result = regex_find_all_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     return result;
 }
 
@@ -328,7 +351,7 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
     if (compile_pattern(pattern, &re, 0) != 0)
         return text;
     GrayString result = regex_replace_compiled(arena, &re, text, replacement);
-    regfree(&re);
+    regex_session_end(&re);
     return result;
 }
 
@@ -340,7 +363,7 @@ GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text
         return arr;
     }
     GrayArray result = regex_split_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     return result;
 }
 
@@ -356,7 +379,7 @@ GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, G
         return r;
     }
     r.v0 = regex_find_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     r.v1 = NULL;
     return r;
 }
@@ -371,7 +394,7 @@ GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern
         return r;
     }
     r.v0 = regex_find_all_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     r.v1 = NULL;
     return r;
 }
@@ -412,7 +435,7 @@ GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern
         return r;
     }
     r.v0 = regex_replace_compiled(arena, &re, text, replacement);
-    regfree(&re);
+    regex_session_end(&re);
     r.v1 = NULL;
     return r;
 }
@@ -427,7 +450,7 @@ GrayResult_array gray_regex_split_result(GrayArena *arena, GrayString pattern, G
         return r;
     }
     r.v0 = regex_split_compiled(arena, &re, text);
-    regfree(&re);
+    regex_session_end(&re);
     r.v1 = NULL;
     return r;
 }

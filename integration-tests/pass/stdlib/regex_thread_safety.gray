@@ -1,0 +1,62 @@
+/*
+ * Test: regex operations are thread-safe.
+ * Four threads hammer regex.find_groups concurrently, each with input that
+ * encodes its own thread id and round so a cross-thread buffer corruption
+ * produces a visibly wrong capture group. Any mismatch bumps a shared atomic
+ * counter; the run passes only if it stays at zero.
+ */
+
+import @threads
+import @regex
+import @atomic
+
+mut fails int = 0
+
+do note_fail() {
+    mut p ^int = addr(fails)
+    mut _ int = atomic.add(p, 1)
+}
+
+do worker(id int) {
+    for round in range(0, 400) {
+        mut text string = "aa${id}${round}=bb${id}${round}"
+        mut g, err = regex.find_groups("([a-z]+[0-9]+)=([a-z]+[0-9]+)", text)
+        if err != nil || len(g) != 3 || g[1] != "aa${id}${round}" || g[2] != "bb${id}${round}" {
+            note_fail()
+        }
+    }
+}
+
+do w0() { worker(0) }
+do w1() { worker(1) }
+do w2() { worker(2) }
+do w3() { worker(3) }
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut t0 = threads.spawn(()w0)
+    mut t1 = threads.spawn(()w1)
+    mut t2 = threads.spawn(()w2)
+    mut t3 = threads.spawn(()w3)
+    threads.join(t0)
+    threads.join(t1)
+    threads.join(t2)
+    threads.join(t3)
+
+    if fails == 0 {
+        println("  [PASS] concurrent regex.find_groups returned correct results")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${fails} concurrent regex.find_groups calls returned wrong results")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("Some tests failed!")
+    }
+    println("ALL TESTS PASSED")
+}
