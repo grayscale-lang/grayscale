@@ -1,0 +1,64 @@
+/*
+ * json_encode_primitives.gray - json.encode accepts every primitive type as a
+ * scalar, an array element, and a map value, reading each at its real width.
+ */
+
+import @json
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        return 1
+    }
+    println("FAIL: ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // scalars
+    mut b byte = 200
+    passed += check("byte", json.encode(b), "200")
+    mut u uint = 42
+    passed += check("uint", json.encode(u), "42")
+    mut s16 i16 = -30000
+    passed += check("i16", json.encode(s16), "-30000")
+    mut u32v u32 = 4000000000
+    passed += check("u32", json.encode(u32v), "4000000000")
+    mut f f32 = 1.5
+    passed += check("f32", json.encode(f), "1.5")
+    mut c char = 'A'
+    passed += check("char", json.encode(c), "65")
+
+    // arrays, width-sensitive
+    mut ab [byte] = {1, 200, 255}
+    passed += check("[byte]", json.encode(ab), "[1,200,255]")
+    mut as16 [i16] = {-1, 30000, -30000}
+    passed += check("[i16]", json.encode(as16), "[-1,30000,-30000]")
+    mut au [u32] = {1, 4000000000}
+    passed += check("[u32]", json.encode(au), "[1,4000000000]")
+    mut ac [char] = {'a', 'b', 'c'}
+    passed += check("[char]", json.encode(ac), "[97,98,99]")
+
+    // maps
+    mut mb map[string:byte] = {:}
+    mb["x"] = 200
+    passed += check("map[string:byte]", json.encode(mb), "{\"x\":200}")
+    mut mu map[string:uint] = {:}
+    mu["z"] = 42
+    passed += check("map[string:uint]", json.encode(mu), "{\"z\":42}")
+
+    // the previously-supported types still work
+    passed += check("int", json.encode(7), "7")
+    passed += check("float", json.encode(2.5), "2.5")
+    passed += check("bool", json.encode(true), "true")
+    passed += check("string", json.encode("hi"), "\"hi\"")
+
+    println("passed: ${passed}/16")
+    if passed == 16 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

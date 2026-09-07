@@ -23,7 +23,7 @@ void json_append_escaped(char *buf, int *pos, GrayString str);
  *@module json
  *@group Encoding
  *@sig encode(value T) -> string
- *@desc Encodes a value as a JSON string. Accepts int, float, bool, string, map, and array. For #json structs use stringify() instead.
+ *@desc Encodes a value as a JSON string. Accepts any primitive (int, uint, sized ints, byte, float, f32/f64, char, bool, string), a flat array of primitives, or a string-keyed map of primitives. char is encoded as its codepoint number. For #json structs use stringify() instead.
  *@example
  *   import @json
  *   mut m map[string:string] = {"name": "Alice"}
@@ -37,14 +37,17 @@ void json_append_escaped(char *buf, int *pos, GrayString str);
 /* json.encode(value) — convert map to JSON string */
 GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map);
 
-/* json.encode(array) — convert typed arrays to JSON */
+/* json.encode(array) — convert typed arrays to JSON. The int/uint/float
+ * encoders read each slot at its real width (byte, i16, f32, ...). */
 GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr);
+GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr);
 
 /* json.encode(map) — convert typed maps to JSON */
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map);
+GrayString gray_json_encode_map_uint(GrayArena *arena, GrayMap *map);
 GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map);
 GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
 

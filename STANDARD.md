@@ -3637,7 +3637,7 @@ Some random functions accept a variable number of arguments (e.g., `rand_int` wi
 |----------|-----------|-------------|
 | `decode` | `(text string) -> (map[string:string], Error)` | Decode JSON string to map — always use destructuring |
 | `parse` | `(text string) -> T` | Parse JSON into a `#json` struct (context-dependent) |
-| `encode` | `(value T) -> string` | Encode to JSON string. Accepts int, float, bool, string, map, array. |
+| `encode` | `(value T) -> string` | Encode to JSON string. Accepts any primitive (`int`, `uint`, sized ints, `byte`, `float`, `f32`/`f64`, `char`, `bool`, `string`), a flat array of primitives, or a string-keyed map of primitives. `char` encodes as its codepoint number. For `#json` structs use `stringify`. |
 | `stringify` | `(value T) -> string` | Encode a `#json` struct to a JSON string |
 | `pretty_print` | `(m map[K:V], indent int) -> string` | Pretty-print a map as indented JSON |
 | `is_valid` | `(text string) -> bool` | Check if valid JSON |

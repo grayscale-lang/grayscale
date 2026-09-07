@@ -6491,42 +6491,62 @@ static bool emit_csv_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 /* --- @json module --- */
 
+/* Which json.encode container helper a primitive element/value type maps to:
+ * 's' signed int family (int, i8..i64, char), 'u' unsigned (uint, u8..u64,
+ * byte), 'f' float family (float, f32, f64), 'b' bool, 'S' string, 0 other.
+ * The container encoders read each slot at its real width. */
+static char json_prim_class(const char *tn) {
+    if (!tn) return 0;
+    if (strcmp(tn, "string") == 0) return 'S';
+    if (strcmp(tn, "bool") == 0) return 'b';
+    if (is_bigint_type(tn)) return 0;
+    GrayType *t = type_from_name(tn);
+    if (!t) return 0;
+    switch (t->kind) {
+    case TK_FLOAT: return 'f';
+    case TK_CHAR:  return 's';
+    case TK_BYTE:  return 'u';
+    case TK_INT:   return 's';
+    case TK_UINT:  return 'u';
+    default:       return 0;
+    }
+}
+
 static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "encode") == 0) {
         AstNode *arg = node->data.call.args[0];
         GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
         if (arg_t && arg_t->kind == TK_MAP) {
-            /* Typed map: dispatch based on value type.
-             * Materialize into a temporary to handle rvalue expressions
-             * (e.g. inline map literals). */
+            const char *fn = "gray_json_encode_map";
+            switch (json_prim_class(arg_t->value_type)) {
+            case 's': fn = "gray_json_encode_map_int"; break;
+            case 'u': fn = "gray_json_encode_map_uint"; break;
+            case 'f': fn = "gray_json_encode_map_float"; break;
+            case 'b': fn = "gray_json_encode_map_bool"; break;
+            default:  fn = "gray_json_encode_map"; break; /* string */
+            }
             emit(codegen, "({ GrayMap _jm = ");
             emit_expression(codegen, arg);
-            if (arg_t->value_type && strcmp(arg_t->value_type, "int") == 0) {
-                emit(codegen, "; gray_json_encode_map_int(gray_default_arena, &_jm); })");
-            } else if (arg_t->value_type && strcmp(arg_t->value_type, "float") == 0) {
-                emit(codegen, "; gray_json_encode_map_float(gray_default_arena, &_jm); })");
-            } else if (arg_t->value_type && strcmp(arg_t->value_type, "bool") == 0) {
-                emit(codegen, "; gray_json_encode_map_bool(gray_default_arena, &_jm); })");
-            } else {
-                emit(codegen, "; gray_json_encode_map(gray_default_arena, &_jm); })");
-            }
+            emit_formatted(codegen, "; %s(gray_default_arena, &_jm); })", fn);
         } else if (arg_t && arg_t->kind == TK_ARRAY) {
-            /* Typed array: dispatch based on element type.
-             * Materialize into a temporary for the same rvalue reason. */
+            const char *fn = "gray_json_encode_array_int";
+            switch (json_prim_class(arg_t->element_type)) {
+            case 's': fn = "gray_json_encode_array_int"; break;
+            case 'u': fn = "gray_json_encode_array_uint"; break;
+            case 'f': fn = "gray_json_encode_array_float"; break;
+            case 'b': fn = "gray_json_encode_array_bool"; break;
+            case 'S': fn = "gray_json_encode_array_string"; break;
+            default:  fn = "gray_json_encode_array_int"; break;
+            }
             emit(codegen, "({ GrayArray _ja = ");
             emit_expression(codegen, arg);
-            if (arg_t->element_type && strcmp(arg_t->element_type, "float") == 0) {
-                emit(codegen, "; gray_json_encode_array_float(gray_default_arena, &_ja); })");
-            } else if (arg_t->element_type && strcmp(arg_t->element_type, "string") == 0) {
-                emit(codegen, "; gray_json_encode_array_string(gray_default_arena, &_ja); })");
-            } else if (arg_t->element_type && strcmp(arg_t->element_type, "bool") == 0) {
-                emit(codegen, "; gray_json_encode_array_bool(gray_default_arena, &_ja); })");
-            } else {
-                emit(codegen, "; gray_json_encode_array_int(gray_default_arena, &_ja); })");
-            }
-        } else if (arg_t && arg_t->kind == TK_INT) {
-            /* Int: format as JSON number string */
+            emit_formatted(codegen, "; %s(gray_default_arena, &_ja); })", fn);
+        } else if (arg_t && (arg_t->kind == TK_INT || arg_t->kind == TK_CHAR)) {
             emit(codegen, "({ char _jbuf[32]; snprintf(_jbuf, sizeof(_jbuf), \"%\" PRId64, (int64_t)");
+            emit_expression(codegen, arg);
+            emit(codegen, "); gray_string_new(gray_default_arena, _jbuf, (int32_t)strlen(_jbuf)); })");
+        } else if (arg_t && (arg_t->kind == TK_UINT || arg_t->kind == TK_BYTE)) {
+            emit(codegen, "({ char _jbuf[32]; snprintf(_jbuf, sizeof(_jbuf), \"%\" PRIu64, (uint64_t)");
             emit_expression(codegen, arg);
             emit(codegen, "); gray_string_new(gray_default_arena, _jbuf, (int32_t)strlen(_jbuf)); })");
         } else if (arg_t && arg_t->kind == TK_FLOAT) {
@@ -6537,18 +6557,13 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
             emit(codegen, "(");
             emit_expression(codegen, arg);
             emit(codegen, " ? gray_string_lit(\"true\") : gray_string_lit(\"false\"))");
-        } else if (arg_t && arg_t->kind == TK_STRING) {
-            /* String: wrap in quotes */
+        } else {
+            /* String (and the only remaining case the typechecker allows). */
             emit(codegen, "({ GrayString _js = ");
             emit_expression(codegen, arg);
             emit(codegen, "; char *_jbuf = gray_arena_alloc(gray_default_arena, _js.len + 3); ");
             emit(codegen, "_jbuf[0] = '\"'; memcpy(_jbuf+1, _js.data, _js.len); _jbuf[_js.len+1] = '\"'; _jbuf[_js.len+2] = '\\0'; ");
             emit(codegen, "gray_string_new(gray_default_arena, _jbuf, _js.len + 2); })");
-        } else {
-            /* Fallback: store in temp to allow & */
-            emit(codegen, "({ __auto_type _jtmp = ");
-            emit_expression(codegen, arg);
-            emit(codegen, "; gray_json_encode_map(gray_default_arena, (GrayMap *)&_jtmp); })");
         }
         return true;
     }

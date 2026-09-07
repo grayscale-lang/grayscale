@@ -4910,22 +4910,26 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
     }
 }
 
-/* A scalar json.encode can serialize directly (STANDARD 9.8: int, float,
- * bool, string). uint, sized ints, char, byte and bigints are excluded: the
- * encoder has no path for them and reads the bytes as a plain int64. */
+/* A primitive json.encode can serialize as a JSON number/bool/string: every
+ * int and float width (int, uint, i8..i64, u8..u64, byte), float/f32/f64,
+ * char (as its codepoint), bool and string. Bigints are excluded — they are
+ * struct-backed and have no faithful JSON number form. */
 static bool json_encodable_scalar(const GrayType *t) {
     if (!t) return false;
     switch (t->kind) {
-    case TK_FLOAT: case TK_BOOL: case TK_STRING: return true;
-    case TK_INT: return t->name && strcmp(t->name, "int") == 0;
-    default: return false;
+    case TK_FLOAT: case TK_BOOL: case TK_STRING: case TK_CHAR: case TK_BYTE:
+        return true;
+    case TK_INT: case TK_UINT:
+        return !t->name || !is_bigint_type(t->name);
+    default:
+        return false;
     }
 }
 
-/* What json.encode() accepts: a scalar, a flat array of scalars, or a
- * string-keyed map of scalars. Anything else (struct, opaque type, nested
- * array, array/map of aggregates) reaches codegen's fallback, which
- * reinterprets the bytes as a GrayMap and crashes or emits garbage. */
+/* What json.encode() accepts: a primitive, a flat array of primitives, or a
+ * string-keyed map of primitives. Anything else (struct, opaque type, nested
+ * array, array/map of aggregates, non-string map key) reaches codegen with no
+ * path for it and crashes or emits garbage. */
 static bool type_is_json_encodable(const GrayType *t) {
     if (!t || t->kind == TK_UNKNOWN) return true; /* can't judge yet */
     if (json_encodable_scalar(t)) return true;
@@ -5576,7 +5580,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             GrayType *t0 = resolve_expression(checker, a0);
             if (!type_is_json_encodable(t0)) {
                 tc_err_arg_type(checker, a0, typechecker_format(checker,
-                    "'json.encode()' cannot serialize '%s'; it accepts int, float, bool, string, a flat array of those, or a string-keyed map of those",
+                    "'json.encode()' cannot serialize '%s'; it accepts any primitive (int, uint, sized ints, byte, float, f32/f64, char, bool, string), a flat array of those, or a string-keyed map of those",
                     type_name(t0)));
             }
         }

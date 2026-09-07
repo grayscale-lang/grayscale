@@ -52,11 +52,35 @@ void json_append_escaped(char *buf, int *pos, GrayString str) {
     buf[(*pos)++] = '"';
 }
 
+/* Read a packed primitive slot (array element or map value) of the given
+ * byte width. Grayscale stores int/uint/byte/char and f32/f64 at their
+ * natural width, so a fixed *(int64_t*) read walked off the slot. */
+static int64_t json_read_i(const void *p, int32_t sz) {
+    switch (sz) {
+    case 1: return *(const int8_t *)p;
+    case 2: return *(const int16_t *)p;
+    case 4: return *(const int32_t *)p;
+    default: return *(const int64_t *)p;
+    }
+}
+static uint64_t json_read_u(const void *p, int32_t sz) {
+    switch (sz) {
+    case 1: return *(const uint8_t *)p;
+    case 2: return *(const uint16_t *)p;
+    case 4: return *(const uint32_t *)p;
+    default: return *(const uint64_t *)p;
+    }
+}
+static double json_read_f(const void *p, int32_t sz) {
+    return sz == 4 ? (double)*(const float *)p : *(const double *)p;
+}
+
 /* Value kind for the shared map encoder. map[string:string] values are always
  * quoted (STRING) — never infer JSON types from string content. */
 typedef enum {
     JSON_MAP_VAL_STRING,
     JSON_MAP_VAL_INT,
+    JSON_MAP_VAL_UINT,
     JSON_MAP_VAL_FLOAT,
     JSON_MAP_VAL_BOOL,
 } JsonMapValKind;
@@ -86,7 +110,8 @@ static GrayString json_encode_map_typed(GrayArena *arena, GrayMap *map, JsonMapV
         need += json_escaped_len(*key) + 1 /* colon */;
         switch (kind) {
             case JSON_MAP_VAL_STRING: need += json_escaped_len(*(GrayString *)val); break;
-            case JSON_MAP_VAL_INT:    need += 21; break;
+            case JSON_MAP_VAL_INT:
+            case JSON_MAP_VAL_UINT:   need += 21; break;
             case JSON_MAP_VAL_FLOAT:  need += 24; break;
             case JSON_MAP_VAL_BOOL:   need += *(bool *)val ? 4 : 5; break;
         }
@@ -111,13 +136,22 @@ static GrayString json_encode_map_typed(GrayArena *arena, GrayMap *map, JsonMapV
                 json_append_escaped(buf, &pos, *(GrayString *)val);
                 break;
             case JSON_MAP_VAL_INT: {
-                int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, *(int64_t *)val);
+                int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64,
+                    json_read_i(val, map->value_size));
+                if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
+                else truncated = true;
+                break;
+            }
+            case JSON_MAP_VAL_UINT: {
+                int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRIu64,
+                    json_read_u(val, map->value_size));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
                 else truncated = true;
                 break;
             }
             case JSON_MAP_VAL_FLOAT: {
-                int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", *(double *)val);
+                int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%g",
+                    json_read_f(val, map->value_size));
                 if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
                 else truncated = true;
                 break;
@@ -148,10 +182,27 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr) {
     buf[pos++] = '[';
     for (int32_t i = 0; i < arr->len; i++) {
         if (i > 0) { buf[pos++] = ','; }
-        int64_t val = *(int64_t *)((char *)arr->data + (size_t)i * (size_t)arr->elem_size);
+        int64_t val = json_read_i((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
         int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRId64, val);
         if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
+        else { pos = (int)need - 1; break; }
+    }
+    buf[pos++] = ']';
+    buf[pos] = '\0';
+    return (GrayString){ buf, (int32_t)pos };
+}
+
+GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr) {
+    size_t need = 2 + (arr->len > 0 ? (size_t)arr->len * 22 - 1 : 0);
+    char *buf = gray_arena_alloc_uninitialized(arena, need + 1);
+    int pos = 0;
+    buf[pos++] = '[';
+    for (int32_t i = 0; i < arr->len; i++) {
+        if (i > 0) { buf[pos++] = ','; }
+        uint64_t val = json_read_u((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
+        int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%" PRIu64, val);
+        if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         else { pos = (int)need - 1; break; }
     }
     buf[pos++] = ']';
@@ -167,7 +218,7 @@ GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr) {
     buf[pos++] = '[';
     for (int32_t i = 0; i < arr->len; i++) {
         if (i > 0) { buf[pos++] = ','; }
-        double val = *(double *)((char *)arr->data + (size_t)i * (size_t)arr->elem_size);
+        double val = json_read_f((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
         int written = snprintf(buf + pos, need + 1 - (size_t)pos, "%g", val);
         if (written > 0 && (size_t)written < need + 1 - (size_t)pos) pos += written;
         /* Defensive: clamp so the closing bracket and NUL stay in bounds. */
@@ -227,6 +278,10 @@ GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr) {
 
 GrayString gray_json_encode_map_int(GrayArena *arena, GrayMap *map) {
     return json_encode_map_typed(arena, map, JSON_MAP_VAL_INT);
+}
+
+GrayString gray_json_encode_map_uint(GrayArena *arena, GrayMap *map) {
+    return json_encode_map_typed(arena, map, JSON_MAP_VAL_UINT);
 }
 
 GrayString gray_json_encode_map_float(GrayArena *arena, GrayMap *map) {
