@@ -11677,7 +11677,9 @@ static void emit_foreach_string(CodeGen *codegen, AstNode *node, AstNode *coll,
     emit_formatted(codegen, "for (int32_t %s = 0; %s < _gray_str.len; %s++) {\n", idx_name, idx_name, idx_name);
     codegen->indent++;
     emit_indent(codegen);
-    emit_formatted(codegen, "int32_t %s = _gray_str.data[%s];\n", sanitize_name(node->data.for_each.var_name), idx_name);
+    /* GrayString.data is char* (signed); widen the byte unsigned so a byte
+     * >= 0x80 matches what s[i] indexing yields, not a negative codepoint. */
+    emit_formatted(codegen, "int32_t %s = (unsigned char)_gray_str.data[%s];\n", sanitize_name(node->data.for_each.var_name), idx_name);
 }
 
 static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
