@@ -65,58 +65,58 @@ static int utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
 }
 
 /* Write a Unicode code point as UTF-8 to a FILE stream */
-static void fput_utf8(int32_t c, FILE *f) {
+static void fput_utf8(int32_t codepoint, FILE *stream) {
     char buf[4];
-    int len = cp_to_utf8(c, buf);
-    fwrite(buf, 1, (size_t)len, f);
+    int len = cp_to_utf8(codepoint, buf);
+    fwrite(buf, 1, (size_t)len, stream);
 }
 
 /* --- Core print helpers (one per type) --- */
 
-static void print_core_str(GrayString s, FILE *stream, bool newline) {
-    fwrite(s.data, 1, (size_t)s.len, stream);
+static void print_core_str(GrayString str, FILE *stream, bool newline) {
+    fwrite(str.data, 1, (size_t)str.len, stream);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_int(int64_t v, FILE *stream, bool newline) {
-    fprintf(stream, "%" PRId64, v);
+static void print_core_int(int64_t value, FILE *stream, bool newline) {
+    fprintf(stream, "%" PRId64, value);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_uint(uint64_t v, FILE *stream, bool newline) {
-    fprintf(stream, "%" PRIu64, v);
+static void print_core_uint(uint64_t value, FILE *stream, bool newline) {
+    fprintf(stream, "%" PRIu64, value);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_float(double v, FILE *stream, bool newline) {
+static void print_core_float(double value, FILE *stream, bool newline) {
     char buf[GRAY_FLOAT_STR_BUF];
-    gray_fmt_shortest_float(buf, sizeof(buf), v);
+    gray_fmt_shortest_float(buf, sizeof(buf), value);
     fprintf(stream, "%s", buf);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_bool(bool v, FILE *stream, bool newline) {
-    fprintf(stream, "%s", v ? "true" : "false");
+static void print_core_bool(bool value, FILE *stream, bool newline) {
+    fprintf(stream, "%s", value ? "true" : "false");
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_char(int32_t c, FILE *stream, bool newline) {
-    fput_utf8(c, stream);
+static void print_core_char(int32_t codepoint, FILE *stream, bool newline) {
+    fput_utf8(codepoint, stream);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_addr(uintptr_t v, FILE *stream, bool newline) {
-    fprintf(stream, "0x%" PRIxPTR, v);
+static void print_core_addr(uintptr_t value, FILE *stream, bool newline) {
+    fprintf(stream, "0x%" PRIxPTR, value);
     if (newline) fputc('\n', stream);
 }
 
 /* --- Public print/println/eprint/eprintln wrappers --- */
 
 #define PRINT_FAMILY(SUFFIX, CTYPE)                                                         \
-    void gray_builtin_println_##SUFFIX(CTYPE v)  { print_core_##SUFFIX(v, stdout, true);  } \
-    void gray_builtin_print_##SUFFIX(CTYPE v)    { print_core_##SUFFIX(v, stdout, false); } \
-    void gray_builtin_eprintln_##SUFFIX(CTYPE v) { print_core_##SUFFIX(v, stderr, true);  } \
-    void gray_builtin_eprint_##SUFFIX(CTYPE v)   { print_core_##SUFFIX(v, stderr, false); }
+    void gray_builtin_println_##SUFFIX(CTYPE value)  { print_core_##SUFFIX(value, stdout, true);  } \
+    void gray_builtin_print_##SUFFIX(CTYPE value)    { print_core_##SUFFIX(value, stdout, false); } \
+    void gray_builtin_eprintln_##SUFFIX(CTYPE value) { print_core_##SUFFIX(value, stderr, true);  } \
+    void gray_builtin_eprint_##SUFFIX(CTYPE value)   { print_core_##SUFFIX(value, stderr, false); }
 
 PRINT_FAMILY(str,   GrayString)
 PRINT_FAMILY(int,   int64_t)
@@ -258,32 +258,32 @@ int64_t gray_builtin_system(GrayString cmd) {
 
 /* --- to_string --- */
 
-GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t v) {
-    return gray_strconv_from_int(arena, v);
+GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t value) {
+    return gray_strconv_from_int(arena, value);
 }
 
-GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t v) {
-    return gray_strconv_from_uint(arena, v);
+GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t value) {
+    return gray_strconv_from_uint(arena, value);
 }
 
-GrayString gray_builtin_to_string_float(GrayArena *arena, double v) {
-    return gray_strconv_from_float(arena, v);
+GrayString gray_builtin_to_string_float(GrayArena *arena, double value) {
+    return gray_strconv_from_float(arena, value);
 }
 
-GrayString gray_builtin_format_float(GrayArena *arena, double v) {
-    return gray_builtin_to_string_float(arena, v);
+GrayString gray_builtin_format_float(GrayArena *arena, double value) {
+    return gray_builtin_to_string_float(arena, value);
 }
 
-GrayString gray_builtin_to_string_bool(GrayArena *arena, bool v) {
-    return v ? gray_string_lit("true") : gray_string_lit("false");
+GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value) {
+    return value ? gray_string_lit("true") : gray_string_lit("false");
 }
 
 /* --- from_string --- */
 
-int64_t gray_builtin_string_to_int(GrayString s) {
+int64_t gray_builtin_string_to_int(GrayString str) {
     char buf[GRAY_FLOAT_STR_BUF];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
+    int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
+    memcpy(buf, str.data, (size_t)len);
     buf[len] = '\0';
     char *end = NULL;
     int64_t result = strtoll(buf, &end, 10);
@@ -293,10 +293,10 @@ int64_t gray_builtin_string_to_int(GrayString s) {
     return result;
 }
 
-double gray_builtin_string_to_float(GrayString s) {
+double gray_builtin_string_to_float(GrayString str) {
     char buf[GRAY_FLOAT_STR_BUF];
-    int len = s.len < (int32_t)sizeof(buf) - 1 ? s.len : (int32_t)sizeof(buf) - 1;
-    memcpy(buf, s.data, (size_t)len);
+    int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
+    memcpy(buf, str.data, (size_t)len);
     buf[len] = '\0';
     char *end = NULL;
     double result = strtod(buf, &end);
@@ -326,9 +326,9 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
             break;
         }
         case 2: {
-            GrayString s = GRAY_ARRAY_GET(*arr, GrayString, i);
+            GrayString element = GRAY_ARRAY_GET(*arr, GrayString, i);
             pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\"",
-                (int)s.len, s.data ? s.data : "");
+                (int)element.len, element.data ? element.data : "");
             break;
         }
         case 3:
@@ -366,12 +366,12 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
 
 /* --- to_char / char_count — Unicode codepoint access --- */
 
-int32_t gray_builtin_to_char(GrayString s, int64_t index, const char *file, int line) {
+int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, int line) {
     if (index < 0) {
         gray_panic_code("P0049", "to_char() index out of bounds; index %lld is negative", (long long)index);
     }
-    const uint8_t *p = (const uint8_t *)s.data;
-    const uint8_t *end = p + s.len;
+    const uint8_t *p = (const uint8_t *)str.data;
+    const uint8_t *end = p + str.len;
     int64_t cp_idx = 0;
     while (p < end) {
         int32_t cp;
@@ -385,9 +385,9 @@ int32_t gray_builtin_to_char(GrayString s, int64_t index, const char *file, int 
     return 0; /* unreachable */
 }
 
-int64_t gray_builtin_char_count(GrayString s) {
-    const uint8_t *p = (const uint8_t *)s.data;
-    const uint8_t *end = p + s.len;
+int64_t gray_builtin_char_count(GrayString str) {
+    const uint8_t *p = (const uint8_t *)str.data;
+    const uint8_t *end = p + str.len;
     int64_t count = 0;
     while (p < end) {
         int32_t cp;
@@ -409,20 +409,20 @@ GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp) {
     return gray_string_new(arena, buf, (int32_t)len);
 }
 
-GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind) {
+GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_kind) {
     char buf[GRAY_TOSTRING_BUF_SIZE];
     int pos = 0;
     buf[pos++] = '{';
     bool first_entry = true;
-    for (int32_t order_index = 0; order_index < m->order_len && pos < GRAY_TOSTRING_SAFE_LIMIT; order_index++) {
-        int32_t i = m->order[order_index];
-        if (i < 0 || m->states[i] != 1) continue;
+    for (int32_t order_index = 0; order_index < map->order_len && pos < GRAY_TOSTRING_SAFE_LIMIT; order_index++) {
+        int32_t i = map->order[order_index];
+        if (i < 0 || map->states[i] != 1) continue;
         if (!first_entry) { buf[pos++] = ','; buf[pos++] = ' '; }
         first_entry = false;
-        GrayString *kp = (GrayString *)((char *)m->keys + (size_t)i * m->key_size);
+        GrayString *kp = (GrayString *)((char *)map->keys + (size_t)i * map->key_size);
         pos += snprintf(buf + pos, sizeof(buf) - pos, "\"%.*s\": ",
             (int)kp->len, kp->data ? kp->data : "");
-        void *vp = (char *)m->values + (size_t)i * m->value_size;
+        void *vp = (char *)map->values + (size_t)i * map->value_size;
         switch (val_kind) {
         case 0: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64, *(int64_t *)vp); break;
         case 1: {
@@ -454,7 +454,7 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind
         case 7: pos += snprintf(buf + pos, sizeof(buf) - pos, "%d", *(int *)vp); break;
         }
     }
-    if (m->count == 0) { buf[pos++] = ':'; }
+    if (map->count == 0) { buf[pos++] = ':'; }
     buf[pos++] = '}';
     buf[pos] = '\0';
     return gray_string_new(arena, buf, (int32_t)pos);

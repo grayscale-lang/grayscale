@@ -1,0 +1,38 @@
+/*
+ * io_read_stdin_c.gray - Integration test for io.read_stdin_all and
+ * io.read_stdin_bytes
+ *
+ * The pass-test harness never redirects stdin, so an unconditional blocking
+ * read would stall the suite. The reads are gated behind an environment
+ * variable that the harness never sets: this file still exercises typechecking
+ * and codegen of both calls, and the branch runs only when a caller opts in
+ * with GRAY_TEST_STDIN=1 and pipes input.
+ */
+
+import @io
+import @os
+
+do main() {
+    println("=== io.read_stdin_* Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if os.get_env("GRAY_TEST_STDIN") == "1" {
+        mut text string = io.read_stdin_all()
+        mut data [byte] = io.read_stdin_bytes()
+        println("  [INFO] read_stdin_all=${len(text)} bytes, read_stdin_bytes=${len(data)} bytes")
+        passed += 1
+    } otherwise {
+        println("  [PASS] read_stdin_all / read_stdin_bytes compiled and wired (set GRAY_TEST_STDIN=1 to exercise)")
+        passed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -4,11 +4,16 @@
 // Reads the registry (grayc/src/util/error_codes.h) and every emit site in
 // grayc/src/**/*.c, then enforces:
 //
-//   1. every emitted "E####"/"W####" is registered
+//   1. every emitted "E####"/"W####"/"P####" is registered
 //   2. every registered E/W code is emitted at least once
 //   3. no duplicate code in the registry
-//   4. no code is emitted from more than 15 distinct call sites
+//   4. no E/W code is emitted from more than 15 distinct call sites
 //   5. no code is emitted from both parser.c and typechecker.c
+//
+// P-codes (runtime panics) are checked for (1) and (3) only: many are
+// emitted from headers (bigint.h, runtime.h) this script does not scan,
+// so (2) would misfire, and codegen legitimately raises the same panic
+// (P0080 nil-deref) from every syntactic position that can hit it.
 //
 // Any violation prints a report and exits 1 (CI-enforcing).
 //
@@ -27,12 +32,14 @@ do is_digit(c char) -> bool {
 }
 
 // registry_code returns the code from a GRAY_ERROR("E3001", ...) /
-// GRAY_WARNING("W1001", ...) line, or "" if the line is not such a macro.
+// GRAY_WARNING("W1001", ...) / GRAY_PANIC("P0001", ...) line, or "" if the
+// line is not such a macro.
 do registry_code(line string) -> string {
     mut trimmed string = strings.trim_left(line)
     mut is_err bool = strings.starts_with(trimmed, "GRAY_ERROR(\"")
     mut is_warn bool = strings.starts_with(trimmed, "GRAY_WARNING(\"")
-    if !is_err && !is_warn {
+    mut is_panic bool = strings.starts_with(trimmed, "GRAY_PANIC(\"")
+    if !is_err && !is_warn && !is_panic {
         return ""
     }
     mut open int = strings.index_of(trimmed, "\"")
@@ -44,7 +51,8 @@ do registry_code(line string) -> string {
     return strings.slice(rest, 0, close)
 }
 
-// scan_line_codes returns every quoted "E####"/"W####" literal on a source line.
+// scan_line_codes returns every quoted "E####"/"W####"/"P####" literal on a
+// source line.
 do scan_line_codes(line string) -> [string] {
     mut found [string] = {}
     mut n int = len(line)
@@ -53,7 +61,7 @@ do scan_line_codes(line string) -> [string] {
         mut c char = strings.char_at(line, i)
         mut c1 char = strings.char_at(line, i + 1)
         mut c2 char = strings.char_at(line, i + 2)
-        if c == '"' && (c1 == 'E' || c1 == 'W') && is_digit(c2) {
+        if c == '"' && (c1 == 'E' || c1 == 'W' || c1 == 'P') && is_digit(c2) {
             mut j int = i + 2
             for j < n && is_digit(strings.char_at(line, j)) {
                 j = j + 1
@@ -157,8 +165,11 @@ do main() {
         }
     }
 
-    // (2) registered but never emitted
+    // (2) registered but never emitted (E/W only — see header note on P-codes)
     for_each code in registered {
+        if strings.starts_with(code, "P") {
+            continue
+        }
         if !arrays.contains(emitted, code) {
             arrays.append(violations, "registered code never emitted: ${code}")
         }
@@ -169,10 +180,10 @@ do main() {
         arrays.append(violations, "duplicate registry entry: ${code}")
     }
 
-    // (4) more than MAX_SITES call sites
+    // (4) more than MAX_SITES call sites (E/W only — see header note on P-codes)
     mut i int = 0
     for i < len(site_codes) {
-        if site_counts[i] > MAX_SITES {
+        if !strings.starts_with(site_codes[i], "P") && site_counts[i] > MAX_SITES {
             arrays.append(violations,
                 "code ${site_codes[i]} emitted from ${site_counts[i]} call sites (max ${MAX_SITES})")
         }

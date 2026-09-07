@@ -79,6 +79,61 @@
  *@end
  */
 
+/*@man base64_url_encode
+ *@module encoding
+ *@group String Encoding
+ *@sig base64_url_encode(s string) -> string
+ *@desc Encodes a string to unpadded URL-safe base64 (RFC 4648 section 5): the standard alphabet with `+` and `/` replaced by `-` and `_`, and trailing `=` padding removed. Used for JWTs and query parameters.
+ *@example
+ *   import @encoding
+ *   mut token string = encoding.base64_url_encode("hello?")
+ *@end
+ */
+
+/*@man base64_url_decode
+ *@module encoding
+ *@group String Encoding
+ *@sig base64_url_decode(s string) -> string
+ *@desc Decodes URL-safe base64, with or without trailing padding. Panics on invalid input.
+ *@example
+ *   import @encoding
+ *   mut s string = encoding.base64_url_decode("aGVsbG8_")
+ *@end
+ */
+
+/*@man html_escape
+ *@module encoding
+ *@group String Encoding
+ *@sig html_escape(s string) -> string
+ *@desc Replaces the five HTML-significant characters with entities: `&` `<` `>` `"` and `'`. Safe for use in element text and double- or single-quoted attribute values.
+ *@example
+ *   import @encoding
+ *   println(encoding.html_escape("<a href='x'>"))
+ *@end
+ */
+
+/*@man html_unescape
+ *@module encoding
+ *@group String Encoding
+ *@sig html_unescape(s string) -> string
+ *@desc Reverses html_escape. Resolves the named entities amp, lt, gt, quot, and apos, plus decimal and hexadecimal numeric character references. Unknown entities are left untouched.
+ *@example
+ *   import @encoding
+ *   println(encoding.html_unescape("a &amp; b &#39;c&#39;"))
+ *@end
+ */
+
+/*@man shell_escape
+ *@module encoding
+ *@group String Encoding
+ *@sig shell_escape(s string) -> string
+ *@desc Quotes a string for safe use as a single argument in a POSIX shell command. Returns the argument unchanged when it contains only safe characters, otherwise wraps it in single quotes. Not for cmd.exe.
+ *@example
+ *   import @encoding
+ *   println(encoding.shell_escape("it's here"))   // 'it'\''s here'
+ *@end
+ */
+
 /*@man from_string
  *@module encoding
  *@group Byte Conversion
@@ -149,15 +204,20 @@
  */
 
 /* String encoding functions */
-GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_url_encode(GrayArena *arena, GrayString s);
-GrayString gray_encoding_url_decode(GrayArena *arena, GrayString s);
+GrayString gray_encoding_base64_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_base64_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_hex_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_hex_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_url_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_url_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_base64_url_encode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_base64_url_decode(GrayArena *arena, GrayString str);
+GrayString gray_encoding_html_escape(GrayArena *arena, GrayString str);
+GrayString gray_encoding_html_unescape(GrayArena *arena, GrayString str);
+GrayString gray_encoding_shell_escape(GrayArena *arena, GrayString str);
 
 /* Byte conversion functions (formerly @bytes module) */
-GrayArray gray_encoding_from_string(GrayArena *arena, GrayString s);
+GrayArray gray_encoding_from_string(GrayArena *arena, GrayString str);
 GrayString gray_encoding_to_string(GrayArena *arena, GrayArray *bytes);
 GrayArray gray_encoding_from_hex(GrayArena *arena, GrayString hex);
 GrayString gray_encoding_to_hex(GrayArena *arena, GrayArray *bytes);

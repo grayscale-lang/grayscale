@@ -834,7 +834,13 @@ int main(int argc, char **argv) {
     argv_push(&cc_argv, "-D__USE_MINGW_ANSI_STDIO=1");
     argv_push(&cc_argv, "-D_WIN32_WINNT=0x0601");
 #else
+    /* Must match how libgrayrt.a is built (see grayc/Makefile STD_FLAGS).
+     * Without _POSIX_C_SOURCE, -std=c11 defines __STRICT_ANSI__, which on
+     * glibc hides every POSIX name (realpath, strdup, setenv, fdopen, ...)
+     * that extern interop reaches for, and can skew feature-gated
+     * declarations in the shared runtime headers against the archive. */
     argv_push(&cc_argv, "-std=c11");
+    argv_push(&cc_argv, "-D_POSIX_C_SOURCE=200809L");
 #endif
     if (opts.debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opts.opt_level);

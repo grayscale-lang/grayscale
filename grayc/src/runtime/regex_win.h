@@ -31,6 +31,7 @@
 #define REG_EXTENDED 1
 #define REG_NOSUB    2
 #define REG_ICASE    4
+#define REG_NOTBOL   8  /* regexec eflag: cursor[0] is not beginning-of-line */
 #define REG_NOMATCH  1
 #define REG_BADPAT   2
 
@@ -331,6 +332,7 @@ static void grx_free_alt(GrxAlt *alt) {
 
 typedef struct {
     const char *begin; /* start of subject, for '^' */
+    bool notbol;       /* REG_NOTBOL: '^' must not match at begin */
 } GrxCtx;
 
 static const char *grx_match_alt(GrxCtx *ctx, GrxAlt *alt, const char *scan_position);
@@ -340,7 +342,7 @@ static const char *grx_match_seq(GrxCtx *ctx, GrxSeq *seq, int idx, const char *
  * after it, or NULL. */
 static const char *grx_match_one(GrxCtx *ctx, GrxNode *node, const char *scan_position) {
     switch (node->kind) {
-    case GRX_BOL: return (scan_position == ctx->begin) ? scan_position : NULL;
+    case GRX_BOL: return (scan_position == ctx->begin && !ctx->notbol) ? scan_position : NULL;
     case GRX_EOL: return (*scan_position == '\0') ? scan_position : NULL;
     case GRX_ANY: return *scan_position ? scan_position + 1 : NULL;
     case GRX_CHAR: return (*scan_position == node->ch && *scan_position) ? scan_position + 1 : NULL;
@@ -415,11 +417,11 @@ static int regcomp(regex_t *re, const char *pattern, int flags) {
 
 static int regexec(const regex_t *re, const char *string, size_t nmatch, regmatch_t *pmatch,
                    int eflags) {
-    (void)eflags;
     if (!re->root) return REG_NOMATCH;
 
     GrxCtx ctx;
     ctx.begin = string;
+    ctx.notbol = (eflags & REG_NOTBOL) != 0;
 
     for (const char *start = string;; start++) {
         const char *end = grx_match_alt(&ctx, re->root, start);

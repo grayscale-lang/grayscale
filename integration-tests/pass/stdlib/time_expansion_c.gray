@@ -1,0 +1,110 @@
+/*
+ * time_expansion_c.gray - Integration test for the time module's humanize, parse_duration, format_duration,
+ * add_days/add_hours/add_seconds, start_of_day/end_of_day, days_in_month,
+ * day_of_year, weekday_name, month_name.
+ */
+
+import @time
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do check_int(label string, got int, want int, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected ${want}, got ${got}")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== time expansion Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- humanize --
+    check("humanize 0", time.humanize(0), "just now", passed, failed)
+    check("humanize 45", time.humanize(45), "45 seconds ago", passed, failed)
+    check("humanize 90", time.humanize(90), "1 minute ago", passed, failed)
+    check("humanize future hour", time.humanize(-3700), "in 1 hour", passed, failed)
+    check("humanize 2 days", time.humanize(172800), "2 days ago", passed, failed)
+
+    // -- parse_duration --
+    mut a, ae = time.parse_duration("1h30m")
+    if a == 5400 && ae == nil {
+        println("  [PASS] parse_duration 1h30m")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse_duration 1h30m: ${a}")
+        failed += 1
+    }
+    mut b, _ = time.parse_duration("1h30m15s")
+    check_int("parse_duration compound", b, 5415, passed, failed)
+    mut c, _ = time.parse_duration("2d")
+    check_int("parse_duration days", c, 172800, passed, failed)
+    mut d, de = time.parse_duration("abc")
+    if d == 0 && de != nil {
+        println("  [PASS] parse_duration bad input yields error")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse_duration bad input")
+        failed += 1
+    }
+
+    // -- format_duration --
+    check("format_duration hours", time.format_duration(5415), "1h 30m 15s", passed, failed)
+    check("format_duration minutes", time.format_duration(90), "1m 30s", passed, failed)
+    check("format_duration seconds", time.format_duration(45), "45s", passed, failed)
+    check("format_duration zero", time.format_duration(0), "0s", passed, failed)
+    check("format_duration caps at hours", time.format_duration(90000), "25h 0m 0s", passed, failed)
+
+    // -- arithmetic (pure Unix math) --
+    mut base int = 1707955200
+    check_int("add_days", time.add_days(base, 3), base + 259200, passed, failed)
+    check_int("add_hours negative", time.add_hours(base, -2), base - 7200, passed, failed)
+    check_int("add_seconds", time.add_seconds(base, 30), base + 30, passed, failed)
+    check_int("start_of_day is idempotent", time.start_of_day(time.start_of_day(base + 12345)), base, passed, failed)
+    check_int("end_of_day", time.end_of_day(base), base + 86399, passed, failed)
+
+    // -- days_in_month --
+    check_int("days_in_month Feb leap", time.days_in_month(2024, 2), 29, passed, failed)
+    check_int("days_in_month Feb non-leap", time.days_in_month(2023, 2), 28, passed, failed)
+    check_int("days_in_month Apr", time.days_in_month(2024, 4), 30, passed, failed)
+    check_int("days_in_month Dec", time.days_in_month(2024, 12), 31, passed, failed)
+
+    // -- day_of_year / weekday_name / month_name: cross-check against the
+    //    existing component accessors so the assertion is timezone-independent.
+    mut now int = time.now()
+    mut doy int = time.day_of_year(now)
+    if doy >= 1 && doy <= 366 {
+        println("  [PASS] day_of_year in range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] day_of_year: ${doy}")
+        failed += 1
+    }
+
+    mut wnames [string] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    check("weekday_name matches weekday()", time.weekday_name(now), wnames[time.weekday(now)], passed, failed)
+
+    mut mnames [string] = {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"}
+    check("month_name matches month()", time.month_name(now), mnames[time.month(now) - 1], passed, failed)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

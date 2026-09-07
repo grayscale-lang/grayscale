@@ -61,7 +61,7 @@ typedef struct {
      * does NOT make an ordinary use of the arena elsewhere in the function
      * an error; the deferred destroy hasn't actually run yet. */
     bool ensure_destroy_pending;
-    /* Pre-marked destroyed by pc_premark_loop_body(): some statement later in
+    /* Pre-marked destroyed by pointer_checker_premark_loop_body(): some statement later in
      * this loop body's source text destroys the arena, so a dereference
      * appearing earlier in the text is still unsafe on any iteration after
      * the one whose destroy runs. Deliberately kept separate from
@@ -70,12 +70,20 @@ typedef struct {
      * NOT make the loop body's own (real, single, textually-later) destroy
      * statement look like a double-free of itself — that statement is the
      * one this flag exists to warn about, not a repeat of it. Only
-     * pc_check_mem_deref consults this; the double-destroy guards
-     * (pc_apply_arena_lifecycle, pc_apply_ensure_mem_call) deliberately do
+     * pointer_checker_check_mem_deref consults this; the double-destroy guards
+     * (pointer_checker_apply_arena_lifecycle, pointer_checker_apply_ensure_mem_call) deliberately do
      * not, and rely on the loop body's real statements — via the same
      * branch-join machinery used everywhere else — to set `destroyed` for
      * real once actually walked. */
     bool premarked_destroyed;
+    /* Some statement anywhere in the current function destroys or resets this
+     * arena. Consulted only by the escape checks (E3169): a pointer that
+     * leaves the function via `return` or a store into caller-visible memory
+     * must stay valid for the caller, so it must not root at an arena this
+     * function ever tears down — regardless of statement order. Ordinary
+     * in-function use is unaffected; that is what the flow-sensitive
+     * `destroyed` / epoch state is for. */
+    bool destroyed_in_fn;
 } ArenaLifetime;
 
 typedef struct {
@@ -121,9 +129,16 @@ typedef struct {
     unsigned char escape_state;
     unsigned long long returns_param_addr;
     signed char param_escape_into[64];
+    /* param_escape_global_name[i]: when param_escape_into[i] is
+     * PARAM_ESCAPE_GLOBAL because parameter i's address is stored into a
+     * *named* module-level variable, that variable's name, so the E3163 at
+     * the call site can name the real destination. NULL when the
+     * global-lifetime sink has no single name (a forward through a
+     * func-typed parameter or an opaque indirect call). */
+    const char *param_escape_global_name[64];
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
-     * pc_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
+     * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
      * 2 = done.
      *
      * destroys_param_arena / resets_param_arena: bit i set if some path
@@ -153,13 +168,13 @@ typedef struct {
      * one, or forwarded through another summarised call's own _direct bit)
      * or _field (the pointer is buried in a struct/array/map literal the
      * function returns, or forwarded through another call's own _field
-     * bit). Lets a call site (pc_bind_mem_pointer, via
-     * pc_mem_pointer_in_expr) bind the result — as mem_arena or
+     * bit). Lets a call site (pointer_checker_bind_mem_pointer, via
+     * pointer_checker_mem_pointer_in_expr) bind the result — as mem_arena or
      * field_mem_arena respectively — to the *caller's* arena variable at
      * that parameter position, the same way returns_param_addr lets a
      * return value's escape origin follow a pointer parameter through a
      * call. Computed alongside destroys_param_arena in the same
-     * pc_mem_walk()/pc_return_stmt_mem_bits() pass. */
+     * pointer_checker_mem_walk()/pointer_checker_return_stmt_mem_bits() pass. */
     unsigned long long returns_param_mem_alloc;
     unsigned long long returns_param_mem_alloc_field;
 
@@ -284,6 +299,12 @@ typedef struct {
     ArenaLifetime *arenas;
     int arena_count;
     int arena_cap;
+    /* True while a structural cross-function @mem summary walk is in progress.
+     * That walk runs detached from the summarised function's scope, so arena
+     * path keys must be taken literally (a parameter's own name) rather than
+     * resolved through checker->current_scope, which belongs to whichever
+     * caller triggered the lazy summary. */
+    bool pointer_checker_in_mem_summary;
 
     /*  true during register_declarations to allow forward references */
     bool registering;

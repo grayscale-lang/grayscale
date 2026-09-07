@@ -1,0 +1,52 @@
+/*
+ * Iterating a container of pointers with `for_each` and dereferencing the
+ * loop variable while the pointees are still alive is fine. Propagating the
+ * container's origin onto the loop variable (#2695) must not turn ordinary
+ * in-scope use into a false E3162/E3163.
+ */
+
+mut g1 int = 10
+mut g2 int = 20
+mut globals [^int] = {addr(g1), addr(g2)}
+
+do sum_globals() -> int {
+    mut s int = 0
+    for_each pp in globals {
+        s = s + pp^
+    }
+    return s
+}
+
+do main() {
+    mut passed int = 0
+
+    // 1. locals, dereferenced in the same scope
+    mut a int = 1
+    mut b int = 4
+    mut locals [^int] = {addr(a), addr(b)}
+    mut total int = 0
+    for_each pp in locals {
+        total = total + pp^
+    }
+    if total == 5 {
+        println("  [PASS] deref for_each loop var over local-pointer array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] locals: ${total}")
+    }
+
+    // 2. pointers to globals returned as a summed value
+    if sum_globals() == 30 {
+        println("  [PASS] for_each over pointers to globals")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] globals: ${sum_globals()}")
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

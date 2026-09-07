@@ -1,0 +1,53 @@
+/*
+ * c_interop_posix_names.gray - extern interop reaches POSIX-gated libc names.
+ *
+ * realpath, setenv, and strdup are hidden by __STRICT_ANSI__ (which bare
+ * -std=c11 defines) on glibc. The generated program must be compiled with the
+ * same _POSIX_C_SOURCE the runtime archive is built with, so these resolve on
+ * every platform.
+ */
+
+extern import "stdlib.h"
+extern import "string.h"
+
+do main() {
+    println("=== C Interop POSIX Names Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut resolved string = c_string(extern.realpath(".", nil))
+    if len(resolved) > 0 {
+        println("  [PASS] realpath resolved the current directory")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] realpath returned nothing")
+        failed += 1
+    }
+
+    mut rc i32 = extern.setenv("GRAY_POSIX_TEST", "1", 1)
+    if rc == 0 {
+        println("  [PASS] setenv succeeded")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] setenv returned ${rc}")
+        failed += 1
+    }
+
+    mut dup string = c_string(extern.strdup("copied"))
+    if dup == "copied" {
+        println("  [PASS] strdup round-tripped")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strdup gave '${dup}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

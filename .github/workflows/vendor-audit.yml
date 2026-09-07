@@ -1,0 +1,47 @@
+name: Vendor Audit
+
+# Verifies the recorded hashes of vendored third-party C source and reports
+# OSV.dev advisories against each pinned version.
+#
+#   * monthly schedule  — surfaces new CVEs against a pinned version without
+#     gating regular development
+#   * manual dispatch   — on demand
+#   * pull_request      — only when the vendored source or its manifest
+#     changes, so a hash/manifest drift is caught before merge
+#
+# Advisories are informational and do not fail the job (the script exits
+# non-zero only on a hash mismatch, a missing file, or an uncovered file).
+
+on:
+  schedule:
+    - cron: '0 6 1 * *'   # 06:00 UTC, first of each month
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'grayc/src/vendor/**'
+      - 'scripts/check_vendor.sh'
+      - '.github/workflows/vendor-audit.yml'
+
+jobs:
+  audit:
+    name: Check vendored dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run check_vendor.sh
+        run: ./scripts/check_vendor.sh | tee vendor-audit.txt
+
+      - name: Publish report to job summary
+        if: always()
+        run: |
+          {
+            echo '## Vendor audit'
+            echo ''
+            echo '```'
+            cat vendor-audit.txt 2>/dev/null || echo '(no output)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

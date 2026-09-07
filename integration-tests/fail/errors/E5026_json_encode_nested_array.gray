@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5026 - json.encode only serializes scalars, flat arrays of
+ * scalars, and string-keyed maps of scalars. A [[string]] (e.g. the result
+ * of regex.find_all_groups) reached codegen's fallback and emitted pointer
+ * words as JSON numbers.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @json
+
+do main() {
+    mut rows [[string]] = {{"a", "b"}, {"c", "d"}}
+    println(json.encode(rows))
+}

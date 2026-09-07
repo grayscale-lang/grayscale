@@ -1,0 +1,35 @@
+// expect-error: E3169
+// expect-error-count: 2
+/*
+ * Error Test: E3169 - a pointer into a @mem arena stored where it outlives
+ * the function (a module-level global), then the arena is torn down in the
+ * same function (#2696). Caught whether the store is direct or laundered
+ * through a helper whose escape summary is PARAM_ESCAPE_GLOBAL, and
+ * regardless of whether the destroy is textually before or after the store.
+ */
+
+import @mem
+
+mut g ^int = nil
+
+do stash_g(p ^int) { g = p }
+
+do store_direct() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    g = p
+    mem.destroy(a)
+}
+
+do store_via_helper() {
+    mut a = mem.arena(1024)
+    mut p ^int = mem.alloc(a, 42)
+    stash_g(p)
+    mem.destroy(a)
+}
+
+do main() {
+    store_direct()
+    store_via_helper()
+    println("unreachable")
+}

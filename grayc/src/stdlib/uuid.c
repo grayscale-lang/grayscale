@@ -17,6 +17,7 @@
 
 #include "uuid.h"
 #include "builtins.h"
+#include "crypto.h"
 #include <time.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -37,24 +38,24 @@
  * (RtlGenRandom under the hood, no extra link library). On failure, returns
  * false; callers should treat that as fatal since UUID uniqueness is the
  * whole point. */
-static bool gray_uuid_random_bytes(uint8_t *buf, size_t n) {
+static bool gray_uuid_random_bytes(uint8_t *buf, size_t count) {
 #ifdef _WIN32
-    for (size_t i = 0; i < n; i += sizeof(unsigned int)) {
-        unsigned int r;
-        if (rand_s(&r) != 0) return false;
-        size_t chunk = (n - i < sizeof(r)) ? n - i : sizeof(r);
-        memcpy(buf + i, &r, chunk);
+    for (size_t i = 0; i < count; i += sizeof(unsigned int)) {
+        unsigned int random_word;
+        if (rand_s(&random_word) != 0) return false;
+        size_t chunk = (count - i < sizeof(random_word)) ? count - i : sizeof(random_word);
+        memcpy(buf + i, &random_word, chunk);
     }
     return true;
 #else
 #if defined(__APPLE__) || defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__linux__)
-    if (n <= 256 && getentropy(buf, n) == 0) return true;
+    if (count <= 256 && getentropy(buf, count) == 0) return true;
 #endif
-    FILE *f = fopen("/dev/urandom", "rb");
-    if (!f) return false;
-    size_t got = fread(buf, 1, n, f);
-    fclose(f);
-    return got == n;
+    FILE *urandom = fopen("/dev/urandom", "rb");
+    if (!urandom) return false;
+    size_t bytes_read = fread(buf, 1, count, urandom);
+    fclose(urandom);
+    return bytes_read == count;
 #endif
 }
 
@@ -65,6 +66,89 @@ static void gray_uuid_format_hyphenated(const uint8_t *bytes, char *buf) {
         bytes[4], bytes[5], bytes[6], bytes[7],
         bytes[8], bytes[9], bytes[10], bytes[11],
         bytes[12], bytes[13], bytes[14], bytes[15]);
+}
+
+static int uuid_hex_val(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return 0;
+}
+
+/* Decode the canonical 36-char hyphenated form into 16 bytes. A value that
+ * is not 36 chars (failed generate, or the default-zero struct) yields the
+ * nil UUID's bytes. */
+static void uuid_to_bytes16(GrayUUID id, uint8_t out[16]) {
+    if (id.value.len != GRAY_UUID_LEN) {
+        memset(out, 0, 16);
+        return;
+    }
+    int b = 0;
+    for (int i = 0; i < GRAY_UUID_LEN && b < 16; i++) {
+        if (id.value.data[i] == '-') continue;
+        out[b++] = (uint8_t)((uuid_hex_val(id.value.data[i]) << 4) |
+                             uuid_hex_val(id.value.data[i + 1]));
+        i++;
+    }
+}
+
+GrayArray gray_uuid_to_bytes(GrayArena *arena, GrayUUID id) {
+    uint8_t bytes[16];
+    uuid_to_bytes16(id, bytes);
+    return gray_array_from(arena, bytes, sizeof(uint8_t), 16);
+}
+
+GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes) {
+    if (bytes->len < 16) {
+        gray_builtin_panic_msg(gray_string_lit("uuid.from_bytes: need 16 bytes"));
+    }
+    uint8_t raw[16];
+    for (int i = 0; i < 16; i++) {
+        raw[i] = (bytes->elem_size == 1)
+            ? ((const uint8_t *)bytes->data)[i]
+            : (uint8_t)((const int64_t *)bytes->data)[i];
+    }
+    char buf[GRAY_UUID_LEN + 1];
+    gray_uuid_format_hyphenated(raw, buf);
+    GrayUUID uuid;
+    uuid.value = gray_string_new(arena, buf, GRAY_UUID_LEN);
+    return uuid;
+}
+
+int64_t gray_uuid_version(GrayUUID id) {
+    uint8_t bytes[16];
+    uuid_to_bytes16(id, bytes);
+    return (bytes[6] >> 4) & 0x0F;
+}
+
+GrayUuidTimestamp gray_uuid_timestamp(GrayUUID id) {
+    uint8_t b[16];
+    uuid_to_bytes16(id, b);
+    GrayUuidTimestamp r = { 0, false };
+    int version = (b[6] >> 4) & 0x0F;
+
+    if (version == 7) {
+        /* RFC 9562 §5.7: bytes 0..5 are a 48-bit big-endian Unix ms count. */
+        uint64_t ms = ((uint64_t)b[0] << 40) | ((uint64_t)b[1] << 32) |
+                      ((uint64_t)b[2] << 24) | ((uint64_t)b[3] << 16) |
+                      ((uint64_t)b[4] << 8)  | (uint64_t)b[5];
+        r.v0 = (int64_t)ms;
+        r.v1 = true;
+    } else if (version == 1) {
+        /* RFC 4122 §4.1.2: 60-bit count of 100ns intervals since the Gregorian
+         * epoch (1582-10-15), split across time_low / time_mid / time_hi. */
+        uint64_t time_low = ((uint64_t)b[0] << 24) | ((uint64_t)b[1] << 16) |
+                            ((uint64_t)b[2] << 8)  | (uint64_t)b[3];
+        uint64_t time_mid = ((uint64_t)b[4] << 8) | (uint64_t)b[5];
+        uint64_t time_hi  = (((uint64_t)b[6] & 0x0F) << 8) | (uint64_t)b[7];
+        uint64_t ticks = (time_hi << 48) | (time_mid << 32) | time_low;
+        uint64_t gregorian_offset = 0x01B21DD213814000ULL; /* 100ns from 1582 to 1970 */
+        if (ticks >= gregorian_offset) {
+            r.v0 = (int64_t)((ticks - gregorian_offset) / 10000ULL);
+            r.v1 = true;
+        }
+    }
+    return r;
 }
 
 GrayUUID gray_uuid_generate(GrayArena *arena) {
@@ -82,14 +166,41 @@ GrayUUID gray_uuid_generate(GrayArena *arena) {
     return uuid;
 }
 
+GrayUUID gray_uuid_generate_v5(GrayArena *arena, GrayUUID namespace_id, GrayString name) {
+    uint8_t ns[16];
+    uuid_to_bytes16(namespace_id, ns);
+
+    /* SHA-1 over the namespace bytes followed by the name. */
+    size_t len = 16 + (size_t)name.len;
+    uint8_t *buf = (uint8_t *)gray_arena_alloc_uninitialized(arena, len);
+    memcpy(buf, ns, 16);
+    if (name.len > 0) memcpy(buf + 16, name.data, (size_t)name.len);
+
+    uint8_t digest[20];
+    gray_crypto_sha1_raw(arena, buf, len, digest);
+
+    uint8_t out[16];
+    memcpy(out, digest, 16);
+    out[6] = (out[6] & 0x0F) | 0x50; /* version 5 */
+    out[8] = (out[8] & 0x3F) | 0x80; /* variant 1 (RFC 4122) */
+
+    char strbuf[GRAY_UUID_LEN + 1];
+    gray_uuid_format_hyphenated(out, strbuf);
+    GrayUUID uuid;
+    uuid.value = gray_string_new(arena, strbuf, GRAY_UUID_LEN);
+    return uuid;
+}
+
 GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id) {
-    /* Strip hyphens from the canonical 36-char hyphenated form. */
-    if (id.value.len != GRAY_UUID_LEN) return gray_string_lit("");
+    /* Strip hyphens from the canonical 36-char hyphenated form. A
+     * non-canonical value is the nil UUID (see gray_uuid_to_string). */
+    if (id.value.len != GRAY_UUID_LEN)
+        return gray_string_lit("00000000000000000000000000000000");
     char buf[GRAY_UUID_COMPACT_LEN + 1];
-    int j = 0;
+    int out_pos = 0;
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
         if (id.value.data[i] != '-') {
-            buf[j++] = id.value.data[i];
+            buf[out_pos++] = id.value.data[i];
         }
     }
     buf[GRAY_UUID_COMPACT_LEN] = '\0';
@@ -135,14 +246,14 @@ GrayUUID gray_uuid_generate_time_ordered(GrayArena *arena) {
     return uuid;
 }
 
-bool gray_uuid_is_valid(GrayString s) {
-    if (s.len != GRAY_UUID_LEN) return false;
+bool gray_uuid_is_valid(GrayString str) {
+    if (str.len != GRAY_UUID_LEN) return false;
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
         if (i == 8 || i == 13 || i == 18 || i == 23) {
-            if (s.data[i] != '-') return false;
+            if (str.data[i] != '-') return false;
         } else {
-            char c = s.data[i];
-            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            char ch = str.data[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')))
                 return false;
         }
     }
@@ -152,14 +263,14 @@ bool gray_uuid_is_valid(GrayString s) {
 /* Strict parser: panics on invalid input. Callers that want a fallible
  * check should gate with gray_uuid_is_valid() first. Returns the input
  * normalized to lowercase, wrapped in a UUID struct. */
-GrayUUID gray_uuid_parse(GrayArena *arena, GrayString s) {
-    if (!gray_uuid_is_valid(s)) {
+GrayUUID gray_uuid_parse(GrayArena *arena, GrayString str) {
+    if (!gray_uuid_is_valid(str)) {
         gray_builtin_panic_msg(gray_string_lit("uuid.parse: invalid UUID string"));
     }
     char *buf = (char *)gray_arena_alloc_uninitialized(arena, GRAY_UUID_LEN + 1);
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
-        char c = s.data[i];
-        buf[i] = (c >= 'A' && c <= 'F') ? (char)(c - 'A' + 'a') : c;
+        char ch = str.data[i];
+        buf[i] = (ch >= 'A' && ch <= 'F') ? (char)(ch - 'A' + 'a') : ch;
     }
     buf[GRAY_UUID_LEN] = '\0';
     GrayUUID uuid;
@@ -169,6 +280,10 @@ GrayUUID gray_uuid_parse(GrayArena *arena, GrayString s) {
 }
 
 GrayString gray_uuid_to_string(GrayUUID id) {
+    /* A non-canonical value (default-zero struct, failed generate) is the nil
+     * UUID — render it as such, the way uuid_to_bytes16 already treats it. */
+    if (id.value.len != GRAY_UUID_LEN)
+        return gray_string_lit("00000000-0000-0000-0000-000000000000");
     return id.value;
 }
 

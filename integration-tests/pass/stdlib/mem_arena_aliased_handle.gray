@@ -1,0 +1,46 @@
+/*
+ * Copying a @mem arena handle (mut b mem.Arena = a) and allocating or
+ * reading through the alias is legal as long as the arena is still alive.
+ * Propagating the arena identity to the alias (#2693) must not turn ordinary
+ * aliasing into a false E3164/E3165/E3166.
+ */
+
+import @mem
+
+do main() {
+    mut passed int = 0
+
+    mut a = mem.arena(1024)
+    mut b mem.Arena = a
+
+    // allocate through the alias, read it back — arena still alive
+    mut p ^int = mem.alloc(b, 0)
+    p^ = 7
+    if p^ == 7 {
+        println("  [PASS] alloc + deref through aliased handle")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alloc + deref through aliased handle: ${p^}")
+    }
+
+    // a second alias, still before any destroy
+    mut c mem.Arena = b
+    mut q ^int = mem.alloc(c, 0)
+    q^ = 35
+    if p^ + q^ == 42 {
+        println("  [PASS] second-hop alias still valid")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] second-hop alias: ${p^} ${q^}")
+    }
+
+    // destroying through one alias is the single, legal destroy
+    mem.destroy(c)
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

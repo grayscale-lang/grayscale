@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 453 codes** (319 errors, 16 warnings, 118 panics)
+**Total: 465 codes** (321 errors, 16 warnings, 128 panics)
 
 ---
 
@@ -237,6 +237,7 @@
 | `E3166` | safety | '%s(%s)' called again; '%s' was already destroyed |
 | `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
 | `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
+| `E3169` | safety | '%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -264,6 +265,7 @@
 | `E4028` | names | a built-in name cannot be used as a user-defined name |
 | `E4029` | names | the 'private' modifier can only be applied to top-level declarations |
 | `E4030` | names | a local variable or parameter shadows a C function of the same name called via 'extern.' |
+| `E4031` | names | '%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s' |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the call passes more or fewer arguments than the function accepts |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -480,6 +482,16 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0116` | strings | string builder size exceeds maximum string length |
 | `P0117` | memory | dereferenced a pointer into an arena that has been destroyed or reset |
 | `P0118` | runtime | call through a nil function value |
+| `P0119` | strings | strings.truncate: max is smaller than the ellipsis length |
+| `P0120` | bounds | arrays.swap: index out of bounds for an array of length %d |
+| `P0121` | arrays | arrays.average called on an empty array |
+| `P0122` | math | math.remap: input range is empty (in_lo == in_hi) |
+| `P0123` | random | random.rand_string: alphabet is empty but length is greater than 0 |
+| `P0124` | io | io.read_stdin_all: input exceeds maximum string length |
+| `P0125` | csv | csv: referenced a column that is not in the header |
+| `P0126` | crypto | crypto.totp: digits must be between 1 and 9 |
+| `P0127` | time | time.parse_duration: cannot parse the duration string |
+| `P0128` | time | time.days_in_month: month must be between 1 and 12 |
 
 ---
 
@@ -504,4 +516,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-05 20:44:06 UTC*
+*Generated on 2026-09-07 19:49:15 UTC*

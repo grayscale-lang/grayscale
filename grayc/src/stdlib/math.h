@@ -538,7 +538,7 @@ int64_t gray_math_factorial(int64_t n);
  *   println(math.gcd(12, 8))
  *@end
  */
-int64_t gray_math_gcd(int64_t a, int64_t b);
+int64_t gray_math_gcd(int64_t left, int64_t right);
 
 /* Not wired to any Grayscale-callable name (no typechecker/codegen dispatch
  * targets these); @random's own generator backs random.rand_int/rand_float
@@ -557,7 +557,7 @@ double gray_math_random_float(double min, double max);
  *   println(math.lcm(4, 6))
  *@end
  */
-int64_t gray_math_lcm(int64_t a, int64_t b);
+int64_t gray_math_lcm(int64_t left, int64_t right);
 
 /*@man is_prime
  *@module math
@@ -583,6 +583,38 @@ bool gray_math_is_prime(int64_t n);
  *@end
  */
 static inline double gray_math_lerp(double a, double b, double t) { return a + (b - a) * t; }
+
+/*@man remap
+ *@module math
+ *@group Utility
+ *@sig remap(v float, in_lo float, in_hi float, out_lo float, out_hi float) -> float
+ *@desc Linearly maps v from the range [in_lo, in_hi] onto [out_lo, out_hi] without clamping. Pairs with lerp. Panics if in_lo equals in_hi.
+ *@example
+ *   import @math
+ *   println(math.remap(5.0, 0.0, 10.0, 0.0, 100.0))
+ *@end
+ */
+static inline double gray_math_remap(double v, double in_lo, double in_hi,
+                                     double out_lo, double out_hi) {
+    if (in_lo == in_hi) {
+        gray_panic_code("P0122", "math.remap: input range is empty (in_lo == in_hi)");
+    }
+    return out_lo + (v - in_lo) * (out_hi - out_lo) / (in_hi - in_lo);
+}
+
+/*@man approx_equal
+ *@module math
+ *@group Comparison
+ *@sig approx_equal(a float, b float, epsilon float) -> bool
+ *@desc Returns true if the absolute difference between a and b is at most epsilon.
+ *@example
+ *   import @math
+ *   println(math.approx_equal(0.1 + 0.2, 0.3, 0.0001))
+ *@end
+ */
+static inline bool gray_math_approx_equal(double a, double b, double epsilon) {
+    return fabs(a - b) <= epsilon;
+}
 
 /*@man distance
  *@module math
@@ -655,7 +687,7 @@ typedef struct { double v0; double v1; } GrayMathModf;
  *   println(frac)
  *@end
  */
-GrayMathModf gray_math_modf(double x);
+GrayMathModf gray_math_modf(double value);
 
 /*@man is_power_of_two
  *@module math

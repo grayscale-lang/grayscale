@@ -1,0 +1,32 @@
+// Two modules define `escape`, but only one is brought into scope with
+// `import and use`, so the bare call is unambiguous (no E4031). The other is
+// still reachable qualified.
+
+import and use @chars
+import @regex
+
+do main() {
+    mut passed int = 0
+
+    // bare call resolves to the used module
+    if escape('A') == "A" {
+        passed += 1
+    } otherwise {
+        println("FAIL: bare escape")
+    }
+
+    // the other module is still usable when qualified
+    if regex.escape("a.b") == "a\\.b" {
+        passed += 1
+    } otherwise {
+        println("FAIL: qualified regex.escape")
+    }
+
+    println("passed: ${passed}/2")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

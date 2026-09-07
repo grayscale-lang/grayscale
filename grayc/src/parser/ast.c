@@ -39,8 +39,7 @@ const char *ast_member_base_qualifier(const AstNode *node) {
     return left->data.label.value;
 }
 
-bool ast_member_chain(const AstNode *node, const char **out_qualifier,
-                      const char **out_type) {
+bool ast_member_chain(const AstNode *node, const char **out_qualifier, const char **out_type) {
     if (!node || node->kind != NODE_MEMBER_EXPR) return false;
     const AstNode *object = node->data.member.object;
     const char *qualifier = ast_member_qualifier(object);

@@ -72,6 +72,19 @@
  *@end
  */
 
+/*@man rand_string
+ *@module random
+ *@group Generation
+ *@sig rand_string(length int, alphabet string) -> string
+ *@desc Returns a string of length characters, each drawn uniformly at random from alphabet using the module's non-cryptographic RNG. A length of 0 returns "". Panics if alphabet is empty and length is greater than 0.
+ *@example
+ *   import @random
+ *   mut token string = random.rand_string(8, "abcdefghijklmnopqrstuvwxyz0123456789")
+ *   println(token)
+ *@end
+ */
+GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alphabet);
+
 /*@man choice
  *@module random
  *@group Arrays
@@ -132,7 +145,7 @@ int32_t gray_random_char_range(int32_t min, int32_t max);
 
 /* Array operations */
 GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr);
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t n);
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t count);
 
 /* Explicit seeding */
 void gray_random_seed(int64_t value);

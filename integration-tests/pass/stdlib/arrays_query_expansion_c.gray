@@ -1,0 +1,109 @@
+/*
+* arrays_query_expansion_c.gray - Integration test for the arrays module's
+* average, find, find_index, is_sorted, and swap functions
+*/
+
+import @arrays
+
+do is_even(x int) -> bool { return x % 2 == 0 }
+do is_big(x int) -> bool { return x > 100 }
+
+do main() {
+    println("=== Arrays Query Expansion Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- average --
+    mut ints [int] = {2, 4, 6}
+    if arrays.average(ints) == 4.0 {
+        println("  [PASS] average of ints")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] average of ints: got ${arrays.average(ints)}")
+        failed += 1
+    }
+    mut floats [float] = {1.0, 2.0}
+    if arrays.average(floats) == 1.5 {
+        println("  [PASS] average of floats")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] average of floats: got ${arrays.average(floats)}")
+        failed += 1
+    }
+
+    // -- find --
+    mut nums [int] = {1, 3, 4, 7}
+    mut hit int, ok bool = arrays.find(nums, ()is_even)
+    if hit == 4 && ok {
+        println("  [PASS] find match")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] find match: hit=${hit} ok=${ok}")
+        failed += 1
+    }
+    mut miss int, found bool = arrays.find(nums, ()is_big)
+    if !found && miss == 0 {
+        println("  [PASS] find no match yields zero + false")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] find no match: miss=${miss} found=${found}")
+        failed += 1
+    }
+
+    // -- find_index --
+    if arrays.find_index(nums, ()is_even) == 2 {
+        println("  [PASS] find_index match")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] find_index match: got ${arrays.find_index(nums, ()is_even)}")
+        failed += 1
+    }
+    if arrays.find_index(nums, ()is_big) == -1 {
+        println("  [PASS] find_index no match is -1")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] find_index no match")
+        failed += 1
+    }
+
+    // -- is_sorted --
+    mut sorted [int] = {1, 2, 2, 5}
+    mut unsorted [int] = {3, 1, 2}
+    mut empty [int] = {}
+    mut words [string] = {"apple", "banana", "cherry"}
+    if arrays.is_sorted(sorted) && !arrays.is_sorted(unsorted) && arrays.is_sorted(empty) && arrays.is_sorted(words) {
+        println("  [PASS] is_sorted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] is_sorted")
+        failed += 1
+    }
+
+    // -- swap --
+    mut sw [int] = {1, 2, 3}
+    arrays.swap(sw, 0, 2)
+    if sw[0] == 3 && sw[1] == 2 && sw[2] == 1 {
+        println("  [PASS] swap")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] swap: ${sw[0]} ${sw[1]} ${sw[2]}")
+        failed += 1
+    }
+    arrays.swap(sw, 1, 1)
+    if sw[1] == 2 {
+        println("  [PASS] swap i == j is a no-op")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] swap i == j")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

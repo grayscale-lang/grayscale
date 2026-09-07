@@ -25,13 +25,13 @@
  *   println()
  *@end
  */
-void gray_builtin_println_str(GrayString s);
-void gray_builtin_println_int(int64_t v);
-void gray_builtin_println_uint(uint64_t v);
-void gray_builtin_println_float(double v);
-void gray_builtin_println_bool(bool v);
-void gray_builtin_println_char(int32_t c);
-void gray_builtin_println_addr(uintptr_t v);
+void gray_builtin_println_str(GrayString str);
+void gray_builtin_println_int(int64_t value);
+void gray_builtin_println_uint(uint64_t value);
+void gray_builtin_println_float(double value);
+void gray_builtin_println_bool(bool value);
+void gray_builtin_println_char(int32_t codepoint);
+void gray_builtin_println_addr(uintptr_t value);
 
 /*@man print
  *@sig print(value T)
@@ -41,13 +41,13 @@ void gray_builtin_println_addr(uintptr_t v);
  *   print(42)
  *@end
  */
-void gray_builtin_print_str(GrayString s);
-void gray_builtin_print_int(int64_t v);
-void gray_builtin_print_uint(uint64_t v);
-void gray_builtin_print_float(double v);
-void gray_builtin_print_bool(bool v);
-void gray_builtin_print_char(int32_t c);
-void gray_builtin_print_addr(uintptr_t v);
+void gray_builtin_print_str(GrayString str);
+void gray_builtin_print_int(int64_t value);
+void gray_builtin_print_uint(uint64_t value);
+void gray_builtin_print_float(double value);
+void gray_builtin_print_bool(bool value);
+void gray_builtin_print_char(int32_t codepoint);
+void gray_builtin_print_addr(uintptr_t value);
 
 /*@man flush
  *@sig flush()
@@ -70,13 +70,13 @@ void gray_builtin_flush(void);
  *   eprintln()
  *@end
  */
-void gray_builtin_eprintln_str(GrayString s);
-void gray_builtin_eprintln_int(int64_t v);
-void gray_builtin_eprintln_uint(uint64_t v);
-void gray_builtin_eprintln_float(double v);
-void gray_builtin_eprintln_bool(bool v);
-void gray_builtin_eprintln_char(int32_t c);
-void gray_builtin_eprintln_addr(uintptr_t v);
+void gray_builtin_eprintln_str(GrayString str);
+void gray_builtin_eprintln_int(int64_t value);
+void gray_builtin_eprintln_uint(uint64_t value);
+void gray_builtin_eprintln_float(double value);
+void gray_builtin_eprintln_bool(bool value);
+void gray_builtin_eprintln_char(int32_t codepoint);
+void gray_builtin_eprintln_addr(uintptr_t value);
 
 /*@man eprint
  *@sig eprint(value T)
@@ -88,13 +88,13 @@ void gray_builtin_eprintln_addr(uintptr_t v);
  *   eprint(true)
  *@end
  */
-void gray_builtin_eprint_str(GrayString s);
-void gray_builtin_eprint_int(int64_t v);
-void gray_builtin_eprint_uint(uint64_t v);
-void gray_builtin_eprint_float(double v);
-void gray_builtin_eprint_bool(bool v);
-void gray_builtin_eprint_char(int32_t c);
-void gray_builtin_eprint_addr(uintptr_t v);
+void gray_builtin_eprint_str(GrayString str);
+void gray_builtin_eprint_int(int64_t value);
+void gray_builtin_eprint_uint(uint64_t value);
+void gray_builtin_eprint_float(double value);
+void gray_builtin_eprint_bool(bool value);
+void gray_builtin_eprint_char(int32_t codepoint);
+void gray_builtin_eprint_addr(uintptr_t value);
 
 /*@man input
  *@sig input() -> string
@@ -478,25 +478,25 @@ void gray_builtin_sleep_ns(int64_t ns);
 int64_t gray_builtin_system(GrayString cmd);
 
 /* to_string — internal runtime overloads, not user-callable by name */
-GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t v);
-GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t v);
-GrayString gray_builtin_to_string_float(GrayArena *arena, double v);
-GrayString gray_builtin_to_string_bool(GrayArena *arena, bool v);
+GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t value);
+GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t value);
+GrayString gray_builtin_to_string_float(GrayArena *arena, double value);
+GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
-int64_t gray_builtin_string_to_int(GrayString s);
-double gray_builtin_string_to_float(GrayString s);
+int64_t gray_builtin_string_to_int(GrayString str);
+double gray_builtin_string_to_float(GrayString str);
 
 /* format float for interpolation */
-GrayString gray_builtin_format_float(GrayArena *arena, double v);
+GrayString gray_builtin_format_float(GrayArena *arena, double value);
 
 /* composite to_string */
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind);
-GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *m, int val_kind);
+GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_kind);
 
 /* to_char / char_count — Unicode codepoint access */
-int32_t gray_builtin_to_char(GrayString s, int64_t index, const char *file, int line);
-int64_t gray_builtin_char_count(GrayString s);
+int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, int line);
+int64_t gray_builtin_char_count(GrayString str);
 
 /* char_to_utf8 — encode a codepoint to an GrayString (for interpolation) */
 GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp);

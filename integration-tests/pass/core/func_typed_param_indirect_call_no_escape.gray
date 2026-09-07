@@ -1,0 +1,48 @@
+/*
+ * A higher-order function that calls its function-typed parameter is now
+ * treated conservatively by escape analysis: any pointer argument routed
+ * into the indirect call is assumed to escape to a program-lifetime sink
+ * (#2692). This must NOT fire when no local address is involved: by-value
+ * arguments through the indirect call, and a body-local func-ref that
+ * still resolves to a concrete callee.
+ */
+
+mut global_slot int = 0
+
+do bump(p ^int) { p^ += 1 }
+
+do add(n int) { global_slot += n }
+
+do apply_val(f func(int), n int) { f(n) }
+
+do main() {
+    mut passed int = 0
+
+    // 1. by-value argument through an indirect call
+    apply_val(()add, 42)
+    if global_slot == 42 {
+        println("  [PASS] value arg through func-typed param")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] value arg through func-typed param: ${global_slot}")
+    }
+
+    // 2. direct call through a body-local func-ref resolves concretely,
+    //    and bump() does not stash its argument
+    mut n int = 10
+    const g func(^int) = ()bump
+    g(addr(n))
+    if n == 11 {
+        println("  [PASS] body-local func-ref resolves to concrete callee")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] body-local func-ref: ${n}")
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

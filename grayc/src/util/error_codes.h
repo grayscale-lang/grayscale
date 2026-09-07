@@ -252,7 +252,8 @@
     GRAY_ERROR("E3165", "safety", "'%s' points into arena '%s', whose memory was released by 'mem.reset()'") \
     GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
-    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here")
+    GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here") \
+    GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -282,7 +283,8 @@
     GRAY_ERROR("E4027", "names", "a reserved keyword cannot be used as a name") \
     GRAY_ERROR("E4028", "names", "a built-in name cannot be used as a user-defined name") \
     GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations") \
-    GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'")
+    GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'") \
+    GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -481,7 +483,17 @@
     GRAY_PANIC("P0115", "runtime",    "read of '%s' on a nil Error; check the error is non-nil before reading its fields") \
     GRAY_PANIC("P0116", "strings",    "string builder size exceeds maximum string length") \
     GRAY_PANIC("P0117", "memory",     "dereferenced a pointer into an arena that has been destroyed or reset") \
-    GRAY_PANIC("P0118", "runtime",    "call through a nil function value")
+    GRAY_PANIC("P0118", "runtime",    "call through a nil function value") \
+    GRAY_PANIC("P0119", "strings",    "strings.truncate: max is smaller than the ellipsis length") \
+    GRAY_PANIC("P0120", "bounds",     "arrays.swap: index out of bounds for an array of length %d") \
+    GRAY_PANIC("P0121", "arrays",     "arrays.average called on an empty array") \
+    GRAY_PANIC("P0122", "math",       "math.remap: input range is empty (in_lo == in_hi)") \
+    GRAY_PANIC("P0123", "random",     "random.rand_string: alphabet is empty but length is greater than 0") \
+    GRAY_PANIC("P0124", "io",         "io.read_stdin_all: input exceeds maximum string length") \
+    GRAY_PANIC("P0125", "csv",        "csv: referenced a column that is not in the header") \
+    GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
+    GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
+    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

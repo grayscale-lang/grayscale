@@ -71,6 +71,32 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
  */
 GrayArray  gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit);
 
+/*@man read_stdin_all
+ *@module io
+ *@group Standard Input
+ *@sig read_stdin_all() -> string
+ *@desc Reads all of standard input to end of file and returns it as one string.
+ *@example
+ *   import @io
+ *   mut input string = io.read_stdin_all()
+ *   println("read ${len(input)} bytes")
+ *@end
+ */
+GrayString gray_io_read_stdin_all(GrayArena *arena);
+
+/*@man read_stdin_bytes
+ *@module io
+ *@group Standard Input
+ *@sig read_stdin_bytes() -> [byte]
+ *@desc Reads all of standard input to end of file and returns it as a packed byte array.
+ *@example
+ *   import @io
+ *   mut data [byte] = io.read_stdin_bytes()
+ *   println(len(data))
+ *@end
+ */
+GrayArray gray_io_read_stdin_bytes(GrayArena *arena);
+
 /*@man file_exists
  *@module io
  *@group File Operations
@@ -126,7 +152,7 @@ int64_t gray_io_file_size(GrayString path);
  * safely (guards fseek/ftell, caps at INT32_MAX, streams non-seekable
  * input). Returns {NULL, -1} if the file is too large. Shared with
  * csv.c so csv.read_file doesn't re-derive this on its own. */
-GrayString gray_io_read_file_impl(GrayArena *arena, FILE *f);
+GrayString gray_io_read_file_impl(GrayArena *arena, FILE *file);
 
 /* File writing */
 

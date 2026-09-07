@@ -1,0 +1,73 @@
+/*
+ * random_rand_string_c.gray - Integration test for random.rand_stringthe.
+ */
+
+import @random
+import @strings
+
+do main() {
+    println("=== random.rand_string Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    random.seed(12345)
+
+    mut s string = random.rand_string(16, "abc")
+    if len(s) == 16 {
+        println("  [PASS] length matches request")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] length: got ${len(s)}")
+        failed += 1
+    }
+
+    mut only_abc bool = true
+    for_each c in strings.to_chars(s) {
+        if c != 'a' && c != 'b' && c != 'c' {
+            only_abc = false
+        }
+    }
+    if only_abc {
+        println("  [PASS] every character is from the alphabet")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] character outside alphabet: ${s}")
+        failed += 1
+    }
+
+    mut empty string = random.rand_string(0, "abc")
+    if len(empty) == 0 {
+        println("  [PASS] length 0 returns empty string")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] length 0: got '${empty}'")
+        failed += 1
+    }
+
+    mut empty_alpha string = random.rand_string(0, "")
+    if len(empty_alpha) == 0 {
+        println("  [PASS] empty alphabet with length 0 is allowed")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] empty alphabet with length 0")
+        failed += 1
+    }
+
+    mut single string = random.rand_string(5, "x")
+    if single == "xxxxx" {
+        println("  [PASS] single-character alphabet")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] single-character alphabet: got '${single}'")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -83,8 +83,8 @@ void gray_arrays_remove_float(GrayArray *arr, double value) {
 
 void gray_arrays_remove_str(GrayArray *arr, GrayString value) {
     for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *s = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (s->len == value.len && memcmp(s->data, value.data, s->len) == 0) {
+        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
+        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) {
             gray_arrays_remove_at(arr, i);
             return;
         }
@@ -194,8 +194,8 @@ bool gray_arrays_contains_float(GrayArray *arr, double value) {
 
 bool gray_arrays_contains_str(GrayArray *arr, GrayString value) {
     for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *s = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (s->len == value.len && memcmp(s->data, value.data, s->len) == 0) return true;
+        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
+        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) return true;
     }
     return false;
 }
@@ -209,34 +209,34 @@ int64_t gray_arrays_index_of_int(GrayArray *arr, int64_t value) {
 
 int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value) {
     for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *s = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (s->len == value.len && memcmp(s->data, value.data, s->len) == 0) return i;
+        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
+        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) return i;
     }
     return -1;
 }
 
 int64_t gray_arrays_count(GrayArray *arr, int64_t value) {
-    int64_t c = 0;
+    int64_t count = 0;
     for (int32_t i = 0; i < arr->len; i++) {
-        if (*(int64_t *)((char *)arr->data + i * arr->elem_size) == value) c++;
+        if (*(int64_t *)((char *)arr->data + i * arr->elem_size) == value) count++;
     }
-    return c;
+    return count;
 }
 
-bool gray_arrays_is_equal_prim(GrayArray *a, GrayArray *b) {
-    if (a->len != b->len) return false;
-    if (a->elem_size != b->elem_size) return false;
-    if (a->len == 0) return true;
-    return memcmp(a->data, b->data, (size_t)a->len * (size_t)a->elem_size) == 0;
+bool gray_arrays_is_equal_prim(GrayArray *left, GrayArray *right) {
+    if (left->len != right->len) return false;
+    if (left->elem_size != right->elem_size) return false;
+    if (left->len == 0) return true;
+    return memcmp(left->data, right->data, (size_t)left->len * (size_t)left->elem_size) == 0;
 }
 
-bool gray_arrays_is_equal_str(GrayArray *a, GrayArray *b) {
-    if (a->len != b->len) return false;
-    for (int32_t i = 0; i < a->len; i++) {
-        GrayString *sa = (GrayString *)((char *)a->data + i * a->elem_size);
-        GrayString *sb = (GrayString *)((char *)b->data + i * b->elem_size);
-        if (sa->len != sb->len) return false;
-        if (sa->len > 0 && memcmp(sa->data, sb->data, sa->len) != 0) return false;
+bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right) {
+    if (left->len != right->len) return false;
+    for (int32_t i = 0; i < left->len; i++) {
+        GrayString *left_str = (GrayString *)((char *)left->data + i * left->elem_size);
+        GrayString *right_str = (GrayString *)((char *)right->data + i * right->elem_size);
+        if (left_str->len != right_str->len) return false;
+        if (left_str->len > 0 && memcmp(left_str->data, right_str->data, left_str->len) != 0) return false;
     }
     return true;
 }
@@ -260,11 +260,11 @@ GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int
     return gray_array_from(arena, (char *)arr->data + start * arr->elem_size, arr->elem_size, count);
 }
 
-GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *a, GrayArray *b) {
-    GrayArray result = gray_array_copy(arena, a);
-    char *src = (char *)b->data;
-    for (int32_t i = 0; i < b->len; i++) {
-        GRAY_ARRAY_PUSH(arena, &result, src + i * b->elem_size);
+GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *left, GrayArray *right) {
+    GrayArray result = gray_array_copy(arena, left);
+    char *src = (char *)right->data;
+    for (int32_t i = 0; i < right->len; i++) {
+        GRAY_ARRAY_PUSH(arena, &result, src + i * right->elem_size);
     }
     return result;
 }
@@ -277,11 +277,11 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
 
     /* Hash set (open addressing, power-of-two capacity, ~50% load).
      * Slots store source indices; -1 means empty. */
-    uint32_t cap = 16;
-    while (cap < (uint32_t)arr->len * 2) cap *= 2;
-    int32_t *table = gray_arena_alloc(arena, (size_t)cap * sizeof(int32_t));
-    memset(table, -1, (size_t)cap * sizeof(int32_t));
-    uint32_t mask = cap - 1;
+    uint32_t capacity = 16;
+    while (capacity < (uint32_t)arr->len * 2) capacity *= 2;
+    int32_t *table = gray_arena_alloc(arena, (size_t)capacity * sizeof(int32_t));
+    memset(table, -1, (size_t)capacity * sizeof(int32_t));
+    uint32_t mask = capacity - 1;
 
     GrayArray result = gray_array_new(arena, arr->elem_size, arr->len);
 
@@ -289,13 +289,13 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
         const char *elem = data + i * element_size;
 
         /* FNV-1a hash over element bytes */
-        uint32_t h = 2166136261u;
-        for (size_t b = 0; b < element_size; b++) {
-            h ^= (uint8_t)elem[b];
-            h *= 16777619u;
+        uint32_t hash = 2166136261u;
+        for (size_t byte_index = 0; byte_index < element_size; byte_index++) {
+            hash ^= (uint8_t)elem[byte_index];
+            hash *= 16777619u;
         }
 
-        uint32_t slot = h & mask;
+        uint32_t slot = hash & mask;
         bool found = false;
         while (table[slot] >= 0) {
             if (memcmp(data + (size_t)table[slot] * element_size, elem, element_size) == 0) {
@@ -319,9 +319,9 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
     GrayArray result = gray_array_new(arena, sizeof(int64_t), 8);
     for (int32_t i = 0; i < arr->len; i++) {
         GrayArray *inner = (GrayArray *)((char *)arr->data + i * arr->elem_size);
-        char *idata = (char *)inner->data;
+        char *inner_data = (char *)inner->data;
         for (int32_t j = 0; j < inner->len; j++) {
-            GRAY_ARRAY_PUSH(arena, &result, idata + j * inner->elem_size);
+            GRAY_ARRAY_PUSH(arena, &result, inner_data + j * inner->elem_size);
         }
     }
     return result;
@@ -340,13 +340,13 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size
     return result;
 }
 
-GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *a, GrayArray *b) {
-    int32_t len = a->len < b->len ? a->len : b->len;
+GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right) {
+    int32_t len = left->len < right->len ? left->len : right->len;
     GrayArray result = gray_array_new(arena, sizeof(GrayArray), len);
     for (int32_t i = 0; i < len; i++) {
-        GrayArray pair_arr = gray_array_new(arena, a->elem_size, 2);
-        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)a->data + i * a->elem_size);
-        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)b->data + i * b->elem_size);
+        GrayArray pair_arr = gray_array_new(arena, left->elem_size, 2);
+        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)left->data + i * left->elem_size);
+        GRAY_ARRAY_PUSH(arena, &pair_arr, (char *)right->data + i * right->elem_size);
         GRAY_ARRAY_PUSH(arena, &result, &pair_arr);
     }
     return result;
@@ -364,61 +364,61 @@ int64_t gray_arrays_get_sum(GrayArray *arr) {
 
 int64_t gray_arrays_get_min(GrayArray *arr) {
     if (arr->len == 0) return 0;
-    int64_t m = *(int64_t *)arr->data;
+    int64_t smallest = *(int64_t *)arr->data;
     for (int32_t i = 1; i < arr->len; i++) {
-        int64_t v = *(int64_t *)((char *)arr->data + i * arr->elem_size);
-        if (v < m) m = v;
+        int64_t value = *(int64_t *)((char *)arr->data + i * arr->elem_size);
+        if (value < smallest) smallest = value;
     }
-    return m;
+    return smallest;
 }
 
 int64_t gray_arrays_get_max(GrayArray *arr) {
     if (arr->len == 0) return 0;
-    int64_t m = *(int64_t *)arr->data;
+    int64_t largest = *(int64_t *)arr->data;
     for (int32_t i = 1; i < arr->len; i++) {
-        int64_t v = *(int64_t *)((char *)arr->data + i * arr->elem_size);
-        if (v > m) m = v;
+        int64_t value = *(int64_t *)((char *)arr->data + i * arr->elem_size);
+        if (value > largest) largest = value;
     }
-    return m;
+    return largest;
 }
 
 /* === Sort === */
 
-static int cmp_i64_asc(const void *a, const void *b) {
-    int64_t va = *(const int64_t *)a;
-    int64_t vb = *(const int64_t *)b;
-    return (va > vb) - (va < vb);
+static int cmp_i64_asc(const void *left, const void *right) {
+    int64_t left_val = *(const int64_t *)left;
+    int64_t right_val = *(const int64_t *)right;
+    return (left_val > right_val) - (left_val < right_val);
 }
 
-static int cmp_i64_desc(const void *a, const void *b) {
-    int64_t va = *(const int64_t *)a;
-    int64_t vb = *(const int64_t *)b;
-    return (vb > va) - (vb < va);
+static int cmp_i64_desc(const void *left, const void *right) {
+    int64_t left_val = *(const int64_t *)left;
+    int64_t right_val = *(const int64_t *)right;
+    return (right_val > left_val) - (right_val < left_val);
 }
 
-static int cmp_f64_asc(const void *a, const void *b) {
-    double va = *(const double *)a;
-    double vb = *(const double *)b;
-    return (va > vb) - (va < vb);
+static int cmp_f64_asc(const void *left, const void *right) {
+    double left_val = *(const double *)left;
+    double right_val = *(const double *)right;
+    return (left_val > right_val) - (left_val < right_val);
 }
 
-static int cmp_f64_desc(const void *a, const void *b) {
-    double va = *(const double *)a;
-    double vb = *(const double *)b;
-    return (vb > va) - (vb < va);
+static int cmp_f64_desc(const void *left, const void *right) {
+    double left_val = *(const double *)left;
+    double right_val = *(const double *)right;
+    return (right_val > left_val) - (right_val < left_val);
 }
 
-static int cmp_str_asc(const void *a, const void *b) {
-    const GrayString *sa = (const GrayString *)a;
-    const GrayString *sb = (const GrayString *)b;
-    int32_t min_len = sa->len < sb->len ? sa->len : sb->len;
-    int cmp = memcmp(sa->data, sb->data, (size_t)min_len);
+static int cmp_str_asc(const void *left, const void *right) {
+    const GrayString *left_str = (const GrayString *)left;
+    const GrayString *right_str = (const GrayString *)right;
+    int32_t min_len = left_str->len < right_str->len ? left_str->len : right_str->len;
+    int cmp = memcmp(left_str->data, right_str->data, (size_t)min_len);
     if (cmp != 0) return cmp;
-    return (sa->len > sb->len) - (sa->len < sb->len);
+    return (left_str->len > right_str->len) - (left_str->len < right_str->len);
 }
 
-static int cmp_str_desc(const void *a, const void *b) {
-    return cmp_str_asc(b, a);
+static int cmp_str_desc(const void *left, const void *right) {
+    return cmp_str_asc(right, left);
 }
 
 void gray_arrays_sort_asc(GrayArray *arr) {
@@ -455,4 +455,52 @@ void gray_arrays_sort_desc_str(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
     qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
+}
+
+/* is_sorted mirrors the comparator split sort_asc uses: an int64 read for the
+ * default path, dedicated float and string variants. Empty and single-element
+ * arrays are sorted by definition. */
+bool gray_arrays_is_sorted(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        int64_t prev = *(int64_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        int64_t curr = *(int64_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
+bool gray_arrays_is_sorted_float(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        double prev = *(double *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        double curr = *(double *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
+bool gray_arrays_is_sorted_str(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        const GrayString *prev = (const GrayString *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        const GrayString *curr = (const GrayString *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (cmp_str_asc(prev, curr) > 0) return false;
+    }
+    return true;
+}
+
+/* In-place swap of the elem_size bytes at i and j. */
+void gray_arrays_swap(GrayArray *arr, int64_t i, int64_t j) {
+    ARRAY_CHECK_ITER(arr);
+    if (i < 0 || i >= arr->len || j < 0 || j >= arr->len) {
+        gray_panic_code("P0120",
+            "arrays.swap: index out of bounds for an array of length %d", arr->len);
+    }
+    if (i == j) return;
+    size_t element_size = (size_t)arr->elem_size;
+    char *elem_i = (char *)arr->data + (size_t)i * element_size;
+    char *elem_j = (char *)arr->data + (size_t)j * element_size;
+    for (size_t k = 0; k < element_size; k++) {
+        char temp = elem_i[k];
+        elem_i[k] = elem_j[k];
+        elem_j[k] = temp;
+    }
 }

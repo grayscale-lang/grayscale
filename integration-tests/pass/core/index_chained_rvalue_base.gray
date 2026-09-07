@@ -1,0 +1,51 @@
+/*
+ * index_chained_rvalue_base.gray - two or more consecutive subscripts applied
+ * inline to an rvalue base (function-call result or map get). Each subscript
+ * in the chain must materialize its base into a temp; previously only the
+ * innermost did, and the outer one emitted &(rvalue) which cc rejected.
+ */
+
+do grid() -> [[int]] {
+    return {{1, 2}, {3, 4}}
+}
+
+do cube() -> [[[int]]] {
+    return {{{9, 8}}}
+}
+
+do rows() -> [[string]] {
+    return {{"a", "b"}, {"c", "d"}}
+}
+
+do check(label string, ok bool) -> int {
+    if ok {
+        return 1
+    }
+    println("FAIL: ${label}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    passed += check("grid()[1][0]", grid()[1][0] == 3)
+    passed += check("grid()[0][1]", grid()[0][1] == 2)
+    passed += check("cube()[0][0][1]", cube()[0][0][1] == 8)
+    passed += check("rows()[1][0]", rows()[1][0] == "c")
+    passed += check("grid sum in expr", grid()[0][0] + grid()[1][1] == 5)
+
+    mut m map[string:[[int]]] = {:}
+    m["k"] = {{5, 6}, {7, 8}}
+    passed += check("m[k][1][0]", m["k"][1][0] == 7)
+
+    mut t [[int]] = grid()
+    passed += check("t[1][0] (variable base)", t[1][0] == 3)
+
+    println("passed: ${passed}/7")
+    if passed == 7 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

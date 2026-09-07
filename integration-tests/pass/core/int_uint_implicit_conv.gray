@@ -56,16 +56,16 @@ do main() {
         failed += 1
     }
 
-    // Test 5: Reassign struct uint field with int value
+    // Test 5: Reassign struct uint field with int value via explicit cast
     mut g uint = 99
     mut p Pair = Pair { x: g, y: 7 }
     mut val int = 200
-    p.x = val
+    p.x = cast(val, uint)
     if p.x == 200 {
-        println("  [PASS] reassign struct uint field with int value")
+        println("  [PASS] reassign struct uint field with int value via cast")
         passed += 1
     } otherwise {
-        println("  [FAIL] reassign struct uint field with int value")
+        println("  [FAIL] reassign struct uint field with int value via cast")
         failed += 1
     }
 

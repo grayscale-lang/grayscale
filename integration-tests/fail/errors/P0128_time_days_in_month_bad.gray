@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0128 - time.days_in_month with a month outside 1-12 */
+import @time
+
+do main() {
+    println(time.days_in_month(2024, 13))
+}

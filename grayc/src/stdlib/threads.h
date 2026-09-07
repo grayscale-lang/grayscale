@@ -72,7 +72,7 @@ GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg);
  *@end
  */
 /* Wait for a thread to finish. Frees the underlying handle. */
-void gray_threads_join(GrayThread t);
+void gray_threads_join(GrayThread thread);
 
 /*@man detach
  *@module threads
@@ -88,7 +88,7 @@ void gray_threads_join(GrayThread t);
 /* Release ownership; the thread runs to completion independently and its
  * underlying handle is freed by pthread itself. After detach() the
  * GrayThread must not be joined or queried for is_alive(). */
-void gray_threads_detach(GrayThread t);
+void gray_threads_detach(GrayThread thread);
 
 /*@man is_alive
  *@module threads
@@ -103,7 +103,7 @@ void gray_threads_detach(GrayThread t);
  */
 /* True while the thread's entry function has not returned. Safe to call
  * before join() (and meaningless after). Not valid after detach(). */
-bool gray_threads_is_alive(GrayThread t);
+bool gray_threads_is_alive(GrayThread thread);
 
 /*@man get_id
  *@module threads

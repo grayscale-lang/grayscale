@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0121 - arrays.average on an empty array */
+import @arrays
+
+do main() {
+    mut empty [int] = {}
+    println(arrays.average(empty))
+}

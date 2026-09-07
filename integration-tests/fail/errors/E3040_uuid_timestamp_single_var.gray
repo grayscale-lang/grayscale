@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3040 - uuid.timestamp returns two values
+ * Expected: error on single-var assignment of a multi-return function
+ */
+
+// expect-error: E3040
+
+import @uuid
+
+do main() {
+    mut ms = uuid.timestamp(uuid.generate_time_ordered())
+    println(ms)
+}

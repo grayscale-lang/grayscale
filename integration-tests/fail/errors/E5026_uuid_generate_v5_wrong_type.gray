@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5026 - wrong argument type to uuid.generate_v5
+ * Expected: uuid.generate_v5() expects string as argument 2, got int
+ */
+
+// expect-error: E5026
+
+import @uuid
+
+do main() {
+    mut ns UUID = uuid.parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+    mut id UUID = uuid.generate_v5(ns, 42)
+    println(uuid.to_string(id))
+}

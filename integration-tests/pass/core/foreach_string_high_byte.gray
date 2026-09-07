@@ -1,0 +1,73 @@
+// for_each over a string must yield the same unsigned byte values as s[i]
+// indexing. GrayString.data is signed char*, so a byte >= 0x80 used to
+// sign-extend to a negative "codepoint" in the loop only.
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // "é" is 0xC3 0xA9 in UTF-8 -> 195, 169
+    mut s string = "é"
+
+    // every loop byte is non-negative and equals the indexed byte
+    mut i int = 0
+    mut all_match bool = true
+    mut first int = 0
+    mut second int = 0
+    for_each ch in s {
+        if int(ch) < 0 {
+            all_match = false
+        }
+        if int(ch) != int(s[i]) {
+            all_match = false
+        }
+        if i == 0 {
+            first = int(ch)
+        }
+        if i == 1 {
+            second = int(ch)
+        }
+        i += 1
+    }
+
+    if i == 2 && first == 195 && second == 169 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: loop bytes ${first}, ${second} (count ${i})")
+    }
+
+    if all_match {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: loop disagrees with indexing or went negative")
+    }
+
+    if int(s[0]) == 195 && int(s[1]) == 169 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: index bytes")
+    }
+
+    // ASCII unaffected
+    mut sum int = 0
+    for_each ch in "abc" {
+        sum += int(ch)
+    }
+    if sum == 294 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: ascii sum ${sum}")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

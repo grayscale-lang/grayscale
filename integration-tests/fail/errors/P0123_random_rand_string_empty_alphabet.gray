@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0123 - random.rand_string with an empty alphabet */
+import @random
+
+do main() {
+    println(random.rand_string(5, ""))
+}

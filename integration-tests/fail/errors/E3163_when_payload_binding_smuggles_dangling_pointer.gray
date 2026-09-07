@@ -1,0 +1,41 @@
+/*
+ * Error Test: E3163 - a pointer placed in a tagged-enum payload and pulled
+ * back out through a `when ... is Variant(binding)` pattern keeps the
+ * subject's lifetime origin, so storing the binding into a longer-lived
+ * global is still caught (#2694). Both the direct construction and the
+ * helper-returned enum route.
+ */
+
+const Result enum {
+    Found(^int),
+    Missing
+}
+
+mut leaked ^int = nil
+
+do lookup(cond bool, p ^int) -> Result {
+    if cond { return Result.Found(p) }
+    return Result.Missing
+}
+
+do main() {
+    if true {
+        mut x int = 99
+        mut r Result = Result.Found(addr(x))
+        when r {
+            is Found(ptr) { leaked = ptr }
+            default { leaked = nil }
+        }
+    }
+
+    if true {
+        mut y int = 42
+        mut r2 Result = lookup(true, addr(y))
+        when r2 {
+            is Found(ptr) { leaked = ptr }
+            default { leaked = nil }
+        }
+    }
+
+    println("unreachable")
+}

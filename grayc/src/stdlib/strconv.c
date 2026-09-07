@@ -19,12 +19,12 @@
 
 /* Format a double using the shortest representation that round-trips.
  * Shared by builtins (to_string) and strconv (from_float). */
-int gray_fmt_shortest_float(char *buf, size_t buffer_size, double v) {
+int gray_fmt_shortest_float(char *buf, size_t buffer_size, double value) {
     int n = 0;
     for (int prec = 15; prec <= 17; prec++) {
-        n = snprintf(buf, buffer_size, "%.*g", prec, v);
-        double rt;
-        if (sscanf(buf, "%lf", &rt) == 1 && rt == v) break;
+        n = snprintf(buf, buffer_size, "%.*g", prec, value);
+        double round_tripped;
+        if (sscanf(buf, "%lf", &round_tripped) == 1 && round_tripped == value) break;
     }
     bool has_special = false;
     for (int i = 0; buf[i]; i++) {
@@ -43,20 +43,20 @@ int gray_fmt_shortest_float(char *buf, size_t buffer_size, double v) {
 
 /* Truncate a GrayString into a stack buffer and null-terminate it.
    Returns the (possibly clamped) length. */
-static int strconv_prepare(GrayString s, char *buf, size_t buf_size) {
-    int len = s.len < (int32_t)buf_size - 1 ? s.len : (int32_t)buf_size - 1;
-    memcpy(buf, s.data, (size_t)len);
+static int strconv_prepare(GrayString str, char *buf, size_t buf_size) {
+    int len = str.len < (int32_t)buf_size - 1 ? str.len : (int32_t)buf_size - 1;
+    memcpy(buf, str.data, (size_t)len);
     buf[len] = '\0';
     return len;
 }
 
 /* --- Panicking conversions --- */
 
-int64_t gray_strconv_to_int(GrayString s, int base) {
+int64_t gray_strconv_to_int(GrayString str, int base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0054", "strconv.to_int: invalid base %d; must be between 2 and 36", base);
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to int (base %d)", buf, base);
     char *end = NULL;
@@ -67,11 +67,11 @@ int64_t gray_strconv_to_int(GrayString s, int base) {
     return result;
 }
 
-uint64_t gray_strconv_to_uint(GrayString s, int base) {
+uint64_t gray_strconv_to_uint(GrayString str, int base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0056", "strconv.to_uint: invalid base %d; must be between 2 and 36", base);
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to uint (base %d)", buf, base);
     /* Reject negative numbers */
@@ -88,9 +88,9 @@ uint64_t gray_strconv_to_uint(GrayString s, int base) {
     return result;
 }
 
-double gray_strconv_to_float(GrayString s) {
+double gray_strconv_to_float(GrayString str) {
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
         gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to float", buf);
     char *end = NULL;
@@ -101,24 +101,24 @@ double gray_strconv_to_float(GrayString s) {
     return result;
 }
 
-bool gray_strconv_to_bool(GrayString s) {
-    if (s.len == 4 && strncasecmp(s.data, "true", 4) == 0) return true;
-    if (s.len == 5 && strncasecmp(s.data, "false", 5) == 0) return false;
+bool gray_strconv_to_bool(GrayString str) {
+    if (str.len == 4 && strncasecmp(str.data, "true", 4) == 0) return true;
+    if (str.len == 5 && strncasecmp(str.data, "false", 5) == 0) return false;
     char buf[STRCONV_BUF_SIZE];
-    strconv_prepare(s, buf, sizeof(buf));
+    strconv_prepare(str, buf, sizeof(buf));
     gray_panic_code("P0060", "strconv.to_bool: cannot convert '%s' to bool", buf);
 }
 
 /* --- Fallible conversions (result versions) --- */
 
-GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
+GrayResult_int gray_strconv_to_int_result(GrayString str, int base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
         return (GrayResult_int){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to int");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
@@ -135,14 +135,14 @@ GrayResult_int gray_strconv_to_int_result(GrayString s, int base) {
     return (GrayResult_int){result, NULL};
 }
 
-GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
+GrayResult_uint gray_strconv_to_uint_result(GrayString str, int base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
         return (GrayResult_uint){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to uint");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
@@ -168,9 +168,9 @@ GrayResult_uint gray_strconv_to_uint_result(GrayString s, int base) {
     return (GrayResult_uint){result, NULL};
 }
 
-GrayResult_float gray_strconv_to_float_result(GrayString s) {
+GrayResult_float gray_strconv_to_float_result(GrayString str) {
     char buf[STRCONV_BUF_SIZE];
-    int len = strconv_prepare(s, buf, sizeof(buf));
+    int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
         GrayString msg = gray_string_lit("cannot convert string to float");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
@@ -187,11 +187,11 @@ GrayResult_float gray_strconv_to_float_result(GrayString s) {
     return (GrayResult_float){result, NULL};
 }
 
-GrayResult_bool gray_strconv_to_bool_result(GrayString s) {
-    if (s.len == 4 && strncasecmp(s.data, "true", 4) == 0) {
+GrayResult_bool gray_strconv_to_bool_result(GrayString str) {
+    if (str.len == 4 && strncasecmp(str.data, "true", 4) == 0) {
         return (GrayResult_bool){true, NULL};
     }
-    if (s.len == 5 && strncasecmp(s.data, "false", 5) == 0) {
+    if (str.len == 5 && strncasecmp(str.data, "false", 5) == 0) {
         return (GrayResult_bool){false, NULL};
     }
     GrayString msg = gray_string_lit("cannot convert string to bool");
@@ -201,60 +201,60 @@ GrayResult_bool gray_strconv_to_bool_result(GrayString s) {
 
 /* --- Type to string conversions --- */
 
-GrayString gray_strconv_from_int(GrayArena *arena, int64_t n) {
+GrayString gray_strconv_from_int(GrayArena *arena, int64_t value) {
     char buf[STRCONV_BUF_SIZE];
-    int len = snprintf(buf, sizeof(buf), "%" PRId64, n);
+    int len = snprintf(buf, sizeof(buf), "%" PRId64, value);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
 
-GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t n) {
+GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value) {
     char buf[STRCONV_BUF_SIZE];
-    int len = snprintf(buf, sizeof(buf), "%" PRIu64, n);
+    int len = snprintf(buf, sizeof(buf), "%" PRIu64, value);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
 
-GrayString gray_strconv_from_float(GrayArena *arena, double f) {
+GrayString gray_strconv_from_float(GrayArena *arena, double value) {
     char buf[STRCONV_BUF_SIZE];
-    int len = gray_fmt_shortest_float(buf, sizeof(buf), f);
+    int len = gray_fmt_shortest_float(buf, sizeof(buf), value);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};
 }
 
-GrayString gray_strconv_from_bool(bool b) {
-    if (b) return gray_string_lit("true");
+GrayString gray_strconv_from_bool(bool value) {
+    if (value) return gray_string_lit("true");
     return gray_string_lit("false");
 }
 
 /* --- Arbitrary-base integer formatting --- */
 
-/* Write the base-`base` digits of `v` into buf (which must hold at least 64
-   bytes), most significant first. Returns the number of digits written. */
-static int strconv_format_digits(char *buf, uint64_t v, int base) {
+/* Write the base-`base` digits of `value` into buf (which must hold at least
+   64 bytes), most significant first. Returns the number of digits written. */
+static int strconv_format_digits(char *buf, uint64_t value, int base) {
     static const char digits[] = "0123456789abcdefghijklmnopqrstuvwxyz";
     char tmp[64];
     int pos = (int)sizeof(tmp);
-    if (v == 0) tmp[--pos] = '0';
-    while (v > 0) {
-        tmp[--pos] = digits[v % (uint64_t)base];
-        v /= (uint64_t)base;
+    if (value == 0) tmp[--pos] = '0';
+    while (value > 0) {
+        tmp[--pos] = digits[value % (uint64_t)base];
+        value /= (uint64_t)base;
     }
     int len = (int)sizeof(tmp) - pos;
     memcpy(buf, tmp + pos, (size_t)len);
     return len;
 }
 
-GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base) {
+GrayString gray_strconv_format_int(GrayArena *arena, int64_t value, int64_t base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0110", "strconv.format_int: invalid base %lld; must be between 2 and 36",
             (long long)base);
-    bool neg = n < 0;
+    bool neg = value < 0;
     /* Negate in unsigned space so INT64_MIN does not overflow. */
-    uint64_t v = neg ? ~(uint64_t)n + 1 : (uint64_t)n;
+    uint64_t v = neg ? ~(uint64_t)value + 1 : (uint64_t)value;
     char tmp[65];
     int off = 0;
     if (neg) tmp[off++] = '-';
@@ -265,12 +265,12 @@ GrayString gray_strconv_format_int(GrayArena *arena, int64_t n, int64_t base) {
     return (GrayString){data, (int32_t)off};
 }
 
-GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t n, int64_t base) {
+GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t value, int64_t base) {
     if (base < 2 || base > 36)
         gray_panic_code("P0111", "strconv.format_uint: invalid base %lld; must be between 2 and 36",
             (long long)base);
     char tmp[64];
-    int len = strconv_format_digits(tmp, n, (int)base);
+    int len = strconv_format_digits(tmp, value, (int)base);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, tmp, (size_t)len);
     data[len] = '\0';
@@ -279,15 +279,15 @@ GrayString gray_strconv_format_uint(GrayArena *arena, uint64_t n, int64_t base) 
 
 /* --- Quoting --- */
 
-GrayString gray_strconv_quote(GrayArena *arena, GrayString s) {
+GrayString gray_strconv_quote(GrayArena *arena, GrayString str) {
     static const char hex[] = "0123456789abcdef";
     /* Worst case: every byte becomes \xNN (4x), plus the two surrounding
        quotes and a null terminator. */
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)s.len * 4 + 3);
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)str.len * 4 + 3);
     int32_t j = 0;
     buf[j++] = '"';
-    for (int i = 0; i < s.len; i++) {
-        unsigned char c = (unsigned char)s.data[i];
+    for (int i = 0; i < str.len; i++) {
+        unsigned char c = (unsigned char)str.data[i];
         switch (c) {
         case '"':  buf[j++] = '\\'; buf[j++] = '"';  break;
         case '\\': buf[j++] = '\\'; buf[j++] = '\\'; break;
@@ -317,20 +317,20 @@ static int strconv_hex_digit(char c) {
 
 /* Unquote s into a freshly allocated string. Returns true on success; on
    failure returns false and leaves *out untouched. */
-static bool strconv_unquote_into(GrayArena *arena, GrayString s, GrayString *out) {
-    if (s.len < 2 || s.data[0] != '"' || s.data[s.len - 1] != '"')
+static bool strconv_unquote_into(GrayArena *arena, GrayString str, GrayString *out) {
+    if (str.len < 2 || str.data[0] != '"' || str.data[str.len - 1] != '"')
         return false;
     /* Output is never longer than the quoted interior. */
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)s.len);
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)str.len);
     int32_t j = 0;
-    int end = s.len - 1;
+    int end = str.len - 1;
     for (int i = 1; i < end; i++) {
-        char c = s.data[i];
+        char c = str.data[i];
         if (c == '"') return false; /* unescaped quote */
         if (c != '\\') { buf[j++] = c; continue; }
         if (++i >= end) return false; /* trailing backslash */
-        char e = s.data[i];
-        switch (e) {
+        char escape = str.data[i];
+        switch (escape) {
         case 'n':  buf[j++] = '\n'; break;
         case 't':  buf[j++] = '\t'; break;
         case 'r':  buf[j++] = '\r'; break;
@@ -345,8 +345,8 @@ static bool strconv_unquote_into(GrayArena *arena, GrayString s, GrayString *out
         case '$':  buf[j++] = '$';  break;
         case 'x': {
             if (i + 2 >= end) return false;
-            int hi = strconv_hex_digit(s.data[i + 1]);
-            int lo = strconv_hex_digit(s.data[i + 2]);
+            int hi = strconv_hex_digit(str.data[i + 1]);
+            int lo = strconv_hex_digit(str.data[i + 2]);
             if (hi < 0 || lo < 0) return false;
             buf[j++] = (char)((hi << 4) | lo);
             i += 2;
@@ -360,19 +360,19 @@ static bool strconv_unquote_into(GrayArena *arena, GrayString s, GrayString *out
     return true;
 }
 
-GrayString gray_strconv_unquote(GrayArena *arena, GrayString s) {
+GrayString gray_strconv_unquote(GrayArena *arena, GrayString str) {
     GrayString out;
-    if (!strconv_unquote_into(arena, s, &out)) {
+    if (!strconv_unquote_into(arena, str, &out)) {
         char buf[STRCONV_BUF_SIZE];
-        strconv_prepare(s, buf, sizeof(buf));
+        strconv_prepare(str, buf, sizeof(buf));
         gray_panic_code("P0112", "strconv.unquote: cannot unquote '%s'", buf);
     }
     return out;
 }
 
-GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString s) {
+GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString str) {
     GrayString out;
-    if (!strconv_unquote_into(arena, s, &out)) {
+    if (!strconv_unquote_into(arena, str, &out)) {
         GrayString msg = gray_string_lit("cannot unquote string");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure, msg);
         return (GrayResult_string){{"", 0}, err};
@@ -382,20 +382,20 @@ GrayResult_string gray_strconv_unquote_result(GrayArena *arena, GrayString s) {
 
 /* --- Query functions --- */
 
-bool gray_strconv_is_numeric(GrayString s) {
-    if (s.len == 0) return false;
+bool gray_strconv_is_numeric(GrayString str) {
+    if (str.len == 0) return false;
     int start = 0;
-    if (s.data[0] == '-' || s.data[0] == '+') {
+    if (str.data[0] == '-' || str.data[0] == '+') {
         start = 1;
-        if (s.len == 1) return false;
+        if (str.len == 1) return false;
     }
     bool has_dot = false;
     bool has_digit = false;
-    for (int i = start; i < s.len; i++) {
-        if (s.data[i] == '.') {
+    for (int i = start; i < str.len; i++) {
+        if (str.data[i] == '.') {
             if (has_dot) return false;
             has_dot = true;
-        } else if (isdigit((unsigned char)s.data[i])) {
+        } else if (isdigit((unsigned char)str.data[i])) {
             has_digit = true;
         } else {
             return false;
@@ -404,15 +404,15 @@ bool gray_strconv_is_numeric(GrayString s) {
     return has_digit;
 }
 
-bool gray_strconv_is_integer(GrayString s) {
-    if (s.len == 0) return false;
+bool gray_strconv_is_integer(GrayString str) {
+    if (str.len == 0) return false;
     int start = 0;
-    if (s.data[0] == '-' || s.data[0] == '+') {
+    if (str.data[0] == '-' || str.data[0] == '+') {
         start = 1;
-        if (s.len == 1) return false;
+        if (str.len == 1) return false;
     }
-    for (int i = start; i < s.len; i++) {
-        if (!isdigit((unsigned char)s.data[i])) return false;
+    for (int i = start; i < str.len; i++) {
+        if (!isdigit((unsigned char)str.data[i])) return false;
     }
     return true;
 }

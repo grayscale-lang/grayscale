@@ -1,0 +1,37 @@
+/*
+ * json_encode_scalar_string_escaping.gray - json.encode(string) escapes the
+ * quote, backslash, and control characters, producing valid JSON. The
+ * container paths already escape; this covers the scalar path.
+ */
+
+import @json
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        return 1
+    }
+    println("FAIL: ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    mut quote string = "a\"b\\c"
+    passed += check("quote+backslash", json.encode(quote), "\"a\\\"b\\\\c\"")
+    if json.is_valid(json.encode(quote)) { passed += 1 } otherwise { println("FAIL: not valid JSON") }
+
+    mut ctrl string = "tab\there\nline"
+    passed += check("control chars", json.encode(ctrl), "\"tab\\there\\nline\"")
+    if json.is_valid(json.encode(ctrl)) { passed += 1 } otherwise { println("FAIL: ctrl not valid JSON") }
+
+    passed += check("plain unchanged", json.encode("hello"), "\"hello\"")
+
+    println("passed: ${passed}/5")
+    if passed == 5 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

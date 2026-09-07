@@ -1,0 +1,69 @@
+/*
+ * strings_case_expansion_c.gray - Integration test for the strings module
+ *  to_kebab_case,
+ * to_pascal_case, to_screaming_snake_case, capitalize, truncate.
+ */
+
+import @strings
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== Strings Case Expansion Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- to_kebab_case --
+    check("to_kebab_case camelCase", strings.to_kebab_case("helloWorld"), "hello-world", passed, failed)
+    check("to_kebab_case snake_case", strings.to_kebab_case("hello_world"), "hello-world", passed, failed)
+    check("to_kebab_case spaces", strings.to_kebab_case("Hello World"), "hello-world", passed, failed)
+    check("to_kebab_case acronym run", strings.to_kebab_case("HTTPServer"), "http-server", passed, failed)
+    check("to_kebab_case only separators", strings.to_kebab_case("---"), "", passed, failed)
+
+    // -- to_pascal_case --
+    check("to_pascal_case snake_case", strings.to_pascal_case("hello_world"), "HelloWorld", passed, failed)
+    check("to_pascal_case spaces and hyphens", strings.to_pascal_case("some-words here"), "SomeWordsHere", passed, failed)
+    check("to_pascal_case leading separator", strings.to_pascal_case("_leading"), "Leading", passed, failed)
+    check("to_pascal_case single word", strings.to_pascal_case("word"), "Word", passed, failed)
+
+    // -- to_screaming_snake_case --
+    check("to_screaming_snake_case camelCase", strings.to_screaming_snake_case("helloWorld"), "HELLO_WORLD", passed, failed)
+    check("to_screaming_snake_case spaces", strings.to_screaming_snake_case("some words"), "SOME_WORDS", passed, failed)
+
+    // -- capitalize --
+    check("capitalize lowercase", strings.capitalize("hello"), "Hello", passed, failed)
+    check("capitalize rest untouched", strings.capitalize("hELLO"), "HELLO", passed, failed)
+    check("capitalize empty", strings.capitalize(""), "", passed, failed)
+    check("capitalize leading digit", strings.capitalize("123abc"), "123abc", passed, failed)
+
+    // -- truncate --
+    check("truncate shortens", strings.truncate("hello world", 8, "..."), "hello...", passed, failed)
+    check("truncate exact fit unchanged", strings.truncate("hello", 5, "..."), "hello", passed, failed)
+    check("truncate shorter unchanged", strings.truncate("hi", 8, "..."), "hi", passed, failed)
+    check("truncate one over", strings.truncate("hello!", 5, "..."), "he...", passed, failed)
+    check("truncate empty ellipsis", strings.truncate("hello world", 5, ""), "hello", passed, failed)
+    if len(strings.truncate("hello world", 8, "...")) == 8 {
+        println("  [PASS] truncate total length is exactly max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] truncate total length is exactly max")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

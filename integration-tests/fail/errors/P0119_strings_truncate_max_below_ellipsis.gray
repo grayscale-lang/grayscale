@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0119 - strings.truncate max smaller than the ellipsis length */
+import @strings
+
+do main() {
+    println(strings.truncate("hello world", 2, "..."))
+}

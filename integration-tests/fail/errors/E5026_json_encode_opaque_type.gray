@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5026 - json.encode of a stdlib opaque type (UUID). Codegen's
+ * fallback cast the value to GrayMap* and walked it as hash buckets, which
+ * segfaulted with no diagnostic.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @json
+import @uuid
+
+do main() {
+    mut id UUID = uuid.parse("550e8400-e29b-41d4-a716-446655440000")
+    println(json.encode(id))
+}

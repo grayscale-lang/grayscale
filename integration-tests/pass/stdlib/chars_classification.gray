@@ -1,0 +1,83 @@
+/*
+ * Test: chars module - classification predicates and escape
+ * Verifies chars.is_ascii / is_control / is_printable / is_punct /
+ * is_hex_digit / is_word_char classify ASCII correctly and treat
+ * non-ASCII codepoints as unclassified, and chars.escape renders a
+ * char for debugging output.
+ */
+
+import and use @chars
+
+do check(label string, got bool, want bool) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do check_str(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+    mut hi char = char(0xE9)   // 'é'
+
+    // is_ascii
+    passed += check("is_ascii('A')", chars.is_ascii('A'), true)
+    passed += check("is_ascii(0xE9)", chars.is_ascii(hi), false)
+
+    // is_control
+    passed += check("is_control('\n')", chars.is_control('\n'), true)
+    passed += check("is_control(0x7F)", chars.is_control(char(0x7F)), true)
+    passed += check("is_control('a')", chars.is_control('a'), false)
+
+    // is_printable
+    passed += check("is_printable(' ')", chars.is_printable(' '), true)
+    passed += check("is_printable('~')", chars.is_printable('~'), true)
+    passed += check("is_printable('\t')", chars.is_printable('\t'), false)
+    passed += check("is_printable(0xE9)", chars.is_printable(hi), false)
+
+    // is_punct
+    passed += check("is_punct('!')", chars.is_punct('!'), true)
+    passed += check("is_punct('@')", chars.is_punct('@'), true)
+    passed += check("is_punct('a')", chars.is_punct('a'), false)
+    passed += check("is_punct(' ')", chars.is_punct(' '), false)
+
+    // is_hex_digit
+    passed += check("is_hex_digit('F')", chars.is_hex_digit('F'), true)
+    passed += check("is_hex_digit('f')", chars.is_hex_digit('f'), true)
+    passed += check("is_hex_digit('9')", chars.is_hex_digit('9'), true)
+    passed += check("is_hex_digit('g')", chars.is_hex_digit('g'), false)
+
+    // is_word_char
+    passed += check("is_word_char('_')", chars.is_word_char('_'), true)
+    passed += check("is_word_char('7')", chars.is_word_char('7'), true)
+    passed += check("is_word_char('-')", chars.is_word_char('-'), false)
+
+    // bare-call form after `import and use`
+    passed += check("bare is_ascii('z')", is_ascii('z'), true)
+
+    // escape
+    passed += check_str("escape('\t')", chars.escape('\t'), "\\t")
+    passed += check_str("escape('\\')", chars.escape('\\'), "\\\\")
+    passed += check_str("escape('A')", chars.escape('A'), "A")
+    passed += check_str("escape(0x07)", chars.escape(char(0x07)), "\\x07")
+    passed += check_str("escape(0xE9)", chars.escape(hi), "\\u{E9}")
+
+    println("")
+    println("Results: ${passed}/26 passed")
+    if passed == 26 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

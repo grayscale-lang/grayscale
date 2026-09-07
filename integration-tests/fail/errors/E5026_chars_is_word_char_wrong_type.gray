@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - wrong argument type to chars.is_word_char
+ * Expected: chars.is_word_char() expects char, got string
+ */
+
+// expect-error: E5026
+
+import @chars
+
+do main() {
+    mut ok bool = chars.is_word_char("x")
+    println(ok)
+}

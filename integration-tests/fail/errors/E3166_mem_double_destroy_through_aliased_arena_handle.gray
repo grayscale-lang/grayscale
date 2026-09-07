@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3166 - destroy of an already-destroyed arena, where the first
+ * destroy went through a copied handle (#2693). `b` aliases `a`;
+ * mem.destroy(b) then mem.destroy(a) is a double free of one arena.
+ */
+
+import @mem
+
+do main() {
+    mut a = mem.arena(1024)
+    mut b mem.Arena = a
+    mem.destroy(b)
+    mem.destroy(a)
+}

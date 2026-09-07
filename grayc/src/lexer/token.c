@@ -78,9 +78,9 @@ static const KeywordEntry keywords[] = {
 static int keyword_span_cmp(const char *span, int span_len, const char *keyword) {
     for (int i = 0; i < span_len; i++) {
         unsigned char span_ch = (unsigned char)span[i];
-        unsigned char kw_ch = (unsigned char)keyword[i];
-        if (kw_ch == '\0') return 1;
-        if (span_ch != kw_ch) return (int)span_ch - (int)kw_ch;
+        unsigned char keyword_ch = (unsigned char)keyword[i];
+        if (keyword_ch == '\0') return 1;
+        if (span_ch != keyword_ch) return (int)span_ch - (int)keyword_ch;
     }
     return keyword[span_len] == '\0' ? 0 : -1;
 }
@@ -118,12 +118,12 @@ bool token_type_is_keyword(TokenType type) {
  * back to the token type's name. */
 const char *token_display_name(Token tok) {
     if (tok.literal) {
-        TokenType kw_type;
-        const char *kw_str;
+        TokenType keyword_type;
+        const char *keyword_text;
         size_t len = strlen(tok.literal);
         if (len <= INT_MAX &&
-            token_lookup_keyword_n(tok.literal, (int)len, &kw_type, &kw_str) &&
-            kw_type == tok.type) {
+            token_lookup_keyword_n(tok.literal, (int)len, &keyword_type, &keyword_text) &&
+            keyword_type == tok.type) {
             return tok.literal;
         }
     }

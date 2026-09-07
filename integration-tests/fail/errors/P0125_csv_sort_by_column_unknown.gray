@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0125 - csv.sort_by_column with a name not in the header */
+import @csv
+
+do main() {
+    mut rows [[string]] = csv.parse("name,age\nAda,36")
+    println(len(csv.sort_by_column(rows, "salary")))
+}

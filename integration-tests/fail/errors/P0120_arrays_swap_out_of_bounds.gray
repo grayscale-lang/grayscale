@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0120 - arrays.swap with an out-of-bounds index */
+import @arrays
+
+do main() {
+    mut nums [int] = {1, 2, 3}
+    arrays.swap(nums, 0, 9)
+}

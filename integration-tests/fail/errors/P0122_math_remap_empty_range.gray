@@ -1,0 +1,7 @@
+// expect-contains: .gray:
+/* Panic Test: P0122 - math.remap with an empty input range */
+import @math
+
+do main() {
+    println(math.remap(5.0, 3.0, 3.0, 0.0, 100.0))
+}

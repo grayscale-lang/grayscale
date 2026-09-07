@@ -8,6 +8,12 @@
  * Licensed under the MIT License. See LICENSE for details.
  */
 
+/* Must precede every system header: exposes sysconf(_SC_NPROCESSORS_ONLN),
+ * which <unistd.h> hides under a strict _POSIX_C_SOURCE. */
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE 1
+#endif
+
 #include "os.h"
 #include "../runtime/platform_rt.h"
 #include <stdlib.h>
@@ -17,6 +23,8 @@
 #if GRAY_RT_WINDOWS
 #include "../runtime/win32.h"
 #include <direct.h>
+#include <io.h>
+#include <stdio.h>
 #else
 #include <unistd.h>
 #include <signal.h>
@@ -149,6 +157,27 @@ int64_t gray_os_pid(void) {
     return (int64_t)GetCurrentProcessId();
 #else
     return (int64_t)getpid();
+#endif
+}
+
+int64_t gray_os_cpu_count(void) {
+#if GRAY_RT_WINDOWS
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    long n = (long)si.dwNumberOfProcessors;
+#elif defined(_SC_NPROCESSORS_ONLN)
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+#else
+    long n = 0;
+#endif
+    return n > 0 ? (int64_t)n : 1;
+}
+
+bool gray_os_is_tty(void) {
+#if GRAY_RT_WINDOWS
+    return _isatty(_fileno(stdout)) != 0;
+#else
+    return isatty(STDOUT_FILENO) != 0;
 #endif
 }
 

@@ -223,8 +223,8 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts);
  *   mut val, err = time.parse("not a date", "%Y-%m-%d")
  *@end
  */
-int64_t gray_time_parse(GrayString s, GrayString layout);
-GrayResult_int gray_time_parse_result(GrayString s, GrayString layout);
+int64_t gray_time_parse(GrayString text, GrayString layout);
+GrayResult_int gray_time_parse_result(GrayString text, GrayString layout);
 
 /* Arithmetic */
 
@@ -241,7 +241,7 @@ GrayResult_int gray_time_parse_result(GrayString s, GrayString layout);
  *   println(delta)
  *@end
  */
-int64_t gray_time_diff(int64_t t1, int64_t t2);
+int64_t gray_time_diff(int64_t start, int64_t end);
 
 /*@man since
  *@module time
@@ -255,7 +255,7 @@ int64_t gray_time_diff(int64_t t1, int64_t t2);
  *   println(elapsed)
  *@end
  */
-int64_t gray_time_since(int64_t t);
+int64_t gray_time_since(int64_t start);
 
 /* Performance */
 
@@ -286,5 +286,151 @@ int64_t gray_time_tick(void);
  *@end
  */
 int64_t gray_time_elapsed_ms(int64_t start_tick);
+
+/*@man humanize
+ *@module time
+ *@group Formatting
+ *@sig humanize(seconds int) -> string
+ *@desc Renders a signed delta in seconds as a relative phrase. A positive value is in the past ("2 days ago"), a negative value is in the future ("in 1 hour"), and 0 is "just now". Only the largest whole unit is shown (second, minute, hour, day, week, month = 30 days, year = 365 days).
+ *@example
+ *   import @time
+ *   println(time.humanize(90))
+ *   println(time.humanize(-3700))
+ *@end
+ */
+GrayString gray_time_humanize(GrayArena *arena, int64_t seconds);
+
+/*@man parse_duration
+ *@module time
+ *@group Parsing
+ *@sig parse_duration(s string) -> (int, Error)
+ *@desc Parses a duration string like "1h30m", "90s", "2d", or "1h30m15s" into a total number of seconds. Units are s, m, h, d. A number with no unit, an unknown unit, or an empty string yields a non-nil error and a value of 0. Always use destructuring.
+ *@example
+ *   import @time
+ *   mut secs, err = time.parse_duration("1h30m")
+ *@end
+ */
+int64_t gray_time_parse_duration(GrayString text);
+GrayResult_int gray_time_parse_duration_result(GrayString text);
+
+/*@man format_duration
+ *@module time
+ *@group Formatting
+ *@sig format_duration(seconds int) -> string
+ *@desc Renders a duration in seconds as "1h 30m 15s". Components are capped at hours (no days), so 90000 is "25h 0m 0s". Zero components are omitted unless the whole value is zero, which is "0s". A negative value gets a leading minus.
+ *@example
+ *   import @time
+ *   println(time.format_duration(5415))
+ *@end
+ */
+GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds);
+
+/*@man add_days
+ *@module time
+ *@group Arithmetic
+ *@sig add_days(timestamp int, n int) -> int
+ *@desc Returns timestamp shifted by n days (n may be negative). Pure integer arithmetic on the Unix value; no calendar or DST logic.
+ *@example
+ *   import @time
+ *   mut tomorrow int = time.add_days(time.now(), 1)
+ *@end
+ */
+int64_t gray_time_add_days(int64_t timestamp, int64_t days);
+
+/*@man add_hours
+ *@module time
+ *@group Arithmetic
+ *@sig add_hours(timestamp int, n int) -> int
+ *@desc Returns timestamp shifted by n hours (n may be negative).
+ *@example
+ *   import @time
+ *   mut later int = time.add_hours(time.now(), -2)
+ *@end
+ */
+int64_t gray_time_add_hours(int64_t timestamp, int64_t hours);
+
+/*@man add_seconds
+ *@module time
+ *@group Arithmetic
+ *@sig add_seconds(timestamp int, n int) -> int
+ *@desc Returns timestamp shifted by n seconds (n may be negative).
+ *@example
+ *   import @time
+ *   mut soon int = time.add_seconds(time.now(), 30)
+ *@end
+ */
+int64_t gray_time_add_seconds(int64_t timestamp, int64_t seconds);
+
+/*@man start_of_day
+ *@module time
+ *@group Arithmetic
+ *@sig start_of_day(timestamp int) -> int
+ *@desc Returns the Unix timestamp of 00:00:00 UTC on the same day as timestamp.
+ *@example
+ *   import @time
+ *   mut midnight int = time.start_of_day(time.now())
+ *@end
+ */
+int64_t gray_time_start_of_day(int64_t timestamp);
+
+/*@man end_of_day
+ *@module time
+ *@group Arithmetic
+ *@sig end_of_day(timestamp int) -> int
+ *@desc Returns the Unix timestamp of 23:59:59 UTC on the same day as timestamp (start_of_day + 86399).
+ *@example
+ *   import @time
+ *   mut last int = time.end_of_day(time.now())
+ *@end
+ */
+int64_t gray_time_end_of_day(int64_t timestamp);
+
+/*@man days_in_month
+ *@module time
+ *@group Components
+ *@sig days_in_month(year int, month int) -> int
+ *@desc Returns the number of days in the given month (1-12) of the given year, accounting for leap years. Panics if month is outside 1-12.
+ *@example
+ *   import @time
+ *   println(time.days_in_month(2024, 2))
+ *@end
+ */
+int64_t gray_time_days_in_month(int64_t year, int64_t month);
+
+/*@man day_of_year
+ *@module time
+ *@group Components
+ *@sig day_of_year(timestamp int) -> int
+ *@desc Returns the day of the year for timestamp, from 1 to 366.
+ *@example
+ *   import @time
+ *   println(time.day_of_year(time.now()))
+ *@end
+ */
+int64_t gray_time_day_of_year(int64_t timestamp);
+
+/*@man weekday_name
+ *@module time
+ *@group Components
+ *@sig weekday_name(timestamp int) -> string
+ *@desc Returns the English weekday name for timestamp ("Sunday" through "Saturday"), consistent with weekday() numbering (0 = Sunday).
+ *@example
+ *   import @time
+ *   println(time.weekday_name(time.now()))
+ *@end
+ */
+GrayString gray_time_weekday_name(GrayArena *arena, int64_t timestamp);
+
+/*@man month_name
+ *@module time
+ *@group Components
+ *@sig month_name(timestamp int) -> string
+ *@desc Returns the English month name for timestamp ("January" through "December").
+ *@example
+ *   import @time
+ *   println(time.month_name(time.now()))
+ *@end
+ */
+GrayString gray_time_month_name(GrayArena *arena, int64_t timestamp);
 
 #endif

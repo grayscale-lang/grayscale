@@ -1,0 +1,66 @@
+/*
+ * uuid_bytes.gray - Integration test for uuid.to_bytes and uuid.from_bytes
+ */
+
+import @uuid
+import @encoding
+
+do main() {
+    mut passed int = 0
+
+    // to_bytes yields 16 bytes
+    mut id UUID = uuid.parse("550e8400-e29b-41d4-a716-446655440000")
+    mut b16 [byte] = uuid.to_bytes(id)
+    if len(b16) == 16 {
+        println("  [PASS] to_bytes length 16")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_bytes length: ${len(b16)}")
+    }
+
+    // bytes match the hex of the compact form
+    if encoding.to_hex(b16) == "550e8400e29b41d4a716446655440000" {
+        println("  [PASS] to_bytes hex matches")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_bytes hex: ${encoding.to_hex(b16)}")
+    }
+
+    // round-trip to_bytes -> from_bytes
+    mut back UUID = uuid.from_bytes(b16)
+    if uuid.to_string(back) == "550e8400-e29b-41d4-a716-446655440000" {
+        println("  [PASS] from_bytes round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] from_bytes round-trip: ${uuid.to_string(back)}")
+    }
+
+    // round-trip a freshly generated UUID
+    mut gen UUID = uuid.generate()
+    mut gen2 UUID = uuid.from_bytes(uuid.to_bytes(gen))
+    if uuid.to_string(gen) == uuid.to_string(gen2) {
+        println("  [PASS] generated round-trip")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] generated round-trip")
+    }
+
+    // from_bytes accepts bytes decoded from hex
+    mut hexbytes [byte] = encoding.from_hex("00000000000000000000000000000000")
+    mut nil_like UUID = uuid.from_bytes(hexbytes)
+    if uuid.to_string(nil_like) == "00000000-0000-0000-0000-000000000000" {
+        println("  [PASS] from_bytes from hex")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] from_bytes from hex: ${uuid.to_string(nil_like)}")
+    }
+
+    println("")
+    println("Results: ${passed}/5 passed")
+    if passed == 5 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

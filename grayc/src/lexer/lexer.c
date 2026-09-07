@@ -116,9 +116,9 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
         char next = peek_char(lexer);
         if (next == 'x' || next == 'X') {
             read_char(lexer); read_char(lexer);
-            int dstart = lexer->position;
+            int digit_start = lexer->position;
             while (isxdigit((unsigned char)lexer->ch) || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == dstart) {
+            if (lexer->position == digit_start) {
                 lexer->error_code = "E1010";
                 lexer->error_msg = "invalid number format: '0x' must be followed by hex digits (0-9, a-f)";
             }
@@ -126,9 +126,9 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
         }
         if (next == 'o' || next == 'O') {
             read_char(lexer); read_char(lexer);
-            int dstart = lexer->position;
+            int digit_start = lexer->position;
             while ((lexer->ch >= '0' && lexer->ch <= '7') || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == dstart) {
+            if (lexer->position == digit_start) {
                 lexer->error_code = "E1010";
                 lexer->error_msg = "invalid number format: '0o' must be followed by octal digits (0-7)";
             }
@@ -136,9 +136,9 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
         }
         if (next == 'b' || next == 'B') {
             read_char(lexer); read_char(lexer);
-            int dstart = lexer->position;
+            int digit_start = lexer->position;
             while (lexer->ch == '0' || lexer->ch == '1' || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == dstart) {
+            if (lexer->position == digit_start) {
                 lexer->error_code = "E1010";
                 lexer->error_msg = "invalid number format: '0b' must be followed by binary digits (0-1)";
             }
@@ -267,6 +267,20 @@ static const char *read_string(Lexer *lexer) {
             if (lexer->ch == '"') read_char(lexer); /* skip closing " */
             continue;
         }
+        /* Likewise skip nested char literals, so their escapes are not
+         * validated as string escapes and a `\u{...}` brace is not counted.
+         * The embedded expression is lexed properly on its own pass. */
+        if (lexer->ch == '\'' && brace_depth > 0) {
+            read_char(lexer); /* skip opening ' */
+            while (lexer->ch != 0 && lexer->ch != '\'') {
+                if (lexer->ch == '\\' && peek_char(lexer) != 0) {
+                    read_char(lexer); /* skip backslash */
+                }
+                read_char(lexer);
+            }
+            if (lexer->ch == '\'') read_char(lexer); /* skip closing ' */
+            continue;
+        }
         if (lexer->ch == '{' && brace_depth > 0) {
             brace_depth++;
             read_char(lexer);
@@ -354,9 +368,9 @@ static const char *read_char_literal(Lexer *lexer) {
                 lexer->error_msg = "malformed '\\u' escape in character literal; expected '\\u{...}'";
             } else {
                 read_char(lexer); /* skip { */
-                int nhex = 0;
-                while (isxdigit((unsigned char)lexer->ch)) { read_char(lexer); nhex++; }
-                if (lexer->ch != '}' || nhex < 1 || nhex > 6) {
+                int hex_digit_count = 0;
+                while (isxdigit((unsigned char)lexer->ch)) { read_char(lexer); hex_digit_count++; }
+                if (lexer->ch != '}' || hex_digit_count < 1 || hex_digit_count > 6) {
                     lexer->error_code = "E1006";
                     lexer->error_msg = "malformed '\\u{}' escape in character literal; expected 1 to 6 hex digits";
                 } else {
@@ -428,6 +442,19 @@ static int check_upcoming_chars(Lexer *lexer, const char *s, int len) {
     if (lexer->position + len > lexer->input_len) return 0;
     return strncmp(lexer->input + lexer->position, s, len) == 0;
 }
+
+/* The `#name` attribute keywords. `#[` (an attribute list) is handled
+ * separately since it is punctuation, not a keyword. */
+static const struct { const char *spelling; TokenType type; } attr_keywords[] = {
+    {"#strict",     TOK_STRICT},
+    {"#flags",      TOK_FLAGS},
+    {"#doc",        TOK_DOC},
+    {"#json",       TOK_JSON_ATTR},
+    {"#discard",    TOK_DISCARD},
+    {"#deprecated", TOK_DEPRECATED},
+    {"#error_code", TOK_ERROR_CODE_ATTR},
+    {"#test",       TOK_TEST},
+};
 
 Lexer *lexer_create(Arena *arena, const char *input, const char *file) {
     Lexer *lexer = arena_alloc(arena, sizeof(Lexer));
@@ -602,40 +629,29 @@ Token lexer_next_token(Lexer *lexer) {
     case '@': tok = make_token(TOK_AT, "@", tok.line, tok.column); break;
     case '^': tok = make_token(TOK_CARET, "^", tok.line, tok.column); break;
 
-    case '#':
+    case '#': {
         if (check_upcoming_chars(lexer, "#[", 2)) {
             tok = make_token(TOK_HASH_LBRACKET, "#[", tok.line, tok.column);
-            read_char(lexer); /* consume '[' */
-        } else if (check_upcoming_chars(lexer, "#strict", 7)) {
-            tok = make_token(TOK_STRICT, "#strict", tok.line, tok.column);
-            for (int i = 0; i < 6; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#flags", 6)) {
-            tok = make_token(TOK_FLAGS, "#flags", tok.line, tok.column);
-            for (int i = 0; i < 5; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#doc", 4)) {
-            tok = make_token(TOK_DOC, "#doc", tok.line, tok.column);
-            for (int i = 0; i < 3; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#json", 5)) {
-            tok = make_token(TOK_JSON_ATTR, "#json", tok.line, tok.column);
-            for (int i = 0; i < 4; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#discard", 8)) {
-            tok = make_token(TOK_DISCARD, "#discard", tok.line, tok.column);
-            for (int i = 0; i < 7; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#deprecated", 11)) {
-            tok = make_token(TOK_DEPRECATED, "#deprecated", tok.line, tok.column);
-            for (int i = 0; i < 10; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#error_code", 11)) {
-            tok = make_token(TOK_ERROR_CODE_ATTR, "#error_code", tok.line, tok.column);
-            for (int i = 0; i < 10; i++) read_char(lexer);
-        } else if (check_upcoming_chars(lexer, "#test", 5)) {
-            tok = make_token(TOK_TEST, "#test", tok.line, tok.column);
-            for (int i = 0; i < 4; i++) read_char(lexer);
-        } else {
+            read_char(lexer); /* consume '['; the trailing read_char consumes '#' */
+            break;
+        }
+        bool matched = false;
+        for (size_t i = 0; i < sizeof(attr_keywords) / sizeof(attr_keywords[0]); i++) {
+            int spelling_len = (int)strlen(attr_keywords[i].spelling);
+            if (!check_upcoming_chars(lexer, attr_keywords[i].spelling, spelling_len)) continue;
+            tok = make_token(attr_keywords[i].type, attr_keywords[i].spelling, tok.line, tok.column);
+            /* Consume all but one character; the trailing read_char below takes the last. */
+            for (int k = 1; k < spelling_len; k++) read_char(lexer);
+            matched = true;
+            break;
+        }
+        if (!matched) {
             lexer->error_code = "E1019";
             lexer->error_msg = "unexpected character '#'; use '//' for comments, '#strict', '#flags', '#json', '#doc', '#discard', '#deprecated', '#test', '#error_code' for attributes, or '#[...]' for a single-line attribute list";
             tok = make_token(TOK_ILLEGAL, lexer->error_msg, tok.line, tok.column);
         }
         break;
+    }
 
     case '"':
         lexer->unterminated_string = false;
@@ -674,11 +690,11 @@ Token lexer_next_token(Lexer *lexer) {
                 tok.type = TOK_ILLEGAL;
                 tok.literal = lexer->error_msg;
             } else {
-                TokenType kw_type;
-                const char *kw_str;
-                if (token_lookup_keyword_n(lexer->input + start, len, &kw_type, &kw_str)) {
-                    tok.type = kw_type;
-                    tok.literal = kw_str;
+                TokenType keyword_type;
+                const char *keyword_text;
+                if (token_lookup_keyword_n(lexer->input + start, len, &keyword_type, &keyword_text)) {
+                    tok.type = keyword_type;
+                    tok.literal = keyword_text;
                 } else {
                     tok.type = TOK_IDENT;
                     tok.literal = arena_intern_string(lexer->arena, lexer->input + start, (size_t)len);

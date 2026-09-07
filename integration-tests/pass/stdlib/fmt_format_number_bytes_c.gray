@@ -1,0 +1,45 @@
+/*
+ * fmt_format_number_bytes_c.gray - Integration test for fmt.format_number and
+ * fmt.format_bytes
+ */
+
+import @fmt
+
+do check(label string, got string, want string, &passed int, &failed int) {
+    if got == want {
+        println("  [PASS] ${label}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${label}: expected '${want}', got '${got}'")
+        failed += 1
+    }
+}
+
+do main() {
+    println("=== fmt.format_number / format_bytes Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    check("format_number millions", fmt.format_number(1234567), "1,234,567", passed, failed)
+    check("format_number negative", fmt.format_number(-1000), "-1,000", passed, failed)
+    check("format_number under 1000", fmt.format_number(999), "999", passed, failed)
+    check("format_number exact thousand", fmt.format_number(1000), "1,000", passed, failed)
+    check("format_number zero", fmt.format_number(0), "0", passed, failed)
+    check("format_number negative small", fmt.format_number(-42), "-42", passed, failed)
+
+    check("format_bytes bytes", fmt.format_bytes(1023), "1023 B", passed, failed)
+    check("format_bytes KiB", fmt.format_bytes(1536), "1.5 KiB", passed, failed)
+    check("format_bytes MiB", fmt.format_bytes(1048576), "1.0 MiB", passed, failed)
+    check("format_bytes zero", fmt.format_bytes(0), "0 B", passed, failed)
+    check("format_bytes GiB", fmt.format_bytes(1073741824), "1.0 GiB", passed, failed)
+    check("format_bytes negative", fmt.format_bytes(-2048), "-2.0 KiB", passed, failed)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

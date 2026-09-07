@@ -1,0 +1,34 @@
+// expect-error: E3163
+// expect-error-count: 2
+/*
+ * Error Test: E3163 - a `for_each` loop variable bound over a container of
+ * pointers keeps the container's lifetime origin, so storing it into a
+ * longer-lived global is caught (#2695) - directly, and laundered through a
+ * helper whose escape summary is PARAM_ESCAPE_GLOBAL.
+ */
+
+mut leaked ^int = nil
+
+do take(p ^int) { leaked = p }
+
+do direct() {
+    mut x int = 7
+    mut pts [^int] = {addr(x)}
+    for_each pp in pts {
+        leaked = pp
+    }
+}
+
+do via_helper() {
+    mut y int = 9
+    mut pts [^int] = {addr(y)}
+    for_each pp in pts {
+        take(pp)
+    }
+}
+
+do main() {
+    direct()
+    via_helper()
+    println("unreachable")
+}

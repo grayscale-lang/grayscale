@@ -75,17 +75,17 @@ static GrayThread spawn_thread(ThreadArg *thread_arg) {
             "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached",
             strerror(rc));
     }
-    GrayThread t;
-    t._internal = state;
-    return t;
+    GrayThread thread;
+    thread._internal = state;
+    return thread;
 }
 
 /* malloc that panics rather than returning NULL; thread state is small and
  * a failure here means the process is already out of memory. */
-static void *thread_alloc(size_t n) {
-    void *p = malloc(n);
-    if (!p) gray_panic_code("P0109", "threads.spawn: out of memory allocating thread state");
-    return p;
+static void *thread_alloc(size_t size) {
+    void *ptr = malloc(size);
+    if (!ptr) gray_panic_code("P0109", "threads.spawn: out of memory allocating thread state");
+    return ptr;
 }
 
 GrayThread gray_threads_spawn(void (*fn)(void)) {
@@ -106,25 +106,25 @@ GrayThread gray_threads_spawn_arg(void (*fn)(int64_t), int64_t arg) {
     return spawn_thread(thread_arg);
 }
 
-void gray_threads_join(GrayThread t) {
-    if (!t._internal) return;
-    GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
+void gray_threads_join(GrayThread thread) {
+    if (!thread._internal) return;
+    GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
     pthread_join(state->posix_thread, NULL);
     free(state);
 }
 
-void gray_threads_detach(GrayThread t) {
-    if (!t._internal) return;
-    GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
+void gray_threads_detach(GrayThread thread) {
+    if (!thread._internal) return;
+    GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
     pthread_detach(state->posix_thread);
     /* Rendezvous with thread exit: both sides increment detached, and
      * whichever sees the old value as 1 is last to arrive and frees. */
     if (atomic_fetch_add(&state->detached, 1) == 1) free(state);
 }
 
-bool gray_threads_is_alive(GrayThread t) {
-    if (!t._internal) return false;
-    GrayThreadInternal *state = (GrayThreadInternal *)t._internal;
+bool gray_threads_is_alive(GrayThread thread) {
+    if (!thread._internal) return false;
+    GrayThreadInternal *state = (GrayThreadInternal *)thread._internal;
     return atomic_load(&state->alive) != 0;
 }
 

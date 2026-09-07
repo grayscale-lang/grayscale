@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4031 - two `import and use` user modules both define `label`,
+ * so the unqualified call is ambiguous. Expected: the message names both
+ * providers and tells the user to qualify.
+ */
+
+// expect-error: E4031
+// expect-error-count: 1
+
+import and use "./greet.gray"
+import and use "./tag.gray"
+
+do main() {
+    println(label())
+}

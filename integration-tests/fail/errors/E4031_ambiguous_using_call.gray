@@ -1,0 +1,15 @@
+/*
+ * Error Test: E4031 - two `import and use` modules both provide `escape`,
+ * so an unqualified call is ambiguous and must be qualified.
+ * Expected: "'escape' is provided by more than one module in scope
+ *            ('regex' and 'chars'); call it qualified, e.g. 'regex.escape'"
+ */
+// expect-error: E4031
+// expect-error-count: 1
+
+import and use @regex
+import and use @chars
+
+do main() {
+    println(escape('A'))
+}

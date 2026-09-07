@@ -67,29 +67,29 @@ static GrayArena *get_server_arena(void) {
 }
 
 GrayRouter gray_server_router(void) {
-    GrayRouter r;
-    r.count = 0;
-    r.capacity = GRAY_ROUTER_INITIAL_CAP;
-    r.routes = malloc(sizeof(GrayRoute) * r.capacity);
-    r.cors_origin = NULL;
-    r.middlewares = NULL;
-    r.mw_count = 0;
-    r.mw_capacity = 0;
-    return r;
+    GrayRouter router;
+    router.count = 0;
+    router.capacity = GRAY_ROUTER_INITIAL_CAP;
+    router.routes = malloc(sizeof(GrayRoute) * router.capacity);
+    router.cors_origin = NULL;
+    router.middlewares = NULL;
+    router.mw_count = 0;
+    router.mw_capacity = 0;
+    return router;
 }
 
-void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
+void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern,
                      GrayResponse (*handler)(GrayRequest)) {
-    if (r->count >= r->capacity) {
-        r->capacity *= 2;
-        void *tmp = realloc(r->routes, sizeof(GrayRoute) * r->capacity);
+    if (router->count >= router->capacity) {
+        router->capacity *= 2;
+        void *tmp = realloc(router->routes, sizeof(GrayRoute) * router->capacity);
         if (!tmp) {
             fprintf(stderr, "gray: out of memory\n");
             exit(1);
         }
-        r->routes = tmp;
+        router->routes = tmp;
     }
-    GrayRoute *route = &r->routes[r->count++];
+    GrayRoute *route = &router->routes[router->count++];
 
     /* Null-terminate method and pattern */
     GrayArena *arena = get_server_arena();
@@ -106,7 +106,7 @@ void gray_server_route(GrayRouter *r, GrayString method, GrayString pattern,
     route->handler = handler;
 }
 
-void gray_server_cors(GrayRouter *r, GrayString origin) {
+void gray_server_cors(GrayRouter *router, GrayString origin) {
     for (int32_t i = 0; i < origin.len; i++) {
         if (origin.data[i] == '\r' || origin.data[i] == '\n') {
             gray_panic_code("P0101", "server.cors: origin contains CR or LF — HTTP header injection is not allowed");
@@ -116,15 +116,15 @@ void gray_server_cors(GrayRouter *r, GrayString origin) {
     char *origin_copy = gray_arena_alloc_uninitialized(arena,origin.len + 1);
     memcpy(origin_copy, origin.data, origin.len);
     origin_copy[origin.len] = '\0';
-    r->cors_origin = origin_copy;
+    router->cors_origin = origin_copy;
 }
 
-void gray_server_use(GrayRouter *r, GrayMiddleware fn) {
-    if (r->mw_count >= r->mw_capacity) {
-        r->mw_capacity = r->mw_capacity == 0 ? 8 : r->mw_capacity * 2;
-        r->middlewares = realloc(r->middlewares, sizeof(GrayMiddleware) * r->mw_capacity);
+void gray_server_use(GrayRouter *router, GrayMiddleware fn) {
+    if (router->mw_count >= router->mw_capacity) {
+        router->mw_capacity = router->mw_capacity == 0 ? 8 : router->mw_capacity * 2;
+        router->middlewares = realloc(router->middlewares, sizeof(GrayMiddleware) * router->mw_capacity);
     }
-    r->middlewares[r->mw_count++] = fn;
+    router->middlewares[router->mw_count++] = fn;
 }
 
 /* Check if a route pattern matches a path, extracting params */
@@ -360,7 +360,7 @@ static void *handle_connection(void *arg) {
     return cleanup_connection(ctx, arena);
 }
 
-void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
+void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *router) {
     GrayArena *arena = get_server_arena();
     GraySocket listener = gray_net_listen_host(arena, host, port);
     if (listener.fd < 0) {
@@ -391,7 +391,7 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
             continue;
         }
         ctx->client_fd = client.fd;
-        ctx->router = r;
+        ctx->router = router;
 
         pthread_t thread;
         if (pthread_create(&thread, NULL, handle_connection, ctx) != 0) {
@@ -405,8 +405,8 @@ void gray_server_listen_host(int64_t port, GrayString host, GrayRouter *r) {
     }
 }
 
-void gray_server_listen(int64_t port, GrayRouter *r) {
-    gray_server_listen_host(port, gray_string_lit("0.0.0.0"), r);
+void gray_server_listen(int64_t port, GrayRouter *router) {
+    gray_server_listen_host(port, gray_string_lit("0.0.0.0"), router);
 }
 
 /* Response builders */

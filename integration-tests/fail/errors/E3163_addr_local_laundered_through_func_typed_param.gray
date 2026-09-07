@@ -1,0 +1,40 @@
+// expect-error: E3163
+// expect-error-count: 3
+/*
+ * Error Test: E3163 - a local's address must not be passed into a call
+ * whose target is a function-typed parameter (#2692). Escape analysis
+ * cannot see through the indirect call, so every pointer/aggregate
+ * argument such a call receives is treated as escaping to an unknown,
+ * program-lifetime sink.
+ *
+ *   1. indirect call stashes the pointer into a global
+ *   2. indirect call writes the pointer through a ^^int out-parameter
+ *      (both the out-pointer and the payload pointer are flagged)
+ */
+
+mut leaked ^int = nil
+
+do stash(p ^int) { leaked = p }
+
+do apply1(f func(^int), p ^int) { f(p) }
+
+do writeback(p ^int, out ^^int) { out^ = p }
+
+do apply2(f func(^int, ^^int), out ^^int, p ^int) { f(p, out) }
+
+do main() {
+    if true {
+        mut x int = 42
+        const g func(^int) = ()stash
+        apply1(g, addr(x))
+    }
+
+    mut sink ^int = nil
+    if true {
+        mut y int = 99
+        const h func(^int, ^^int) = ()writeback
+        apply2(h, addr(sink), addr(y))
+    }
+
+    println("unreachable")
+}

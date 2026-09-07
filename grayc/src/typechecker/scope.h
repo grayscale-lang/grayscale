@@ -45,12 +45,19 @@ typedef struct {
     int mem_epoch;
     /* Same, for a pointer buried in a *field* of this aggregate variable — a
      * struct/array/map literal initialised or updated with a pointer bound
-     * to a @mem arena. Lets pc_check_mem_deref() catch `b.p^` after the
+     * to a @mem arena. Lets pointer_checker_check_mem_deref() catch `b.p^` after the
      * arena backing `b.p` is destroyed, the same way field_origin_depth lets
      * the escape checks see through a struct carrying a dangling pointer
      * field. */
     const char *field_mem_arena;
     int field_mem_epoch;
+    /* Pointer checker: for a @mem arena *handle* variable (mut a =
+     * mem.arena(n)) or an alias of one (mut b mem.Arena = a, mut h ^mem.Arena
+     * = addr(a)), the stable identity key of the arena it refers to. Lets a
+     * mem.destroy()/mem.reset() reached through any alias update the one
+     * shared ArenaLifetime, so E3164/E3165/E3166 fire regardless of which
+     * name the lifecycle call went through. */
+    const char *arena_id;
     bool used;           /* true if variable was read */
     int def_line;        /* line where variable was defined */
     int def_column;      /* column where variable was defined */

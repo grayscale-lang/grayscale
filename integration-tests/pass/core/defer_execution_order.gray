@@ -3,6 +3,7 @@
  *  - multiple defers in one function run in last-in-first-out order
  *  - a deferred call's arguments are evaluated when it fires, not when
  *    it is registered
+ *  - return expressions are evaluated before deferred calls run
  *  - defers fire before control returns to the caller, on both the
  *    normal-exit and early-return paths
  *  - each activation's defers are independent across nested calls
@@ -11,9 +12,24 @@
 import @arrays
 
 mut trace [int] = {}
+mut return_counter int = 0
 
 do rec(n int) {
     arrays.append(trace, n)
+}
+
+do increment_return_counter() {
+    return_counter += 1
+}
+
+do next_value() -> int {
+    defer increment_return_counter()
+    return return_counter
+}
+
+do next_pair() -> (int, int) {
+    defer increment_return_counter()
+    return return_counter, return_counter + 10
 }
 
 do lifo() {
@@ -95,6 +111,16 @@ do main() {
         passed += 1
     } otherwise {
         println("[FAIL] nested activations share a defer stack")
+        failed += 1
+    }
+
+    return_counter = 0
+    mut first int = next_value()
+    mut second, offset = next_pair()
+    if first == 0 && second == 1 && offset == 11 && return_counter == 2 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] defer ran before return expressions: ${first}, ${second}, ${offset}")
         failed += 1
     }
 

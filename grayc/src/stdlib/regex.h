@@ -106,9 +106,65 @@ GrayString gray_regex_replace(GrayArena *arena, GrayString pattern, GrayString t
 /* regex.split(pattern, text) -> [string] */
 GrayArray gray_regex_split(GrayArena *arena, GrayString pattern, GrayString text);
 
+/*@man find_groups
+ *@module regex
+ *@group Search
+ *@sig find_groups(pattern string, text string) -> ([string], Error)
+ *@desc Return the capture groups of the first match: index 0 is the whole match, 1..n are the parenthesized groups in order. A group that did not participate is an empty string. Returns an empty array when there is no match. Always use destructuring. An invalid pattern yields a non-nil error and, with `_`, an empty array.
+ *@example
+ *   import @regex
+ *   mut g, err = regex.find_groups("([0-9]+)-([0-9]+)", "order 12-34")
+ *   println(g[1])   // 12
+ *@end
+ */
+/* regex.find_groups(pattern, text) -> [string] */
+GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayString text);
+
+/*@man find_all_groups
+ *@module regex
+ *@group Search
+ *@sig find_all_groups(pattern string, text string) -> ([[string]], Error)
+ *@desc Like find_groups, but for every non-overlapping match: returns an array of group arrays. Always use destructuring. An invalid pattern yields a non-nil error and, with `_`, an empty array.
+ *@example
+ *   import @regex
+ *   mut all, err = regex.find_all_groups("([a-z])([0-9])", "a1 b2")
+ *   println(all[1][2])   // 2
+ *@end
+ */
+/* regex.find_all_groups(pattern, text) -> [[string]] */
+GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayString text);
+
+/*@man count
+ *@module regex
+ *@group Search
+ *@sig count(pattern string, text string) -> int
+ *@desc Return the number of non-overlapping matches of pattern in text. An invalid pattern returns 0.
+ *@example
+ *   import @regex
+ *   println(regex.count("[0-9]+", "a1b22c333"))   // 3
+ *@end
+ */
+/* regex.count(pattern, text) -> int */
+int64_t gray_regex_count(GrayString pattern, GrayString text);
+
+/*@man escape
+ *@module regex
+ *@group Utility
+ *@sig escape(s string) -> string
+ *@desc Backslash-escape every character that is special in a POSIX extended regex, so s matches literally when spliced into a pattern.
+ *@example
+ *   import @regex
+ *   mut pat string = regex.escape("a.b(c)") + "+"
+ *@end
+ */
+/* regex.escape(s) -> string */
+GrayString gray_regex_escape(GrayArena *arena, GrayString str);
+
 /* _result variants */
 GrayResult_string gray_regex_find_result(GrayArena *arena, GrayString pattern, GrayString text);
 GrayResult_array gray_regex_find_all_result(GrayArena *arena, GrayString pattern, GrayString text);
+GrayResult_array gray_regex_find_groups_result(GrayArena *arena, GrayString pattern, GrayString text);
+GrayResult_array gray_regex_find_all_groups_result(GrayArena *arena, GrayString pattern, GrayString text);
 GrayResult_string gray_regex_replace_result(GrayArena *arena, GrayString pattern, GrayString text, GrayString replacement);
 GrayResult_array gray_regex_split_result(GrayArena *arena, GrayString pattern, GrayString text);
 

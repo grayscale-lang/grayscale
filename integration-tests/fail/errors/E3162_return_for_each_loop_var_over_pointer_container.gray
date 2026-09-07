@@ -1,0 +1,21 @@
+// expect-error: E3162
+// expect-error-count: 1
+/*
+ * Error Test: E3162 - a `for_each` loop variable bound over a container of
+ * pointers keeps the container's lifetime origin, so returning it is caught
+ * the same as returning the element through an index expression (#2695).
+ */
+
+do bad() -> ^int {
+    mut x int = 7
+    mut pts [^int] = {addr(x)}
+    for_each pp in pts {
+        return pp
+    }
+    return nil
+}
+
+do main() {
+    mut d ^int = bad()
+    println("unreachable")
+}

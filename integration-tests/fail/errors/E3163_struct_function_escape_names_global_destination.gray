@@ -1,0 +1,23 @@
+// expect-error: E3163
+// expect-error-count: 1
+// expect-contains: 'GLOBAL' outlives the variable 'y'
+/*
+ * Error Test: E3163 - when a local's address escapes into a named global
+ * through a struct-function parameter, the diagnostic names the actual
+ * destination ('GLOBAL'), not the source variable in both slots (#2661).
+ */
+
+mut GLOBAL ^int = nil
+
+const Stasher struct {
+    tag int
+    do stash(self Stasher, x ^int) {
+        GLOBAL = x
+    }
+}
+
+do main() {
+    mut s Stasher = Stasher{tag: 1}
+    mut y int = 5
+    s.stash(addr(y))
+}
