@@ -71,13 +71,17 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *re, GrayStri
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(re, cursor, 1, &match, 0) == 0) {
+    /* REG_NOTBOL past the first attempt: cursor[0] is no longer the string
+     * start, so `^` must not re-anchor there on each advance. */
+    while (regexec(re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         int32_t match_length = (int32_t)(match.rm_eo - match.rm_so);
         GrayString s = gray_string_new(arena, cursor + match.rm_so, match_length);
         GRAY_ARRAY_PUSH(arena, &arr, &s);
 
         cursor += match.rm_eo;
-        if (match.rm_eo == 0) {
+        /* A zero-width match (rm_so == rm_eo) makes no forward progress on its
+         * own — step one char or stop, so `$`/`\b` etc. can't re-match in place. */
+        if (match.rm_so == match.rm_eo) {
             if (*cursor) cursor++;
             else break;
         }
@@ -100,12 +104,12 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayStri
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         out_size += (size_t)match.rm_so;
         out_size += (size_t)repl_len;
         cursor += match.rm_eo;
         match_count++;
-        if (match.rm_eo == 0) {
+        if (match.rm_so == match.rm_eo) {
             if (*cursor) { out_size++; cursor++; }
             else break;
         }
@@ -119,7 +123,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayStri
     int pos = 0;
     cursor = txt_buf;
 
-    while (regexec(re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         int pre_len = (int)match.rm_so;
         memcpy(result + pos, cursor, (size_t)pre_len);
         pos += pre_len;
@@ -128,7 +132,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayStri
         pos += repl_len;
 
         cursor += match.rm_eo;
-        if (match.rm_eo == 0) {
+        if (match.rm_so == match.rm_eo) {
             if (*cursor) result[pos++] = *cursor++;
             else break;
         }
@@ -151,13 +155,13 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *re, GrayString 
     const char *cursor = txt_buf;
     regmatch_t match;
 
-    while (regexec(re, cursor, 1, &match, 0) == 0) {
+    while (regexec(re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         int32_t piece_length = (int32_t)match.rm_so;
         GrayString piece = gray_string_new(arena, cursor, piece_length);
         GRAY_ARRAY_PUSH(arena, &arr, &piece);
 
         cursor += match.rm_eo;
-        if (match.rm_eo == 0) {
+        if (match.rm_so == match.rm_eo) {
             if (*cursor) cursor++;
             else break;
         }
@@ -181,10 +185,10 @@ int64_t gray_regex_count(GrayString pattern, GrayString text) {
     regmatch_t match;
     int64_t count = 0;
 
-    while (regexec(&re, cursor, 1, &match, 0) == 0) {
+    while (regexec(&re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         count++;
         cursor += match.rm_eo;
-        if (match.rm_eo == 0) {
+        if (match.rm_so == match.rm_eo) {
             if (*cursor) cursor++;
             else break;
         }
@@ -267,13 +271,12 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
     const char *cursor = txt_buf;
     regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
 
-    while (regexec(&re, cursor, ngroups, pmatch, 0) == 0) {
+    while (regexec(&re, cursor, ngroups, pmatch, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         GrayArray inner = regex_groups_of_match(arena, cursor, pmatch, ngroups);
         GRAY_ARRAY_PUSH(arena, &outer, &inner);
 
-        int advance = (int)pmatch[0].rm_eo;
-        cursor += advance;
-        if (advance == 0) {
+        cursor += (int)pmatch[0].rm_eo;
+        if (pmatch[0].rm_so == pmatch[0].rm_eo) {
             if (*cursor) cursor++;
             else break;
         }

@@ -1,0 +1,73 @@
+/*
+ * regex_anchor_multi_match.gray - Anchors (^ and $) must bind to the string
+ * ends, not re-anchor at every cursor position during a multi-match scan.
+ */
+
+import @regex
+
+do check_int(label string, got int, want int) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // count: ^ / $ match once, not per position
+    passed += check_int("count ^a", regex.count("^a", "aaa"), 1)
+    passed += check_int("count ^", regex.count("^", "a\nb"), 1)
+    passed += check_int("count a$", regex.count("a$", "banana"), 1)
+    passed += check_int("count $", regex.count("$", "ab"), 1)
+    // non-anchored still scans every match
+    passed += check_int("count a", regex.count("a", "banana"), 3)
+
+    // find_all
+    mut fa1, _ = regex.find_all("^a", "aaa")
+    passed += check_int("find_all ^a", len(fa1), 1)
+    mut fa2, _ = regex.find_all("a$", "aXa")
+    passed += check_int("find_all a$", len(fa2), 1)
+
+    // replace: only the anchored occurrence is replaced
+    mut r1, _ = regex.replace("^x", "xxx", "-")
+    passed += check("replace ^x", r1, "-xx")
+    mut r2, _ = regex.replace("^", "ab", "> ")
+    passed += check("replace ^", r2, "> ab")
+    mut r3, _ = regex.replace("a$", "banana", "-")
+    passed += check("replace a$", r3, "banan-")
+    mut r4, _ = regex.replace("$", "ab", "!")
+    passed += check("replace $", r4, "ab!")
+    // non-anchored replace unaffected
+    mut r5, _ = regex.replace("a", "banana", "o")
+    passed += check("replace a", r5, "bonono")
+
+    // split on an anchored separator
+    mut sp1, _ = regex.split("^x", "xax")
+    passed += check_int("split ^x count", len(sp1), 2)
+    passed += check("split ^x tail", sp1[1], "ax")
+
+    // find_all_groups
+    mut fg1, _ = regex.find_all_groups("(^a)", "aaa")
+    passed += check_int("find_all_groups (^a)", len(fg1), 1)
+
+    println("")
+    println("Results: ${passed}/15 passed")
+    if passed == 15 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
