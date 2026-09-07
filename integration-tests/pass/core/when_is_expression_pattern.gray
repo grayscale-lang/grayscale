@@ -1,0 +1,59 @@
+/*
+ * Test: an is-arm pattern that is a compound expression lowers correctly
+ * Verifies the pattern is parenthesized so operators looser than == do not
+ * mis-associate against the subject (e.g. subject == a == b).
+ */
+
+mut passed int = 0
+mut failed int = 0
+
+do check(name string, cond bool) {
+    if cond {
+        passed++
+    } otherwise {
+        println("[FAIL] ${name}")
+        failed++
+    }
+}
+
+do main() {
+    mut n int = 5
+
+    mut hit string = ""
+    when true {
+        is (n == 5) { hit = "match" }
+        default { hit = "default" }
+    }
+    check("true subject, n == 5 pattern", hit == "match")
+
+    // Subject false equals the value of (n == 99), which is also false.
+    hit = ""
+    when false {
+        is (n == 99) { hit = "match" }
+        default { hit = "default" }
+    }
+    check("false subject equals false pattern value", hit == "match")
+
+    // Subject false does not equal the value of (n == 5), which is true.
+    hit = ""
+    when false {
+        is (n == 5) { hit = "match" }
+        default { hit = "default" }
+    }
+    check("false subject, true pattern value", hit == "default")
+
+    // Arithmetic pattern: subject equals n + 1
+    mut got string = ""
+    when 6 {
+        is (n + 1) { got = "six" }
+        default { got = "other" }
+    }
+    check("arithmetic pattern n + 1", got == "six")
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

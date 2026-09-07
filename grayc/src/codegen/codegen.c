@@ -12048,8 +12048,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                     emit(codegen, ")");
                 } else {
                     emit(codegen, when_tmp);
-                    emit(codegen, " == ");
+                    emit(codegen, " == (");
                     emit_expression(codegen, wc->values[j]);
+                    emit(codegen, ")");
                 }
             }
             emit(codegen, ") {\n");
