@@ -229,6 +229,15 @@ GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr) {
     return (GrayString){ buf, (int32_t)pos };
 }
 
+/* Scalar json.encode(string): a single quoted, escaped JSON string. */
+GrayString gray_json_encode_string(GrayArena *arena, GrayString str) {
+    char *buf = gray_arena_alloc_uninitialized(arena, json_escaped_len(str) + 1);
+    int pos = 0;
+    json_append_escaped(buf, &pos, str);
+    buf[pos] = '\0';
+    return (GrayString){ buf, (int32_t)pos };
+}
+
 GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *arr) {
     /* Pass 1: exact size */
     size_t need = 2; /* [ ] */

@@ -6559,11 +6559,9 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
             emit(codegen, " ? gray_string_lit(\"true\") : gray_string_lit(\"false\"))");
         } else {
             /* String (and the only remaining case the typechecker allows). */
-            emit(codegen, "({ GrayString _js = ");
+            emit(codegen, "gray_json_encode_string(gray_default_arena, ");
             emit_expression(codegen, arg);
-            emit(codegen, "; char *_jbuf = gray_arena_alloc(gray_default_arena, _js.len + 3); ");
-            emit(codegen, "_jbuf[0] = '\"'; memcpy(_jbuf+1, _js.data, _js.len); _jbuf[_js.len+1] = '\"'; _jbuf[_js.len+2] = '\\0'; ");
-            emit(codegen, "gray_string_new(gray_default_arena, _jbuf, _js.len + 2); })");
+            emit(codegen, ")");
         }
         return true;
     }

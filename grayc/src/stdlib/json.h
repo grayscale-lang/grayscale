@@ -43,6 +43,7 @@ GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_string(GrayArena *arena, GrayArray *arr);
+GrayString gray_json_encode_string(GrayArena *arena, GrayString str);
 GrayString gray_json_encode_array_bool(GrayArena *arena, GrayArray *arr);
 
 /* json.encode(map) — convert typed maps to JSON */
