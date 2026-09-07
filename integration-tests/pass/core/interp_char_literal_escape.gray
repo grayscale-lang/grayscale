@@ -1,0 +1,65 @@
+// A char literal inside string interpolation is lexed as a char literal,
+// not as string content -- its escapes (\u{...}, \t, \') and the braces of
+// \u{...} must not be validated or counted by the enclosing string.
+
+do show(c char) -> string {
+    return "${c}"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // \u{...} directly in interpolation (regression: was rejected E1006)
+    mut r1 string = "x ${'\u{41}'} y"
+    if r1 == "x A y" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \\u{41} in interp -> '${r1}'")
+    }
+
+    // \t still works in interpolation
+    mut r2 string = "a${'\t'}b"
+    if r2 == "a\tb" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: \\t in interp")
+    }
+
+    // escaped quote char literal
+    mut r3 string = "q${'\''}q"
+    if r3 == "q'q" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: escaped quote in interp")
+    }
+
+    // char literal passed through a call inside interpolation
+    mut r4 string = "z ${show('\u{42}')}"
+    if r4 == "z B" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: char literal arg in interp -> '${r4}'")
+    }
+
+    // nested string that itself interpolates a char literal
+    mut r5 string = "out ${"in ${'\u{43}'}"}"
+    if r5 == "out in C" {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+        println("FAIL: nested interp char literal -> '${r5}'")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

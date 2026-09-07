@@ -267,6 +267,20 @@ static const char *read_string(Lexer *lexer) {
             if (lexer->ch == '"') read_char(lexer); /* skip closing " */
             continue;
         }
+        /* Likewise skip nested char literals, so their escapes are not
+         * validated as string escapes and a `\u{...}` brace is not counted.
+         * The embedded expression is lexed properly on its own pass. */
+        if (lexer->ch == '\'' && brace_depth > 0) {
+            read_char(lexer); /* skip opening ' */
+            while (lexer->ch != 0 && lexer->ch != '\'') {
+                if (lexer->ch == '\\' && peek_char(lexer) != 0) {
+                    read_char(lexer); /* skip backslash */
+                }
+                read_char(lexer);
+            }
+            if (lexer->ch == '\'') read_char(lexer); /* skip closing ' */
+            continue;
+        }
         if (lexer->ch == '{' && brace_depth > 0) {
             brace_depth++;
             read_char(lexer);
