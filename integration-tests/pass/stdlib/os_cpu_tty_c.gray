@@ -1,5 +1,6 @@
 /*
  * os_cpu_tty_c.gray - Integration test for os.cpu_count and os.is_tty
+ */
 import @os
 
 do main() {
