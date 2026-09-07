@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5026 - csv.encode takes [[string]] (rows of fields) or
+ * [string] (pre-formatted rows). Any other array element type reached the
+ * runtime helper, which read each element as a GrayString/GrayArray and
+ * segfaulted.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @csv
+
+do main() {
+    mut data [[int]] = {{1, 2}, {3, 4}}
+    println(csv.encode(data))
+}

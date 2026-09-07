@@ -1,0 +1,41 @@
+// csv.encode of a [[string]] from regex.find_all_groups is the supported way
+// to serialize capture-group output (json.encode rejects nested arrays).
+
+import @regex
+import @csv
+import @strings
+
+do main() {
+    mut passed int = 0
+
+    mut groups, _ = regex.find_all_groups("([a-z]+)-([0-9]+)", "ab-12 cd-34")
+    mut out string = csv.encode(groups)
+
+    if len(groups) == 2 {
+        passed += 1
+    } otherwise {
+        println("FAIL: group count ${len(groups)}")
+    }
+
+    if strings.contains(out, "ab-12,ab,12") && strings.contains(out, "cd-34,cd,34") {
+        passed += 1
+    } otherwise {
+        println("FAIL: csv output '${out}'")
+    }
+
+    // [string] pre-formatted rows still work
+    mut rows [string] = {"x,y", "z,w"}
+    if csv.encode(rows) == "x,y\nz,w" {
+        passed += 1
+    } otherwise {
+        println("FAIL: [string] rows -> '${csv.encode(rows)}'")
+    }
+
+    println("passed: ${passed}/3")
+    if passed == 3 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}

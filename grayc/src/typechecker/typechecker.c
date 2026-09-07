@@ -4910,6 +4910,46 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
     }
 }
 
+/* A scalar json.encode can serialize directly (STANDARD 9.8: int, float,
+ * bool, string). uint, sized ints, char, byte and bigints are excluded: the
+ * encoder has no path for them and reads the bytes as a plain int64. */
+static bool json_encodable_scalar(const GrayType *t) {
+    if (!t) return false;
+    switch (t->kind) {
+    case TK_FLOAT: case TK_BOOL: case TK_STRING: return true;
+    case TK_INT: return t->name && strcmp(t->name, "int") == 0;
+    default: return false;
+    }
+}
+
+/* What json.encode() accepts: a scalar, a flat array of scalars, or a
+ * string-keyed map of scalars. Anything else (struct, opaque type, nested
+ * array, array/map of aggregates) reaches codegen's fallback, which
+ * reinterprets the bytes as a GrayMap and crashes or emits garbage. */
+static bool type_is_json_encodable(const GrayType *t) {
+    if (!t || t->kind == TK_UNKNOWN) return true; /* can't judge yet */
+    if (json_encodable_scalar(t)) return true;
+    if (t->kind == TK_ARRAY)
+        return t->element_type && json_encodable_scalar(type_from_name(t->element_type));
+    if (t->kind == TK_MAP)
+        return t->key_type && strcmp(t->key_type, "string") == 0 &&
+               t->value_type && json_encodable_scalar(type_from_name(t->value_type));
+    return false;
+}
+
+/* csv.encode() / write_file() take [[string]] (rows of fields) or [string]
+ * (pre-formatted rows). Any other array element type reaches the runtime
+ * helper, which reads each element as a GrayString/GrayArray and crashes.
+ * Only the element type is judged here — a non-array argument is already
+ * rejected by the ARG_ARRAY slot in stdlib_func_meta. */
+static bool csv_array_element_ok(const GrayType *t) {
+    if (!t || t->kind != TK_ARRAY || !t->element_type) return true;
+    if (strcmp(t->element_type, "string") == 0) return true;
+    GrayType *inner = type_from_name(t->element_type);
+    return inner && inner->kind == TK_ARRAY && inner->element_type &&
+           strcmp(inner->element_type, "string") == 0;
+}
+
 static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn) {
     GrayType *result = &TYPE_UNKNOWN;
     /* E5034: named arguments are not supported for stdlib functions */
@@ -5528,7 +5568,31 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
+    } else if (strcmp(mod, "json") == 0) {
+        /* E5026: json.encode only serializes scalars, flat arrays of scalars,
+         * and string-keyed maps of scalars. */
+        if (strcmp(mfn, "encode") == 0 && node->data.call.arg_count >= 1) {
+            AstNode *a0 = node->data.call.args[0];
+            GrayType *t0 = resolve_expression(checker, a0);
+            if (!type_is_json_encodable(t0)) {
+                tc_err_arg_type(checker, a0, typechecker_format(checker,
+                    "'json.encode()' cannot serialize '%s'; it accepts int, float, bool, string, a flat array of those, or a string-keyed map of those",
+                    type_name(t0)));
+            }
+        }
     } else if (strcmp(mod, "csv") == 0) {
+        /* E5026: csv.encode / write_file take a [[string]], nothing else. */
+        if ((strcmp(mfn, "encode") == 0 && node->data.call.arg_count >= 1) ||
+            (strcmp(mfn, "write_file") == 0 && node->data.call.arg_count >= 2)) {
+            int di = strcmp(mfn, "encode") == 0 ? 0 : 1;
+            AstNode *da = node->data.call.args[di];
+            GrayType *dt = resolve_expression(checker, da);
+            if (dt && dt->kind == TK_ARRAY && !csv_array_element_ok(dt)) {
+                tc_err_arg_type(checker, da, typechecker_format(checker,
+                    "'csv.%s()' expects a '[[string]]' (or a '[string]' of pre-formatted rows), got '%s'",
+                    mfn, type_name(dt)));
+            }
+        }
         /* E9003: csv.filter_rows second arg must be a function reference */
         if (strcmp(mfn, "filter_rows") == 0 && node->data.call.arg_count >= 2) {
             AstNode *cb_arg = node->data.call.args[1];
@@ -5551,19 +5615,6 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                     diagnostic_error_message(checker->diag, "E5026", msg,
                         NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0);
                 }
-            }
-        }
-        /* E5026: csv.write_file second arg must be an array */
-        if (strcmp(mfn, "write_file") == 0 && node->data.call.arg_count >= 2) {
-            GrayType *arg2_type = resolve_expression(checker, node->data.call.args[1]);
-            if (arg2_type && arg2_type->kind == TK_STRING) {
-                char *msg = NULL;
-                msg = typechecker_format(checker,
-                    "'csv.%s()' expects an array as the second argument, got string",
-                    mfn);
-                diagnostic_error_message(checker->diag, "E5026", msg,
-                    NODE_FILE(checker, node), node->data.call.args[1]->token.line,
-                    node->data.call.args[1]->token.column, 0);
             }
         }
     } else if (strcmp(mod, "fmt") == 0) {

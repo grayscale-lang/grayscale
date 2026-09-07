@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5026 - json.encode of a map whose keys are not strings.
+ * JSON object keys must be strings.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @json
+
+do main() {
+    mut m map[int:string] = {1: "one", 2: "two"}
+    mut result string = json.encode(m)
+    println(result)
+}
