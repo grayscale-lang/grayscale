@@ -3337,6 +3337,32 @@ static bool index_left_is_map_lookup(CodeGen *codegen, AstNode *left) {
     return inner && inner->kind == TK_MAP;
 }
 
+/* True when emit_index_expr(node) lowers `node` (an index expression) to a GCC
+ * statement-expression, whose value is not addressable — so an outer subscript
+ * on it must bind it to a temp instead of emitting GRAY_ARRAY_GET_AT's &(...).
+ * Mirrors the rvalue-base cases handled in emit_index_expr, including a chain
+ * (fn()[i][j]) where the middle subscript is itself such an rvalue. */
+static bool index_expr_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
+    if (!node || node->kind != NODE_INDEX_EXPR) return false;
+    AstNode *left = node->data.index_expr.left;
+    if (!left) return false;
+    if (left->kind == NODE_CALL_EXPR) return true;
+    if (index_left_is_map_lookup(codegen, left)) return true;
+    if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET)
+        return true;
+    if (left->kind == NODE_MEMBER_EXPR) {
+        AstNode *obj = left->data.member.object;
+        GrayType *obj_t = codegen->type_table
+            ? typetable_get(codegen->type_table, obj) : NULL;
+        if (obj_t && obj_t->kind == TK_POINTER) return true;
+        if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
+            return true;
+    }
+    if (left->kind == NODE_INDEX_EXPR)
+        return index_expr_lowers_to_rvalue(codegen, left);
+    return false;
+}
+
 static void emit_index_expr(CodeGen *codegen, AstNode *node) {
     /* Check if left side is an array (GrayArray) or string */
     GrayType *left_t = codegen->type_table
@@ -3436,10 +3462,13 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
         } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR ||
-                   index_left_is_map_lookup(codegen, node->data.index_expr.left)) {
-            emit_formatted(codegen, "({ GrayArray _ea = ");
+                   index_left_is_map_lookup(codegen, node->data.index_expr.left) ||
+                   (node->data.index_expr.left->kind == NODE_INDEX_EXPR &&
+                    index_expr_lowers_to_rvalue(codegen, node->data.index_expr.left))) {
+            int ea = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ea%d = ", ea);
             emit_expression(codegen, node->data.index_expr.left);
-            emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
+            emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_ea%d, %s, ", ea, c_elem);
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
         } else {
