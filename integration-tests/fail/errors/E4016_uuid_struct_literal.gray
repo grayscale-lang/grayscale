@@ -1,0 +1,16 @@
+/*
+ * Error Test: E4016 - UUID is an opaque stdlib type with no literal form.
+ * It is registered as a struct-kind type (so argument checks can match a
+ * UUID value), which let `UUID{}` slip past the typechecker into codegen,
+ * which emitted an undeclared C type. Reject it the way Mutex{} is.
+ * Expected: E4016 "undefined type 'UUID'"
+ */
+// expect-error: E4016
+// expect-error-count: 1
+
+import @uuid
+
+do main() {
+    mut id UUID = UUID{}
+    println(uuid.version(id))
+}

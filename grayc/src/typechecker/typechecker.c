@@ -9726,6 +9726,19 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
         }
     }
     typechecker_mark_type_module_used(checker, struct_name);
+    /* A stdlib opaque type (UUID, Mutex, ...) has no literal form. Most are
+     * not struct-registered, so find_struct fails below and the !si branch
+     * reports E4016 — but UUID is registered (so ARG_UUID checks can match a
+     * value), which lets `UUID{}` slip through to codegen and emit an
+     * undeclared C type. Reject it here, the same way Mutex{} is rejected. */
+    if (is_reserved_stdlib_struct_name(unqualified_display_name(struct_name))) {
+        char *msg = typechecker_format(checker,
+            "undefined type '%s'; check the spelling or import the module that defines it",
+            unqualified_display_name(struct_name));
+        diagnostic_error_message(checker->diag, "E4016", msg,
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        return &TYPE_UNKNOWN;
+    }
     {
         DeclEntry *entry = checker_cache_resolution(checker, node, struct_name);
         if (entry)
