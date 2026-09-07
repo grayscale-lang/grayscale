@@ -18,8 +18,6 @@
 #include <string.h>
 #include <stdio.h>
 
-#define GRAY_REGEX_PAT_BUF        4096
-#define GRAY_REGEX_TXT_BUF        8192
 
 /* POSIX ERE has no \d \w \s \b (or \D \W \S \B). regcomp accepts them and
  * treats \x as the literal x, so "\d+" silently matches "ddd" instead of
@@ -35,11 +33,20 @@ static bool pattern_has_unsupported_escape(const char *pat) {
     return false;
 }
 
+/* Null-terminate a GrayString into a fresh arena buffer sized to the input.
+ * regexec needs a NUL terminator; the fixed 8 KB stack buffer this replaced
+ * silently truncated (and produced wrong match counts on) longer text. */
+static char *regex_cstr(GrayArena *arena, GrayString s) {
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)s.len + 1);
+    if (s.len > 0) memcpy(buf, s.data, (size_t)s.len);
+    buf[s.len] = '\0';
+    return buf;
+}
+
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success, non-zero on error. Caller must regfree on success. */
 static int compile_pattern(GrayString pattern, regex_t *re, int flags) {
-    char pat_buf[GRAY_REGEX_PAT_BUF];
-    gray_cstr(pattern, pat_buf, sizeof(pat_buf));
+    char *pat_buf = regex_cstr(gray_default_arena, pattern);
     if (pattern_has_unsupported_escape(pat_buf)) return REG_BADPAT;
     return regcomp(re, pat_buf, flags | REG_EXTENDED);
 }
@@ -55,8 +62,7 @@ bool gray_regex_match(GrayString pattern, GrayString text) {
     regex_t re;
     if (compile_pattern(pattern, &re, REG_NOSUB) != 0) return false;
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(gray_default_arena, text);
 
     int result = regexec(&re, txt_buf, 0, NULL, 0);
     regfree(&re);
@@ -67,8 +73,7 @@ bool gray_regex_match(GrayString pattern, GrayString text) {
  * Caller owns the regex_t lifetime (compile + regfree). */
 
 static GrayString regex_find_compiled(GrayArena *arena, regex_t *re, GrayString text) {
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
     regmatch_t match;
     if (regexec(re, txt_buf, 1, &match, 0) != 0)
@@ -80,8 +85,7 @@ static GrayString regex_find_compiled(GrayArena *arena, regex_t *re, GrayString 
 static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 8);
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
     const char *cursor = txt_buf;
     regmatch_t match;
@@ -106,12 +110,10 @@ static GrayArray regex_find_all_compiled(GrayArena *arena, regex_t *re, GrayStri
 }
 
 static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayString text, GrayString replacement) {
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
-    char repl_buf[GRAY_REGEX_PAT_BUF];
-    gray_cstr(replacement, repl_buf, sizeof(repl_buf));
-    int repl_len = (int)strlen(repl_buf);
+    char *repl_buf = regex_cstr(arena, replacement);
+    int repl_len = (int)replacement.len;
 
     /* First pass: compute exact output size */
     size_t out_size = 0;
@@ -164,8 +166,7 @@ static GrayString regex_replace_compiled(GrayArena *arena, regex_t *re, GrayStri
 static GrayArray regex_split_compiled(GrayArena *arena, regex_t *re, GrayString text) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 8);
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
     const char *piece_start = txt_buf;  /* start of the field being accumulated */
     const char *cursor = txt_buf;       /* scan position for the next separator */
@@ -201,8 +202,7 @@ int64_t gray_regex_count(GrayString pattern, GrayString text) {
     regex_t re;
     if (compile_pattern(pattern, &re, 0) != 0) return 0;
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(gray_default_arena, text);
 
     const char *cursor = txt_buf;
     regmatch_t match;
@@ -265,8 +265,7 @@ GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayStrin
     size_t ngroups = re.re_nsub + 1;
     if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
     regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
     GrayArray arr;
@@ -287,8 +286,7 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
     size_t ngroups = re.re_nsub + 1;
     if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
 
-    char txt_buf[GRAY_REGEX_TXT_BUF];
-    gray_cstr(text, txt_buf, sizeof(txt_buf));
+    char *txt_buf = regex_cstr(arena, text);
 
     GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 8);
     const char *cursor = txt_buf;

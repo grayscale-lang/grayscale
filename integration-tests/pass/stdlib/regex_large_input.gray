@@ -1,0 +1,54 @@
+/*
+ * regex_large_input.gray - every regex function must see the whole input.
+ * They used to copy text into a fixed 8 KB stack buffer and silently drop
+ * everything past 8191 bytes, producing wrong counts and matches.
+ */
+
+import @regex
+import @strings
+
+do check_int(label string, got int, want int) -> int {
+    if got == want {
+        return 1
+    }
+    println("FAIL: ${label}: got ${got} want ${want}")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // 5000 six-byte tokens = 30000 bytes, well past the old 8191 cap
+    mut big string = strings.repeat("ab-12 ", 5000)
+
+    passed += check_int("count", regex.count("[0-9]+", big), 5000)
+
+    mut fa, _ = regex.find_all("[0-9]+", big)
+    passed += check_int("find_all", len(fa), 5000)
+
+    mut fg, _ = regex.find_all_groups("([a-z]+)-([0-9]+)", big)
+    passed += check_int("find_all_groups", len(fg), 5000)
+
+    mut one, _ = regex.find_groups("(x+)", strings.repeat("x", 20000))
+    passed += check_int("find_groups capture length", len(one[1]), 20000)
+
+    mut rep, _ = regex.replace("[0-9]+", big, "N")
+    passed += check_int("replace length", len(rep), 25000) // "ab-N " * 5000
+
+    mut sp, _ = regex.split(" ", big)
+    passed += check_int("split", len(sp), 5001)
+
+    if regex.is_match("z$", big + "z") {
+        passed += 1
+    } otherwise {
+        println("FAIL: is_match on long input")
+    }
+
+    println("passed: ${passed}/7")
+    if passed == 7 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
