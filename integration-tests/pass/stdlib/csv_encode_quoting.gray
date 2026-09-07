@@ -1,0 +1,76 @@
+/*
+ * csv_encode_quoting.gray - csv.encode applies RFC 4180 quoting so a field
+ * containing the delimiter, a quote, CR, or LF round-trips through csv.parse.
+ */
+
+import @csv
+
+do main() {
+    println("=== CSV Encode Quoting Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: field containing a comma is wrapped in quotes
+    mut r1 [[string]] = { {"has,comma", "ok"} }
+    mut e1 string = csv.encode(r1)
+    if e1 == "\"has,comma\",ok\n" {
+        println("  [PASS] comma field quoted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] comma field: got '${e1}'")
+        failed += 1
+    }
+
+    // Test 2: embedded double-quote is doubled and the field quoted
+    mut r2 [[string]] = { {"has\"quote", "ok"} }
+    mut e2 string = csv.encode(r2)
+    if e2 == "\"has\"\"quote\",ok\n" {
+        println("  [PASS] quote field escaped")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] quote field: got '${e2}'")
+        failed += 1
+    }
+
+    // Test 3: plain fields are left unquoted
+    mut r3 [[string]] = { {"plain", "b"} }
+    mut e3 string = csv.encode(r3)
+    if e3 == "plain,b\n" {
+        println("  [PASS] plain fields unquoted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] plain fields: got '${e3}'")
+        failed += 1
+    }
+
+    // Test 4: encode -> parse round-trips every field, including a newline
+    mut rows [[string]] = {
+        {"has,comma", "ok"},
+        {"has\"quote", "ok"},
+        {"has\nnewline", "ok"},
+        {"plain", "b"}
+    }
+    mut back [[string]] = csv.parse(csv.encode(rows))
+    mut ok bool = len(back) == 4
+    for_each i, row in back {
+        if len(row) != 2 || row[0] != rows[i][0] || row[1] != rows[i][1] {
+            ok = false
+        }
+    }
+    if ok {
+        println("  [PASS] encode/parse round-trip preserves every row and field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip altered the data")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+        exit(1)
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

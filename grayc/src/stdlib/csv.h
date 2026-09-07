@@ -32,7 +32,7 @@
  *@module csv
  *@group Formatting
  *@sig encode(rows [[string]]) -> string
- *@desc Converts an array of rows (each row an array of strings) into a CSV-formatted string. Returns a single value; do not use destructuring.
+ *@desc Converts an array of rows (each row an array of strings) into a CSV-formatted string. A field containing a comma, double-quote, carriage return, or line feed is quoted per RFC 4180, with embedded double-quotes doubled. Returns a single value; do not use destructuring.
  *@example
  *   import @csv
  *   mut data = {{"Alice", "30"}, {"Bob", "25"}}
@@ -71,7 +71,7 @@
  *@module csv
  *@group File I/O
  *@sig write_file(path string, rows [[string]]) -> (bool, Error)
- *@desc Writes an array of rows (each row an array of strings) to a CSV file at path. Creates the file if it does not exist; overwrites if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@desc Writes an array of rows (each row an array of strings) to a CSV file at path, with the same RFC 4180 field quoting as encode. Creates the file if it does not exist; overwrites if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @csv
  *   mut data = {{"name", "age"}, {"Alice", "30"}}
