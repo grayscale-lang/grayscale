@@ -152,23 +152,31 @@ static GrayArray regex_split_compiled(GrayArena *arena, regex_t *re, GrayString 
     char txt_buf[GRAY_REGEX_TXT_BUF];
     gray_cstr(text, txt_buf, sizeof(txt_buf));
 
-    const char *cursor = txt_buf;
+    const char *piece_start = txt_buf;  /* start of the field being accumulated */
+    const char *cursor = txt_buf;       /* scan position for the next separator */
     regmatch_t match;
 
     while (regexec(re, cursor, 1, &match, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
-        int32_t piece_length = (int32_t)match.rm_so;
-        GrayString piece = gray_string_new(arena, cursor, piece_length);
+        /* A zero-width match is not a separator — you can't split on nothing.
+         * Step past one character so the scan makes progress; that character
+         * stays part of the current field. */
+        if (match.rm_so == match.rm_eo) {
+            cursor += match.rm_eo;
+            if (!*cursor) break;
+            cursor++;
+            continue;
+        }
+
+        int32_t piece_length = (int32_t)(cursor + match.rm_so - piece_start);
+        GrayString piece = gray_string_new(arena, piece_start, piece_length);
         GRAY_ARRAY_PUSH(arena, &arr, &piece);
 
         cursor += match.rm_eo;
-        if (match.rm_so == match.rm_eo) {
-            if (*cursor) cursor++;
-            else break;
-        }
+        piece_start = cursor;
     }
 
-    int32_t remaining = (int32_t)strlen(cursor);
-    GrayString last = gray_string_new(arena, cursor, remaining);
+    int32_t remaining = (int32_t)strlen(piece_start);
+    GrayString last = gray_string_new(arena, piece_start, remaining);
     GRAY_ARRAY_PUSH(arena, &arr, &last);
 
     return arr;

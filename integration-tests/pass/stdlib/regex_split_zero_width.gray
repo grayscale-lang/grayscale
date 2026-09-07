@@ -1,0 +1,53 @@
+/*
+ * regex_split_zero_width.gray - regex.split must not split on a zero-width
+ * match (you can't split on nothing) and must never drop input characters.
+ */
+
+import @regex
+
+do join(parts [string]) -> string {
+    mut s string = ""
+    for_each p in parts { s = s + "<" + p + ">" }
+    return s
+}
+
+do check(label string, got string, want string) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do main() {
+    mut passed int = 0
+
+    // pattern that only ever matches empty -> whole string, one piece
+    mut a, _ = regex.split("x*", "abc")
+    passed += check("x* keeps whole string", join(a), "<abc>")
+
+    // anchor-only pattern -> no split, nothing dropped
+    mut b, _ = regex.split("^", "abc")
+    passed += check("^ keeps whole string", join(b), "<abc>")
+
+    mut c, _ = regex.split("$", "abc")
+    passed += check("$ keeps whole string", join(c), "<abc>")
+
+    // a real separator adjacent to an empty-capable pattern still splits cleanly
+    mut d, _ = regex.split("b*,", "a,bb,c")
+    passed += check("b*, splits on comma runs", join(d), "<a><><c>")
+
+    // ordinary split is unchanged
+    mut e, _ = regex.split(",", "a,b,c")
+    passed += check("plain comma split", join(e), "<a><b><c>")
+
+    println("")
+    println("Results: ${passed}/5 passed")
+    if passed == 5 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
