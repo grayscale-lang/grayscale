@@ -192,8 +192,10 @@ GrayUUID gray_uuid_generate_v5(GrayArena *arena, GrayUUID namespace_id, GrayStri
 }
 
 GrayString gray_uuid_generate_compact(GrayArena *arena, GrayUUID id) {
-    /* Strip hyphens from the canonical 36-char hyphenated form. */
-    if (id.value.len != GRAY_UUID_LEN) return gray_string_lit("");
+    /* Strip hyphens from the canonical 36-char hyphenated form. A
+     * non-canonical value is the nil UUID (see gray_uuid_to_string). */
+    if (id.value.len != GRAY_UUID_LEN)
+        return gray_string_lit("00000000000000000000000000000000");
     char buf[GRAY_UUID_COMPACT_LEN + 1];
     int out_pos = 0;
     for (int i = 0; i < GRAY_UUID_LEN; i++) {
@@ -278,6 +280,10 @@ GrayUUID gray_uuid_parse(GrayArena *arena, GrayString str) {
 }
 
 GrayString gray_uuid_to_string(GrayUUID id) {
+    /* A non-canonical value (default-zero struct, failed generate) is the nil
+     * UUID — render it as such, the way uuid_to_bytes16 already treats it. */
+    if (id.value.len != GRAY_UUID_LEN)
+        return gray_string_lit("00000000-0000-0000-0000-000000000000");
     return id.value;
 }
 

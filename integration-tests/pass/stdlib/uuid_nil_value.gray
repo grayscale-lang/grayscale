@@ -1,0 +1,52 @@
+/*
+ * uuid_nil_value.gray - an uninitialized UUID is the nil UUID and must render
+ * the same way a UUID built from 16 zero bytes does.
+ */
+
+import @uuid
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut a UUID
+
+    mut zeros [byte] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    mut b UUID = uuid.from_bytes(zeros)
+
+    if uuid.to_string(a) == "00000000-0000-0000-0000-000000000000" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: nil to_string = '${uuid.to_string(a)}'")
+    }
+
+    if uuid.to_string(a) == uuid.to_string(b) {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: nil vs from_bytes(zeros) disagree")
+    }
+
+    if uuid.generate_compact(a) == "00000000000000000000000000000000" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: nil generate_compact = '${uuid.generate_compact(a)}'")
+    }
+
+    if uuid.version(a) == 0 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("FAIL: nil version = ${uuid.version(a)}")
+    }
+
+    println("passed: ${passed}, failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
