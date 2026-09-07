@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5026 - wrong argument type to uuid.version
+ * Expected: uuid.version() expects UUID as argument 1, got int
+ */
+
+// expect-error: E5026
+
+import @uuid
+
+do main() {
+    println(uuid.version(42))
+}

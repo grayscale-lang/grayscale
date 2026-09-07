@@ -2432,7 +2432,7 @@ static void warn_if_type_name_deprecated(TypeChecker *checker, AstNode *node, co
 
 typedef enum {
     ARG_STRING, ARG_INT, ARG_FLOAT, ARG_BOOL, ARG_ARRAY, ARG_MAP, ARG_ANY, ARG_NUMBER, ARG_CHAR, ARG_CHANNEL,
-    ARG_BUILDER,
+    ARG_BUILDER, ARG_UUID, ARG_BYTE_ARRAY,
     /* A type name, not a value. Declaring the position here is what keeps
      * it out of value resolution — see arg_is_type_position(). */
     ARG_TYPE
@@ -2456,6 +2456,10 @@ static bool arg_kind_matches(ExpectedArgKind expected, GrayType *actual) {
                              actual->name && strcmp(actual->name, "Channel") == 0;
     case ARG_BUILDER: return actual->kind == TK_STRUCT &&
                              actual->name && strcmp(actual->name, "Builder") == 0;
+    case ARG_UUID:    return actual->kind == TK_STRUCT &&
+                             actual->name && strcmp(actual->name, "UUID") == 0;
+    case ARG_BYTE_ARRAY: return actual->kind == TK_ARRAY && actual->element_type &&
+                             strcmp(actual->element_type, "byte") == 0;
     /* Validated by name, never by resolved type — the argument is a type
      * name and is never resolved as a value. */
     case ARG_TYPE:   return true;
@@ -2476,6 +2480,8 @@ static const char *expected_kind_name(ExpectedArgKind kind) {
     case ARG_CHAR:   return "char";
     case ARG_CHANNEL: return "Channel";
     case ARG_BUILDER: return "Builder";
+    case ARG_UUID:    return "UUID";
+    case ARG_BYTE_ARRAY: return "[byte]";
     case ARG_TYPE:   return "a type name";
     }
     return "unknown";
@@ -2624,9 +2630,9 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"encoding", "from_base64", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
     {"encoding", "from_hex",    1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
     {"encoding", "from_string", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "[byte]"},
-    {"encoding", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
-    {"encoding", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
-    {"encoding", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "string"},
+    {"encoding", "to_base64",   1, 1, false, FT_NONE, 1, {{0, ARG_BYTE_ARRAY}}, "string"},
+    {"encoding", "to_hex",      1, 1, false, FT_NONE, 1, {{0, ARG_BYTE_ARRAY}}, "string"},
+    {"encoding", "to_string",   1, 1, false, FT_NONE, 1, {{0, ARG_BYTE_ARRAY}}, "string"},
     /* channels */
     {"channels", "close",       1, 1, false, FT_NONE, 1, {{0, ARG_CHANNEL}}, "void"},
     {"channels", "open",        1, 1, false, FT_NONE, 0, {{0}},"Channel"},
@@ -3018,18 +3024,18 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"time", "weekday_name", 1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "string"},
     {"time", "year",       1, 1, false, FT_NONE, 1, {{0, ARG_INT}}, "int"},
     /* uuid */
-    {"uuid", "from_bytes",           1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "UUID"},
+    {"uuid", "from_bytes",           1, 1, false, FT_NONE, 1, {{0, ARG_BYTE_ARRAY}}, "UUID"},
     {"uuid", "generate",              0, 0, false, FT_NONE, 0, {{0}},"UUID"},
-    {"uuid", "generate_compact",      1, 1, false, FT_NONE, 0, {{0}},"string"},
-    {"uuid", "generate_v5",           2, 2, false, FT_NONE, 1, {{1, ARG_STRING}}, "UUID"},
+    {"uuid", "generate_compact",      1, 1, false, FT_NONE, 1, {{0, ARG_UUID}}, "string"},
+    {"uuid", "generate_v5",           2, 2, false, FT_NONE, 2, {{0, ARG_UUID}, {1, ARG_STRING}}, "UUID"},
     {"uuid", "generate_random",       0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "generate_time_ordered", 0, 0, false, FT_NONE, 0, {{0}},"UUID"},
     {"uuid", "is_valid",              1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "bool"},
     {"uuid", "parse",                 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "UUID"},
-    {"uuid", "timestamp",             1, 1, false, FT_NONE, 0, {{0}},"int"},
-    {"uuid", "to_bytes",              1, 1, false, FT_NONE, 0, {{0}},"[byte]"},
-    {"uuid", "to_string",             1, 1, false, FT_NONE, 0, {{0}},"string"},
-    {"uuid", "version",               1, 1, false, FT_NONE, 0, {{0}},"int"},
+    {"uuid", "timestamp",             1, 1, false, FT_NONE, 1, {{0, ARG_UUID}}, "int"},
+    {"uuid", "to_bytes",              1, 1, false, FT_NONE, 1, {{0, ARG_UUID}}, "[byte]"},
+    {"uuid", "to_string",             1, 1, false, FT_NONE, 1, {{0, ARG_UUID}}, "string"},
+    {"uuid", "version",               1, 1, false, FT_NONE, 1, {{0, ARG_UUID}}, "int"},
 };
 
 static int stdlib_meta_compare(const void *a, const void *b) {

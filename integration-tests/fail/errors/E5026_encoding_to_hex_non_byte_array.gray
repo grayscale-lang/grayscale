@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - encoding.to_hex requires a [byte] array, not just any array
+ * Expected: encoding.to_hex() expects [byte] as argument 1, got [int]
+ */
+
+// expect-error: E5026
+
+import @encoding
+
+do main() {
+    mut xs [int] = {65, 66, 67}
+    println(encoding.to_hex(xs))
+}

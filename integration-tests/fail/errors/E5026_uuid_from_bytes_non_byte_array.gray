@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5026 - uuid.from_bytes requires a [byte] array, not just any array
+ * Expected: uuid.from_bytes() expects [byte] as argument 1, got [string]
+ */
+
+// expect-error: E5026
+
+import @uuid
+
+do main() {
+    mut strs [string] = {"aa","bb","cc","dd","ee","ff","gg","hh","ii","jj","kk","ll","mm","nn","oo","pp"}
+    println(uuid.to_string(uuid.from_bytes(strs)))
+}
