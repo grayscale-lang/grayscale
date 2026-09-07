@@ -4115,6 +4115,8 @@ Regular expression operations using POSIX extended regex syntax.
 
 `find`, `find_all`, `find_groups`, `find_all_groups`, `replace`, and `split` are fallible: single-variable assignment is a compile-time error (`E3089`); the result must be destructured (`mut v, err = ...` or `mut v, _ = ...`).
 
+POSIX ERE has no Perl-style shorthand classes. `\d`, `\w`, `\s`, `\b` (and `\D`, `\W`, `\S`, `\B`) are rejected as invalid patterns — use the POSIX bracket classes instead: `[[:digit:]]`, `[[:alnum:]_]`, `[[:space:]]`.
+
 ### 9.19 CSV Module (`@csv`)
 
 Reading and writing CSV (Comma-Separated Values) data.

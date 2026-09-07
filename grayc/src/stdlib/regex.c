@@ -21,11 +21,26 @@
 #define GRAY_REGEX_PAT_BUF        4096
 #define GRAY_REGEX_TXT_BUF        8192
 
+/* POSIX ERE has no \d \w \s \b (or \D \W \S \B). regcomp accepts them and
+ * treats \x as the literal x, so "\d+" silently matches "ddd" instead of
+ * digits. Reject any pattern that uses one up front, so is_valid() reports
+ * false and the fallible functions return an error rather than matching the
+ * wrong thing. A pattern that wants those classes uses [[:digit:]] etc. */
+static bool pattern_has_unsupported_escape(const char *pat) {
+    for (const char *p = pat; *p; p++) {
+        if (*p != '\\' || !p[1]) continue;
+        if (strchr("dDwWsSbB", p[1])) return true;
+        p++; /* consume the escaped character (covers "\\") */
+    }
+    return false;
+}
+
 /* Helper: compile pattern into a null-terminated C string and regex_t.
  * Returns 0 on success, non-zero on error. Caller must regfree on success. */
 static int compile_pattern(GrayString pattern, regex_t *re, int flags) {
     char pat_buf[GRAY_REGEX_PAT_BUF];
     gray_cstr(pattern, pat_buf, sizeof(pat_buf));
+    if (pattern_has_unsupported_escape(pat_buf)) return REG_BADPAT;
     return regcomp(re, pat_buf, flags | REG_EXTENDED);
 }
 

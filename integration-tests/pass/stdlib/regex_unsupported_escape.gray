@@ -1,0 +1,46 @@
+/*
+ * regex_unsupported_escape.gray - POSIX ERE has no \d \w \s \b. The module
+ * must reject them as invalid patterns, not match them as literal letters.
+ */
+
+import @regex
+
+do main() {
+    mut passed int = 0
+
+    // Perl shorthands and word boundaries are rejected
+    if regex.is_valid("\\d+") == false { passed += 1 } otherwise { println("  [FAIL] \\d+ valid") }
+    if regex.is_valid("\\w+") == false { passed += 1 } otherwise { println("  [FAIL] \\w+ valid") }
+    if regex.is_valid("\\s") == false { passed += 1 } otherwise { println("  [FAIL] \\s valid") }
+    if regex.is_valid("\\D") == false { passed += 1 } otherwise { println("  [FAIL] \\D valid") }
+    if regex.is_valid("\\bcat\\b") == false { passed += 1 } otherwise { println("  [FAIL] \\b valid") }
+
+    // is_match returns false rather than matching the literal letter
+    if regex.is_match("\\d+", "order 42") == false { passed += 1 } otherwise { println("  [FAIL] \\d+ matched") }
+
+    // count treats it as an invalid pattern (0)
+    if regex.count("\\w+", "hello world") == 0 { passed += 1 } otherwise { println("  [FAIL] \\w+ counted") }
+
+    // fallible functions surface an error
+    mut hits, err = regex.find_all("\\d+", "a 1 b 2")
+    if err != nil {
+        if len(hits) == 0 { passed += 1 } otherwise { println("  [FAIL] find_all returned hits") }
+    } otherwise { println("  [FAIL] find_all no error") }
+
+    // legitimate escapes and POSIX classes still work
+    if regex.is_valid("\\.") { passed += 1 } otherwise { println("  [FAIL] \\. rejected") }
+    if regex.is_valid("a\\\\b") { passed += 1 } otherwise { println("  [FAIL] literal backslash rejected") }
+    mut nums, _ = regex.find_all("[[:digit:]]+", "a1 b22 c333")
+    if len(nums) == 3 { passed += 1 } otherwise { println("  [FAIL] [[:digit:]]+ found ${len(nums)}") }
+    mut words, _ = regex.find_all("[[:alnum:]_]+", "one_two three")
+    if len(words) == 2 { passed += 1 } otherwise { println("  [FAIL] [[:alnum:]_]+ found ${len(words)}") }
+
+    println("")
+    println("Results: ${passed}/12 passed")
+    if passed == 12 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+}
