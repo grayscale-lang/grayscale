@@ -239,7 +239,6 @@ GrayString gray_regex_escape(GrayArena *arena, GrayString str) {
 /* Capture-group extraction. pmatch[0] is the whole match, pmatch[1..] the
  * parenthesized groups; a group that did not participate has rm_so == -1 and
  * becomes an empty string. */
-#define GRAY_REGEX_MAX_GROUPS 64
 
 static GrayArray regex_groups_of_match(GrayArena *arena, const char *base,
                                       const regmatch_t *pmatch, size_t ngroups) {
@@ -262,12 +261,12 @@ GrayArray gray_regex_find_groups(GrayArena *arena, GrayString pattern, GrayStrin
     if (compile_pattern(pattern, &re, 0) != 0)
         return gray_array_new(arena, sizeof(GrayString), 0);
 
+    /* One regmatch_t per group (plus [0] for the whole match), sized to the
+     * compiled pattern — a fixed cap silently dropped groups past it. */
     size_t ngroups = re.re_nsub + 1;
-    if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
-
     char *txt_buf = regex_cstr(arena, text);
 
-    regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
+    regmatch_t *pmatch = gray_arena_alloc(arena, ngroups * sizeof(regmatch_t));
     GrayArray arr;
     if (regexec(&re, txt_buf, ngroups, pmatch, 0) != 0) {
         arr = gray_array_new(arena, sizeof(GrayString), 0);
@@ -284,13 +283,11 @@ GrayArray gray_regex_find_all_groups(GrayArena *arena, GrayString pattern, GrayS
         return gray_array_new(arena, sizeof(GrayArray), 0);
 
     size_t ngroups = re.re_nsub + 1;
-    if (ngroups > GRAY_REGEX_MAX_GROUPS) ngroups = GRAY_REGEX_MAX_GROUPS;
-
     char *txt_buf = regex_cstr(arena, text);
 
     GrayArray outer = gray_array_new(arena, sizeof(GrayArray), 8);
     const char *cursor = txt_buf;
-    regmatch_t pmatch[GRAY_REGEX_MAX_GROUPS];
+    regmatch_t *pmatch = gray_arena_alloc(arena, ngroups * sizeof(regmatch_t));
 
     while (regexec(&re, cursor, ngroups, pmatch, cursor == txt_buf ? 0 : REG_NOTBOL) == 0) {
         GrayArray inner = regex_groups_of_match(arena, cursor, pmatch, ngroups);

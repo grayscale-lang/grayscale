@@ -33,9 +33,24 @@ do main() {
     if all[1][1] == "b" { passed += 1 } otherwise { println("  [FAIL] all[1][1]: ${all[1][1]}") }
     if all[2][2] == "3" { passed += 1 } otherwise { println("  [FAIL] all[2][2]: ${all[2][2]}") }
 
+    // more than 64 capture groups: every group is returned, no clamp
+    mut many_pat string = ""
+    mut many_txt string = ""
+    for _ in range(0, 70) {
+        many_pat = "${many_pat}(a)"
+        many_txt = "${many_txt}a"
+    }
+    mut many, merr = regex.find_groups(many_pat, many_txt)
+    if merr == nil { passed += 1 } otherwise { println("  [FAIL] 70-group err") }
+    if len(many) == 71 { passed += 1 } otherwise { println("  [FAIL] 70-group count: ${len(many)}") }
+    if many[70] == "a" { passed += 1 } otherwise { println("  [FAIL] many[70]: ${many[70]}") }
+
+    mut manyall, _ = regex.find_all_groups(many_pat, many_txt)
+    if len(manyall[0]) == 71 { passed += 1 } otherwise { println("  [FAIL] find_all 70-group count: ${len(manyall[0])}") }
+
     println("")
-    println("Results: ${passed}/13 passed")
-    if passed == 13 {
+    println("Results: ${passed}/17 passed")
+    if passed == 17 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")
