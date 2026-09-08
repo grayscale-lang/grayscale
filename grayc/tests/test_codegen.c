@@ -2419,6 +2419,152 @@ static void test_e2e_switch_case(void) {
     ASSERT_STR_EQ(output, "one\nfew\nmany");
 }
 
+/* size_of returns a type's byte size (STANDARD 9.1) */
+
+static void test_e2e_size_of(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(size_of(int))\n"
+        "  println(size_of(byte))\n"
+        "  println(size_of(bool))\n"
+        "  println(size_of(float))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "8\n1\n1\n8");
+}
+
+/* fields returns struct field names in declaration order (STANDARD 9.1) */
+
+static void test_e2e_fields(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "  label string\n"
+        "}\n"
+        "do main() {\n"
+        "  mut p Point = Point{x: 1, y: 2, label: \"o\"}\n"
+        "  for_each f in fields(p) {\n"
+        "    println(f)\n"
+        "  }\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "x\ny\nlabel");
+}
+
+/* ref() aliases a variable; writes through it hit the original (STANDARD 9.1) */
+
+static void test_e2e_ref_builtin(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut x int = 10\n"
+        "  mut r = ref(x)\n"
+        "  r = 42\n"
+        "  println(x)\n"
+        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut ra = ref(arr)\n"
+        "  ra[0] = 99\n"
+        "  println(arr[0])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\n99");
+}
+
+/* char_count counts codepoints, len counts bytes; to_char indexes by char (9.1) */
+
+static void test_e2e_char_count(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut s string = \"h\xc3\xa9llo\"\n"
+        "  println(len(s))\n"
+        "  println(char_count(s))\n"
+        "  mut c char = to_char(s, 1)\n"
+        "  println(int(c))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "6\n5\n233");
+}
+
+/* Arithmetic operator precedence (STANDARD 5.3) */
+
+static void test_e2e_operator_precedence(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(2 + 3 * 4)\n"
+        "  println((2 + 3) * 4)\n"
+        "  println(10 - 2 - 3)\n"
+        "  println(20 / 4 / 5)\n"
+        "  println(-2 * 3 + 1)\n"
+        "  println(2 + 3 == 5)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "14\n20\n5\n1\n-5\ntrue");
+}
+
+/* print writes without a trailing newline (STANDARD 9.1) */
+
+static void test_e2e_print_no_newline(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  print(\"a\")\n"
+        "  print(\"b\")\n"
+        "  println(\"c\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "abc");
+}
+
+/* eprint/eprintln write to stderr (STANDARD 9.1) */
+
+static void test_e2e_eprint(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  eprint(\"e1-\")\n"
+        "  eprintln(\"e2\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "e1-e2");
+}
+
+/* assert() terminates with P0075 and the message when the condition is false (9.1) */
+
+static void test_e2e_assert_failure(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut x int = -1\n"
+        "  assert(x > 0, \"x must be positive\")\n"
+        "  println(\"unreached\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT(strstr(output, "P0075") != NULL);
+    ASSERT(strstr(output, "assertion failed: x must be positive") != NULL);
+    ASSERT(strstr(output, "unreached") == NULL);
+}
+
+/* panic() prints already-emitted output, then terminates with its message (9.1) */
+
+static void test_e2e_panic_builtin(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(\"before\")\n"
+        "  panic(\"boom\")\n"
+        "  println(\"after\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT(strstr(output, "before") != NULL);
+    ASSERT(strstr(output, "boom") != NULL);
+    ASSERT(strstr(output, "after") == NULL);
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2669,6 +2815,17 @@ int main(void) {
     RUN_TEST(test_e2e_new_zero_values);
     RUN_TEST(test_e2e_when_range);
     RUN_TEST(test_e2e_switch_case);
+
+    /* Built-in functions */
+    RUN_TEST(test_e2e_size_of);
+    RUN_TEST(test_e2e_fields);
+    RUN_TEST(test_e2e_ref_builtin);
+    RUN_TEST(test_e2e_char_count);
+    RUN_TEST(test_e2e_operator_precedence);
+    RUN_TEST(test_e2e_print_no_newline);
+    RUN_TEST(test_e2e_eprint);
+    RUN_TEST(test_e2e_assert_failure);
+    RUN_TEST(test_e2e_panic_builtin);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
