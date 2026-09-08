@@ -12,6 +12,7 @@
  */
 
 #include "arrays.h"
+#include "../runtime/bigint.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -556,6 +557,40 @@ void gray_arrays_sort_desc_str(GrayArray *arr) {
     } else {
         qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
     }
+}
+
+/* Wide-integer element sort. The int64/float/str paths read only the low 64
+ * bits of a 16/32-byte element; these comparators order by the full value. */
+static int cmp_i128_asc(const void *l, const void *r) {
+    gray_i128 a = *(const gray_i128 *)l, b = *(const gray_i128 *)r;
+    return gray_i128_lt(a, b) ? -1 : gray_i128_lt(b, a) ? 1 : 0;
+}
+static int cmp_i128_desc(const void *l, const void *r) { return cmp_i128_asc(r, l); }
+static int cmp_u128_asc(const void *l, const void *r) {
+    gray_u128 a = *(const gray_u128 *)l, b = *(const gray_u128 *)r;
+    return gray_u128_lt(a, b) ? -1 : gray_u128_lt(b, a) ? 1 : 0;
+}
+static int cmp_u128_desc(const void *l, const void *r) { return cmp_u128_asc(r, l); }
+static int cmp_i256_asc(const void *l, const void *r) {
+    gray_i256 a = *(const gray_i256 *)l, b = *(const gray_i256 *)r;
+    return gray_i256_lt(a, b) ? -1 : gray_i256_lt(b, a) ? 1 : 0;
+}
+static int cmp_i256_desc(const void *l, const void *r) { return cmp_i256_asc(r, l); }
+static int cmp_u256_asc(const void *l, const void *r) {
+    gray_u256 a = *(const gray_u256 *)l, b = *(const gray_u256 *)r;
+    return gray_u256_lt(a, b) ? -1 : gray_u256_lt(b, a) ? 1 : 0;
+}
+static int cmp_u256_desc(const void *l, const void *r) { return cmp_u256_asc(r, l); }
+
+void gray_arrays_sort_wide(GrayArray *arr, bool is_signed, bool is_256, bool desc) {
+    ARRAY_CHECK_ITER(arr);
+    if (arr->len <= 1) return;
+    int (*cmp)(const void *, const void *) =
+        is_256 ? (is_signed ? (desc ? cmp_i256_desc : cmp_i256_asc)
+                            : (desc ? cmp_u256_desc : cmp_u256_asc))
+               : (is_signed ? (desc ? cmp_i128_desc : cmp_i128_asc)
+                            : (desc ? cmp_u128_desc : cmp_u128_asc));
+    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp);
 }
 
 /* is_sorted mirrors the comparator split sort_asc uses: an int64 read for the

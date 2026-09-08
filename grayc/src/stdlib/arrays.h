@@ -437,6 +437,11 @@ void gray_arrays_sort_desc(GrayArray *arr);
 void gray_arrays_sort_desc_float(GrayArray *arr);
 void gray_arrays_sort_desc_str(GrayArray *arr);
 
+/* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
+ * int64/float/str paths only look at the low 64 bits; this orders by the full
+ * value. is_signed / is_256 select the element type, desc reverses the order. */
+void gray_arrays_sort_wide(GrayArray *arr, bool is_signed, bool is_256, bool desc);
+
 /*@man swap
  *@module arrays
  *@group Modification

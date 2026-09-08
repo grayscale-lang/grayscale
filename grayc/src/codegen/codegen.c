@@ -6986,11 +6986,17 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_remove_int(");
+            /* Wide value: gray_arrays_remove_int takes int64_t. Scan with
+             * the width's eq helper and drop the first match. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "{ GrayArray *_rm%d = ", tag);
             emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
+            emit_formatted(codegen, "; %s _rv%d = ", bi, tag);
             emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            emit_formatted(codegen, "; for (int32_t _ri%d = 0; _ri%d < _rm%d->len; _ri%d++) { "
+                "if (%s_eq(((%s *)_rm%d->data)[_ri%d], _rv%d)) { gray_arrays_remove_at(_rm%d, _ri%d); break; } } }",
+                tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         /* Find the first slot equal to the value (reading it as its real C
@@ -7017,28 +7023,27 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(func, "sort_asc") == 0 && node->data.call.arg_count == 1) {
+    if ((strcmp(func, "sort_asc") == 0 || strcmp(func, "sort_desc") == 0) &&
+        node->data.call.arg_count == 1) {
+        bool desc = strcmp(func, "sort_desc") == 0;
         GrayType *sa_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *sa_elem = (sa_t && sa_t->kind == TK_ARRAY) ? sa_t->element_type : NULL;
+        if (sa_elem && is_bigint_type(sa_elem)) {
+            /* Wide elements: the int64 comparators see only the low word. */
+            emit(codegen, "gray_arrays_sort_wide(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, ", %s, %s, %s)",
+                sa_elem[0] == 'i' ? "true" : "false",
+                strstr(sa_elem, "256") ? "true" : "false",
+                desc ? "true" : "false");
+            return true;
+        }
         if (sa_elem && strcmp(sa_elem, "float") == 0)
-            emit(codegen, "gray_arrays_sort_asc_float(");
+            emit_formatted(codegen, "gray_arrays_sort_%s_float(", desc ? "desc" : "asc");
         else if (sa_elem && strcmp(sa_elem, "string") == 0)
-            emit(codegen, "gray_arrays_sort_asc_str(");
+            emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
         else
-            emit(codegen, "gray_arrays_sort_asc(");
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "sort_desc") == 0 && node->data.call.arg_count == 1) {
-        GrayType *sd_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *sd_elem = (sd_t && sd_t->kind == TK_ARRAY) ? sd_t->element_type : NULL;
-        if (sd_elem && strcmp(sd_elem, "float") == 0)
-            emit(codegen, "gray_arrays_sort_desc_float(");
-        else if (sd_elem && strcmp(sd_elem, "string") == 0)
-            emit(codegen, "gray_arrays_sort_desc_str(");
-        else
-            emit(codegen, "gray_arrays_sort_desc(");
+            emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
@@ -7389,9 +7394,29 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         if (is_bigint_type(elem_tn)) {
-            emit_formatted(codegen, "gray_arrays_%s(", func);
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ")");
+            /* Wide elements are struct-backed: fold / compare with the width's
+             * inline helpers. gray_arrays_get_* read only the low 64 bits. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ag%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            if (strcmp(func, "get_sum") == 0) {
+                emit_formatted(codegen, "; %s _ar%d = %s_from_u64(0); "
+                    "for (int32_t _ai%d = 0; _ai%d < _ag%d.len; _ai%d++) { "
+                    "_ar%d = %s_add(_ar%d, ((%s *)_ag%d.data)[_ai%d]); } _ar%d; })",
+                    bi, tag, bi, tag, tag, tag, tag, tag, bi, tag, bi, tag, tag, tag);
+            } else {
+                const char *rel = (strcmp(func, "get_max") == 0) ? "gt" : "lt";
+                emit_formatted(codegen, "; %s _ar%d = %s_from_u64(0); if (_ag%d.len > 0) { "
+                    "_ar%d = ((%s *)_ag%d.data)[0]; "
+                    "for (int32_t _ai%d = 1; _ai%d < _ag%d.len; _ai%d++) { "
+                    "%s _av%d = ((%s *)_ag%d.data)[_ai%d]; "
+                    "if (%s_%s(_av%d, _ar%d)) _ar%d = _av%d; } } _ar%d; })",
+                    bi, tag, bi, tag, tag, bi, tag,
+                    tag, tag, tag, tag,
+                    bi, tag, bi, tag, tag,
+                    bi, rel, tag, tag, tag, tag, tag);
+            }
             return true;
         }
         char c_elem[MSG_BUF_SIZE];
@@ -7420,6 +7445,17 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (strcmp(func, "is_sorted") == 0 && node->data.call.arg_count == 1) {
         GrayType *is_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *is_elem = (is_t && is_t->kind == TK_ARRAY) ? is_t->element_type : NULL;
+        if (is_elem && is_bigint_type(is_elem)) {
+            /* gray_arrays_is_sorted compares low words only. */
+            const char *bi = bigint_prefix(is_elem);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _is%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; bool _ir%d = true; for (int32_t _ii%d = 1; _ii%d < _is%d.len; _ii%d++) { "
+                "if (%s_gt(((%s *)_is%d.data)[_ii%d - 1], ((%s *)_is%d.data)[_ii%d])) { _ir%d = false; break; } } _ir%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, bi, tag, tag, tag, tag);
+            return true;
+        }
         if (is_elem && strcmp(is_elem, "float") == 0)
             emit(codegen, "gray_arrays_is_sorted_float(");
         else if (is_elem && strcmp(is_elem, "string") == 0)
