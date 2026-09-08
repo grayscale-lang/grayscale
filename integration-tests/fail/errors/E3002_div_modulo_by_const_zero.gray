@@ -1,0 +1,18 @@
+// Error Test: E3002 - divide or modulo by a divisor that folds to a
+// compile-time zero must be rejected, whether the divisor names a const
+// bound to zero, a const bound to a zero-valued expression, or a
+// file-scope const zero.
+// expect-error: E3002
+// expect-error-count: 4
+
+const ZERO int = 0
+
+do main() {
+    const N int = 0
+    const M int = 2 - 2
+    mut a int = 10 / N
+    mut b int = 10 % N
+    mut c int = 10 / M
+    mut d int = 10 / ZERO
+    println("${a} ${b} ${c} ${d}")
+}

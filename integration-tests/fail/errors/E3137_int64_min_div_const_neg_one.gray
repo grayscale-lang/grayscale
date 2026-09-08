@@ -1,0 +1,13 @@
+// Error Test: E3137 - INT64_MIN / -1 is undefined in C and must be caught
+// at compile time even when the operands come through const bindings
+// rather than bare literals.
+// expect-error: E3137
+// expect-error-count: 1
+
+const MIN int = -9223372036854775808
+const NEG1 int = -1
+
+do main() {
+    mut x int = MIN / NEG1
+    println("${x}")
+}

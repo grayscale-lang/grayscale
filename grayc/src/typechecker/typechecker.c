@@ -9113,15 +9113,17 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         infix_errored = true;
     }
 
-    /* E3002: literal divide/modulo by zero (). Catches the
-     * statically-detectable case where the RHS is an integer or
-     * float literal zero (including a prefix -0). Runtime checks
-     * still cover the dynamic case. */
+    /* E3002: compile-time divide/modulo by zero (). Catches the
+     * statically-detectable case where the RHS folds to an integer
+     * zero — a literal, a literal expression, or a const binding
+     * (const N int = 0 … x / N) — or a float literal zero (including
+     * a prefix -0). Runtime checks still cover the dynamic case. */
     if (op == TOK_SLASH || op == TOK_PERCENT) {
         AstNode *r = node->data.infix.right;
         bool is_zero = false;
         int64_t iv;
-        bool r_is_int_literal = try_get_literal_int(r, &iv);
+        bool iv_overflowed = false;
+        bool r_is_int_literal = typechecker_fold_const_int(checker, r, &iv, &iv_overflowed);
         if (r_is_int_literal && iv == 0) {
             is_zero = true;
         } else if (r && r->kind == NODE_FLOAT_VALUE &&
@@ -9137,20 +9139,22 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (is_zero) {
             char *msg;
             msg = typechecker_format(checker,
-                "%s by zero; dividing by a literal zero is always invalid",
+                "%s by zero; the divisor is always zero",
                 op == TOK_PERCENT ? "modulo" : "division");
             diagnostic_error_message(checker->diag, "E3002", msg,
                 NODE_FILE(checker, r), r->token.line, r->token.column, 0);
             infix_errored = true;
         } else if (op == TOK_SLASH) {
             /* E3137: INT64_MIN / -1 is the one division C leaves undefined
-             * at the int64 boundary — it traps (SIGFPE) on x86-64. Check
-             * both literal operands directly rather than relying on
-             * try_get_literal_int() to fold the whole division, since that
-             * folder now refuses (by design) to perform this division. */
+             * at the int64 boundary — it traps (SIGFPE) on x86-64. Fold
+             * both operands directly rather than relying on a whole-division
+             * fold, since that folder now refuses (by design) to perform
+             * this division. */
             int64_t lv;
+            bool lv_overflowed = false;
             if (r_is_int_literal && iv == -1 &&
-                try_get_literal_int(node->data.infix.left, &lv) && lv == INT64_MIN) {
+                typechecker_fold_const_int(checker, node->data.infix.left, &lv, &lv_overflowed) &&
+                lv == INT64_MIN) {
                 diagnostic_error_code_formatted(checker->diag, "E3137",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     (long long)lv, (long long)iv, type_display_name(checker, left));
