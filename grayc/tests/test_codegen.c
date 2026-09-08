@@ -2565,6 +2565,95 @@ static void test_e2e_panic_builtin(void) {
     ASSERT(strstr(output, "after") == NULL);
 }
 
+/* math module — arithmetic, powers, number properties (STANDARD 9.5) */
+
+static void test_e2e_math_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @math\n"
+        "do main() {\n"
+        "  println(math.abs(-7))\n"
+        "  println(math.max(3, 9))\n"
+        "  println(math.gcd(12, 18))\n"
+        "  println(math.factorial(5))\n"
+        "  println(math.is_prime(13))\n"
+        "  println(math.sqrt(16.0))\n"
+        "  println(math.pow(2.0, 10.0))\n"
+        "  println(math.clamp(15, 0, 10))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7\n9\n6\n120\ntrue\n4.0\n1024.0\n10");
+}
+
+/* encoding module — base64 and hex round-trips (STANDARD 9.13) */
+
+static void test_e2e_encoding_base64_hex(void) {
+    char *output = compile_and_run(
+        ""
+        "import @encoding\n"
+        "do main() {\n"
+        "  mut b string = encoding.base64_encode(\"hello\")\n"
+        "  println(b)\n"
+        "  println(encoding.base64_decode(b))\n"
+        "  mut h string = encoding.hex_encode(\"AB\")\n"
+        "  println(h)\n"
+        "  println(encoding.hex_decode(h))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "aGVsbG8=\nhello\n4142\nAB");
+}
+
+/* regex module — matching, counting, find, replace (STANDARD 9.18) */
+
+static void test_e2e_regex_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @regex\n"
+        "do main() {\n"
+        "  println(regex.is_match(\"[0-9]+\", \"abc123\"))\n"
+        "  println(regex.count(\"[0-9]\", \"a1b2c3\"))\n"
+        "  mut m, _ = regex.find(\"[0-9]+\", \"abc123def\")\n"
+        "  println(m)\n"
+        "  mut rep, _ = regex.replace(\"[0-9]\", \"a1b2\", \"#\")\n"
+        "  println(rep)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "true\n3\n123\na#b#");
+}
+
+/* csv module — parse to 2D array and encode back (STANDARD 9.19) */
+
+static void test_e2e_csv_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @csv\n"
+        "do main() {\n"
+        "  mut rows [[string]] = csv.parse(\"a,b,c\\n1,2,3\")\n"
+        "  println(len(rows))\n"
+        "  println(rows[1][2])\n"
+        "  mut out string = csv.encode(rows)\n"
+        "  print(out)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "2\n3\na,b,c\n1,2,3");
+}
+
+/* json module — encode, validate, decode to a map (STANDARD 9.8) */
+
+static void test_e2e_json_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @json\n"
+        "do main() {\n"
+        "  println(json.encode(42))\n"
+        "  println(json.is_valid(\"{\\\"a\\\": 1}\"))\n"
+        "  mut m, _ = json.decode(\"{\\\"name\\\": \\\"bob\\\"}\")\n"
+        "  println(m[\"name\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\ntrue\nbob");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2826,6 +2915,13 @@ int main(void) {
     RUN_TEST(test_e2e_eprint);
     RUN_TEST(test_e2e_assert_failure);
     RUN_TEST(test_e2e_panic_builtin);
+
+    /* Stdlib modules */
+    RUN_TEST(test_e2e_math_module);
+    RUN_TEST(test_e2e_encoding_base64_hex);
+    RUN_TEST(test_e2e_regex_module);
+    RUN_TEST(test_e2e_csv_module);
+    RUN_TEST(test_e2e_json_module);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
