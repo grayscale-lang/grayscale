@@ -3828,8 +3828,15 @@ static bool reject_if_private(TypeChecker *checker, AstNode *node,
 /* The scope every resolution in this file happens in. */
 static ResolveScope checker_scope(TypeChecker *checker) {
     checker_refresh_using(checker);
+    if (!checker->scope_module_valid ||
+        checker->scope_module_file != checker->current_check_file) {
+        checker->scope_module_cache =
+            module_table_module_for_file(checker->modules, checker->current_check_file);
+        checker->scope_module_file = checker->current_check_file;
+        checker->scope_module_valid = true;
+    }
     ResolveScope scope;
-    scope.module = module_table_module_for_file(checker->modules, checker->current_check_file);
+    scope.module = checker->scope_module_cache;
     scope.file = checker->current_check_file ? checker->current_check_file : checker->file;
     scope.using_modules = checker->using_visible;
     scope.using_count = checker->using_visible_count;

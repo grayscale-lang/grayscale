@@ -290,6 +290,13 @@ typedef struct {
     const char *using_visible_file;
     int using_visible_stamp;
 
+    /* The module owning current_check_file, resolved through the file->module
+     * hash. The mapping is fixed before checking begins, so cache it and
+     * recompute only when the file under check changes. */
+    const char *scope_module_cache;
+    const char *scope_module_file;
+    bool scope_module_valid;
+
     /* Cache for typechecker_type_from_name (spelling -> resolved type). The
      * module/alias/struct/enum tables it consults are frozen once statement
      * checking begins, so within one file and using-list the answer for a
