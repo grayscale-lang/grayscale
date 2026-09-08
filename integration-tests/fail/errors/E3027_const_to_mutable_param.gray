@@ -2,6 +2,7 @@
  * Error Test: E3027 - passing const to mutable parameter
  * Expected: compiler should reject this with E3027
  */
+// expect-contains: mutable parameter 'arr' of 'modify'
 
 do modify(&arr [int]) {
     arr[0] = 999

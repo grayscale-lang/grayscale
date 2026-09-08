@@ -6250,6 +6250,19 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         checker->expected_type = param_t;
                     GrayType *arg_t = resolve_expression(checker, arg);
                     checker->expected_type = saved_expected_u;
+                    /* E3027: const or non-assignable passed to a mutable (&)
+                     * param. The bare, struct-namespaced and triple-chain
+                     * spellings all run this; the module-qualified loop did
+                     * not, so a const reached the callee by reference and was
+                     * mutated, and a literal leaked a C pointer warning. */
+                    if (sig->decl && sig->decl->kind == NODE_FUNC_DECL &&
+                        argument_index < sig->decl->data.func_decl.param_count &&
+                        sig->decl->data.func_decl.params[argument_index].mutable) {
+                        char param_desc[MSG_BUF_SIZE];
+                        snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
+                            sig->decl->data.func_decl.params[argument_index].name);
+                        check_mutable_arg(checker, arg, param_desc, display);
+                    }
                     if (!arg_t || !param_t ||
                         arg_t->kind == TK_UNKNOWN || param_t->kind == TK_UNKNOWN ||
                         types_assignable(checker, param_t, arg_t) ||
@@ -7857,7 +7870,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         !stmt->data.func_decl.params[argument_index].mutable)
                         continue;
                     char param_desc[MSG_BUF_SIZE];
-                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
                         stmt->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, arg, param_desc, function_name);
                     break;
@@ -7953,7 +7966,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                     !stmt->data.func_decl.params[argument_index].mutable)
                                     continue;
                                 char param_desc[MSG_BUF_SIZE];
-                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
                                     stmt->data.func_decl.params[argument_index].name);
                                 check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
                                 break;
