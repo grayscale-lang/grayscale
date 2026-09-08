@@ -709,6 +709,46 @@ static void test_parse_multiple_when_cases(void) {
     ASSERT_EQ(statement->data.when_stmt.case_count, 4);
 }
 
+static void test_parse_switch_case(void) {
+    /* switch/case are aliases for when/is; they parse to the same node */
+    AstNode *program = parse_test_input(
+        "switch x { case 1 { } case 2 { } default { } }");
+    AstNode *statement = first_statement(program);
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_WHEN_STMT);
+    ASSERT_EQ(statement->data.when_stmt.case_count, 2);
+    ASSERT_NOT_NULL(statement->data.when_stmt.default_body);
+}
+
+static void test_parse_alias_primitive(void) {
+    AstNode *program = parse_test_input("alias Meters = float");
+    AstNode *statement = first_statement(program);
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
+    ASSERT_STR_EQ(statement->data.alias_decl.name, "Meters");
+    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "float");
+    ASSERT(!statement->data.alias_decl.is_private);
+}
+
+static void test_parse_alias_private(void) {
+    AstNode *program = parse_test_input("private alias InternalID = int");
+    AstNode *statement = first_statement(program);
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
+    ASSERT_STR_EQ(statement->data.alias_decl.name, "InternalID");
+    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "int");
+    ASSERT(statement->data.alias_decl.is_private);
+}
+
+static void test_parse_alias_array_type(void) {
+    AstNode *program = parse_test_input("alias Names = [string]");
+    AstNode *statement = first_statement(program);
+    ASSERT_NOT_NULL(statement);
+    ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
+    ASSERT_STR_EQ(statement->data.alias_decl.name, "Names");
+    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "[string]");
+}
+
 static void test_parse_nested_if(void) {
     AstNode *program = parse_test_input(
         "do main() {\n"
@@ -1041,6 +1081,10 @@ int main(void) {
     RUN_TEST(test_parse_array_literal);
     RUN_TEST(test_parse_ensure);
     RUN_TEST(test_parse_when);
+    RUN_TEST(test_parse_switch_case);
+    RUN_TEST(test_parse_alias_primitive);
+    RUN_TEST(test_parse_alias_private);
+    RUN_TEST(test_parse_alias_array_type);
     RUN_TEST(test_parse_default_params);
     RUN_TEST(test_parse_hex_int);
     RUN_TEST(test_parse_octal_int);
