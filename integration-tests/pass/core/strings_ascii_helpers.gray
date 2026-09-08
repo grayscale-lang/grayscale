@@ -1,0 +1,119 @@
+/*
+ * strings_ascii_helpers.gray - case + classification use branchless ASCII
+ *
+ * strings.c no longer routes bytes through <ctype.h>. The runtime never
+ * calls setlocale, so the C-locale ctype behaviour these replace is pure
+ * ASCII: a-z / A-Z transform, everything else (digits, punctuation, bytes
+ * >= 128) passes through untouched. These cases pin that down.
+ */
+
+import @strings
+
+do main() {
+    println("=== Strings ASCII Helpers Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- ASCII case, letters and non-letters --
+    if strings.to_upper("aB3-z!") == "AB3-Z!" && strings.to_lower("aB3-Z!") == "ab3-z!" {
+        println("  [PASS] ASCII case, non-letters untouched")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] up=${strings.to_upper("aB3-z!")} lo=${strings.to_lower("aB3-Z!")}")
+        failed += 1
+    }
+
+    // -- bytes >= 128 pass through unchanged (UTF-8 'e-acute' = C3 A9) --
+    mut acc string = "caf\xC3\xA9"
+    mut up string = strings.to_upper(acc)
+    if len(up) == 5 && up == "CAF\xC3\xA9" {
+        println("  [PASS] high bytes unchanged by to_upper")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] len ${len(up)}")
+        failed += 1
+    }
+
+    // -- every C-locale whitespace char is trimmed --
+    mut padded string = " \t\n\x0B\x0C\rhi\r\x0C\x0B\n\t "
+    if strings.trim(padded) == "hi" {
+        println("  [PASS] trim covers space tab nl vt ff cr")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] trim -> '${strings.trim(padded)}' len ${len(strings.trim(padded))}")
+        failed += 1
+    }
+
+    // -- split_whitespace over mixed whitespace --
+    mut parts [string] = strings.split_whitespace("one\ttwo\n\nthree   four")
+    if len(parts) == 4 && parts[0] == "one" && parts[3] == "four" {
+        println("  [PASS] split_whitespace over mixed whitespace")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${len(parts)} parts")
+        failed += 1
+    }
+
+    // -- acronym boundary logic in to_snake_case --
+    if strings.to_snake_case("HTTPServer") == "http_server"
+        && strings.to_snake_case("parseJSON2Text") == "parse_json2_text"
+        && strings.to_kebab_case("MyURLValue") == "my-url-value" {
+        println("  [PASS] snake/kebab acronym boundaries")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${strings.to_snake_case("HTTPServer")} / ${strings.to_snake_case("parseJSON2Text")}")
+        failed += 1
+    }
+
+    // -- camel / pascal --
+    if strings.to_camel_case("hello_world_foo") == "helloWorldFoo"
+        && strings.to_pascal_case("hello-world") == "HelloWorld" {
+        println("  [PASS] camel / pascal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${strings.to_camel_case("hello_world_foo")}")
+        failed += 1
+    }
+
+    // -- equal_fold --
+    if strings.equal_fold("HeLLo World", "hello WORLD") == true
+        && strings.equal_fold("abc", "abd") == false {
+        println("  [PASS] equal_fold")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] equal_fold")
+        failed += 1
+    }
+
+    // -- to_title --
+    if strings.to_title("the quick brown fox") == "The Quick Brown Fox" {
+        println("  [PASS] to_title")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${strings.to_title("the quick brown fox")}")
+        failed += 1
+    }
+
+    // -- classification predicates --
+    mut cls_ok bool = strings.is_alpha('Z') && !strings.is_alpha('7') && !strings.is_alpha('-')
+    cls_ok = cls_ok && strings.is_digit('0') && !strings.is_digit('a')
+    cls_ok = cls_ok && strings.is_alnum('m') && strings.is_alnum('4') && !strings.is_alnum(' ')
+    cls_ok = cls_ok && strings.is_upper('A') && !strings.is_upper('a')
+    cls_ok = cls_ok && strings.is_lower('z') && !strings.is_lower('Z')
+    cls_ok = cls_ok && strings.is_whitespace('\t') && strings.is_whitespace('\r') && !strings.is_whitespace('x')
+    if cls_ok {
+        println("  [PASS] classification predicates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] classification predicates")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

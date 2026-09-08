@@ -10,14 +10,14 @@
 
 #include "strings.h"
 #include "builtins.h" /* gray_builtin_char_to_utf8 */
-#include <ctype.h>
+#include "ascii.h"    /* branchless ASCII case + classification */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 GrayString gray_strings_to_upper(GrayArena *arena, GrayString str) {
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)toupper((unsigned char)str.data[i]);
+    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)gray_ascii_upper((unsigned char)str.data[i]);
     buf[str.len] = '\0';
     GrayString result = { buf, str.len };
     return result;
@@ -25,7 +25,7 @@ GrayString gray_strings_to_upper(GrayArena *arena, GrayString str) {
 
 GrayString gray_strings_to_lower(GrayArena *arena, GrayString str) {
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
-    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)tolower((unsigned char)str.data[i]);
+    for (int32_t i = 0; i < str.len; i++) buf[i] = (char)gray_ascii_lower((unsigned char)str.data[i]);
     buf[str.len] = '\0';
     GrayString result = { buf, str.len };
     return result;
@@ -36,12 +36,12 @@ GrayString gray_strings_to_title(GrayArena *arena, GrayString str) {
     bool at_word_start = true;
     for (int32_t i = 0; i < str.len; i++) {
         unsigned char c = (unsigned char)str.data[i];
-        if (isspace(c)) {
+        if (gray_ascii_is_space(c)) {
             buf[i] = (char)c;
             at_word_start = true;
             continue;
         }
-        buf[i] = at_word_start ? (char)toupper(c) : (char)tolower(c);
+        buf[i] = at_word_start ? (char)gray_ascii_upper(c) : (char)gray_ascii_lower(c);
         at_word_start = false;
     }
     buf[str.len] = '\0';
@@ -68,19 +68,20 @@ static GrayString strings_delimit_words(GrayArena *arena, GrayString str, char s
             pending_sep = pos > 0;
             continue;
         }
-        if (isupper(c)) {
+        if (gray_ascii_is_upper(c)) {
             unsigned char prev = i > 0 ? (unsigned char)str.data[i - 1] : 0;
             unsigned char next = i + 1 < str.len ? (unsigned char)str.data[i + 1] : 0;
             /* Break after a lowercase run, and at the tail of an acronym run
              * so "HTTPServer" splits as "http_server" rather than "h_t_t_p...". */
-            bool boundary = islower(prev) || isdigit(prev) || (isupper(prev) && islower(next));
+            bool boundary = gray_ascii_is_lower(prev) || gray_ascii_is_digit(prev)
+                || (gray_ascii_is_upper(prev) && gray_ascii_is_lower(next));
             if (boundary && pos > 0) pending_sep = true;
         }
         if (pending_sep) {
             buf[pos++] = sep;
             pending_sep = false;
         }
-        buf[pos++] = (char)tolower(c);
+        buf[pos++] = (char)gray_ascii_lower(c);
     }
     buf[pos] = '\0';
     GrayString result = { buf, pos };
@@ -113,7 +114,7 @@ static GrayString strings_camelish(GrayArena *arena, GrayString str, bool first_
             upper_next = first_upper || pos > 0;
             continue;
         }
-        buf[pos++] = upper_next ? (char)toupper(c) : (char)tolower(c);
+        buf[pos++] = upper_next ? (char)gray_ascii_upper(c) : (char)gray_ascii_lower(c);
         upper_next = false;
     }
     buf[pos] = '\0';
@@ -133,7 +134,7 @@ GrayString gray_strings_capitalize(GrayArena *arena, GrayString str) {
     if (str.len == 0) return gray_string_lit("");
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)str.len + 1);
     memcpy(buf, str.data, (size_t)str.len);
-    buf[0] = (char)toupper((unsigned char)buf[0]);
+    buf[0] = (char)gray_ascii_upper((unsigned char)buf[0]);
     buf[str.len] = '\0';
     GrayString result = { buf, str.len };
     return result;
@@ -160,20 +161,20 @@ GrayString gray_strings_truncate(GrayArena *arena, GrayString str, int64_t max, 
 
 GrayString gray_strings_trim(GrayArena *arena, GrayString str) {
     int32_t start = 0, end = str.len;
-    while (start < end && isspace((unsigned char)str.data[start])) start++;
-    while (end > start && isspace((unsigned char)str.data[end - 1])) end--;
+    while (start < end && gray_ascii_is_space((unsigned char)str.data[start])) start++;
+    while (end > start && gray_ascii_is_space((unsigned char)str.data[end - 1])) end--;
     return gray_string_new(arena, str.data + start, end - start);
 }
 
 GrayString gray_strings_trim_left(GrayArena *arena, GrayString str) {
     int32_t start = 0;
-    while (start < str.len && isspace((unsigned char)str.data[start])) start++;
+    while (start < str.len && gray_ascii_is_space((unsigned char)str.data[start])) start++;
     return gray_string_new(arena, str.data + start, str.len - start);
 }
 
 GrayString gray_strings_trim_right(GrayArena *arena, GrayString str) {
     int32_t end = str.len;
-    while (end > 0 && isspace((unsigned char)str.data[end - 1])) end--;
+    while (end > 0 && gray_ascii_is_space((unsigned char)str.data[end - 1])) end--;
     return gray_string_new(arena, str.data, end);
 }
 
@@ -312,7 +313,7 @@ bool gray_strings_contains_any(GrayString str, GrayString chars) {
 bool gray_strings_equal_fold(GrayString left, GrayString right) {
     if (left.len != right.len) return false;
     for (int32_t i = 0; i < left.len; i++) {
-        if (tolower((unsigned char)left.data[i]) != tolower((unsigned char)right.data[i])) return false;
+        if (gray_ascii_lower((unsigned char)left.data[i]) != gray_ascii_lower((unsigned char)right.data[i])) return false;
     }
     return true;
 }
@@ -352,10 +353,10 @@ GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str) {
     GrayArray arr = gray_array_new(arena, sizeof(GrayString), 4);
     int32_t i = 0;
     while (i < str.len) {
-        while (i < str.len && isspace((unsigned char)str.data[i])) i++;
+        while (i < str.len && gray_ascii_is_space((unsigned char)str.data[i])) i++;
         if (i >= str.len) break;
         int32_t start = i;
-        while (i < str.len && !isspace((unsigned char)str.data[i])) i++;
+        while (i < str.len && !gray_ascii_is_space((unsigned char)str.data[i])) i++;
         GrayString part = gray_string_new(arena, str.data + start, i - start);
         GRAY_ARRAY_PUSH(arena, &arr, &part);
     }
@@ -482,12 +483,12 @@ GrayString gray_strings_set_char_at(GrayArena *arena, GrayString str, int64_t in
     return strings_splice(arena, str, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
-bool gray_strings_is_alpha(char c)      { return isalpha((unsigned char)c) != 0; }
-bool gray_strings_is_digit(char c)      { return isdigit((unsigned char)c) != 0; }
-bool gray_strings_is_alnum(char c)      { return isalnum((unsigned char)c) != 0; }
-bool gray_strings_is_whitespace(char c) { return isspace((unsigned char)c) != 0; }
-bool gray_strings_is_upper(char c)      { return isupper((unsigned char)c) != 0; }
-bool gray_strings_is_lower(char c)      { return islower((unsigned char)c) != 0; }
+bool gray_strings_is_alpha(char c)      { return gray_ascii_is_alpha((unsigned char)c); }
+bool gray_strings_is_digit(char c)      { return gray_ascii_is_digit((unsigned char)c); }
+bool gray_strings_is_alnum(char c)      { return gray_ascii_is_alnum((unsigned char)c); }
+bool gray_strings_is_whitespace(char c) { return gray_ascii_is_space((unsigned char)c); }
+bool gray_strings_is_upper(char c)      { return gray_ascii_is_upper((unsigned char)c); }
+bool gray_strings_is_lower(char c)      { return gray_ascii_is_lower((unsigned char)c); }
 
 /* --- Builder --- */
 
