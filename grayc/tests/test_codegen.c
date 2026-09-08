@@ -2807,6 +2807,87 @@ static void test_e2e_recursive_struct_list(void) {
     ASSERT_STR_EQ(output, "6");
 }
 
+/* when matching on a string condition (STANDARD 6.5) */
+
+static void test_e2e_when_string(void) {
+    char *output = compile_and_run(
+        ""
+        "do label(s string) -> string {\n"
+        "  when s {\n"
+        "    is \"a\" { return \"alpha\" }\n"
+        "    is \"b\", \"c\" { return \"bc\" }\n"
+        "    default { return \"other\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(label(\"a\"))\n"
+        "  println(label(\"c\"))\n"
+        "  println(label(\"z\"))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "alpha\nbc\nother");
+}
+
+/* Explicit enum values: assigned, auto-incremented, widened to int, cast (STANDARD 3.2) */
+
+static void test_e2e_enum_explicit_values(void) {
+    char *output = compile_and_run(
+        ""
+        "const Status enum {\n"
+        "  OK = 200\n"
+        "  CREATED\n"
+        "  NOT_FOUND = 404\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a int = Status.OK\n"
+        "  mut b int = Status.CREATED\n"
+        "  println(a)\n"
+        "  println(b)\n"
+        "  println(cast(Status.NOT_FOUND, int))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "200\n201\n404");
+}
+
+/* strconv module — parse, format, query round-trips (STANDARD 9.27) */
+
+static void test_e2e_strconv_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @strconv\n"
+        "do main() {\n"
+        "  mut n, _ = strconv.to_int(\"42\")\n"
+        "  println(n)\n"
+        "  mut bad, err = strconv.to_int(\"nope\")\n"
+        "  println(bad)\n"
+        "  println(err != nil)\n"
+        "  println(strconv.from_int(255))\n"
+        "  println(strconv.format_int(255, 16))\n"
+        "  println(strconv.is_integer(\"-17\"))\n"
+        "  println(strconv.is_integer(\"3.5\"))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\n0\ntrue\n255\nff\ntrue\nfalse");
+}
+
+/* uuid module — validation, version, nil UUID (STANDARD 9.14) */
+
+static void test_e2e_uuid_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @uuid\n"
+        "do main() {\n"
+        "  println(uuid.is_valid(\"00000000-0000-0000-0000-000000000000\"))\n"
+        "  println(uuid.is_valid(\"not-a-uuid\"))\n"
+        "  mut n uuid.UUID = uuid.NIL_UUID\n"
+        "  println(uuid.version(n))\n"
+        "  println(uuid.to_string(n))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "true\nfalse\n0\n00000000-0000-0000-0000-000000000000");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -3085,6 +3166,10 @@ int main(void) {
     RUN_TEST(test_e2e_string_concat_operator);
     RUN_TEST(test_e2e_enum_array);
     RUN_TEST(test_e2e_recursive_struct_list);
+    RUN_TEST(test_e2e_when_string);
+    RUN_TEST(test_e2e_enum_explicit_values);
+    RUN_TEST(test_e2e_strconv_module);
+    RUN_TEST(test_e2e_uuid_module);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
