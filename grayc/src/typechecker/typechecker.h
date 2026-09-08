@@ -290,6 +290,20 @@ typedef struct {
     const char *using_visible_file;
     int using_visible_stamp;
 
+    /* Cache for typechecker_type_from_name (spelling -> resolved type). The
+     * module/alias/struct/enum tables it consults are frozen once statement
+     * checking begins, so within one file and using-list the answer for a
+     * spelling never changes. `active` gates it to that window; the cache is
+     * flushed when `file` or `using_count` no longer match the checker. Keys
+     * are arena copies of the spelling. */
+    const char **tn_cache_names;
+    GrayType **tn_cache_types;
+    int tn_cache_count;
+    int tn_cache_cap;
+    const char *tn_cache_file;
+    int tn_cache_using_count;
+    bool tn_cache_active;
+
     /* Pointer checker: per-function @mem arena lifetime state. Tracks, per
      * arena variable in scope, whether mem.destroy() has run and how many
      * times mem.reset() has (the epoch). Flow-sensitive: saved and joined

@@ -4173,7 +4173,80 @@ static void reject_error_in_container(TypeChecker *checker, AstNode *node,
     }
 }
 
+/* --- typechecker_type_from_name cache (spelling-keyed open addressing) --- */
+
+static void tn_cache_insert_raw(const char **names, GrayType **types, int cap,
+                                const char *name, GrayType *type) {
+    uint32_t mask = (uint32_t)(cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (names[h]) h = (h + 1) & mask;
+    names[h] = name;
+    types[h] = type;
+}
+
+static GrayType *tn_cache_get(TypeChecker *checker, const char *name) {
+    if (!checker->tn_cache_names) return NULL;
+    uint32_t mask = (uint32_t)(checker->tn_cache_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    for (;;) {
+        const char *slot = checker->tn_cache_names[h];
+        if (!slot) return NULL;
+        if (strcmp(slot, name) == 0) return checker->tn_cache_types[h];
+        h = (h + 1) & mask;
+    }
+}
+
+static void tn_cache_put(TypeChecker *checker, const char *name, GrayType *type) {
+    if (!checker->tn_cache_names ||
+        (checker->tn_cache_count + 1) * 2 > checker->tn_cache_cap) {
+        int old_cap = checker->tn_cache_cap;
+        const char **old_names = checker->tn_cache_names;
+        GrayType **old_types = checker->tn_cache_types;
+        checker->tn_cache_cap = old_cap ? old_cap * 2 : 128;
+        checker->tn_cache_names = xcalloc((size_t)checker->tn_cache_cap, sizeof(char *));
+        checker->tn_cache_types = xcalloc((size_t)checker->tn_cache_cap, sizeof(GrayType *));
+        for (int i = 0; i < old_cap; i++)
+            if (old_names[i])
+                tn_cache_insert_raw(checker->tn_cache_names, checker->tn_cache_types,
+                                    checker->tn_cache_cap, old_names[i], old_types[i]);
+        free(old_names);
+        free(old_types);
+    }
+    tn_cache_insert_raw(checker->tn_cache_names, checker->tn_cache_types,
+                        checker->tn_cache_cap,
+                        arena_copy_string(checker->arena, name), type);
+    checker->tn_cache_count++;
+}
+
+static void tn_cache_flush(TypeChecker *checker) {
+    if (checker->tn_cache_names) {
+        memset(checker->tn_cache_names, 0, sizeof(char *) * (size_t)checker->tn_cache_cap);
+        memset(checker->tn_cache_types, 0, sizeof(GrayType *) * (size_t)checker->tn_cache_cap);
+    }
+    checker->tn_cache_count = 0;
+}
+
+static GrayType *typechecker_type_from_name_uncached(TypeChecker *checker, const char *name);
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
+    if (!name) return &TYPE_UNKNOWN;
+    if (!checker->tn_cache_active || checker->registering)
+        return typechecker_type_from_name_uncached(checker, name);
+
+    if (checker->tn_cache_file != checker->current_check_file ||
+        checker->tn_cache_using_count != checker->using_module_count) {
+        tn_cache_flush(checker);
+        checker->tn_cache_file = checker->current_check_file;
+        checker->tn_cache_using_count = checker->using_module_count;
+    }
+    GrayType *hit = tn_cache_get(checker, name);
+    if (hit) return hit;
+    GrayType *result = typechecker_type_from_name_uncached(checker, name);
+    tn_cache_put(checker, name, result);
+    return result;
+}
+
+static GrayType *typechecker_type_from_name_uncached(TypeChecker *checker, const char *name) {
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
      * module's own or a using'd declaration — onto the registry spelling. */
     name = checker_resolve_type_name(checker, name);
@@ -17946,6 +18019,9 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->const_int_names);
     free(checker->const_int_values);
 
+    free(checker->tn_cache_names);
+    free(checker->tn_cache_types);
+
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);
     scope_destroy(checker->current_scope);
@@ -18186,6 +18262,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
     /* E2088: keyword alias consistency (while/as_long_as, do/fn, when+is/switch+case, etc.) */
     check_keyword_alias_consistency(checker, program);
+
+    /* Every type/module/alias registry is now frozen — the type-name
+     * resolution cache is safe to use for the statement and generic passes. */
+    checker->tn_cache_active = true;
 
     /* Pass 2: check all statements */
     const char *prev_file = NULL;
