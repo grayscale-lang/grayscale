@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.0...grayscale-v0.8.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **typechecker:** correct garbled E3027 parameter name in bare-call diagnostic ([#2700](https://github.com/grayscale-lang/grayscale/issues/2700)) ([8cf8293](https://github.com/grayscale-lang/grayscale/commit/8cf82934b3f7993ba4378dcfcb02b1f67aa6937e))
+* **typechecker:** enforce E3027 for module-qualified calls ([#2699](https://github.com/grayscale-lang/grayscale/issues/2699)) ([2af6fa6](https://github.com/grayscale-lang/grayscale/commit/2af6fa6e2b9d46abbbc7ed4e57a2ac278534c4f0))
+
 ## [0.8.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.7.0...grayscale-v0.8.0) (2026-09-07)
 
 
