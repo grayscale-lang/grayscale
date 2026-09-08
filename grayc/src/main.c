@@ -853,6 +853,12 @@ int main(int argc, char **argv) {
 #endif
     if (opts.debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opts.opt_level);
+    /* One section per function/variable so the linker's dead-strip pass (added
+     * below) can drop the runtime and stdlib code the program never calls —
+     * a trivial program links a fraction of libgrayrt.a instead of all of it.
+     * Compile-time cost is negligible; there is no LTO. */
+    argv_push(&cc_argv, "-ffunction-sections");
+    argv_push(&cc_argv, "-fdata-sections");
     /* Marks this translation unit as a grayc-generated program. The stdlib
      * headers whose basename collides with a system header (time.h, io.h,
      * ...) only need to forward to the real header in this context — where
@@ -909,6 +915,14 @@ int main(int argc, char **argv) {
             argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, stdlib_srcs[i]);
         }
     }
+
+    /* Drop the sections nothing references (see -ffunction-sections above).
+     * Apple ld and GNU ld/lld spell it differently. */
+#if defined(__APPLE__)
+    argv_push(&cc_argv, "-Wl,-dead_strip");
+#else
+    argv_push(&cc_argv, "-Wl,--gc-sections");
+#endif
 
     /* Platform link flags. */
     argv_push(&cc_argv, "-lm");

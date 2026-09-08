@@ -161,8 +161,10 @@ $(ATOMIC_OBJ): $(ATOMIC_SRC)
 endif
 endif
 
-# Runtime/stdlib flags: same as CFLAGS but no -Wpedantic (GCC statement expressions)
-RT_CFLAGS = $(STD_FLAGS) -Wall -Wextra -Wno-unused-parameter -O2
+# Runtime/stdlib flags: same as CFLAGS but no -Wpedantic (GCC statement expressions).
+# -ffunction-sections/-fdata-sections so a generated program's link can dead-strip
+# the archive members it never calls (GNU ld --gc-sections; Apple ld strips anyway).
+RT_CFLAGS = $(STD_FLAGS) -Wall -Wextra -Wno-unused-parameter -O2 -ffunction-sections -fdata-sections
 
 src/runtime/%.o: src/runtime/%.c
 	$(CC) $(RT_CFLAGS) $(INCLUDES) $(DEPFLAGS) -c -o $@ $<
