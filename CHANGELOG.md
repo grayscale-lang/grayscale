@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.8.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.1...grayscale-v0.8.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **cli:** measure cc phase with a wall clock in --time ([ccf4c42](https://github.com/grayscale-lang/grayscale/commit/ccf4c42518659757dbcb8ade042804c9c8dff485))
+* **codegen:** emit typedefs for all struct decls, not just the first 256 ([#2712](https://github.com/grayscale-lang/grayscale/issues/2712)) ([17a4968](https://github.com/grayscale-lang/grayscale/commit/17a4968c705376f95eebbb13400e26702f31f29b))
+
+
+### Performance Improvements
+
+* **codegen:** reset loop scratch arena per iteration instead of realloc ([#2711](https://github.com/grayscale-lang/grayscale/issues/2711)) ([9b92d95](https://github.com/grayscale-lang/grayscale/commit/9b92d9549f4f068ae5701f2590a9b89f4ec5f1fb))
+* **runtime:** allocate gray_array_new backing store uninitialized ([54e0bd7](https://github.com/grayscale-lang/grayscale/commit/54e0bd785731edfaaaffdb1ab0f92aa2ba829b32))
+* **typechecker:** cache mangled declaration names on the entry ([#2703](https://github.com/grayscale-lang/grayscale/issues/2703)) ([bbf1b27](https://github.com/grayscale-lang/grayscale/commit/bbf1b2710ea488e3418f234d5d6be1c9721e6cc2))
+* **typechecker:** cache the resolved module for the file under check ([#2705](https://github.com/grayscale-lang/grayscale/issues/2705)) ([656d965](https://github.com/grayscale-lang/grayscale/commit/656d965c0a2517ce81abb57f13547def2da6ee67))
+* **typechecker:** first-character gate on integer type-name predicates ([#2707](https://github.com/grayscale-lang/grayscale/issues/2707)) ([57a0100](https://github.com/grayscale-lang/grayscale/commit/57a010064ffec219146187692b105b7048c48285))
+* **typechecker:** index struct decls by name ([#2706](https://github.com/grayscale-lang/grayscale/issues/2706)) ([f42d424](https://github.com/grayscale-lang/grayscale/commit/f42d424397891a495c8b315982b6bfafc4068e50))
+* **typechecker:** memoize typechecker_type_from_name ([#2704](https://github.com/grayscale-lang/grayscale/issues/2704)) ([5428822](https://github.com/grayscale-lang/grayscale/commit/5428822f6ea79fec54bcee186a522b5b067bfe4d))
+
 ## [0.8.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.0...grayscale-v0.8.1) (2026-09-08)
 
 
