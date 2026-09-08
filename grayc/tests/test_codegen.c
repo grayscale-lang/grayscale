@@ -2654,6 +2654,96 @@ static void test_e2e_json_module(void) {
     ASSERT_STR_EQ(output, "42\ntrue\nbob");
 }
 
+/* String interpolation evaluates arbitrary expressions (STANDARD 2.7.3) */
+
+static void test_e2e_interp_expression(void) {
+    char *output = compile_and_run(
+        ""
+        "const P struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "do dbl(n int) -> int { return n * 2 }\n"
+        "do main() {\n"
+        "  mut a int = 3\n"
+        "  mut b int = 4\n"
+        "  println(\"sum=${a + b}\")\n"
+        "  mut p P = P{x: 1, y: 2}\n"
+        "  println(\"pt ${p.x},${p.y}\")\n"
+        "  println(\"d=${dbl(5)}\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "sum=7\npt 1,2\nd=10");
+}
+
+/* Compound assignment to a map element (STANDARD 5.2, 6.1) */
+
+static void test_e2e_map_compound_assign(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut m map[string:int] = {\"a\": 10}\n"
+        "  m[\"a\"] += 5\n"
+        "  m[\"a\"] *= 2\n"
+        "  println(m[\"a\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "30");
+}
+
+/* A struct array field is mutable through the field (STANDARD 3.2) */
+
+static void test_e2e_struct_array_field(void) {
+    char *output = compile_and_run(
+        ""
+        "import @arrays\n"
+        "const Bag struct {\n"
+        "  items [int]\n"
+        "}\n"
+        "do main() {\n"
+        "  mut b Bag = Bag{items: {1, 2}}\n"
+        "  arrays.append(b.items, 3)\n"
+        "  b.items[0] = 99\n"
+        "  println(b.items[0])\n"
+        "  println(b.items[2])\n"
+        "  println(len(b.items))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "99\n3\n3");
+}
+
+/* Nested map types index correctly (STANDARD 3.2) */
+
+static void test_e2e_nested_map(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut m map[string:map[string:int]] = {\"outer\": {\"inner\": 7}}\n"
+        "  println(m[\"outer\"][\"inner\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7");
+}
+
+/* break and continue inside for_each (STANDARD 6.4) */
+
+static void test_e2e_for_each_break_continue(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut xs [int] = {1, 2, 3, 4, 5}\n"
+        "  mut sum int = 0\n"
+        "  for_each x in xs {\n"
+        "    if x == 4 { break }\n"
+        "    if x == 2 { continue }\n"
+        "    sum += x\n"
+        "  }\n"
+        "  println(sum)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "4");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2922,6 +3012,13 @@ int main(void) {
     RUN_TEST(test_e2e_regex_module);
     RUN_TEST(test_e2e_csv_module);
     RUN_TEST(test_e2e_json_module);
+
+    /* Language semantics */
+    RUN_TEST(test_e2e_interp_expression);
+    RUN_TEST(test_e2e_map_compound_assign);
+    RUN_TEST(test_e2e_struct_array_field);
+    RUN_TEST(test_e2e_nested_map);
+    RUN_TEST(test_e2e_for_each_break_continue);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
