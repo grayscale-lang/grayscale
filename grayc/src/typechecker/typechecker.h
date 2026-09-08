@@ -297,6 +297,14 @@ typedef struct {
     const char *scope_module_file;
     bool scope_module_valid;
 
+    /* struct-decl name -> the first matching NODE_STRUCT_DECL in the program.
+     * The top-level statement list is fixed once checking begins, so this is
+     * built once on first use and replaces a linear AST scan. */
+    const char **struct_decl_index_names;
+    AstNode **struct_decl_index_nodes;
+    int struct_decl_index_cap;
+    bool struct_decl_index_built;
+
     /* Cache for typechecker_type_from_name (spelling -> resolved type). The
      * module/alias/struct/enum tables it consults are frozen once statement
      * checking begins, so within one file and using-list the answer for a

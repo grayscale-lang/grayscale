@@ -872,7 +872,7 @@ static void tc_err_arity(TypeChecker *checker, AstNode *node, char *msg) {
         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
 }
 
-static AstNode *find_struct_in_program(AstNode *program, const char *name);
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name);
 
 static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name, const char *field) {
     StructInfo *si = find_struct(checker, struct_name);
@@ -904,7 +904,7 @@ static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name
             if (generic_binding && si->field_types[i]->kind == TK_UNKNOWN) {
                 /* Find the raw struct decl to check the field type_name */
                 if (checker->program) {
-                    AstNode *decl = find_struct_in_program(checker->program,
+                    AstNode *decl = find_struct_in_program(checker,
                         struct_name); /* try mangled first */
                     if (!decl) {
                         /* Extract base name and try again */
@@ -915,7 +915,7 @@ static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name
                             if (bn < sizeof(bname)) {
                                 memcpy(bname, struct_name, bn);
                                 bname[bn] = '\0';
-                                decl = find_struct_in_program(checker->program, bname);
+                                decl = find_struct_in_program(checker, bname);
                             }
                         }
                     }
@@ -4812,7 +4812,7 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
  * quotes the function name; otherwise it falls back to a generic
  * "void expression" wording. Caller-suppliable context keeps each
  * diagnostic site self-describing without a zillion format strings. */
-static AstNode *find_struct_in_program(AstNode *program, const char *name);
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name);
 
 static void reject_void_in_context(TypeChecker *checker, AstNode *expr,
                                     GrayType *t, const char *context) {
@@ -10050,7 +10050,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     /* for generic structs, infer the wildcard binding from
      * the field values and record the instantiation on the struct
      * decl so codegen can emit per-binding typedefs. */
-    AstNode *sdecl = find_struct_in_program(checker->program, struct_name);
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
     if (sdecl && sdecl->data.struct_decl.is_generic) {
         const char *binding = NULL;
         for (int i = 0; i < node->data.struct_value.count; i++) {
@@ -16619,17 +16619,57 @@ static bool struct_name_declared(AstNode *program, const char *name) {
     return false;
 }
 
+/* Build the struct-decl name index: name -> first matching NODE_STRUCT_DECL,
+ * mirroring the first-match rule of the linear scan it replaces. */
+static void build_struct_decl_index(TypeChecker *checker) {
+    checker->struct_decl_index_built = true;
+    AstNode *program = checker->program;
+    if (!program) return;
+    int stmt_count = program->data.program.stmt_count;
+
+    int structs = 0;
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name) structs++;
+    }
+    if (structs == 0) return;
+
+    int cap = 16;
+    while (cap < (structs + 1) * 2) cap *= 2;
+    checker->struct_decl_index_names = xcalloc((size_t)cap, sizeof(char *));
+    checker->struct_decl_index_nodes = xcalloc((size_t)cap, sizeof(AstNode *));
+    checker->struct_decl_index_cap = cap;
+
+    uint32_t mask = (uint32_t)(cap - 1);
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (!stmt || stmt->kind != NODE_STRUCT_DECL || !stmt->data.struct_decl.name) continue;
+        const char *name = stmt->data.struct_decl.name;
+        uint32_t h = scope_str_hash(name) & mask;
+        bool dup = false;
+        while (checker->struct_decl_index_names[h]) {
+            if (strcmp(checker->struct_decl_index_names[h], name) == 0) { dup = true; break; }
+            h = (h + 1) & mask;
+        }
+        if (dup) continue; /* first declaration wins */
+        checker->struct_decl_index_names[h] = name;
+        checker->struct_decl_index_nodes[h] = stmt;
+    }
+}
+
 /* look up a struct declaration in the program by name. Returns
  * NULL if no struct with the given name exists. Used by the by-value
  * recursion detector below. */
-static AstNode *find_struct_in_program(AstNode *program, const char *name) {
-    if (!program || !name) return NULL;
-    for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *stmt = program->data.program.stmts[i];
-        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
-            strcmp(stmt->data.struct_decl.name, name) == 0) {
-            return stmt;
-        }
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name) {
+    if (!name) return NULL;
+    if (!checker->struct_decl_index_built) build_struct_decl_index(checker);
+    if (!checker->struct_decl_index_names) return NULL;
+    uint32_t mask = (uint32_t)(checker->struct_decl_index_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (checker->struct_decl_index_names[h]) {
+        if (strcmp(checker->struct_decl_index_names[h], name) == 0)
+            return checker->struct_decl_index_nodes[h];
+        h = (h + 1) & mask;
     }
     return NULL;
 }
@@ -16641,7 +16681,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name) {
  * header, not inline. `visited` is a stack of struct names on the
  * current DFS path used to short-circuit cycles that don't touch
  * `target` directly. */
-static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, AstNode *decl,
+static bool struct_contains_by_value(TypeChecker *checker, AstNode *decl,
                                       const char *target,
                                       const char **visited, int *visited_count,
                                       int visited_cap) {
@@ -16666,8 +16706,8 @@ static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, Ast
             (*visited_count)--;
             return true;
         }
-        AstNode *child = find_struct_in_program(program, ftn);
-        if (child && struct_contains_by_value(checker, program, child, target,
+        AstNode *child = find_struct_in_program(checker, ftn);
+        if (child && struct_contains_by_value(checker, child, target,
                                                visited, visited_count, visited_cap)) {
             (*visited_count)--;
             return true;
@@ -17317,12 +17357,12 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 if (strcmp(ftn, self_name) == 0) {
                     is_cycle = true;
                 } else {
-                    AstNode *child = find_struct_in_program(program, ftn);
+                    AstNode *child = find_struct_in_program(checker, ftn);
                     if (child) {
                         const char *visited[MAX_STRUCT_DEPTH];
                         int variant_count = 0;
                         is_cycle = struct_contains_by_value(
-                            checker, program, child, self_name, visited, &variant_count, 32);
+                            checker, child, self_name, visited, &variant_count, 32);
                     }
                 }
                 if (is_cycle) {
@@ -18031,6 +18071,9 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->tn_cache_names);
     free(checker->tn_cache_types);
+
+    free(checker->struct_decl_index_names);
+    free(checker->struct_decl_index_nodes);
 
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);
