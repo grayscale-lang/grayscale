@@ -78,6 +78,15 @@ do main() {
         arrays.count(wi, i128(20)) == 2)
     total += 1
 
+    // bare-literal needle (previously initialized the struct from a C int)
+    passed += check("i128 query bare literal",
+        arrays.contains(wi, 20) && !arrays.contains(wi, 99) &&
+        arrays.index_of(wi, 30) == 2 && arrays.count(wi, 20) == 2)
+    passed += check("i128 query big literal",
+        !arrays.contains(wi, 100000000000000000000) &&
+        arrays.index_of(wi, 100000000000000000000) == -1)
+    total += 2
+
     mut wn [i256] = {i256(-5), i256(0), i256(-5)}
     passed += check("i256 negatives",
         arrays.contains(wn, i256(-5)) && arrays.index_of(wn, i256(0)) == 1 &&

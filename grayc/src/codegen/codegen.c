@@ -6993,7 +6993,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "{ GrayArray *_rm%d = ", tag);
             emit_array_argument_address(codegen, node->data.call.args[0]);
             emit_formatted(codegen, "; %s _rv%d = ", bi, tag);
-            emit_expression(codegen, node->data.call.args[1]);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
             emit_formatted(codegen, "; for (int32_t _ri%d = 0; _ri%d < _rm%d->len; _ri%d++) { "
                 "if (%s_eq(((%s *)_rm%d->data)[_ri%d], _rv%d)) { gray_arrays_remove_at(_rm%d, _ri%d); break; } } }",
                 tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
@@ -7074,7 +7075,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "({ GrayArray _ct%d = ", tag);
             emit_expression(codegen, node->data.call.args[0]);
             emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
-            emit_expression(codegen, node->data.call.args[1]);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
             emit_formatted(codegen, "; bool _cr%d = false; for (int32_t _ci%d = 0; _ci%d < _ct%d.len; _ci%d++) { "
                 "if (%s_eq(((%s *)_ct%d.data)[_ci%d], _cv%d)) { _cr%d = true; break; } } _cr%d; })",
                 tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
@@ -7131,7 +7133,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "({ GrayArray _ix%d = ", btag);
             emit_expression(codegen, node->data.call.args[0]);
             emit_formatted(codegen, "; %s _iv%d = ", bi, btag);
-            emit_expression(codegen, node->data.call.args[1]);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
             emit_formatted(codegen, "; int64_t _ir%d = -1; for (int32_t _ii%d = 0; _ii%d < _ix%d.len; _ii%d++) { "
                 "if (%s_eq(((%s *)_ix%d.data)[_ii%d], _iv%d)) { _ir%d = _ii%d; break; } } _ir%d; })",
                 btag, btag, btag, btag, btag, bi, bi, btag, btag, btag, btag, btag, btag);
@@ -7173,7 +7176,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
             emit_expression(codegen, node->data.call.args[0]);
             emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
-            emit_expression(codegen, node->data.call.args[1]);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
             emit_formatted(codegen, "; int64_t _cr%d = 0; for (int32_t _ci%d = 0; _ci%d < _cn%d.len; _ci%d++) { "
                 "if (%s_eq(((%s *)_cn%d.data)[_ci%d], _cv%d)) _cr%d++; } _cr%d; })",
                 tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
@@ -7248,8 +7252,10 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (fet->kind == TK_INT || fet->kind == TK_UINT)
                 fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
         }
+        const char *fl_elem_tn = (fl_arr_t && fl_arr_t->kind == TK_ARRAY) ? fl_arr_t->element_type : NULL;
         emit_formatted(codegen, "{ %s _fv = ", fl_c_elem);
-        emit_expression(codegen, node->data.call.args[1]);
+        if (!emit_bigint_coerced(codegen, fl_elem_tn, node->data.call.args[1]))
+            emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; gray_arrays_fill(gray_default_arena, ");
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ", &_fv, ");
