@@ -29,24 +29,40 @@ GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL};
 GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
 GrayType TYPE_C_FUNC  = {TK_C_FUNC, "a C interop value", NULL, NULL, NULL, NULL};
 
-#define TYPE_POOL_CAPACITY 4096
-
-/* Pool for dynamically created types. Heap-allocated names/sigs are released by
+/* Pool for dynamically created types — one entry per distinct composite type
+ * (struct, enum, pointer, array, map, function signature), accumulated for the
+ * whole compile. A GrayType* handed out here is cached throughout the checker
+ * and codegen, so entries must never move: the pool is a linked list of fixed
+ * blocks, not one growable array. Heap-allocated names/sigs are released by
  * type_pool_reset() during typechecker teardown. */
-static GrayType type_pool[TYPE_POOL_CAPACITY];
-static int type_pool_count = 0;
+#define TYPE_POOL_BLOCK 1024
+
+typedef struct TypePoolBlock {
+    struct TypePoolBlock *next;
+    GrayType types[TYPE_POOL_BLOCK];
+} TypePoolBlock;
+
+static TypePoolBlock *type_pool_head = NULL;
+static TypePoolBlock *type_pool_tail = NULL;
+static int type_pool_count = 0;   /* total entries across every block */
+static int type_pool_fill  = 0;   /* entries used in the tail block */
 
 GrayType *type_alloc(void) {
-    if (type_pool_count >= TYPE_POOL_CAPACITY) {
-        fprintf(stderr, "error: type pool exhausted (%d types); please report this bug\n", TYPE_POOL_CAPACITY);
-        exit(1);
+    if (!type_pool_tail || type_pool_fill == TYPE_POOL_BLOCK) {
+        TypePoolBlock *block = xcalloc(1, sizeof(TypePoolBlock));
+        if (type_pool_tail) type_pool_tail->next = block;
+        else type_pool_head = block;
+        type_pool_tail = block;
+        type_pool_fill = 0;
     }
-    return &type_pool[type_pool_count++];
+    type_pool_count++;
+    return &type_pool_tail->types[type_pool_fill++];
 }
 
-/* Hash index for O(1) pool_find. Must be a power of 2 and at least 2x
- * TYPE_POOL_CAPACITY to keep load factor below 50%. */
-#define TYPE_HASH_CAP 8192
+/* Hash index for O(1) pool_find. Power-of-two capacity, doubled and rehashed
+ * before the load factor reaches 50% — linear probing needs that headroom to
+ * terminate on a free slot. */
+#define TYPE_HASH_INIT_CAP 8192
 
 typedef struct {
     TypeKind kind;
@@ -54,7 +70,8 @@ typedef struct {
     GrayType    *type;   /* NULL = empty slot */
 } TypeHashEntry;
 
-static TypeHashEntry type_hash_table[TYPE_HASH_CAP];
+static TypeHashEntry *type_hash_table = NULL;
+static uint32_t type_hash_cap = 0;
 
 static uint32_t type_hash(TypeKind kind, const char *name) {
     uint32_t h = 5381u ^ ((uint32_t)kind * 2654435761u);
@@ -73,8 +90,8 @@ static uint32_t type_hash(TypeKind kind, const char *name) {
 
 /* Return an existing pool entry matching kind+name, or NULL if not found. */
 static GrayType *pool_find(TypeKind kind, const char *name) {
-    if (!name) return NULL;
-    uint32_t mask = TYPE_HASH_CAP - 1;
+    if (!name || !type_hash_table) return NULL;
+    uint32_t mask = type_hash_cap - 1;
     uint32_t idx  = type_hash(kind, name) & mask;
     for (;;) {
         TypeHashEntry *e = &type_hash_table[idx];
@@ -84,12 +101,14 @@ static GrayType *pool_find(TypeKind kind, const char *name) {
     }
 }
 
-/* Insert a newly created type into the hash index. */
-static void pool_insert(TypeKind kind, const char *name, GrayType *type) {
-    uint32_t mask = TYPE_HASH_CAP - 1;
+/* Place an entry into `table` by open addressing. Only ever called with a table
+ * known to have a free slot, so the probe terminates. */
+static void type_hash_place(TypeHashEntry *table, uint32_t cap,
+                            TypeKind kind, const char *name, GrayType *type) {
+    uint32_t mask = cap - 1;
     uint32_t idx  = type_hash(kind, name) & mask;
     for (;;) {
-        TypeHashEntry *e = &type_hash_table[idx];
+        TypeHashEntry *e = &table[idx];
         if (!e->type) {
             e->kind = kind;
             e->name = name;
@@ -98,6 +117,31 @@ static void pool_insert(TypeKind kind, const char *name, GrayType *type) {
         }
         idx = (idx + 1) & mask;
     }
+}
+
+/* Double the hash index (or create it) and reinsert every live entry. */
+static void type_hash_grow(void) {
+    uint32_t old_cap = type_hash_cap;
+    TypeHashEntry *old = type_hash_table;
+    uint32_t new_cap = old_cap ? old_cap * 2u : TYPE_HASH_INIT_CAP;
+
+    type_hash_table = xcalloc((size_t)new_cap, sizeof(TypeHashEntry));
+    type_hash_cap = new_cap;
+
+    for (uint32_t i = 0; i < old_cap; i++) {
+        if (old[i].type)
+            type_hash_place(type_hash_table, new_cap,
+                            old[i].kind, old[i].name, old[i].type);
+    }
+    free(old);
+}
+
+/* Insert a newly created type into the hash index. */
+static void pool_insert(TypeKind kind, const char *name, GrayType *type) {
+    /* Keep the load factor below 50% so pool_find's linear probe terminates. */
+    if ((uint32_t)type_pool_count * 2u >= type_hash_cap)
+        type_hash_grow();
+    type_hash_place(type_hash_table, type_hash_cap, kind, name, type);
 }
 
 GrayType *type_array(const char *elem_type) {
@@ -256,46 +300,63 @@ static GrayFuncSig *parse_func_sig(const char *name) {
     return sig;
 }
 
-void type_pool_reset(void) {
-    for (int i = 0; i < type_pool_count; i++) {
-        GrayType *type = &type_pool[i];
-        switch (type->kind) {
-        case TK_STRUCT:
-        case TK_ENUM:
-        case TK_ARRAY:
-        case TK_POINTER:
-            /* For ARRAY and POINTER, type->name == type->element_type (same heap
-             * pointer); free once via type->name. */
-            free((char *)type->name);
-            break;
-        case TK_MAP:
-            free((char *)type->name);
-            free((char *)type->key_type);
-            free((char *)type->value_type);
-            break;
-        case TK_FUNCTION:
-            free((char *)type->name);
-            if (type->func_sig) {
-                for (int j = 0; j < type->func_sig->param_count; j++)
-                    free((char *)type->func_sig->param_types[j]);
-                free(type->func_sig->param_types);
-                free(type->func_sig->param_mutable);
-                for (int j = 0; j < type->func_sig->return_count; j++)
-                    free((char *)type->func_sig->return_types[j]);
-                free(type->func_sig->return_types);
-                free(type->func_sig);
-            }
-            break;
-        default:
-            /* Builtin non-singleton pool entries (Error, i8, f32, u64, …).
-             * type_from_name copies every one of these names, so there is no
-             * kind whose name must be left alone. */
-            free((char *)type->name);
-            break;
+/* Free the heap-owned names/signatures of one pool entry. */
+static void type_pool_free_entry(GrayType *type) {
+    switch (type->kind) {
+    case TK_STRUCT:
+    case TK_ENUM:
+    case TK_ARRAY:
+    case TK_POINTER:
+        /* For ARRAY and POINTER, type->name == type->element_type (same heap
+         * pointer); free once via type->name. */
+        free((char *)type->name);
+        break;
+    case TK_MAP:
+        free((char *)type->name);
+        free((char *)type->key_type);
+        free((char *)type->value_type);
+        break;
+    case TK_FUNCTION:
+        free((char *)type->name);
+        if (type->func_sig) {
+            for (int j = 0; j < type->func_sig->param_count; j++)
+                free((char *)type->func_sig->param_types[j]);
+            free(type->func_sig->param_types);
+            free(type->func_sig->param_mutable);
+            for (int j = 0; j < type->func_sig->return_count; j++)
+                free((char *)type->func_sig->return_types[j]);
+            free(type->func_sig->return_types);
+            free(type->func_sig);
         }
+        break;
+    default:
+        /* Builtin non-singleton pool entries (Error, i8, f32, u64, …).
+         * type_from_name copies every one of these names, so there is no
+         * kind whose name must be left alone. */
+        free((char *)type->name);
+        break;
     }
+}
+
+void type_pool_reset(void) {
+    int remaining = type_pool_count;
+    TypePoolBlock *block = type_pool_head;
+    while (block) {
+        int in_block = remaining < TYPE_POOL_BLOCK ? remaining : TYPE_POOL_BLOCK;
+        for (int i = 0; i < in_block; i++)
+            type_pool_free_entry(&block->types[i]);
+        remaining -= in_block;
+        TypePoolBlock *next = block->next;
+        free(block);
+        block = next;
+    }
+    type_pool_head = type_pool_tail = NULL;
     type_pool_count = 0;
-    memset(type_hash_table, 0, sizeof(type_hash_table));
+    type_pool_fill = 0;
+
+    free(type_hash_table);
+    type_hash_table = NULL;
+    type_hash_cap = 0;
 }
 
 bool type_is_numeric(GrayType *type) {
