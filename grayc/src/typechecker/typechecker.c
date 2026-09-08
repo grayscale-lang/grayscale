@@ -1555,17 +1555,55 @@ static bool declared_in_subtree(AstNode *node, const char *name) {
     }
 }
 
+/* Build the set of top-level NODE_VAR_DECL names. The statement list is fixed
+ * once checking begins, so this runs once and every later is_module_level_var()
+ * is a hash probe instead of a full-program scan (that scan was O(assignments *
+ * declarations) across a file). */
+static void build_module_var_index(TypeChecker *checker) {
+    checker->module_var_index_built = true;
+    AstNode *program = checker->program;
+    if (!program || program->kind != NODE_PROGRAM) return;
+    int stmt_count = program->data.program.stmt_count;
+
+    int vars = 0;
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name) vars++;
+    }
+    if (vars == 0) return;
+
+    int cap = 16;
+    while (cap < (vars + 1) * 2) cap *= 2;
+    checker->module_var_index_names = xcalloc((size_t)cap, sizeof(char *));
+    checker->module_var_index_cap = cap;
+
+    uint32_t mask = (uint32_t)(cap - 1);
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (!s || s->kind != NODE_VAR_DECL || !s->data.var_decl.name) continue;
+        const char *name = s->data.var_decl.name;
+        uint32_t h = scope_str_hash(name) & mask;
+        while (checker->module_var_index_names[h]) {
+            if (strcmp(checker->module_var_index_names[h], name) == 0) break;
+            h = (h + 1) & mask;
+        }
+        checker->module_var_index_names[h] = name;
+    }
+}
+
 /* Is `name` a module-level variable of the program being checked? Only
  * returns true when it can prove it, so an unknown name is treated as a
  * local (a conservative miss, never a false E3163). */
 static bool is_module_level_var(TypeChecker *checker, const char *name) {
     if (!checker->program || !name ||
         checker->program->kind != NODE_PROGRAM) return false;
-    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
-        AstNode *s = checker->program->data.program.stmts[i];
-        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name &&
-            strcmp(s->data.var_decl.name, name) == 0)
-            return true;
+    if (!checker->module_var_index_built) build_module_var_index(checker);
+    if (!checker->module_var_index_names) return false;
+    uint32_t mask = (uint32_t)(checker->module_var_index_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (checker->module_var_index_names[h]) {
+        if (strcmp(checker->module_var_index_names[h], name) == 0) return true;
+        h = (h + 1) & mask;
     }
     return false;
 }
@@ -6293,20 +6331,16 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 {
                     AstNode *arg = node->data.call.args[argument_index];
                     AstNode *found_declaration = NULL;
-                    for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                        AstNode *stmt = checker->program->data.program.stmts[field_index];
-                        if (stmt->kind == NODE_STRUCT_DECL &&
-                            strcmp(stmt->data.struct_decl.name, mod) == 0) {
-                            for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
-                                AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
-                                if (sf && sf->kind == NODE_FUNC_DECL &&
-                                    strcmp(sf->data.func_decl.name, mfn) == 0 &&
-                                    argument_index < sf->data.func_decl.param_count &&
-                                    sf->data.func_decl.params[argument_index].mutable) {
-                                    found_declaration = sf;
-                                    break;
-                                }
-                            }
+                    AstNode *sdecl = find_struct_in_program(checker, mod);
+                    for (int sfi = 0; sdecl &&
+                         sfi < sdecl->data.struct_decl.func_count; sfi++) {
+                        AstNode *sf = sdecl->data.struct_decl.funcs[sfi].func_decl;
+                        if (sf && sf->kind == NODE_FUNC_DECL &&
+                            strcmp(sf->data.func_decl.name, mfn) == 0 &&
+                            argument_index < sf->data.func_decl.param_count &&
+                            sf->data.func_decl.params[argument_index].mutable) {
+                            found_declaration = sf;
+                            break;
                         }
                     }
                     if (found_declaration) {
@@ -8018,21 +8052,19 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                     node->data.call.args[argument_index]->token.column, 0);
             }
-            /* E3027: non-assignable or const passed to mutable (&) param */
+            /* E3027: non-assignable or const passed to mutable (&) param.
+             * sig->decl is the resolved NODE_FUNC_DECL — no need to re-find it
+             * by scanning every top-level statement. */
             {
-                AstNode *arg = node->data.call.args[argument_index];
-                for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                    AstNode *stmt = checker->program->data.program.stmts[field_index];
-                    if (stmt->kind != NODE_FUNC_DECL ||
-                        strcmp(stmt->data.func_decl.name, function_name) != 0 ||
-                        argument_index >= stmt->data.func_decl.param_count ||
-                        !stmt->data.func_decl.params[argument_index].mutable)
-                        continue;
+                AstNode *fdecl = sig->decl;
+                if (fdecl && fdecl->kind == NODE_FUNC_DECL &&
+                    argument_index < fdecl->data.func_decl.param_count &&
+                    fdecl->data.func_decl.params[argument_index].mutable) {
                     char param_desc[MSG_BUF_SIZE];
                     snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                        stmt->data.func_decl.params[argument_index].name);
-                    check_mutable_arg(checker, arg, param_desc, function_name);
-                    break;
+                        fdecl->data.func_decl.params[argument_index].name);
+                    check_mutable_arg(checker, node->data.call.args[argument_index],
+                        param_desc, function_name);
                 }
             }
         }
@@ -8113,22 +8145,19 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 argument_index + 1, func_display_name(ref_sig), enum_display_name(checker, pt->name), enum_display_name(checker, at->name));
                             tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                         }
-                        /* E3027: non-assignable or const passed to mutable (&) param */
+                        /* E3027: non-assignable or const passed to mutable (&)
+                         * param. ref_sig->decl is the resolved func-ref target;
+                         * no need to re-find it by scanning top-level stmts. */
                         {
-                            AstNode *arg = node->data.call.args[argument_index];
-                            const char *ref_name = fn_sym->func_ref_name;
-                            for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                                AstNode *stmt = checker->program->data.program.stmts[field_index];
-                                if (stmt->kind != NODE_FUNC_DECL ||
-                                    strcmp(stmt->data.func_decl.name, ref_name) != 0 ||
-                                    argument_index >= stmt->data.func_decl.param_count ||
-                                    !stmt->data.func_decl.params[argument_index].mutable)
-                                    continue;
+                            AstNode *fdecl = ref_sig->decl;
+                            if (fdecl && fdecl->kind == NODE_FUNC_DECL &&
+                                argument_index < fdecl->data.func_decl.param_count &&
+                                fdecl->data.func_decl.params[argument_index].mutable) {
                                 char param_desc[MSG_BUF_SIZE];
                                 snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                                    stmt->data.func_decl.params[argument_index].name);
-                                check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
-                                break;
+                                    fdecl->data.func_decl.params[argument_index].name);
+                                check_mutable_arg(checker, node->data.call.args[argument_index],
+                                    param_desc, func_display_name(ref_sig));
                             }
                         }
                     }
@@ -8883,20 +8912,16 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = saved_expected_ms;
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
-                for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                    AstNode *stmt = checker->program->data.program.stmts[field_index];
-                    if (stmt->kind == NODE_STRUCT_DECL &&
-                        strcmp(stmt->data.struct_decl.name, struct_name) == 0) {
-                        for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
-                            AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
-                            if (sf && sf->kind == NODE_FUNC_DECL &&
-                                strcmp(sf->data.func_decl.name, func_name) == 0 &&
-                                argument_index < sf->data.func_decl.param_count &&
-                                sf->data.func_decl.params[argument_index].mutable) {
-                                found_declaration = sf;
-                                break;
-                            }
-                        }
+                AstNode *sdecl = find_struct_in_program(checker, struct_name);
+                for (int sfi = 0; sdecl &&
+                     sfi < sdecl->data.struct_decl.func_count; sfi++) {
+                    AstNode *sf = sdecl->data.struct_decl.funcs[sfi].func_decl;
+                    if (sf && sf->kind == NODE_FUNC_DECL &&
+                        strcmp(sf->data.func_decl.name, func_name) == 0 &&
+                        argument_index < sf->data.func_decl.param_count &&
+                        sf->data.func_decl.params[argument_index].mutable) {
+                        found_declaration = sf;
+                        break;
                     }
                 }
                 if (found_declaration) {
@@ -18274,6 +18299,8 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->struct_decl_index_names);
     free(checker->struct_decl_index_nodes);
+
+    free(checker->module_var_index_names);
 
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);
