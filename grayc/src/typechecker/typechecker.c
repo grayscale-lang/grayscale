@@ -16682,7 +16682,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
  * This is the point of issue #2485's "mangling becomes a pure function of a
  * resolved declaration": the key no longer comes from a name the import merge
  * rewrote, it comes from where the declaration actually lives. */
-static const char *decl_registry_key(TypeChecker *checker, const DeclEntry *entry,
+static const char *decl_registry_key(TypeChecker *checker, DeclEntry *entry,
                                      const char *fallback) {
     return entry ? module_mangle(checker->modules, entry) : fallback;
 }
