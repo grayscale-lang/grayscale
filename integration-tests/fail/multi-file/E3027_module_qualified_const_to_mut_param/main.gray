@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3027 - a module-qualified call rejects a constant passed to a
+ * mutable (&) parameter, the same as the bare and struct-namespaced spellings.
+ */
+// expect-error: E3027
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    const c int = 5
+    lib.inc(c)
+    println(c)
+}
