@@ -34,6 +34,7 @@ GO=go
 # Version info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
+MODULE=github.com/grayscale-lang/grayscale
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
 
 EMBED_DIR=internal/driver/runtime
@@ -146,7 +147,11 @@ build: stubs
 	@# without these headers the compile-from-source fallback cannot build.
 	@cp grayc/src/util/*.h $(EMBED_DIR)/src/util/
 	@echo "Building gray CLI (with embedded runtime)..."
-	$(GO) build $(LDFLAGS) -o $(BINARY_NAME) ./cli
+	@# Content-hash the staged assets once here so the installed wrapper does
+	@# not SHA-256 ~2.4MB on every invocation just to name its extract dir.
+	@# Must match embedded.go's runtime fallback: sha256(grayc || libgrayrt.a).
+	@TAG=$$(cat $(EMBED_DIR)/grayc $(EMBED_DIR)/libgrayrt.a | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16); \
+	$(GO) build -ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X $(MODULE)/internal/driver.embedTag=$$TAG" -o $(BINARY_NAME) ./cli
 	@echo ""
 	@echo "Build complete: ./$(BINARY_NAME)"
 	@echo "Run with: ./$(BINARY_NAME) <file.gray>"
