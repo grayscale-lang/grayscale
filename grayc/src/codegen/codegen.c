@@ -1998,6 +1998,14 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
             if (inferred_t && inferred_t->kind != TK_UNKNOWN) elem_t = inferred_t;
         }
     }
+    /* Inside a generic function body, a wildcard-typed element (return {x, x}
+     * for -> [?]) resolves to TK_UNKNOWN in the un-specialised pass. Use the
+     * active instantiation binding so the compound literal stores the concrete
+     * C type instead of defaulting to int64_t. */
+    if ((!elem_t || elem_t->kind == TK_UNKNOWN) && codegen->wildcard_binding) {
+        GrayType *wb = type_from_name(codegen->wildcard_binding);
+        if (wb && wb->kind != TK_UNKNOWN) elem_t = wb;
+    }
     TypeKind tk = elem_t ? elem_t->kind : TK_INT;
 
     /* Integer literals in a declared [float]/[f32]/[f64] array must use

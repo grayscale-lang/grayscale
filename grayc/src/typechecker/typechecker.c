@@ -10380,17 +10380,43 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     return result;
 }
 
+/* Declared type name of the parameter `elem` names in the function currently
+ * being checked, or NULL if `elem` is not a bare parameter reference. A
+ * wildcard parameter's symbol type is the shared TYPE_UNKNOWN, so the '?'
+ * marker survives only on the declaration. */
+static const char *param_ref_type_name(TypeChecker *checker, AstNode *elem) {
+    if (!elem || elem->kind != NODE_LABEL || !checker->current_func_decl)
+        return NULL;
+    AstNode *fd = checker->current_func_decl;
+    for (int i = 0; i < fd->data.func_decl.param_count; i++) {
+        Param *p = &fd->data.func_decl.params[i];
+        if (!p->is_type_param && p->name &&
+            strcmp(p->name, elem->data.label.value) == 0)
+            return p->type_name;
+    }
+    return NULL;
+}
+
 /* Grayscale type name for an array- or map-literal element, used when an
  * unannotated `mut` array/map infers its element (or K/V) type from the first
  * entry. A wide-integer constructor call (i128(x), u256(x), ...) is resolved
  * as plain int/uint by the expression typechecker, so recover the width from
  * the call itself — otherwise the inferred container is [int] / map[..:int]
  * and the 16/32-byte value is truncated to 8 bytes in codegen. */
-static const char *literal_elem_type_name(AstNode *elem, GrayType *resolved) {
+static const char *literal_elem_type_name(TypeChecker *checker, AstNode *elem, GrayType *resolved) {
     if (elem && elem->kind == NODE_CALL_EXPR &&
         elem->data.call.function->kind == NODE_LABEL &&
         is_bigint_type(elem->data.call.function->data.label.value))
         return elem->data.call.function->data.label.value;
+    /* A wildcard-typed element resolves to TYPE_UNKNOWN — recover the '?' from
+     * the parameter declaration so {x, x} / {k: v} infer [?] / map[K:?]. The
+     * composite unifier and monomorphization then bind it per call site,
+     * instead of [unknown] failing to match a declared -> [?] return. */
+    if (resolved && resolved->kind == TK_UNKNOWN) {
+        const char *ptn = param_ref_type_name(checker, elem);
+        if (ptn && type_name_has_wildcard(ptn))
+            return ptn;
+    }
     return resolved ? type_name(resolved) : "unknown";
 }
 
@@ -10893,7 +10919,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.array_value.count > 0) {
             GrayType *first = resolve_expression(checker, node->data.array_value.elements[0]);
             reject_multi_return_in_single_position(checker, node->data.array_value.elements[0]);
-            result = type_array(literal_elem_type_name(node->data.array_value.elements[0], first));
+            result = type_array(literal_elem_type_name(checker, node->data.array_value.elements[0], first));
             /* Validate all elements have the same type */
             for (int i = 1; i < node->data.array_value.count; i++) {
                 GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
@@ -10936,9 +10962,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = val_t;
         }
         /* Resolve key and value types */
+        GrayType *first_kt = NULL, *first_vt = NULL;
         for (int i = 0; i < node->data.map_value.count; i++) {
             GrayType *kt = resolve_expression(checker, node->data.map_value.keys[i]);
             GrayType *vt = resolve_expression(checker, node->data.map_value.values[i]);
+            if (i == 0) { first_kt = kt; first_vt = vt; }
             /* void can't be a map key or value. */
             reject_void_in_context(checker, node->data.map_value.keys[i], kt, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], vt, "map value");
@@ -10968,10 +10996,13 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         resolved_type->kind = TK_MAP;
         resolved_type->name = strdup("map");
         if (node->data.map_value.count > 0) {
-            GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
-            GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(literal_elem_type_name(node->data.map_value.keys[0], kt));
-            resolved_type->value_type = strdup(literal_elem_type_name(node->data.map_value.values[0], vt));
+            /* Use the freshly-resolved first pair, not typetable_get: during
+             * generic instantiation typetable writes are suppressed, so a
+             * stale wildcard entry from the first pass would otherwise stick. */
+            GrayType *kt = first_kt ? first_kt : typetable_get(checker->type_table, node->data.map_value.keys[0]);
+            GrayType *vt = first_vt ? first_vt : typetable_get(checker->type_table, node->data.map_value.values[0]);
+            resolved_type->key_type = strdup(literal_elem_type_name(checker, node->data.map_value.keys[0], kt));
+            resolved_type->value_type = strdup(literal_elem_type_name(checker, node->data.map_value.values[0], vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types

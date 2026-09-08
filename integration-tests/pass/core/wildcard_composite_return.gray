@@ -1,0 +1,42 @@
+/*
+ * wildcard_composite_return.gray - a generic function can build and return a
+ * wildcard-typed collection from a composite literal.
+ *
+ * Previously {x, x} where x : ? inferred [unknown] and failed to unify with a
+ * declared -> [?] (E5049); likewise {k: v} against -> map[string:?]. The fix
+ * preserves the '?' through array- and map-literal inference so the return
+ * unifier binds it and monomorphization specializes per call site.
+ */
+
+do wrap(x ?) -> [?] {
+    return {x, x, x}
+}
+
+do pair(k string, v ?) -> map[string:?] {
+    return {k: v}
+}
+
+do main() {
+    mut pass int = 0
+    mut fail int = 0
+
+    /* -> [?] specialized to [int] */
+    mut ai [int] = wrap(7)
+    if len(ai) == 3 && ai[0] == 7 && ai[2] == 7 { pass += 1 } otherwise { fail += 1 }
+
+    /* same function specialized to [string] */
+    mut as_ [string] = wrap("hi")
+    if len(as_) == 3 && as_[1] == "hi" { pass += 1 } otherwise { fail += 1 }
+
+    /* -> map[string:?] specialized to map[string:int] */
+    mut mi map[string:int] = pair("a", 9)
+    if mi["a"] == 9 { pass += 1 } otherwise { fail += 1 }
+
+    /* same function specialized to map[string:string] */
+    mut ms map[string:string] = pair("b", "yes")
+    if ms["b"] == "yes" { pass += 1 } otherwise { fail += 1 }
+
+    println("wildcard_composite_return: ${pass} passed, ${fail} failed")
+    if fail > 0 { exit(1) }
+    println("ALL TESTS PASSED")
+}
