@@ -60,6 +60,14 @@ static uint32_t type_hash(TypeKind kind, const char *name) {
     uint32_t h = 5381u ^ ((uint32_t)kind * 2654435761u);
     for (const unsigned char *p = (const unsigned char *)name; *p; p++)
         h = h * 33u ^ (uint32_t)*p;
+    /* djb2's low bits barely move between similar names ([int], [i8], [i16]..),
+     * and pool_find masks to the low bits then linear-probes. Finalize first so
+     * the high bits (which are well mixed) reach the bucket index. */
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    h ^= h >> 16;
     return h;
 }
 
