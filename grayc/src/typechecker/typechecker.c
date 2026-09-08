@@ -8467,9 +8467,84 @@ static bool arg_is_type_position(TypeChecker *checker, AstNode *node,
     return false;
 }
 
+/* `recv.f(args)` where `recv` is an index or nested-field expression whose
+ * type is a struct (or pointer to one) and `f` is one of that struct's
+ * functions: rewrite to the static form `Struct.f(recv, args)` so the
+ * ordinary struct-function dispatch handles it, exactly as it does for a
+ * plain-variable receiver. Without this the call falls through to the
+ * chained-call branch and draws a bogus E3075. */
+static void normalize_instance_call_on_expr(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return;
+    AstNode *obj = fn->data.member.object;
+    if (!obj || (obj->kind != NODE_INDEX_EXPR && obj->kind != NODE_MEMBER_EXPR))
+        return;
+    /* A plain-variable or `p^` receiver is handled downstream already. So is
+     * the `mod.Struct.func()` triple chain — but only when the leading name
+     * is a module, not a local whose field happens to be a struct. */
+    if (ast_member_base_qualifier(fn)) return;
+    const char *chain_mod = NULL, *chain_type = NULL;
+    if (ast_member_chain(fn, &chain_mod, &chain_type) &&
+        !scope_lookup(checker->current_scope, chain_mod))
+        return;
+
+    GrayType *obj_t = resolve_expression(checker, obj);
+    if (!obj_t) return;
+    const char *struct_name = obj_t->kind == TK_POINTER ? obj_t->element_type
+                            : obj_t->kind == TK_STRUCT  ? obj_t->name
+                            : NULL;
+    if (!struct_name || !is_struct_name(checker, struct_name)) return;
+
+    const char *mfn = fn->data.member.member;
+    /* A func-typed data field is called through the field, not dispatched. */
+    GrayType *field_t = struct_field_type(checker, struct_name, mfn);
+    if (field_t && field_t->kind == TK_FUNCTION) return;
+
+    char sfn[MSG_BUF_SIZE];
+    {
+        char sk[MSG_BUF_SIZE];
+        snprintf(sfn, sizeof(sfn), "%s_%s",
+            checker_resolve_decl_into(checker, struct_name, sk, sizeof(sk)), mfn);
+    }
+    FuncSig *ssig = find_func(checker, sfn);
+    if (!ssig || !ssig->decl || ssig->decl->kind != NODE_FUNC_DECL ||
+        ssig->decl->data.func_decl.param_count == 0)
+        return;
+    const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
+    if (!p0_tn) return;
+    bool is_self_func =
+        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name) ||
+        (p0_tn[0] == '^' &&
+         self_param_names_struct(checker, ssig->decl, p0_tn + 1, struct_name));
+    if (!is_self_func) return;
+
+    /* Rewrite: object becomes the struct type name, receiver is prepended as
+     * arg[0]. Auto-deref a pointer receiver when the self parameter takes the
+     * struct by value, matching plain-variable instance dispatch. */
+    AstNode *recv = obj;
+    if (obj_t->kind == TK_POINTER &&
+        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name)) {
+        AstNode *deref = xcalloc(1, sizeof(AstNode));
+        deref->kind = NODE_POSTFIX_EXPR;
+        deref->token = obj->token;
+        deref->data.postfix.left = obj;
+        deref->data.postfix.op = TOK_CARET;
+        recv = deref;
+    }
+    retarget_member_object(fn, struct_name);
+    int orig_count = node->data.call.arg_count;
+    AstNode **new_args = xmalloc(sizeof(AstNode *) * (orig_count + 1));
+    new_args[0] = recv;
+    for (int i = 0; i < orig_count; i++)
+        new_args[i + 1] = node->data.call.args[i];
+    node->data.call.args = new_args;
+    node->data.call.arg_count = orig_count + 1;
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
+    normalize_instance_call_on_expr(checker, node);
     /* Resolve argument types first. Skip the argument of ref()
      * when it's a bare function name; the ref() builtin handler
      * below resolves it specially, and the general resolve_expression
@@ -9073,7 +9148,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 type_name(obj_t));
             diagnostic_error_message(checker->diag, "E3013", msg,
                 NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0);
-        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER)) {
+        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER) &&
+                   fn->data.member.object->kind == NODE_CALL_EXPR) {
             /* E3075: chaining struct function calls (calling one struct
              * function on the result of another) isn't supported.
              * Assigning the intermediate result to a variable keeps
@@ -9082,6 +9158,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             diagnostic_error_code_help(checker->diag, "E3075",
                 NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
                 "assign the intermediate result to a variable, then call the next struct function on it");
+        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER)) {
+            /* An index or nested-field receiver of struct type that reached
+             * here names no struct function — normalize_instance_call_on_expr()
+             * routes the valid ones into instance dispatch before now. */
+            const char *sname = obj_t->kind == TK_POINTER
+                ? obj_t->element_type : obj_t->name;
+            diagnostic_error_code_formatted(checker->diag, "E4018",
+                NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
+                struct_display_name(checker, sname), fn->data.member.member);
         }
         result = &TYPE_UNKNOWN;
         return result;

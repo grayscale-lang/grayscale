@@ -1,0 +1,59 @@
+/*
+ * instance_dispatch_on_index_and_field.gray - a struct function called with
+ * dot notation on a receiver that is an array element, a map value, or a
+ * nested field dispatches as an instance call, the same as on a plain
+ * variable. Only an actual chain (a.f().g()) is rejected with E3075.
+ */
+
+const Inner struct {
+    x int
+
+    do sq(i Inner) -> int {
+        return i.x * i.x
+    }
+
+    do bump(&i Inner) {
+        i.x = i.x + 1
+    }
+}
+
+const Outer struct {
+    inner Inner
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // array element receiver, value self
+    mut arr [Inner] = {Inner{x: 3}, Inner{x: 4}}
+    if arr[0].sq() == 9 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // array element receiver, mutable self
+    arr[1].bump()
+    if arr[1].x == 5 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // map value receiver, value self
+    mut m map[string:Inner] = {"k": Inner{x: 6}}
+    if m["k"].sq() == 36 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // map value receiver, mutable self
+    m["k"].bump()
+    if m["k"].x == 7 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // nested field receiver, value self
+    mut o Outer = Outer{inner: Inner{x: 5}}
+    if o.inner.sq() == 25 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // nested field receiver, mutable self mutates in place
+    o.inner.bump()
+    if o.inner.x == 6 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}
