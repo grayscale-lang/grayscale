@@ -220,9 +220,15 @@ GrayString gray_c_string_dup(GrayArena *arena, const char *text) {
 }
 
 GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
+    /* Format once into a stack buffer. The common callers — "%lld"/"%llu" for
+     * an interpolated integer, println(int) — never exceed 20 digits plus a
+     * sign, so this is the whole job. Only a result that overflows the buffer
+     * (a long "%s" path in a stdlib error message) pays the size-then-fill
+     * fallback. */
+    char buf[32];
     va_list args;
     va_start(args, fmt);
-    int needed = vsnprintf(NULL, 0, fmt, args);
+    int needed = vsnprintf(buf, sizeof buf, fmt, args);
     va_end(args);
 
     if (needed < 0) {
@@ -230,9 +236,13 @@ GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
     }
 
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)needed + 1);
-    va_start(args, fmt);
-    vsnprintf(data, (size_t)needed + 1, fmt, args);
-    va_end(args);
+    if ((size_t)needed < sizeof buf) {
+        memcpy(data, buf, (size_t)needed + 1);
+    } else {
+        va_start(args, fmt);
+        vsnprintf(data, (size_t)needed + 1, fmt, args);
+        va_end(args);
+    }
 
     GrayString str;
     str.data = data;
