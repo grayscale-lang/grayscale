@@ -137,6 +137,21 @@ static void test_gray_string_concat(void) {
     ASSERT_STR_EQ(c.data, "hello world");
 }
 
+static void test_gray_string_concat_n(void) {
+    GrayString r = gray_string_concat_n(arena, 3,
+        gray_string_lit("a"), gray_string_lit("bc"), gray_string_lit("def"));
+    ASSERT_EQ(r.len, 6);
+    ASSERT_STR_EQ(r.data, "abcdef");
+    /* a zero count yields the empty string */
+    GrayString empty = gray_string_concat_n(arena, 0);
+    ASSERT_EQ(empty.len, 0);
+    /* embedded empty parts contribute nothing */
+    GrayString g = gray_string_concat_n(arena, 3,
+        gray_string_lit("x"), gray_string_lit(""), gray_string_lit("y"));
+    ASSERT_EQ(g.len, 2);
+    ASSERT_STR_EQ(g.data, "xy");
+}
+
 static void test_gray_string_format(void) {
     GrayString s = gray_string_format(arena, "value=%d name=%s", 42, "test");
     ASSERT_EQ(s.len, 18);
@@ -210,6 +225,22 @@ static void test_gray_array_from_i64(void) {
     ASSERT_EQ(arr.len, 5);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 4), 5);
+}
+
+static void test_gray_array_from_f64(void) {
+    GrayArray arr = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.25, 3.0);
+    ASSERT_EQ(arr.len, 3);
+    ASSERT_EQ(arr.elem_size, (int32_t)sizeof(double));
+    ASSERT(GRAY_ARRAY_GET(arr, double, 0) == 1.5);
+    ASSERT(GRAY_ARRAY_GET(arr, double, 2) == 3.0);
+}
+
+static void test_gray_array_from_bool(void) {
+    GrayArray arr = GRAY_ARRAY_FROM_BOOL(arena, true, false, true);
+    ASSERT_EQ(arr.len, 3);
+    ASSERT_EQ(arr.elem_size, (int32_t)sizeof(bool));
+    ASSERT(GRAY_ARRAY_GET(arr, bool, 0) == true);
+    ASSERT(GRAY_ARRAY_GET(arr, bool, 1) == false);
 }
 
 static void test_gray_array_from_str(void) {
@@ -468,6 +499,7 @@ int main(void) {
     RUN_TEST(test_gray_string_new);
     RUN_TEST(test_gray_string_eq);
     RUN_TEST(test_gray_string_concat);
+    RUN_TEST(test_gray_string_concat_n);
     RUN_TEST(test_gray_string_format);
     RUN_TEST(test_gray_c_string_dup);
     RUN_TEST(test_gray_string_empty);
@@ -479,6 +511,8 @@ int main(void) {
     RUN_TEST(test_gray_array_set);
     RUN_TEST(test_gray_array_from);
     RUN_TEST(test_gray_array_from_i64);
+    RUN_TEST(test_gray_array_from_f64);
+    RUN_TEST(test_gray_array_from_bool);
     RUN_TEST(test_gray_array_from_str);
     RUN_TEST(test_gray_array_copy);
     RUN_TEST(test_gray_array_multiple_types);
