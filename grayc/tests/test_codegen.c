@@ -2744,6 +2744,69 @@ static void test_e2e_for_each_break_continue(void) {
     ASSERT_STR_EQ(output, "4");
 }
 
+/* + concatenates string operands (STANDARD 5.2.1) */
+
+static void test_e2e_string_concat_operator(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut name string = \"World\"\n"
+        "  mut g string = \"Hello, \" + name + \"!\"\n"
+        "  println(g)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "Hello, World!");
+}
+
+/* Arrays of enum values — indexing, iteration, equality (STANDARD 3.2, 5.2.2) */
+
+static void test_e2e_enum_array(void) {
+    char *output = compile_and_run(
+        ""
+        "const Color enum {\n"
+        "  RED\n"
+        "  GREEN\n"
+        "  BLUE\n"
+        "}\n"
+        "do main() {\n"
+        "  mut cs [Color] = {Color.RED, Color.BLUE, Color.GREEN}\n"
+        "  println(len(cs))\n"
+        "  mut count int = 0\n"
+        "  for_each c in cs {\n"
+        "    if c == Color.BLUE { count += 1 }\n"
+        "  }\n"
+        "  println(count)\n"
+        "  println(cs[1] == Color.BLUE)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "3\n1\ntrue");
+}
+
+/* A self-referential struct walked through pointer fields (STANDARD 3.2, 11.2) */
+
+static void test_e2e_recursive_struct_list(void) {
+    char *output = compile_and_run(
+        ""
+        "const Node struct {\n"
+        "  val int\n"
+        "  next ^Node\n"
+        "}\n"
+        "do main() {\n"
+        "  mut c Node = Node{val: 3}\n"
+        "  mut b Node = Node{val: 2, next: addr(c)}\n"
+        "  mut a Node = Node{val: 1, next: addr(b)}\n"
+        "  mut sum int = 0\n"
+        "  mut cur ^Node = addr(a)\n"
+        "  as_long_as cur != nil {\n"
+        "    sum += cur^.val\n"
+        "    cur = cur^.next\n"
+        "  }\n"
+        "  println(sum)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "6");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -3019,6 +3082,9 @@ int main(void) {
     RUN_TEST(test_e2e_struct_array_field);
     RUN_TEST(test_e2e_nested_map);
     RUN_TEST(test_e2e_for_each_break_continue);
+    RUN_TEST(test_e2e_string_concat_operator);
+    RUN_TEST(test_e2e_enum_array);
+    RUN_TEST(test_e2e_recursive_struct_list);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
