@@ -1,0 +1,71 @@
+/*
+ * micro - a small idiomatic program: enum, struct, a struct-literal array,
+ * for_each, chained if/or/otherwise, and string interpolation. The
+ * common-path canary: it compiles and runs in a few ms, and moves if a
+ * change regresses everyday code.
+ */
+
+const Suit enum {
+    HEARTS
+    SPADES
+    CLUBS
+    DIAMONDS
+}
+
+const Card struct {
+    rank int
+    suit Suit
+}
+
+do suit_weight(s Suit) -> int {
+    if s == Suit.HEARTS {
+        return 4
+    } or s == Suit.SPADES {
+        return 3
+    } or s == Suit.CLUBS {
+        return 2
+    }
+    return 1
+}
+
+do score(c Card) -> int {
+    return c.rank * suit_weight(c.suit)
+}
+
+do describe(n int) -> string {
+    if n <= 0 {
+        return "empty"
+    } or n == 1 {
+        return "single"
+    }
+    return "many"
+}
+
+do main() {
+    mut hand [Card] = {
+        Card{rank: 10, suit: Suit.HEARTS},
+        Card{rank: 3, suit: Suit.CLUBS},
+        Card{rank: 7, suit: Suit.SPADES},
+        Card{rank: 1, suit: Suit.DIAMONDS},
+        Card{rank: 5, suit: Suit.SPADES}
+    }
+
+    mut total int = 0
+    mut best int = 0
+    mut order string = ""
+    for pass in range(0, 200) {
+        total = 0
+        best = 0
+        order = ""
+        for_each c in hand {
+            mut s int = score(c)
+            total += s
+            if s > best {
+                best = s
+            }
+            order = "${order}${c.rank} "
+        }
+    }
+
+    println("micro total=${total} best=${best} kind=${describe(len(hand))} order=${order}")
+}
