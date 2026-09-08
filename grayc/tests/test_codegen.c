@@ -2225,6 +2225,200 @@ static void test_e2e_generic_type_param(void) {
     ASSERT_STR_EQ(output, "7");
 }
 
+/* Type aliases (STANDARD 3.5) */
+
+static void test_e2e_type_alias(void) {
+    char *output = compile_and_run(
+        ""
+        "alias Meters = float\n"
+        "do main() {\n"
+        "  mut d Meters = 10.5\n"
+        "  println(type_of(d))\n"
+        "  println(d + 1.0)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "float\n11.5");
+}
+
+static void test_e2e_type_alias_struct_enum(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "alias Vec2 = Point\n"
+        "const Color enum {\n"
+        "  RED\n"
+        "  GREEN\n"
+        "  BLUE\n"
+        "}\n"
+        "alias Hue = Color\n"
+        "do main() {\n"
+        "  mut p Vec2 = Point{x: 3, y: 4}\n"
+        "  println(p.x + p.y)\n"
+        "  mut c Hue = Hue.GREEN\n"
+        "  println(type_of(c))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7\nColor");
+}
+
+/* Raw string literals (STANDARD 2.7.4) */
+
+static void test_e2e_raw_string(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut path string = `C:\\Users\\n.txt`\n"
+        "  println(path)\n"
+        "  mut m string = `a\n"
+        "b`\n"
+        "  println(m)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "C:\\Users\\n.txt\na\nb");
+}
+
+/* String escape sequences (STANDARD 2.7.3) */
+
+static void test_e2e_string_escapes(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(\"tab\\thx\")\n"
+        "  println(\"H is \\x48\")\n"
+        "  println(\"literal \\${x}\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "tab\thx\nH is H\nliteral ${x}");
+}
+
+/* Underscores in numeric literals (STANDARD 2.7.1) */
+
+static void test_e2e_numeric_underscores(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a int = 1_000_000\n"
+        "  mut b int = 0xDEAD_BEEF\n"
+        "  mut c int = 0b1111_0000\n"
+        "  mut d int = 0o1_2_3\n"
+        "  println(a)\n"
+        "  println(b)\n"
+        "  println(c)\n"
+        "  println(d)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "1000000\n3735928559\n240\n83");
+}
+
+/* copy() deep-copies; the duplicate is independent (STANDARD 11.3) */
+
+static void test_e2e_copy_deep(void) {
+    char *output = compile_and_run(
+        ""
+        "const Person struct {\n"
+        "  name string\n"
+        "  age int\n"
+        "}\n"
+        "do main() {\n"
+        "  mut original Person = Person{name: \"Alice\", age: 30}\n"
+        "  mut dup Person = copy(original)\n"
+        "  dup.age = 31\n"
+        "  println(original.age)\n"
+        "  println(dup.age)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "30\n31");
+}
+
+/* A struct literal that embeds an existing array aliases it (STANDARD 11.2) */
+
+static void test_e2e_literal_embed_alias(void) {
+    char *output = compile_and_run(
+        ""
+        "const Box struct {\n"
+        "  items [int]\n"
+        "}\n"
+        "do main() {\n"
+        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut box Box = Box{items: arr}\n"
+        "  box.items[0] = 99\n"
+        "  println(arr[0])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "99");
+}
+
+/* new() returns a zero-initialized value (STANDARD 11.4) */
+
+static void test_e2e_new_zero_values(void) {
+    char *output = compile_and_run(
+        ""
+        "const Config struct {\n"
+        "  host string\n"
+        "  port int\n"
+        "  on bool\n"
+        "}\n"
+        "do main() {\n"
+        "  mut i = new(int)\n"
+        "  mut s = new(string)\n"
+        "  mut c = new(Config)\n"
+        "  println(i^)\n"
+        "  println(\"[${s^}]\")\n"
+        "  println(c^.port)\n"
+        "  println(c^.on)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "0\n[]\n0\nfalse");
+}
+
+/* when with is range(...) patterns (STANDARD 6.5) */
+
+static void test_e2e_when_range(void) {
+    char *output = compile_and_run(
+        ""
+        "do classify(n int) -> string {\n"
+        "  when n {\n"
+        "    is range(0, 3) { return \"low\" }\n"
+        "    is range(3, 10) { return \"mid\" }\n"
+        "    default { return \"high\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(classify(1))\n"
+        "  println(classify(3))\n"
+        "  println(classify(9))\n"
+        "  println(classify(50))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "low\nmid\nmid\nhigh");
+}
+
+/* switch/case are aliases for when/is (STANDARD 6.5) */
+
+static void test_e2e_switch_case(void) {
+    char *output = compile_and_run(
+        ""
+        "do sw(n int) -> string {\n"
+        "  switch n {\n"
+        "    case 1 { return \"one\" }\n"
+        "    case 2, 3 { return \"few\" }\n"
+        "    default { return \"many\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(sw(1))\n"
+        "  println(sw(3))\n"
+        "  println(sw(50))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "one\nfew\nmany");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2457,6 +2651,24 @@ int main(void) {
     RUN_TEST(test_e2e_tagged_enum);
     RUN_TEST(test_e2e_struct_field_defaults);
     RUN_TEST(test_e2e_generic_type_param);
+
+    /* Type aliases */
+    RUN_TEST(test_e2e_type_alias);
+    RUN_TEST(test_e2e_type_alias_struct_enum);
+
+    /* String and numeric literals */
+    RUN_TEST(test_e2e_raw_string);
+    RUN_TEST(test_e2e_string_escapes);
+    RUN_TEST(test_e2e_numeric_underscores);
+
+    /* copy() and reference semantics */
+    RUN_TEST(test_e2e_copy_deep);
+    RUN_TEST(test_e2e_literal_embed_alias);
+
+    /* new() zero values and when ranges */
+    RUN_TEST(test_e2e_new_zero_values);
+    RUN_TEST(test_e2e_when_range);
+    RUN_TEST(test_e2e_switch_case);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
