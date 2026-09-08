@@ -161,6 +161,10 @@ static inline bool gray_string_eq(GrayString left, GrayString right) {
 /* String concatenation */
 GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right);
 
+/* Single-pass join of `count` GrayString parts (one allocation, one copy per
+ * part). Codegen uses this for string interpolation. */
+GrayString gray_string_concat_n(GrayArena *arena, int count, ...);
+
 /* --- Runtime Init/Shutdown --- */
 
 void gray_runtime_init(size_t arena_limit);

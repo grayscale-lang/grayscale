@@ -1749,22 +1749,23 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
-    /* Emit as chained gray_string_concat() calls instead of gray_string_format()
-     * to preserve null bytes in string values (gray_string_format uses vsnprintf
-     * which truncates at \0). gray_string_concat is null-safe (uses memcpy). */
+    /* Lower to a single gray_string_concat_n() over all parts: one allocation,
+     * one copy per part. (gray_string_format is avoided throughout — its
+     * vsnprintf truncates string values at an embedded \0; the concat path is
+     * memcpy-based and null-safe.) */
     int part_count = node->data.interpolated_string.part_count;
     if (part_count == 0) {
         emit(codegen, "gray_string_lit(\"\")");
         return;
     }
-    /* Emit N-1 opening gray_string_concat calls for left-associative chaining:
-     * concat(arena, concat(arena, part0, part1), part2) */
-    for (int i = 1; i < part_count; i++) {
-        emit(codegen, "gray_string_concat(gray_default_arena, ");
+    /* One part needs no join — emit it directly. */
+    bool nary = part_count >= 2;
+    if (nary) {
+        emit_formatted(codegen, "gray_string_concat_n(gray_default_arena, %d", part_count);
     }
     /* Emit each part as a GrayString expression */
     for (int i = 0; i < part_count; i++) {
-        if (i > 0) emit(codegen, ", ");
+        if (nary) emit(codegen, ", ");
         AstNode *part = node->data.interpolated_string.parts[i];
         if (part->kind == NODE_STRING_VALUE) {
             /* Literal text — reuses NODE_STRING_VALUE codegen (null-safe) */
@@ -1889,8 +1890,8 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 break;
             }
         }
-        if (i > 0) emit(codegen, ")");
     }
+    if (nary) emit(codegen, ")");
 }
 
 static void emit_array_value(CodeGen *codegen, AstNode *node) {

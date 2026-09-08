@@ -254,6 +254,46 @@ GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString righ
     return result;
 }
 
+/* Join `count` GrayString parts in one pass: sum the lengths, allocate once,
+ * copy each part exactly once. Used for string interpolation, where the
+ * left-associative gray_string_concat chain would re-copy the accumulated
+ * prefix at every boundary (O(n^2) in part count) and allocate n-1 dead
+ * intermediates. Null-safe: a part with NULL data must have len 0. */
+GrayString gray_string_concat_n(GrayArena *arena, int count, ...) {
+    va_list args;
+
+    va_start(args, count);
+    int64_t total = 0;
+    for (int i = 0; i < count; i++) {
+        GrayString part = va_arg(args, GrayString);
+        total += part.len;
+    }
+    va_end(args);
+
+    if (total > INT32_MAX) {
+        fprintf(stderr, "Grayscale runtime: string concatenation overflow\n");
+        exit(1);
+    }
+
+    int32_t new_len = (int32_t)total;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    int32_t offset = 0;
+
+    va_start(args, count);
+    for (int i = 0; i < count; i++) {
+        GrayString part = va_arg(args, GrayString);
+        if (part.len > 0) {
+            memcpy(data + offset, part.data, (size_t)part.len);
+            offset += part.len;
+        }
+    }
+    va_end(args);
+
+    data[new_len] = '\0';
+    GrayString result = { data, new_len };
+    return result;
+}
+
 /* --- Scope-based memory management --- */
 
 GrayScopeMark gray_scope_save(GrayArena *arena) {
