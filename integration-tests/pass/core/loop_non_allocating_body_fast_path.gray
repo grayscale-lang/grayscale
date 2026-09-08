@@ -1,0 +1,112 @@
+/*
+ * loop_non_allocating_body_fast_path.gray - loops whose body allocates
+ * nothing skip all per-iteration arena management
+ *
+ * codegen omits the scratch arena for a for/while/loop whose body is
+ * straight-line scalar work. These cases check that the results are still
+ * correct, that a body which *does* allocate keeps its arena, and that a
+ * non-allocating loop nested in an allocating one still behaves.
+ */
+
+do main() {
+    println("=== Loop Non-Allocating Body Fast Path Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- for/range, pure accumulation (the fast path) --
+    mut sum int = 0
+    for i in range(0, 1000) {
+        sum = sum + i
+    }
+    if sum == 499500 {
+        println("  [PASS] for/range accumulation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sum ${sum}")
+        failed += 1
+    }
+
+    // -- fast path filling an array element by element (index-target assign) --
+    mut squares [int] = {0, 0, 0, 0, 0, 0, 0, 0}
+    for i in range(0, 8) {
+        squares[i] = i * i
+    }
+    if squares[0] == 0 && squares[3] == 9 && squares[7] == 49 {
+        println("  [PASS] array element writes in fast-path loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] squares ${squares[3]} ${squares[7]}")
+        failed += 1
+    }
+
+    // -- while loop, scalar var-decl in body --
+    mut i int = 0
+    mut product int = 1
+    while i < 6 {
+        mut factor int = i + 1
+        product = product * factor
+        i = i + 1
+    }
+    if product == 720 {
+        println("  [PASS] while loop with scalar body var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] product ${product}")
+        failed += 1
+    }
+
+    // -- a body that DOES allocate keeps its arena and still frees per iteration --
+    mut acc string = ""
+    for i in range(0, 4) {
+        mut piece string = "x${i}"
+        acc = acc + piece
+    }
+    if acc == "x0x1x2x3" {
+        println("  [PASS] allocating body still correct")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] acc ${acc}")
+        failed += 1
+    }
+
+    // -- non-allocating loop nested inside an allocating loop --
+    mut report string = ""
+    for outer in range(0, 3) {
+        mut rowsum int = 0
+        for inner in range(0, 10) {
+            rowsum = rowsum + inner * (outer + 1)
+        }
+        report = report + "${rowsum};"
+    }
+    if report == "45;90;135;" {
+        println("  [PASS] non-allocating loop nested in allocating loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] report ${report}")
+        failed += 1
+    }
+
+    // -- allocating loop nested inside a non-allocating-looking outer --
+    // outer body contains a nested for, so outer keeps its arena
+    mut total int = 0
+    for a in range(0, 5) {
+        for b in range(0, 5) {
+            total = total + 1
+        }
+    }
+    if total == 25 {
+        println("  [PASS] nested plain loops")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] total ${total}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -11300,18 +11300,123 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     emit(codegen, "}\n");
 }
 
+/* --- Non-allocating loop body fast path -------------------------------------
+ *
+ * A loop body that allocates nothing needs no per-iteration scratch arena:
+ * there is no short-lived memory to reclaim, so the reset + arena-pointer
+ * swaps (a non-inlined call in the inner loop) are pure overhead. The
+ * predicate below is deliberately narrow — straight-line scalar arithmetic
+ * and assignment only. Anything it does not positively recognise as
+ * allocation-free (a call, any literal, interpolation, a nested scope,
+ * control flow) keeps the arena. A wrong "arena-free" answer could only
+ * strand a value in the enclosing arena until that scope ends, never
+ * corrupt memory — but the conservative answer is always correct and the
+ * only cost is a missed optimisation. */
+
+static bool cg_expr_is_string(CodeGen *codegen, AstNode *e) {
+    if (!e) return false;
+    if (e->kind == NODE_STRING_VALUE || e->kind == NODE_INTERPOLATED_STRING) return true;
+    GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+    return t && t->kind == TK_STRING;
+}
+
+/* A value of this kind is copied by C assignment with no heap traffic.
+ * Arrays, maps and structs deep-copy on assignment, so they are excluded. */
+static bool cg_type_is_copy_free(GrayType *t) {
+    if (!t) return false;
+    switch (t->kind) {
+        case TK_INT: case TK_UINT: case TK_FLOAT:
+        case TK_BOOL: case TK_CHAR: case TK_BYTE: case TK_STRING:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool cg_expr_alloc_free(CodeGen *codegen, AstNode *e) {
+    if (!e) return true;
+    switch (e->kind) {
+        case NODE_INT_VALUE: case NODE_FLOAT_VALUE: case NODE_CHAR_VALUE:
+        case NODE_BOOL_VALUE: case NODE_NIL_VALUE: case NODE_STRING_VALUE:
+        case NODE_LABEL:
+            return true;
+        case NODE_PREFIX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.prefix.right);
+        case NODE_POSTFIX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.postfix.left);
+        case NODE_MEMBER_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.member.object);
+        case NODE_INDEX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.index_expr.left)
+                && cg_expr_alloc_free(codegen, e->data.index_expr.index);
+        case NODE_INFIX_EXPR:
+            /* string + string allocates a fresh GrayString */
+            if (e->data.infix.op == TOK_PLUS
+                && (cg_expr_is_string(codegen, e->data.infix.left)
+                    || cg_expr_is_string(codegen, e->data.infix.right)))
+                return false;
+            return cg_expr_alloc_free(codegen, e->data.infix.left)
+                && cg_expr_alloc_free(codegen, e->data.infix.right);
+        default:
+            /* calls, new(), array/map/struct literals, interpolation, casts,
+             * ranges, func refs, implicit enums — assume allocation */
+            return false;
+    }
+}
+
+static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
+    if (!s) return true;
+    switch (s->kind) {
+        case NODE_VAR_DECL: {
+            AstNode *v = s->data.var_decl.value;
+            if (!v) return true;
+            if (!cg_expr_alloc_free(codegen, v)) return false;
+            GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, v) : NULL;
+            return cg_type_is_copy_free(vt);
+        }
+        case NODE_ASSIGN_STMT: {
+            if (!cg_expr_alloc_free(codegen, s->data.assign.target)) return false;
+            if (!cg_expr_alloc_free(codegen, s->data.assign.value)) return false;
+            /* `s += t` on a string is a concat */
+            if (s->data.assign.op == TOK_PLUS_ASSIGN
+                && cg_expr_is_string(codegen, s->data.assign.target))
+                return false;
+            GrayType *tt = codegen->type_table
+                ? typetable_get(codegen->type_table, s->data.assign.target) : NULL;
+            return cg_type_is_copy_free(tt);
+        }
+        case NODE_EXPR_STMT:
+            return cg_expr_alloc_free(codegen, s->data.expr_stmt.expr);
+        default:
+            /* if / when / nested loops / return / break / continue / ensure /
+             * bare block — keep the arena */
+            return false;
+    }
+}
+
+/* True when every statement in a loop body is provably allocation-free, so
+ * codegen can omit all per-iteration and per-loop arena management. */
+static bool loop_body_alloc_free(CodeGen *codegen, AstNode *body) {
+    if (!body || body->kind != NODE_BLOCK_STMT) return false;
+    for (int i = 0; i < body->data.block.count; i++) {
+        if (!cg_stmt_alloc_free(codegen, body->data.block.stmts[i])) return false;
+    }
+    return true;
+}
+
 /* The iteration scratch arena is created once before the loop and destroyed
  * once after; each iteration only rewinds it (bump-pointer reset, no allocator
  * traffic). emit_loop_arena_prologue runs at the caller's indent before the
  * loop header, emit_loop_arena_epilogue after the closing brace, and
  * emit_loop_body_with_arena emits the per-iteration reset + the body. A
- * caller-arena function opens no per-scope arenas at all. */
+ * caller-arena function opens no per-scope arenas at all, and neither does a
+ * loop whose body is allocation-free (no_arena). */
 static bool loop_arena_active(CodeGen *codegen) {
     return !current_function_uses_caller_arena(codegen);
 }
 
-static void emit_loop_arena_prologue(CodeGen *codegen) {
-    if (!loop_arena_active(codegen)) return;
+static void emit_loop_arena_prologue(CodeGen *codegen, bool no_arena) {
+    if (no_arena || !loop_arena_active(codegen)) return;
     int depth = codegen->loop_scope_depth;
     /* Wrap the whole loop in its own C block so the arena locals below are
      * scoped to this loop — two sibling loops at the same depth would
@@ -11329,8 +11434,8 @@ static void emit_loop_arena_prologue(CodeGen *codegen) {
     emit_formatted(codegen, "GrayArena *_saved_arena_%d = gray_default_arena;\n", depth);
 }
 
-static void emit_loop_arena_epilogue(CodeGen *codegen) {
-    if (!loop_arena_active(codegen)) return;
+static void emit_loop_arena_epilogue(CodeGen *codegen, bool no_arena) {
+    if (no_arena || !loop_arena_active(codegen)) return;
     int depth = codegen->loop_scope_depth;
     emit_indent(codegen);
     emit_formatted(codegen, "gray_arena_destroy(_iter_arena_%d, __FILE__, __LINE__); free(_iter_arena_%d);\n", depth, depth);
@@ -11342,9 +11447,9 @@ static void emit_loop_arena_epilogue(CodeGen *codegen) {
 /* Emit the per-iteration arena reset and the loop body.
  * Caller is responsible for indent++ before and indent--/closing brace after,
  * and for emit_loop_arena_prologue/epilogue around the loop. */
-static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
+static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_arena) {
     int prev_raw_var_count = codegen->raw_var_count;
-    if (current_function_uses_caller_arena(codegen)) {
+    if (no_arena || current_function_uses_caller_arena(codegen)) {
         emit_block(codegen, body);
         codegen->raw_var_count = prev_raw_var_count;
         return;
@@ -11368,7 +11473,8 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
 }
 
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.for_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
 
     AstNode *iter = node->data.for_stmt.iterable;
@@ -11451,39 +11557,41 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     }
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.for_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.for_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 static void emit_while_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.while_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "while (");
     emit_expression(codegen, node->data.while_stmt.condition);
     emit(codegen, ") {\n");
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.while_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.while_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.loop_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "for (;;) {\n");
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.loop_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.loop_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 /* extract the base (unmangled) function name for multi-return
@@ -11937,7 +12045,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_for_statement(codegen, node);
         break;
     case NODE_FOR_EACH_STMT: {
-        emit_loop_arena_prologue(codegen);
+        /* for_each keeps its per-iteration arena unconditionally for now;
+         * the non-allocating fast path covers for / while / loop only. */
+        emit_loop_arena_prologue(codegen, false);
         emit_indent(codegen);
         AstNode *coll = node->data.for_each.collection;
         GrayType *coll_t = codegen->type_table ? typetable_get(codegen->type_table, coll) : NULL;
@@ -11966,7 +12076,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                                &coll_needs_tmp, arr_tmp_name, sizeof(arr_tmp_name));
         }
 
-        emit_loop_body_with_arena(codegen, node->data.for_each.body);
+        emit_loop_body_with_arena(codegen, node->data.for_each.body, false);
         codegen->bigint_var_count = prev_bigint_var_count;
         codegen->indent--;
         emit_indent(codegen);
@@ -11999,7 +12109,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 emit(codegen, "}\n");
             }
         }
-        emit_loop_arena_epilogue(codegen);
+        emit_loop_arena_epilogue(codegen, false);
         break;
     }
     case NODE_WHILE_STMT:
