@@ -100,16 +100,22 @@ void type_pool_reset(void);
 
 /* --- Type-name string predicates --- */
 
+/* Every named integer type is "byte", or an i/u followed by "nt" or a width.
+ * Gate on the first character so a name that is none of them (a struct name,
+ * "string", "float") costs one comparison instead of the whole ladder. */
+
 static inline bool is_unsigned_type(const char *tn) {
     if (!tn) return false;
+    if (tn[0] == 'b') return strcmp(tn, "byte") == 0;
+    if (tn[0] != 'u') return false;
     return strcmp(tn, "uint") == 0 || strcmp(tn, "u8") == 0 ||
            strcmp(tn, "u16") == 0 || strcmp(tn, "u32") == 0 ||
            strcmp(tn, "u64") == 0 || strcmp(tn, "u128") == 0 ||
-           strcmp(tn, "u256") == 0 || strcmp(tn, "byte") == 0;
+           strcmp(tn, "u256") == 0;
 }
 
 static inline bool is_signed_int_type(const char *tn) {
-    if (!tn) return false;
+    if (!tn || tn[0] != 'i') return false;
     return strcmp(tn, "int") == 0 || strcmp(tn, "i8") == 0 ||
            strcmp(tn, "i16") == 0 || strcmp(tn, "i32") == 0 ||
            strcmp(tn, "i64") == 0 || strcmp(tn, "i128") == 0 ||
@@ -121,7 +127,7 @@ static inline bool is_any_int_type(const char *tn) {
 }
 
 static inline bool is_bigint_type(const char *tn) {
-    if (!tn) return false;
+    if (!tn || (tn[0] != 'i' && tn[0] != 'u')) return false;
     return strcmp(tn, "i128") == 0 || strcmp(tn, "u128") == 0 ||
            strcmp(tn, "i256") == 0 || strcmp(tn, "u256") == 0;
 }

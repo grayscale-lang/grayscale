@@ -4390,13 +4390,16 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
  * Used to detect narrowing (declared rank < value rank). */
 static int int_type_name_rank(const char *n) {
     if (!n) return 0;
-    if (strcmp(n, "i8")   == 0 || strcmp(n, "u8")   == 0 || strcmp(n, "byte") == 0) return 1;
-    if (strcmp(n, "i16")  == 0 || strcmp(n, "u16")  == 0) return 2;
-    if (strcmp(n, "i32")  == 0 || strcmp(n, "u32")  == 0) return 3;
-    if (strcmp(n, "i64")  == 0 || strcmp(n, "u64")  == 0 ||
-        strcmp(n, "int")  == 0 || strcmp(n, "uint") == 0) return 4;
-    if (strcmp(n, "i128") == 0 || strcmp(n, "u128") == 0) return 5;
-    if (strcmp(n, "i256") == 0 || strcmp(n, "u256") == 0) return 6;
+    if (n[0] == 'b') return strcmp(n, "byte") == 0 ? 1 : 0;
+    if (n[0] != 'i' && n[0] != 'u') return 0;
+    if (strcmp(n, "int") == 0 || strcmp(n, "uint") == 0) return 4;
+    const char *w = n + 1; /* width digits after the i/u */
+    if (strcmp(w, "8")   == 0) return 1;
+    if (strcmp(w, "16")  == 0) return 2;
+    if (strcmp(w, "32")  == 0) return 3;
+    if (strcmp(w, "64")  == 0) return 4;
+    if (strcmp(w, "128") == 0) return 5;
+    if (strcmp(w, "256") == 0) return 6;
     return 0;
 }
 
