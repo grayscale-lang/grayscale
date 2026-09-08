@@ -1,0 +1,34 @@
+// Error Test: E3027 - a field or element of a const cannot be passed to a
+// mutable (&) parameter; the callee would mutate the const in place. Covers
+// a field of a local const, a nested field, an element of a local const
+// array, and a field of a file-scope const.
+// expect-error: E3027
+// expect-error-count: 4
+
+const Inner struct {
+    v int
+}
+const Outer struct {
+    inner Inner
+}
+const Point struct {
+    x int
+    y int
+}
+
+const ORIGIN Point = Point{ x: 0, y: 0 }
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do main() {
+    const p Point = Point{ x: 1, y: 2 }
+    const o Outer = Outer{ inner: Inner{ v: 10 } }
+    const xs [int, 3] = {1, 2, 3}
+
+    inc(p.x)
+    inc(o.inner.v)
+    inc(xs[0])
+    inc(ORIGIN.x)
+}

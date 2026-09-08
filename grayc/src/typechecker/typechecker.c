@@ -4996,6 +4996,24 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
             param_desc, func_display);
         diagnostic_error_message(checker->diag, "E3027", msg,
             NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+    } else if (arg->kind == NODE_MEMBER_EXPR || arg->kind == NODE_INDEX_EXPR) {
+        /* A field or element of a const is as immutable as the const itself.
+         * Walk the member/index chain to its root symbol — the same const
+         * check the direct-assignment lvalue path performs on 'p.x = v'. A
+         * pointer root auto-derefs (p^.field), so the const-ness of the
+         * pointer variable does not carry to the pointee. */
+        const char *root = assignment_target_root_name(arg);
+        if (root) {
+            Symbol *sym = checker_lookup_symbol(checker, root);
+            if (sym && !sym->mutable &&
+                !(sym->type && sym->type->kind == TK_POINTER)) {
+                char *msg = typechecker_format(checker,
+                    "cannot pass a field or element of constant '%s' to %s of '%s'",
+                    root, param_desc, func_display);
+                diagnostic_error_message(checker->diag, "E3027", msg,
+                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+            }
+        }
     } else if (arg->kind != NODE_MEMBER_EXPR &&
                arg->kind != NODE_INDEX_EXPR &&
                arg->kind != NODE_PREFIX_EXPR) {
