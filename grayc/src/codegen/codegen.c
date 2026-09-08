@@ -10963,9 +10963,13 @@ static void emit_loop_exit_unwind(CodeGen *codegen) {
     for (int i = codegen->scope_arena_count - 1; i >= 0; i--) {
         ScopeArena *entry = &codegen->scope_arenas[i];
         emit_formatted(codegen, "gray_default_arena = %s; ", entry->saved_var);
+        /* The iteration arena is hoisted out of the loop: break/continue only
+         * restore the arena pointer. The next iteration's reset and the
+         * post-loop destroy own its lifetime. Nested if-block arenas above it
+         * are per-entry and must still be torn down. */
+        if (strncmp(entry->arena_var, "_iter_arena_", 12) == 0) break;
         emit_formatted(codegen, "gray_arena_destroy(%s, __FILE__, __LINE__); free(%s); ",
               entry->arena_var, entry->arena_var);
-        if (strncmp(entry->arena_var, "_iter_arena_", 12) == 0) break;
     }
 }
 
@@ -11265,8 +11269,48 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     emit(codegen, "}\n");
 }
 
-/* Emit per-iteration scratch arena setup, the loop body, and arena teardown.
- * Caller is responsible for indent++ before and indent--/closing brace after. */
+/* The iteration scratch arena is created once before the loop and destroyed
+ * once after; each iteration only rewinds it (bump-pointer reset, no allocator
+ * traffic). emit_loop_arena_prologue runs at the caller's indent before the
+ * loop header, emit_loop_arena_epilogue after the closing brace, and
+ * emit_loop_body_with_arena emits the per-iteration reset + the body. A
+ * caller-arena function opens no per-scope arenas at all. */
+static bool loop_arena_active(CodeGen *codegen) {
+    return !current_function_uses_caller_arena(codegen);
+}
+
+static void emit_loop_arena_prologue(CodeGen *codegen) {
+    if (!loop_arena_active(codegen)) return;
+    int depth = codegen->loop_scope_depth;
+    /* Wrap the whole loop in its own C block so the arena locals below are
+     * scoped to this loop — two sibling loops at the same depth would
+     * otherwise redeclare _iter_arena_<depth>. */
+    emit_indent(codegen);
+    emit(codegen, "{\n");
+    codegen->indent++;
+    if (depth == 0) {
+        emit_indent(codegen);
+        emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena;\n");
+    }
+    emit_indent(codegen);
+    emit_formatted(codegen, "GrayArena *_iter_arena_%d = gray_arena_create(%d);\n", depth, LOOP_ARENA_SIZE);
+    emit_indent(codegen);
+    emit_formatted(codegen, "GrayArena *_saved_arena_%d = gray_default_arena;\n", depth);
+}
+
+static void emit_loop_arena_epilogue(CodeGen *codegen) {
+    if (!loop_arena_active(codegen)) return;
+    int depth = codegen->loop_scope_depth;
+    emit_indent(codegen);
+    emit_formatted(codegen, "gray_arena_destroy(_iter_arena_%d, __FILE__, __LINE__); free(_iter_arena_%d);\n", depth, depth);
+    codegen->indent--;
+    emit_indent(codegen);
+    emit(codegen, "}\n");
+}
+
+/* Emit the per-iteration arena reset and the loop body.
+ * Caller is responsible for indent++ before and indent--/closing brace after,
+ * and for emit_loop_arena_prologue/epilogue around the loop. */
 static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
     int prev_raw_var_count = codegen->raw_var_count;
     if (current_function_uses_caller_arena(codegen)) {
@@ -11274,17 +11318,9 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
         codegen->raw_var_count = prev_raw_var_count;
         return;
     }
-    if (codegen->loop_scope_depth == 0) {
-        emit_indent(codegen);
-        emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena;\n");
-    }
     int depth = codegen->loop_scope_depth;
     emit_indent(codegen);
-    emit_formatted(codegen, "GrayArena *_iter_arena_%d = gray_arena_create(%d);\n", depth, LOOP_ARENA_SIZE);
-    emit_indent(codegen);
-    emit_formatted(codegen, "GrayArena *_saved_arena_%d = gray_default_arena;\n", depth);
-    emit_indent(codegen);
-    emit_formatted(codegen, "gray_default_arena = _iter_arena_%d;\n", depth);
+    emit_formatted(codegen, "gray_arena_reset(_iter_arena_%d); gray_default_arena = _iter_arena_%d;\n", depth, depth);
     codegen->loop_scope_depth++;
     {
         char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
@@ -11298,11 +11334,10 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
     scope_arena_pop(codegen);
     emit_indent(codegen);
     emit_formatted(codegen, "gray_default_arena = _saved_arena_%d;\n", depth);
-    emit_indent(codegen);
-    emit_formatted(codegen, "gray_arena_destroy(_iter_arena_%d, __FILE__, __LINE__); free(_iter_arena_%d);\n", depth, depth);
 }
 
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
+    emit_loop_arena_prologue(codegen);
     emit_indent(codegen);
 
     AstNode *iter = node->data.for_stmt.iterable;
@@ -11389,9 +11424,11 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
+    emit_loop_arena_epilogue(codegen);
 }
 
 static void emit_while_statement(CodeGen *codegen, AstNode *node) {
+    emit_loop_arena_prologue(codegen);
     emit_indent(codegen);
     emit(codegen, "while (");
     emit_expression(codegen, node->data.while_stmt.condition);
@@ -11402,9 +11439,11 @@ static void emit_while_statement(CodeGen *codegen, AstNode *node) {
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
+    emit_loop_arena_epilogue(codegen);
 }
 
 static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
+    emit_loop_arena_prologue(codegen);
     emit_indent(codegen);
     emit(codegen, "for (;;) {\n");
 
@@ -11413,6 +11452,7 @@ static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
+    emit_loop_arena_epilogue(codegen);
 }
 
 /* extract the base (unmangled) function name for multi-return
@@ -11866,6 +11906,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_for_statement(codegen, node);
         break;
     case NODE_FOR_EACH_STMT: {
+        emit_loop_arena_prologue(codegen);
         emit_indent(codegen);
         AstNode *coll = node->data.for_each.collection;
         GrayType *coll_t = codegen->type_table ? typetable_get(codegen->type_table, coll) : NULL;
@@ -11927,6 +11968,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 emit(codegen, "}\n");
             }
         }
+        emit_loop_arena_epilogue(codegen);
         break;
     }
     case NODE_WHILE_STMT:
