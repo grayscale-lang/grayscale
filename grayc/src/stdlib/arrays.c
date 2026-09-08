@@ -382,79 +382,180 @@ int64_t gray_arrays_get_max(GrayArray *arr) {
     return largest;
 }
 
-/* === Sort === */
+/* === Sort ===
+ *
+ * Type-specialized introsort (quicksort + median-of-3 pivot, insertion-sort
+ * cutoff, heapsort fallback once recursion passes 2*log2(n)). libc qsort ran
+ * an indirect call through a comparator function pointer for every one of the
+ * ~n log n comparisons and could not inline it; here the comparison is a
+ * single inlined expression, and the depth limit gives a hard O(n log n)
+ * bound that qsort does not promise. The descending variants sort ascending
+ * then reverse — equal elements are indistinguishable for all three element
+ * types, so the flipped order of an equal run is unobservable. */
 
-static int cmp_i64_asc(const void *left, const void *right) {
-    int64_t left_val = *(const int64_t *)left;
-    int64_t right_val = *(const int64_t *)right;
-    return (left_val > right_val) - (left_val < right_val);
+#define GRAY_SORT_INSERTION_CUTOFF 24
+
+static inline bool gray_sort_str_lt(GrayString a, GrayString b) {
+    int32_t min_len = a.len < b.len ? a.len : b.len;
+    int cmp = memcmp(a.data, b.data, (size_t)min_len);
+    if (cmp != 0) return cmp < 0;
+    return a.len < b.len;
 }
 
-static int cmp_i64_desc(const void *left, const void *right) {
-    int64_t left_val = *(const int64_t *)left;
-    int64_t right_val = *(const int64_t *)right;
-    return (right_val > left_val) - (right_val < left_val);
+/* LESS(x, y) is a strict-weak-ordering expression yielding x < y. */
+#define GRAY_DEFINE_INTROSORT(SUF, T, LESS)                                     \
+static void gray_sort_ins_##SUF(T *v, int64_t lo, int64_t hi) {                \
+    for (int64_t i = lo + 1; i <= hi; i++) {                                   \
+        T x = v[i];                                                            \
+        int64_t j = i - 1;                                                     \
+        while (j >= lo && LESS(x, v[j])) { v[j + 1] = v[j]; j--; }             \
+        v[j + 1] = x;                                                          \
+    }                                                                         \
+}                                                                             \
+static void gray_sort_sift_##SUF(T *v, int64_t lo, int64_t n, int64_t i) {     \
+    for (;;) {                                                                 \
+        int64_t c = 2 * i + 1;                                                 \
+        if (c >= n) break;                                                     \
+        if (c + 1 < n && LESS(v[lo + c], v[lo + c + 1])) c++;                  \
+        if (!LESS(v[lo + i], v[lo + c])) break;                               \
+        T t = v[lo + i]; v[lo + i] = v[lo + c]; v[lo + c] = t;                \
+        i = c;                                                                 \
+    }                                                                         \
+}                                                                             \
+static void gray_sort_heap_##SUF(T *v, int64_t lo, int64_t hi) {              \
+    int64_t n = hi - lo + 1;                                                   \
+    for (int64_t i = n / 2 - 1; i >= 0; i--) gray_sort_sift_##SUF(v, lo, n, i);\
+    for (int64_t end = n - 1; end > 0; end--) {                                \
+        T t = v[lo]; v[lo] = v[lo + end]; v[lo + end] = t;                    \
+        gray_sort_sift_##SUF(v, lo, end, 0);                                   \
+    }                                                                         \
+}                                                                             \
+static void gray_sort_intro_##SUF(T *v, int64_t lo, int64_t hi, int depth) {   \
+    while (hi - lo > GRAY_SORT_INSERTION_CUTOFF) {                             \
+        if (depth-- == 0) { gray_sort_heap_##SUF(v, lo, hi); return; }         \
+        int64_t mid = lo + ((hi - lo) >> 1);                                   \
+        if (LESS(v[mid], v[lo]))  { T t = v[mid]; v[mid] = v[lo];  v[lo]  = t; }\
+        if (LESS(v[hi],  v[lo]))  { T t = v[hi];  v[hi]  = v[lo];  v[lo]  = t; }\
+        if (LESS(v[hi],  v[mid])) { T t = v[hi];  v[hi]  = v[mid]; v[mid] = t; }\
+        T pivot = v[mid];                                                      \
+        int64_t i = lo, j = hi;                                                \
+        for (;;) {                                                             \
+            while (LESS(v[i], pivot)) i++;                                     \
+            while (LESS(pivot, v[j])) j--;                                     \
+            if (i >= j) break;                                                 \
+            T t = v[i]; v[i] = v[j]; v[j] = t;                                \
+            i++; j--;                                                          \
+        }                                                                     \
+        if (j - lo < hi - (j + 1)) {                                           \
+            gray_sort_intro_##SUF(v, lo, j, depth);                            \
+            lo = j + 1;                                                        \
+        } else {                                                              \
+            gray_sort_intro_##SUF(v, j + 1, hi, depth);                       \
+            hi = j;                                                            \
+        }                                                                     \
+    }                                                                         \
+    gray_sort_ins_##SUF(v, lo, hi);                                            \
+}                                                                             \
+static void gray_sort_##SUF(T *v, int64_t n) {                                \
+    int depth = 0;                                                            \
+    for (int64_t t = n; t > 1; t >>= 1) depth += 2;                           \
+    gray_sort_intro_##SUF(v, 0, n - 1, depth);                                \
 }
 
-static int cmp_f64_asc(const void *left, const void *right) {
-    double left_val = *(const double *)left;
-    double right_val = *(const double *)right;
-    return (left_val > right_val) - (left_val < right_val);
-}
+#define GRAY_SORT_LT(a, b) ((a) < (b))
 
-static int cmp_f64_desc(const void *left, const void *right) {
-    double left_val = *(const double *)left;
-    double right_val = *(const double *)right;
-    return (right_val > left_val) - (right_val < left_val);
-}
+GRAY_DEFINE_INTROSORT(i64, int64_t, GRAY_SORT_LT)
+GRAY_DEFINE_INTROSORT(f64, double, GRAY_SORT_LT)
+GRAY_DEFINE_INTROSORT(str, GrayString, gray_sort_str_lt)
 
-static int cmp_str_asc(const void *left, const void *right) {
-    const GrayString *left_str = (const GrayString *)left;
-    const GrayString *right_str = (const GrayString *)right;
-    int32_t min_len = left_str->len < right_str->len ? left_str->len : right_str->len;
-    int cmp = memcmp(left_str->data, right_str->data, (size_t)min_len);
-    if (cmp != 0) return cmp;
-    return (left_str->len > right_str->len) - (left_str->len < right_str->len);
+/* Fallback comparators for the rare element widths the specialized paths do
+ * not cover — a [i128]/[u128]/[i256]/[u256] array reaches sort_asc with an
+ * elem_size of 16 or 32, not 8. The introsort indexes by sizeof(int64_t), so
+ * those go through qsort with the same by-low-word ordering the module has
+ * always used for them. */
+static int cmp_i64_asc(const void *l, const void *r) {
+    int64_t a = *(const int64_t *)l, b = *(const int64_t *)r;
+    return (a > b) - (a < b);
 }
-
-static int cmp_str_desc(const void *left, const void *right) {
-    return cmp_str_asc(right, left);
+static int cmp_i64_desc(const void *l, const void *r) { return cmp_i64_asc(r, l); }
+static int cmp_f64_asc(const void *l, const void *r) {
+    double a = *(const double *)l, b = *(const double *)r;
+    return (a > b) - (a < b);
 }
+static int cmp_f64_desc(const void *l, const void *r) { return cmp_f64_asc(r, l); }
+static int cmp_str_asc(const void *l, const void *r) {
+    return gray_sort_str_lt(*(const GrayString *)l, *(const GrayString *)r) ? -1
+         : gray_sort_str_lt(*(const GrayString *)r, *(const GrayString *)l) ? 1 : 0;
+}
+static int cmp_str_desc(const void *l, const void *r) { return cmp_str_asc(r, l); }
 
 void gray_arrays_sort_asc(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_asc);
+    if (arr->elem_size == (int32_t)sizeof(int64_t))
+        gray_sort_i64((int64_t *)arr->data, arr->len);
+    else
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_asc);
 }
 
 void gray_arrays_sort_asc_float(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_asc);
+    if (arr->elem_size == (int32_t)sizeof(double))
+        gray_sort_f64((double *)arr->data, arr->len);
+    else
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_asc);
 }
 
 void gray_arrays_sort_asc_str(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_asc);
+    if (arr->elem_size == (int32_t)sizeof(GrayString))
+        gray_sort_str((GrayString *)arr->data, arr->len);
+    else
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_asc);
 }
 
 void gray_arrays_sort_desc(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_desc);
+    if (arr->elem_size == (int32_t)sizeof(int64_t)) {
+        gray_sort_i64((int64_t *)arr->data, arr->len);
+        int64_t *v = (int64_t *)arr->data;
+        for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {
+            int64_t t = v[a]; v[a] = v[b]; v[b] = t;
+        }
+    } else {
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i64_desc);
+    }
 }
 
 void gray_arrays_sort_desc_float(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_desc);
+    if (arr->elem_size == (int32_t)sizeof(double)) {
+        gray_sort_f64((double *)arr->data, arr->len);
+        double *v = (double *)arr->data;
+        for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {
+            double t = v[a]; v[a] = v[b]; v[b] = t;
+        }
+    } else {
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_desc);
+    }
 }
 
 void gray_arrays_sort_desc_str(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
     if (arr->len <= 1) return;
-    qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
+    if (arr->elem_size == (int32_t)sizeof(GrayString)) {
+        gray_sort_str((GrayString *)arr->data, arr->len);
+        GrayString *v = (GrayString *)arr->data;
+        for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {
+            GrayString t = v[a]; v[a] = v[b]; v[b] = t;
+        }
+    } else {
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_str_desc);
+    }
 }
 
 /* is_sorted mirrors the comparator split sort_asc uses: an int64 read for the
@@ -482,7 +583,7 @@ bool gray_arrays_is_sorted_str(GrayArray *arr) {
     for (int32_t i = 1; i < arr->len; i++) {
         const GrayString *prev = (const GrayString *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
         const GrayString *curr = (const GrayString *)((char *)arr->data + (size_t)i * arr->elem_size);
-        if (cmp_str_asc(prev, curr) > 0) return false;
+        if (gray_sort_str_lt(*curr, *prev)) return false;
     }
     return true;
 }

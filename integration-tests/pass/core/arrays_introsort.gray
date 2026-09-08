@@ -1,0 +1,218 @@
+/*
+ * arrays_introsort.gray - arrays.sort_* introsort correctness
+ *
+ * The six sort entry points now use a type-specialized introsort instead
+ * of libc qsort. These cases cover the distributions that break a naive
+ * quicksort — already sorted, reverse sorted, all equal, heavy duplicates —
+ * plus negatives, the descending variants, string sorts, a large random
+ * input checked with is_sorted, and NaN (must not hang or crash).
+ */
+
+import @arrays
+import @math
+
+do main() {
+    println("=== Arrays Introsort Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- small explicit ascending --
+    mut a [int] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
+    arrays.sort_asc(a)
+    if a[0] == 0 && a[9] == 9 && arrays.is_sorted(a) {
+        println("  [PASS] small ascending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] small ascending")
+        failed += 1
+    }
+
+    // -- small explicit descending --
+    mut b [int] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
+    arrays.sort_desc(b)
+    if b[0] == 9 && b[9] == 0 && b[1] == 8 {
+        println("  [PASS] small descending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] small descending")
+        failed += 1
+    }
+
+    // -- already sorted --
+    mut s [int] = {}
+    for i in range(0, 3000) { arrays.append(s, i) }
+    arrays.sort_asc(s)
+    if s[0] == 0 && s[2999] == 2999 && arrays.is_sorted(s) {
+        println("  [PASS] already sorted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] already sorted")
+        failed += 1
+    }
+
+    // -- reverse sorted --
+    mut r [int] = {}
+    for i in range(0, 3000) { arrays.append(r, 2999 - i) }
+    arrays.sort_asc(r)
+    if r[0] == 0 && r[2999] == 2999 && arrays.is_sorted(r) {
+        println("  [PASS] reverse sorted")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reverse sorted")
+        failed += 1
+    }
+
+    // -- all equal --
+    mut eq [int] = {}
+    for i in range(0, 3000) { arrays.append(eq, 42) }
+    arrays.sort_asc(eq)
+    if eq[0] == 42 && eq[2999] == 42 && arrays.is_sorted(eq) {
+        println("  [PASS] all equal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] all equal")
+        failed += 1
+    }
+
+    // -- heavy duplicates (5 distinct values, well mixed) --
+    mut dup [int] = {}
+    mut d int = 7
+    for i in range(0, 5000) {
+        d = (d * 1103515245 + 12345) % 2147483648
+        arrays.append(dup, d % 5)
+    }
+    arrays.sort_asc(dup)
+    if arrays.is_sorted(dup) && dup[0] == 0 && dup[4999] == 4 && len(dup) == 5000 {
+        println("  [PASS] heavy duplicates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] heavy duplicates")
+        failed += 1
+    }
+
+    // -- negatives --
+    mut neg [int] = {-3, 100, -50, 0, 7, -1, -100, 50}
+    arrays.sort_asc(neg)
+    if neg[0] == -100 && neg[7] == 100 && arrays.is_sorted(neg) {
+        println("  [PASS] negatives")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negatives")
+        failed += 1
+    }
+
+    // -- large pseudo-random, verified with is_sorted, asc then desc --
+    mut big [int] = {}
+    mut seed int = 999983
+    for i in range(0, 100000) {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        arrays.append(big, seed)
+    }
+    arrays.sort_asc(big)
+    mut big_ok bool = arrays.is_sorted(big) && len(big) == 100000
+    arrays.sort_desc(big)
+    big_ok = big_ok && big[0] >= big[99999]
+    if big_ok {
+        println("  [PASS] 100k random asc then desc")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] 100k random asc then desc")
+        failed += 1
+    }
+
+    // -- floats ascending --
+    mut fa [float] = {3.5, 1.25, 2.0, 1.25, 0.0, -4.5, 100.0}
+    arrays.sort_asc(fa)
+    if fa[0] == -4.5 && fa[6] == 100.0 && arrays.is_sorted(fa) {
+        println("  [PASS] floats ascending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] floats ascending")
+        failed += 1
+    }
+
+    // -- floats descending --
+    mut fd [float] = {3.5, 1.25, 2.0, 0.0, -4.5}
+    arrays.sort_desc(fd)
+    if fd[0] == 3.5 && fd[4] == -4.5 {
+        println("  [PASS] floats descending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] floats descending")
+        failed += 1
+    }
+
+    // -- NaN: order is undefined (as with libc qsort), but the sort must
+    //    terminate and neither lose nor duplicate an element --
+    mut nan_val float = math.INF - math.INF
+    mut fnan [float] = {5.0, nan_val, 1.0, 3.0, nan_val, 2.0, 4.0}
+    arrays.sort_asc(fnan)
+    mut finite_sum float = 0.0
+    mut nan_count int = 0
+    for_each v in fnan {
+        if math.is_nan(v) { nan_count += 1 } otherwise { finite_sum = finite_sum + v }
+    }
+    if len(fnan) == 7 && nan_count == 2 && finite_sum == 15.0 {
+        println("  [PASS] NaN present, no element lost, terminates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] NaN present: len ${len(fnan)} nans ${nan_count} sum ${finite_sum}")
+        failed += 1
+    }
+
+    // -- strings ascending, incl. empty and duplicate --
+    mut st [string] = {"banana", "apple", "cherry", "apple", "date", ""}
+    arrays.sort_asc(st)
+    if st[0] == "" && st[1] == "apple" && st[5] == "date" && arrays.is_sorted(st) {
+        println("  [PASS] strings ascending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strings ascending")
+        failed += 1
+    }
+
+    // -- strings descending --
+    mut sd [string] = {"b", "a", "c", "ab", "aa"}
+    arrays.sort_desc(sd)
+    if sd[0] == "c" && sd[4] == "a" {
+        println("  [PASS] strings descending")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] strings descending")
+        failed += 1
+    }
+
+    // -- string prefix ordering: "a" < "ab" < "abc" --
+    mut sp [string] = {"abc", "ab", "a", "abcd", "abd"}
+    arrays.sort_asc(sp)
+    if sp[0] == "a" && sp[1] == "ab" && sp[2] == "abc" && sp[3] == "abcd" && sp[4] == "abd" {
+        println("  [PASS] string prefix ordering")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] string prefix ordering")
+        failed += 1
+    }
+
+    // -- 1 and 2 element arrays --
+    mut one [int] = {7}
+    arrays.sort_asc(one)
+    mut two [int] = {9, 2}
+    arrays.sort_asc(two)
+    mut two_d [int] = {2, 9}
+    arrays.sort_desc(two_d)
+    if one[0] == 7 && two[0] == 2 && two[1] == 9 && two_d[0] == 9 && two_d[1] == 2 {
+        println("  [PASS] 1 and 2 element arrays")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] 1 and 2 element arrays")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
