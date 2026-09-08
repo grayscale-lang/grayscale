@@ -4803,6 +4803,20 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     return true;
 }
 
+/* E3036 for a literal argument whose value cannot fit the parameter's
+ * sized-integer type. Call-argument position was the one spot the range
+ * check was never wired into, unlike var-decls, return, struct-literal
+ * fields, map values and array elements. */
+static void check_arg_integer_range(TypeChecker *checker, AstNode *arg,
+    const char *param_type_name) {
+    if (!arg || !param_type_name) return;
+    int64_t v;
+    bool neg;
+    if (try_get_signed_literal_int(arg, &v, &neg))
+        check_integer_range(checker->diag, NODE_FILE(checker, arg),
+            arg->token.line, arg->token.column, param_type_name, v, neg);
+}
+
 /* --- Expression type resolution --- */
 
 /* shared void-expression guard. Emits E3038 at `expr` when `t`
@@ -6593,11 +6607,15 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                              * copy of this check could not see this call —
                              * dispatch had not yet rewritten the object from
                              * the instance label to the struct name. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
                                 check_signedness_crossing(checker,
                                     ssig->decl->data.func_decl.params[argument_index].type_name,
                                     node->data.call.args[argument_index], arg_t,
                                     node->data.call.args[argument_index]);
+                                check_arg_integer_range(checker,
+                                    node->data.call.args[argument_index],
+                                    ssig->decl->data.func_decl.params[argument_index].type_name);
+                            }
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -6714,12 +6732,18 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             }
                             /* E3019: an argument that crosses signedness vs the
                              * parameter needs a cast — same gap as the
-                             * is_self_func branch above. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                             * is_self_func branch above.
+                             * E3036: literal argument out of range for a
+                             * sized-integer parameter. */
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
                                 check_signedness_crossing(checker,
                                     ssig->decl->data.func_decl.params[argument_index].type_name,
                                     node->data.call.args[argument_index], arg_t,
                                     node->data.call.args[argument_index]);
+                                check_arg_integer_range(checker,
+                                    node->data.call.args[argument_index],
+                                    ssig->decl->data.func_decl.params[argument_index].type_name);
+                            }
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -8424,11 +8448,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * argument position. Caller must destructure first. */
         reject_multi_return_in_single_position(checker, node->data.call.args[i]);
 
-        /* E3019: an argument that crosses signedness vs the parameter needs a cast. */
-        if (callee_decl && i < callee_decl->data.func_decl.param_count)
+        /* E3019: an argument that crosses signedness vs the parameter needs a cast.
+         * E3036: a literal argument out of range for a sized-integer parameter. */
+        if (callee_decl && i < callee_decl->data.func_decl.param_count) {
             check_signedness_crossing(checker,
                 callee_decl->data.func_decl.params[i].type_name,
                 node->data.call.args[i], ai_t, node->data.call.args[i]);
+            check_arg_integer_range(checker, node->data.call.args[i],
+                callee_decl->data.func_decl.params[i].type_name);
+        }
     }
 
     /* E3163: addr() of inner-scope variable passed alongside an outer-scope

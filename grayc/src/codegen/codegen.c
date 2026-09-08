@@ -8099,6 +8099,22 @@ static void emit_func_field_call(CodeGen *codegen, AstNode *node, AstNode *obj,
 /* Struct-namespaced (Name.func()) calls and mod.Struct.func() chains.
  * Returns true when it emitted the call; false to fall through to the
  * general function-call path. */
+/* Emit one argument of a struct/namespaced function call. Unlike the general
+ * call path, this dispatch never ran arguments through emit_narrowing_cast, so
+ * an out-of-range value passed to a sized-integer parameter was truncated by C
+ * with no runtime check. Apply the same checked cast here for non-mutable
+ * sized-integer params; everything else keeps the existing behavior. */
+static void emit_namespaced_call_argument(CodeGen *codegen, AstNode *arg,
+                                          AstNode *fn, int param_index, int line) {
+    bool mut_param = fn && param_index < fn->data.func_decl.param_count &&
+        fn->data.func_decl.params[param_index].mutable;
+    const char *ptn = (fn && param_index < fn->data.func_decl.param_count)
+        ? fn->data.func_decl.params[param_index].type_name : NULL;
+    if (!mut_param && ptn && emit_narrowing_cast(codegen, ptn, arg, line))
+        return;
+    emit_mutable_call_argument(codegen, arg, mut_param);
+}
+
 static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     /* Check for struct-namespaced or user-module function call: Name.func() */
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
@@ -8179,9 +8195,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "gray_fn_%s(", full_name);
                 for (int i = 0; i < node->data.call.arg_count; i++) {
                     if (i > 0) emit(codegen, ", ");
-                    bool mut_param = i < ns_func->data.func_decl.param_count &&
-                        ns_func->data.func_decl.params[i].mutable;
-                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                    emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                        ns_func, i, node->token.line);
                 }
                 emit(codegen, ")");
                 return true;
@@ -8353,9 +8368,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "gray_fn_%s(", member);
                     for (int i = 0; i < node->data.call.arg_count; i++) {
                         if (i > 0) emit(codegen, ", ");
-                        bool mut_param = i < ns_func->data.func_decl.param_count &&
-                            ns_func->data.func_decl.params[i].mutable;
-                        emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                        emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                            ns_func, i, node->token.line);
                     }
                     emit(codegen, ")");
                     return true;
@@ -8436,9 +8450,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         ns_func->data.func_decl.params[pi].is_type_param) continue;
                     if (arg_emitted) emit(codegen, ", ");
                     arg_emitted = true;
-                    bool mut_param = pi < ns_func->data.func_decl.param_count &&
-                        ns_func->data.func_decl.params[pi].mutable;
-                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                    emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                        ns_func, pi, node->token.line);
                 }
                 /* Inject default values for omitted trailing parameters */
                 {
@@ -8570,8 +8583,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         for (int i = 0; i < slot_count; i++) {
                             if (i > 0) emit(codegen, ", ");
                             if (i < arg_count) {
-                                bool mut_param = i < param_count && uf->data.func_decl.params[i].mutable;
-                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                                emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                                    uf, i, node->token.line);
                             } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
                                 emit_expression(codegen, uf->data.func_decl.params[i].default_value);
                             }
