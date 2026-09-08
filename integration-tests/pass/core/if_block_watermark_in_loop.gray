@@ -1,0 +1,114 @@
+/*
+ * if_block_watermark_in_loop.gray - if/otherwise nested in a loop
+ *
+ * An if inside a loop no longer heap-allocates a private arena on entry:
+ * it watermarks the enclosing iteration arena (gray_scope_save/restore).
+ * These cases check that the watermark restore reclaims only branch-local
+ * temporaries and never clobbers a value that escaped to an outer scope,
+ * and that break / continue / return out of such a branch stay correct.
+ */
+
+import @strings
+
+do classify(n int) -> string {
+    for i in range(0, 100) {
+        if i == n {
+            mut tag string = strings.to_upper("match")
+            return tag
+        }
+    }
+    return "none"
+}
+
+do main() {
+    println("=== If Block Watermark In Loop Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- escapes from an if inside a loop accumulate across iterations --
+    mut acc string = ""
+    for i in range(0, 5) {
+        if i % 2 == 0 {
+            mut piece string = strings.to_upper("e${i}")
+            acc = acc + piece
+        } otherwise {
+            mut piece string = "o${i}"
+            acc = acc + piece
+        }
+    }
+    if acc == "E0o1E2o3E4" {
+        println("  [PASS] if/otherwise escape accumulates in a loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected E0o1E2o3E4, got ${acc}")
+        failed += 1
+    }
+
+    // -- array element escape from an if inside a loop --
+    mut names [string] = {"", "", ""}
+    for i in range(0, 3) {
+        if i >= 0 {
+            names[i] = strings.to_upper("n${i}")
+        }
+    }
+    if names[0] == "N0" && names[1] == "N1" && names[2] == "N2" {
+        println("  [PASS] array element escape from if in loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${names[0]},${names[1]},${names[2]}")
+        failed += 1
+    }
+
+    // -- early return from an if branch inside a loop --
+    if classify(7) == "MATCH" && classify(999) == "none" {
+        println("  [PASS] return from if branch inside a loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] classify(7)=${classify(7)} classify(999)=${classify(999)}")
+        failed += 1
+    }
+
+    // -- break from inside an if branch inside a loop --
+    mut hit int = -1
+    for i in range(0, 100) {
+        if i * i > 30 {
+            hit = i
+            break
+        }
+    }
+    if hit == 6 {
+        println("  [PASS] break from if branch inside a loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected hit 6, got ${hit}")
+        failed += 1
+    }
+
+    // -- continue from inside an if branch, plus a nested if --
+    mut sum int = 0
+    for i in range(0, 10) {
+        if i % 2 == 0 {
+            continue
+        }
+        if i > 5 {
+            if i < 9 {
+                sum = sum + i
+            }
+        }
+    }
+    if sum == 7 {
+        println("  [PASS] continue + nested if inside a loop")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected sum 7, got ${sum}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

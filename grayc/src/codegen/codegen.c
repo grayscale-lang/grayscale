@@ -10954,18 +10954,19 @@ static void emit_scratch_arena_unwind(CodeGen *codegen) {
 }
 
 /* Unwind only up to and including the innermost loop iteration arena.
- * Used by break/continue: we must clean up the current loop's arena and
- * any if-block arenas nested inside it, but must NOT touch outer loop
- * arenas which are still live. Loop arenas are named _iter_arena_N;
- * if-block arenas are named _if_arena_N. */
+ * Used by break/continue: we must restore the current loop's arena
+ * pointer but must NOT touch outer loop arenas which are still live.
+ * An if nested inside a loop only watermarks the iteration arena (no
+ * scope_arenas entry of its own), so the innermost live entry here is
+ * always that _iter_arena_N; the loop tolerates a stray _if_arena_N
+ * (only produced by a top-level if, never inside a loop) for safety. */
 static void emit_loop_exit_unwind(CodeGen *codegen) {
     for (int i = codegen->scope_arena_count - 1; i >= 0; i--) {
         ScopeArena *entry = &codegen->scope_arenas[i];
         emit_formatted(codegen, "gray_default_arena = %s; ", entry->saved_var);
         /* The iteration arena is hoisted out of the loop: break/continue only
          * restore the arena pointer. The next iteration's reset and the
-         * post-loop destroy own its lifetime. Nested if-block arenas above it
-         * are per-entry and must still be torn down. */
+         * post-loop destroy own its lifetime. */
         if (strncmp(entry->arena_var, "_iter_arena_", 12) == 0) break;
         emit_formatted(codegen, "gray_arena_destroy(%s, __FILE__, __LINE__); free(%s); ",
               entry->arena_var, entry->arena_var);
@@ -11181,24 +11182,38 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
-    /* per-block arena for if/otherwise so temporaries are freed */
+    /* if/otherwise branches free their temporaries on exit. When the if is
+     * nested inside a loop or another scope (loop_scope_depth > 0) there is
+     * already a distinct enclosing scratch arena and a separate
+     * _gray_outer_arena for escaping writes, so the branch just watermarks
+     * the enclosing arena (gray_scope_save/restore) — no allocator traffic
+     * per entry. A top-level if (depth 0) shares its arena with
+     * _gray_outer_arena, so a watermark restore would clobber escaped
+     * writes; it keeps the private per-entry arena. */
     int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
     bool scoped = !current_function_uses_caller_arena(codegen);
+    bool watermark = scoped && codegen->loop_scope_depth > 0;
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
     if (scoped) {
         if (codegen->loop_scope_depth == 0) {
             emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena; ");
         }
-        emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
-        emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
-        emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
+        if (watermark) {
+            emit_formatted(codegen, "GrayScopeMark _if_mark_%d = gray_scope_save(gray_default_arena);\n", isc);
+        } else {
+            emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
+            emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
+            emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
+        }
         codegen->loop_scope_depth++;
-        char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
-        snprintf(av, sizeof(av), "_if_arena_%d", isc);
-        snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
-        scope_arena_push(codegen, av, sv);
+        if (!watermark) {
+            char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
+            snprintf(av, sizeof(av), "_if_arena_%d", isc);
+            snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
+            scope_arena_push(codegen, av, sv);
+        }
     } else {
         emit(codegen, "\n");
     }
@@ -11261,9 +11276,13 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     emit_indent(codegen);
     if (scoped) {
         codegen->loop_scope_depth--;
-        scope_arena_pop(codegen);
-        emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
-        emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); ", isc, isc);
+        if (watermark) {
+            emit_formatted(codegen, "gray_scope_restore(gray_default_arena, _if_mark_%d); ", isc);
+        } else {
+            scope_arena_pop(codegen);
+            emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
+            emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); ", isc, isc);
+        }
     }
     emit(codegen, "}\n");
 }
