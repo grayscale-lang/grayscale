@@ -872,7 +872,7 @@ static void tc_err_arity(TypeChecker *checker, AstNode *node, char *msg) {
         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
 }
 
-static AstNode *find_struct_in_program(AstNode *program, const char *name);
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name);
 
 static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name, const char *field) {
     StructInfo *si = find_struct(checker, struct_name);
@@ -904,7 +904,7 @@ static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name
             if (generic_binding && si->field_types[i]->kind == TK_UNKNOWN) {
                 /* Find the raw struct decl to check the field type_name */
                 if (checker->program) {
-                    AstNode *decl = find_struct_in_program(checker->program,
+                    AstNode *decl = find_struct_in_program(checker,
                         struct_name); /* try mangled first */
                     if (!decl) {
                         /* Extract base name and try again */
@@ -915,7 +915,7 @@ static GrayType *struct_field_type(TypeChecker *checker, const char *struct_name
                             if (bn < sizeof(bname)) {
                                 memcpy(bname, struct_name, bn);
                                 bname[bn] = '\0';
-                                decl = find_struct_in_program(checker->program, bname);
+                                decl = find_struct_in_program(checker, bname);
                             }
                         }
                     }
@@ -3828,8 +3828,15 @@ static bool reject_if_private(TypeChecker *checker, AstNode *node,
 /* The scope every resolution in this file happens in. */
 static ResolveScope checker_scope(TypeChecker *checker) {
     checker_refresh_using(checker);
+    if (!checker->scope_module_valid ||
+        checker->scope_module_file != checker->current_check_file) {
+        checker->scope_module_cache =
+            module_table_module_for_file(checker->modules, checker->current_check_file);
+        checker->scope_module_file = checker->current_check_file;
+        checker->scope_module_valid = true;
+    }
     ResolveScope scope;
-    scope.module = module_table_module_for_file(checker->modules, checker->current_check_file);
+    scope.module = checker->scope_module_cache;
     scope.file = checker->current_check_file ? checker->current_check_file : checker->file;
     scope.using_modules = checker->using_visible;
     scope.using_count = checker->using_visible_count;
@@ -4173,7 +4180,80 @@ static void reject_error_in_container(TypeChecker *checker, AstNode *node,
     }
 }
 
+/* --- typechecker_type_from_name cache (spelling-keyed open addressing) --- */
+
+static void tn_cache_insert_raw(const char **names, GrayType **types, int cap,
+                                const char *name, GrayType *type) {
+    uint32_t mask = (uint32_t)(cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (names[h]) h = (h + 1) & mask;
+    names[h] = name;
+    types[h] = type;
+}
+
+static GrayType *tn_cache_get(TypeChecker *checker, const char *name) {
+    if (!checker->tn_cache_names) return NULL;
+    uint32_t mask = (uint32_t)(checker->tn_cache_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    for (;;) {
+        const char *slot = checker->tn_cache_names[h];
+        if (!slot) return NULL;
+        if (strcmp(slot, name) == 0) return checker->tn_cache_types[h];
+        h = (h + 1) & mask;
+    }
+}
+
+static void tn_cache_put(TypeChecker *checker, const char *name, GrayType *type) {
+    if (!checker->tn_cache_names ||
+        (checker->tn_cache_count + 1) * 2 > checker->tn_cache_cap) {
+        int old_cap = checker->tn_cache_cap;
+        const char **old_names = checker->tn_cache_names;
+        GrayType **old_types = checker->tn_cache_types;
+        checker->tn_cache_cap = old_cap ? old_cap * 2 : 128;
+        checker->tn_cache_names = xcalloc((size_t)checker->tn_cache_cap, sizeof(char *));
+        checker->tn_cache_types = xcalloc((size_t)checker->tn_cache_cap, sizeof(GrayType *));
+        for (int i = 0; i < old_cap; i++)
+            if (old_names[i])
+                tn_cache_insert_raw(checker->tn_cache_names, checker->tn_cache_types,
+                                    checker->tn_cache_cap, old_names[i], old_types[i]);
+        free(old_names);
+        free(old_types);
+    }
+    tn_cache_insert_raw(checker->tn_cache_names, checker->tn_cache_types,
+                        checker->tn_cache_cap,
+                        arena_copy_string(checker->arena, name), type);
+    checker->tn_cache_count++;
+}
+
+static void tn_cache_flush(TypeChecker *checker) {
+    if (checker->tn_cache_names) {
+        memset(checker->tn_cache_names, 0, sizeof(char *) * (size_t)checker->tn_cache_cap);
+        memset(checker->tn_cache_types, 0, sizeof(GrayType *) * (size_t)checker->tn_cache_cap);
+    }
+    checker->tn_cache_count = 0;
+}
+
+static GrayType *typechecker_type_from_name_uncached(TypeChecker *checker, const char *name);
+
 static GrayType *typechecker_type_from_name(TypeChecker *checker, const char *name) {
+    if (!name) return &TYPE_UNKNOWN;
+    if (!checker->tn_cache_active || checker->registering)
+        return typechecker_type_from_name_uncached(checker, name);
+
+    if (checker->tn_cache_file != checker->current_check_file ||
+        checker->tn_cache_using_count != checker->using_module_count) {
+        tn_cache_flush(checker);
+        checker->tn_cache_file = checker->current_check_file;
+        checker->tn_cache_using_count = checker->using_module_count;
+    }
+    GrayType *hit = tn_cache_get(checker, name);
+    if (hit) return hit;
+    GrayType *result = typechecker_type_from_name_uncached(checker, name);
+    tn_cache_put(checker, name, result);
+    return result;
+}
+
+static GrayType *typechecker_type_from_name_uncached(TypeChecker *checker, const char *name) {
     /* Map the name as written — "lib.Score", or a bare "Score" naming this
      * module's own or a using'd declaration — onto the registry spelling. */
     name = checker_resolve_type_name(checker, name);
@@ -4310,13 +4390,16 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
  * Used to detect narrowing (declared rank < value rank). */
 static int int_type_name_rank(const char *n) {
     if (!n) return 0;
-    if (strcmp(n, "i8")   == 0 || strcmp(n, "u8")   == 0 || strcmp(n, "byte") == 0) return 1;
-    if (strcmp(n, "i16")  == 0 || strcmp(n, "u16")  == 0) return 2;
-    if (strcmp(n, "i32")  == 0 || strcmp(n, "u32")  == 0) return 3;
-    if (strcmp(n, "i64")  == 0 || strcmp(n, "u64")  == 0 ||
-        strcmp(n, "int")  == 0 || strcmp(n, "uint") == 0) return 4;
-    if (strcmp(n, "i128") == 0 || strcmp(n, "u128") == 0) return 5;
-    if (strcmp(n, "i256") == 0 || strcmp(n, "u256") == 0) return 6;
+    if (n[0] == 'b') return strcmp(n, "byte") == 0 ? 1 : 0;
+    if (n[0] != 'i' && n[0] != 'u') return 0;
+    if (strcmp(n, "int") == 0 || strcmp(n, "uint") == 0) return 4;
+    const char *w = n + 1; /* width digits after the i/u */
+    if (strcmp(w, "8")   == 0) return 1;
+    if (strcmp(w, "16")  == 0) return 2;
+    if (strcmp(w, "32")  == 0) return 3;
+    if (strcmp(w, "64")  == 0) return 4;
+    if (strcmp(w, "128") == 0) return 5;
+    if (strcmp(w, "256") == 0) return 6;
     return 0;
 }
 
@@ -4729,7 +4812,7 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
  * quotes the function name; otherwise it falls back to a generic
  * "void expression" wording. Caller-suppliable context keeps each
  * diagnostic site self-describing without a zillion format strings. */
-static AstNode *find_struct_in_program(AstNode *program, const char *name);
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name);
 
 static void reject_void_in_context(TypeChecker *checker, AstNode *expr,
                                     GrayType *t, const char *context) {
@@ -9967,7 +10050,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     /* for generic structs, infer the wildcard binding from
      * the field values and record the instantiation on the struct
      * decl so codegen can emit per-binding typedefs. */
-    AstNode *sdecl = find_struct_in_program(checker->program, struct_name);
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
     if (sdecl && sdecl->data.struct_decl.is_generic) {
         const char *binding = NULL;
         for (int i = 0; i < node->data.struct_value.count; i++) {
@@ -16536,17 +16619,57 @@ static bool struct_name_declared(AstNode *program, const char *name) {
     return false;
 }
 
+/* Build the struct-decl name index: name -> first matching NODE_STRUCT_DECL,
+ * mirroring the first-match rule of the linear scan it replaces. */
+static void build_struct_decl_index(TypeChecker *checker) {
+    checker->struct_decl_index_built = true;
+    AstNode *program = checker->program;
+    if (!program) return;
+    int stmt_count = program->data.program.stmt_count;
+
+    int structs = 0;
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (s && s->kind == NODE_STRUCT_DECL && s->data.struct_decl.name) structs++;
+    }
+    if (structs == 0) return;
+
+    int cap = 16;
+    while (cap < (structs + 1) * 2) cap *= 2;
+    checker->struct_decl_index_names = xcalloc((size_t)cap, sizeof(char *));
+    checker->struct_decl_index_nodes = xcalloc((size_t)cap, sizeof(AstNode *));
+    checker->struct_decl_index_cap = cap;
+
+    uint32_t mask = (uint32_t)(cap - 1);
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (!stmt || stmt->kind != NODE_STRUCT_DECL || !stmt->data.struct_decl.name) continue;
+        const char *name = stmt->data.struct_decl.name;
+        uint32_t h = scope_str_hash(name) & mask;
+        bool dup = false;
+        while (checker->struct_decl_index_names[h]) {
+            if (strcmp(checker->struct_decl_index_names[h], name) == 0) { dup = true; break; }
+            h = (h + 1) & mask;
+        }
+        if (dup) continue; /* first declaration wins */
+        checker->struct_decl_index_names[h] = name;
+        checker->struct_decl_index_nodes[h] = stmt;
+    }
+}
+
 /* look up a struct declaration in the program by name. Returns
  * NULL if no struct with the given name exists. Used by the by-value
  * recursion detector below. */
-static AstNode *find_struct_in_program(AstNode *program, const char *name) {
-    if (!program || !name) return NULL;
-    for (int i = 0; i < program->data.program.stmt_count; i++) {
-        AstNode *stmt = program->data.program.stmts[i];
-        if (stmt && stmt->kind == NODE_STRUCT_DECL && stmt->data.struct_decl.name &&
-            strcmp(stmt->data.struct_decl.name, name) == 0) {
-            return stmt;
-        }
+static AstNode *find_struct_in_program(TypeChecker *checker, const char *name) {
+    if (!name) return NULL;
+    if (!checker->struct_decl_index_built) build_struct_decl_index(checker);
+    if (!checker->struct_decl_index_names) return NULL;
+    uint32_t mask = (uint32_t)(checker->struct_decl_index_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (checker->struct_decl_index_names[h]) {
+        if (strcmp(checker->struct_decl_index_names[h], name) == 0)
+            return checker->struct_decl_index_nodes[h];
+        h = (h + 1) & mask;
     }
     return NULL;
 }
@@ -16558,7 +16681,7 @@ static AstNode *find_struct_in_program(AstNode *program, const char *name) {
  * header, not inline. `visited` is a stack of struct names on the
  * current DFS path used to short-circuit cycles that don't touch
  * `target` directly. */
-static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, AstNode *decl,
+static bool struct_contains_by_value(TypeChecker *checker, AstNode *decl,
                                       const char *target,
                                       const char **visited, int *visited_count,
                                       int visited_cap) {
@@ -16583,8 +16706,8 @@ static bool struct_contains_by_value(TypeChecker *checker, AstNode *program, Ast
             (*visited_count)--;
             return true;
         }
-        AstNode *child = find_struct_in_program(program, ftn);
-        if (child && struct_contains_by_value(checker, program, child, target,
+        AstNode *child = find_struct_in_program(checker, ftn);
+        if (child && struct_contains_by_value(checker, child, target,
                                                visited, visited_count, visited_cap)) {
             (*visited_count)--;
             return true;
@@ -16682,7 +16805,7 @@ static void validate_field_type_recursive(TypeChecker *checker, AstNode *program
  * This is the point of issue #2485's "mangling becomes a pure function of a
  * resolved declaration": the key no longer comes from a name the import merge
  * rewrote, it comes from where the declaration actually lives. */
-static const char *decl_registry_key(TypeChecker *checker, const DeclEntry *entry,
+static const char *decl_registry_key(TypeChecker *checker, DeclEntry *entry,
                                      const char *fallback) {
     return entry ? module_mangle(checker->modules, entry) : fallback;
 }
@@ -17234,12 +17357,12 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 if (strcmp(ftn, self_name) == 0) {
                     is_cycle = true;
                 } else {
-                    AstNode *child = find_struct_in_program(program, ftn);
+                    AstNode *child = find_struct_in_program(checker, ftn);
                     if (child) {
                         const char *visited[MAX_STRUCT_DEPTH];
                         int variant_count = 0;
                         is_cycle = struct_contains_by_value(
-                            checker, program, child, self_name, visited, &variant_count, 32);
+                            checker, child, self_name, visited, &variant_count, 32);
                     }
                 }
                 if (is_cycle) {
@@ -17946,6 +18069,12 @@ void typechecker_free(TypeChecker *checker) {
     free(checker->const_int_names);
     free(checker->const_int_values);
 
+    free(checker->tn_cache_names);
+    free(checker->tn_cache_types);
+
+    free(checker->struct_decl_index_names);
+    free(checker->struct_decl_index_nodes);
+
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);
     scope_destroy(checker->current_scope);
@@ -18186,6 +18315,10 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
     /* E2088: keyword alias consistency (while/as_long_as, do/fn, when+is/switch+case, etc.) */
     check_keyword_alias_consistency(checker, program);
+
+    /* Every type/module/alias registry is now frozen — the type-name
+     * resolution cache is safe to use for the statement and generic passes. */
+    checker->tn_cache_active = true;
 
     /* Pass 2: check all statements */
     const char *prev_file = NULL;

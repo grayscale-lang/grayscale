@@ -37,6 +37,15 @@
 #define GRAY_EXT      ".gray"
 #define GRAY_EXT_LEN  5
 
+/* Wall-clock milliseconds from a monotonic source. clock() would measure only
+ * this process's CPU time and miss the C compiler, which runs as a spawned
+ * child and accounts for most of the total. */
+static double monotonic_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec / 1e6;
+}
+
 static void print_usage(void) {
     fprintf(stderr, "Grayscale v%s — Simple to write. Safe to run.\n", GRAY_VERSION);
     fprintf(stderr, "\nUsage:\n");
@@ -561,7 +570,7 @@ int main(int argc, char **argv) {
         free(codes_buf);
     }
 
-    clock_t t_start = clock();
+    double t_start = monotonic_ms();
 
     /* Lex */
     Lexer *lexer = lexer_create(arena, source, opts.input_file);
@@ -627,9 +636,9 @@ int main(int argc, char **argv) {
 
     /* Check-only mode: stop after type checking */
     if (opts.check_only) {
-        clock_t t_end = clock();
+        double t_end = monotonic_ms();
         if (opts.show_time) {
-            double ms = (double)(t_end - t_start) / CLOCKS_PER_SEC * 1000.0;
+            double ms = t_end - t_start;
             fprintf(stderr, "gray: check completed in %.1fms\n", ms);
         }
         if (diag->use_color)
@@ -814,7 +823,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    clock_t t_cc_start = clock();
+    double t_cc_start = monotonic_ms();
 
     ArgV cc_argv = {0};
     /* Only --cc values are multi-word commands ("zig cc -target ...").
@@ -936,7 +945,7 @@ int main(int argc, char **argv) {
         ret = 1;
     }
 
-    clock_t t_cc_end = clock();
+    double t_cc_end = monotonic_ms();
 
     if (ret != 0) {
         fprintf(stderr, "gray: C compilation failed\n");
@@ -960,7 +969,7 @@ int main(int argc, char **argv) {
     } else {
         gray_remove_file(c_file);
 
-        double total_ms = (double)(t_cc_end - t_start) / CLOCKS_PER_SEC * 1000.0;
+        double total_ms = t_cc_end - t_start;
         if (!opts.run_mode) {
             const char *out_base = gray_path_basename(opts.output_file);
             if (!opts.no_color && gray_stdout_is_tty()) {
@@ -973,8 +982,8 @@ int main(int argc, char **argv) {
         }
 
         if (opts.show_time) {
-            double frontend_ms = (double)(t_cc_start - t_start) / CLOCKS_PER_SEC * 1000.0;
-            double cc_ms = (double)(t_cc_end - t_cc_start) / CLOCKS_PER_SEC * 1000.0;
+            double frontend_ms = t_cc_start - t_start;
+            double cc_ms = t_cc_end - t_cc_start;
             fprintf(stderr, "  frontend:  %.1fms (lex + parse + typecheck + codegen)\n", frontend_ms);
             fprintf(stderr, "  cc:        %.1fms (compile + link)\n", cc_ms);
         }

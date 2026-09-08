@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -146,6 +147,52 @@ func TestE2E_Check_Invalid(t *testing.T) {
 	_, _, code := runGray(t, "check", src)
 	if code == 0 {
 		t.Fatal("gray check should exit non-zero on invalid code")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gray build --time
+// ---------------------------------------------------------------------------
+
+// parseTimingMS pulls the millisecond value off a "--time" report line whose
+// first field is label (e.g. "cc:").
+func parseTimingMS(t *testing.T, output, label string) float64 {
+	t.Helper()
+	for _, line := range strings.Split(output, "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 2 && f[0] == label {
+			v, err := strconv.ParseFloat(strings.TrimSuffix(f[1], "ms"), 64)
+			if err != nil {
+				t.Fatalf("could not parse timing line %q: %v", line, err)
+			}
+			return v
+		}
+	}
+	t.Fatalf("no %q timing line in output:\n%s", label, output)
+	return 0
+}
+
+func TestE2E_Build_TimeCountsCC(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "timed.gray")
+	os.WriteFile(src, []byte("do main() {\n    println(\"hi\")\n}\n"), 0644)
+	out := filepath.Join(dir, "timed")
+
+	stdout, stderr, code := runGray(t, "build", "--time", "-o", out, src)
+	combined := combinedOutput(stdout, stderr)
+	if strings.Contains(combined, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray build --time exited %d:\n%s", code, combined)
+	}
+
+	// The cc phase runs the system C compiler as a child process. Measured
+	// with clock() it reported ~0ms because a child's CPU time is invisible
+	// to the parent; a wall clock must show the real compile + link time.
+	ccMS := parseTimingMS(t, combined, "cc:")
+	if ccMS < 2.0 {
+		t.Fatalf("cc phase reported %.1fms; expected real wall-clock time:\n%s", ccMS, combined)
 	}
 }
 

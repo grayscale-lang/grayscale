@@ -18,7 +18,10 @@ GrayArray gray_array_new(GrayArena *arena, int32_t elem_size, int32_t initial_ca
     arr.len = 0;
     arr.cap = initial_cap > 0 ? initial_cap : GRAY_ARRAY_MIN_CAP;
     arr.iterating = 0;
-    arr.data = gray_arena_alloc(arena, (size_t)arr.cap * (size_t)arr.elem_size);
+    /* Uninitialized: len is 0, so every slot is written by push/set (or a
+     * full-length fill loop) before it can be read — reads are len-gated.
+     * Matches gray_array_from and gray_array_grow. */
+    arr.data = gray_arena_alloc_uninitialized(arena, (size_t)arr.cap * (size_t)arr.elem_size);
     return arr;
 }
 

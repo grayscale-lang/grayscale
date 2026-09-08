@@ -57,6 +57,10 @@ typedef struct DeclEntry_ {
      * are registered. Resolving a name yields the entry, and the entry yields
      * the details directly — no second lookup keyed by a mangled string. */
     int registry_index;
+    /* The mangled C name, arena-allocated on first request and reused after.
+     * The spelling is fixed by kind/name/module, so every later resolution of
+     * this declaration returns the same pointer instead of a fresh copy. */
+    const char *mangled_cache;
 } DeclEntry;
 
 typedef struct {
@@ -235,10 +239,11 @@ const char *module_resolve_type_name(ModuleTable *table, const ResolveScope *sco
 /* The C symbol name for a declaration: "mod_Name", or "Name" for the entry
  * module. The single point at which module membership becomes a string.
  *
- * module_mangle copies into the table's arena, for names that outlive the
- * call; module_mangle_into writes to a caller buffer, for lookup keys that do
- * not. Both return their result. */
-const char *module_mangle(ModuleTable *table, const DeclEntry *entry);
+ * module_mangle returns an arena-allocated name that outlives the call,
+ * caching it on the entry so repeat calls share one copy; module_mangle_into
+ * writes to a caller buffer, for lookup keys that do not outlive the call.
+ * Both return their result. */
+const char *module_mangle(ModuleTable *table, DeclEntry *entry);
 const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen);
 
 /* Split "lib.Score" into ("lib", "Score"). Returns false when `spelling` has

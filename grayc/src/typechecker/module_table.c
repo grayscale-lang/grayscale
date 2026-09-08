@@ -549,10 +549,19 @@ const char *module_mangle_into(const DeclEntry *entry, char *buf, size_t buflen)
     return buf;
 }
 
-const char *module_mangle(ModuleTable *table, const DeclEntry *entry) {
+const char *module_mangle(ModuleTable *table, DeclEntry *entry) {
+    if (!entry) return NULL;
+    if (entry->mangled_cache) return entry->mangled_cache;
     char buf[MSG_BUF_SIZE];
     const char *mangled = module_mangle_into(entry, buf, sizeof(buf));
-    return mangled ? arena_copy_string(table->arena, mangled) : NULL;
+    if (!mangled) return NULL;
+    /* module_mangle_into hands back entry->name directly for the unprefixed
+     * cases (entry module, external); only a prefixed name is a fresh buffer
+     * that needs copying. */
+    entry->mangled_cache = (mangled == entry->name)
+        ? entry->name
+        : arena_copy_string(table->arena, mangled);
+    return entry->mangled_cache;
 }
 
 bool module_split_qualified(Arena *arena, const char *spelling,

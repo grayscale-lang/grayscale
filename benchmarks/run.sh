@@ -44,7 +44,7 @@ echo "==> generating fixtures"
 bash "$here/gen.sh"
 
 # Workloads with both a compile and a run phase.
-workloads="json_roundtrip raytracer lexer life kvstore sha256"
+workloads="micro json_roundtrip raytracer lexer life kvstore sha256"
 
 # ---- machine info -----------------------------------------------------------
 os_name="$(uname -s)"
