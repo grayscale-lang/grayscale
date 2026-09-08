@@ -410,11 +410,14 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep) {
 
 
 GrayArray gray_strings_to_chars(GrayArena *arena, GrayString str) {
+    /* Result is exactly str.len wide; fill it with a direct byte->int32
+     * widening loop the compiler can vectorize, not a call per byte. */
     GrayArray arr = gray_array_new(arena, sizeof(int32_t), str.len);
+    int32_t *out = (int32_t *)arr.data;
     for (int32_t i = 0; i < str.len; i++) {
-        int32_t codepoint = (int32_t)(unsigned char)str.data[i];
-        GRAY_ARRAY_PUSH(arena, &arr, &codepoint);
+        out[i] = (int32_t)(unsigned char)str.data[i];
     }
+    arr.len = str.len;
     return arr;
 }
 

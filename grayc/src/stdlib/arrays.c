@@ -244,12 +244,20 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right) {
 
 /* === Transformation === */
 
+/* The result-building helpers below allocate the array at its exact final
+ * size, then fill it with a direct strided memcpy instead of a
+ * gray_array_push per element (a non-inline call that re-runs the capacity
+ * check and blocks the compiler from vectorizing the copy). */
+
 GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr) {
     GrayArray result = gray_array_new(arena, arr->elem_size, arr->len);
-    char *src = (char *)arr->data;
-    for (int32_t i = arr->len - 1; i >= 0; i--) {
-        GRAY_ARRAY_PUSH(arena, &result, src + i * arr->elem_size);
+    size_t es = (size_t)arr->elem_size;
+    const char *src = (const char *)arr->data;
+    char *dst = (char *)result.data;
+    for (int32_t i = 0; i < arr->len; i++) {
+        memcpy(dst + (size_t)i * es, src + (size_t)(arr->len - 1 - i) * es, es);
     }
+    result.len = arr->len;
     return result;
 }
 
@@ -262,11 +270,13 @@ GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int
 }
 
 GrayArray gray_arrays_concat(GrayArena *arena, GrayArray *left, GrayArray *right) {
-    GrayArray result = gray_array_copy(arena, left);
-    char *src = (char *)right->data;
-    for (int32_t i = 0; i < right->len; i++) {
-        GRAY_ARRAY_PUSH(arena, &result, src + i * right->elem_size);
-    }
+    int32_t total = left->len + right->len;
+    size_t es = (size_t)left->elem_size;
+    GrayArray result = gray_array_new(arena, left->elem_size, total);
+    if (left->len > 0)  memcpy(result.data, left->data, (size_t)left->len * es);
+    if (right->len > 0) memcpy((char *)result.data + (size_t)left->len * es,
+                               right->data, (size_t)right->len * es);
+    result.len = total;
     return result;
 }
 
@@ -316,15 +326,30 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
 }
 
 GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
-    /* Flatten one level: [[int]] -> [int]. Each element is an GrayArray. */
-    GrayArray result = gray_array_new(arena, sizeof(int64_t), 8);
+    /* Flatten one level: [[int]] -> [int]. Each element is a GrayArray, and
+     * the result holds int64-wide elements (as the push loop always did). */
+    const size_t out_es = sizeof(int64_t);
+    int64_t total = 0;
     for (int32_t i = 0; i < arr->len; i++) {
-        GrayArray *inner = (GrayArray *)((char *)arr->data + i * arr->elem_size);
-        char *inner_data = (char *)inner->data;
-        for (int32_t j = 0; j < inner->len; j++) {
-            GRAY_ARRAY_PUSH(arena, &result, inner_data + j * inner->elem_size);
-        }
+        total += ((GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size))->len;
     }
+    GrayArray result = gray_array_new(arena, (int32_t)out_es, (int32_t)total);
+    char *out = (char *)result.data;
+    int32_t pos = 0;
+    for (int32_t i = 0; i < arr->len; i++) {
+        GrayArray *inner = (GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (inner->len <= 0) continue;
+        if ((size_t)inner->elem_size == out_es) {
+            memcpy(out + (size_t)pos * out_es, inner->data, (size_t)inner->len * out_es);
+        } else {
+            char *id = (char *)inner->data;
+            for (int32_t j = 0; j < inner->len; j++) {
+                memcpy(out + (size_t)(pos + j) * out_es, id + (size_t)j * (size_t)inner->elem_size, out_es);
+            }
+        }
+        pos += inner->len;
+    }
+    result.len = pos;
     return result;
 }
 
