@@ -1,0 +1,20 @@
+// Error Test: E3027 - a prefix expression (-x, !x) is not a mutable target
+// and cannot be passed to a mutable (&) parameter. It used to be silently
+// accepted and the write went to a discarded temporary.
+// expect-error: E3027
+// expect-error-count: 2
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do flip(&b bool) {
+    b = !b
+}
+
+do main() {
+    mut v int = 10
+    mut t bool = true
+    inc(-v)
+    flip(!t)
+}

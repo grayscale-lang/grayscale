@@ -5014,9 +5014,25 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
             }
         }
+    } else if (arg->kind == NODE_POSTFIX_EXPR &&
+               arg->data.postfix.op == TOK_CARET) {
+        /* A pointer dereference is a mutable place (p^ = v is a valid
+         * assignment target). Reject it only when the pointer was taken
+         * from a const-declared variable — the same E3122 check the
+         * 'p^ = v' assignment path performs. */
+        AstNode *ptr = arg->data.postfix.left;
+        if (ptr && ptr->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope, ptr->data.label.value);
+            if (sym && sym->const_source) {
+                diagnostic_error_code_formatted(checker->diag, "E3122",
+                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                    ptr->data.label.value);
+            }
+        }
     } else if (arg->kind != NODE_MEMBER_EXPR &&
-               arg->kind != NODE_INDEX_EXPR &&
-               arg->kind != NODE_PREFIX_EXPR) {
+               arg->kind != NODE_INDEX_EXPR) {
+        /* Anything else — a literal, an arithmetic or logical expression, a
+         * prefix expression (-x, !x, ~x) — is not a mutable target. */
         char *msg = typechecker_format(checker,
             "cannot pass a literal or expression to %s of '%s'; expected a mutable variable",
             param_desc, func_display);
