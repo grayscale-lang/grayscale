@@ -221,24 +221,26 @@ static void argv_print(const ArgV *a, FILE *out) {
     fputc('\n', out);
 }
 
-/* Pick the first C compiler that actually runs. The candidate that answers is
- * the one we go on to invoke — probing one name and then invoking a different
+/* Pick the first C compiler present on PATH. The candidate that resolves is
+ * the one we go on to invoke — accepting one name and then invoking a different
  * one breaks on any system that has gcc but no cc, which is every Windows
- * install and plenty of minimal Linux images. */
-static bool cc_probe_ok(const char *cc) {
-    const char *probe[] = {cc, "--version", NULL};
-    return gray_spawn_quiet(probe) == 0;
+ * install and plenty of minimal Linux images. A filesystem check rather than a
+ * `<cc> --version` spawn: the spawn cost ~11ms of C-driver startup on every
+ * compile and only additionally proved the binary is not broken, which the
+ * real compile reports anyway. */
+static bool cc_available(const char *cc) {
+    return gray_command_on_path(cc);
 }
 
 static const char *detect_cc(void) {
-    /* GRAY_CC / CC are probed, not trusted: a stale CC=cc from a profile must
+    /* GRAY_CC / CC are checked, not trusted: a stale CC=cc from a profile must
      * not break a system that only has gcc. Multi-word values ("zig cc")
-     * cannot go through a single-token probe — use --cc for those. */
+     * cannot go through a single-token lookup — use --cc for those. */
     static const char *const env_names[] = {"GRAY_CC", "CC"};
     for (size_t i = 0; i < sizeof(env_names) / sizeof(env_names[0]); i++) {
         const char *val = getenv(env_names[i]);
         if (!val || !*val || strpbrk(val, " \t")) continue;
-        if (cc_probe_ok(val)) return val;
+        if (cc_available(val)) return val;
     }
 
     static const char *const candidates[] = {
@@ -249,7 +251,7 @@ static const char *detect_cc(void) {
 #endif
     };
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
-        if (cc_probe_ok(candidates[i])) return candidates[i];
+        if (cc_available(candidates[i])) return candidates[i];
     }
 
     /* Nothing on PATH — check the well-known Windows install locations. */
@@ -661,6 +663,7 @@ int main(int argc, char **argv) {
     codegen.test_mode = opts.test_mode;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
+    double t_frontend_end = monotonic_ms();
 
     /* Determine output name */
     char *default_output = NULL;
@@ -996,9 +999,11 @@ int main(int argc, char **argv) {
         }
 
         if (opts.show_time) {
-            double frontend_ms = t_cc_start - t_start;
+            double frontend_ms = t_frontend_end - t_start;
+            double setup_ms = t_cc_start - t_frontend_end;
             double cc_ms = t_cc_end - t_cc_start;
             fprintf(stderr, "  frontend:  %.1fms (lex + parse + typecheck + codegen)\n", frontend_ms);
+            fprintf(stderr, "  setup:     %.1fms (compiler probe + temp write)\n", setup_ms);
             fprintf(stderr, "  cc:        %.1fms (compile + link)\n", cc_ms);
         }
     }
