@@ -7870,7 +7870,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         !stmt->data.func_decl.params[argument_index].mutable)
                         continue;
                     char param_desc[MSG_BUF_SIZE];
-                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                    snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
                         stmt->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, arg, param_desc, function_name);
                     break;
@@ -7966,7 +7966,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                     !stmt->data.func_decl.params[argument_index].mutable)
                                     continue;
                                 char param_desc[MSG_BUF_SIZE];
-                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%stmt'",
+                                snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
                                     stmt->data.func_decl.params[argument_index].name);
                                 check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
                                 break;

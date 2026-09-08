@@ -2,6 +2,7 @@
  * Error Test: E3027 - const passed to mutable (&) param via function reference
  * Expected: "cannot pass immutable variable to mutable parameter" error
  */
+// expect-contains: mutable parameter 'x' of 'modify'
 
 do modify(&x int) {
     x = 99
