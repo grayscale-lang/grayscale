@@ -7053,11 +7053,18 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_contains_int(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
+            /* Wide ints are struct-backed: read each slot as its real C type
+             * and compare with the width's inline gray_<w>_eq helper. The
+             * int64_t-taking gray_arrays_contains_int cannot take the struct. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ct%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
             emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            emit_formatted(codegen, "; bool _cr%d = false; for (int32_t _ci%d = 0; _ci%d < _ct%d.len; _ci%d++) { "
+                "if (%s_eq(((%s *)_ct%d.data)[_ci%d], _cv%d)) { _cr%d = true; break; } } _cr%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         /* Every other element type: read each slot as its real C type so the
@@ -7105,11 +7112,16 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_index_of_int(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
+            /* See the contains handler: struct-backed, needs gray_<w>_eq. */
+            const char *bi = bigint_prefix(elem_tn);
+            int btag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ix%d = ", btag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _iv%d = ", bi, btag);
             emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            emit_formatted(codegen, "; int64_t _ir%d = -1; for (int32_t _ii%d = 0; _ii%d < _ix%d.len; _ii%d++) { "
+                "if (%s_eq(((%s *)_ix%d.data)[_ii%d], _iv%d)) { _ir%d = _ii%d; break; } } _ir%d; })",
+                btag, btag, btag, btag, btag, bi, bi, btag, btag, btag, btag, btag, btag);
             return true;
         }
         char c_elem[MSG_BUF_SIZE];
@@ -7143,11 +7155,15 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_count(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
+            /* See the contains handler: struct-backed, needs gray_<w>_eq. */
+            const char *bi = bigint_prefix(elem_tn);
+            emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
             emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            emit_formatted(codegen, "; int64_t _cr%d = 0; for (int32_t _ci%d = 0; _ci%d < _cn%d.len; _ci%d++) { "
+                "if (%s_eq(((%s *)_cn%d.data)[_ci%d], _cv%d)) _cr%d++; } _cr%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         char c_elem[MSG_BUF_SIZE];

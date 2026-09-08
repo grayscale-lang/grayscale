@@ -70,6 +70,26 @@ do main() {
     passed += check("i16", arrays.contains(w, 300) && arrays.get_max(w) == 300 && arrays.get_sum(w) == 600)
     total += 1
 
+    // --- wide ints (contains/index_of/count previously leaked a C error) ---
+    mut wi [i128] = {i128(10), i128(20), i128(30), i128(20)}
+    passed += check("i128 query",
+        arrays.contains(wi, i128(20)) && !arrays.contains(wi, i128(99)) &&
+        arrays.index_of(wi, i128(30)) == 2 && arrays.index_of(wi, i128(99)) == -1 &&
+        arrays.count(wi, i128(20)) == 2)
+    total += 1
+
+    mut wn [i256] = {i256(-5), i256(0), i256(-5)}
+    passed += check("i256 negatives",
+        arrays.contains(wn, i256(-5)) && arrays.index_of(wn, i256(0)) == 1 &&
+        arrays.count(wn, i256(-5)) == 2)
+    total += 1
+
+    mut wu [u256] = {u256(1), u256(2), u256(2)}
+    passed += check("u256 query",
+        arrays.contains(wu, u256(2)) && arrays.index_of(wu, u256(1)) == 0 &&
+        arrays.count(wu, u256(2)) == 2)
+    total += 1
+
     // --- empty array ---
     mut e [byte] = {}
     passed += check("empty", !arrays.contains(e, 1) && arrays.index_of(e, 1) == -1 && arrays.get_max(e) == 0)
