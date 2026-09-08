@@ -5013,6 +5013,21 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                 diagnostic_error_message(checker->diag, "E3027", msg,
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
             }
+        } else {
+            /* The chain crosses a pointer dereference (pp^.field, pp^[i]).
+             * Modifying that place writes into the pointee — reject it when
+             * the pointer was taken from a const-declared variable, the same
+             * E3122 check the 'pp^.field = v' assignment path performs.
+             * escape_root_name sees through the '^' to the pointer label. */
+            const char *ptr_name = escape_root_name(arg);
+            if (ptr_name) {
+                Symbol *sym = scope_lookup(checker->current_scope, ptr_name);
+                if (sym && sym->const_source) {
+                    diagnostic_error_code_formatted(checker->diag, "E3122",
+                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                        ptr_name);
+                }
+            }
         }
     } else if (arg->kind == NODE_POSTFIX_EXPR &&
                arg->data.postfix.op == TOK_CARET) {
