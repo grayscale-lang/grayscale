@@ -31,7 +31,6 @@
 #define LOOP_ARENA_SIZE      16384
 #define FUNC_ARENA_SIZE      65536
 #define OUTPUT_BUF_INITIAL   4096
-#define MAX_STRUCT_DECLS     256
 #define MAX_MEMBER_CHAIN     32
 #define VAR_NAME_BUF         64
 #define SHORT_VAR_BUF        32
@@ -12613,8 +12612,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Emit struct forward declarations before enums so tagged union
      * payloads can reference struct types by name. */
     {
-        int struct_count = codegen->struct_decl_count < MAX_STRUCT_DECLS
-                         ? codegen->struct_decl_count : MAX_STRUCT_DECLS;
+        int struct_count = codegen->struct_decl_count;
         AstNode **structs = codegen->struct_decls;
         for (int i = 0; i < struct_count; i++) {
             if (structs[i]->data.struct_decl.is_generic) continue;
@@ -12815,8 +12813,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
      * field of that type), so either kind of declaration may need to come
      * first — both are sorted together against one shared "emitted" set. */
     {
-        int struct_count = codegen->struct_decl_count < MAX_STRUCT_DECLS
-                         ? codegen->struct_decl_count : MAX_STRUCT_DECLS;
+        int struct_count = codegen->struct_decl_count;
         AstNode **structs = codegen->struct_decls;
 
         int tagged_count = 0;

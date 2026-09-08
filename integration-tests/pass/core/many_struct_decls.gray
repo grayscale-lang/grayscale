@@ -1,0 +1,1842 @@
+/*
+ * many_struct_decls.gray - A program with more than 256 struct
+ * declarations. Every struct must get a C typedef/definition, including
+ * those past the 256th, or generated C references undeclared types.
+ */
+
+const S0 struct {
+    a int
+    b int
+    next ^S1
+}
+
+const S1 struct {
+    a int
+    b int
+    next ^S2
+}
+
+const S2 struct {
+    a int
+    b int
+    next ^S3
+}
+
+const S3 struct {
+    a int
+    b int
+    next ^S4
+}
+
+const S4 struct {
+    a int
+    b int
+    next ^S5
+}
+
+const S5 struct {
+    a int
+    b int
+    next ^S6
+}
+
+const S6 struct {
+    a int
+    b int
+    next ^S7
+}
+
+const S7 struct {
+    a int
+    b int
+    next ^S8
+}
+
+const S8 struct {
+    a int
+    b int
+    next ^S9
+}
+
+const S9 struct {
+    a int
+    b int
+    next ^S10
+}
+
+const S10 struct {
+    a int
+    b int
+    next ^S11
+}
+
+const S11 struct {
+    a int
+    b int
+    next ^S12
+}
+
+const S12 struct {
+    a int
+    b int
+    next ^S13
+}
+
+const S13 struct {
+    a int
+    b int
+    next ^S14
+}
+
+const S14 struct {
+    a int
+    b int
+    next ^S15
+}
+
+const S15 struct {
+    a int
+    b int
+    next ^S16
+}
+
+const S16 struct {
+    a int
+    b int
+    next ^S17
+}
+
+const S17 struct {
+    a int
+    b int
+    next ^S18
+}
+
+const S18 struct {
+    a int
+    b int
+    next ^S19
+}
+
+const S19 struct {
+    a int
+    b int
+    next ^S20
+}
+
+const S20 struct {
+    a int
+    b int
+    next ^S21
+}
+
+const S21 struct {
+    a int
+    b int
+    next ^S22
+}
+
+const S22 struct {
+    a int
+    b int
+    next ^S23
+}
+
+const S23 struct {
+    a int
+    b int
+    next ^S24
+}
+
+const S24 struct {
+    a int
+    b int
+    next ^S25
+}
+
+const S25 struct {
+    a int
+    b int
+    next ^S26
+}
+
+const S26 struct {
+    a int
+    b int
+    next ^S27
+}
+
+const S27 struct {
+    a int
+    b int
+    next ^S28
+}
+
+const S28 struct {
+    a int
+    b int
+    next ^S29
+}
+
+const S29 struct {
+    a int
+    b int
+    next ^S30
+}
+
+const S30 struct {
+    a int
+    b int
+    next ^S31
+}
+
+const S31 struct {
+    a int
+    b int
+    next ^S32
+}
+
+const S32 struct {
+    a int
+    b int
+    next ^S33
+}
+
+const S33 struct {
+    a int
+    b int
+    next ^S34
+}
+
+const S34 struct {
+    a int
+    b int
+    next ^S35
+}
+
+const S35 struct {
+    a int
+    b int
+    next ^S36
+}
+
+const S36 struct {
+    a int
+    b int
+    next ^S37
+}
+
+const S37 struct {
+    a int
+    b int
+    next ^S38
+}
+
+const S38 struct {
+    a int
+    b int
+    next ^S39
+}
+
+const S39 struct {
+    a int
+    b int
+    next ^S40
+}
+
+const S40 struct {
+    a int
+    b int
+    next ^S41
+}
+
+const S41 struct {
+    a int
+    b int
+    next ^S42
+}
+
+const S42 struct {
+    a int
+    b int
+    next ^S43
+}
+
+const S43 struct {
+    a int
+    b int
+    next ^S44
+}
+
+const S44 struct {
+    a int
+    b int
+    next ^S45
+}
+
+const S45 struct {
+    a int
+    b int
+    next ^S46
+}
+
+const S46 struct {
+    a int
+    b int
+    next ^S47
+}
+
+const S47 struct {
+    a int
+    b int
+    next ^S48
+}
+
+const S48 struct {
+    a int
+    b int
+    next ^S49
+}
+
+const S49 struct {
+    a int
+    b int
+    next ^S50
+}
+
+const S50 struct {
+    a int
+    b int
+    next ^S51
+}
+
+const S51 struct {
+    a int
+    b int
+    next ^S52
+}
+
+const S52 struct {
+    a int
+    b int
+    next ^S53
+}
+
+const S53 struct {
+    a int
+    b int
+    next ^S54
+}
+
+const S54 struct {
+    a int
+    b int
+    next ^S55
+}
+
+const S55 struct {
+    a int
+    b int
+    next ^S56
+}
+
+const S56 struct {
+    a int
+    b int
+    next ^S57
+}
+
+const S57 struct {
+    a int
+    b int
+    next ^S58
+}
+
+const S58 struct {
+    a int
+    b int
+    next ^S59
+}
+
+const S59 struct {
+    a int
+    b int
+    next ^S60
+}
+
+const S60 struct {
+    a int
+    b int
+    next ^S61
+}
+
+const S61 struct {
+    a int
+    b int
+    next ^S62
+}
+
+const S62 struct {
+    a int
+    b int
+    next ^S63
+}
+
+const S63 struct {
+    a int
+    b int
+    next ^S64
+}
+
+const S64 struct {
+    a int
+    b int
+    next ^S65
+}
+
+const S65 struct {
+    a int
+    b int
+    next ^S66
+}
+
+const S66 struct {
+    a int
+    b int
+    next ^S67
+}
+
+const S67 struct {
+    a int
+    b int
+    next ^S68
+}
+
+const S68 struct {
+    a int
+    b int
+    next ^S69
+}
+
+const S69 struct {
+    a int
+    b int
+    next ^S70
+}
+
+const S70 struct {
+    a int
+    b int
+    next ^S71
+}
+
+const S71 struct {
+    a int
+    b int
+    next ^S72
+}
+
+const S72 struct {
+    a int
+    b int
+    next ^S73
+}
+
+const S73 struct {
+    a int
+    b int
+    next ^S74
+}
+
+const S74 struct {
+    a int
+    b int
+    next ^S75
+}
+
+const S75 struct {
+    a int
+    b int
+    next ^S76
+}
+
+const S76 struct {
+    a int
+    b int
+    next ^S77
+}
+
+const S77 struct {
+    a int
+    b int
+    next ^S78
+}
+
+const S78 struct {
+    a int
+    b int
+    next ^S79
+}
+
+const S79 struct {
+    a int
+    b int
+    next ^S80
+}
+
+const S80 struct {
+    a int
+    b int
+    next ^S81
+}
+
+const S81 struct {
+    a int
+    b int
+    next ^S82
+}
+
+const S82 struct {
+    a int
+    b int
+    next ^S83
+}
+
+const S83 struct {
+    a int
+    b int
+    next ^S84
+}
+
+const S84 struct {
+    a int
+    b int
+    next ^S85
+}
+
+const S85 struct {
+    a int
+    b int
+    next ^S86
+}
+
+const S86 struct {
+    a int
+    b int
+    next ^S87
+}
+
+const S87 struct {
+    a int
+    b int
+    next ^S88
+}
+
+const S88 struct {
+    a int
+    b int
+    next ^S89
+}
+
+const S89 struct {
+    a int
+    b int
+    next ^S90
+}
+
+const S90 struct {
+    a int
+    b int
+    next ^S91
+}
+
+const S91 struct {
+    a int
+    b int
+    next ^S92
+}
+
+const S92 struct {
+    a int
+    b int
+    next ^S93
+}
+
+const S93 struct {
+    a int
+    b int
+    next ^S94
+}
+
+const S94 struct {
+    a int
+    b int
+    next ^S95
+}
+
+const S95 struct {
+    a int
+    b int
+    next ^S96
+}
+
+const S96 struct {
+    a int
+    b int
+    next ^S97
+}
+
+const S97 struct {
+    a int
+    b int
+    next ^S98
+}
+
+const S98 struct {
+    a int
+    b int
+    next ^S99
+}
+
+const S99 struct {
+    a int
+    b int
+    next ^S100
+}
+
+const S100 struct {
+    a int
+    b int
+    next ^S101
+}
+
+const S101 struct {
+    a int
+    b int
+    next ^S102
+}
+
+const S102 struct {
+    a int
+    b int
+    next ^S103
+}
+
+const S103 struct {
+    a int
+    b int
+    next ^S104
+}
+
+const S104 struct {
+    a int
+    b int
+    next ^S105
+}
+
+const S105 struct {
+    a int
+    b int
+    next ^S106
+}
+
+const S106 struct {
+    a int
+    b int
+    next ^S107
+}
+
+const S107 struct {
+    a int
+    b int
+    next ^S108
+}
+
+const S108 struct {
+    a int
+    b int
+    next ^S109
+}
+
+const S109 struct {
+    a int
+    b int
+    next ^S110
+}
+
+const S110 struct {
+    a int
+    b int
+    next ^S111
+}
+
+const S111 struct {
+    a int
+    b int
+    next ^S112
+}
+
+const S112 struct {
+    a int
+    b int
+    next ^S113
+}
+
+const S113 struct {
+    a int
+    b int
+    next ^S114
+}
+
+const S114 struct {
+    a int
+    b int
+    next ^S115
+}
+
+const S115 struct {
+    a int
+    b int
+    next ^S116
+}
+
+const S116 struct {
+    a int
+    b int
+    next ^S117
+}
+
+const S117 struct {
+    a int
+    b int
+    next ^S118
+}
+
+const S118 struct {
+    a int
+    b int
+    next ^S119
+}
+
+const S119 struct {
+    a int
+    b int
+    next ^S120
+}
+
+const S120 struct {
+    a int
+    b int
+    next ^S121
+}
+
+const S121 struct {
+    a int
+    b int
+    next ^S122
+}
+
+const S122 struct {
+    a int
+    b int
+    next ^S123
+}
+
+const S123 struct {
+    a int
+    b int
+    next ^S124
+}
+
+const S124 struct {
+    a int
+    b int
+    next ^S125
+}
+
+const S125 struct {
+    a int
+    b int
+    next ^S126
+}
+
+const S126 struct {
+    a int
+    b int
+    next ^S127
+}
+
+const S127 struct {
+    a int
+    b int
+    next ^S128
+}
+
+const S128 struct {
+    a int
+    b int
+    next ^S129
+}
+
+const S129 struct {
+    a int
+    b int
+    next ^S130
+}
+
+const S130 struct {
+    a int
+    b int
+    next ^S131
+}
+
+const S131 struct {
+    a int
+    b int
+    next ^S132
+}
+
+const S132 struct {
+    a int
+    b int
+    next ^S133
+}
+
+const S133 struct {
+    a int
+    b int
+    next ^S134
+}
+
+const S134 struct {
+    a int
+    b int
+    next ^S135
+}
+
+const S135 struct {
+    a int
+    b int
+    next ^S136
+}
+
+const S136 struct {
+    a int
+    b int
+    next ^S137
+}
+
+const S137 struct {
+    a int
+    b int
+    next ^S138
+}
+
+const S138 struct {
+    a int
+    b int
+    next ^S139
+}
+
+const S139 struct {
+    a int
+    b int
+    next ^S140
+}
+
+const S140 struct {
+    a int
+    b int
+    next ^S141
+}
+
+const S141 struct {
+    a int
+    b int
+    next ^S142
+}
+
+const S142 struct {
+    a int
+    b int
+    next ^S143
+}
+
+const S143 struct {
+    a int
+    b int
+    next ^S144
+}
+
+const S144 struct {
+    a int
+    b int
+    next ^S145
+}
+
+const S145 struct {
+    a int
+    b int
+    next ^S146
+}
+
+const S146 struct {
+    a int
+    b int
+    next ^S147
+}
+
+const S147 struct {
+    a int
+    b int
+    next ^S148
+}
+
+const S148 struct {
+    a int
+    b int
+    next ^S149
+}
+
+const S149 struct {
+    a int
+    b int
+    next ^S150
+}
+
+const S150 struct {
+    a int
+    b int
+    next ^S151
+}
+
+const S151 struct {
+    a int
+    b int
+    next ^S152
+}
+
+const S152 struct {
+    a int
+    b int
+    next ^S153
+}
+
+const S153 struct {
+    a int
+    b int
+    next ^S154
+}
+
+const S154 struct {
+    a int
+    b int
+    next ^S155
+}
+
+const S155 struct {
+    a int
+    b int
+    next ^S156
+}
+
+const S156 struct {
+    a int
+    b int
+    next ^S157
+}
+
+const S157 struct {
+    a int
+    b int
+    next ^S158
+}
+
+const S158 struct {
+    a int
+    b int
+    next ^S159
+}
+
+const S159 struct {
+    a int
+    b int
+    next ^S160
+}
+
+const S160 struct {
+    a int
+    b int
+    next ^S161
+}
+
+const S161 struct {
+    a int
+    b int
+    next ^S162
+}
+
+const S162 struct {
+    a int
+    b int
+    next ^S163
+}
+
+const S163 struct {
+    a int
+    b int
+    next ^S164
+}
+
+const S164 struct {
+    a int
+    b int
+    next ^S165
+}
+
+const S165 struct {
+    a int
+    b int
+    next ^S166
+}
+
+const S166 struct {
+    a int
+    b int
+    next ^S167
+}
+
+const S167 struct {
+    a int
+    b int
+    next ^S168
+}
+
+const S168 struct {
+    a int
+    b int
+    next ^S169
+}
+
+const S169 struct {
+    a int
+    b int
+    next ^S170
+}
+
+const S170 struct {
+    a int
+    b int
+    next ^S171
+}
+
+const S171 struct {
+    a int
+    b int
+    next ^S172
+}
+
+const S172 struct {
+    a int
+    b int
+    next ^S173
+}
+
+const S173 struct {
+    a int
+    b int
+    next ^S174
+}
+
+const S174 struct {
+    a int
+    b int
+    next ^S175
+}
+
+const S175 struct {
+    a int
+    b int
+    next ^S176
+}
+
+const S176 struct {
+    a int
+    b int
+    next ^S177
+}
+
+const S177 struct {
+    a int
+    b int
+    next ^S178
+}
+
+const S178 struct {
+    a int
+    b int
+    next ^S179
+}
+
+const S179 struct {
+    a int
+    b int
+    next ^S180
+}
+
+const S180 struct {
+    a int
+    b int
+    next ^S181
+}
+
+const S181 struct {
+    a int
+    b int
+    next ^S182
+}
+
+const S182 struct {
+    a int
+    b int
+    next ^S183
+}
+
+const S183 struct {
+    a int
+    b int
+    next ^S184
+}
+
+const S184 struct {
+    a int
+    b int
+    next ^S185
+}
+
+const S185 struct {
+    a int
+    b int
+    next ^S186
+}
+
+const S186 struct {
+    a int
+    b int
+    next ^S187
+}
+
+const S187 struct {
+    a int
+    b int
+    next ^S188
+}
+
+const S188 struct {
+    a int
+    b int
+    next ^S189
+}
+
+const S189 struct {
+    a int
+    b int
+    next ^S190
+}
+
+const S190 struct {
+    a int
+    b int
+    next ^S191
+}
+
+const S191 struct {
+    a int
+    b int
+    next ^S192
+}
+
+const S192 struct {
+    a int
+    b int
+    next ^S193
+}
+
+const S193 struct {
+    a int
+    b int
+    next ^S194
+}
+
+const S194 struct {
+    a int
+    b int
+    next ^S195
+}
+
+const S195 struct {
+    a int
+    b int
+    next ^S196
+}
+
+const S196 struct {
+    a int
+    b int
+    next ^S197
+}
+
+const S197 struct {
+    a int
+    b int
+    next ^S198
+}
+
+const S198 struct {
+    a int
+    b int
+    next ^S199
+}
+
+const S199 struct {
+    a int
+    b int
+    next ^S200
+}
+
+const S200 struct {
+    a int
+    b int
+    next ^S201
+}
+
+const S201 struct {
+    a int
+    b int
+    next ^S202
+}
+
+const S202 struct {
+    a int
+    b int
+    next ^S203
+}
+
+const S203 struct {
+    a int
+    b int
+    next ^S204
+}
+
+const S204 struct {
+    a int
+    b int
+    next ^S205
+}
+
+const S205 struct {
+    a int
+    b int
+    next ^S206
+}
+
+const S206 struct {
+    a int
+    b int
+    next ^S207
+}
+
+const S207 struct {
+    a int
+    b int
+    next ^S208
+}
+
+const S208 struct {
+    a int
+    b int
+    next ^S209
+}
+
+const S209 struct {
+    a int
+    b int
+    next ^S210
+}
+
+const S210 struct {
+    a int
+    b int
+    next ^S211
+}
+
+const S211 struct {
+    a int
+    b int
+    next ^S212
+}
+
+const S212 struct {
+    a int
+    b int
+    next ^S213
+}
+
+const S213 struct {
+    a int
+    b int
+    next ^S214
+}
+
+const S214 struct {
+    a int
+    b int
+    next ^S215
+}
+
+const S215 struct {
+    a int
+    b int
+    next ^S216
+}
+
+const S216 struct {
+    a int
+    b int
+    next ^S217
+}
+
+const S217 struct {
+    a int
+    b int
+    next ^S218
+}
+
+const S218 struct {
+    a int
+    b int
+    next ^S219
+}
+
+const S219 struct {
+    a int
+    b int
+    next ^S220
+}
+
+const S220 struct {
+    a int
+    b int
+    next ^S221
+}
+
+const S221 struct {
+    a int
+    b int
+    next ^S222
+}
+
+const S222 struct {
+    a int
+    b int
+    next ^S223
+}
+
+const S223 struct {
+    a int
+    b int
+    next ^S224
+}
+
+const S224 struct {
+    a int
+    b int
+    next ^S225
+}
+
+const S225 struct {
+    a int
+    b int
+    next ^S226
+}
+
+const S226 struct {
+    a int
+    b int
+    next ^S227
+}
+
+const S227 struct {
+    a int
+    b int
+    next ^S228
+}
+
+const S228 struct {
+    a int
+    b int
+    next ^S229
+}
+
+const S229 struct {
+    a int
+    b int
+    next ^S230
+}
+
+const S230 struct {
+    a int
+    b int
+    next ^S231
+}
+
+const S231 struct {
+    a int
+    b int
+    next ^S232
+}
+
+const S232 struct {
+    a int
+    b int
+    next ^S233
+}
+
+const S233 struct {
+    a int
+    b int
+    next ^S234
+}
+
+const S234 struct {
+    a int
+    b int
+    next ^S235
+}
+
+const S235 struct {
+    a int
+    b int
+    next ^S236
+}
+
+const S236 struct {
+    a int
+    b int
+    next ^S237
+}
+
+const S237 struct {
+    a int
+    b int
+    next ^S238
+}
+
+const S238 struct {
+    a int
+    b int
+    next ^S239
+}
+
+const S239 struct {
+    a int
+    b int
+    next ^S240
+}
+
+const S240 struct {
+    a int
+    b int
+    next ^S241
+}
+
+const S241 struct {
+    a int
+    b int
+    next ^S242
+}
+
+const S242 struct {
+    a int
+    b int
+    next ^S243
+}
+
+const S243 struct {
+    a int
+    b int
+    next ^S244
+}
+
+const S244 struct {
+    a int
+    b int
+    next ^S245
+}
+
+const S245 struct {
+    a int
+    b int
+    next ^S246
+}
+
+const S246 struct {
+    a int
+    b int
+    next ^S247
+}
+
+const S247 struct {
+    a int
+    b int
+    next ^S248
+}
+
+const S248 struct {
+    a int
+    b int
+    next ^S249
+}
+
+const S249 struct {
+    a int
+    b int
+    next ^S250
+}
+
+const S250 struct {
+    a int
+    b int
+    next ^S251
+}
+
+const S251 struct {
+    a int
+    b int
+    next ^S252
+}
+
+const S252 struct {
+    a int
+    b int
+    next ^S253
+}
+
+const S253 struct {
+    a int
+    b int
+    next ^S254
+}
+
+const S254 struct {
+    a int
+    b int
+    next ^S255
+}
+
+const S255 struct {
+    a int
+    b int
+    next ^S256
+}
+
+const S256 struct {
+    a int
+    b int
+    next ^S257
+}
+
+const S257 struct {
+    a int
+    b int
+    next ^S258
+}
+
+const S258 struct {
+    a int
+    b int
+    next ^S259
+}
+
+const S259 struct {
+    a int
+    b int
+    next ^S260
+}
+
+const S260 struct {
+    a int
+    b int
+    next ^S261
+}
+
+const S261 struct {
+    a int
+    b int
+    next ^S262
+}
+
+const S262 struct {
+    a int
+    b int
+    next ^S263
+}
+
+const S263 struct {
+    a int
+    b int
+    next ^S264
+}
+
+const S264 struct {
+    a int
+    b int
+    next ^S265
+}
+
+const S265 struct {
+    a int
+    b int
+    next ^S266
+}
+
+const S266 struct {
+    a int
+    b int
+    next ^S267
+}
+
+const S267 struct {
+    a int
+    b int
+    next ^S268
+}
+
+const S268 struct {
+    a int
+    b int
+    next ^S269
+}
+
+const S269 struct {
+    a int
+    b int
+    next ^S270
+}
+
+const S270 struct {
+    a int
+    b int
+    next ^S271
+}
+
+const S271 struct {
+    a int
+    b int
+    next ^S272
+}
+
+const S272 struct {
+    a int
+    b int
+    next ^S273
+}
+
+const S273 struct {
+    a int
+    b int
+    next ^S274
+}
+
+const S274 struct {
+    a int
+    b int
+    next ^S275
+}
+
+const S275 struct {
+    a int
+    b int
+    next ^S276
+}
+
+const S276 struct {
+    a int
+    b int
+    next ^S277
+}
+
+const S277 struct {
+    a int
+    b int
+    next ^S278
+}
+
+const S278 struct {
+    a int
+    b int
+    next ^S279
+}
+
+const S279 struct {
+    a int
+    b int
+    next ^S280
+}
+
+const S280 struct {
+    a int
+    b int
+    next ^S281
+}
+
+const S281 struct {
+    a int
+    b int
+    next ^S282
+}
+
+const S282 struct {
+    a int
+    b int
+    next ^S283
+}
+
+const S283 struct {
+    a int
+    b int
+    next ^S284
+}
+
+const S284 struct {
+    a int
+    b int
+    next ^S285
+}
+
+const S285 struct {
+    a int
+    b int
+    next ^S286
+}
+
+const S286 struct {
+    a int
+    b int
+    next ^S287
+}
+
+const S287 struct {
+    a int
+    b int
+    next ^S288
+}
+
+const S288 struct {
+    a int
+    b int
+    next ^S289
+}
+
+const S289 struct {
+    a int
+    b int
+    next ^S290
+}
+
+const S290 struct {
+    a int
+    b int
+    next ^S291
+}
+
+const S291 struct {
+    a int
+    b int
+    next ^S292
+}
+
+const S292 struct {
+    a int
+    b int
+    next ^S293
+}
+
+const S293 struct {
+    a int
+    b int
+    next ^S294
+}
+
+const S294 struct {
+    a int
+    b int
+    next ^S295
+}
+
+const S295 struct {
+    a int
+    b int
+    next ^S296
+}
+
+const S296 struct {
+    a int
+    b int
+    next ^S297
+}
+
+const S297 struct {
+    a int
+    b int
+    next ^S298
+}
+
+const S298 struct {
+    a int
+    b int
+    next ^S299
+}
+
+const S299 struct {
+    a int
+    b int
+    next ^S0
+}
+
+do take(p ^S260) -> int {
+    return p^.a + p^.b
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut s ^S260 = new(S260)
+    s^.a = 20
+    s^.b = 22
+    if take(s) == 42 {
+        println("  [PASS] struct past the 256th is usable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct past the 256th is usable")
+        failed += 1
+    }
+
+    mut z S299 = S299 { a: 1, b: 2, next: new(S0) }
+    if z.a + z.b == 3 {
+        println("  [PASS] last struct literal works")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] last struct literal works")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
