@@ -11,29 +11,39 @@
 #include "maps.h"
 #include <string.h>
 
+/* get_keys / get_values allocate exactly map->count slots (the live entry
+ * count) and write each entry straight into the result, in insertion order,
+ * rather than a gray_array_push per entry. */
+
 GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map) {
     GrayArray arr = gray_array_new(arena, map->key_size, map->count > 0 ? map->count : 4);
-    /* Iterate in insertion order */
+    size_t ks = (size_t)map->key_size;
+    char *out = (char *)arr.data;
+    int32_t n = 0;
     for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
         int32_t slot = map->order[order_index];
         if (slot >= 0 && map->states[slot] == 1) {
-            void *key = (char *)map->keys + (size_t)slot * (size_t)map->key_size;
-            GRAY_ARRAY_PUSH(arena, &arr, key);
+            memcpy(out + (size_t)n * ks, (char *)map->keys + (size_t)slot * ks, ks);
+            n++;
         }
     }
+    arr.len = n;
     return arr;
 }
 
 GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map) {
     GrayArray arr = gray_array_new(arena, map->value_size, map->count > 0 ? map->count : 4);
-    /* Iterate in insertion order */
+    size_t vs = (size_t)map->value_size;
+    char *out = (char *)arr.data;
+    int32_t n = 0;
     for (int32_t order_index = 0; order_index < map->order_len; order_index++) {
         int32_t slot = map->order[order_index];
         if (slot >= 0 && map->states[slot] == 1) {
-            void *val = (char *)map->values + (size_t)slot * (size_t)map->value_size;
-            GRAY_ARRAY_PUSH(arena, &arr, val);
+            memcpy(out + (size_t)n * vs, (char *)map->values + (size_t)slot * vs, vs);
+            n++;
         }
     }
+    arr.len = n;
     return arr;
 }
 

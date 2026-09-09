@@ -1,0 +1,52 @@
+/*
+ * deref_to_mutable_param.gray
+ * A pointer dereference p^ is a mutable place, the same as p^ = v. It must
+ * be accepted as an argument to a mutable (&) parameter when the pointee is
+ * mutable — whether the pointer is a local taken via addr() or an incoming
+ * pointer parameter, and whether the argument is the deref itself or a
+ * field reached through it (pp^.x).
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do bump(pn ^int) {
+    inc(pn^)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut v int = 10
+    mut p ^int = addr(v)
+    inc(p^)
+
+    mut w int = 20
+    bump(addr(w))
+
+    mut pt Point = Point{ x: 100, y: 200 }
+    mut pp ^Point = addr(pt)
+    inc(pp^.x)
+
+    if v == 11 && w == 21 && pt.x == 101 {
+        println("  [PASS] p^ and pp^.x accepted as & arguments when the pointee is mutable")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${v} ${w} ${pt.x}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

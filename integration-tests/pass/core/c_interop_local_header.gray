@@ -1,0 +1,31 @@
+/*
+ * c_interop_local_header.gray - Test C interop via a local header include.
+ *
+ * A quoted `extern import "./x.h"` must be resolved against the .gray source
+ * directory when the generated C is compiled from a temp path.
+ */
+
+extern import "./c_interop_local_header.h"
+
+do main() {
+    println("=== Local C Header Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut n int = extern.clh_double(21)
+    if n == 42 {
+        println("  [PASS] extern.clh_double(21) == 42")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] extern.clh_double(21)")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -221,24 +221,26 @@ static void argv_print(const ArgV *a, FILE *out) {
     fputc('\n', out);
 }
 
-/* Pick the first C compiler that actually runs. The candidate that answers is
- * the one we go on to invoke — probing one name and then invoking a different
+/* Pick the first C compiler present on PATH. The candidate that resolves is
+ * the one we go on to invoke — accepting one name and then invoking a different
  * one breaks on any system that has gcc but no cc, which is every Windows
- * install and plenty of minimal Linux images. */
-static bool cc_probe_ok(const char *cc) {
-    const char *probe[] = {cc, "--version", NULL};
-    return gray_spawn_quiet(probe) == 0;
+ * install and plenty of minimal Linux images. A filesystem check rather than a
+ * `<cc> --version` spawn: the spawn cost ~11ms of C-driver startup on every
+ * compile and only additionally proved the binary is not broken, which the
+ * real compile reports anyway. */
+static bool cc_available(const char *cc) {
+    return gray_command_on_path(cc);
 }
 
 static const char *detect_cc(void) {
-    /* GRAY_CC / CC are probed, not trusted: a stale CC=cc from a profile must
+    /* GRAY_CC / CC are checked, not trusted: a stale CC=cc from a profile must
      * not break a system that only has gcc. Multi-word values ("zig cc")
-     * cannot go through a single-token probe — use --cc for those. */
+     * cannot go through a single-token lookup — use --cc for those. */
     static const char *const env_names[] = {"GRAY_CC", "CC"};
     for (size_t i = 0; i < sizeof(env_names) / sizeof(env_names[0]); i++) {
         const char *val = getenv(env_names[i]);
         if (!val || !*val || strpbrk(val, " \t")) continue;
-        if (cc_probe_ok(val)) return val;
+        if (cc_available(val)) return val;
     }
 
     static const char *const candidates[] = {
@@ -249,7 +251,7 @@ static const char *detect_cc(void) {
 #endif
     };
     for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
-        if (cc_probe_ok(candidates[i])) return candidates[i];
+        if (cc_available(candidates[i])) return candidates[i];
     }
 
     /* Nothing on PATH — check the well-known Windows install locations. */
@@ -343,6 +345,48 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diag, Arena *a
         }
     }
     return ok;
+}
+
+/* Put the directory of every file that names a local C header ("./x.h" /
+ * "../x.h") on the quoted-include search path. The generated C is written to a
+ * temp path, so a verbatim `#include "./x.h"` would otherwise be resolved
+ * relative to $TMPDIR and never found. -iquote (not -I) keeps this confined to
+ * the quoted-include form, matching how the header was written. */
+static void add_local_c_header_dirs(ArgV *cc_argv, Arena *arena, AstNode *program,
+                                    const char *entry_file) {
+    const char *seen[MAX_CC_ARGS];
+    int seen_count = 0;
+
+    for (int si = 0; si < program->data.program.stmt_count; si++) {
+        AstNode *stmt = program->data.program.stmts[si];
+        if (stmt->kind != NODE_IMPORT_STMT) continue;
+        for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
+            ImportItem *item = &stmt->data.import_stmt.items[ii];
+            if (!item->is_c_import || !item->path) continue;
+            if (!c_header_is_local(item->path)) continue;
+
+            /* Directory of the importing file (mirrors preflight_c_headers). */
+            char base[PATH_BUF_SIZE];
+            const char *dir = item->source_dir;
+            if (!dir) {
+                snprintf(base, sizeof(base), "%s", entry_file);
+                char *sep = gray_path_rsep(base);
+                if (sep) sep[1] = '\0';
+                else snprintf(base, sizeof(base), "./");
+                dir = base;
+            }
+
+            bool dup = false;
+            for (int k = 0; k < seen_count; k++)
+                if (strcmp(seen[k], dir) == 0) { dup = true; break; }
+            if (dup) continue;
+            const char *kept = arena_copy_string(arena, dir);
+            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = kept;
+
+            argv_push(cc_argv, "-iquote");
+            argv_push(cc_argv, kept);
+        }
+    }
 }
 
 /* Command-line configuration, filled by parse_args() and read-only after. */
@@ -661,6 +705,7 @@ int main(int argc, char **argv) {
     codegen.test_mode = opts.test_mode;
     codegen_generate(&codegen, program);
     const char *c_code = codegen_result(&codegen);
+    double t_frontend_end = monotonic_ms();
 
     /* Determine output name */
     char *default_output = NULL;
@@ -853,6 +898,12 @@ int main(int argc, char **argv) {
 #endif
     if (opts.debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opts.opt_level);
+    /* One section per function/variable so the linker's dead-strip pass (added
+     * below) can drop the runtime and stdlib code the program never calls —
+     * a trivial program links a fraction of libgrayrt.a instead of all of it.
+     * Compile-time cost is negligible; there is no LTO. */
+    argv_push(&cc_argv, "-ffunction-sections");
+    argv_push(&cc_argv, "-fdata-sections");
     /* Marks this translation unit as a grayc-generated program. The stdlib
      * headers whose basename collides with a system header (time.h, io.h,
      * ...) only need to forward to the real header in this context — where
@@ -870,10 +921,23 @@ int main(int argc, char **argv) {
     /* GCC's spelling of the Clang-only flag above. */
     argv_push(&cc_argv, "-Wno-discarded-qualifiers");
 #endif
+    /* An `extern.` call is emitted with its arguments passed through verbatim —
+     * grayc cannot see the C signature to insert a cast. An opaque C handle
+     * (FILE*, DIR*, ...) has no Grayscale type to name, so it round-trips as
+     * `^byte` (uint8_t*), and a byte buffer passed to a `char*` parameter
+     * differs only in signedness. Neither mismatch is expressible away in
+     * source. Silence both so C interop compiles clean; on GCC >= 14
+     * -Wincompatible-pointer-types is an error by default, so this also keeps
+     * it from being a hard build failure. */
+    argv_push(&cc_argv, "-Wno-incompatible-pointer-types");
+    argv_push(&cc_argv, "-Wno-pointer-sign");
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
+    /* Local C headers ("./x.h") are written relative to the .gray source, not
+     * the temp .c handed to the compiler. */
+    add_local_c_header_dirs(&cc_argv, arena, program, opts.input_file);
     argv_push(&cc_argv, "-o");
     argv_push(&cc_argv, opts.output_file);
     argv_push(&cc_argv, c_file);
@@ -909,6 +973,14 @@ int main(int argc, char **argv) {
             argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, stdlib_srcs[i]);
         }
     }
+
+    /* Drop the sections nothing references (see -ffunction-sections above).
+     * Apple ld and GNU ld/lld spell it differently. */
+#if defined(__APPLE__)
+    argv_push(&cc_argv, "-Wl,-dead_strip");
+#else
+    argv_push(&cc_argv, "-Wl,--gc-sections");
+#endif
 
     /* Platform link flags. */
     argv_push(&cc_argv, "-lm");
@@ -982,9 +1054,11 @@ int main(int argc, char **argv) {
         }
 
         if (opts.show_time) {
-            double frontend_ms = t_cc_start - t_start;
+            double frontend_ms = t_frontend_end - t_start;
+            double setup_ms = t_cc_start - t_frontend_end;
             double cc_ms = t_cc_end - t_cc_start;
             fprintf(stderr, "  frontend:  %.1fms (lex + parse + typecheck + codegen)\n", frontend_ms);
+            fprintf(stderr, "  setup:     %.1fms (compiler probe + temp write)\n", setup_ms);
             fprintf(stderr, "  cc:        %.1fms (compile + link)\n", cc_ms);
         }
     }

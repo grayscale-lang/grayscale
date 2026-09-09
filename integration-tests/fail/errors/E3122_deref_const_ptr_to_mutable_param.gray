@@ -1,0 +1,15 @@
+// Error Test: E3122 - passing a pointer dereference to a mutable (&)
+// parameter must be rejected when the pointer was taken from a
+// const-declared variable, with the same diagnostic as 'p^ = v'.
+// expect-error: E3122
+// expect-error-count: 1
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do main() {
+    const v int = 10
+    mut p ^int = addr(v)
+    inc(p^)
+}

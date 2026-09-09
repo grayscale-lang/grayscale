@@ -1,0 +1,35 @@
+// Error Test: E3036 - an out-of-range integer literal must be rejected in
+// call-argument position, in every call form: plain top-level call, a
+// non-first argument, a byte parameter, static struct-function dispatch,
+// and instance dispatch.
+// expect-error: E3036
+// expect-error-count: 5
+
+const V struct {
+    n int
+
+    do sink(v V, x i8) {
+        println("${x}")
+    }
+}
+
+do plain(v i8) {
+    println("${v}")
+}
+
+do plain2(a int, v i8) {
+    println("${v}")
+}
+
+do take_byte(b byte) {
+    println("${b}")
+}
+
+do main() {
+    mut a V = V{ n: 0 }
+    plain(999)
+    plain2(1, 999)
+    take_byte(300)
+    V.sink(a, 999)
+    a.sink(999)
+}

@@ -70,6 +70,63 @@ do main() {
     passed += check("i16", arrays.contains(w, 300) && arrays.get_max(w) == 300 && arrays.get_sum(w) == 600)
     total += 1
 
+    // --- wide ints (contains/index_of/count previously leaked a C error) ---
+    mut wi [i128] = {i128(10), i128(20), i128(30), i128(20)}
+    passed += check("i128 query",
+        arrays.contains(wi, i128(20)) && !arrays.contains(wi, i128(99)) &&
+        arrays.index_of(wi, i128(30)) == 2 && arrays.index_of(wi, i128(99)) == -1 &&
+        arrays.count(wi, i128(20)) == 2)
+    total += 1
+
+    // bare-literal needle (previously initialized the struct from a C int)
+    passed += check("i128 query bare literal",
+        arrays.contains(wi, 20) && !arrays.contains(wi, 99) &&
+        arrays.index_of(wi, 30) == 2 && arrays.count(wi, 20) == 2)
+    passed += check("i128 query big literal",
+        !arrays.contains(wi, 100000000000000000000) &&
+        arrays.index_of(wi, 100000000000000000000) == -1)
+    total += 2
+
+    mut wn [i256] = {i256(-5), i256(0), i256(-5)}
+    passed += check("i256 negatives",
+        arrays.contains(wn, i256(-5)) && arrays.index_of(wn, i256(0)) == 1 &&
+        arrays.count(wn, i256(-5)) == 2)
+    total += 1
+
+    mut wu [u256] = {u256(1), u256(2), u256(2)}
+    passed += check("u256 query",
+        arrays.contains(wu, u256(2)) && arrays.index_of(wu, u256(1)) == 0 &&
+        arrays.count(wu, u256(2)) == 2)
+    total += 1
+
+    // --- wide ints: sort / min / max / sum / is_sorted read the full element,
+    //     not just the low 64 bits (2^64 multiples all share a low word of 0) ---
+    mut k i128 = i128(9223372036854775807) + i128(9223372036854775807) + i128(2)
+    mut ws [i128] = {k + k + k, k, k + k}
+    passed += check("i128 is_sorted unsorted", !arrays.is_sorted(ws))
+    arrays.sort_asc(ws)
+    passed += check("i128 sort_asc full-width",
+        ws[0] == k && ws[1] == k + k && ws[2] == k + k + k && arrays.is_sorted(ws))
+    passed += check("i128 min/max/sum full-width",
+        arrays.get_min(ws) == k && arrays.get_max(ws) == k + k + k &&
+        arrays.get_sum(ws) == k + k + k + k + k + k)
+    total += 3
+
+    mut wneg [i128] = {i128(0) - i128(5), i128(3), i128(0) - i128(100)}
+    arrays.sort_asc(wneg)
+    passed += check("i128 signed order", wneg[0] == i128(0) - i128(100) && wneg[2] == i128(3))
+    total += 1
+
+    mut wr [i128] = {i128(10), i128(20), i128(30), i128(20)}
+    arrays.remove(wr, i128(20))
+    passed += check("i128 remove", len(wr) == 3 && arrays.index_of(wr, i128(20)) == 2)
+    total += 1
+
+    mut wdd [u256] = {u256(100), u256(3), u256(50)}
+    arrays.sort_desc(wdd)
+    passed += check("u256 sort_desc", wdd[0] == u256(100) && wdd[1] == u256(50) && wdd[2] == u256(3))
+    total += 1
+
     // --- empty array ---
     mut e [byte] = {}
     passed += check("empty", !arrays.contains(e, 1) && arrays.index_of(e, 1) == -1 && arrays.get_max(e) == 0)

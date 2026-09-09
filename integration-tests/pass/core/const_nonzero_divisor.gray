@@ -1,0 +1,31 @@
+/*
+ * const_nonzero_divisor.gray
+ * The E3002 compile-time divide-by-zero check now folds const bindings in
+ * the divisor. A const (or const expression) that folds to a NON-zero value
+ * must still compile and divide/modulo correctly.
+ */
+
+const FILE_D int = 5
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const D int = 4
+    const E int = 3 - 1
+
+    if 20 / D == 5 && 21 % D == 1 && 20 / E == 10 && 20 / FILE_D == 4 {
+        println("  [PASS] non-zero const divisors compile and compute")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${20 / D} ${21 % D} ${20 / E} ${20 / FILE_D}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

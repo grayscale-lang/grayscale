@@ -39,6 +39,13 @@ var (
 	extractErr         error
 )
 
+// embedTag is the 16-hex-char content hash of embeddedGrayc concatenated with
+// embeddedLibgrayrt, computed once at build time and injected via -ldflags (see
+// the Makefile). It names the per-content extraction directory without a fresh
+// process having to SHA-256 ~2.4MB of assets on every invocation. Empty in a
+// bare `go build ./cli` dev build, where the runtime hash below is used instead.
+var embedTag string
+
 // extractEmbedded materialises the embedded grayc binary, libgrayrt.a, and
 // runtime/stdlib source files into a per-content-hash subdirectory of
 // ~/.gray/runtime so multiple installs don't collide and a version bump
@@ -57,11 +64,16 @@ func extractEmbedded() (string, error) {
 
 		// Content-address the pair so a new gray binary (built against new
 		// compiler artifacts) lands in a fresh directory instead of
-		// reusing a stale extraction from an older install.
-		h := sha256.New()
-		h.Write(embeddedGrayc)
-		h.Write(embeddedLibgrayrt)
-		tag := hex.EncodeToString(h.Sum(nil))[:16]
+		// reusing a stale extraction from an older install. The tag is
+		// normally baked in at build time; hash at runtime only when it is
+		// not (a bare `go build ./cli`).
+		tag := embedTag
+		if tag == "" {
+			h := sha256.New()
+			h.Write(embeddedGrayc)
+			h.Write(embeddedLibgrayrt)
+			tag = hex.EncodeToString(h.Sum(nil))[:16]
+		}
 
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -69,6 +81,16 @@ func extractEmbedded() (string, error) {
 			return
 		}
 		dir := filepath.Join(home, ".gray", "runtime", tag)
+
+		// Fast path: a prior process already extracted everything into this
+		// content-addressed directory and left the marker. Skip the tree
+		// walk that would otherwise stat every embedded source file.
+		marker := filepath.Join(dir, ".extracted")
+		if _, err := os.Stat(marker); err == nil {
+			extractedGraycPath = filepath.Join(dir, graycBinaryName())
+			return
+		}
+
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			extractErr = fmt.Errorf("cannot create runtime dir %s: %w", dir, err)
 			return
@@ -93,6 +115,13 @@ func extractEmbedded() (string, error) {
 		// binary).
 		if err := extractSourceTree(dir); err != nil {
 			extractErr = err
+			return
+		}
+
+		// Drop the marker last so a crash mid-extraction is retried rather
+		// than trusted by the fast path above.
+		if err := os.WriteFile(marker, nil, 0o644); err != nil {
+			extractErr = fmt.Errorf("cannot finalize runtime dir %s: %w", dir, err)
 			return
 		}
 

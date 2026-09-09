@@ -220,9 +220,15 @@ GrayString gray_c_string_dup(GrayArena *arena, const char *text) {
 }
 
 GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
+    /* Format once into a stack buffer. The common callers — "%lld"/"%llu" for
+     * an interpolated integer, println(int) — never exceed 20 digits plus a
+     * sign, so this is the whole job. Only a result that overflows the buffer
+     * (a long "%s" path in a stdlib error message) pays the size-then-fill
+     * fallback. */
+    char buf[32];
     va_list args;
     va_start(args, fmt);
-    int needed = vsnprintf(NULL, 0, fmt, args);
+    int needed = vsnprintf(buf, sizeof buf, fmt, args);
     va_end(args);
 
     if (needed < 0) {
@@ -230,9 +236,13 @@ GrayString gray_string_format(GrayArena *arena, const char *fmt, ...) {
     }
 
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)needed + 1);
-    va_start(args, fmt);
-    vsnprintf(data, (size_t)needed + 1, fmt, args);
-    va_end(args);
+    if ((size_t)needed < sizeof buf) {
+        memcpy(data, buf, (size_t)needed + 1);
+    } else {
+        va_start(args, fmt);
+        vsnprintf(data, (size_t)needed + 1, fmt, args);
+        va_end(args);
+    }
 
     GrayString str;
     str.data = data;
@@ -249,6 +259,46 @@ GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString righ
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
     memcpy(data, left.data, (size_t)left.len);
     memcpy(data + left.len, right.data, (size_t)right.len);
+    data[new_len] = '\0';
+    GrayString result = { data, new_len };
+    return result;
+}
+
+/* Join `count` GrayString parts in one pass: sum the lengths, allocate once,
+ * copy each part exactly once. Used for string interpolation, where the
+ * left-associative gray_string_concat chain would re-copy the accumulated
+ * prefix at every boundary (O(n^2) in part count) and allocate n-1 dead
+ * intermediates. Null-safe: a part with NULL data must have len 0. */
+GrayString gray_string_concat_n(GrayArena *arena, int count, ...) {
+    va_list args;
+
+    va_start(args, count);
+    int64_t total = 0;
+    for (int i = 0; i < count; i++) {
+        GrayString part = va_arg(args, GrayString);
+        total += part.len;
+    }
+    va_end(args);
+
+    if (total > INT32_MAX) {
+        fprintf(stderr, "Grayscale runtime: string concatenation overflow\n");
+        exit(1);
+    }
+
+    int32_t new_len = (int32_t)total;
+    char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
+    int32_t offset = 0;
+
+    va_start(args, count);
+    for (int i = 0; i < count; i++) {
+        GrayString part = va_arg(args, GrayString);
+        if (part.len > 0) {
+            memcpy(data + offset, part.data, (size_t)part.len);
+            offset += part.len;
+        }
+    }
+    va_end(args);
+
     data[new_len] = '\0';
     GrayString result = { data, new_len };
     return result;
@@ -359,3 +409,19 @@ void gray_panic_code_at(const char *file, int line, const char *code, const char
     va_start(args, fmt);
     gray_panic_impl(code, file, line, fmt, args);
 }
+
+/* Out-of-line failure tails for the checked-arithmetic helpers in runtime.h.
+ * The Pxxxx code and message live here, once, instead of at every arithmetic
+ * site in generated code. Messages mirror the registry in error_codes.h. */
+#define GRAY_ARITH_TAIL(name, code, msg)                     \
+    _Noreturn void name(const char *file, int line) {        \
+        gray_panic_code_at(file, line, code, "%s", msg);     \
+    }
+GRAY_ARITH_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of uint")
+GRAY_ARITH_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but uint cannot hold negative values")
+GRAY_ARITH_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of uint")
+#undef GRAY_ARITH_TAIL

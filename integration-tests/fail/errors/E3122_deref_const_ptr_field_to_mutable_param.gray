@@ -1,0 +1,31 @@
+// Error Test: E3122 - a field reached through a pointer dereference
+// (pp^.x, and the deeper po^.inner.v) passed to a mutable (&) parameter
+// must be rejected when the pointer was taken from a const-declared
+// variable, with the same diagnostic as 'pp^.x = v'.
+// expect-error: E3122
+// expect-error-count: 2
+
+const Point struct {
+    x int
+    y int
+}
+const Inner struct {
+    v int
+}
+const Outer struct {
+    inner Inner
+}
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do main() {
+    const pt Point = Point{ x: 10, y: 20 }
+    mut pp ^Point = addr(pt)
+    inc(pp^.x)
+
+    const o Outer = Outer{ inner: Inner{ v: 5 } }
+    mut po ^Outer = addr(o)
+    inc(po^.inner.v)
+}

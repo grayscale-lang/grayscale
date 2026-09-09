@@ -19,6 +19,15 @@ uint32_t scope_str_hash(const char *string) {
     uint32_t h = 5381u;
     for (const unsigned char *p = (const unsigned char *)string; *p; p++)
         h = h * 33u ^ (uint32_t)*p;
+    /* Every caller consumes this as `h & (cap - 1)`, and djb2's low bits are
+     * barely mixed: sequential identifiers (x0, x1, v0..) land in long runs
+     * that linear probing then walks, 10+ strcmps per lookup. Fold the
+     * well-mixed high bits down with an integer finalizer first. */
+    h ^= h >> 16;
+    h *= 0x7feb352du;
+    h ^= h >> 15;
+    h *= 0x846ca68bu;
+    h ^= h >> 16;
     return h;
 }
 

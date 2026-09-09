@@ -1,0 +1,49 @@
+/*
+ * mut_field_element_to_mutable_param.gray
+ * A field or element of a MUT variable must still pass to a mutable (&)
+ * parameter and mutate in place. A field reached through a pointer
+ * parameter (p^.x) must not be flagged either — the pointer's own
+ * const-ness does not carry to the pointee.
+ */
+
+const Point struct {
+    x int
+    y int
+}
+
+do inc(&n int) {
+    n = n + 1
+}
+
+do inc_x(p ^Point) {
+    inc(p^.x)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut p Point = Point{ x: 1, y: 2 }
+    inc(p.x)
+
+    mut xs [int] = {10, 20, 30}
+    inc(xs[1])
+
+    mut q Point = Point{ x: 5, y: 6 }
+    inc_x(addr(q))
+
+    if p.x == 2 && xs[1] == 21 && q.x == 6 {
+        println("  [PASS] mut field/element passed to & parameter mutates")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${p.x} ${xs[1]} ${q.x}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

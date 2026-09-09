@@ -381,6 +381,22 @@ static void test_error_E1007_bad_escape_char(void) {
     ASSERT_STR_EQ(lexer->error_code, "E1007");
 }
 
+static void test_error_E1018_empty_char(void) {
+    Lexer *lexer = create_test_lexer("''");
+    Token token = next_token(lexer);
+    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_NOT_NULL(lexer->error_code);
+    ASSERT_STR_EQ(lexer->error_code, "E1018");
+}
+
+static void test_error_E1018_multichar(void) {
+    Lexer *lexer = create_test_lexer("'ab'");
+    Token token = next_token(lexer);
+    ASSERT_EQ(token.type, TOK_ILLEGAL);
+    ASSERT_NOT_NULL(lexer->error_code);
+    ASSERT_STR_EQ(lexer->error_code, "E1018");
+}
+
 static void test_error_E1010_bad_number_format(void) {
     Lexer *lexer = create_test_lexer("0x");
     Token token = next_token(lexer);
@@ -722,6 +738,8 @@ int main(void) {
     RUN_TEST(test_error_E1005_unclosed_char);
     RUN_TEST(test_error_E1006_bad_escape_string);
     RUN_TEST(test_error_E1007_bad_escape_char);
+    RUN_TEST(test_error_E1018_empty_char);
+    RUN_TEST(test_error_E1018_multichar);
     RUN_TEST(test_error_E1010_bad_number_format);
     RUN_TEST(test_error_E1011_consecutive_underscores);
     RUN_TEST(test_error_E1013_trailing_underscore);

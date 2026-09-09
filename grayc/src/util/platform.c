@@ -42,6 +42,8 @@
 #define gray_sys_dup2    _dup2
 #define gray_sys_getpid  _getpid
 #define GRAY_R_OK        4
+#define GRAY_X_OK        0 /* _access rejects the execute mode; Windows has no exec bit */
+#define GRAY_PATH_LIST_SEP ';'
 #define GRAY_WRONLY_FLAG _O_WRONLY
 
 #else /* POSIX */
@@ -73,6 +75,8 @@ extern char **environ;
 #define gray_sys_dup2    dup2
 #define gray_sys_getpid  getpid
 #define GRAY_R_OK        R_OK
+#define GRAY_X_OK        X_OK
+#define GRAY_PATH_LIST_SEP ':'
 #define GRAY_WRONLY_FLAG O_WRONLY
 
 #endif
@@ -554,6 +558,51 @@ void gray_ensure_tool_dir_on_path(const char *cmd) {
 #else
     (void)cmd;
 #endif
+}
+
+static bool file_is_executable(const char *path) {
+    if (gray_sys_access(path, GRAY_X_OK) == 0) return true;
+#if GRAY_OS_WINDOWS
+    char exe[GRAY_PATH_BUF];
+    int n = snprintf(exe, sizeof(exe), "%s.exe", path);
+    if (n > 0 && n < (int)sizeof(exe) && gray_sys_access(exe, GRAY_X_OK) == 0) return true;
+#endif
+    return false;
+}
+
+bool gray_command_on_path(const char *name) {
+    if (!name || !*name) return false;
+
+    /* An explicit path (contains a separator) is checked as given. */
+    for (const char *p = name; *p; p++) {
+        if (gray_is_path_sep(*p)) return file_is_executable(name);
+    }
+
+    const char *path = getenv("PATH");
+    if (!path) return false;
+
+    char probe[GRAY_PATH_BUF];
+    while (*path) {
+        const char *sep = path;
+        while (*sep && *sep != GRAY_PATH_LIST_SEP) sep++;
+        size_t dir_len = (size_t)(sep - path);
+
+        if (dir_len == 0) {
+            /* An empty PATH entry means the current directory. */
+            if (snprintf(probe, sizeof(probe), "%s", name) < (int)sizeof(probe) &&
+                file_is_executable(probe))
+                return true;
+        } else if (dir_len < sizeof(probe)) {
+            char dir[GRAY_PATH_BUF];
+            memcpy(dir, path, dir_len);
+            dir[dir_len] = '\0';
+            if (gray_path_join(probe, sizeof(probe), dir, name) < (int)sizeof(probe) &&
+                file_is_executable(probe))
+                return true;
+        }
+        path = *sep ? sep + 1 : sep;
+    }
+    return false;
 }
 
 const char *gray_find_cc_fallback(void) {

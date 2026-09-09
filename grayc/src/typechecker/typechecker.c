@@ -1555,17 +1555,55 @@ static bool declared_in_subtree(AstNode *node, const char *name) {
     }
 }
 
+/* Build the set of top-level NODE_VAR_DECL names. The statement list is fixed
+ * once checking begins, so this runs once and every later is_module_level_var()
+ * is a hash probe instead of a full-program scan (that scan was O(assignments *
+ * declarations) across a file). */
+static void build_module_var_index(TypeChecker *checker) {
+    checker->module_var_index_built = true;
+    AstNode *program = checker->program;
+    if (!program || program->kind != NODE_PROGRAM) return;
+    int stmt_count = program->data.program.stmt_count;
+
+    int vars = 0;
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name) vars++;
+    }
+    if (vars == 0) return;
+
+    int cap = 16;
+    while (cap < (vars + 1) * 2) cap *= 2;
+    checker->module_var_index_names = xcalloc((size_t)cap, sizeof(char *));
+    checker->module_var_index_cap = cap;
+
+    uint32_t mask = (uint32_t)(cap - 1);
+    for (int i = 0; i < stmt_count; i++) {
+        AstNode *s = program->data.program.stmts[i];
+        if (!s || s->kind != NODE_VAR_DECL || !s->data.var_decl.name) continue;
+        const char *name = s->data.var_decl.name;
+        uint32_t h = scope_str_hash(name) & mask;
+        while (checker->module_var_index_names[h]) {
+            if (strcmp(checker->module_var_index_names[h], name) == 0) break;
+            h = (h + 1) & mask;
+        }
+        checker->module_var_index_names[h] = name;
+    }
+}
+
 /* Is `name` a module-level variable of the program being checked? Only
  * returns true when it can prove it, so an unknown name is treated as a
  * local (a conservative miss, never a false E3163). */
 static bool is_module_level_var(TypeChecker *checker, const char *name) {
     if (!checker->program || !name ||
         checker->program->kind != NODE_PROGRAM) return false;
-    for (int i = 0; i < checker->program->data.program.stmt_count; i++) {
-        AstNode *s = checker->program->data.program.stmts[i];
-        if (s && s->kind == NODE_VAR_DECL && s->data.var_decl.name &&
-            strcmp(s->data.var_decl.name, name) == 0)
-            return true;
+    if (!checker->module_var_index_built) build_module_var_index(checker);
+    if (!checker->module_var_index_names) return false;
+    uint32_t mask = (uint32_t)(checker->module_var_index_cap - 1);
+    uint32_t h = scope_str_hash(name) & mask;
+    while (checker->module_var_index_names[h]) {
+        if (strcmp(checker->module_var_index_names[h], name) == 0) return true;
+        h = (h + 1) & mask;
     }
     return false;
 }
@@ -4803,6 +4841,20 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     return true;
 }
 
+/* E3036 for a literal argument whose value cannot fit the parameter's
+ * sized-integer type. Call-argument position was the one spot the range
+ * check was never wired into, unlike var-decls, return, struct-literal
+ * fields, map values and array elements. */
+static void check_arg_integer_range(TypeChecker *checker, AstNode *arg,
+    const char *param_type_name) {
+    if (!arg || !param_type_name) return;
+    int64_t v;
+    bool neg;
+    if (try_get_signed_literal_int(arg, &v, &neg))
+        check_integer_range(checker->diag, NODE_FILE(checker, arg),
+            arg->token.line, arg->token.column, param_type_name, v, neg);
+}
+
 /* --- Expression type resolution --- */
 
 /* shared void-expression guard. Emits E3038 at `expr` when `t`
@@ -4982,9 +5034,58 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
             param_desc, func_display);
         diagnostic_error_message(checker->diag, "E3027", msg,
             NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+    } else if (arg->kind == NODE_MEMBER_EXPR || arg->kind == NODE_INDEX_EXPR) {
+        /* A field or element of a const is as immutable as the const itself.
+         * Walk the member/index chain to its root symbol — the same const
+         * check the direct-assignment lvalue path performs on 'p.x = v'. A
+         * pointer root auto-derefs (p^.field), so the const-ness of the
+         * pointer variable does not carry to the pointee. */
+        const char *root = assignment_target_root_name(arg);
+        if (root) {
+            Symbol *sym = checker_lookup_symbol(checker, root);
+            if (sym && !sym->mutable &&
+                !(sym->type && sym->type->kind == TK_POINTER)) {
+                char *msg = typechecker_format(checker,
+                    "cannot pass a field or element of constant '%s' to %s of '%s'",
+                    root, param_desc, func_display);
+                diagnostic_error_message(checker->diag, "E3027", msg,
+                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
+            }
+        } else {
+            /* The chain crosses a pointer dereference (pp^.field, pp^[i]).
+             * Modifying that place writes into the pointee — reject it when
+             * the pointer was taken from a const-declared variable, the same
+             * E3122 check the 'pp^.field = v' assignment path performs.
+             * escape_root_name sees through the '^' to the pointer label. */
+            const char *ptr_name = escape_root_name(arg);
+            if (ptr_name) {
+                Symbol *sym = scope_lookup(checker->current_scope, ptr_name);
+                if (sym && sym->const_source) {
+                    diagnostic_error_code_formatted(checker->diag, "E3122",
+                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                        ptr_name);
+                }
+            }
+        }
+    } else if (arg->kind == NODE_POSTFIX_EXPR &&
+               arg->data.postfix.op == TOK_CARET) {
+        /* A pointer dereference is a mutable place (p^ = v is a valid
+         * assignment target). Reject it only when the pointer was taken
+         * from a const-declared variable — the same E3122 check the
+         * 'p^ = v' assignment path performs. */
+        AstNode *ptr = arg->data.postfix.left;
+        if (ptr && ptr->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope, ptr->data.label.value);
+            if (sym && sym->const_source) {
+                diagnostic_error_code_formatted(checker->diag, "E3122",
+                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                    ptr->data.label.value);
+            }
+        }
     } else if (arg->kind != NODE_MEMBER_EXPR &&
-               arg->kind != NODE_INDEX_EXPR &&
-               arg->kind != NODE_PREFIX_EXPR) {
+               arg->kind != NODE_INDEX_EXPR) {
+        /* Anything else — a literal, an arithmetic or logical expression, a
+         * prefix expression (-x, !x, ~x) — is not a mutable target. */
         char *msg = typechecker_format(checker,
             "cannot pass a literal or expression to %s of '%s'; expected a mutable variable",
             param_desc, func_display);
@@ -5257,14 +5358,17 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
                    strcmp(mfn, "get_max") == 0) {
-            /* A float array yields a float; every integer element width folds
-             * back to int (matches math.min/max). */
+            /* A float array yields a float; a wide-integer array yields that
+             * same wide type (the value does not fit int64); every other
+             * integer element width folds back to int (matches math.min/max). */
             result = &TYPE_INT;
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->element_type &&
-                    type_from_name(arr_t->element_type)->kind == TK_FLOAT) {
-                    result = &TYPE_FLOAT;
+                if (arr_t && arr_t->element_type) {
+                    if (type_from_name(arr_t->element_type)->kind == TK_FLOAT)
+                        result = &TYPE_FLOAT;
+                    else if (is_bigint_type(arr_t->element_type))
+                        result = type_from_name(arr_t->element_type);
                 }
             }
         }
@@ -6227,20 +6331,16 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 {
                     AstNode *arg = node->data.call.args[argument_index];
                     AstNode *found_declaration = NULL;
-                    for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                        AstNode *stmt = checker->program->data.program.stmts[field_index];
-                        if (stmt->kind == NODE_STRUCT_DECL &&
-                            strcmp(stmt->data.struct_decl.name, mod) == 0) {
-                            for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
-                                AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
-                                if (sf && sf->kind == NODE_FUNC_DECL &&
-                                    strcmp(sf->data.func_decl.name, mfn) == 0 &&
-                                    argument_index < sf->data.func_decl.param_count &&
-                                    sf->data.func_decl.params[argument_index].mutable) {
-                                    found_declaration = sf;
-                                    break;
-                                }
-                            }
+                    AstNode *sdecl = find_struct_in_program(checker, mod);
+                    for (int sfi = 0; sdecl &&
+                         sfi < sdecl->data.struct_decl.func_count; sfi++) {
+                        AstNode *sf = sdecl->data.struct_decl.funcs[sfi].func_decl;
+                        if (sf && sf->kind == NODE_FUNC_DECL &&
+                            strcmp(sf->data.func_decl.name, mfn) == 0 &&
+                            argument_index < sf->data.func_decl.param_count &&
+                            sf->data.func_decl.params[argument_index].mutable) {
+                            found_declaration = sf;
+                            break;
                         }
                     }
                     if (found_declaration) {
@@ -6593,11 +6693,15 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                              * copy of this check could not see this call —
                              * dispatch had not yet rewritten the object from
                              * the instance label to the struct name. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
                                 check_signedness_crossing(checker,
                                     ssig->decl->data.func_decl.params[argument_index].type_name,
                                     node->data.call.args[argument_index], arg_t,
                                     node->data.call.args[argument_index]);
+                                check_arg_integer_range(checker,
+                                    node->data.call.args[argument_index],
+                                    ssig->decl->data.func_decl.params[argument_index].type_name);
+                            }
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -6714,12 +6818,18 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             }
                             /* E3019: an argument that crosses signedness vs the
                              * parameter needs a cast — same gap as the
-                             * is_self_func branch above. */
-                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL)
+                             * is_self_func branch above.
+                             * E3036: literal argument out of range for a
+                             * sized-integer parameter. */
+                            if (ssig->decl && ssig->decl->kind == NODE_FUNC_DECL) {
                                 check_signedness_crossing(checker,
                                     ssig->decl->data.func_decl.params[argument_index].type_name,
                                     node->data.call.args[argument_index], arg_t,
                                     node->data.call.args[argument_index]);
+                                check_arg_integer_range(checker,
+                                    node->data.call.args[argument_index],
+                                    ssig->decl->data.func_decl.params[argument_index].type_name);
+                            }
                         }
                     }
                     /* E3027: non-assignable or const passed to mutable (&) param
@@ -7942,21 +8052,19 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
                     node->data.call.args[argument_index]->token.column, 0);
             }
-            /* E3027: non-assignable or const passed to mutable (&) param */
+            /* E3027: non-assignable or const passed to mutable (&) param.
+             * sig->decl is the resolved NODE_FUNC_DECL — no need to re-find it
+             * by scanning every top-level statement. */
             {
-                AstNode *arg = node->data.call.args[argument_index];
-                for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                    AstNode *stmt = checker->program->data.program.stmts[field_index];
-                    if (stmt->kind != NODE_FUNC_DECL ||
-                        strcmp(stmt->data.func_decl.name, function_name) != 0 ||
-                        argument_index >= stmt->data.func_decl.param_count ||
-                        !stmt->data.func_decl.params[argument_index].mutable)
-                        continue;
+                AstNode *fdecl = sig->decl;
+                if (fdecl && fdecl->kind == NODE_FUNC_DECL &&
+                    argument_index < fdecl->data.func_decl.param_count &&
+                    fdecl->data.func_decl.params[argument_index].mutable) {
                     char param_desc[MSG_BUF_SIZE];
                     snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                        stmt->data.func_decl.params[argument_index].name);
-                    check_mutable_arg(checker, arg, param_desc, function_name);
-                    break;
+                        fdecl->data.func_decl.params[argument_index].name);
+                    check_mutable_arg(checker, node->data.call.args[argument_index],
+                        param_desc, function_name);
                 }
             }
         }
@@ -8037,22 +8145,19 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                                 argument_index + 1, func_display_name(ref_sig), enum_display_name(checker, pt->name), enum_display_name(checker, at->name));
                             tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
                         }
-                        /* E3027: non-assignable or const passed to mutable (&) param */
+                        /* E3027: non-assignable or const passed to mutable (&)
+                         * param. ref_sig->decl is the resolved func-ref target;
+                         * no need to re-find it by scanning top-level stmts. */
                         {
-                            AstNode *arg = node->data.call.args[argument_index];
-                            const char *ref_name = fn_sym->func_ref_name;
-                            for (int field_index = 0; field_index < checker->program->data.program.stmt_count; field_index++) {
-                                AstNode *stmt = checker->program->data.program.stmts[field_index];
-                                if (stmt->kind != NODE_FUNC_DECL ||
-                                    strcmp(stmt->data.func_decl.name, ref_name) != 0 ||
-                                    argument_index >= stmt->data.func_decl.param_count ||
-                                    !stmt->data.func_decl.params[argument_index].mutable)
-                                    continue;
+                            AstNode *fdecl = ref_sig->decl;
+                            if (fdecl && fdecl->kind == NODE_FUNC_DECL &&
+                                argument_index < fdecl->data.func_decl.param_count &&
+                                fdecl->data.func_decl.params[argument_index].mutable) {
                                 char param_desc[MSG_BUF_SIZE];
                                 snprintf(param_desc, sizeof(param_desc), "mutable parameter '%s'",
-                                    stmt->data.func_decl.params[argument_index].name);
-                                check_mutable_arg(checker, arg, param_desc, func_display_name(ref_sig));
-                                break;
+                                    fdecl->data.func_decl.params[argument_index].name);
+                                check_mutable_arg(checker, node->data.call.args[argument_index],
+                                    param_desc, func_display_name(ref_sig));
                             }
                         }
                     }
@@ -8391,9 +8496,84 @@ static bool arg_is_type_position(TypeChecker *checker, AstNode *node,
     return false;
 }
 
+/* `recv.f(args)` where `recv` is an index or nested-field expression whose
+ * type is a struct (or pointer to one) and `f` is one of that struct's
+ * functions: rewrite to the static form `Struct.f(recv, args)` so the
+ * ordinary struct-function dispatch handles it, exactly as it does for a
+ * plain-variable receiver. Without this the call falls through to the
+ * chained-call branch and draws a bogus E3075. */
+static void normalize_instance_call_on_expr(TypeChecker *checker, AstNode *node) {
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return;
+    AstNode *obj = fn->data.member.object;
+    if (!obj || (obj->kind != NODE_INDEX_EXPR && obj->kind != NODE_MEMBER_EXPR))
+        return;
+    /* A plain-variable or `p^` receiver is handled downstream already. So is
+     * the `mod.Struct.func()` triple chain — but only when the leading name
+     * is a module, not a local whose field happens to be a struct. */
+    if (ast_member_base_qualifier(fn)) return;
+    const char *chain_mod = NULL, *chain_type = NULL;
+    if (ast_member_chain(fn, &chain_mod, &chain_type) &&
+        !scope_lookup(checker->current_scope, chain_mod))
+        return;
+
+    GrayType *obj_t = resolve_expression(checker, obj);
+    if (!obj_t) return;
+    const char *struct_name = obj_t->kind == TK_POINTER ? obj_t->element_type
+                            : obj_t->kind == TK_STRUCT  ? obj_t->name
+                            : NULL;
+    if (!struct_name || !is_struct_name(checker, struct_name)) return;
+
+    const char *mfn = fn->data.member.member;
+    /* A func-typed data field is called through the field, not dispatched. */
+    GrayType *field_t = struct_field_type(checker, struct_name, mfn);
+    if (field_t && field_t->kind == TK_FUNCTION) return;
+
+    char sfn[MSG_BUF_SIZE];
+    {
+        char sk[MSG_BUF_SIZE];
+        snprintf(sfn, sizeof(sfn), "%s_%s",
+            checker_resolve_decl_into(checker, struct_name, sk, sizeof(sk)), mfn);
+    }
+    FuncSig *ssig = find_func(checker, sfn);
+    if (!ssig || !ssig->decl || ssig->decl->kind != NODE_FUNC_DECL ||
+        ssig->decl->data.func_decl.param_count == 0)
+        return;
+    const char *p0_tn = ssig->decl->data.func_decl.params[0].type_name;
+    if (!p0_tn) return;
+    bool is_self_func =
+        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name) ||
+        (p0_tn[0] == '^' &&
+         self_param_names_struct(checker, ssig->decl, p0_tn + 1, struct_name));
+    if (!is_self_func) return;
+
+    /* Rewrite: object becomes the struct type name, receiver is prepended as
+     * arg[0]. Auto-deref a pointer receiver when the self parameter takes the
+     * struct by value, matching plain-variable instance dispatch. */
+    AstNode *recv = obj;
+    if (obj_t->kind == TK_POINTER &&
+        self_param_names_struct(checker, ssig->decl, p0_tn, struct_name)) {
+        AstNode *deref = xcalloc(1, sizeof(AstNode));
+        deref->kind = NODE_POSTFIX_EXPR;
+        deref->token = obj->token;
+        deref->data.postfix.left = obj;
+        deref->data.postfix.op = TOK_CARET;
+        recv = deref;
+    }
+    retarget_member_object(fn, struct_name);
+    int orig_count = node->data.call.arg_count;
+    AstNode **new_args = xmalloc(sizeof(AstNode *) * (orig_count + 1));
+    new_args[0] = recv;
+    for (int i = 0; i < orig_count; i++)
+        new_args[i + 1] = node->data.call.args[i];
+    node->data.call.args = new_args;
+    node->data.call.arg_count = orig_count + 1;
+}
+
 static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
     GrayType *result = &TYPE_UNKNOWN;
     normalize_qualified_enum_call(checker, node);
+    normalize_instance_call_on_expr(checker, node);
     /* Resolve argument types first. Skip the argument of ref()
      * when it's a bare function name; the ref() builtin handler
      * below resolves it specially, and the general resolve_expression
@@ -8424,11 +8604,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * argument position. Caller must destructure first. */
         reject_multi_return_in_single_position(checker, node->data.call.args[i]);
 
-        /* E3019: an argument that crosses signedness vs the parameter needs a cast. */
-        if (callee_decl && i < callee_decl->data.func_decl.param_count)
+        /* E3019: an argument that crosses signedness vs the parameter needs a cast.
+         * E3036: a literal argument out of range for a sized-integer parameter. */
+        if (callee_decl && i < callee_decl->data.func_decl.param_count) {
             check_signedness_crossing(checker,
                 callee_decl->data.func_decl.params[i].type_name,
                 node->data.call.args[i], ai_t, node->data.call.args[i]);
+            check_arg_integer_range(checker, node->data.call.args[i],
+                callee_decl->data.func_decl.params[i].type_name);
+        }
     }
 
     /* E3163: addr() of inner-scope variable passed alongside an outer-scope
@@ -8728,20 +8912,16 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = saved_expected_ms;
                 AstNode *arg = node->data.call.args[argument_index];
                 AstNode *found_declaration = NULL;
-                for (int field_index = 0; field_index < checker->program->data.program.stmt_count && !found_declaration; field_index++) {
-                    AstNode *stmt = checker->program->data.program.stmts[field_index];
-                    if (stmt->kind == NODE_STRUCT_DECL &&
-                        strcmp(stmt->data.struct_decl.name, struct_name) == 0) {
-                        for (int sfi = 0; sfi < stmt->data.struct_decl.func_count; sfi++) {
-                            AstNode *sf = stmt->data.struct_decl.funcs[sfi].func_decl;
-                            if (sf && sf->kind == NODE_FUNC_DECL &&
-                                strcmp(sf->data.func_decl.name, func_name) == 0 &&
-                                argument_index < sf->data.func_decl.param_count &&
-                                sf->data.func_decl.params[argument_index].mutable) {
-                                found_declaration = sf;
-                                break;
-                            }
-                        }
+                AstNode *sdecl = find_struct_in_program(checker, struct_name);
+                for (int sfi = 0; sdecl &&
+                     sfi < sdecl->data.struct_decl.func_count; sfi++) {
+                    AstNode *sf = sdecl->data.struct_decl.funcs[sfi].func_decl;
+                    if (sf && sf->kind == NODE_FUNC_DECL &&
+                        strcmp(sf->data.func_decl.name, func_name) == 0 &&
+                        argument_index < sf->data.func_decl.param_count &&
+                        sf->data.func_decl.params[argument_index].mutable) {
+                        found_declaration = sf;
+                        break;
                     }
                 }
                 if (found_declaration) {
@@ -8913,6 +9093,30 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                             root);
                     }
                 }
+                /* E3158: a Grayscale function passed as a C callback must lower
+                 * to a C-compatible function pointer. A `^T` parameter lowers to
+                 * `T *`, but C callback APIs (qsort/bsearch comparators, ...)
+                 * take `const void *`, which Grayscale has no type to express —
+                 * the emitted function pointer can never match and the C
+                 * compiler rejects the call. Functions with no pointer
+                 * parameters (extern.atexit(()handler)) lower cleanly and pass. */
+                const char *cb_target = func_ref_target_name(ca);
+                if (cb_target) {
+                    FuncSig *cb_sig = find_func(checker, cb_target);
+                    for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
+                        if (cb_sig->param_types[p] &&
+                            cb_sig->param_types[p]->kind == TK_POINTER) {
+                            char *msg = typechecker_format(checker,
+                                "cannot pass '%s' as a C callback; its pointer parameter lowers to a "
+                                "typed C pointer, but C callback APIs require 'void *', which Grayscale "
+                                "cannot express", cb_target);
+                            diagnostic_error_message(checker->diag, "E3158", msg,
+                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
+                            break;
+                        }
+                    }
+                }
+
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 if (!arg_t || arg_t->kind == TK_UNKNOWN || arg_t->kind == TK_C_FUNC) continue;
                 /* Reject bigint types */
@@ -8993,7 +9197,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 type_name(obj_t));
             diagnostic_error_message(checker->diag, "E3013", msg,
                 NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0);
-        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER)) {
+        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER) &&
+                   fn->data.member.object->kind == NODE_CALL_EXPR) {
             /* E3075: chaining struct function calls (calling one struct
              * function on the result of another) isn't supported.
              * Assigning the intermediate result to a variable keeps
@@ -9002,6 +9207,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             diagnostic_error_code_help(checker->diag, "E3075",
                 NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
                 "assign the intermediate result to a variable, then call the next struct function on it");
+        } else if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER)) {
+            /* An index or nested-field receiver of struct type that reached
+             * here names no struct function — normalize_instance_call_on_expr()
+             * routes the valid ones into instance dispatch before now. */
+            const char *sname = obj_t->kind == TK_POINTER
+                ? obj_t->element_type : obj_t->name;
+            diagnostic_error_code_formatted(checker->diag, "E4018",
+                NODE_FILE(checker, fn), fn->token.line, fn->token.column, 0,
+                struct_display_name(checker, sname), fn->data.member.member);
         }
         result = &TYPE_UNKNOWN;
         return result;
@@ -9085,15 +9299,17 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         infix_errored = true;
     }
 
-    /* E3002: literal divide/modulo by zero (). Catches the
-     * statically-detectable case where the RHS is an integer or
-     * float literal zero (including a prefix -0). Runtime checks
-     * still cover the dynamic case. */
+    /* E3002: compile-time divide/modulo by zero (). Catches the
+     * statically-detectable case where the RHS folds to an integer
+     * zero — a literal, a literal expression, or a const binding
+     * (const N int = 0 … x / N) — or a float literal zero (including
+     * a prefix -0). Runtime checks still cover the dynamic case. */
     if (op == TOK_SLASH || op == TOK_PERCENT) {
         AstNode *r = node->data.infix.right;
         bool is_zero = false;
         int64_t iv;
-        bool r_is_int_literal = try_get_literal_int(r, &iv);
+        bool iv_overflowed = false;
+        bool r_is_int_literal = typechecker_fold_const_int(checker, r, &iv, &iv_overflowed);
         if (r_is_int_literal && iv == 0) {
             is_zero = true;
         } else if (r && r->kind == NODE_FLOAT_VALUE &&
@@ -9109,20 +9325,22 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         if (is_zero) {
             char *msg;
             msg = typechecker_format(checker,
-                "%s by zero; dividing by a literal zero is always invalid",
+                "%s by zero; the divisor is always zero",
                 op == TOK_PERCENT ? "modulo" : "division");
             diagnostic_error_message(checker->diag, "E3002", msg,
                 NODE_FILE(checker, r), r->token.line, r->token.column, 0);
             infix_errored = true;
         } else if (op == TOK_SLASH) {
             /* E3137: INT64_MIN / -1 is the one division C leaves undefined
-             * at the int64 boundary — it traps (SIGFPE) on x86-64. Check
-             * both literal operands directly rather than relying on
-             * try_get_literal_int() to fold the whole division, since that
-             * folder now refuses (by design) to perform this division. */
+             * at the int64 boundary — it traps (SIGFPE) on x86-64. Fold
+             * both operands directly rather than relying on a whole-division
+             * fold, since that folder now refuses (by design) to perform
+             * this division. */
             int64_t lv;
+            bool lv_overflowed = false;
             if (r_is_int_literal && iv == -1 &&
-                try_get_literal_int(node->data.infix.left, &lv) && lv == INT64_MIN) {
+                typechecker_fold_const_int(checker, node->data.infix.left, &lv, &lv_overflowed) &&
+                lv == INT64_MIN) {
                 diagnostic_error_code_formatted(checker->diag, "E3137",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     (long long)lv, (long long)iv, type_display_name(checker, left));
@@ -10299,17 +10517,43 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
     return result;
 }
 
+/* Declared type name of the parameter `elem` names in the function currently
+ * being checked, or NULL if `elem` is not a bare parameter reference. A
+ * wildcard parameter's symbol type is the shared TYPE_UNKNOWN, so the '?'
+ * marker survives only on the declaration. */
+static const char *param_ref_type_name(TypeChecker *checker, AstNode *elem) {
+    if (!elem || elem->kind != NODE_LABEL || !checker->current_func_decl)
+        return NULL;
+    AstNode *fd = checker->current_func_decl;
+    for (int i = 0; i < fd->data.func_decl.param_count; i++) {
+        Param *p = &fd->data.func_decl.params[i];
+        if (!p->is_type_param && p->name &&
+            strcmp(p->name, elem->data.label.value) == 0)
+            return p->type_name;
+    }
+    return NULL;
+}
+
 /* Grayscale type name for an array- or map-literal element, used when an
  * unannotated `mut` array/map infers its element (or K/V) type from the first
  * entry. A wide-integer constructor call (i128(x), u256(x), ...) is resolved
  * as plain int/uint by the expression typechecker, so recover the width from
  * the call itself — otherwise the inferred container is [int] / map[..:int]
  * and the 16/32-byte value is truncated to 8 bytes in codegen. */
-static const char *literal_elem_type_name(AstNode *elem, GrayType *resolved) {
+static const char *literal_elem_type_name(TypeChecker *checker, AstNode *elem, GrayType *resolved) {
     if (elem && elem->kind == NODE_CALL_EXPR &&
         elem->data.call.function->kind == NODE_LABEL &&
         is_bigint_type(elem->data.call.function->data.label.value))
         return elem->data.call.function->data.label.value;
+    /* A wildcard-typed element resolves to TYPE_UNKNOWN — recover the '?' from
+     * the parameter declaration so {x, x} / {k: v} infer [?] / map[K:?]. The
+     * composite unifier and monomorphization then bind it per call site,
+     * instead of [unknown] failing to match a declared -> [?] return. */
+    if (resolved && resolved->kind == TK_UNKNOWN) {
+        const char *ptn = param_ref_type_name(checker, elem);
+        if (ptn && type_name_has_wildcard(ptn))
+            return ptn;
+    }
     return resolved ? type_name(resolved) : "unknown";
 }
 
@@ -10812,7 +11056,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (node->data.array_value.count > 0) {
             GrayType *first = resolve_expression(checker, node->data.array_value.elements[0]);
             reject_multi_return_in_single_position(checker, node->data.array_value.elements[0]);
-            result = type_array(literal_elem_type_name(node->data.array_value.elements[0], first));
+            result = type_array(literal_elem_type_name(checker, node->data.array_value.elements[0], first));
             /* Validate all elements have the same type */
             for (int i = 1; i < node->data.array_value.count; i++) {
                 GrayType *element_resolved = resolve_expression(checker, node->data.array_value.elements[i]);
@@ -10855,9 +11099,11 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = val_t;
         }
         /* Resolve key and value types */
+        GrayType *first_kt = NULL, *first_vt = NULL;
         for (int i = 0; i < node->data.map_value.count; i++) {
             GrayType *kt = resolve_expression(checker, node->data.map_value.keys[i]);
             GrayType *vt = resolve_expression(checker, node->data.map_value.values[i]);
+            if (i == 0) { first_kt = kt; first_vt = vt; }
             /* void can't be a map key or value. */
             reject_void_in_context(checker, node->data.map_value.keys[i], kt, "map key");
             reject_void_in_context(checker, node->data.map_value.values[i], vt, "map value");
@@ -10887,10 +11133,13 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         resolved_type->kind = TK_MAP;
         resolved_type->name = strdup("map");
         if (node->data.map_value.count > 0) {
-            GrayType *kt = typetable_get(checker->type_table, node->data.map_value.keys[0]);
-            GrayType *vt = typetable_get(checker->type_table, node->data.map_value.values[0]);
-            resolved_type->key_type = strdup(literal_elem_type_name(node->data.map_value.keys[0], kt));
-            resolved_type->value_type = strdup(literal_elem_type_name(node->data.map_value.values[0], vt));
+            /* Use the freshly-resolved first pair, not typetable_get: during
+             * generic instantiation typetable writes are suppressed, so a
+             * stale wildcard entry from the first pass would otherwise stick. */
+            GrayType *kt = first_kt ? first_kt : typetable_get(checker->type_table, node->data.map_value.keys[0]);
+            GrayType *vt = first_vt ? first_vt : typetable_get(checker->type_table, node->data.map_value.values[0]);
+            resolved_type->key_type = strdup(literal_elem_type_name(checker, node->data.map_value.keys[0], kt));
+            resolved_type->value_type = strdup(literal_elem_type_name(checker, node->data.map_value.values[0], vt));
         } else if (saved_map_expected && saved_map_expected->kind == TK_MAP &&
                    saved_map_expected->key_type && saved_map_expected->value_type) {
             /* `{:}` carries no pair to infer from — adopt the element types
@@ -18074,6 +18323,8 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->struct_decl_index_names);
     free(checker->struct_decl_index_nodes);
+
+    free(checker->module_var_index_names);
 
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);

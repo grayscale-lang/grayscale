@@ -161,6 +161,10 @@ static inline bool gray_string_eq(GrayString left, GrayString right) {
 /* String concatenation */
 GrayString gray_string_concat(GrayArena *arena, GrayString left, GrayString right);
 
+/* Single-pass join of `count` GrayString parts (one allocation, one copy per
+ * part). Codegen uses this for string interpolation. */
+GrayString gray_string_concat_n(GrayArena *arena, int count, ...);
+
 /* --- Runtime Init/Shutdown --- */
 
 void gray_runtime_init(size_t arena_limit);
@@ -255,32 +259,46 @@ static inline void gray_exit_func(void) {
     gray_call_depth--;
 }
 
-/* Overflow-checked integer arithmetic */
+/* Overflow-checked integer arithmetic.
+ *
+ * The failure path of each check is an out-of-line, two-argument call rather
+ * than an inline gray_panic_code_at() with the Pxxxx code and message threaded
+ * through: a function body with thousands of arithmetic operations expands one
+ * of these at every one, and the smaller, uniform expansion keeps the C the
+ * backend has to chew through in check. Messages mirror error_codes.h. */
+_Noreturn void gray_arith_panic_add(const char *file, int line);
+_Noreturn void gray_arith_panic_sub(const char *file, int line);
+_Noreturn void gray_arith_panic_mul(const char *file, int line);
+_Noreturn void gray_arith_panic_neg(const char *file, int line);
+_Noreturn void gray_arith_panic_uadd(const char *file, int line);
+_Noreturn void gray_arith_panic_usub(const char *file, int line);
+_Noreturn void gray_arith_panic_umul(const char *file, int line);
+
 static inline int64_t gray_add_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
     if (__builtin_add_overflow(left, right, &result))
-        gray_panic_code_at(file, line, "P0004", "addition result is too large; value exceeds the range of int");
+        gray_arith_panic_add(file, line);
     return result;
 }
 
 static inline int64_t gray_sub_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
     if (__builtin_sub_overflow(left, right, &result))
-        gray_panic_code_at(file, line, "P0005", "subtraction result is too large; value exceeds the range of int");
+        gray_arith_panic_sub(file, line);
     return result;
 }
 
 static inline int64_t gray_mul_check(int64_t left, int64_t right, const char *file, int line) {
     int64_t result;
     if (__builtin_mul_overflow(left, right, &result))
-        gray_panic_code_at(file, line, "P0006", "multiplication result is too large; value exceeds the range of int");
+        gray_arith_panic_mul(file, line);
     return result;
 }
 
 static inline int64_t gray_neg_check(int64_t value, const char *file, int line) {
     int64_t result;
     if (__builtin_sub_overflow((int64_t)0, value, &result))
-        gray_panic_code_at(file, line, "P0007", "negation result is too large; value exceeds the range of int");
+        gray_arith_panic_neg(file, line);
     return result;
 }
 
@@ -296,20 +314,20 @@ static inline int64_t gray_dec_check(int64_t value, const char *file, int line) 
 static inline uint64_t gray_uadd_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
     if (__builtin_add_overflow(left, right, &result))
-        gray_panic_code_at(file, line, "P0008", "addition result is too large; value exceeds the range of uint");
+        gray_arith_panic_uadd(file, line);
     return result;
 }
 
 static inline uint64_t gray_usub_check(uint64_t left, uint64_t right, const char *file, int line) {
     if (right > left)
-        gray_panic_code_at(file, line, "P0009", "subtraction result is negative, but uint cannot hold negative values");
+        gray_arith_panic_usub(file, line);
     return left - right;
 }
 
 static inline uint64_t gray_umul_check(uint64_t left, uint64_t right, const char *file, int line) {
     uint64_t result;
     if (__builtin_mul_overflow(left, right, &result))
-        gray_panic_code_at(file, line, "P0010", "multiplication result is too large; value exceeds the range of uint");
+        gray_arith_panic_umul(file, line);
     return result;
 }
 

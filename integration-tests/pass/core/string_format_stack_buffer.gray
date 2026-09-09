@@ -1,0 +1,97 @@
+/*
+ * string_format_stack_buffer.gray - gray_string_format formats once
+ *
+ * gray_string_format now formats into a 32-byte stack buffer and only
+ * falls back to a size-then-alloc pass when the result overflows it.
+ * These cases exercise both sides of that boundary: short integers, the
+ * widest 64-bit values (which sit near the buffer edge), and a formatted
+ * string well past 32 bytes that must take the fallback path.
+ */
+
+import @fmt
+
+do main() {
+    println("=== String Format Stack Buffer Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- small integers via interpolation --
+    mut n int = 7
+    if "${n}" == "7" && "v=${n}!" == "v=7!" {
+        println("  [PASS] small int interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${n}")
+        failed += 1
+    }
+
+    // -- negative and large magnitude ints (fit the buffer) --
+    mut big int = 9223372036854775807
+    mut small int = -9223372036854775807
+    if "${big}" == "9223372036854775807" && "${small}" == "-9223372036854775807" {
+        println("  [PASS] int64 range endpoints")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] big=${big} small=${small}")
+        failed += 1
+    }
+
+    // -- uint64 max (20 digits, still inside 32) --
+    mut u uint = 18446744073709551615
+    if "${u}" == "18446744073709551615" {
+        println("  [PASS] uint64 max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u=${u}")
+        failed += 1
+    }
+
+    // -- sprintf result longer than 32 bytes: fallback path --
+    mut long string = fmt.sprintf("path=%s id=%d", "/very/long/directory/name/that/exceeds/the/buffer", 42)
+    if long == "path=/very/long/directory/name/that/exceeds/the/buffer id=42" {
+        println("  [PASS] over-32-byte format takes fallback path")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got '${long}' len ${len(long)}")
+        failed += 1
+    }
+
+    // -- a result right at the 31/32/33-byte boundary --
+    // "abcdefghijklmnopqrstuvwxyz" (26) + "%d" of a 5-digit number = 31
+    mut b31 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz%d", 12345)
+    // ...one more char pushes it to 32
+    mut b32 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz.%d", 12345)
+    // ...and to 33
+    mut b33 string = fmt.sprintf("abcdefghijklmnopqrstuvwxyz..%d", 12345)
+    if len(b31) == 31 && len(b32) == 32 && len(b33) == 33
+        && b31 == "abcdefghijklmnopqrstuvwxyz12345"
+        && b33 == "abcdefghijklmnopqrstuvwxyz..12345" {
+        println("  [PASS] 31/32/33-byte boundary")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lens ${len(b31)}/${len(b32)}/${len(b33)}")
+        failed += 1
+    }
+
+    // -- many integer conversions in one interpolation stay correct --
+    mut a int = 1
+    mut c int = 2
+    mut d int = 3
+    mut chain string = "${a}${big}${c}${small}${d}${u}"
+    mut want string = "19223372036854775807" + "2" + "-9223372036854775807" + "3" + "18446744073709551615"
+    if chain == want {
+        println("  [PASS] repeated conversions in one interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] chain=${chain}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

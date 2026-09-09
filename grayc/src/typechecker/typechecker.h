@@ -305,6 +305,14 @@ typedef struct {
     int struct_decl_index_cap;
     bool struct_decl_index_built;
 
+    /* Set of top-level NODE_VAR_DECL names in the program. Same rationale as
+     * the struct-decl index: the statement list is fixed once checking begins,
+     * so this is built once on first use and replaces a per-assignment AST
+     * scan in is_module_level_var(). */
+    const char **module_var_index_names;
+    int module_var_index_cap;
+    bool module_var_index_built;
+
     /* Cache for typechecker_type_from_name (spelling -> resolved type). The
      * module/alias/struct/enum tables it consults are frozen once statement
      * checking begins, so within one file and using-list the answer for a

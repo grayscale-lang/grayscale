@@ -1,0 +1,96 @@
+/*
+ * interpolation_nary_join.gray - interpolation lowers to a single N-ary join
+ *
+ * "a${x}b${y}c" now compiles to one gray_string_concat_n over every part
+ * rather than a left-associative gray_string_concat chain. These cases
+ * check that part order, empty parts, many parts, and mixed value types
+ * all produce the same bytes the chain did.
+ */
+
+do main() {
+    println("=== Interpolation N-ary Join Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // -- part order is preserved across many segments --
+    mut a string = "A"
+    mut b string = "B"
+    mut c string = "C"
+    mut s string = "${a}1${b}2${c}3${a}4${b}5${c}6"
+    if s == "A1B2C3A4B5C6" {
+        println("  [PASS] order preserved over 12 parts")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${s}")
+        failed += 1
+    }
+
+    // -- adjacent expressions with no literal between them --
+    mut x int = 10
+    mut y int = 20
+    mut z int = 30
+    mut nums string = "${x}${y}${z}"
+    if nums == "102030" {
+        println("  [PASS] adjacent expression parts")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${nums}")
+        failed += 1
+    }
+
+    // -- empty string values as parts --
+    mut empty string = ""
+    mut e string = "[${empty}${a}${empty}]"
+    if e == "[A]" && len(e) == 3 {
+        println("  [PASS] empty-string parts contribute nothing")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${e} len ${len(e)}")
+        failed += 1
+    }
+
+    // -- mixed value types in one interpolation --
+    mut flag bool = false
+    mut pi float = 3.5
+    mut ch char = 'Q'
+    mut mixed string = "s=${a} i=${x} b=${flag} f=${pi} c=${ch}"
+    if mixed == "s=A i=10 b=false f=3.5 c=Q" {
+        println("  [PASS] mixed value types")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] got ${mixed}")
+        failed += 1
+    }
+
+    // -- single-part interpolation still works (no join emitted) --
+    mut one string = "${a}"
+    mut oneint string = "${x}"
+    if one == "A" && oneint == "10" {
+        println("  [PASS] single-part interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] one=${one} oneint=${oneint}")
+        failed += 1
+    }
+
+    // -- long interpolation built in a loop, result stays correct --
+    mut acc string = ""
+    for i in range(0, 100) {
+        acc = "${acc}${a}${b}"
+    }
+    if len(acc) == 200 {
+        println("  [PASS] repeated interpolation accumulation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] expected len 200, got ${len(acc)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

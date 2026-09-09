@@ -170,6 +170,13 @@ int gray_spawn_quiet(const char *const *argv);
 
 /* --- Toolchain discovery --- */
 
+/* Look up a command on PATH the way the OS loader will, without spawning it.
+ * True when `name` is an executable file, either directly (it contains a path
+ * separator) or in some PATH directory. On Windows a ".exe" suffix is tried
+ * too. Used to pick a C compiler without paying a `<cc> --version` spawn on
+ * every compile. */
+bool gray_command_on_path(const char *name);
+
 /* Windows only: probe well-known MinGW/MSYS2/LLVM install locations for a C
  * compiler that is not on PATH. On success returns an absolute path in a
  * static buffer and prepends its bin directory to PATH — the compiler's

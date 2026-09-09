@@ -1749,22 +1749,23 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
-    /* Emit as chained gray_string_concat() calls instead of gray_string_format()
-     * to preserve null bytes in string values (gray_string_format uses vsnprintf
-     * which truncates at \0). gray_string_concat is null-safe (uses memcpy). */
+    /* Lower to a single gray_string_concat_n() over all parts: one allocation,
+     * one copy per part. (gray_string_format is avoided throughout — its
+     * vsnprintf truncates string values at an embedded \0; the concat path is
+     * memcpy-based and null-safe.) */
     int part_count = node->data.interpolated_string.part_count;
     if (part_count == 0) {
         emit(codegen, "gray_string_lit(\"\")");
         return;
     }
-    /* Emit N-1 opening gray_string_concat calls for left-associative chaining:
-     * concat(arena, concat(arena, part0, part1), part2) */
-    for (int i = 1; i < part_count; i++) {
-        emit(codegen, "gray_string_concat(gray_default_arena, ");
+    /* One part needs no join — emit it directly. */
+    bool nary = part_count >= 2;
+    if (nary) {
+        emit_formatted(codegen, "gray_string_concat_n(gray_default_arena, %d", part_count);
     }
     /* Emit each part as a GrayString expression */
     for (int i = 0; i < part_count; i++) {
-        if (i > 0) emit(codegen, ", ");
+        if (nary) emit(codegen, ", ");
         AstNode *part = node->data.interpolated_string.parts[i];
         if (part->kind == NODE_STRING_VALUE) {
             /* Literal text — reuses NODE_STRING_VALUE codegen (null-safe) */
@@ -1889,8 +1890,8 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 break;
             }
         }
-        if (i > 0) emit(codegen, ")");
     }
+    if (nary) emit(codegen, ")");
 }
 
 static void emit_array_value(CodeGen *codegen, AstNode *node) {
@@ -1996,6 +1997,14 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
             GrayType *inferred_t = type_from_name(inferred);
             if (inferred_t && inferred_t->kind != TK_UNKNOWN) elem_t = inferred_t;
         }
+    }
+    /* Inside a generic function body, a wildcard-typed element (return {x, x}
+     * for -> [?]) resolves to TK_UNKNOWN in the un-specialised pass. Use the
+     * active instantiation binding so the compound literal stores the concrete
+     * C type instead of defaulting to int64_t. */
+    if ((!elem_t || elem_t->kind == TK_UNKNOWN) && codegen->wildcard_binding) {
+        GrayType *wb = type_from_name(codegen->wildcard_binding);
+        if (wb && wb->kind != TK_UNKNOWN) elem_t = wb;
     }
     TypeKind tk = elem_t ? elem_t->kind : TK_INT;
 
@@ -6977,11 +6986,18 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_remove_int(");
+            /* Wide value: gray_arrays_remove_int takes int64_t. Scan with
+             * the width's eq helper and drop the first match. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "{ GrayArray *_rm%d = ", tag);
             emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            emit_formatted(codegen, "; %s _rv%d = ", bi, tag);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen, "; for (int32_t _ri%d = 0; _ri%d < _rm%d->len; _ri%d++) { "
+                "if (%s_eq(((%s *)_rm%d->data)[_ri%d], _rv%d)) { gray_arrays_remove_at(_rm%d, _ri%d); break; } } }",
+                tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         /* Find the first slot equal to the value (reading it as its real C
@@ -7008,28 +7024,27 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(func, "sort_asc") == 0 && node->data.call.arg_count == 1) {
+    if ((strcmp(func, "sort_asc") == 0 || strcmp(func, "sort_desc") == 0) &&
+        node->data.call.arg_count == 1) {
+        bool desc = strcmp(func, "sort_desc") == 0;
         GrayType *sa_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *sa_elem = (sa_t && sa_t->kind == TK_ARRAY) ? sa_t->element_type : NULL;
+        if (sa_elem && is_bigint_type(sa_elem)) {
+            /* Wide elements: the int64 comparators see only the low word. */
+            emit(codegen, "gray_arrays_sort_wide(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, ", %s, %s, %s)",
+                sa_elem[0] == 'i' ? "true" : "false",
+                strstr(sa_elem, "256") ? "true" : "false",
+                desc ? "true" : "false");
+            return true;
+        }
         if (sa_elem && strcmp(sa_elem, "float") == 0)
-            emit(codegen, "gray_arrays_sort_asc_float(");
+            emit_formatted(codegen, "gray_arrays_sort_%s_float(", desc ? "desc" : "asc");
         else if (sa_elem && strcmp(sa_elem, "string") == 0)
-            emit(codegen, "gray_arrays_sort_asc_str(");
+            emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
         else
-            emit(codegen, "gray_arrays_sort_asc(");
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "sort_desc") == 0 && node->data.call.arg_count == 1) {
-        GrayType *sd_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *sd_elem = (sd_t && sd_t->kind == TK_ARRAY) ? sd_t->element_type : NULL;
-        if (sd_elem && strcmp(sd_elem, "float") == 0)
-            emit(codegen, "gray_arrays_sort_desc_float(");
-        else if (sd_elem && strcmp(sd_elem, "string") == 0)
-            emit(codegen, "gray_arrays_sort_desc_str(");
-        else
-            emit(codegen, "gray_arrays_sort_desc(");
+            emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
@@ -7052,11 +7067,19 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_contains_int(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            /* Wide ints are struct-backed: read each slot as its real C type
+             * and compare with the width's inline gray_<w>_eq helper. The
+             * int64_t-taking gray_arrays_contains_int cannot take the struct. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ct%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen, "; bool _cr%d = false; for (int32_t _ci%d = 0; _ci%d < _ct%d.len; _ci%d++) { "
+                "if (%s_eq(((%s *)_ct%d.data)[_ci%d], _cv%d)) { _cr%d = true; break; } } _cr%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         /* Every other element type: read each slot as its real C type so the
@@ -7104,11 +7127,17 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_index_of_int(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            /* See the contains handler: struct-backed, needs gray_<w>_eq. */
+            const char *bi = bigint_prefix(elem_tn);
+            int btag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ix%d = ", btag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _iv%d = ", bi, btag);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen, "; int64_t _ir%d = -1; for (int32_t _ii%d = 0; _ii%d < _ix%d.len; _ii%d++) { "
+                "if (%s_eq(((%s *)_ix%d.data)[_ii%d], _iv%d)) { _ir%d = _ii%d; break; } } _ir%d; })",
+                btag, btag, btag, btag, btag, bi, bi, btag, btag, btag, btag, btag, btag);
             return true;
         }
         char c_elem[MSG_BUF_SIZE];
@@ -7142,11 +7171,16 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             return true;
         }
         if (elem_tn && is_bigint_type(elem_tn)) {
-            emit(codegen, "gray_arrays_count(");
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ", ");
-            emit_expression(codegen, node->data.call.args[1]);
-            emit(codegen, ")");
+            /* See the contains handler: struct-backed, needs gray_<w>_eq. */
+            const char *bi = bigint_prefix(elem_tn);
+            emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _cv%d = ", bi, tag);
+            if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen, "; int64_t _cr%d = 0; for (int32_t _ci%d = 0; _ci%d < _cn%d.len; _ci%d++) { "
+                "if (%s_eq(((%s *)_cn%d.data)[_ci%d], _cv%d)) _cr%d++; } _cr%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, tag, tag, tag);
             return true;
         }
         char c_elem[MSG_BUF_SIZE];
@@ -7218,8 +7252,10 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             else if (fet->kind == TK_INT || fet->kind == TK_UINT)
                 fl_c_elem = gray_type_to_c_codegen(codegen, fl_arr_t->element_type);
         }
+        const char *fl_elem_tn = (fl_arr_t && fl_arr_t->kind == TK_ARRAY) ? fl_arr_t->element_type : NULL;
         emit_formatted(codegen, "{ %s _fv = ", fl_c_elem);
-        emit_expression(codegen, node->data.call.args[1]);
+        if (!emit_bigint_coerced(codegen, fl_elem_tn, node->data.call.args[1]))
+            emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; gray_arrays_fill(gray_default_arena, ");
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ", &_fv, ");
@@ -7364,9 +7400,29 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         if (is_bigint_type(elem_tn)) {
-            emit_formatted(codegen, "gray_arrays_%s(", func);
-            emit_array_argument_address(codegen, node->data.call.args[0]);
-            emit(codegen, ")");
+            /* Wide elements are struct-backed: fold / compare with the width's
+             * inline helpers. gray_arrays_get_* read only the low 64 bits. */
+            const char *bi = bigint_prefix(elem_tn);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _ag%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            if (strcmp(func, "get_sum") == 0) {
+                emit_formatted(codegen, "; %s _ar%d = %s_from_u64(0); "
+                    "for (int32_t _ai%d = 0; _ai%d < _ag%d.len; _ai%d++) { "
+                    "_ar%d = %s_add(_ar%d, ((%s *)_ag%d.data)[_ai%d]); } _ar%d; })",
+                    bi, tag, bi, tag, tag, tag, tag, tag, bi, tag, bi, tag, tag, tag);
+            } else {
+                const char *rel = (strcmp(func, "get_max") == 0) ? "gt" : "lt";
+                emit_formatted(codegen, "; %s _ar%d = %s_from_u64(0); if (_ag%d.len > 0) { "
+                    "_ar%d = ((%s *)_ag%d.data)[0]; "
+                    "for (int32_t _ai%d = 1; _ai%d < _ag%d.len; _ai%d++) { "
+                    "%s _av%d = ((%s *)_ag%d.data)[_ai%d]; "
+                    "if (%s_%s(_av%d, _ar%d)) _ar%d = _av%d; } } _ar%d; })",
+                    bi, tag, bi, tag, tag, bi, tag,
+                    tag, tag, tag, tag,
+                    bi, tag, bi, tag, tag,
+                    bi, rel, tag, tag, tag, tag, tag);
+            }
             return true;
         }
         char c_elem[MSG_BUF_SIZE];
@@ -7395,6 +7451,17 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (strcmp(func, "is_sorted") == 0 && node->data.call.arg_count == 1) {
         GrayType *is_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
         const char *is_elem = (is_t && is_t->kind == TK_ARRAY) ? is_t->element_type : NULL;
+        if (is_elem && is_bigint_type(is_elem)) {
+            /* gray_arrays_is_sorted compares low words only. */
+            const char *bi = bigint_prefix(is_elem);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _is%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; bool _ir%d = true; for (int32_t _ii%d = 1; _ii%d < _is%d.len; _ii%d++) { "
+                "if (%s_gt(((%s *)_is%d.data)[_ii%d - 1], ((%s *)_is%d.data)[_ii%d])) { _ir%d = false; break; } } _ir%d; })",
+                tag, tag, tag, tag, tag, bi, bi, tag, tag, bi, tag, tag, tag, tag);
+            return true;
+        }
         if (is_elem && strcmp(is_elem, "float") == 0)
             emit(codegen, "gray_arrays_is_sorted_float(");
         else if (is_elem && strcmp(is_elem, "string") == 0)
@@ -8099,6 +8166,22 @@ static void emit_func_field_call(CodeGen *codegen, AstNode *node, AstNode *obj,
 /* Struct-namespaced (Name.func()) calls and mod.Struct.func() chains.
  * Returns true when it emitted the call; false to fall through to the
  * general function-call path. */
+/* Emit one argument of a struct/namespaced function call. Unlike the general
+ * call path, this dispatch never ran arguments through emit_narrowing_cast, so
+ * an out-of-range value passed to a sized-integer parameter was truncated by C
+ * with no runtime check. Apply the same checked cast here for non-mutable
+ * sized-integer params; everything else keeps the existing behavior. */
+static void emit_namespaced_call_argument(CodeGen *codegen, AstNode *arg,
+                                          AstNode *fn, int param_index, int line) {
+    bool mut_param = fn && param_index < fn->data.func_decl.param_count &&
+        fn->data.func_decl.params[param_index].mutable;
+    const char *ptn = (fn && param_index < fn->data.func_decl.param_count)
+        ? fn->data.func_decl.params[param_index].type_name : NULL;
+    if (!mut_param && ptn && emit_narrowing_cast(codegen, ptn, arg, line))
+        return;
+    emit_mutable_call_argument(codegen, arg, mut_param);
+}
+
 static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
     /* Check for struct-namespaced or user-module function call: Name.func() */
     if (node->data.call.function->kind == NODE_MEMBER_EXPR) {
@@ -8179,9 +8262,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "gray_fn_%s(", full_name);
                 for (int i = 0; i < node->data.call.arg_count; i++) {
                     if (i > 0) emit(codegen, ", ");
-                    bool mut_param = i < ns_func->data.func_decl.param_count &&
-                        ns_func->data.func_decl.params[i].mutable;
-                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                    emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                        ns_func, i, node->token.line);
                 }
                 emit(codegen, ")");
                 return true;
@@ -8353,9 +8435,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "gray_fn_%s(", member);
                     for (int i = 0; i < node->data.call.arg_count; i++) {
                         if (i > 0) emit(codegen, ", ");
-                        bool mut_param = i < ns_func->data.func_decl.param_count &&
-                            ns_func->data.func_decl.params[i].mutable;
-                        emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                        emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                            ns_func, i, node->token.line);
                     }
                     emit(codegen, ")");
                     return true;
@@ -8436,9 +8517,8 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         ns_func->data.func_decl.params[pi].is_type_param) continue;
                     if (arg_emitted) emit(codegen, ", ");
                     arg_emitted = true;
-                    bool mut_param = pi < ns_func->data.func_decl.param_count &&
-                        ns_func->data.func_decl.params[pi].mutable;
-                    emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                    emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                        ns_func, pi, node->token.line);
                 }
                 /* Inject default values for omitted trailing parameters */
                 {
@@ -8570,8 +8650,8 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                         for (int i = 0; i < slot_count; i++) {
                             if (i > 0) emit(codegen, ", ");
                             if (i < arg_count) {
-                                bool mut_param = i < param_count && uf->data.func_decl.params[i].mutable;
-                                emit_mutable_call_argument(codegen, node->data.call.args[i], mut_param);
+                                emit_namespaced_call_argument(codegen, node->data.call.args[i],
+                                    uf, i, node->token.line);
                             } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
                                 emit_expression(codegen, uf->data.func_decl.params[i].default_value);
                             }
@@ -10954,18 +11034,19 @@ static void emit_scratch_arena_unwind(CodeGen *codegen) {
 }
 
 /* Unwind only up to and including the innermost loop iteration arena.
- * Used by break/continue: we must clean up the current loop's arena and
- * any if-block arenas nested inside it, but must NOT touch outer loop
- * arenas which are still live. Loop arenas are named _iter_arena_N;
- * if-block arenas are named _if_arena_N. */
+ * Used by break/continue: we must restore the current loop's arena
+ * pointer but must NOT touch outer loop arenas which are still live.
+ * An if nested inside a loop only watermarks the iteration arena (no
+ * scope_arenas entry of its own), so the innermost live entry here is
+ * always that _iter_arena_N; the loop tolerates a stray _if_arena_N
+ * (only produced by a top-level if, never inside a loop) for safety. */
 static void emit_loop_exit_unwind(CodeGen *codegen) {
     for (int i = codegen->scope_arena_count - 1; i >= 0; i--) {
         ScopeArena *entry = &codegen->scope_arenas[i];
         emit_formatted(codegen, "gray_default_arena = %s; ", entry->saved_var);
         /* The iteration arena is hoisted out of the loop: break/continue only
          * restore the arena pointer. The next iteration's reset and the
-         * post-loop destroy own its lifetime. Nested if-block arenas above it
-         * are per-entry and must still be torn down. */
+         * post-loop destroy own its lifetime. */
         if (strncmp(entry->arena_var, "_iter_arena_", 12) == 0) break;
         emit_formatted(codegen, "gray_arena_destroy(%s, __FILE__, __LINE__); free(%s); ",
               entry->arena_var, entry->arena_var);
@@ -11038,10 +11119,17 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
     emit(codegen, "gray_arena_destroy(_func_arena, __FILE__, __LINE__); free(_func_arena); ");
 }
 
+static bool function_uses_watermark(CodeGen *codegen, AstNode *node);
+
 static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     /* Caller-arena functions have no _scope_mark to restore. */
     bool caller_arena = codegen->current_func &&
                         function_uses_caller_arena(codegen, codegen->current_func);
+    /* A non-void function proven allocation-free uses the watermark path too:
+     * restore the mark on return instead of tearing down a private arena. */
+    bool watermark = codegen->current_func &&
+                     codegen->current_func->data.func_decl.return_type_count > 0 &&
+                     function_uses_watermark(codegen, codegen->current_func);
 
     /* Guard against malformed AST: count > 0 but NULL values array */
     if (node->data.return_stmt.count > 0 && !node->data.return_stmt.values) {
@@ -11127,8 +11215,13 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "; ");
         emit_ensure_cleanup(codegen);
         if (codegen->current_func && codegen->current_func->data.func_decl.return_type_count > 0) {
-            const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
-            emit_function_return_escape(codegen, ret_tn);
+            if (watermark) {
+                emit_scratch_arena_unwind(codegen);
+                emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); ");
+            } else {
+                const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
+                emit_function_return_escape(codegen, ret_tn);
+            }
         }
         emit(codegen, "gray_exit_func(); return _ret; }\n");
     } else if (node->data.return_stmt.count == 0 && codegen->current_func &&
@@ -11181,24 +11274,38 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
-    /* per-block arena for if/otherwise so temporaries are freed */
+    /* if/otherwise branches free their temporaries on exit. When the if is
+     * nested inside a loop or another scope (loop_scope_depth > 0) there is
+     * already a distinct enclosing scratch arena and a separate
+     * _gray_outer_arena for escaping writes, so the branch just watermarks
+     * the enclosing arena (gray_scope_save/restore) — no allocator traffic
+     * per entry. A top-level if (depth 0) shares its arena with
+     * _gray_outer_arena, so a watermark restore would clobber escaped
+     * writes; it keeps the private per-entry arena. */
     int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
     bool scoped = !current_function_uses_caller_arena(codegen);
+    bool watermark = scoped && codegen->loop_scope_depth > 0;
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
     if (scoped) {
         if (codegen->loop_scope_depth == 0) {
             emit(codegen, "GrayArena *_gray_outer_arena = gray_default_arena; ");
         }
-        emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
-        emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
-        emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
+        if (watermark) {
+            emit_formatted(codegen, "GrayScopeMark _if_mark_%d = gray_scope_save(gray_default_arena);\n", isc);
+        } else {
+            emit_formatted(codegen, "GrayArena *_if_arena_%d = gray_arena_create(%d); ", isc, IF_ARENA_SIZE);
+            emit_formatted(codegen, "GrayArena *_if_saved_%d = gray_default_arena; ", isc);
+            emit_formatted(codegen, "gray_default_arena = _if_arena_%d;\n", isc);
+        }
         codegen->loop_scope_depth++;
-        char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
-        snprintf(av, sizeof(av), "_if_arena_%d", isc);
-        snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
-        scope_arena_push(codegen, av, sv);
+        if (!watermark) {
+            char av[SHORT_VAR_BUF], sv[SHORT_VAR_BUF];
+            snprintf(av, sizeof(av), "_if_arena_%d", isc);
+            snprintf(sv, sizeof(sv), "_if_saved_%d", isc);
+            scope_arena_push(codegen, av, sv);
+        }
     } else {
         emit(codegen, "\n");
     }
@@ -11261,11 +11368,164 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
     emit_indent(codegen);
     if (scoped) {
         codegen->loop_scope_depth--;
-        scope_arena_pop(codegen);
-        emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
-        emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); ", isc, isc);
+        if (watermark) {
+            emit_formatted(codegen, "gray_scope_restore(gray_default_arena, _if_mark_%d); ", isc);
+        } else {
+            scope_arena_pop(codegen);
+            emit_formatted(codegen, "gray_default_arena = _if_saved_%d; ", isc);
+            emit_formatted(codegen, "gray_arena_destroy(_if_arena_%d, __FILE__, __LINE__); free(_if_arena_%d); ", isc, isc);
+        }
     }
     emit(codegen, "}\n");
+}
+
+/* --- Non-allocating loop body fast path -------------------------------------
+ *
+ * A loop body that allocates nothing needs no per-iteration scratch arena:
+ * there is no short-lived memory to reclaim, so the reset + arena-pointer
+ * swaps (a non-inlined call in the inner loop) are pure overhead. The
+ * predicate below is deliberately narrow — straight-line scalar arithmetic
+ * and assignment only. Anything it does not positively recognise as
+ * allocation-free (a call, any literal, interpolation, a nested scope,
+ * control flow) keeps the arena. A wrong "arena-free" answer could only
+ * strand a value in the enclosing arena until that scope ends, never
+ * corrupt memory — but the conservative answer is always correct and the
+ * only cost is a missed optimisation. */
+
+static bool cg_expr_is_string(CodeGen *codegen, AstNode *e) {
+    if (!e) return false;
+    if (e->kind == NODE_STRING_VALUE || e->kind == NODE_INTERPOLATED_STRING) return true;
+    GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+    return t && t->kind == TK_STRING;
+}
+
+/* A value of this kind is copied by C assignment with no heap traffic.
+ * Arrays, maps and structs deep-copy on assignment, so they are excluded. */
+static bool cg_type_is_copy_free(GrayType *t) {
+    if (!t) return false;
+    switch (t->kind) {
+        case TK_INT: case TK_UINT: case TK_FLOAT:
+        case TK_BOOL: case TK_CHAR: case TK_BYTE: case TK_STRING:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool cg_expr_alloc_free(CodeGen *codegen, AstNode *e) {
+    if (!e) return true;
+    switch (e->kind) {
+        case NODE_INT_VALUE: case NODE_FLOAT_VALUE: case NODE_CHAR_VALUE:
+        case NODE_BOOL_VALUE: case NODE_NIL_VALUE: case NODE_STRING_VALUE:
+        case NODE_LABEL:
+            return true;
+        case NODE_PREFIX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.prefix.right);
+        case NODE_POSTFIX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.postfix.left);
+        case NODE_MEMBER_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.member.object);
+        case NODE_INDEX_EXPR:
+            return cg_expr_alloc_free(codegen, e->data.index_expr.left)
+                && cg_expr_alloc_free(codegen, e->data.index_expr.index);
+        case NODE_INFIX_EXPR:
+            /* string + string allocates a fresh GrayString */
+            if (e->data.infix.op == TOK_PLUS
+                && (cg_expr_is_string(codegen, e->data.infix.left)
+                    || cg_expr_is_string(codegen, e->data.infix.right)))
+                return false;
+            return cg_expr_alloc_free(codegen, e->data.infix.left)
+                && cg_expr_alloc_free(codegen, e->data.infix.right);
+        default:
+            /* calls, new(), array/map/struct literals, interpolation, casts,
+             * ranges, func refs, implicit enums — assume allocation */
+            return false;
+    }
+}
+
+static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
+    if (!s) return true;
+    switch (s->kind) {
+        case NODE_VAR_DECL: {
+            AstNode *v = s->data.var_decl.value;
+            if (!v) return true;
+            if (!cg_expr_alloc_free(codegen, v)) return false;
+            GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, v) : NULL;
+            return cg_type_is_copy_free(vt);
+        }
+        case NODE_ASSIGN_STMT: {
+            if (!cg_expr_alloc_free(codegen, s->data.assign.target)) return false;
+            if (!cg_expr_alloc_free(codegen, s->data.assign.value)) return false;
+            /* `s += t` on a string is a concat */
+            if (s->data.assign.op == TOK_PLUS_ASSIGN
+                && cg_expr_is_string(codegen, s->data.assign.target))
+                return false;
+            GrayType *tt = codegen->type_table
+                ? typetable_get(codegen->type_table, s->data.assign.target) : NULL;
+            return cg_type_is_copy_free(tt);
+        }
+        case NODE_EXPR_STMT:
+            return cg_expr_alloc_free(codegen, s->data.expr_stmt.expr);
+        default:
+            /* if / when / nested loops / return / break / continue / ensure /
+             * bare block — keep the arena */
+            return false;
+    }
+}
+
+/* True when a non-void function can use the void watermark path (no private
+ * 64 KB _func_arena on every call) instead of a per-call arena
+ * create/destroy/free. Safe only when the return value cannot carry arena
+ * memory and the body allocates nothing: a single copy-free scalar return
+ * (no named returns, no bigint), and every body statement allocation-free —
+ * which, via cg_stmt_alloc_free, also rules out every call, so nothing the
+ * body touches can escape or dangle when the watermark is restored. */
+static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
+    if (!node || node->kind != NODE_FUNC_DECL) return false;
+    if (node->data.func_decl.return_type_count != 1) return false;
+    /* return_names is allocated even for an unnamed return; entry 0 is NULL
+     * unless the return value was actually given a name. */
+    if (node->data.func_decl.return_names && node->data.func_decl.return_names[0])
+        return false;
+    if (function_uses_caller_arena(codegen, node)) return false;
+
+    const char *rtn = node->data.func_decl.return_types[0];
+    if (!rtn || is_bigint_type(rtn)) return false;
+    GrayType *rt = type_from_name(rtn);
+    if (!rt) return false;
+    switch (rt->kind) {
+        case TK_INT: case TK_UINT: case TK_FLOAT:
+        case TK_BOOL: case TK_CHAR: case TK_BYTE:
+            break;
+        default:
+            /* string / struct / array / map / error: the value or its fields
+             * may point into the function arena */
+            return false;
+    }
+
+    AstNode *body = node->data.func_decl.body;
+    if (!body || body->kind != NODE_BLOCK_STMT) return false;
+    for (int i = 0; i < body->data.block.count; i++) {
+        AstNode *s = body->data.block.stmts[i];
+        if (s && s->kind == NODE_RETURN_STMT) {
+            for (int j = 0; j < s->data.return_stmt.count; j++)
+                if (!cg_expr_alloc_free(codegen, s->data.return_stmt.values[j]))
+                    return false;
+            continue;
+        }
+        if (!cg_stmt_alloc_free(codegen, s)) return false;
+    }
+    return true;
+}
+
+/* True when every statement in a loop body is provably allocation-free, so
+ * codegen can omit all per-iteration and per-loop arena management. */
+static bool loop_body_alloc_free(CodeGen *codegen, AstNode *body) {
+    if (!body || body->kind != NODE_BLOCK_STMT) return false;
+    for (int i = 0; i < body->data.block.count; i++) {
+        if (!cg_stmt_alloc_free(codegen, body->data.block.stmts[i])) return false;
+    }
+    return true;
 }
 
 /* The iteration scratch arena is created once before the loop and destroyed
@@ -11273,13 +11533,14 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
  * traffic). emit_loop_arena_prologue runs at the caller's indent before the
  * loop header, emit_loop_arena_epilogue after the closing brace, and
  * emit_loop_body_with_arena emits the per-iteration reset + the body. A
- * caller-arena function opens no per-scope arenas at all. */
+ * caller-arena function opens no per-scope arenas at all, and neither does a
+ * loop whose body is allocation-free (no_arena). */
 static bool loop_arena_active(CodeGen *codegen) {
     return !current_function_uses_caller_arena(codegen);
 }
 
-static void emit_loop_arena_prologue(CodeGen *codegen) {
-    if (!loop_arena_active(codegen)) return;
+static void emit_loop_arena_prologue(CodeGen *codegen, bool no_arena) {
+    if (no_arena || !loop_arena_active(codegen)) return;
     int depth = codegen->loop_scope_depth;
     /* Wrap the whole loop in its own C block so the arena locals below are
      * scoped to this loop — two sibling loops at the same depth would
@@ -11297,8 +11558,8 @@ static void emit_loop_arena_prologue(CodeGen *codegen) {
     emit_formatted(codegen, "GrayArena *_saved_arena_%d = gray_default_arena;\n", depth);
 }
 
-static void emit_loop_arena_epilogue(CodeGen *codegen) {
-    if (!loop_arena_active(codegen)) return;
+static void emit_loop_arena_epilogue(CodeGen *codegen, bool no_arena) {
+    if (no_arena || !loop_arena_active(codegen)) return;
     int depth = codegen->loop_scope_depth;
     emit_indent(codegen);
     emit_formatted(codegen, "gray_arena_destroy(_iter_arena_%d, __FILE__, __LINE__); free(_iter_arena_%d);\n", depth, depth);
@@ -11310,9 +11571,9 @@ static void emit_loop_arena_epilogue(CodeGen *codegen) {
 /* Emit the per-iteration arena reset and the loop body.
  * Caller is responsible for indent++ before and indent--/closing brace after,
  * and for emit_loop_arena_prologue/epilogue around the loop. */
-static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
+static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_arena) {
     int prev_raw_var_count = codegen->raw_var_count;
-    if (current_function_uses_caller_arena(codegen)) {
+    if (no_arena || current_function_uses_caller_arena(codegen)) {
         emit_block(codegen, body);
         codegen->raw_var_count = prev_raw_var_count;
         return;
@@ -11336,7 +11597,8 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body) {
 }
 
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.for_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
 
     AstNode *iter = node->data.for_stmt.iterable;
@@ -11419,39 +11681,41 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     }
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.for_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.for_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 static void emit_while_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.while_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "while (");
     emit_expression(codegen, node->data.while_stmt.condition);
     emit(codegen, ") {\n");
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.while_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.while_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
-    emit_loop_arena_prologue(codegen);
+    bool no_arena = loop_body_alloc_free(codegen, node->data.loop_stmt.body);
+    emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "for (;;) {\n");
 
     codegen->indent++;
-    emit_loop_body_with_arena(codegen, node->data.loop_stmt.body);
+    emit_loop_body_with_arena(codegen, node->data.loop_stmt.body, no_arena);
     codegen->indent--;
     emit_indent(codegen);
     emit(codegen, "}\n");
-    emit_loop_arena_epilogue(codegen);
+    emit_loop_arena_epilogue(codegen, no_arena);
 }
 
 /* extract the base (unmangled) function name for multi-return
@@ -11574,8 +11838,12 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
      * are freed, and escape the return value to the caller's arena. */
     bool is_void_fn = (node->data.func_decl.return_type_count == 0);
     bool caller_arena = function_uses_caller_arena(codegen, node);
+    /* A non-void function that provably allocates nothing and returns a
+     * copy-free scalar needs no private arena — the watermark is enough,
+     * exactly as for a void function. */
+    bool watermark_fn = is_void_fn || function_uses_watermark(codegen, node);
     if (!is_main && !caller_arena) {
-        if (is_void_fn) {
+        if (watermark_fn) {
             emit_indent(codegen);
             emit(codegen, "GrayScopeMark _scope_mark = gray_scope_save(gray_default_arena);\n");
         } else {
@@ -11626,7 +11894,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
         emit_ensure_cleanup(codegen);
         /* cleanup function-scoped memory */
         if (!is_main && !caller_arena) {
-            if (is_void_fn) {
+            if (watermark_fn) {
                 emit_indent(codegen);
                 emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark);\n");
             } else {
@@ -11852,6 +12120,86 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     }
 }
 
+/* True if evaluating this expression can reach C code that panics through
+ * gray_panic_code() — which carries no location and relies on the per-statement
+ * gray_panic_call_{file,line} stamp. That is any call, any allocation (new,
+ * aggregate literals, string interpolation or a string literal that may be
+ * concatenated), and casts. Scalar arithmetic, comparisons, label reads and
+ * the located checks (indexing, member access, division, overflow) do not
+ * need the stamp, so a statement built only from those can skip it. */
+static bool expr_needs_panic_location(CodeGen *codegen, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_CALL_EXPR:
+    case NODE_NEW_EXPR:
+    case NODE_INTERPOLATED_STRING:
+    case NODE_STRING_VALUE:
+    case NODE_ARRAY_VALUE:
+    case NODE_MAP_VALUE:
+    case NODE_STRUCT_VALUE:
+    case NODE_CAST_EXPR:
+        return true;
+    case NODE_PREFIX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.prefix.right);
+    case NODE_POSTFIX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.postfix.left);
+    case NODE_INFIX_EXPR: {
+        /* String '+' lowers to gray_string_concat, which allocates. */
+        GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+        if (t && t->kind == TK_STRING) return true;
+        return expr_needs_panic_location(codegen, e->data.infix.left) ||
+               expr_needs_panic_location(codegen, e->data.infix.right);
+    }
+    case NODE_INDEX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.index_expr.left) ||
+               expr_needs_panic_location(codegen, e->data.index_expr.index);
+    case NODE_MEMBER_EXPR:
+        return expr_needs_panic_location(codegen, e->data.member.object);
+    case NODE_RANGE_EXPR:
+        return expr_needs_panic_location(codegen, e->data.range_expr.start) ||
+               expr_needs_panic_location(codegen, e->data.range_expr.end) ||
+               expr_needs_panic_location(codegen, e->data.range_expr.step);
+    default:
+        return false;
+    }
+}
+
+/* Whether this statement needs its source location stamped for the runtime.
+ * Only the expressions this statement evaluates directly are examined; nested
+ * statements (loop and branch bodies) stamp themselves as they are emitted. */
+static bool stmt_needs_panic_location(CodeGen *codegen, AstNode *node) {
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        return expr_needs_panic_location(codegen, node->data.var_decl.value);
+    case NODE_ASSIGN_STMT:
+        return expr_needs_panic_location(codegen, node->data.assign.target) ||
+               expr_needs_panic_location(codegen, node->data.assign.value);
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            if (expr_needs_panic_location(codegen, node->data.return_stmt.values[i]))
+                return true;
+        return false;
+    case NODE_EXPR_STMT:
+        return expr_needs_panic_location(codegen, node->data.expr_stmt.expr);
+    case NODE_IF_STMT:
+        return expr_needs_panic_location(codegen, node->data.if_stmt.condition);
+    case NODE_WHILE_STMT:
+        return expr_needs_panic_location(codegen, node->data.while_stmt.condition);
+    case NODE_WHEN_STMT:
+        return expr_needs_panic_location(codegen, node->data.when_stmt.value);
+    case NODE_FOR_EACH_STMT:
+        return expr_needs_panic_location(codegen, node->data.for_each.collection);
+    case NODE_BREAK_STMT:
+    case NODE_CONTINUE_STMT:
+        return false;
+    default:
+        /* NODE_FOR_STMT, NODE_ENSURE_STMT and anything not enumerated: keep the
+         * stamp. These are rare relative to plain arithmetic statements and not
+         * worth the risk of a stale location on a missed path. */
+        return true;
+    }
+}
+
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     codegen_enter_node(codegen, node);
     if (!node) return;
@@ -11862,8 +12210,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
      * .gray file and line, the same as a language-level panic. Only inside a
      * function body (indent > 0) — file-scope initializers cannot call, so
      * cannot panic this way. codegen->file is the enclosing function's own
-     * module here (emit_function_declaration points it there). */
-    if (codegen->indent > 0 && codegen->file && node->token.line > 0) {
+     * module here (emit_function_declaration points it there). Statements that
+     * evaluate only located operations skip the stamp. */
+    if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
+        stmt_needs_panic_location(codegen, node)) {
         emit_indent(codegen);
         emit_formatted(codegen, "gray_panic_call_file = \"%s\"; gray_panic_call_line = %d;\n",
                        codegen->file, node->token.line);
@@ -11905,7 +12255,9 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_for_statement(codegen, node);
         break;
     case NODE_FOR_EACH_STMT: {
-        emit_loop_arena_prologue(codegen);
+        /* for_each keeps its per-iteration arena unconditionally for now;
+         * the non-allocating fast path covers for / while / loop only. */
+        emit_loop_arena_prologue(codegen, false);
         emit_indent(codegen);
         AstNode *coll = node->data.for_each.collection;
         GrayType *coll_t = codegen->type_table ? typetable_get(codegen->type_table, coll) : NULL;
@@ -11934,7 +12286,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                                &coll_needs_tmp, arr_tmp_name, sizeof(arr_tmp_name));
         }
 
-        emit_loop_body_with_arena(codegen, node->data.for_each.body);
+        emit_loop_body_with_arena(codegen, node->data.for_each.body, false);
         codegen->bigint_var_count = prev_bigint_var_count;
         codegen->indent--;
         emit_indent(codegen);
@@ -11967,7 +12319,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                 emit(codegen, "}\n");
             }
         }
-        emit_loop_arena_epilogue(codegen);
+        emit_loop_arena_epilogue(codegen, false);
         break;
     }
     case NODE_WHILE_STMT:

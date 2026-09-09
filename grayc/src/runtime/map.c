@@ -154,8 +154,20 @@ static void store_key(GrayArena *arena, GrayMap *map, int32_t slot, const void *
     }
 }
 
+/* Capacity is always a power of two so the probe loop masks (idx & (cap-1))
+ * instead of running a divide per step. Callers may pass any hint (a map
+ * literal's entry count, a SQL column count); round it up. The 1<<30
+ * ceiling sits far above any realistic map and clear of int32 overflow. */
+static int32_t gray_map_round_capacity(int32_t cap) {
+    if (cap < GRAY_MAP_MIN_CAP) return GRAY_MAP_MIN_CAP;
+    if (cap > (1 << 30)) return 1 << 30;
+    int32_t p = GRAY_MAP_MIN_CAP;
+    while (p < cap) p <<= 1;
+    return p;
+}
+
 GrayMap gray_map_new_kind(GrayArena *arena, int32_t key_size, int32_t value_size, int32_t initial_cap, int8_t key_kind) {
-    if (initial_cap < GRAY_MAP_MIN_CAP) initial_cap = GRAY_MAP_MIN_CAP;
+    initial_cap = gray_map_round_capacity(initial_cap);
     GrayMap map;
     map.arena = arena;
     map.key_size = key_size;
@@ -182,9 +194,10 @@ GrayMap gray_map_new(GrayArena *arena, int32_t key_size, int32_t value_size, int
 
 static int32_t find_slot(GrayMap *map, const void *key) {
     uint64_t hash = hash_key(key, map->key_size, map->key_kind);
-    int32_t idx = (int32_t)(hash % (uint64_t)map->capacity);
+    int32_t mask = map->capacity - 1;
+    int32_t idx = (int32_t)(hash & (uint64_t)mask);
     for (int32_t i = 0; i < map->capacity; i++) {
-        int32_t probe = (idx + i) % map->capacity;
+        int32_t probe = (idx + i) & mask;
         if (map->states[probe] == 0) return -1; /* empty — not found */
         if (map->states[probe] == 1 && keys_equal(key_ptr(map, probe), key, map->key_size, map->key_kind)) {
             return probe;
@@ -199,6 +212,7 @@ static int32_t find_slot(GrayMap *map, const void *key) {
  * scope arena leaves the map pointing at reclaimed memory once that
  * scope unwinds. */
 static void map_rebuild(GrayArena *arena, GrayMap *map, int32_t new_cap) {
+    new_cap = gray_map_round_capacity(new_cap);
     if (map->arena) arena = map->arena;
     void *old_keys = map->keys;
     void *old_values = map->values;
@@ -252,10 +266,11 @@ void gray_map_set(GrayArena *arena, GrayMap *map, const void *key, const void *v
     }
 
     uint64_t hash = hash_key(key, map->key_size, map->key_kind);
-    int32_t idx = (int32_t)(hash % (uint64_t)map->capacity);
+    int32_t mask = map->capacity - 1;
+    int32_t idx = (int32_t)(hash & (uint64_t)mask);
     int32_t first_tombstone = -1;
     for (int32_t i = 0; i < map->capacity; i++) {
-        int32_t probe = (idx + i) % map->capacity;
+        int32_t probe = (idx + i) & mask;
         if (map->states[probe] == 2) {
             /* Tombstone — record it and keep scanning for an existing key */
             if (first_tombstone < 0) first_tombstone = probe;

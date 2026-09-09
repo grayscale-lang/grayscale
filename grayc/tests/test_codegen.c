@@ -2225,6 +2225,669 @@ static void test_e2e_generic_type_param(void) {
     ASSERT_STR_EQ(output, "7");
 }
 
+/* Type aliases (STANDARD 3.5) */
+
+static void test_e2e_type_alias(void) {
+    char *output = compile_and_run(
+        ""
+        "alias Meters = float\n"
+        "do main() {\n"
+        "  mut d Meters = 10.5\n"
+        "  println(type_of(d))\n"
+        "  println(d + 1.0)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "float\n11.5");
+}
+
+static void test_e2e_type_alias_struct_enum(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "alias Vec2 = Point\n"
+        "const Color enum {\n"
+        "  RED\n"
+        "  GREEN\n"
+        "  BLUE\n"
+        "}\n"
+        "alias Hue = Color\n"
+        "do main() {\n"
+        "  mut p Vec2 = Point{x: 3, y: 4}\n"
+        "  println(p.x + p.y)\n"
+        "  mut c Hue = Hue.GREEN\n"
+        "  println(type_of(c))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7\nColor");
+}
+
+/* Raw string literals (STANDARD 2.7.4) */
+
+static void test_e2e_raw_string(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut path string = `C:\\Users\\n.txt`\n"
+        "  println(path)\n"
+        "  mut m string = `a\n"
+        "b`\n"
+        "  println(m)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "C:\\Users\\n.txt\na\nb");
+}
+
+/* String escape sequences (STANDARD 2.7.3) */
+
+static void test_e2e_string_escapes(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(\"tab\\thx\")\n"
+        "  println(\"H is \\x48\")\n"
+        "  println(\"literal \\${x}\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "tab\thx\nH is H\nliteral ${x}");
+}
+
+/* Underscores in numeric literals (STANDARD 2.7.1) */
+
+static void test_e2e_numeric_underscores(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut a int = 1_000_000\n"
+        "  mut b int = 0xDEAD_BEEF\n"
+        "  mut c int = 0b1111_0000\n"
+        "  mut d int = 0o1_2_3\n"
+        "  println(a)\n"
+        "  println(b)\n"
+        "  println(c)\n"
+        "  println(d)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "1000000\n3735928559\n240\n83");
+}
+
+/* copy() deep-copies; the duplicate is independent (STANDARD 11.3) */
+
+static void test_e2e_copy_deep(void) {
+    char *output = compile_and_run(
+        ""
+        "const Person struct {\n"
+        "  name string\n"
+        "  age int\n"
+        "}\n"
+        "do main() {\n"
+        "  mut original Person = Person{name: \"Alice\", age: 30}\n"
+        "  mut dup Person = copy(original)\n"
+        "  dup.age = 31\n"
+        "  println(original.age)\n"
+        "  println(dup.age)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "30\n31");
+}
+
+/* A struct literal that embeds an existing array aliases it (STANDARD 11.2) */
+
+static void test_e2e_literal_embed_alias(void) {
+    char *output = compile_and_run(
+        ""
+        "const Box struct {\n"
+        "  items [int]\n"
+        "}\n"
+        "do main() {\n"
+        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut box Box = Box{items: arr}\n"
+        "  box.items[0] = 99\n"
+        "  println(arr[0])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "99");
+}
+
+/* new() returns a zero-initialized value (STANDARD 11.4) */
+
+static void test_e2e_new_zero_values(void) {
+    char *output = compile_and_run(
+        ""
+        "const Config struct {\n"
+        "  host string\n"
+        "  port int\n"
+        "  on bool\n"
+        "}\n"
+        "do main() {\n"
+        "  mut i = new(int)\n"
+        "  mut s = new(string)\n"
+        "  mut c = new(Config)\n"
+        "  println(i^)\n"
+        "  println(\"[${s^}]\")\n"
+        "  println(c^.port)\n"
+        "  println(c^.on)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "0\n[]\n0\nfalse");
+}
+
+/* when with is range(...) patterns (STANDARD 6.5) */
+
+static void test_e2e_when_range(void) {
+    char *output = compile_and_run(
+        ""
+        "do classify(n int) -> string {\n"
+        "  when n {\n"
+        "    is range(0, 3) { return \"low\" }\n"
+        "    is range(3, 10) { return \"mid\" }\n"
+        "    default { return \"high\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(classify(1))\n"
+        "  println(classify(3))\n"
+        "  println(classify(9))\n"
+        "  println(classify(50))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "low\nmid\nmid\nhigh");
+}
+
+/* switch/case are aliases for when/is (STANDARD 6.5) */
+
+static void test_e2e_switch_case(void) {
+    char *output = compile_and_run(
+        ""
+        "do sw(n int) -> string {\n"
+        "  switch n {\n"
+        "    case 1 { return \"one\" }\n"
+        "    case 2, 3 { return \"few\" }\n"
+        "    default { return \"many\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(sw(1))\n"
+        "  println(sw(3))\n"
+        "  println(sw(50))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "one\nfew\nmany");
+}
+
+/* size_of returns a type's byte size (STANDARD 9.1) */
+
+static void test_e2e_size_of(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(size_of(int))\n"
+        "  println(size_of(byte))\n"
+        "  println(size_of(bool))\n"
+        "  println(size_of(float))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "8\n1\n1\n8");
+}
+
+/* fields returns struct field names in declaration order (STANDARD 9.1) */
+
+static void test_e2e_fields(void) {
+    char *output = compile_and_run(
+        ""
+        "const Point struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "  label string\n"
+        "}\n"
+        "do main() {\n"
+        "  mut p Point = Point{x: 1, y: 2, label: \"o\"}\n"
+        "  for_each f in fields(p) {\n"
+        "    println(f)\n"
+        "  }\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "x\ny\nlabel");
+}
+
+/* ref() aliases a variable; writes through it hit the original (STANDARD 9.1) */
+
+static void test_e2e_ref_builtin(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut x int = 10\n"
+        "  mut r = ref(x)\n"
+        "  r = 42\n"
+        "  println(x)\n"
+        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut ra = ref(arr)\n"
+        "  ra[0] = 99\n"
+        "  println(arr[0])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\n99");
+}
+
+/* char_count counts codepoints, len counts bytes; to_char indexes by char (9.1) */
+
+static void test_e2e_char_count(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut s string = \"h\xc3\xa9llo\"\n"
+        "  println(len(s))\n"
+        "  println(char_count(s))\n"
+        "  mut c char = to_char(s, 1)\n"
+        "  println(int(c))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "6\n5\n233");
+}
+
+/* Arithmetic operator precedence (STANDARD 5.3) */
+
+static void test_e2e_operator_precedence(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(2 + 3 * 4)\n"
+        "  println((2 + 3) * 4)\n"
+        "  println(10 - 2 - 3)\n"
+        "  println(20 / 4 / 5)\n"
+        "  println(-2 * 3 + 1)\n"
+        "  println(2 + 3 == 5)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "14\n20\n5\n1\n-5\ntrue");
+}
+
+/* print writes without a trailing newline (STANDARD 9.1) */
+
+static void test_e2e_print_no_newline(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  print(\"a\")\n"
+        "  print(\"b\")\n"
+        "  println(\"c\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "abc");
+}
+
+/* eprint/eprintln write to stderr (STANDARD 9.1) */
+
+static void test_e2e_eprint(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  eprint(\"e1-\")\n"
+        "  eprintln(\"e2\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "e1-e2");
+}
+
+/* assert() terminates with P0075 and the message when the condition is false (9.1) */
+
+static void test_e2e_assert_failure(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut x int = -1\n"
+        "  assert(x > 0, \"x must be positive\")\n"
+        "  println(\"unreached\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT(strstr(output, "P0075") != NULL);
+    ASSERT(strstr(output, "assertion failed: x must be positive") != NULL);
+    ASSERT(strstr(output, "unreached") == NULL);
+}
+
+/* panic() prints already-emitted output, then terminates with its message (9.1) */
+
+static void test_e2e_panic_builtin(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  println(\"before\")\n"
+        "  panic(\"boom\")\n"
+        "  println(\"after\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT(strstr(output, "before") != NULL);
+    ASSERT(strstr(output, "boom") != NULL);
+    ASSERT(strstr(output, "after") == NULL);
+}
+
+/* math module — arithmetic, powers, number properties (STANDARD 9.5) */
+
+static void test_e2e_math_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @math\n"
+        "do main() {\n"
+        "  println(math.abs(-7))\n"
+        "  println(math.max(3, 9))\n"
+        "  println(math.gcd(12, 18))\n"
+        "  println(math.factorial(5))\n"
+        "  println(math.is_prime(13))\n"
+        "  println(math.sqrt(16.0))\n"
+        "  println(math.pow(2.0, 10.0))\n"
+        "  println(math.clamp(15, 0, 10))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7\n9\n6\n120\ntrue\n4.0\n1024.0\n10");
+}
+
+/* encoding module — base64 and hex round-trips (STANDARD 9.13) */
+
+static void test_e2e_encoding_base64_hex(void) {
+    char *output = compile_and_run(
+        ""
+        "import @encoding\n"
+        "do main() {\n"
+        "  mut b string = encoding.base64_encode(\"hello\")\n"
+        "  println(b)\n"
+        "  println(encoding.base64_decode(b))\n"
+        "  mut h string = encoding.hex_encode(\"AB\")\n"
+        "  println(h)\n"
+        "  println(encoding.hex_decode(h))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "aGVsbG8=\nhello\n4142\nAB");
+}
+
+/* regex module — matching, counting, find, replace (STANDARD 9.18) */
+
+static void test_e2e_regex_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @regex\n"
+        "do main() {\n"
+        "  println(regex.is_match(\"[0-9]+\", \"abc123\"))\n"
+        "  println(regex.count(\"[0-9]\", \"a1b2c3\"))\n"
+        "  mut m, _ = regex.find(\"[0-9]+\", \"abc123def\")\n"
+        "  println(m)\n"
+        "  mut rep, _ = regex.replace(\"[0-9]\", \"a1b2\", \"#\")\n"
+        "  println(rep)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "true\n3\n123\na#b#");
+}
+
+/* csv module — parse to 2D array and encode back (STANDARD 9.19) */
+
+static void test_e2e_csv_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @csv\n"
+        "do main() {\n"
+        "  mut rows [[string]] = csv.parse(\"a,b,c\\n1,2,3\")\n"
+        "  println(len(rows))\n"
+        "  println(rows[1][2])\n"
+        "  mut out string = csv.encode(rows)\n"
+        "  print(out)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "2\n3\na,b,c\n1,2,3");
+}
+
+/* json module — encode, validate, decode to a map (STANDARD 9.8) */
+
+static void test_e2e_json_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @json\n"
+        "do main() {\n"
+        "  println(json.encode(42))\n"
+        "  println(json.is_valid(\"{\\\"a\\\": 1}\"))\n"
+        "  mut m, _ = json.decode(\"{\\\"name\\\": \\\"bob\\\"}\")\n"
+        "  println(m[\"name\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\ntrue\nbob");
+}
+
+/* String interpolation evaluates arbitrary expressions (STANDARD 2.7.3) */
+
+static void test_e2e_interp_expression(void) {
+    char *output = compile_and_run(
+        ""
+        "const P struct {\n"
+        "  x int\n"
+        "  y int\n"
+        "}\n"
+        "do dbl(n int) -> int { return n * 2 }\n"
+        "do main() {\n"
+        "  mut a int = 3\n"
+        "  mut b int = 4\n"
+        "  println(\"sum=${a + b}\")\n"
+        "  mut p P = P{x: 1, y: 2}\n"
+        "  println(\"pt ${p.x},${p.y}\")\n"
+        "  println(\"d=${dbl(5)}\")\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "sum=7\npt 1,2\nd=10");
+}
+
+/* Compound assignment to a map element (STANDARD 5.2, 6.1) */
+
+static void test_e2e_map_compound_assign(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut m map[string:int] = {\"a\": 10}\n"
+        "  m[\"a\"] += 5\n"
+        "  m[\"a\"] *= 2\n"
+        "  println(m[\"a\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "30");
+}
+
+/* A struct array field is mutable through the field (STANDARD 3.2) */
+
+static void test_e2e_struct_array_field(void) {
+    char *output = compile_and_run(
+        ""
+        "import @arrays\n"
+        "const Bag struct {\n"
+        "  items [int]\n"
+        "}\n"
+        "do main() {\n"
+        "  mut b Bag = Bag{items: {1, 2}}\n"
+        "  arrays.append(b.items, 3)\n"
+        "  b.items[0] = 99\n"
+        "  println(b.items[0])\n"
+        "  println(b.items[2])\n"
+        "  println(len(b.items))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "99\n3\n3");
+}
+
+/* Nested map types index correctly (STANDARD 3.2) */
+
+static void test_e2e_nested_map(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut m map[string:map[string:int]] = {\"outer\": {\"inner\": 7}}\n"
+        "  println(m[\"outer\"][\"inner\"])\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "7");
+}
+
+/* break and continue inside for_each (STANDARD 6.4) */
+
+static void test_e2e_for_each_break_continue(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut xs [int] = {1, 2, 3, 4, 5}\n"
+        "  mut sum int = 0\n"
+        "  for_each x in xs {\n"
+        "    if x == 4 { break }\n"
+        "    if x == 2 { continue }\n"
+        "    sum += x\n"
+        "  }\n"
+        "  println(sum)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "4");
+}
+
+/* + concatenates string operands (STANDARD 5.2.1) */
+
+static void test_e2e_string_concat_operator(void) {
+    char *output = compile_and_run(
+        ""
+        "do main() {\n"
+        "  mut name string = \"World\"\n"
+        "  mut g string = \"Hello, \" + name + \"!\"\n"
+        "  println(g)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "Hello, World!");
+}
+
+/* Arrays of enum values — indexing, iteration, equality (STANDARD 3.2, 5.2.2) */
+
+static void test_e2e_enum_array(void) {
+    char *output = compile_and_run(
+        ""
+        "const Color enum {\n"
+        "  RED\n"
+        "  GREEN\n"
+        "  BLUE\n"
+        "}\n"
+        "do main() {\n"
+        "  mut cs [Color] = {Color.RED, Color.BLUE, Color.GREEN}\n"
+        "  println(len(cs))\n"
+        "  mut count int = 0\n"
+        "  for_each c in cs {\n"
+        "    if c == Color.BLUE { count += 1 }\n"
+        "  }\n"
+        "  println(count)\n"
+        "  println(cs[1] == Color.BLUE)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "3\n1\ntrue");
+}
+
+/* A self-referential struct walked through pointer fields (STANDARD 3.2, 11.2) */
+
+static void test_e2e_recursive_struct_list(void) {
+    char *output = compile_and_run(
+        ""
+        "const Node struct {\n"
+        "  val int\n"
+        "  next ^Node\n"
+        "}\n"
+        "do main() {\n"
+        "  mut c Node = Node{val: 3}\n"
+        "  mut b Node = Node{val: 2, next: addr(c)}\n"
+        "  mut a Node = Node{val: 1, next: addr(b)}\n"
+        "  mut sum int = 0\n"
+        "  mut cur ^Node = addr(a)\n"
+        "  as_long_as cur != nil {\n"
+        "    sum += cur^.val\n"
+        "    cur = cur^.next\n"
+        "  }\n"
+        "  println(sum)\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "6");
+}
+
+/* when matching on a string condition (STANDARD 6.5) */
+
+static void test_e2e_when_string(void) {
+    char *output = compile_and_run(
+        ""
+        "do label(s string) -> string {\n"
+        "  when s {\n"
+        "    is \"a\" { return \"alpha\" }\n"
+        "    is \"b\", \"c\" { return \"bc\" }\n"
+        "    default { return \"other\" }\n"
+        "  }\n"
+        "  return \"?\"\n"
+        "}\n"
+        "do main() {\n"
+        "  println(label(\"a\"))\n"
+        "  println(label(\"c\"))\n"
+        "  println(label(\"z\"))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "alpha\nbc\nother");
+}
+
+/* Explicit enum values: assigned, auto-incremented, widened to int, cast (STANDARD 3.2) */
+
+static void test_e2e_enum_explicit_values(void) {
+    char *output = compile_and_run(
+        ""
+        "const Status enum {\n"
+        "  OK = 200\n"
+        "  CREATED\n"
+        "  NOT_FOUND = 404\n"
+        "}\n"
+        "do main() {\n"
+        "  mut a int = Status.OK\n"
+        "  mut b int = Status.CREATED\n"
+        "  println(a)\n"
+        "  println(b)\n"
+        "  println(cast(Status.NOT_FOUND, int))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "200\n201\n404");
+}
+
+/* strconv module — parse, format, query round-trips (STANDARD 9.27) */
+
+static void test_e2e_strconv_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @strconv\n"
+        "do main() {\n"
+        "  mut n, _ = strconv.to_int(\"42\")\n"
+        "  println(n)\n"
+        "  mut bad, err = strconv.to_int(\"nope\")\n"
+        "  println(bad)\n"
+        "  println(err != nil)\n"
+        "  println(strconv.from_int(255))\n"
+        "  println(strconv.format_int(255, 16))\n"
+        "  println(strconv.is_integer(\"-17\"))\n"
+        "  println(strconv.is_integer(\"3.5\"))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "42\n0\ntrue\n255\nff\ntrue\nfalse");
+}
+
+/* uuid module — validation, version, nil UUID (STANDARD 9.14) */
+
+static void test_e2e_uuid_module(void) {
+    char *output = compile_and_run(
+        ""
+        "import @uuid\n"
+        "do main() {\n"
+        "  println(uuid.is_valid(\"00000000-0000-0000-0000-000000000000\"))\n"
+        "  println(uuid.is_valid(\"not-a-uuid\"))\n"
+        "  mut n uuid.UUID = uuid.NIL_UUID\n"
+        "  println(uuid.version(n))\n"
+        "  println(uuid.to_string(n))\n"
+        "}");
+    ASSERT_NOT_NULL(output);
+    ASSERT_STR_EQ(output, "true\nfalse\n0\n00000000-0000-0000-0000-000000000000");
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -2457,6 +3120,56 @@ int main(void) {
     RUN_TEST(test_e2e_tagged_enum);
     RUN_TEST(test_e2e_struct_field_defaults);
     RUN_TEST(test_e2e_generic_type_param);
+
+    /* Type aliases */
+    RUN_TEST(test_e2e_type_alias);
+    RUN_TEST(test_e2e_type_alias_struct_enum);
+
+    /* String and numeric literals */
+    RUN_TEST(test_e2e_raw_string);
+    RUN_TEST(test_e2e_string_escapes);
+    RUN_TEST(test_e2e_numeric_underscores);
+
+    /* copy() and reference semantics */
+    RUN_TEST(test_e2e_copy_deep);
+    RUN_TEST(test_e2e_literal_embed_alias);
+
+    /* new() zero values and when ranges */
+    RUN_TEST(test_e2e_new_zero_values);
+    RUN_TEST(test_e2e_when_range);
+    RUN_TEST(test_e2e_switch_case);
+
+    /* Built-in functions */
+    RUN_TEST(test_e2e_size_of);
+    RUN_TEST(test_e2e_fields);
+    RUN_TEST(test_e2e_ref_builtin);
+    RUN_TEST(test_e2e_char_count);
+    RUN_TEST(test_e2e_operator_precedence);
+    RUN_TEST(test_e2e_print_no_newline);
+    RUN_TEST(test_e2e_eprint);
+    RUN_TEST(test_e2e_assert_failure);
+    RUN_TEST(test_e2e_panic_builtin);
+
+    /* Stdlib modules */
+    RUN_TEST(test_e2e_math_module);
+    RUN_TEST(test_e2e_encoding_base64_hex);
+    RUN_TEST(test_e2e_regex_module);
+    RUN_TEST(test_e2e_csv_module);
+    RUN_TEST(test_e2e_json_module);
+
+    /* Language semantics */
+    RUN_TEST(test_e2e_interp_expression);
+    RUN_TEST(test_e2e_map_compound_assign);
+    RUN_TEST(test_e2e_struct_array_field);
+    RUN_TEST(test_e2e_nested_map);
+    RUN_TEST(test_e2e_for_each_break_continue);
+    RUN_TEST(test_e2e_string_concat_operator);
+    RUN_TEST(test_e2e_enum_array);
+    RUN_TEST(test_e2e_recursive_struct_list);
+    RUN_TEST(test_e2e_when_string);
+    RUN_TEST(test_e2e_enum_explicit_values);
+    RUN_TEST(test_e2e_strconv_module);
+    RUN_TEST(test_e2e_uuid_module);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

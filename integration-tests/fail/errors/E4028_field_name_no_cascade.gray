@@ -1,0 +1,17 @@
+/*
+ * Error Test: E4028 - a rejected built-in field name must not consume the next
+ * field's type keyword during error recovery.
+ * Expected: exactly one error, for 'len'. The following field 'name string' is
+ * well-formed and must not produce a spurious E4028 against 'string'.
+ */
+// expect-error: E4028
+// expect-error-count: 1
+
+const B struct {
+    len int
+    name string
+}
+
+do main() {
+    println("hi")
+}

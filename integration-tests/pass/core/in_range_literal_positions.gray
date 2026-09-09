@@ -2,12 +2,21 @@
  * in_range_literal_positions.gray
  * In-range integer literals in the positions covered by the E3036 range
  * check (struct-literal field, map value, default param, return, index
- * assignment) must still compile and round-trip.
+ * assignment, and call argument — plain and struct-function dispatch) must
+ * still compile and round-trip.
  */
 
 const S struct {
     b byte
     n i16
+}
+
+const V struct {
+    n int
+
+    do take(v V, x i8) -> i8 {
+        return x
+    }
 }
 
 do ret_ok() -> byte {
@@ -16,6 +25,10 @@ do ret_ok() -> byte {
 
 do with_default(b byte = 200) -> byte {
     return b
+}
+
+do sink(a int, x i8) -> i8 {
+    return x
 }
 
 do main() {
@@ -29,8 +42,12 @@ do main() {
     mut mm map[string:u8] = {:}
     mm["k"] = 255
 
+    mut v V = V{ n: 0 }
+
     if s.b == 250 && s.n == -32000 && m["a"] == 100 && xs[0] == 254 &&
-       mm["k"] == 255 && ret_ok() == 255 && with_default() == 200 {
+       mm["k"] == 255 && ret_ok() == 255 && with_default() == 200 &&
+       sink(1, 127) == 127 && sink(1, -128) == -128 &&
+       V.take(v, 100) == 100 && v.take(-100) == -100 {
         println("  [PASS] in-range literals accepted in all positions")
         passed += 1
     } otherwise {
