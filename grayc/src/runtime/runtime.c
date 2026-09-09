@@ -409,3 +409,19 @@ void gray_panic_code_at(const char *file, int line, const char *code, const char
     va_start(args, fmt);
     gray_panic_impl(code, file, line, fmt, args);
 }
+
+/* Out-of-line failure tails for the checked-arithmetic helpers in runtime.h.
+ * The Pxxxx code and message live here, once, instead of at every arithmetic
+ * site in generated code. Messages mirror the registry in error_codes.h. */
+#define GRAY_ARITH_TAIL(name, code, msg)                     \
+    _Noreturn void name(const char *file, int line) {        \
+        gray_panic_code_at(file, line, code, "%s", msg);     \
+    }
+GRAY_ARITH_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of int")
+GRAY_ARITH_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of uint")
+GRAY_ARITH_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but uint cannot hold negative values")
+GRAY_ARITH_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of uint")
+#undef GRAY_ARITH_TAIL

@@ -12059,6 +12059,86 @@ static void emit_foreach_array(CodeGen *codegen, AstNode *node, AstNode *coll,
     }
 }
 
+/* True if evaluating this expression can reach C code that panics through
+ * gray_panic_code() — which carries no location and relies on the per-statement
+ * gray_panic_call_{file,line} stamp. That is any call, any allocation (new,
+ * aggregate literals, string interpolation or a string literal that may be
+ * concatenated), and casts. Scalar arithmetic, comparisons, label reads and
+ * the located checks (indexing, member access, division, overflow) do not
+ * need the stamp, so a statement built only from those can skip it. */
+static bool expr_needs_panic_location(CodeGen *codegen, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_CALL_EXPR:
+    case NODE_NEW_EXPR:
+    case NODE_INTERPOLATED_STRING:
+    case NODE_STRING_VALUE:
+    case NODE_ARRAY_VALUE:
+    case NODE_MAP_VALUE:
+    case NODE_STRUCT_VALUE:
+    case NODE_CAST_EXPR:
+        return true;
+    case NODE_PREFIX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.prefix.right);
+    case NODE_POSTFIX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.postfix.left);
+    case NODE_INFIX_EXPR: {
+        /* String '+' lowers to gray_string_concat, which allocates. */
+        GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+        if (t && t->kind == TK_STRING) return true;
+        return expr_needs_panic_location(codegen, e->data.infix.left) ||
+               expr_needs_panic_location(codegen, e->data.infix.right);
+    }
+    case NODE_INDEX_EXPR:
+        return expr_needs_panic_location(codegen, e->data.index_expr.left) ||
+               expr_needs_panic_location(codegen, e->data.index_expr.index);
+    case NODE_MEMBER_EXPR:
+        return expr_needs_panic_location(codegen, e->data.member.object);
+    case NODE_RANGE_EXPR:
+        return expr_needs_panic_location(codegen, e->data.range_expr.start) ||
+               expr_needs_panic_location(codegen, e->data.range_expr.end) ||
+               expr_needs_panic_location(codegen, e->data.range_expr.step);
+    default:
+        return false;
+    }
+}
+
+/* Whether this statement needs its source location stamped for the runtime.
+ * Only the expressions this statement evaluates directly are examined; nested
+ * statements (loop and branch bodies) stamp themselves as they are emitted. */
+static bool stmt_needs_panic_location(CodeGen *codegen, AstNode *node) {
+    switch (node->kind) {
+    case NODE_VAR_DECL:
+        return expr_needs_panic_location(codegen, node->data.var_decl.value);
+    case NODE_ASSIGN_STMT:
+        return expr_needs_panic_location(codegen, node->data.assign.target) ||
+               expr_needs_panic_location(codegen, node->data.assign.value);
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            if (expr_needs_panic_location(codegen, node->data.return_stmt.values[i]))
+                return true;
+        return false;
+    case NODE_EXPR_STMT:
+        return expr_needs_panic_location(codegen, node->data.expr_stmt.expr);
+    case NODE_IF_STMT:
+        return expr_needs_panic_location(codegen, node->data.if_stmt.condition);
+    case NODE_WHILE_STMT:
+        return expr_needs_panic_location(codegen, node->data.while_stmt.condition);
+    case NODE_WHEN_STMT:
+        return expr_needs_panic_location(codegen, node->data.when_stmt.value);
+    case NODE_FOR_EACH_STMT:
+        return expr_needs_panic_location(codegen, node->data.for_each.collection);
+    case NODE_BREAK_STMT:
+    case NODE_CONTINUE_STMT:
+        return false;
+    default:
+        /* NODE_FOR_STMT, NODE_ENSURE_STMT and anything not enumerated: keep the
+         * stamp. These are rare relative to plain arithmetic statements and not
+         * worth the risk of a stale location on a missed path. */
+        return true;
+    }
+}
+
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     codegen_enter_node(codegen, node);
     if (!node) return;
@@ -12069,8 +12149,10 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
      * .gray file and line, the same as a language-level panic. Only inside a
      * function body (indent > 0) — file-scope initializers cannot call, so
      * cannot panic this way. codegen->file is the enclosing function's own
-     * module here (emit_function_declaration points it there). */
-    if (codegen->indent > 0 && codegen->file && node->token.line > 0) {
+     * module here (emit_function_declaration points it there). Statements that
+     * evaluate only located operations skip the stamp. */
+    if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
+        stmt_needs_panic_location(codegen, node)) {
         emit_indent(codegen);
         emit_formatted(codegen, "gray_panic_call_file = \"%s\"; gray_panic_call_line = %d;\n",
                        codegen->file, node->token.line);
