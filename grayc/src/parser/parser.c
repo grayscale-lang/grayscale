@@ -2700,6 +2700,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * shared type and backfill (mirrors the parameter grouping logic).
          * Example: `x, y, z float` → three fields, all typed float.       */
         int group_start = node->data.struct_decl.field_count;
+        bool field_name_rejected = false;
         for (;;) {
             ARENA_GROW(parser->arena, node->data.struct_decl.fields,
                 node->data.struct_decl.field_count, field_cap);
@@ -2712,6 +2713,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 synchronize_parser(parser);
+                node->data.struct_decl.field_count = group_start;
+                field_name_rejected = true;
                 break;
             }
             if (current_token_is(parser, TOK_IDENT) && is_reserved_name(parser->cur_token.literal)) {
@@ -2722,6 +2725,8 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 diagnostic_error_message(parser->diag, "E4028", arena_copy_string(parser->arena, msg),
                     parser->file, parser->cur_token.line, parser->cur_token.column, 0);
                 synchronize_parser(parser);
+                node->data.struct_decl.field_count = group_start;
+                field_name_rejected = true;
                 break;
             }
             StructField *field = &node->data.struct_decl.fields[node->data.struct_decl.field_count];
@@ -2735,6 +2740,13 @@ static AstNode *parse_struct_declaration(Parser *parser) {
                 break;
             }
         }
+        /* A rejected field name has already been diagnosed and synchronized past;
+         * the cursor now sits on the next field (or `}`). Re-enter the outer loop
+         * rather than falling into the type-parse below, which would otherwise
+         * consume the next field's name as a type and cascade a false error onto
+         * its type keyword. */
+        if (field_name_rejected) continue;
+
         /* Current token is now the type; parse it and backfill all names in this group */
         const char *type_name = parse_complex_type(parser);
         if (!type_name) return NULL;
