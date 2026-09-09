@@ -921,6 +921,16 @@ int main(int argc, char **argv) {
     /* GCC's spelling of the Clang-only flag above. */
     argv_push(&cc_argv, "-Wno-discarded-qualifiers");
 #endif
+    /* An `extern.` call is emitted with its arguments passed through verbatim —
+     * grayc cannot see the C signature to insert a cast. An opaque C handle
+     * (FILE*, DIR*, ...) has no Grayscale type to name, so it round-trips as
+     * `^byte` (uint8_t*), and a byte buffer passed to a `char*` parameter
+     * differs only in signedness. Neither mismatch is expressible away in
+     * source. Silence both so C interop compiles clean; on GCC >= 14
+     * -Wincompatible-pointer-types is an error by default, so this also keeps
+     * it from being a hard build failure. */
+    argv_push(&cc_argv, "-Wno-incompatible-pointer-types");
+    argv_push(&cc_argv, "-Wno-pointer-sign");
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
     argv_push(&cc_argv, "-isystem");
