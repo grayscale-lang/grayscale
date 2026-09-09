@@ -347,6 +347,48 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diag, Arena *a
     return ok;
 }
 
+/* Put the directory of every file that names a local C header ("./x.h" /
+ * "../x.h") on the quoted-include search path. The generated C is written to a
+ * temp path, so a verbatim `#include "./x.h"` would otherwise be resolved
+ * relative to $TMPDIR and never found. -iquote (not -I) keeps this confined to
+ * the quoted-include form, matching how the header was written. */
+static void add_local_c_header_dirs(ArgV *cc_argv, Arena *arena, AstNode *program,
+                                    const char *entry_file) {
+    const char *seen[MAX_CC_ARGS];
+    int seen_count = 0;
+
+    for (int si = 0; si < program->data.program.stmt_count; si++) {
+        AstNode *stmt = program->data.program.stmts[si];
+        if (stmt->kind != NODE_IMPORT_STMT) continue;
+        for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
+            ImportItem *item = &stmt->data.import_stmt.items[ii];
+            if (!item->is_c_import || !item->path) continue;
+            if (!c_header_is_local(item->path)) continue;
+
+            /* Directory of the importing file (mirrors preflight_c_headers). */
+            char base[PATH_BUF_SIZE];
+            const char *dir = item->source_dir;
+            if (!dir) {
+                snprintf(base, sizeof(base), "%s", entry_file);
+                char *sep = gray_path_rsep(base);
+                if (sep) sep[1] = '\0';
+                else snprintf(base, sizeof(base), "./");
+                dir = base;
+            }
+
+            bool dup = false;
+            for (int k = 0; k < seen_count; k++)
+                if (strcmp(seen[k], dir) == 0) { dup = true; break; }
+            if (dup) continue;
+            const char *kept = arena_copy_string(arena, dir);
+            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = kept;
+
+            argv_push(cc_argv, "-iquote");
+            argv_push(cc_argv, kept);
+        }
+    }
+}
+
 /* Command-line configuration, filled by parse_args() and read-only after. */
 typedef struct {
     const char *input_file;
@@ -883,6 +925,9 @@ int main(int argc, char **argv) {
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
+    /* Local C headers ("./x.h") are written relative to the .gray source, not
+     * the temp .c handed to the compiler. */
+    add_local_c_header_dirs(&cc_argv, arena, program, opts.input_file);
     argv_push(&cc_argv, "-o");
     argv_push(&cc_argv, opts.output_file);
     argv_push(&cc_argv, c_file);
