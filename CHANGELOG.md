@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.8.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.2...grayscale-v0.8.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **cc:** suppress incompatible-pointer-types and pointer-sign for C interop ([ee7dd25](https://github.com/grayscale-lang/grayscale/commit/ee7dd25a7dc401e77b29664dabb9f42e37ede9f4))
+* **codegen:** coerce a literal needle/fill value for wide-int arrays ([c44e750](https://github.com/grayscale-lang/grayscale/commit/c44e750c662f60633eb9c9453703fb74ba3a9fca))
+* **codegen:** compare wide-int elements in arrays.contains/index_of/count ([302c3ff](https://github.com/grayscale-lang/grayscale/commit/302c3ffa6896a8670caf70bdce9216d86ca310bb))
+* handle wide-integer elements in arrays sort/query functions ([c24df4d](https://github.com/grayscale-lang/grayscale/commit/c24df4d778501689e1e254f08e663366fbb1dbe7))
+* **main:** pass -iquote for local extern C header directories ([2ee6b14](https://github.com/grayscale-lang/grayscale/commit/2ee6b1472f31e5e67a304db15c09e75e86723fac))
+* **parser:** stop struct field-name error recovery from consuming the next field's type ([80562e3](https://github.com/grayscale-lang/grayscale/commit/80562e3ed31f4b1093d13b65226cf73ad9dfe4ec))
+* **typechecker:** accept a mutable pointer dereference as a & argument ([3359ee0](https://github.com/grayscale-lang/grayscale/commit/3359ee0405704c09848df650c2cca96a2ca3a843))
+* **typechecker:** dispatch struct functions on index and nested-field receivers ([#2626](https://github.com/grayscale-lang/grayscale/issues/2626)) ([4e828f9](https://github.com/grayscale-lang/grayscale/commit/4e828f9db6429f8670a7c1e107ce02519be05e82))
+* **typechecker:** fold const bindings in the E3002 zero-divisor check ([31fc172](https://github.com/grayscale-lang/grayscale/commit/31fc1728df1f4ca3236bea572fbe6da7f46207f6))
+* **typechecker:** preserve wildcard through array/map literal inference ([a9605e5](https://github.com/grayscale-lang/grayscale/commit/a9605e54492421b642cf3fa4edab8806026fae94))
+* **typechecker:** range-check integer literal call arguments (E3036) ([bbfdc6f](https://github.com/grayscale-lang/grayscale/commit/bbfdc6f4f55a50945c295585eb6949e1b20856be))
+* **typechecker:** reject a const field or element passed to a mutable param ([d17fd07](https://github.com/grayscale-lang/grayscale/commit/d17fd0773ec9f821d47b61b59555313bb2e6adbf))
+* **typechecker:** reject a const-pointee field/element passed to a & param ([4a2492a](https://github.com/grayscale-lang/grayscale/commit/4a2492a357c1f6336cb397655082a8269d26ced8))
+* **typechecker:** reject pointer-param Grayscale functions passed as C callbacks ([1edfa9a](https://github.com/grayscale-lang/grayscale/commit/1edfa9a650a42e5d57b178cc815caa00fc5a38d8))
+
+
+### Performance Improvements
+
+* **cli:** bake the embedded-runtime hash at build time, skip the re-walk ([f67f719](https://github.com/grayscale-lang/grayscale/commit/f67f7190d8ef34625789f630fdc3552864d46b5c))
+* **codegen:** lower string interpolation to a single N-ary join ([e465404](https://github.com/grayscale-lang/grayscale/commit/e4654047385fccb0eee4dc4b648b3d5f03bee165))
+* **codegen:** shrink checked-arithmetic and panic-location emission ([c665516](https://github.com/grayscale-lang/grayscale/commit/c6655161fb1488aea6744c58d59d7a75f8885669))
+* **codegen:** skip arena management for non-allocating loop bodies ([e5e2f65](https://github.com/grayscale-lang/grayscale/commit/e5e2f6596648eef560078a5fab0b140996a4892d))
+* **codegen:** skip the per-call function arena for non-allocating scalar functions ([41719eb](https://github.com/grayscale-lang/grayscale/commit/41719eb726c4563c6c16f52259926c3cebc7e1fe))
+* **codegen:** watermark enclosing arena for if blocks inside loops ([59b5609](https://github.com/grayscale-lang/grayscale/commit/59b56097d104b9dff188930ca346dfc35d8e3899))
+* **compiler:** resolve the C compiler by PATH lookup, not a --version spawn ([3efc88d](https://github.com/grayscale-lang/grayscale/commit/3efc88d003f90165d850a34cce192c3b85f8a04c))
+* **driver:** dead-strip unused runtime and stdlib from generated programs ([dca6b78](https://github.com/grayscale-lang/grayscale/commit/dca6b784bd42107f12755b92ab9d39584e8fcc76))
+* **runtime:** format into a stack buffer in gray_string_format ([66b73ec](https://github.com/grayscale-lang/grayscale/commit/66b73ecbf1b75a0f9b847780d94c4d034adbb677))
+* **runtime:** mask instead of modulo in the map probe loop ([7059e4e](https://github.com/grayscale-lang/grayscale/commit/7059e4eb706c75478d9334b0d0d3311157626515))
+* **stdlib:** branchless ASCII case and classification in strings ([6276ec7](https://github.com/grayscale-lang/grayscale/commit/6276ec7555c01ef98413c05db6de18edd89f4020))
+* **stdlib:** fill exact-size result arrays with memcpy, not a push per element ([be839e9](https://github.com/grayscale-lang/grayscale/commit/be839e984c2446ff0a3395ad9b14b6264c50648d))
+* **stdlib:** type-specialized introsort for arrays.sort_* ([ff072bd](https://github.com/grayscale-lang/grayscale/commit/ff072bd8e42f92cd153ce2e9969a9d2b1fb6f4a4))
+* **typechecker:** finalize the identifier hashes before masking ([170deea](https://github.com/grayscale-lang/grayscale/commit/170deea98b88b078d7d8edd3c69c6827830e21c8))
+* **typechecker:** grow the type pool instead of aborting at 4096 ([3eb1879](https://github.com/grayscale-lang/grayscale/commit/3eb187970840827428a463c7f5fa92b6304bc061))
+* **typechecker:** index module-level vars and struct decls for the &mut checks ([1079cb5](https://github.com/grayscale-lang/grayscale/commit/1079cb565f1844563ae08a33b3beb8f6e54e16ed))
+
 ## [0.8.2](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.1...grayscale-v0.8.2) (2026-09-08)
 
 
