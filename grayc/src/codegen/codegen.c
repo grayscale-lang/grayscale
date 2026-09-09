@@ -11119,10 +11119,17 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
     emit(codegen, "gray_arena_destroy(_func_arena, __FILE__, __LINE__); free(_func_arena); ");
 }
 
+static bool function_uses_watermark(CodeGen *codegen, AstNode *node);
+
 static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     /* Caller-arena functions have no _scope_mark to restore. */
     bool caller_arena = codegen->current_func &&
                         function_uses_caller_arena(codegen, codegen->current_func);
+    /* A non-void function proven allocation-free uses the watermark path too:
+     * restore the mark on return instead of tearing down a private arena. */
+    bool watermark = codegen->current_func &&
+                     codegen->current_func->data.func_decl.return_type_count > 0 &&
+                     function_uses_watermark(codegen, codegen->current_func);
 
     /* Guard against malformed AST: count > 0 but NULL values array */
     if (node->data.return_stmt.count > 0 && !node->data.return_stmt.values) {
@@ -11208,8 +11215,13 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "; ");
         emit_ensure_cleanup(codegen);
         if (codegen->current_func && codegen->current_func->data.func_decl.return_type_count > 0) {
-            const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
-            emit_function_return_escape(codegen, ret_tn);
+            if (watermark) {
+                emit_scratch_arena_unwind(codegen);
+                emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); ");
+            } else {
+                const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
+                emit_function_return_escape(codegen, ret_tn);
+            }
         }
         emit(codegen, "gray_exit_func(); return _ret; }\n");
     } else if (node->data.return_stmt.count == 0 && codegen->current_func &&
@@ -11459,6 +11471,51 @@ static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
              * bare block — keep the arena */
             return false;
     }
+}
+
+/* True when a non-void function can use the void watermark path (no private
+ * 64 KB _func_arena on every call) instead of a per-call arena
+ * create/destroy/free. Safe only when the return value cannot carry arena
+ * memory and the body allocates nothing: a single copy-free scalar return
+ * (no named returns, no bigint), and every body statement allocation-free —
+ * which, via cg_stmt_alloc_free, also rules out every call, so nothing the
+ * body touches can escape or dangle when the watermark is restored. */
+static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
+    if (!node || node->kind != NODE_FUNC_DECL) return false;
+    if (node->data.func_decl.return_type_count != 1) return false;
+    /* return_names is allocated even for an unnamed return; entry 0 is NULL
+     * unless the return value was actually given a name. */
+    if (node->data.func_decl.return_names && node->data.func_decl.return_names[0])
+        return false;
+    if (function_uses_caller_arena(codegen, node)) return false;
+
+    const char *rtn = node->data.func_decl.return_types[0];
+    if (!rtn || is_bigint_type(rtn)) return false;
+    GrayType *rt = type_from_name(rtn);
+    if (!rt) return false;
+    switch (rt->kind) {
+        case TK_INT: case TK_UINT: case TK_FLOAT:
+        case TK_BOOL: case TK_CHAR: case TK_BYTE:
+            break;
+        default:
+            /* string / struct / array / map / error: the value or its fields
+             * may point into the function arena */
+            return false;
+    }
+
+    AstNode *body = node->data.func_decl.body;
+    if (!body || body->kind != NODE_BLOCK_STMT) return false;
+    for (int i = 0; i < body->data.block.count; i++) {
+        AstNode *s = body->data.block.stmts[i];
+        if (s && s->kind == NODE_RETURN_STMT) {
+            for (int j = 0; j < s->data.return_stmt.count; j++)
+                if (!cg_expr_alloc_free(codegen, s->data.return_stmt.values[j]))
+                    return false;
+            continue;
+        }
+        if (!cg_stmt_alloc_free(codegen, s)) return false;
+    }
+    return true;
 }
 
 /* True when every statement in a loop body is provably allocation-free, so
@@ -11781,8 +11838,12 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
      * are freed, and escape the return value to the caller's arena. */
     bool is_void_fn = (node->data.func_decl.return_type_count == 0);
     bool caller_arena = function_uses_caller_arena(codegen, node);
+    /* A non-void function that provably allocates nothing and returns a
+     * copy-free scalar needs no private arena — the watermark is enough,
+     * exactly as for a void function. */
+    bool watermark_fn = is_void_fn || function_uses_watermark(codegen, node);
     if (!is_main && !caller_arena) {
-        if (is_void_fn) {
+        if (watermark_fn) {
             emit_indent(codegen);
             emit(codegen, "GrayScopeMark _scope_mark = gray_scope_save(gray_default_arena);\n");
         } else {
@@ -11833,7 +11894,7 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
         emit_ensure_cleanup(codegen);
         /* cleanup function-scoped memory */
         if (!is_main && !caller_arena) {
-            if (is_void_fn) {
+            if (watermark_fn) {
                 emit_indent(codegen);
                 emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark);\n");
             } else {
