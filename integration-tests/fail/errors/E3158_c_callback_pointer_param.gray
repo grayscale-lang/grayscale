@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3158 - a Grayscale function with a pointer parameter cannot be
+ * passed as a C callback.
+ * A `^T` parameter lowers to a typed C pointer; C callback APIs such as qsort's
+ * comparator require `void *`, which Grayscale cannot express, so the emitted
+ * function pointer can never match. Without this check the call leaked a raw C
+ * compiler error against a temp file.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do cmp(a ^int, b ^int) -> i32 {
+    return 0
+}
+
+do main() {
+    mut buf ^int = extern.malloc(16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    extern.free(buf)
+}

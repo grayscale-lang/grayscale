@@ -9093,6 +9093,30 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                             root);
                     }
                 }
+                /* E3158: a Grayscale function passed as a C callback must lower
+                 * to a C-compatible function pointer. A `^T` parameter lowers to
+                 * `T *`, but C callback APIs (qsort/bsearch comparators, ...)
+                 * take `const void *`, which Grayscale has no type to express —
+                 * the emitted function pointer can never match and the C
+                 * compiler rejects the call. Functions with no pointer
+                 * parameters (extern.atexit(()handler)) lower cleanly and pass. */
+                const char *cb_target = func_ref_target_name(ca);
+                if (cb_target) {
+                    FuncSig *cb_sig = find_func(checker, cb_target);
+                    for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
+                        if (cb_sig->param_types[p] &&
+                            cb_sig->param_types[p]->kind == TK_POINTER) {
+                            char *msg = typechecker_format(checker,
+                                "cannot pass '%s' as a C callback; its pointer parameter lowers to a "
+                                "typed C pointer, but C callback APIs require 'void *', which Grayscale "
+                                "cannot express", cb_target);
+                            diagnostic_error_message(checker->diag, "E3158", msg,
+                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
+                            break;
+                        }
+                    }
+                }
+
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 if (!arg_t || arg_t->kind == TK_UNKNOWN || arg_t->kind == TK_C_FUNC) continue;
                 /* Reject bigint types */
