@@ -47,11 +47,21 @@ static int *build_depth_table(const char *src, const char *filename, int max_lin
     /* -1 = not yet assigned by a token */
     for (int i = 0; i <= max_line + 1; i++) table[i] = -1;
 
+    /* Depth in effect immediately after a line's own tokens are processed
+     * (so a line opening a brace records depth+1 here, unlike `table[]`,
+     * which deliberately keeps the opening-brace line itself at the outer
+     * depth). A tokenless line — blank, or comment-only, since the lexer
+     * emits no token for a comment — forward-fills from this, not from
+     * `table[]`, or it would inherit the outer depth of the line before an
+     * opening brace instead of the inner depth its own position is at. */
+    int *end_depth = calloc(max_line + 2, sizeof(int));
+    if (!end_depth) { free(table); return NULL; }
+
     Arena *arena = arena_create(FMT_ARENA_SIZE);
-    if (!arena) { free(table); return NULL; }
+    if (!arena) { free(table); free(end_depth); return NULL; }
 
     Lexer *lexer = lexer_create(arena, src, filename);
-    if (!lexer) { arena_destroy(arena); free(table); return NULL; }
+    if (!lexer) { arena_destroy(arena); free(table); free(end_depth); return NULL; }
 
     int depth = 0;
     Token token;
@@ -76,21 +86,24 @@ static int *build_depth_table(const char *src, const char *filename, int max_lin
         if (token.type == TOK_LBRACE) {
             depth++;
         }
+
+        end_depth[line] = depth;
     }
 
     arena_destroy(arena);
 
     /* Forward-fill gaps: blank lines and comment-only lines inherit the
-     * depth of the most recent token-bearing line. */
+     * depth in effect right after the most recent token-bearing line. */
     int current = 0;
     for (int i = 1; i <= max_line; i++) {
         if (table[i] >= 0) {
-            current = table[i];
+            current = end_depth[i];
         } else {
             table[i] = current;
         }
     }
 
+    free(end_depth);
     return table;
 }
 
@@ -123,6 +136,18 @@ static bool line_is_in_raw_string(const char *src, int target_line) {
     return in_raw;
 }
 
+/* True if `content` (length content_len) contains a star followed
+ * immediately by a slash — the comment-closing sequence — anywhere at or
+ * after `start_offset`. The caller passes 2 for a line that opens the
+ * comment (so the sequence's own opening slash-star can never be mistaken
+ * for a close) and 0 for a pure continuation line. */
+static bool block_comment_closes(const char *content, int content_len, int start_offset) {
+    for (int i = start_offset; i + 1 < content_len; i++) {
+        if (content[i] == '*' && content[i + 1] == '/') return true;
+    }
+    return false;
+}
+
 int gray_fmt_source(const char *src, const char *filename, FILE *out) {
     int max_line = count_lines(src);
     int *depth_table = build_depth_table(src, filename, max_line);
@@ -131,6 +156,16 @@ int gray_fmt_source(const char *src, const char *filename, FILE *out) {
     /* Walk the source line by line, re-indenting each one. */
     const char *p = src;
     int line_num = 1;
+
+    /* Tracks an open block comment span across lines. A block comment is
+     * reindented as a rigid unit: its first line gets the normal
+     * depth-based indentation like any other line, and every continuation
+     * line keeps its own original indentation shifted by that same delta —
+     * preserving the aligned-asterisk convention (and anything else the
+     * comment's author lined up) instead of recomputing each line's
+     * indentation independently, which would flatten it. */
+    bool in_block_comment = false;
+    int block_comment_delta = 0;
 
     while (*p) {
         /* Find end of this line */
@@ -146,6 +181,7 @@ int gray_fmt_source(const char *src, const char *filename, FILE *out) {
         while (content < line_start + line_len && (*content == ' ' || *content == '\t'))
             content++;
         int content_len = (int)((line_start + line_len) - content);
+        int original_leading_len = (int)(content - line_start);
 
         if (content_len == 0) {
             /* Blank line: emit as-is (no indentation) */
@@ -154,13 +190,29 @@ int gray_fmt_source(const char *src, const char *filename, FILE *out) {
             /* Inside a raw string: preserve the original line verbatim */
             fwrite(line_start, 1, line_len, out);
             fputc('\n', out);
+        } else if (in_block_comment) {
+            /* Continuation of an open block comment: shift its own original
+             * indentation by the same delta the comment's first line moved,
+             * rather than recomputing it from brace depth. */
+            int new_leading_len = original_leading_len + block_comment_delta;
+            if (new_leading_len < 0) new_leading_len = 0;
+            for (int i = 0; i < new_leading_len; i++) fputc(' ', out);
+            fwrite(content, 1, content_len, out);
+            fputc('\n', out);
+            if (block_comment_closes(content, content_len, 0)) in_block_comment = false;
         } else {
             /* Emit corrected indentation + original content */
             int depth = (line_num <= max_line) ? depth_table[line_num] : 0;
             if (depth < 0) depth = 0;
-            for (int i = 0; i < depth * FMT_INDENT_WIDTH; i++) fputc(' ', out);
+            int new_leading_len = depth * FMT_INDENT_WIDTH;
+            for (int i = 0; i < new_leading_len; i++) fputc(' ', out);
             fwrite(content, 1, content_len, out);
             fputc('\n', out);
+
+            if (content_len >= 2 && content[0] == '/' && content[1] == '*') {
+                block_comment_delta = new_leading_len - original_leading_len;
+                in_block_comment = !block_comment_closes(content, content_len, 2);
+            }
         }
 
         line_num++;
