@@ -186,9 +186,8 @@ func collectDocsFromFile(filename string) []DocEntry {
 			continue
 		}
 
-		// Check for #doc attribute
-		if strings.HasPrefix(trimmed, "#doc(") {
-			// Extract description from #doc("...")
+		// Check for #doc attribute, standalone or inside a grouped #[...] attribute list
+		if strings.HasPrefix(trimmed, "#doc(") || (strings.HasPrefix(trimmed, "#[") && strings.Contains(trimmed, "doc(")) {
 			desc := extractDocString(trimmed)
 			pendingDoc = desc
 			continue
@@ -275,22 +274,24 @@ func collectDocsFromFile(filename string) []DocEntry {
 	return entries
 }
 
-// extractDocString extracts the description from #doc("some text")
+// extractDocString extracts the description from a doc("some text") attribute,
+// whether standalone (#doc("...")) or inside a grouped list (#[..., doc("...")]).
 func extractDocString(line string) string {
-	// Find the opening quote after #doc(
-	start := strings.Index(line, `"`)
-	if start < 0 {
-		start = strings.Index(line, `'`)
+	idx := strings.Index(line, "doc(")
+	if idx < 0 {
+		return ""
 	}
+	rest := line[idx+len("doc("):]
+	start := strings.IndexAny(rest, `"'`)
 	if start < 0 {
 		return ""
 	}
-	quote := line[start]
-	end := strings.LastIndex(line, string(quote))
-	if end <= start {
+	quote := rest[start]
+	end := strings.IndexByte(rest[start+1:], quote)
+	if end < 0 {
 		return ""
 	}
-	return line[start+1 : end]
+	return rest[start+1 : start+1+end]
 }
 
 // extractFuncName extracts function name from "do funcname(" or "private do funcname("
