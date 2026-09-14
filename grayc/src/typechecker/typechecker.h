@@ -184,6 +184,17 @@ typedef struct {
     int instantiation_cap;
 } FuncSig;
 
+/* One extern.func(...) call site, recorded during type checking so main.c
+ * can validate its argument count against the real C signature after
+ * probing the imported header (the typechecker has no C header parser). */
+typedef struct {
+    const char *func_name;
+    int arg_count;
+    const char *file;
+    int line;
+    int column;
+} ExternCallSite;
+
 typedef struct {
     DiagnosticList *diag;
     Scope *current_scope;
@@ -394,6 +405,15 @@ typedef struct {
      * shadowed the real entry point in the symbol table. */
     bool main_name_misused;
 
+    /* extern.func(...) call sites seen during type checking. The typechecker
+     * cannot see the real C signature (no header parser lives here), so it
+     * only records what was written; main.c probes the actual imported
+     * header through the C compiler after type checking succeeds and
+     * validates argument counts against these recorded sites. */
+    ExternCallSite *extern_calls;
+    int extern_call_count;
+    int extern_call_cap;
+
 } TypeChecker;
 
 /* Create and run the type checker */
@@ -421,6 +441,10 @@ GrayType *typetable_get(TypeTable *table, AstNode *node);
 
 /* Get the type table from the checker */
 TypeTable *typechecker_get_table(TypeChecker *checker);
+
+/* extern.func(...) call sites recorded during type checking, for
+ * post-typecheck signature validation against the real imported header. */
+const ExternCallSite *typechecker_get_extern_calls(TypeChecker *checker, int *count);
 
 /* Get the module symbol table from the checker (used by codegen) */
 ModuleTable *typechecker_get_modules(TypeChecker *checker);

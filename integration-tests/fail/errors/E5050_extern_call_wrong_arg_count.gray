@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5050 - an `extern.func(...)` call whose argument count does
+ * not match the real C function's signature in the imported header is
+ * reported as a Grayscale diagnostic anchored at the call, not as a raw C
+ * compiler "too few arguments" error against a temp file. The typechecker
+ * cannot see the C declaration itself, so this is caught by probing the
+ * real header through the C compiler after type checking succeeds.
+ *
+ * No `expect-error:` marker: the check only runs at the C-compile boundary,
+ * so this is a build test whose failure must still carry a Grayscale
+ * diagnostic.
+ */
+// expect-contains: error[E5050]
+
+extern import "stdio.h"
+
+do main() {
+    mut x string = "hello"
+    extern.putc(x[1])
+}

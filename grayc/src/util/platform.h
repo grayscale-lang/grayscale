@@ -168,6 +168,11 @@ int gray_spawn_exact(const char *const *argv);
 /* Like gray_spawn_path, but with the child's stdout and stderr discarded. */
 int gray_spawn_quiet(const char *const *argv);
 
+/* Like gray_spawn_path, but the child's stdout is redirected into `capture`
+ * (left positioned for the caller to rewind and read) and its stderr is
+ * discarded. Returns -1 if the redirection itself could not be set up. */
+int gray_spawn_capture_stdout(const char *const *argv, FILE *capture);
+
 /* --- Toolchain discovery --- */
 
 /* Look up a command on PATH the way the OS loader will, without spawning it.

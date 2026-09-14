@@ -9172,6 +9172,23 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                         node->data.call.args[argument_index]->token.column, 0);
                 }
             }
+            /* Record for main.c: it probes the real header through the C
+             * compiler after type checking succeeds and validates this call's
+             * argument count against the signature it finds there. The
+             * typechecker itself never sees the C declaration. */
+            if (mfn) {
+                if (checker->extern_call_count >= checker->extern_call_cap) {
+                    checker->extern_call_cap = checker->extern_call_cap ? checker->extern_call_cap * 2 : 8;
+                    checker->extern_calls = xrealloc(checker->extern_calls,
+                        sizeof(ExternCallSite) * checker->extern_call_cap);
+                }
+                ExternCallSite *site = &checker->extern_calls[checker->extern_call_count++];
+                site->func_name = mfn;
+                site->arg_count = node->data.call.arg_count;
+                site->file = NODE_FILE(checker, node);
+                site->line = node->token.line;
+                site->column = node->token.column;
+            }
             result = &TYPE_C_FUNC;
             return result;
         }
@@ -18326,6 +18343,8 @@ void typechecker_free(TypeChecker *checker) {
 
     free(checker->module_var_index_names);
 
+    free(checker->extern_calls);
+
     typetable_free(checker->type_table);
     arena_destroy(checker->arena);
     scope_destroy(checker->current_scope);
@@ -18789,4 +18808,9 @@ ModuleTable *typechecker_get_modules(TypeChecker *checker) {
 
 TypeTable *typechecker_get_table(TypeChecker *checker) {
     return checker->type_table;
+}
+
+const ExternCallSite *typechecker_get_extern_calls(TypeChecker *checker, int *count) {
+    *count = checker->extern_call_count;
+    return checker->extern_calls;
 }

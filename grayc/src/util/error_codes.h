@@ -324,7 +324,8 @@
     GRAY_ERROR("E5046", "usage", "'#test' function '%s' must take no parameters and have no return type") \
     GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'") \
     GRAY_ERROR("E5048", "usage", "'error()' takes an ErrorCode, a message string, or a code and a message; got %s") \
-    GRAY_ERROR("E5049", "arguments", "return type mismatch; the returned value's type does not match the function's declared return type")
+    GRAY_ERROR("E5049", "arguments", "return type mismatch; the returned value's type does not match the function's declared return type") \
+    GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
