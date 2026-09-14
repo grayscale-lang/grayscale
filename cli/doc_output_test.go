@@ -202,6 +202,48 @@ func TestGenerateDocs_SourceLocationRelativeToNestedOutput(t *testing.T) {
 	}
 }
 
+func TestGenerateDocs_GroupedDocAttribute(t *testing.T) {
+	dir := t.TempDir()
+	src := `module main
+
+#[discard, doc("handle_me is documented via a grouped attribute.")]
+do handle_me() -> (string, int) {
+    return "", 1
+}
+
+#[doc("handle_me2 is documented via a grouped attribute, doc first."), discard]
+do handle_me2() -> (string, int) {
+    return "", 1
+}
+`
+	path := filepath.Join(dir, "main.gray")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+	out := filepath.Join(dir, "DOCS.md")
+
+	generateDocs([]string{path}, out)
+
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	body := string(got)
+
+	if !strings.Contains(body, "handle_me") {
+		t.Errorf("missing handle_me documented via grouped attribute, got:\n%s", body)
+	}
+	if !strings.Contains(body, "handle_me2") {
+		t.Errorf("missing handle_me2 documented via grouped attribute, got:\n%s", body)
+	}
+	if !strings.Contains(body, "handle_me is documented via a grouped attribute.") {
+		t.Errorf("missing handle_me description, got:\n%s", body)
+	}
+	if !strings.Contains(body, "handle_me2 is documented via a grouped attribute, doc first.") {
+		t.Errorf("missing handle_me2 description, got:\n%s", body)
+	}
+}
+
 func TestGenerateDocs_CreatesParentDirectories(t *testing.T) {
 	dir := t.TempDir()
 	src := writeGraySource(t, dir)

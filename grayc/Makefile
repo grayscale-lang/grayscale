@@ -235,7 +235,7 @@ tests/test_module_table$(EXE): tests/test_module_table.c src/util/arena.o \
                               src/typechecker/types.o src/util/platform.o
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
-tests/test_util$(EXE): tests/test_util.c src/util/arena.o src/util/buf.o src/typechecker/scope.o src/typechecker/types.o src/util/error.o src/util/error_codes.o src/util/platform.o
+tests/test_util$(EXE): tests/test_util.c src/util/arena.o src/util/buf.o src/typechecker/scope.o src/typechecker/types.o src/util/error.o src/util/error_codes.o src/util/platform.o src/lexer/token.o src/lexer/lexer.o src/fmt/fmt.o
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
 tests/test_codegen$(EXE): tests/test_codegen.c

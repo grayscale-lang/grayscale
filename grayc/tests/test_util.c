@@ -1,6 +1,6 @@
 /*
  * test_util.c — Unit tests for the arena allocator, growable buffer,
- * and scope/symbol-table utilities.
+ * scope/symbol-table utilities, and the source formatter.
  *
  * Author:  Marshall A Burns (@SchoolyB)
  * Copyright (c) 2025-Present Marshall A Burns
@@ -12,6 +12,7 @@
 #include "../src/util/buf.h"
 #include "../src/typechecker/scope.h"
 #include "../src/typechecker/types.h"
+#include "../src/fmt/fmt.h"
 #include <stdint.h>
 
 /* ===== Arena Tests ===== */
@@ -255,6 +256,239 @@ static void test_scope_immutable(void) {
     scope_destroy(scope);
 }
 
+/* ===== Fmt Tests ===== */
+
+/* Runs gray_fmt_source over `src` and returns the formatted output as a
+ * malloc'd, NUL-terminated string the caller must free. */
+static char *fmt_string(const char *src) {
+    FILE *out = tmpfile();
+    if (!out) return NULL;
+
+    int rc = gray_fmt_source(src, "test.gray", out);
+    if (rc != 0) { fclose(out); return NULL; }
+
+    long len = ftell(out);
+    rewind(out);
+    char *buf = malloc((size_t)len + 1);
+    size_t got = fread(buf, 1, (size_t)len, out);
+    buf[got] = '\0';
+    fclose(out);
+    return buf;
+}
+
+static void test_fmt_top_level_block_comment_preserved(void) {
+    const char *src =
+        "/*\n"
+        " * hello\n"
+        " * world\n"
+        " */\n"
+        "do main() {\n"
+        "    println(\"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_nested_block_comment_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    /*\n"
+        "     * note\n"
+        "     */\n"
+        "    println(\"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_line_comment_matches_enclosing_depth(void) {
+    const char *src =
+        "do main() {\n"
+        "    // note\n"
+        "    println(\"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_misindented_block_comment_shifts_as_unit(void) {
+    const char *src =
+        "do main() {\n"
+        "/*\n"
+        " * note\n"
+        " */\n"
+        "    println(\"x\")\n"
+        "}\n";
+    const char *want =
+        "do main() {\n"
+        "    /*\n"
+        "     * note\n"
+        "     */\n"
+        "    println(\"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, want);
+    free(got);
+}
+
+static void test_fmt_block_comment_idempotent(void) {
+    const char *src =
+        "do main() {\n"
+        "/*\n"
+        " * note\n"
+        " */\n"
+        "    println(\"x\")\n"
+        "}\n";
+    char *once = fmt_string(src);
+    ASSERT_NOT_NULL(once);
+    char *twice = fmt_string(once);
+    ASSERT_NOT_NULL(twice);
+    ASSERT_STR_EQ(once, twice);
+    free(once);
+    free(twice);
+}
+
+static void test_fmt_multiline_call_args_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    passed += want(\"i128 element not truncated\",\n"
+        "        string(a[1]) == \"200000000000000000000\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_multiline_index_args_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    mut v = arr[compute_index(1,\n"
+        "        2, 3)]\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_multiline_call_args_reindented_as_unit(void) {
+    const char *src =
+        "do main() {\n"
+        "passed += want(\"note\",\n"
+        "    string(a[1]) == \"x\")\n"
+        "}\n";
+    const char *want =
+        "do main() {\n"
+        "    passed += want(\"note\",\n"
+        "        string(a[1]) == \"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, want);
+    free(got);
+}
+
+static void test_fmt_multiline_call_args_idempotent(void) {
+    const char *src =
+        "do main() {\n"
+        "passed += want(\"note\",\n"
+        "    string(a[1]) == \"x\")\n"
+        "}\n";
+    char *once = fmt_string(src);
+    ASSERT_NOT_NULL(once);
+    char *twice = fmt_string(once);
+    ASSERT_NOT_NULL(twice);
+    ASSERT_STR_EQ(once, twice);
+    free(once);
+    free(twice);
+}
+
+static void test_fmt_multiline_collection_literal_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    keys [string] = {\"k00\", \"k01\", \"k02\",\n"
+        "                     \"k03\", \"k04\", \"k05\"}\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_trailing_and_continuation_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    if ma == 0 && mb == 1 &&\n"
+        "       mc == 100 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_leading_and_continuation_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    if len(ks) == 4 && ks[0] == \"one\"\n"
+        "        && len(vs) == 4 && vs[0] == 1 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_and_continuation_reindented_as_unit(void) {
+    const char *src =
+        "do main() {\n"
+        "if ma == 0 &&\n"
+        "   mb == 1 {\n"
+        "    println(\"x\")\n"
+        "}\n"
+        "}\n";
+    const char *want =
+        "do main() {\n"
+        "    if ma == 0 &&\n"
+        "       mb == 1 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, want);
+    free(got);
+}
+
+static void test_fmt_and_continuation_idempotent(void) {
+    const char *src =
+        "do main() {\n"
+        "if ma == 0 &&\n"
+        "   mb == 1 {\n"
+        "    println(\"x\")\n"
+        "}\n"
+        "}\n";
+    char *once = fmt_string(src);
+    ASSERT_NOT_NULL(once);
+    char *twice = fmt_string(once);
+    ASSERT_NOT_NULL(twice);
+    ASSERT_STR_EQ(once, twice);
+    free(once);
+    free(twice);
+}
+
 int main(void) {
     printf("\n");
 
@@ -288,6 +522,22 @@ int main(void) {
     RUN_TEST(test_scope_many_symbols);
     RUN_TEST(test_scope_destroy);
     RUN_TEST(test_scope_immutable);
+
+    printf("--- Fmt ---\n");
+    RUN_TEST(test_fmt_top_level_block_comment_preserved);
+    RUN_TEST(test_fmt_nested_block_comment_preserved);
+    RUN_TEST(test_fmt_line_comment_matches_enclosing_depth);
+    RUN_TEST(test_fmt_misindented_block_comment_shifts_as_unit);
+    RUN_TEST(test_fmt_block_comment_idempotent);
+    RUN_TEST(test_fmt_multiline_call_args_preserved);
+    RUN_TEST(test_fmt_multiline_index_args_preserved);
+    RUN_TEST(test_fmt_multiline_call_args_reindented_as_unit);
+    RUN_TEST(test_fmt_multiline_call_args_idempotent);
+    RUN_TEST(test_fmt_multiline_collection_literal_preserved);
+    RUN_TEST(test_fmt_trailing_and_continuation_preserved);
+    RUN_TEST(test_fmt_leading_and_continuation_preserved);
+    RUN_TEST(test_fmt_and_continuation_reindented_as_unit);
+    RUN_TEST(test_fmt_and_continuation_idempotent);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

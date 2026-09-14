@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 465 codes** (321 errors, 16 warnings, 128 panics)
+**Total: 466 codes** (322 errors, 16 warnings, 128 panics)
 
 ---
 
@@ -303,6 +303,7 @@
 | `E5047` | usage | '#test' function '%s' cannot be called directly; it runs only under 'gray test' |
 | `E5048` | usage | 'error()' takes an ErrorCode, a message string, or a code and a message; got %s |
 | `E5049` | arguments | return type mismatch; the returned value's type does not match the function's declared return type |
+| `E5050` | arguments | wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -516,4 +517,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-07 19:49:15 UTC*
+*Generated on 2026-09-14 06:14:07 UTC*

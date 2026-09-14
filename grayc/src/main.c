@@ -17,6 +17,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <time.h>
+#include <ctype.h>
 
 #include "util/arena.h"
 #include "util/colors.h"
@@ -387,6 +388,257 @@ static void add_local_c_header_dirs(ArgV *cc_argv, Arena *arena, AstNode *progra
             argv_push(cc_argv, kept);
         }
     }
+}
+
+/* Append `#include <path>` (angle-bracket header) or `#include "resolved"`
+ * (a "./x.h" / "../x.h" local header, resolved against the importing file's
+ * directory) for every distinct header named by an `extern import`, mirroring
+ * exactly what the real generated .c file includes. Used to build a stub
+ * translation unit for probing real C function signatures. */
+static void append_c_header_includes(AstNode *program, const char *entry_file,
+                                     char *out, size_t out_size) {
+    const char *seen[MAX_CC_ARGS];
+    int seen_count = 0;
+    size_t used = 0;
+    out[0] = '\0';
+
+    for (int si = 0; si < program->data.program.stmt_count; si++) {
+        AstNode *stmt = program->data.program.stmts[si];
+        if (stmt->kind != NODE_IMPORT_STMT) continue;
+        for (int ii = 0; ii < stmt->data.import_stmt.count; ii++) {
+            ImportItem *item = &stmt->data.import_stmt.items[ii];
+            if (!item->is_c_import || !item->path) continue;
+
+            bool dup = false;
+            for (int k = 0; k < seen_count; k++)
+                if (strcmp(seen[k], item->path) == 0) { dup = true; break; }
+            if (dup) continue;
+            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item->path;
+
+            char line[PATH_BUF_SIZE];
+            if (c_header_is_local(item->path)) {
+                char base[PATH_BUF_SIZE];
+                const char *dir = item->source_dir;
+                if (!dir) {
+                    snprintf(base, sizeof(base), "%s", entry_file);
+                    char *sep = gray_path_rsep(base);
+                    if (sep) sep[1] = '\0';
+                    else snprintf(base, sizeof(base), "./");
+                    dir = base;
+                }
+                char resolved[PATH_BUF_SIZE];
+                snprintf(resolved, sizeof(resolved), "%s%s", dir, item->path);
+                snprintf(line, sizeof(line), "#include \"%s\"\n", resolved);
+            } else {
+                snprintf(line, sizeof(line), "#include <%s>\n", item->path);
+            }
+            size_t line_len = strlen(line);
+            if (used + line_len < out_size) {
+                memcpy(out + used, line, line_len);
+                used += line_len;
+                out[used] = '\0';
+            }
+        }
+    }
+}
+
+/* True if `needle` occurs anywhere in [start, end). `start`/`end` need not be
+ * NUL-terminated at `end` — used to search one line of a larger buffer. */
+static bool range_contains(const char *start, const char *end, const char *needle) {
+    size_t nlen = strlen(needle);
+    if (nlen == 0) return true;
+    for (const char *p = start; p + nlen <= end; p++) {
+        if (memcmp(p, needle, nlen) == 0) return true;
+    }
+    return false;
+}
+
+/* Parses a clang `-ast-dump` FunctionDecl type spelling, e.g.
+ * "int (int, FILE *)" or "int (const char *, ...)", into a required
+ * parameter count and a variadic flag. Counts only top-level commas — a
+ * function-pointer parameter's own comma-separated parameter list (nested in
+ * its own parens) does not split the outer list. Returns false when `sig`
+ * does not have the expected "(...)" shape, so the caller skips validation
+ * instead of guessing. */
+static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) {
+    *min_params = 0;
+    *is_variadic = false;
+
+    size_t len = strlen(sig);
+    if (len == 0 || sig[len - 1] != ')') return false;
+
+    /* Walk backward from the final ')' to find its matching '(' — the start
+     * of the outer parameter list, regardless of what the return type
+     * spells (even if it itself contains parens). */
+    int depth = 0;
+    long open_idx = -1;
+    for (long i = (long)len - 1; i >= 0; i--) {
+        if (sig[i] == ')') depth++;
+        else if (sig[i] == '(') {
+            depth--;
+            if (depth == 0) { open_idx = i; break; }
+        }
+    }
+    if (open_idx < 0) return false;
+
+    const char *params = sig + open_idx + 1;
+    size_t params_len = len - 1 - (size_t)(open_idx + 1);
+    while (params_len > 0 && params[0] == ' ') { params++; params_len--; }
+    while (params_len > 0 && params[params_len - 1] == ' ') params_len--;
+
+    if (params_len == 0 || (params_len == 4 && memcmp(params, "void", 4) == 0)) {
+        return true; /* explicitly zero parameters */
+    }
+
+    int nest = 0;
+    size_t seg_start = 0;
+    int count = 0;
+    bool variadic = false;
+    for (size_t i = 0; i <= params_len; i++) {
+        bool at_end = (i == params_len);
+        char c = at_end ? ',' : params[i];
+        if (!at_end && (c == '(' || c == '[')) { nest++; continue; }
+        if (!at_end && (c == ')' || c == ']')) { nest--; continue; }
+        if (c == ',' && nest == 0) {
+            const char *seg = params + seg_start;
+            size_t seg_len = i - seg_start;
+            while (seg_len > 0 && seg[0] == ' ') { seg++; seg_len--; }
+            while (seg_len > 0 && seg[seg_len - 1] == ' ') seg_len--;
+            if (seg_len == 3 && memcmp(seg, "...", 3) == 0) variadic = true;
+            else if (seg_len > 0) count++;
+            seg_start = i + 1;
+        }
+    }
+
+    *min_params = count;
+    *is_variadic = variadic;
+    return true;
+}
+
+/* Looks up `name`'s signature in a clang `-Xclang -ast-dump` text dump.
+ * Matches whole-word "FunctionDecl ... name '<type>'" lines; when a function
+ * has multiple declarations (an implicit builtin plus the header's real
+ * prototype, or several redeclarations), the last match wins since clang
+ * lists the most complete declaration last. Returns false when the dump has
+ * no FunctionDecl for `name` at all (a macro, or a dump this parser cannot
+ * make sense of) — the caller then skips validation for that call. */
+static bool find_c_function_signature(const char *dump, const char *name,
+                                      int *min_params, bool *is_variadic) {
+    size_t name_len = strlen(name);
+    const char *sig_start = NULL;
+    const char *sig_end = NULL;
+
+    const char *p = dump;
+    const char *match;
+    while ((match = strstr(p, name)) != NULL) {
+        p = match + name_len;
+
+        bool left_ok = (match == dump) ||
+            !(isalnum((unsigned char)match[-1]) || match[-1] == '_');
+        bool right_ok = !(isalnum((unsigned char)*p) || *p == '_');
+        if (!left_ok || !right_ok) continue;
+
+        const char *after = p;
+        if (*after != ' ') continue;
+        after++;
+        if (*after != '\'') continue;
+
+        const char *end_quote = strchr(after + 1, '\'');
+        if (!end_quote) continue;
+
+        const char *line_start = match;
+        while (line_start > dump && line_start[-1] != '\n') line_start--;
+        if (!range_contains(line_start, match, "FunctionDecl")) continue;
+
+        sig_start = after + 1; /* last match wins */
+        sig_end = end_quote;
+    }
+    if (!sig_start) return false;
+
+    char sig[512];
+    size_t sig_len = (size_t)(sig_end - sig_start);
+    if (sig_len >= sizeof(sig)) return false; /* implausibly long; skip rather than guess */
+    memcpy(sig, sig_start, sig_len);
+    sig[sig_len] = '\0';
+
+    return count_c_params(sig, min_params, is_variadic);
+}
+
+/* Validates every extern.func(...) call the type checker recorded against
+ * the real C signature, found by asking the target compiler to dump its own
+ * AST for a stub translation unit that includes exactly the headers this
+ * program imports. Anchored at the call, so a mismatch is a Grayscale
+ * diagnostic instead of a raw C compiler error against a temp file.
+ *
+ * Fails open: if the target compiler does not support `-Xclang -ast-dump`
+ * (anything but a clang-compatible `cc`), or a given call's function is not
+ * found in the dump (a macro, or a dump shape this parser does not handle),
+ * that call is left unchecked and the real compile still catches it. */
+static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
+                                         DiagnosticList *diag, Arena *arena,
+                                         const char *cc_cmd, bool cc_is_command,
+                                         const char *entry_file) {
+    int call_count = 0;
+    const ExternCallSite *calls = typechecker_get_extern_calls(checker, &call_count);
+    if (call_count == 0) return;
+
+    char includes[4096];
+    append_c_header_includes(program, entry_file, includes, sizeof(includes));
+    if (!includes[0]) return;
+
+    char stub[PATH_BUF_SIZE];
+    int sn = gray_temp_path(stub, sizeof(stub), "gray_sigprobe_", ".c");
+    if (sn < 0 || (size_t)sn >= sizeof(stub)) return;
+    if (!write_file(stub, includes)) { gray_remove_file(stub); return; }
+
+    FILE *capture = gray_tmpfile();
+    if (!capture) { gray_remove_file(stub); return; }
+
+    ArgV a = {0};
+    if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
+    else argv_push(&a, cc_cmd);
+    argv_push(&a, "-Xclang");
+    argv_push(&a, "-ast-dump");
+    argv_push(&a, "-fsyntax-only");
+    add_local_c_header_dirs(&a, arena, program, entry_file);
+    argv_push(&a, "-x");
+    argv_push(&a, "c");
+    argv_push(&a, stub);
+    argv_end(&a);
+
+    bool spawned = !a.overflow && gray_spawn_capture_stdout(a.v, capture) == 0;
+    gray_remove_file(stub);
+    if (!spawned) { fclose(capture); return; }
+
+    long dump_len = ftell(capture);
+    if (dump_len <= 0) { fclose(capture); return; }
+    rewind(capture);
+    char *dump = malloc((size_t)dump_len + 1);
+    if (!dump) { fclose(capture); return; }
+    size_t got = fread(dump, 1, (size_t)dump_len, capture);
+    dump[got] = '\0';
+    fclose(capture);
+
+    for (int i = 0; i < call_count; i++) {
+        int min_params;
+        bool is_variadic;
+        if (!find_c_function_signature(dump, calls[i].func_name, &min_params, &is_variadic))
+            continue;
+
+        int actual = calls[i].arg_count;
+        bool ok = is_variadic ? (actual >= min_params) : (actual == min_params);
+        if (ok) continue;
+
+        char expected[32];
+        if (is_variadic) snprintf(expected, sizeof(expected), "at least %d", min_params);
+        else snprintf(expected, sizeof(expected), "%d", min_params);
+        diagnostic_error_code_formatted(diag, "E5050",
+            calls[i].file ? calls[i].file : entry_file,
+            calls[i].line, calls[i].column, 0,
+            calls[i].func_name, expected, actual);
+    }
+
+    free(dump);
 }
 
 /* Command-line configuration, filled by parse_args() and read-only after. */
@@ -838,6 +1090,25 @@ int main(int argc, char **argv) {
      * compiler error against a temp file. */
     if (!preflight_c_headers(program, diag, arena, cc_cmd,
                              opts.cc_override != NULL, opts.input_file)) {
+        gray_remove_file(c_file);
+        diagnostic_print_all(diag);
+        diagnostic_print_summary(diag);
+        diagnostic_destroy(diag);
+        codegen_destroy(&codegen);
+        typechecker_free(checker);
+        arena_destroy(arena);
+        free(source);
+        free(default_output);
+        return 1;
+    }
+
+    /* Validate extern.func(...) call sites against the real C signature
+     * before ever invoking the real build's cc, so an argument-count
+     * mismatch is a Grayscale diagnostic anchored at the call, not a raw C
+     * compiler error against a temp file. */
+    validate_c_extern_signatures(program, checker, diag, arena, cc_cmd,
+                                 opts.cc_override != NULL, opts.input_file);
+    if (diagnostic_has_errors(diag)) {
         gray_remove_file(c_file);
         diagnostic_print_all(diag);
         diagnostic_print_summary(diag);
