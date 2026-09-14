@@ -355,6 +355,62 @@ static void test_fmt_block_comment_idempotent(void) {
     free(twice);
 }
 
+static void test_fmt_multiline_call_args_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    passed += want(\"i128 element not truncated\",\n"
+        "        string(a[1]) == \"200000000000000000000\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_multiline_index_args_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    mut v = arr[compute_index(1,\n"
+        "        2, 3)]\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_multiline_call_args_reindented_as_unit(void) {
+    const char *src =
+        "do main() {\n"
+        "passed += want(\"note\",\n"
+        "    string(a[1]) == \"x\")\n"
+        "}\n";
+    const char *want =
+        "do main() {\n"
+        "    passed += want(\"note\",\n"
+        "        string(a[1]) == \"x\")\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, want);
+    free(got);
+}
+
+static void test_fmt_multiline_call_args_idempotent(void) {
+    const char *src =
+        "do main() {\n"
+        "passed += want(\"note\",\n"
+        "    string(a[1]) == \"x\")\n"
+        "}\n";
+    char *once = fmt_string(src);
+    ASSERT_NOT_NULL(once);
+    char *twice = fmt_string(once);
+    ASSERT_NOT_NULL(twice);
+    ASSERT_STR_EQ(once, twice);
+    free(once);
+    free(twice);
+}
+
 int main(void) {
     printf("\n");
 
@@ -395,6 +451,10 @@ int main(void) {
     RUN_TEST(test_fmt_line_comment_matches_enclosing_depth);
     RUN_TEST(test_fmt_misindented_block_comment_shifts_as_unit);
     RUN_TEST(test_fmt_block_comment_idempotent);
+    RUN_TEST(test_fmt_multiline_call_args_preserved);
+    RUN_TEST(test_fmt_multiline_index_args_preserved);
+    RUN_TEST(test_fmt_multiline_call_args_reindented_as_unit);
+    RUN_TEST(test_fmt_multiline_call_args_idempotent);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
