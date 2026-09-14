@@ -1,0 +1,96 @@
+/*
+ * net_recv_bounds.gray - Regression test for net.recv's receive buffer.
+ *
+ * The buffer must be safely null-terminated whether the peer sends exactly
+ * as many bytes as requested (max_bytes == bytes received, the exact-fit
+ * boundary) or fewer than requested (max_bytes > bytes received, the shape
+ * of the module's own minimal reproduction). Before the fix neither case
+ * reserved a terminator byte, so a C function scanning the returned
+ * GrayString's .data for '\0' (extern.strlen here) either read one byte
+ * past the arena allocation or scanned into uninitialized arena memory.
+ */
+
+import @net
+import @threads
+extern import "string.h"
+
+const TEST_PORT int = 58734
+
+mut g_listener Listener
+
+do accept_and_send_twice() {
+    mut c1, e1 = net.accept(g_listener)
+    if e1 == nil {
+        mut sent1, _ = net.send(c1, "hi")
+        net.close(c1)
+    }
+    mut c2, e2 = net.accept(g_listener)
+    if e2 == nil {
+        mut sent2, _ = net.send(c2, "hi")
+        net.close(c2)
+    }
+}
+
+do main() {
+    println("=== net.recv Buffer Bounds Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut listener, lerr = net.listen("127.0.0.1", TEST_PORT)
+    if lerr != nil {
+        println("  [FAIL] net.listen error")
+        println("SOME TESTS FAILED")
+        exit(1)
+    }
+    g_listener = listener
+
+    mut t = threads.spawn(()accept_and_send_twice)
+
+    // Test 1: exact-fit boundary — max_bytes equals the bytes actually sent.
+    // Before the fix this read one byte past the arena allocation.
+    mut sock1, cerr1 = net.connect("127.0.0.1", TEST_PORT)
+    if cerr1 != nil {
+        println("  [FAIL] net.connect error (exact-fit)")
+        failed += 1
+    } otherwise {
+        mut data1, _ = net.receive(sock1, 2)
+        mut len1 i64 = extern.strlen(data1)
+        if len1 == 2 && data1 == "hi" {
+            println("  [PASS] net.recv exact-fit is null-terminated: '${data1}'")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] net.recv exact-fit: len=${len1}, data='${data1}'")
+            failed += 1
+        }
+        net.close(sock1)
+    }
+
+    // Test 2: fewer bytes than requested — the module's own minimal repro
+    // shape. Before the fix this scanned uninitialized arena memory.
+    mut sock2, cerr2 = net.connect("127.0.0.1", TEST_PORT)
+    if cerr2 != nil {
+        println("  [FAIL] net.connect error (partial-fit)")
+        failed += 1
+    } otherwise {
+        mut data2, _ = net.receive(sock2, 4096)
+        mut len2 i64 = extern.strlen(data2)
+        if len2 == 2 && data2 == "hi" {
+            println("  [PASS] net.recv partial-fit is null-terminated: '${data2}'")
+            passed += 1
+        } otherwise {
+            println("  [FAIL] net.recv partial-fit: len=${len2}, data='${data2}'")
+            failed += 1
+        }
+        net.close(sock2)
+    }
+
+    threads.join(t)
+    net.close(listener)
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
