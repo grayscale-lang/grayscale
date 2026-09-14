@@ -411,6 +411,84 @@ static void test_fmt_multiline_call_args_idempotent(void) {
     free(twice);
 }
 
+static void test_fmt_multiline_collection_literal_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    keys [string] = {\"k00\", \"k01\", \"k02\",\n"
+        "                     \"k03\", \"k04\", \"k05\"}\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_trailing_and_continuation_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    if ma == 0 && mb == 1 &&\n"
+        "       mc == 100 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_leading_and_continuation_preserved(void) {
+    const char *src =
+        "do main() {\n"
+        "    if len(ks) == 4 && ks[0] == \"one\"\n"
+        "        && len(vs) == 4 && vs[0] == 1 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, src);
+    free(got);
+}
+
+static void test_fmt_and_continuation_reindented_as_unit(void) {
+    const char *src =
+        "do main() {\n"
+        "if ma == 0 &&\n"
+        "   mb == 1 {\n"
+        "    println(\"x\")\n"
+        "}\n"
+        "}\n";
+    const char *want =
+        "do main() {\n"
+        "    if ma == 0 &&\n"
+        "       mb == 1 {\n"
+        "        println(\"x\")\n"
+        "    }\n"
+        "}\n";
+    char *got = fmt_string(src);
+    ASSERT_NOT_NULL(got);
+    ASSERT_STR_EQ(got, want);
+    free(got);
+}
+
+static void test_fmt_and_continuation_idempotent(void) {
+    const char *src =
+        "do main() {\n"
+        "if ma == 0 &&\n"
+        "   mb == 1 {\n"
+        "    println(\"x\")\n"
+        "}\n"
+        "}\n";
+    char *once = fmt_string(src);
+    ASSERT_NOT_NULL(once);
+    char *twice = fmt_string(once);
+    ASSERT_NOT_NULL(twice);
+    ASSERT_STR_EQ(once, twice);
+    free(once);
+    free(twice);
+}
+
 int main(void) {
     printf("\n");
 
@@ -455,6 +533,11 @@ int main(void) {
     RUN_TEST(test_fmt_multiline_index_args_preserved);
     RUN_TEST(test_fmt_multiline_call_args_reindented_as_unit);
     RUN_TEST(test_fmt_multiline_call_args_idempotent);
+    RUN_TEST(test_fmt_multiline_collection_literal_preserved);
+    RUN_TEST(test_fmt_trailing_and_continuation_preserved);
+    RUN_TEST(test_fmt_leading_and_continuation_preserved);
+    RUN_TEST(test_fmt_and_continuation_reindented_as_unit);
+    RUN_TEST(test_fmt_and_continuation_idempotent);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;
