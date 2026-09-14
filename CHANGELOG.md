@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.4](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.3...grayscale-v0.8.4) (2026-09-14)
+
+
+### Bug Fixes
+
+* **cli:** detect doc() attribute inside grouped #[...] lists ([#2720](https://github.com/grayscale-lang/grayscale/issues/2720)) ([662bf31](https://github.com/grayscale-lang/grayscale/commit/662bf312cc5ef14b2dab2b9a6ea70832d23b0c9f))
+* **fmt:** preserve multi-line call/index argument indentation ([#2723](https://github.com/grayscale-lang/grayscale/issues/2723)) ([d51c113](https://github.com/grayscale-lang/grayscale/commit/d51c113182d6f285ef133a9233c26a2f6ae3ba21))
+* **fmt:** preserve multi-line collection-literal and boolean-chain continuations ([#2723](https://github.com/grayscale-lang/grayscale/issues/2723)) ([755c696](https://github.com/grayscale-lang/grayscale/commit/755c696eca7a2934ee13b914ef6158dc667ee3c7))
+* **fmt:** stop corrupting block and line comments ([#2603](https://github.com/grayscale-lang/grayscale/issues/2603)) ([2288201](https://github.com/grayscale-lang/grayscale/commit/2288201a1a3b1fb7e9db4824c5c8c2301a263202))
+* **interop:** validate extern.* call arg counts against the real header ([#2719](https://github.com/grayscale-lang/grayscale/issues/2719)) ([1ea11af](https://github.com/grayscale-lang/grayscale/commit/1ea11af55076b25ff7de964e4848d5febe459081))
+* **net:** null-terminate net.recv's receive buffer ([#2718](https://github.com/grayscale-lang/grayscale/issues/2718)) ([f622c91](https://github.com/grayscale-lang/grayscale/commit/f622c9132c757519d851a8b1dd60d565ff85bc32))
+
 ## [0.8.3](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.2...grayscale-v0.8.3) (2026-09-09)
 
 
