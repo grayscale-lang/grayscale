@@ -95,6 +95,11 @@ typedef struct {
     const char *name;
     const char *type_name;
     AstNode *default_value;
+    /* Optional trailing tag, written `` `json:"Name"` `` right after the
+     * type. NULL when absent. The parser stores the raw backtick-string
+     * content verbatim; the typechecker validates it (for #json structs)
+     * and rewrites it in place to just the extracted key. */
+    const char *json_tag;
 } StructField;
 
 /* Function in struct declaration (namespaced free function) */

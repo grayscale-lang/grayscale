@@ -2092,7 +2092,7 @@ const MAX_RETRIES int = 5
 
 #### 7.5.2 `#json` Attribute
 
-The `#json` attribute marks a struct for JSON serialization and deserialization. The compiler generates all marshaling and unmarshaling code automatically, with no field tags, no manual encoding/decoding calls, and no error juggling at every step. Just annotate the struct and use `json.parse()` / `json.stringify()`.
+The `#json` attribute marks a struct for JSON serialization and deserialization. The compiler generates all marshaling and unmarshaling code automatically, with no manual encoding/decoding calls and no error juggling at every step. Just annotate the struct and use `json.parse()` / `json.stringify()`.
 
 ```gray
 import @json
@@ -2116,9 +2116,25 @@ do main() {
 
 `json.parse()` returns a fully typed struct (or array of structs), and `json.stringify()` accepts any `#json` struct and returns a string. The compiler knows the struct layout at compile time, so it generates field-by-field serialization code directly with no reflection, no runtime schema lookup, and no intermediate map step.
 
+By default, a field's JSON key is its Grayscale name. A field can serialize under a different key with a trailing tag, the same backtick-string spelling Go and Odin use:
+
+```gray
+#json
+const User struct {
+    name string `json:"Name"`
+    age  int    `json:"Age"`
+}
+```
+
+`json.stringify()`/`json.parse()` then use `"Name"`/`"Age"` as the JSON keys instead of `name`/`age`.
+
 **Rules:**
 
-- Field names in the JSON must match the struct field names exactly.
+- Without a tag, a field's JSON key must match the struct field name exactly.
+- A tag is written `` `json:"Name"` `` immediately after the field's type, before any default value. The key can be any non-empty text but cannot contain a `"` or a backslash.
+- A tag cannot be shared across a comma-grouped field list (`x, y int \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
+- Within one file, a `#json` struct's fields are either all tagged or all untagged — mixing tagged and untagged fields, in one struct or across different `#json` structs in the same file, is rejected (E3171). This mirrors the consistency rule already applied to keyword aliases like `fn`/`do`.
+- Two fields of the same `#json` struct cannot serialize under the same key (E3172).
 - A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
 - Supported field types: `int`, `uint`, `float`, `string`, `bool`.

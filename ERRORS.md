@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 467 codes** (323 errors, 16 warnings, 128 panics)
+**Total: 471 codes** (327 errors, 16 warnings, 128 panics)
 
 ---
 
@@ -86,6 +86,7 @@
 | `E2092` | syntax | '#[...]' attribute list must be on a single line |
 | `E2093` | syntax | malformed '#[...]' attribute list |
 | `E2094` | syntax | attribute is applied to the wrong kind of declaration, or its argument is malformed |
+| `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own line and tag |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -238,6 +239,9 @@
 | `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
 | `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
 | `E3169` | safety | '%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used |
+| `E3170` | types | malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"` |
+| `E3171` | types | mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d |
+| `E3172` | types | #json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -518,4 +522,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-16 14:46:34 UTC*
+*Generated on 2026-09-16 15:25:37 UTC*

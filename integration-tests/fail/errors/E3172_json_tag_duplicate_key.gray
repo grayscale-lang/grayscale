@@ -1,0 +1,13 @@
+// expect-error: E3172
+// expect-error-count: 1
+// Two fields of the same #json struct tagged with the same JSON key.
+
+import @json
+
+#json
+const Dup struct {
+    name string `json:"X"`
+    age int `json:"X"`
+}
+
+do main() {}

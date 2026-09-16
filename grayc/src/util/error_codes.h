@@ -98,7 +98,8 @@
     GRAY_ERROR("E2091", "syntax", "unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test") \
     GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
     GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list") \
-    GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed")
+    GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
+    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own line and tag")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -253,7 +254,10 @@
     GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
     GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here") \
-    GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used")
+    GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used") \
+    GRAY_ERROR("E3170", "types", "malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"`") \
+    GRAY_ERROR("E3171", "types", "mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d") \
+    GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

@@ -13346,18 +13346,22 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "    GrayMap _m = gray_json_decode(arena, text);\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
+            /* A `` `json:"Name"` `` tag maps the field under that JSON key
+             * instead of the Grayscale field name; the C struct member
+             * accessed below stays keyed by the field name either way. */
+            const char *jkey = field->json_tag ? field->json_tag : field->name;
             if (strcmp(field->type_name, "string") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
                        strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = gray_builtin_string_to_int(_sv); } }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = gray_builtin_string_to_float(_sv); } }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "bool") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
             }
         }
@@ -13375,8 +13379,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             int fixed = 2; /* { } */
             for (int j = 0; j < field_count; j++) {
                 StructField *field = &stmt->data.struct_decl.fields[j];
+                const char *jkey = field->json_tag ? field->json_tag : field->name;
                 if (j > 0) fixed += 2; /* ", " */
-                fixed += 2 + (int)strlen(field->name) + 2; /* "key": */
+                fixed += 2 + (int)strlen(jkey) + 2; /* "key": */
                 /* Value upper bound for non-string types */
                 if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
                     strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
@@ -13404,12 +13409,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "    _buf[_pos++] = '{';\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
+            const char *jkey = field->json_tag ? field->json_tag : field->name;
             if (j > 0) emit_formatted(codegen, "    _buf[_pos++] = ','; _buf[_pos++] = ' ';\n");
             /* Key */
             emit_formatted(codegen, "    _buf[_pos++] = '\"';\n");
-            int fname_len = (int)strlen(field->name);
+            int fname_len = (int)strlen(jkey);
             emit_formatted(codegen, "    memcpy(_buf + _pos, \"%s\", %d); _pos += %d;\n",
-                field->name, fname_len, fname_len);
+                jkey, fname_len, fname_len);
             emit_formatted(codegen, "    _buf[_pos++] = '\"'; _buf[_pos++] = ':'; _buf[_pos++] = ' ';\n");
             /* Value */
             if (strcmp(field->type_name, "string") == 0) {

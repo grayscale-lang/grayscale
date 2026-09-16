@@ -16296,6 +16296,66 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
         }
         for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
+            /* E3170/E3171: field tags (`` `json:"Name"` ``) — validate the
+             * tag format and rewrite it in place to just the extracted key
+             * so codegen can use it directly, then enforce that a file's
+             * #json fields are all tagged or all untagged (mirrors E2088's
+             * keyword-alias consistency: first field seen in the file sets
+             * the file's dialect, every later #json field must match it). */
+            {
+                StructField *sf = &node->data.struct_decl.fields[field_index];
+                bool has_tag = sf->json_tag != NULL;
+                if (has_tag) {
+                    const char *raw = sf->json_tag;
+                    static const char prefix[] = "json:\"";
+                    size_t plen = sizeof(prefix) - 1;
+                    size_t rlen = strlen(raw);
+                    const char *key = NULL;
+                    size_t klen = 0;
+                    if (rlen > plen + 1 && strncmp(raw, prefix, plen) == 0 && raw[rlen - 1] == '"') {
+                        key = raw + plen;
+                        klen = rlen - plen - 1;
+                        if (klen == 0) key = NULL;
+                        /* The key is spliced verbatim into a generated C string
+                         * literal (codegen has no escaping pass for it) — a
+                         * quote, backslash, or control character would either
+                         * break out of that literal or corrupt it. */
+                        for (size_t ki = 0; key && ki < klen; ki++) {
+                            unsigned char kc = (unsigned char)key[ki];
+                            if (kc == '"' || kc == '\\' || kc < 0x20) key = NULL;
+                        }
+                    }
+                    if (!key) {
+                        char *msg = typechecker_format(checker,
+                            "malformed #json field tag '%s' on '%s.%s'; expected exactly `json:\"Name\"`",
+                            raw, STRUCT_DISPLAY_NAME(node), sf->name);
+                        diagnostic_error_message(checker->diag, "E3170", msg,
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                        has_tag = false;
+                    } else {
+                        sf->json_tag = arena_copy_string_with_length(checker->arena, key, klen);
+                    }
+                }
+                const char *cur_file = NODE_FILE(checker, node);
+                if (!checker->json_tag_file || strcmp(checker->json_tag_file, cur_file) != 0) {
+                    checker->json_tag_file = cur_file;
+                    checker->json_tag_dialect_set = false;
+                }
+                if (!checker->json_tag_dialect_set) {
+                    checker->json_tag_dialect_set = true;
+                    checker->json_tag_dialect_tagged = has_tag;
+                    checker->json_tag_first_line = node->token.line;
+                    checker->json_tag_first_field = sf->name;
+                } else if (has_tag != checker->json_tag_dialect_tagged) {
+                    char *msg = typechecker_format(checker,
+                        "mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d",
+                        has_tag ? "a tag" : "no tag",
+                        checker->json_tag_dialect_tagged ? "a tag" : "no tag",
+                        checker->json_tag_first_line);
+                    diagnostic_error_message(checker->diag, "E3171", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                }
+            }
             const char *ftype = node->data.struct_decl.fields[field_index].type_name;
             if (ftype && strncmp(ftype, "func", 4) == 0) {
                 char *msg = NULL;
@@ -16328,6 +16388,23 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                     STRUCT_DISPLAY_NAME(node),
                     node->data.struct_decl.fields[field_index].name, ftype);
                 diagnostic_error_message(checker->diag, "E3140", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+        }
+        /* E3172: two fields tagged into the same JSON key — grouped fields
+         * can no longer cause this (E2095), but two fields individually
+         * given the same tag string still can. */
+        for (int a = 0; a < node->data.struct_decl.field_count; a++) {
+            StructField *fa = &node->data.struct_decl.fields[a];
+            const char *ka = fa->json_tag ? fa->json_tag : fa->name;
+            for (int b = a + 1; b < node->data.struct_decl.field_count; b++) {
+                StructField *fb = &node->data.struct_decl.fields[b];
+                const char *kb = fb->json_tag ? fb->json_tag : fb->name;
+                if (strcmp(ka, kb) != 0) continue;
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'",
+                    STRUCT_DISPLAY_NAME(node), fa->name, fb->name, ka);
+                diagnostic_error_message(checker->diag, "E3172", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
