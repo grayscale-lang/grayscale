@@ -13453,6 +13453,39 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             } else if (strcmp(field->type_name, "bool") == 0) {
                 emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
+            } else {
+                /* Enum field: serialized by backing type. Tagged enums are
+                 * rejected on #json structs at typecheck time (E3173), so
+                 * only plain int-backed and string-backed enums reach here. */
+                const char *rft = codegen_resolve_type(codegen, field->type_name);
+                if (codegen_is_enum(codegen, rft) && !codegen_enum_is_tagged(codegen, rft)) {
+                    int eidx = codegen_enum_index(codegen, rft);
+                    AstNode *edecl = codegen->enum_decls[eidx];
+                    const char *edisplay = edecl->data.enum_decl.original_name
+                        ? edecl->data.enum_decl.original_name : rft;
+                    emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
+                    emit(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v;\n");
+                    if (codegen_enum_is_string(codegen, rft)) {
+                        emit_formatted(codegen, "        _r.%s = gray_json_enum_from_str(_sv, (const GrayString[]){",
+                            sanitize_name(field->name));
+                        for (int vi = 0; vi < edecl->data.enum_decl.value_count; vi++) {
+                            if (vi > 0) emit(codegen, ", ");
+                            emit_formatted(codegen, "GrayEnum_%s_%s", rft, edecl->data.enum_decl.values[vi].name);
+                        }
+                        emit_formatted(codegen, "}, %d, \"%s\"); } }\n",
+                            edecl->data.enum_decl.value_count, edisplay);
+                    } else {
+                        emit(codegen, "        int64_t _iv = gray_builtin_string_to_int(_sv);\n");
+                        emit_formatted(codegen, "        _r.%s = (%s)gray_json_enum_from_number(_sv, _iv, (const int64_t[]){",
+                            sanitize_name(field->name), gray_type_to_c_codegen(codegen, rft));
+                        for (int vi = 0; vi < edecl->data.enum_decl.value_count; vi++) {
+                            if (vi > 0) emit(codegen, ", ");
+                            emit_formatted(codegen, "GrayEnum_%s_%s", rft, edecl->data.enum_decl.values[vi].name);
+                        }
+                        emit_formatted(codegen, "}, %d, \"%s\"); } }\n",
+                            edecl->data.enum_decl.value_count, edisplay);
+                    }
+                }
             }
         }
         emit_formatted(codegen, "    return _r;\n}\n\n");
@@ -13472,23 +13505,32 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 const char *jkey = field->json_tag ? field->json_tag : field->name;
                 if (j > 0) fixed += 2; /* ", " */
                 fixed += 2 + (int)strlen(jkey) + 2; /* "key": */
+                /* Enum fields serialize by backing type: a string-backed enum
+                 * needs the runtime json_escaped_len() pass below, same as a
+                 * string field; a plain int-backed enum takes the int64
+                 * upper bound. Tagged enums never reach here (E3173). */
+                const char *rft = codegen_resolve_type(codegen, field->type_name);
+                bool is_num_enum = codegen_is_enum(codegen, rft) && !codegen_enum_is_string(codegen, rft);
                 /* Value upper bound for non-string types */
                 if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
-                    strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
+                    strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0 ||
+                    is_num_enum) {
                     fixed += 21;
                 } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
                     fixed += 24;
                 } else if (strcmp(field->type_name, "bool") == 0) {
                     fixed += 5;
                 }
-                /* string fields are added at runtime below */
+                /* string fields (and string-backed enum fields) are added at runtime below */
             }
             emit_formatted(codegen, "    size_t _need = %d;\n", fixed);
         }
         /* Add runtime string field sizes */
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
-            if (strcmp(field->type_name, "string") == 0) {
+            const char *rft = codegen_resolve_type(codegen, field->type_name);
+            bool is_str_enum = codegen_is_enum(codegen, rft) && codegen_enum_is_string(codegen, rft);
+            if (strcmp(field->type_name, "string") == 0 || is_str_enum) {
                 emit_formatted(codegen, "    _need += json_escaped_len(_s.%s);\n", sanitize_name(field->name));
             }
         }
@@ -13508,9 +13550,12 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 jkey, fname_len, fname_len);
             emit_formatted(codegen, "    _buf[_pos++] = '\"'; _buf[_pos++] = ':'; _buf[_pos++] = ' ';\n");
             /* Value */
-            if (strcmp(field->type_name, "string") == 0) {
+            const char *rft = codegen_resolve_type(codegen, field->type_name);
+            bool is_str_enum = codegen_is_enum(codegen, rft) && codegen_enum_is_string(codegen, rft);
+            bool is_num_enum = codegen_is_enum(codegen, rft) && !codegen_enum_is_string(codegen, rft);
+            if (strcmp(field->type_name, "string") == 0 || is_str_enum) {
                 emit_formatted(codegen, "    json_append_escaped(_buf, &_pos, _s.%s);\n", sanitize_name(field->name));
-            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0) {
+            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 || is_num_enum) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%lld\", (long long)_s.%s);\n",
                     sanitize_name(field->name));
             } else if (strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {

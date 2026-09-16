@@ -19,6 +19,14 @@
 size_t json_escaped_len(GrayString str);
 void json_append_escaped(char *buf, int *pos, GrayString str);
 
+/* Enum field helpers (used by generated #json struct code). raw is the
+ * JSON value's original text, kept only to name it in the P0129 panic if
+ * it matches no variant of the backing enum. */
+int64_t gray_json_enum_from_number(GrayString raw, int64_t value,
+    const int64_t *variants, int32_t count, const char *type_name);
+GrayString gray_json_enum_from_str(GrayString raw,
+    const GrayString *variants, int32_t count, const char *type_name);
+
 /*@man encode
  *@module json
  *@group Encoding

@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3173 - #json struct with a tagged enum field
+ */
+
+// expect-error: E3173
+
+import @json
+
+const Shape enum {
+    Circle(float)
+    Square(float)
+}
+
+#json
+const Item struct {
+    name string
+    shape Shape
+}
+
+do main() {
+    println("unreachable")
+}

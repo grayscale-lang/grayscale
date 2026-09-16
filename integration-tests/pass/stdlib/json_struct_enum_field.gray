@@ -1,0 +1,113 @@
+/*
+ * json_struct_enum_field.gray - #json struct enum fields, serialized by
+ * backing type: an int-backed enum as a JSON number, a string-backed enum
+ * as a JSON string. Covers stringify, parse, and round-trip for both, plus
+ * parsing an array of a #json struct that has an enum field.
+ */
+
+import @json
+
+const Priority enum {
+    LOW
+    HIGH
+}
+
+#json
+const Task struct {
+    name string
+    priority Priority
+}
+
+const Role enum {
+    ADMIN = "admin"
+    USER  = "user"
+}
+
+#json
+const Account struct {
+    name string
+    role Role
+}
+
+do main() {
+    println("=== #json Struct Enum Field Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // ==================== int-backed enum ====================
+    mut t Task = Task{name: "deploy", priority: Priority.HIGH}
+    mut tjs string = json.stringify(t)
+    if tjs == "{\"name\": \"deploy\", \"priority\": 1}" {
+        println("  [PASS] stringify int-backed enum field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stringify int-backed enum field: got ${tjs}")
+        failed += 1
+    }
+
+    mut t_back Task = json.parse(tjs)
+    if t_back.priority == Priority.HIGH && t_back.name == "deploy" {
+        println("  [PASS] parse int-backed enum field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse int-backed enum field")
+        failed += 1
+    }
+
+    mut t_low Task = Task{name: "cleanup", priority: Priority.LOW}
+    mut t_low_back Task = json.parse(json.stringify(t_low))
+    if t_low_back.priority == Priority.LOW {
+        println("  [PASS] round-trip int-backed enum field, other variant")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip int-backed enum field, other variant")
+        failed += 1
+    }
+
+    // ==================== string-backed enum ====================
+    mut a Account = Account{name: "Alice", role: Role.ADMIN}
+    mut ajs string = json.stringify(a)
+    if ajs == "{\"name\": \"Alice\", \"role\": \"admin\"}" {
+        println("  [PASS] stringify string-backed enum field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stringify string-backed enum field: got ${ajs}")
+        failed += 1
+    }
+
+    mut a_back Account = json.parse(ajs)
+    if a_back.role == Role.ADMIN && a_back.name == "Alice" {
+        println("  [PASS] parse string-backed enum field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse string-backed enum field")
+        failed += 1
+    }
+
+    mut a_user Account = Account{name: "Bob", role: Role.USER}
+    mut a_user_back Account = json.parse(json.stringify(a_user))
+    if a_user_back.role == Role.USER {
+        println("  [PASS] round-trip string-backed enum field, other variant")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] round-trip string-backed enum field, other variant")
+        failed += 1
+    }
+
+    // ==================== array of #json struct with enum field ====================
+    mut tasks [Task] = json.parse("[{\"name\": \"a\", \"priority\": 0}, {\"name\": \"b\", \"priority\": 1}]")
+    if len(tasks) == 2 && tasks[0].priority == Priority.LOW && tasks[1].priority == Priority.HIGH {
+        println("  [PASS] parse array of #json struct with enum field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse array of #json struct with enum field")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("SOME TESTS FAILED")
+    }
+    println("ALL TESTS PASSED")
+}

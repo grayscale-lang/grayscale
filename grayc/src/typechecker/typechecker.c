@@ -16405,16 +16405,32 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3109", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* E3173: an enum field is serialized by its backing type (int or
+             * string), but a tagged enum's variants carry payloads with no
+             * flat JSON form. Checked before E3140 so a tagged enum gets
+             * this specific diagnostic instead of the generic "no JSON
+             * representation" one. */
+            if (ftype && is_enum_name(checker, ftype) && typechecker_enum_is_tagged(checker, ftype)) {
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation",
+                    STRUCT_DISPLAY_NAME(node),
+                    node->data.struct_decl.fields[field_index].name, enum_display_name(checker, ftype));
+                diagnostic_error_message(checker->diag, "E3173", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
             /* E3140: field types the JSON serializer codegen cannot marshal.
-             * The func-typed case is already reported as E3103 above. */
+             * The func-typed case is already reported as E3103 above. An
+             * enum field is allowed (serialized by backing type, see the
+             * E3173 check above for the tagged-enum exception). */
             if (ftype && strncmp(ftype, "func", 4) != 0 &&
                 strcmp(ftype, "int") != 0 && strcmp(ftype, "i64") != 0 &&
                 strcmp(ftype, "uint") != 0 && strcmp(ftype, "u64") != 0 &&
                 strcmp(ftype, "float") != 0 && strcmp(ftype, "f64") != 0 &&
-                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0) {
+                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0 &&
+                !is_enum_name(checker, ftype)) {
                 char *msg = typechecker_format(checker,
                     "#json struct '%s' field '%s' has type '%s', which has no JSON representation; "
-                    "#json fields must be int, uint, float, string, or bool",
+                    "#json fields must be int, uint, float, string, bool, or enum",
                     STRUCT_DISPLAY_NAME(node),
                     node->data.struct_decl.fields[field_index].name, ftype);
                 diagnostic_error_message(checker->diag, "E3140", msg,

@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 471 codes** (327 errors, 16 warnings, 128 panics)
+**Total: 473 codes** (328 errors, 16 warnings, 129 panics)
 
 ---
 
@@ -242,6 +242,7 @@
 | `E3170` | types | malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"` |
 | `E3171` | types | #json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s |
 | `E3172` | types | #json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s' |
+| `E3173` | types | #json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -498,6 +499,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0126` | crypto | crypto.totp: digits must be between 1 and 9 |
 | `P0127` | time | time.parse_duration: cannot parse the duration string |
 | `P0128` | time | time.days_in_month: month must be between 1 and 12 |
+| `P0129` | runtime | cannot convert '%s' to enum %s |
 
 ---
 
@@ -522,4 +524,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-16 15:31:15 UTC*
+*Generated on 2026-09-16 21:02:22 UTC*

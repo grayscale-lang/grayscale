@@ -2128,6 +2128,37 @@ const User struct {
 
 `json.stringify()`/`json.parse()` then use `"Name"`/`"Age"` as the JSON keys instead of `name`/`age`.
 
+An enum field is serialized by the enum's backing type. An int-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
+
+```gray
+const Priority enum {
+    LOW      // 0
+    HIGH     // 1
+}
+
+const Role enum {
+    ADMIN = "admin"
+    USER  = "user"
+}
+
+#json
+const Task struct {
+    name     string
+    priority Priority
+    owner    Role
+}
+
+do main() {
+    mut t Task = Task{name: "deploy", priority: Priority.HIGH, owner: Role.ADMIN}
+    println(json.stringify(t)) // {"name": "deploy", "priority": 1, "owner": "admin"}
+
+    mut back Task = json.parse(json.stringify(t))
+    println(back.priority == Priority.HIGH) // true
+}
+```
+
+A JSON value that names no variant of the field's enum is a `json.parse()` failure (`P0129`), the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is rejected on a `#json` struct at compile time (E3173).
+
 **Rules:**
 
 - Without a tag, a field's JSON key must match the struct field name exactly.
@@ -2137,7 +2168,8 @@ const User struct {
 - Two fields of the same `#json` struct cannot serialize under the same key (E3172).
 - A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
-- Supported field types: `int`, `uint`, `float`, `string`, `bool`.
+- Supported field types: `int`, `uint`, `float`, `string`, `bool`, and non-tagged enums (serialized by backing type).
+- `json.parse()` into an array of a `#json` struct (`[Task]`) parses each element independently, so an enum field works there with no extra handling.
 
 #### 7.5.3 `#discard` Attribute
 

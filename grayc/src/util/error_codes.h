@@ -257,7 +257,8 @@
     GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used") \
     GRAY_ERROR("E3170", "types", "malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"`") \
     GRAY_ERROR("E3171", "types", "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s") \
-    GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'")
+    GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'") \
+    GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -499,7 +500,8 @@
     GRAY_PANIC("P0125", "csv",        "csv: referenced a column that is not in the header") \
     GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
     GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
-    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12")
+    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
+    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
