@@ -3831,9 +3831,11 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get_env` | `(name string) -> string` | Get environment variable |
+| `get_env` | `(name string) -> string` | Get environment variable. Returns `""` for both an unset variable and one explicitly set to `""` |
+| `lookup_env` | `(name string) -> (string, bool)` | Get environment variable and whether it is actually set, distinguishing an unset variable from one set to `""` |
 | `set_env` | `(name string, value string)` | Set environment variable |
 | `unset_env` | `(name string)` | Remove environment variable |
+| `environ` | `() -> [string]` | Every environment variable of the current process, as `"KEY=VALUE"` strings |
 
 #### System Information
 
@@ -3841,6 +3843,7 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 |----------|-----------|-------------|
 | `args` | `() -> [string]` | Get command-line arguments |
 | `current_dir` | `() -> string` | Get current working directory |
+| `home_dir` | `() -> string` | Get the current user's home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> int` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |

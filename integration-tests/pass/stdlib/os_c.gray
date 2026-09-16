@@ -52,6 +52,51 @@ do main() {
         failed += 1
     }
 
+    // lookup_env distinguishes "unset" from "set to empty string" —
+    // get_env alone can't tell those apart.
+    os.unset_env("GRAY_OS_C_LOOKUP")
+    mut unset_val, unset_found = os.lookup_env("GRAY_OS_C_LOOKUP")
+    os.set_env("GRAY_OS_C_LOOKUP", "")
+    mut empty_val, empty_found = os.lookup_env("GRAY_OS_C_LOOKUP")
+    os.set_env("GRAY_OS_C_LOOKUP", "value")
+    mut set_val, set_found = os.lookup_env("GRAY_OS_C_LOOKUP")
+    os.unset_env("GRAY_OS_C_LOOKUP")
+    if !unset_found && unset_val == "" &&
+       empty_found && empty_val == "" &&
+       set_found && set_val == "value" {
+        println("  [PASS] lookup_env distinguishes unset from empty")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] lookup_env: unset=(${unset_val},${unset_found}) empty=(${empty_val},${empty_found}) set=(${set_val},${set_found})")
+        failed += 1
+    }
+
+    // environ returns every "KEY=VALUE" pair, including one we just set
+    os.set_env("GRAY_OS_C_ENVIRON", "marker")
+    mut env_list [string] = os.environ()
+    mut environ_ok bool = false
+    for_each kv in env_list {
+        if kv == "GRAY_OS_C_ENVIRON=marker" { environ_ok = true }
+    }
+    os.unset_env("GRAY_OS_C_ENVIRON")
+    if environ_ok && len(env_list) > 0 {
+        println("  [PASS] environ (${len(env_list)} entries)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] environ: found=${environ_ok} entries=${len(env_list)}")
+        failed += 1
+    }
+
+    // home_dir returns a non-empty string
+    mut home string = os.home_dir()
+    if len(home) > 0 {
+        println("  [PASS] home_dir (${home})")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] home_dir")
+        failed += 1
+    }
+
     // hostname returns a non-empty string
     mut host string = os.hostname()
     if len(host) > 0 {

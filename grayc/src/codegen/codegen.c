@@ -7552,8 +7552,20 @@ static bool emit_os_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "lookup_env") == 0) {
+        emit(codegen, "gray_os_lookup_env(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "environ") == 0) {
+        emit(codegen, "gray_os_environ(gray_default_arena)"); return true;
+    }
     if (strcmp(func, "current_dir") == 0) {
         emit(codegen, "gray_os_cwd(gray_default_arena)"); return true;
+    }
+    if (strcmp(func, "home_dir") == 0) {
+        emit(codegen, "gray_os_home_dir(gray_default_arena)"); return true;
     }
     if (strcmp(func, "hostname") == 0) {
         emit(codegen, "gray_os_hostname(gray_default_arena)"); return true;

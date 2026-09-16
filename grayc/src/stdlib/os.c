@@ -77,6 +77,30 @@ GrayString gray_os_get_env(GrayArena *arena, GrayString name) {
     return gray_string_new(arena, val, (int32_t)strlen(val));
 }
 
+GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name) {
+    const char *val = getenv(name.data);
+    if (!val) return (GrayOsLookupEnvResult){gray_string_lit(""), false};
+    return (GrayOsLookupEnvResult){gray_string_new(arena, val, (int32_t)strlen(val)), true};
+}
+
+GrayArray gray_os_environ(GrayArena *arena) {
+#if GRAY_RT_WINDOWS
+    extern char **_environ;
+    char **envp = _environ;
+#else
+    extern char **environ;
+    char **envp = environ;
+#endif
+    int count = 0;
+    for (char **e = envp; e && *e; e++) count++;
+    GrayArray arr = gray_array_new(arena, sizeof(GrayString), count > 0 ? count : 1);
+    for (int i = 0; i < count; i++) {
+        GrayString s = gray_string_new(arena, envp[i], (int32_t)strlen(envp[i]));
+        GRAY_ARRAY_PUSH(arena, &arr, &s);
+    }
+    return arr;
+}
+
 void gray_os_set_env(GrayString name, GrayString value) {
 #if GRAY_RT_WINDOWS
     /* _putenv_s updates the CRT's view; SetEnvironmentVariableA updates the
@@ -108,6 +132,16 @@ GrayString gray_os_cwd(GrayArena *arena) {
         return gray_string_new(arena, buf, (int32_t)strlen(buf));
     }
     return gray_string_lit("");
+}
+
+GrayString gray_os_home_dir(GrayArena *arena) {
+#if GRAY_RT_WINDOWS
+    const char *val = getenv("USERPROFILE");
+#else
+    const char *val = getenv("HOME");
+#endif
+    if (!val) return gray_string_lit("");
+    return gray_string_new(arena, val, (int32_t)strlen(val));
 }
 
 GrayString gray_os_hostname(GrayArena *arena) {

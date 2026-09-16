@@ -2885,10 +2885,13 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"os", "cpu_count",   0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "current_dir", 0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"Platform"},
+    {"os", "environ",     0, 0, false, FT_NONE, 0, {{0}},"[string]"},
     {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"os", "home_dir",    0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "hostname",    0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "is_tty",      0, 0, false, FT_NONE, 0, {{0}},"bool"},
+    {"os", "lookup_env",  1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"os", "pid",         0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "void"},
     {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
@@ -3683,6 +3686,7 @@ static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"math",     "modf",        2, {&TYPE_FLOAT, &TYPE_FLOAT}},
     {"uuid",     "timestamp",   2, {&TYPE_INT, &TYPE_BOOL}},
     {"os",       "exec",        4, {&TYPE_INT, &TYPE_STRING, &TYPE_STRING, &TYPE_BOOL}},
+    {"os",       "lookup_env",  2, {&TYPE_STRING, &TYPE_BOOL}},
     {NULL, NULL, 0, {NULL}}
 };
 
