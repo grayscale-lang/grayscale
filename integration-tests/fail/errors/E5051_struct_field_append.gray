@@ -1,0 +1,16 @@
+/*
+ * Error Test: E5051 - length-changing array op on a fixed-size struct field
+ * Expected: compiler should reject this with E5051
+ */
+// expect-error: E5051
+
+import @arrays
+
+const Buffer struct {
+    data [int, 4]
+}
+
+do main() {
+    mut b Buffer = Buffer{data: {1, 2, 3, 4}}
+    arrays.append(b.data, 5)  // ERROR: 'data' is a fixed-size array field
+}

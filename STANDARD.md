@@ -634,6 +634,14 @@ const Person struct {
 
 > 💡 **Tip:** Struct and enum declarations must be at the top level of a file, never inside a function or block. Fields must be on separate lines; semicolons are not allowed. This is intentional. Unlike functions and control flow, structs and enums define *types*, not logic. Types belong where they are visible, nameable, and reusable. Burying a type inside a function makes it invisible to the rest of your program and harder to find when reading code.
 
+A field may be a fixed-size array (`[T,N]`), the same spelling used for a local `const f [T,N]`. Its length never changes: `arrays.append`, `prepend`, `insert_at`, `remove`, `remove_at`, `remove_first`, `remove_last`, `clear`, and `deduplicate` are all rejected on it, whether called directly or through a member-expression chain like `o.inner.items`. Reading and writing individual elements works as long as the containing instance is `mut`. A struct literal that under-initializes the field zero-fills the rest (`W3003`); over-initializing it is an error (`E3052`) — the same rules as a local fixed-size array.
+
+```gray
+const Buffer struct {
+    data [byte, 256]
+}
+```
+
 #### Recursive Structs
 
 A struct may reference itself through a **pointer field**. Value-type self-reference is rejected at compile time.

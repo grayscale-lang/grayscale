@@ -85,6 +85,10 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
+static int extract_array_size(const char *type_name);
+static const char *extract_array_element_type(const char *type_name);
+static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
+                                       const char *elem_type, int fixed_size);
 
 
 /* The C name for a declaration node: the mangled name of the symbol-table
@@ -2263,8 +2267,17 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
         if (field_type) {
             const char *saved = codegen->current_var_type;
             codegen->current_var_type = field_type;
-            if (!emit_bigint_coerced(codegen, field_type, node->data.struct_value.field_values[i]))
-                emit_expression(codegen, node->data.struct_value.field_values[i]);
+            AstNode *fv = node->data.struct_value.field_values[i];
+            int fixed_size = extract_array_size(field_type);
+            if (fixed_size > 0 && fv->kind == NODE_ARRAY_VALUE) {
+                /* [T,N] field: pad a partial literal to N so the field's
+                 * declared length is what codegen sees, not the literal's
+                 * own element count (mirrors emit_vardecl_array). */
+                const char *felem = extract_array_element_type(field_type);
+                emit_fixed_size_array_initializer(codegen, fv, felem ? felem : "int", fixed_size);
+            } else if (!emit_bigint_coerced(codegen, field_type, fv)) {
+                emit_expression(codegen, fv);
+            }
             codegen->current_var_type = saved;
         } else {
             emit_expression(codegen, node->data.struct_value.field_values[i]);
@@ -2289,7 +2302,16 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
             emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
-            emit_expression(codegen, sf->default_value);
+            int default_fixed_size = extract_array_size(sf->type_name);
+            if (default_fixed_size > 0 && sf->default_value->kind == NODE_ARRAY_VALUE) {
+                const char *saved_dv = codegen->current_var_type;
+                codegen->current_var_type = sf->type_name;
+                const char *delem = extract_array_element_type(sf->type_name);
+                emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
+                codegen->current_var_type = saved_dv;
+            } else {
+                emit_expression(codegen, sf->default_value);
+            }
         }
         /* Map and array fields the literal leaves out still need a real
          * table. C zero-fills them, and a zero-filled GrayMap/GrayArray has
@@ -2329,7 +2351,18 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             } else {
                 const char *c_elem = "int64_t";
                 if (ft && ft->element_type) c_elem = gray_map_element_c_type(codegen, ft->element_type);
-                emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+                /* A [T,N] field omitted entirely is still a zero-valued
+                 * array of length N, not an empty dynamic array —
+                 * gray_array_new's capacity argument doesn't set length,
+                 * so Buffer{} has to build the same zero-filled [T;N]
+                 * compound literal an empty `= {}` initializer would. */
+                int fixed_size = extract_array_size(ftn);
+                if (fixed_size > 0) {
+                    emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d)",
+                        c_elem, fixed_size, c_elem, fixed_size);
+                } else {
+                    emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+                }
             }
         }
     }

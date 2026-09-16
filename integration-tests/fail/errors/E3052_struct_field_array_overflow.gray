@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3052 - too many elements for a fixed-size struct field
+ * Expected: "too many elements in array initializer — declared size is 3, got 5" error
+ */
+// expect-error: E3052
+
+const Buffer struct {
+    data [int, 3]
+}
+
+do main() {
+    const b Buffer = Buffer{data: {1, 2, 3, 4, 5}}
+}

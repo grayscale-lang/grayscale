@@ -170,6 +170,11 @@ static bool string_set_contains(const char *const *sorted, int n, const char *na
  * routines and stdlib arg-type validation. */
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
+/* Forward declarations — fixed-size array helpers, defined near the pointer
+ * checker but needed earlier by the mutating-array-call guard. */
+static bool array_spelling_is_fixed(const char *s);
+static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e);
+
 /* Forward declarations — pointer checker @mem lifetime helpers, defined near
  * check_expr_stmt but hooked into expression resolution and var-decl. */
 static void pointer_checker_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
@@ -4537,14 +4542,15 @@ static void typechecker_register_const_int(TypeChecker *checker, const char *nam
 /* Resolve a non-numeric array size identifier in a fixed-size array type
  * string like "[int,SIZE]".  If the size field is already numeric this is
  * a no-op.  Otherwise the name is looked up in const_int_names/values and
- * the type string on the var_decl node is rewritten to its numeric form
- * so that downstream code (E3052/W3003, codegen extract_array_size) sees
- * only numeric size strings.
+ * *type_name_slot is rewritten to its numeric form so that downstream code
+ * (E3052/W3003, codegen extract_array_size) sees only numeric size strings.
+ * `file`/`line`/`col` locate any diagnostic emitted.
  *
  * Emits E3125 if the identifier is not a known const int.
  * Emits E3126 if the resolved value is <= 0. */
-static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) {
-    const char *tn = node->data.var_decl.type_name;
+static void typechecker_resolve_array_size_str(TypeChecker *checker,
+        const char **type_name_slot, const char *file, int line, int col) {
+    const char *tn = *type_name_slot;
     /* Find the top-level comma separating element type from size. */
     const char *size_comma = NULL;
     int depth = 0;
@@ -4587,16 +4593,14 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
         char *msg = typechecker_format(checker,
             "'%s' is not a compile-time integer constant; array size must be a const int/uint value",
             size_buf);
-        diagnostic_error_message(checker->diag, "E3125", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        diagnostic_error_message(checker->diag, "E3125", msg, file, line, col, 0);
         return;
     }
     if (resolved <= 0) {
         char *msg = typechecker_format(checker,
             "array size must be greater than zero; '%s' resolves to %d",
             size_buf, (int)resolved);
-        diagnostic_error_message(checker->diag, "E3126", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        diagnostic_error_message(checker->diag, "E3126", msg, file, line, col, 0);
         return;
     }
 
@@ -4611,7 +4615,12 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
     memcpy(new_tn + prefix_len, num_buf, (size_t)num_len);
     new_tn[prefix_len + (size_t)num_len] = ']';
     new_tn[prefix_len + (size_t)num_len + 1] = '\0';
-    node->data.var_decl.type_name = new_tn;
+    *type_name_slot = new_tn;
+}
+
+static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) {
+    typechecker_resolve_array_size_str(checker, &node->data.var_decl.type_name,
+        NODE_FILE(checker, node), node->token.line, node->token.column);
 }
 
 /* Try to evaluate node as a compile-time integer constant.
@@ -5389,6 +5398,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "array", arg0->data.label.value);
                 }
+            }
+        }
+        /* E5051: length-changing array functions on a fixed-size struct
+         * field, resolved through member-expression chains (o.field,
+         * o.inner.field) — a field written `[T,N]` never changes length,
+         * regardless of whether the containing instance is mut. */
+        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
+             strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
+             strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
+             strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
+             strcmp(mfn, "deduplicate") == 0) &&
+            node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
+                diagnostic_error_code_formatted(checker->diag, "E5051",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    mfn, arg0->data.member.member);
             }
         }
         /* E5026: arrays.append/prepend/insert_at element type mismatch */
@@ -6951,6 +6977,23 @@ static bool array_spelling_is_fixed(const char *s) {
         if (*c == '[') depth++;
         else if (*c == ']') { if (--depth == 0) break; }
         else if (*c == ',' && depth == 1) return true;
+    }
+    return false;
+}
+
+/* True when a member expression's final field is a fixed-size struct
+ * field, e.g. `w.items` where `items` is declared `[int,3]`. Resolves the
+ * object's type through the general expression resolver, so it works
+ * through arbitrarily deep member chains (`o.inner.items`). */
+static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
+    if (!e || e->kind != NODE_MEMBER_EXPR) return false;
+    GrayType *obj_t = resolve_expression(checker, e->data.member.object);
+    if (!obj_t || obj_t->kind != TK_STRUCT || !obj_t->name) return false;
+    AstNode *sdecl = find_struct_in_program(checker, obj_t->name);
+    if (!sdecl) return false;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
+        if (strcmp(sdecl->data.struct_decl.fields[i].name, e->data.member.member) == 0)
+            return array_spelling_is_fixed(sdecl->data.struct_decl.fields[i].type_name);
     }
     return false;
 }
@@ -10265,6 +10308,33 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                 if (try_get_signed_literal_int(fv, &field_lit, &field_lit_neg))
                     check_integer_range(checker->diag, NODE_FILE(checker, fv),
                         fv->token.line, fv->token.column, expected_t->name, field_lit, field_lit_neg);
+            }
+            /* W3003/E3052: fixed-size array field ([T,N]) set in a
+             * struct literal with too many/too few elements — mirrors
+             * the local `const f [T,N] = {...}` initializer check. */
+            if (found && node->data.struct_value.field_values[i]->kind == NODE_ARRAY_VALUE) {
+                AstNode *sdecl_f = find_struct_in_program(checker, struct_name);
+                for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {
+                    if (strcmp(sdecl_f->data.struct_decl.fields[fi].name, fname) != 0) continue;
+                    const char *ftn = sdecl_f->data.struct_decl.fields[fi].type_name;
+                    if (array_spelling_is_fixed(ftn)) {
+                        const char *comma = strchr(ftn, ',');
+                        int fixed_size = comma ? atoi(comma + 1) : 0;
+                        AstNode *av = node->data.struct_value.field_values[i];
+                        if (fixed_size > 0 && av->data.array_value.count > fixed_size) {
+                            diagnostic_error_code_formatted(checker->diag, "E3052",
+                                NODE_FILE(checker, av), av->token.line, av->token.column, 0,
+                                fixed_size, av->data.array_value.count);
+                        } else if (fixed_size > 0 && av->data.array_value.count < fixed_size) {
+                            char *msg = typechecker_format(checker,
+                                "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
+                                fname, av->data.array_value.count, fixed_size);
+                            diagnostic_warning_message(checker->diag, "W3003", msg,
+                                NODE_FILE(checker, av), av->token.line, av->token.column, 0);
+                        }
+                    }
+                    break;
+                }
             }
             /* E3066: func signature mismatch on a struct-literal field. The
              * mismatch check above treats any two func types as assignable, so
@@ -17582,6 +17652,36 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 if (resolved != key)
                     stmt->data.struct_decl.fields[j].type_name = resolved;
             }
+            /* Fixed-size array fields ([T,N]): resolve a const-identifier
+             * size to its numeric form (mirrors local `const f [T,N]`),
+             * then check any inline default_value's element count. A
+             * field has no mut/const keyword of its own — mutability
+             * follows the containing instance — so E3054/E3055's
+             * mut/const coupling doesn't apply here. */
+            if (stmt->data.struct_decl.fields[j].type_name &&
+                array_spelling_is_fixed(stmt->data.struct_decl.fields[j].type_name)) {
+                typechecker_resolve_array_size_str(checker,
+                    &stmt->data.struct_decl.fields[j].type_name,
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+                ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
+                AstNode *dv = stmt->data.struct_decl.fields[j].default_value;
+                if (dv && dv->kind == NODE_ARRAY_VALUE) {
+                    const char *ftn = stmt->data.struct_decl.fields[j].type_name;
+                    const char *comma = strchr(ftn, ',');
+                    int fixed_size = comma ? atoi(comma + 1) : 0;
+                    if (fixed_size > 0 && dv->data.array_value.count > fixed_size) {
+                        diagnostic_error_code_formatted(checker->diag, "E3052",
+                            NODE_FILE(checker, dv), dv->token.line, dv->token.column, 0,
+                            fixed_size, dv->data.array_value.count);
+                    } else if (fixed_size > 0 && dv->data.array_value.count < fixed_size) {
+                        char *msg = typechecker_format(checker,
+                            "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
+                            fnames[j], dv->data.array_value.count, fixed_size);
+                        diagnostic_warning_message(checker->diag, "W3003", msg,
+                            NODE_FILE(checker, dv), dv->token.line, dv->token.column, 0);
+                    }
+                }
+            }
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
@@ -18066,8 +18166,31 @@ static void check_mangle_collisions(TypeChecker *checker) {
     }
 }
 
+/* Eagerly fold and register file-scope int consts before struct/field
+ * registration runs. The normal registration path for const values
+ * (typechecker_register_const_int) is only reached from check_var_decl,
+ * which runs during the later statement-checking pass — but struct field
+ * registration (register_decl_structs) happens earlier, during this
+ * function. Without this, a const-identifier struct-field size like
+ * `[int, N]` would always report E3125 ("not a compile-time constant"),
+ * regardless of where N is declared in the file. */
+static void register_file_scope_const_ints(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_VAR_DECL || stmt->data.var_decl.mutable ||
+            stmt->data.var_decl.synthetic || !stmt->data.var_decl.type_name ||
+            !stmt->data.var_decl.value) continue;
+        if (!is_any_int_type(stmt->data.var_decl.type_name)) continue;
+        int64_t folded = 0;
+        bool overflowed = false;
+        if (typechecker_fold_const_int(checker, stmt->data.var_decl.value, &folded, &overflowed))
+            typechecker_register_const_int(checker, stmt->data.var_decl.name, folded);
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
+    register_file_scope_const_ints(checker, program);
     register_decl_symbols(checker, program);
     register_decl_usings(checker, program);
     register_decl_imports(checker, program);
