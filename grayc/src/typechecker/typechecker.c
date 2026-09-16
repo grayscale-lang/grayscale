@@ -2566,6 +2566,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "any",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "append",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "average",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"arrays", "binary_search",2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"arrays", "clear",        1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, NULL},
     {"arrays", "contains",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
@@ -2587,6 +2588,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "bool"},
     {"arrays", "is_sorted",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "max_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "min_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[int]]"},
     {"arrays", "prepend",      2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "reduce",       3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
@@ -2595,6 +2598,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "rotate",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "slice",        3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
@@ -5338,7 +5342,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         /* Context-dependent array return types */
         if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
             strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
-            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0) {
+            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
+            strcmp(mfn, "rotate") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("int");
@@ -5471,6 +5476,25 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
+        /* E5026: arrays.binary_search value type must match element type */
+        if (strcmp(mfn, "binary_search") == 0 && node->data.call.arg_count >= 2) {
+            AstNode *arr_arg = node->data.call.args[0];
+            AstNode *val_node = node->data.call.args[1];
+            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
+            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
+            GrayType *val_t = resolve_expression(checker, val_node);
+            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
+                val_t && val_t->kind != TK_UNKNOWN) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
+                    !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
+                    char *msg = typechecker_format(checker,
+                        "type mismatch in 'arrays.binary_search()'; cannot search for '%s' in array of '%s'",
+                        type_name(val_t), arr_t->element_type);
+                    tc_err_arg_type(checker, val_node, msg);
+                }
+            }
+        }
         /* E5026: arrays.remove_at/insert_at index must be int */
         if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
             (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
@@ -5487,7 +5511,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         /* E9002: arrays.sum/min/max require numeric array */
         if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
              strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
-             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0) &&
+             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
+             strcmp(mfn, "min_index") == 0 || strcmp(mfn, "max_index") == 0) &&
             node->data.call.arg_count > 0) {
             AstNode *arg0 = node->data.call.args[0];
             GrayType *arr_t = resolve_expression(checker, arg0);

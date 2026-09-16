@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5026 - arrays-binary-search-type-mismatch
+ * Expected: "binary_search" or "type mismatch"
+ */
+
+import @arrays
+
+do main() {
+    mut nums [int] = {1, 2, 3}
+    mut idx = arrays.binary_search(nums, "x")  // val must match element type
+}

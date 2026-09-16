@@ -7505,12 +7505,90 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "binary_search") == 0 && node->data.call.arg_count == 2) {
+        GrayType *bs_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *bs_elem = (bs_t && bs_t->kind == TK_ARRAY) ? bs_t->element_type : NULL;
+        if (bs_elem && is_bigint_type(bs_elem)) {
+            /* Wide elements: the int64/double reads only see the low word;
+             * order with the width's gray_<w>_lt helper instead. */
+            const char *bi = bigint_prefix(bs_elem);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _bs%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _bv%d = ", bi, tag);
+            if (!emit_bigint_coerced(codegen, bs_elem, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen,
+                "; int64_t _blo%d = 0, _bhi%d = (int64_t)_bs%d.len - 1, _br%d = -1; "
+                "while (_blo%d <= _bhi%d) { int64_t _bm%d = _blo%d + (_bhi%d - _blo%d) / 2; "
+                "%s _bev%d = ((%s *)_bs%d.data)[_bm%d]; "
+                "if (%s_lt(_bev%d, _bv%d)) _blo%d = _bm%d + 1; "
+                "else if (%s_lt(_bv%d, _bev%d)) _bhi%d = _bm%d - 1; "
+                "else { _br%d = _bm%d; break; } } _br%d; })",
+                tag, tag, tag, tag,
+                tag, tag, tag, tag, tag, tag,
+                bi, tag, bi, tag, tag,
+                bi, tag, tag, tag, tag,
+                bi, tag, tag, tag, tag,
+                tag, tag,
+                tag);
+            return true;
+        }
+        if (bs_elem && strcmp(bs_elem, "string") == 0) {
+            emit(codegen, "gray_arrays_binary_search_str(");
+        } else if (bs_elem && strcmp(bs_elem, "float") == 0) {
+            emit(codegen, "gray_arrays_binary_search_float(");
+        } else {
+            emit(codegen, "gray_arrays_binary_search(");
+        }
+        emit_array_argument_address(codegen, node->data.call.args[0]);
+        emit(codegen, ", ");
+        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ")");
+        return true;
+    }
+    if ((strcmp(func, "min_index") == 0 || strcmp(func, "max_index") == 0) &&
+        node->data.call.arg_count == 1) {
+        bool want_max = strcmp(func, "max_index") == 0;
+        GrayType *mi_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *mi_elem = (mi_t && mi_t->kind == TK_ARRAY) ? mi_t->element_type : NULL;
+        if (mi_elem && is_bigint_type(mi_elem)) {
+            /* Wide elements: gray_arrays_min_index/max_index read only the low
+             * word; compare with the width's gray_<w>_lt/gt helper instead. */
+            const char *bi = bigint_prefix(mi_elem);
+            const char *rel = want_max ? "gt" : "lt";
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _mi%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen,
+                "; int64_t _mr%d = -1; if (_mi%d.len > 0) { _mr%d = 0; "
+                "%s _mb%d = ((%s *)_mi%d.data)[0]; "
+                "for (int32_t _mj%d = 1; _mj%d < _mi%d.len; _mj%d++) { "
+                "%s _mv%d = ((%s *)_mi%d.data)[_mj%d]; "
+                "if (%s_%s(_mv%d, _mb%d)) { _mb%d = _mv%d; _mr%d = _mj%d; } } } _mr%d; })",
+                tag, tag, tag,
+                bi, tag, bi, tag,
+                tag, tag, tag, tag,
+                bi, tag, bi, tag, tag,
+                bi, rel, tag, tag, tag, tag, tag, tag,
+                tag);
+            return true;
+        }
+        if (mi_elem && strcmp(mi_elem, "float") == 0) {
+            emit_formatted(codegen, "gray_arrays_%s_float(", func);
+        } else {
+            emit_formatted(codegen, "gray_arrays_%s(", func);
+        }
+        emit_array_argument_address(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
 
     /* Generic: arrays.func(&arr, ...) or arrays.func(arena, &arr, ...) */
     bool needs_arena = (strcmp(func, "reverse") == 0 || strcmp(func, "slice") == 0 ||
         strcmp(func, "concat") == 0 || strcmp(func, "deduplicate") == 0 ||
         strcmp(func, "flatten") == 0 || strcmp(func, "split_every") == 0 ||
-        strcmp(func, "pair") == 0);
+        strcmp(func, "pair") == 0 || strcmp(func, "rotate") == 0);
     bool ref_args = (strcmp(func, "concat") == 0 || strcmp(func, "pair") == 0);
     emit_formatted(codegen, "gray_arrays_%s(", func);
     if (needs_arena) emit(codegen, "gray_default_arena, ");

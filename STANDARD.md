@@ -3235,6 +3235,7 @@ do main() {
 | `count` | `(arr [T], value T) -> int` | Count occurrences of value |
 | `is_equal` | `(a [T], b [T]) -> bool` | Structural equality. Compares length first, then elements. `T` must be a primitive (`int`, `uint`, `float`, `bool`, `char`, `byte`, sized variants) or `string`; arrays of nested composites are rejected at compile time. |
 | `is_sorted` | `(arr [T]) -> bool` | True if elements are in ascending order (each `<=` the next). Empty and single-element arrays are sorted. `T` must be comparable, as for `sort_asc`. |
+| `binary_search` | `(arr [T], val T) -> int` | Search a sorted array for val (index, or -1 if absent). `arr` must already be sorted ascending, as by `sort_asc`; behavior on an unsorted array is undefined. `T` must be comparable, as for `sort_asc`. |
 
 The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b)` for equality.
 
@@ -3267,6 +3268,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `reverse` | `(arr [T]) -> [T]` | Return reversed copy |
+| `rotate` | `(arr [T], n int) -> [T]` | Return a copy rotated left by n (negative n rotates right) |
 | `slice` | `(arr [T], start int, end int) -> [T]` | Return slice |
 | `concat` | `(a [T], b [T]) -> [T]` | Concatenate two arrays |
 | `deduplicate` | `(arr [T]) -> [T]` | Remove duplicate values |
@@ -3281,6 +3283,8 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `get_sum` | `(arr [T]) -> T` | Sum all elements. Accepts int, float, or any sized integer/float type. |
 | `get_min` | `(arr [T]) -> T` | Minimum element |
 | `get_max` | `(arr [T]) -> T` | Maximum element |
+| `min_index` | `(arr [T]) -> int` | Index of the minimum element, or -1 if arr is empty |
+| `max_index` | `(arr [T]) -> int` | Index of the maximum element, or -1 if arr is empty |
 | `average` | `(arr [T]) -> float` | Arithmetic mean as a `float`. `T` must be numeric; panics on an empty array. |
 
 #### Higher-Order Functions
