@@ -2133,7 +2133,7 @@ const User struct {
 - Without a tag, a field's JSON key must match the struct field name exactly.
 - A tag is written `` `json:"Name"` `` immediately after the field's type, before any default value. The key can be any non-empty text but cannot contain a `"` or a backslash.
 - A tag cannot be shared across a comma-grouped field list (`x, y int \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
-- Within one file, a `#json` struct's fields are either all tagged or all untagged — mixing tagged and untagged fields, in one struct or across different `#json` structs in the same file, is rejected (E3171). This mirrors the consistency rule already applied to keyword aliases like `fn`/`do`.
+- A `#json` struct's fields are either all tagged or all untagged — mixing the two within one struct is rejected (E3171). This is scoped per struct, not per file: a file that aggregates many structs is free to tag some and leave others untagged, as long as each struct is internally consistent.
 - Two fields of the same `#json` struct cannot serialize under the same key (E3172).
 - A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.

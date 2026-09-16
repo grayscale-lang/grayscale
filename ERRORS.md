@@ -240,7 +240,7 @@
 | `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
 | `E3169` | safety | '%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used |
 | `E3170` | types | malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"` |
-| `E3171` | types | mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d |
+| `E3171` | types | #json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s |
 | `E3172` | types | #json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s' |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
@@ -522,4 +522,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-16 15:25:37 UTC*
+*Generated on 2026-09-16 15:31:15 UTC*

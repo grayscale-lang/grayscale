@@ -1,0 +1,50 @@
+/*
+ * json_struct_tag_per_struct_scope.gray - #json field tag consistency
+ * (E3171) is scoped per struct, not per file: a file that aggregates many
+ * structs (a types.gray-style file) is free to tag some structs and leave
+ * others untagged, as long as each individual struct is internally
+ * consistent.
+ */
+
+import @json
+
+#json
+const Tagged struct {
+    name string `json:"Name"`
+}
+
+#json
+const Untagged struct {
+    age int
+}
+
+do main() {
+    println("=== #json Tag Per-Struct Scope Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut t Tagged = Tagged{name: "Alice"}
+    if json.stringify(t) == "{\"Name\": \"Alice\"}" {
+        println("  [PASS] tagged struct uses its tag")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] tagged struct: got ${json.stringify(t)}")
+        failed += 1
+    }
+
+    mut u Untagged = Untagged{age: 30}
+    if json.stringify(u) == "{\"age\": 30}" {
+        println("  [PASS] untagged struct in the same file still uses field names")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] untagged struct: got ${json.stringify(u)}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("SOME TESTS FAILED")
+    }
+    println("ALL TESTS PASSED")
+}

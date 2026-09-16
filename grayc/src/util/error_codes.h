@@ -256,7 +256,7 @@
     GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here") \
     GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used") \
     GRAY_ERROR("E3170", "types", "malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"`") \
-    GRAY_ERROR("E3171", "types", "mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d") \
+    GRAY_ERROR("E3171", "types", "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s") \
     GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'")
 
 /* --- E4xxx: Name Problems (References) --- */

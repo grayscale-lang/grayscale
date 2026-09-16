@@ -395,16 +395,6 @@ typedef struct {
     int const_int_count;
     int const_int_cap;
 
-    /* File-scoped "first field wins" tracker for #json tag consistency
-     * (E3171): within one file, either every #json field carries an
-     * explicit `json:"..."` tag or none do. Reset whenever check_struct_decl
-     * sees a #json struct in a different file than the one this recorded. */
-    const char *json_tag_file;
-    bool json_tag_dialect_set;
-    bool json_tag_dialect_tagged;
-    int json_tag_first_line;
-    const char *json_tag_first_field;
-
     /* --test mode: building a test runner, so main() is not required and
      * #test functions are not flagged as unused. */
     bool test_mode;

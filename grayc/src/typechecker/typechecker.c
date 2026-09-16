@@ -16295,13 +16295,20 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
         }
+        /* E3171: within THIS struct, fields are either all tagged or all
+         * untagged — a struct with a couple of tagged fields and the rest
+         * untagged is almost always a mistake. Scoped to one struct, not
+         * the whole file: a file that aggregates many structs (types.gray)
+         * is free to tag some and not others, as long as each struct is
+         * internally consistent. */
+        bool json_tag_dialect_set = false;
+        bool json_tag_dialect_tagged = false;
+        const char *json_tag_dialect_field = NULL;
         for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
             /* E3170/E3171: field tags (`` `json:"Name"` ``) — validate the
              * tag format and rewrite it in place to just the extracted key
-             * so codegen can use it directly, then enforce that a file's
-             * #json fields are all tagged or all untagged (mirrors E2088's
-             * keyword-alias consistency: first field seen in the file sets
-             * the file's dialect, every later #json field must match it). */
+             * so codegen can use it directly, then enforce per-struct tag
+             * consistency. */
             {
                 StructField *sf = &node->data.struct_decl.fields[field_index];
                 bool has_tag = sf->json_tag != NULL;
@@ -16336,22 +16343,16 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                         sf->json_tag = arena_copy_string_with_length(checker->arena, key, klen);
                     }
                 }
-                const char *cur_file = NODE_FILE(checker, node);
-                if (!checker->json_tag_file || strcmp(checker->json_tag_file, cur_file) != 0) {
-                    checker->json_tag_file = cur_file;
-                    checker->json_tag_dialect_set = false;
-                }
-                if (!checker->json_tag_dialect_set) {
-                    checker->json_tag_dialect_set = true;
-                    checker->json_tag_dialect_tagged = has_tag;
-                    checker->json_tag_first_line = node->token.line;
-                    checker->json_tag_first_field = sf->name;
-                } else if (has_tag != checker->json_tag_dialect_tagged) {
+                if (!json_tag_dialect_set) {
+                    json_tag_dialect_set = true;
+                    json_tag_dialect_tagged = has_tag;
+                    json_tag_dialect_field = sf->name;
+                } else if (has_tag != json_tag_dialect_tagged) {
                     char *msg = typechecker_format(checker,
-                        "mixed #json field tag usage in the same file; '%s' used here, but '%s' was used on line %d",
-                        has_tag ? "a tag" : "no tag",
-                        checker->json_tag_dialect_tagged ? "a tag" : "no tag",
-                        checker->json_tag_first_line);
+                        "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s",
+                        STRUCT_DISPLAY_NAME(node),
+                        sf->name, has_tag ? "is tagged" : "isn't tagged",
+                        json_tag_dialect_field, json_tag_dialect_tagged ? "is tagged" : "isn't tagged");
                     diagnostic_error_message(checker->diag, "E3171", msg,
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 }
