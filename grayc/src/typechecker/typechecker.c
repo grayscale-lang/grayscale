@@ -2695,8 +2695,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"chars", "is_printable", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"chars", "is_punct",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"chars", "is_word_char", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "string_width", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "int"},
     {"chars", "to_lower",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     {"chars", "to_upper",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "width",        1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "int"},
     /* crypto */
     {"crypto", "constant_time_equal", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"crypto", "crc32",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "uint"},

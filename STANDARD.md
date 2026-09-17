@@ -4549,17 +4549,37 @@ Every predicate is ASCII-only: a non-ASCII codepoint always returns `false`.
 two-character escapes, other control characters and DEL as `\xNN`, non-ASCII codepoints as
 `\u{...}`, and printable ASCII unchanged.
 
-**Behavior:**
-- No function in this module fails.
+#### Width
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `width` | `(c char) -> int` | Terminal display width of c |
+| `string_width` | `(s string) -> int` | Total terminal display width of s |
+
+`width` follows `wcwidth` semantics: `-1` for a C0/C1 control character, `0` for a
+zero-width codepoint (combining marks, joiners, variation selectors), `2` for a wide
+codepoint (CJK ideographs, Hangul syllables, fullwidth forms, default-presentation
+emoji), `1` for everything else — including East Asian "ambiguous width" codepoints,
+which this module always treats as `1`.
+
+`string_width` sums `width` over the string's codepoints, treating a `-1` result as
+`0`. It does not expand tabs — a literal `\t` contributes `0`, not a tab stop's worth
+of columns. Width is computed per codepoint: a ZWJ emoji sequence (family emoji, flag
+sequences) is summed from its parts rather than treated as the one terminal cell it
+occupies, so `string_width` over-counts those; grapheme-cluster segmentation is out
+of scope for this module.
 
 ```gray
 import @chars
 
-println(chars.to_upper('a'))       // 'A'
-println(chars.is_word_char('_'))   // true
-println(chars.is_hex_digit('g'))   // false
-println(chars.escape('\t'))        // \t
+println(chars.width('A'))          // 1
+println(chars.width('中'))         // 2 (CJK ideograph)
+println(chars.string_width("café")) // 4
+println(chars.string_width("中文")) // 4 (two wide chars)
 ```
+
+**Behavior:**
+- No function in this module fails.
 
 ---
 
