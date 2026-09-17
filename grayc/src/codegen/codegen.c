@@ -3786,8 +3786,11 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, val);
             emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, node->token.line);
         } else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
-                   val_kind == TK_INT) {
-            /* signed int → uint/u64: panic if value is negative */
+                   (val_kind == TK_INT || val_kind == TK_UNKNOWN)) {
+            /* signed int → uint/u64: panic if value is negative. TK_UNKNOWN
+             * also covers an extern.call()/extern.CONST C-interop value,
+             * which carries no Grayscale type of its own and so could be
+             * either sign. */
             emit_formatted(codegen, "(uint64_t)gray_ucast_check((int64_t)(");
             emit_expression(codegen, val);
             emit_formatted(codegen, "), 18446744073709551615ULL, \"%s\", \"%s\", %d)", target, codegen->file, node->token.line);
@@ -9377,6 +9380,15 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
              strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
     else if (strcmp(target, "u16")  == 0) { is_unsigned = true; smax = "65535"; }
     else if (strcmp(target, "u32")  == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+    else if (strcmp(target, "uint") == 0 ||
+             strcmp(target, "u64")  == 0) {
+        /* Already 64-bit, so no upper bound can be exceeded — but a value
+         * whose real signedness Grayscale can't see (an extern C-interop
+         * result) may still be negative, which would silently reinterpret
+         * as a huge unsigned number. gray_ucast_check's negative check
+         * catches that; the max is a no-op since int64_t can't exceed it. */
+        is_unsigned = true; smax = "18446744073709551615ULL";
+    }
     else return false;
 
     const char *c_target = gray_type_to_c_codegen(codegen, target);
