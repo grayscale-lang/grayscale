@@ -289,7 +289,8 @@
     GRAY_ERROR("E4028", "names", "a built-in name cannot be used as a user-defined name") \
     GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations") \
     GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'") \
-    GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'")
+    GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'") \
+    GRAY_ERROR("E4032", "names", "cannot take a function reference to '%s'; it has a wildcard ('?') parameter or return type")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \

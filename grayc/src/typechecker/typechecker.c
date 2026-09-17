@@ -10671,6 +10671,23 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
         ref_sig->used = true;
         warn_if_func_deprecated(checker, node, ref_sig);
         reject_test_fn_reference(checker, node, ref_sig);
+        /* E4032: a bare function reference to a generic ('?' wildcard)
+         * function can't be resolved to any C symbol — codegen only emits
+         * one specialisation per concrete call-site instantiation, and a
+         * func-ref used as a plain value (held, passed, or handed to a C
+         * callback API) is never itself a call site, so the unspecialised
+         * name it emits (e.g. `gray_fn_cmp`) is never defined anywhere. */
+        if (ref_sig->is_generic) {
+            const char *display = (ref_struct_name && ref_member_name)
+                ? typechecker_format(checker, "%s.%s", ref_struct_name, ref_member_name)
+                : ref_name;
+            char *msg = typechecker_format(checker,
+                "cannot take a function reference to '%s'; it has a wildcard ('?') "
+                "parameter or return type, which can only be resolved by calling it "
+                "directly with concrete argument types", display);
+            diagnostic_error_message(checker->diag, "E4032", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
