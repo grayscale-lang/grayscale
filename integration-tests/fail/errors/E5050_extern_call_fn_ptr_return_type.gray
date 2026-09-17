@@ -1,0 +1,19 @@
+/*
+ * Error Test: E5050 - a C function whose *return type* is itself a function
+ * pointer (e.g. signal's "void (*(int, void (*)(int)))(int)" AST-dump
+ * spelling) must still have its own parameter list parsed correctly, not the
+ * trailing parameter list of the returned function pointer. A 1-argument
+ * call to signal (which takes 2) is caught with E5050, not left to fail at
+ * the real C compile step.
+ *
+ * No `expect-error:` marker: the check only runs at the C-compile boundary,
+ * so this is a build test whose failure must still carry a Grayscale
+ * diagnostic.
+ */
+// expect-contains: error[E5050]
+
+extern import "signal.h"
+
+do main() {
+    extern.signal(2)
+}

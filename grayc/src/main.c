@@ -467,22 +467,70 @@ static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) 
     size_t len = strlen(sig);
     if (len == 0 || sig[len - 1] != ')') return false;
 
-    /* Walk backward from the final ')' to find its matching '(' — the start
-     * of the outer parameter list, regardless of what the return type
-     * spells (even if it itself contains parens). */
+    /* Collect every *top-level* '(' ... ')' group (depth 0 -> 1 -> 0). An
+     * ordinary function's type spells as "RT (PARAMS)" — exactly one such
+     * group, its own parameter list, no matter what the return type spells
+     * inside it. A function whose *return type* is itself a function
+     * pointer spells as "RT (*[quals](PARAMS))(INNER)" — e.g. signal's
+     * "void (*(int, void (*)(int)))(int)" — two top-level groups, where the
+     * first (one level inside the '*' wrapper) is the function's own
+     * parameter list and the second, trailing one belongs to the returned
+     * function pointer instead. */
+    long first_open = -1, first_close = -1, last_open = -1, last_close = -1;
+    int group_count = 0;
     int depth = 0;
-    long open_idx = -1;
-    for (long i = (long)len - 1; i >= 0; i--) {
-        if (sig[i] == ')') depth++;
-        else if (sig[i] == '(') {
+    for (size_t i = 0; i < len; i++) {
+        if (sig[i] == '(') {
+            if (depth == 0) {
+                last_open = (long)i;
+                if (group_count == 0) first_open = (long)i;
+            }
+            depth++;
+        } else if (sig[i] == ')') {
             depth--;
-            if (depth == 0) { open_idx = i; break; }
+            if (depth == 0) {
+                last_close = (long)i;
+                if (group_count == 0) first_close = (long)i;
+                group_count++;
+            }
         }
     }
-    if (open_idx < 0) return false;
+    if (group_count == 0 || depth != 0) return false;
 
-    const char *params = sig + open_idx + 1;
-    size_t params_len = len - 1 - (size_t)(open_idx + 1);
+    const char *params = NULL;
+    size_t params_len = 0;
+
+    if (group_count == 2 && last_close == (long)len - 1) {
+        const char *gc = sig + first_open + 1;
+        size_t gc_len = (size_t)(first_close - first_open - 1);
+        size_t i = 0;
+        while (i < gc_len && gc[i] == ' ') i++;
+        if (i < gc_len && gc[i] == '*') {
+            i++;
+            while (i < gc_len && gc[i] != '(' && gc[i] != '*') i++;
+            if (i < gc_len && gc[i] == '(') {
+                size_t inner_open = i;
+                int d2 = 0;
+                long inner_close = -1;
+                for (size_t j = inner_open; j < gc_len; j++) {
+                    if (gc[j] == '(') d2++;
+                    else if (gc[j] == ')') { d2--; if (d2 == 0) { inner_close = (long)j; break; } }
+                }
+                if (inner_close >= 0) {
+                    params = gc + inner_open + 1;
+                    params_len = (size_t)inner_close - inner_open - 1;
+                }
+            }
+        }
+    }
+
+    if (!params) {
+        /* Ordinary shape: the sole (or, failing the pointer-return check
+         * above, the final) top-level group is the parameter list. */
+        params = sig + last_open + 1;
+        params_len = len - 1 - (size_t)(last_open + 1);
+    }
+
     while (params_len > 0 && params[0] == ' ') { params++; params_len--; }
     while (params_len > 0 && params[params_len - 1] == ' ') params_len--;
 

@@ -1,0 +1,27 @@
+/*
+ * c_interop_fn_ptr_return_type_arg_count.gray - a correct call to a C
+ * function whose return type is itself a function pointer (signal) is not
+ * rejected by the E5050 argument-count check, which must parse the
+ * function's own parameter list rather than the returned function pointer's.
+ */
+
+extern import "signal.h"
+
+do handler(sig i32) {
+    println("caught")
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    extern.signal(2, ()handler)
+    passed += 1
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
