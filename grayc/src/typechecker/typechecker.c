@@ -9287,6 +9287,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 ExternCallSite *site = &checker->extern_calls[checker->extern_call_count++];
                 site->func_name = mfn;
                 site->arg_count = node->data.call.arg_count;
+                site->is_call = true;
                 site->file = NODE_FILE(checker, node);
                 site->line = node->token.line;
                 site->column = node->token.column;
@@ -9959,6 +9960,22 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
          * like a C call result, so it carries TYPE_C_FUNC and is confined to
          * the same positions by the E3168 checks. */
         if (strcmp(obj_name, "extern") == 0 && typechecker_is_imported_module(checker, "extern")) {
+            /* Record for main.c: it probes the real header through the C
+             * compiler after type checking succeeds and checks that this
+             * constant/macro name actually exists there, catching a typo
+             * like extern.EXIT_SUCESS the same way a misspelled call is. */
+            if (checker->extern_call_count >= checker->extern_call_cap) {
+                checker->extern_call_cap = checker->extern_call_cap ? checker->extern_call_cap * 2 : 8;
+                checker->extern_calls = xrealloc(checker->extern_calls,
+                    sizeof(ExternCallSite) * checker->extern_call_cap);
+            }
+            ExternCallSite *csite = &checker->extern_calls[checker->extern_call_count++];
+            csite->func_name = member;
+            csite->arg_count = 0;
+            csite->is_call = false;
+            csite->file = NODE_FILE(checker, node);
+            csite->line = node->token.line;
+            csite->column = node->token.column;
             result = &TYPE_C_FUNC;
             return result;
         }

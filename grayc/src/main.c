@@ -564,16 +564,83 @@ static bool find_c_function_signature(const char *dump, const char *name,
     return count_c_params(sig, min_params, is_variadic);
 }
 
-/* Validates every extern.func(...) call the type checker recorded against
- * the real C signature, found by asking the target compiler to dump its own
- * AST for a stub translation unit that includes exactly the headers this
- * program imports. Anchored at the call, so a mismatch is a Grayscale
- * diagnostic instead of a raw C compiler error against a temp file.
+/* True if `text` (a captured C compiler stderr) flags `name` as unknown.
+ * A bare reference (a constant/macro site) produces clang's "use of
+ * undeclared identifier 'name'" or gcc's "'name' undeclared"; a call
+ * produces clang's "call to undeclared function 'name'" or gcc's "implicit
+ * declaration of function 'name'". Matching all four covers both compilers
+ * and both site shapes without needing to know which produced the text. */
+static bool c_symbol_flagged_undeclared(const char *text, const char *name) {
+    if (!text || !name || !name[0]) return false;
+    char needle[300];
+    snprintf(needle, sizeof(needle), "identifier '%s'", name);
+    if (strstr(text, needle)) return true;
+    snprintf(needle, sizeof(needle), "'%s' undeclared", name);
+    if (strstr(text, needle)) return true;
+    snprintf(needle, sizeof(needle), "undeclared function '%s'", name);
+    if (strstr(text, needle)) return true;
+    snprintf(needle, sizeof(needle), "declaration of function '%s'", name);
+    if (strstr(text, needle)) return true;
+    return false;
+}
+
+/* Builds a stub translation unit that references every recorded extern
+ * site by name, each in the same shape it's actually used: a call site gets
+ * a real, parenthesized call with its own argument count (as plain `0`
+ * placeholders — only existence is being probed, not types), and a constant
+ * site gets a bare reference. The parenthesized form matters for a call: a
+ * function-like macro is only expanded by the preprocessor when followed by
+ * '(', so probing it bare would misreport a legitimate macro as unknown.
+ * Appends to `out` (already holding the '#include' lines); truncates
+ * silently on overflow, same as append_c_header_includes. */
+static void append_extern_probe_body(const ExternCallSite *calls, int call_count,
+                                     char *out, size_t out_size) {
+    size_t used = strlen(out);
+#define PROBE_APPEND(s) do { \
+        size_t _l = strlen(s); \
+        if (used + _l < out_size) { memcpy(out + used, (s), _l); used += _l; out[used] = '\0'; } \
+    } while (0)
+    PROBE_APPEND("static void _gray_extern_probe(void) {\n");
+    for (int i = 0; i < call_count; i++) {
+        char line[256];
+        if (calls[i].is_call) {
+            char args[160] = "";
+            size_t al = 0;
+            for (int p = 0; p < calls[i].arg_count && al + 3 < sizeof(args); p++) {
+                const char *piece = (p == 0) ? "0" : ", 0";
+                size_t pl = strlen(piece);
+                memcpy(args + al, piece, pl); al += pl; args[al] = '\0';
+            }
+            snprintf(line, sizeof(line), "    (void)(%s(%s));\n", calls[i].func_name, args);
+        } else {
+            snprintf(line, sizeof(line), "    (void)(%s);\n", calls[i].func_name);
+        }
+        PROBE_APPEND(line);
+    }
+    PROBE_APPEND("}\n");
+#undef PROBE_APPEND
+}
+
+/* Validates every extern.func(...) call and extern.CONST access the type
+ * checker recorded against the real C header(s) this program imports, using
+ * the target compiler itself as the source of truth (the typechecker has no
+ * C header parser). Two checks, both anchored at the call/access site so a
+ * problem is a Grayscale diagnostic instead of a raw C compiler error
+ * against a temp file:
  *
- * Fails open: if the target compiler does not support `-Xclang -ast-dump`
- * (anything but a clang-compatible `cc`), or a given call's function is not
- * found in the dump (a macro, or a dump shape this parser does not handle),
- * that call is left unchecked and the real compile still catches it. */
+ *   1. Existence (E5052): a stub referencing every site by name (in the
+ *      shape it's actually used) is compiled with -fsyntax-only, and any
+ *      name the compiler reports as undeclared is unknown to the imported
+ *      headers — most commonly a typo'd function or constant name.
+ *   2. Argument count (E5050): asks the target compiler to dump its own AST
+ *      for a stub that only includes the headers, and looks up each call's
+ *      function there.
+ *
+ * Both fail open: if the target compiler does not support the flags used
+ * here (anything but a clang/gcc-compatible `cc`), or a given symbol's
+ * signature is not found in the AST dump (a macro, or a dump shape the
+ * parser does not handle), that check is skipped for the affected site(s)
+ * and the real compile still catches what's left. */
 static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                                          DiagnosticList *diag, Arena *arena,
                                          const char *cc_cmd, bool cc_is_command,
@@ -585,6 +652,53 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
     char includes[4096];
     append_c_header_includes(program, entry_file, includes, sizeof(includes));
     if (!includes[0]) return;
+
+    /* Check 1: does each referenced symbol exist at all? */
+    {
+        char probe_src[16384];
+        snprintf(probe_src, sizeof(probe_src), "%s", includes);
+        append_extern_probe_body(calls, call_count, probe_src, sizeof(probe_src));
+
+        char probe_stub[PATH_BUF_SIZE];
+        probe_stub[0] = '\0';
+        int pn = gray_temp_path(probe_stub, sizeof(probe_stub), "gray_existprobe_", ".c");
+        if (pn >= 0 && (size_t)pn < sizeof(probe_stub) && write_file(probe_stub, probe_src)) {
+            FILE *perr = gray_tmpfile();
+            if (perr) {
+                ArgV pa = {0};
+                if (cc_is_command) argv_push_command(&pa, arena, cc_cmd);
+                else argv_push(&pa, cc_cmd);
+                argv_push(&pa, "-fsyntax-only");
+                add_local_c_header_dirs(&pa, arena, program, entry_file);
+                argv_push(&pa, "-x");
+                argv_push(&pa, "c");
+                argv_push(&pa, probe_stub);
+                argv_end(&pa);
+
+                if (!pa.overflow) gray_spawn_capture_stderr(pa.v, perr);
+                long elen = ftell(perr);
+                if (elen > 0) {
+                    rewind(perr);
+                    char *errtext = malloc((size_t)elen + 1);
+                    if (errtext) {
+                        size_t got = fread(errtext, 1, (size_t)elen, perr);
+                        errtext[got] = '\0';
+                        for (int i = 0; i < call_count; i++) {
+                            if (c_symbol_flagged_undeclared(errtext, calls[i].func_name)) {
+                                diagnostic_error_code_formatted(diag, "E5052",
+                                    calls[i].file ? calls[i].file : entry_file,
+                                    calls[i].line, calls[i].column, 0,
+                                    calls[i].func_name);
+                            }
+                        }
+                        free(errtext);
+                    }
+                }
+                fclose(perr);
+            }
+        }
+        if (probe_stub[0]) gray_remove_file(probe_stub);
+    }
 
     char stub[PATH_BUF_SIZE];
     int sn = gray_temp_path(stub, sizeof(stub), "gray_sigprobe_", ".c");

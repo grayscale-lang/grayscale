@@ -184,12 +184,16 @@ typedef struct {
     int instantiation_cap;
 } FuncSig;
 
-/* One extern.func(...) call site, recorded during type checking so main.c
- * can validate its argument count against the real C signature after
- * probing the imported header (the typechecker has no C header parser). */
+/* One extern.func(...) call or extern.CONST access site, recorded during
+ * type checking so main.c can probe the real header through the C compiler
+ * (the typechecker has no C header parser) and validate the symbol against
+ * it: is_call sites get their argument count checked against the real C
+ * signature, and every site (call or constant) gets checked for existence,
+ * catching a misspelled C function/constant/macro name. */
 typedef struct {
     const char *func_name;
     int arg_count;
+    bool is_call;
     const char *file;
     int line;
     int column;

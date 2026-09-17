@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 473 codes** (328 errors, 16 warnings, 129 panics)
+**Total: 474 codes** (329 errors, 16 warnings, 129 panics)
 
 ---
 
@@ -310,6 +310,7 @@
 | `E5049` | arguments | return type mismatch; the returned value's type does not match the function's declared return type |
 | `E5050` | arguments | wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d |
 | `E5051` | usage | cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change |
+| `E5052` | usage | unknown C symbol '%s'; no such function, constant, or macro in the imported header(s) |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -524,4 +525,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-16 21:02:22 UTC*
+*Generated on 2026-09-17 02:24:05 UTC*

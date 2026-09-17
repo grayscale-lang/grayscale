@@ -173,6 +173,12 @@ int gray_spawn_quiet(const char *const *argv);
  * discarded. Returns -1 if the redirection itself could not be set up. */
 int gray_spawn_capture_stdout(const char *const *argv, FILE *capture);
 
+/* Like gray_spawn_capture_stdout, but captures the child's stderr into
+ * `capture` instead and discards stdout — for probing a compiler's own
+ * diagnostic text (e.g. "undeclared identifier") rather than a dump it
+ * writes to stdout. */
+int gray_spawn_capture_stderr(const char *const *argv, FILE *capture);
+
 /* --- Toolchain discovery --- */
 
 /* Look up a command on PATH the way the OS loader will, without spawning it.

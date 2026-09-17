@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5052 - a misspelled extern.CONST access that does not exist
+ * in any imported C header is caught with a Grayscale diagnostic instead of
+ * leaking a raw C compiler error against a generated temp file.
+ */
+// expect-error: E5052
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut e int = extern.EXIT_SUCESS
+    println(e)
+}

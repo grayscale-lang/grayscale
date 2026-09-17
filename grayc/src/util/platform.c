@@ -547,6 +547,35 @@ int gray_spawn_capture_stdout(const char *const *argv, FILE *capture) {
     return rc;
 }
 
+int gray_spawn_capture_stderr(const char *const *argv, FILE *capture) {
+    int devnull = gray_sys_open(GRAY_NULL_DEVICE, GRAY_WRONLY_FLAG);
+    if (devnull < 0) return -1;
+
+    fflush(stdout);
+    fflush(stderr);
+    fflush(capture);
+    int cap_fd = fileno(capture);
+
+    int saved_out = gray_sys_dup(1);
+    int saved_err = gray_sys_dup(2);
+    gray_sys_dup2(devnull, 1);
+    gray_sys_dup2(cap_fd, 2);
+
+    int rc = spawn_child(argv, true);
+    fflush(NULL);
+
+    if (saved_out >= 0) {
+        gray_sys_dup2(saved_out, 1);
+        gray_sys_close(saved_out);
+    }
+    if (saved_err >= 0) {
+        gray_sys_dup2(saved_err, 2);
+        gray_sys_close(saved_err);
+    }
+    gray_sys_close(devnull);
+    return rc;
+}
+
 /* --- Toolchain discovery --- */
 
 void gray_ensure_tool_dir_on_path(const char *cmd) {
