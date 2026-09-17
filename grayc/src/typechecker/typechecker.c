@@ -174,6 +174,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
  * checker but needed earlier by the mutating-array-call guard. */
 static bool array_spelling_is_fixed(const char *s);
 static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e);
+static int member_expr_fixed_array_field_size(TypeChecker *checker, AstNode *e);
 
 /* Forward declarations — pointer checker @mem lifetime helpers, defined near
  * check_expr_stmt but hooked into expression resolution and var-decl. */
@@ -5480,6 +5481,29 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 diagnostic_error_code_formatted(checker->diag, "E5051",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     mfn, arg0->data.member.member);
+            }
+        }
+        /* E5051: 'fill' is length-changing too — gray_arrays_fill clears the
+         * array and pushes exactly 'count' new elements, independent of its
+         * prior length — but count == the field's declared size is a
+         * legitimate in-place refill, unlike append/insert_at/etc above, so
+         * it isn't blanket-rejected. Only a call whose 'count' isn't
+         * provably that exact size (a literal mismatch, or a non-literal
+         * count the typechecker can't verify) is rejected. */
+        if (strcmp(mfn, "fill") == 0 && node->data.call.arg_count >= 3) {
+            AstNode *arg0 = node->data.call.args[0];
+            int fixed_size = (arg0->kind == NODE_MEMBER_EXPR)
+                ? member_expr_fixed_array_field_size(checker, arg0) : 0;
+            if (fixed_size > 0) {
+                int64_t count_lit;
+                bool count_neg;
+                bool count_matches = try_get_signed_literal_int(node->data.call.args[2], &count_lit, &count_neg) &&
+                    !count_neg && count_lit == fixed_size;
+                if (!count_matches) {
+                    diagnostic_error_code_formatted(checker->diag, "E5051",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        mfn, arg0->data.member.member);
+                }
             }
         }
         /* E5026: arrays.append/prepend/insert_at element type mismatch */

@@ -1,0 +1,20 @@
+/*
+ * Error Test: E5051 - 'arrays.fill' on a fixed-size struct field is
+ * length-changing when its count argument doesn't match the field's
+ * declared size (gray_arrays_fill clears the array and pushes exactly
+ * 'count' new elements, independent of its prior length).
+ */
+// expect-error: E5051
+// expect-error-count: 1
+
+import @arrays
+
+const Widget struct {
+    items [int, 3]
+}
+
+do main() {
+    mut w Widget = Widget{items: {1, 2, 3}}
+    arrays.fill(w.items, 7, 10)
+    println(len(w.items))
+}
