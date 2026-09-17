@@ -9284,6 +9284,35 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                             break;
                         }
                     }
+                    /* The return type must lower to a C-compatible scalar too:
+                     * a callback returning 'string' lowers to 'GrayString',
+                     * which the C API's function-pointer type never declares. */
+                    if (cb_sig && cb_sig->return_count >= 1 && cb_sig->return_types[0]) {
+                        GrayType *cb_rt = cb_sig->return_types[0];
+                        if (cb_rt->kind == TK_POINTER) {
+                            char *msg = typechecker_format(checker,
+                                "cannot pass '%s' as a C callback; its pointer return type lowers to a "
+                                "typed C pointer, but the C API's function-pointer type declares a scalar "
+                                "return, which Grayscale cannot express", cb_target);
+                            diagnostic_error_message(checker->diag, "E3158", msg,
+                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
+                        } else {
+                            const char *cb_bad_ret_kind = NULL;
+                            if (cb_rt->kind == TK_STRING) cb_bad_ret_kind = "string";
+                            else if (cb_rt->kind == TK_ARRAY) cb_bad_ret_kind = "array";
+                            else if (cb_rt->kind == TK_MAP) cb_bad_ret_kind = "map";
+                            else if (cb_rt->kind == TK_STRUCT && cb_rt->name &&
+                                     is_struct_name(checker, cb_rt->name)) cb_bad_ret_kind = "struct";
+                            if (cb_bad_ret_kind) {
+                                char *msg = typechecker_format(checker,
+                                    "cannot pass '%s' as a C callback; its %s return type has no "
+                                    "C-compatible layout, but the C API's function-pointer type declares a "
+                                    "scalar return, which Grayscale cannot express", cb_target, cb_bad_ret_kind);
+                                diagnostic_error_message(checker->diag, "E3158", msg,
+                                    NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
+                            }
+                        }
+                    }
                 }
 
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
