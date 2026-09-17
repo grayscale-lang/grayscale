@@ -1,0 +1,15 @@
+/*
+ * Error Test: E5026 - 'arrays.rotate's shift-count argument must be an int.
+ * A non-int value previously compiled straight through the typechecker and
+ * failed only at the C-compilation stage, leaking a raw clang diagnostic.
+ */
+// expect-error: E5026
+// expect-error-count: 1
+
+import @arrays
+
+do main() {
+    mut arr [int] = {1, 2, 3}
+    mut r [int] = arrays.rotate(arr, "two")
+    println(r)
+}

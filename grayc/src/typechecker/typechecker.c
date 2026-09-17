@@ -2653,7 +2653,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
-    {"arrays", "rotate",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "rotate",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
     {"arrays", "slice",        3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
