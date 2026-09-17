@@ -7068,28 +7068,93 @@ static bool array_spelling_is_fixed(const char *s) {
     return false;
 }
 
-/* True when a member expression's final field is a fixed-size struct
- * field, e.g. `w.items` where `items` is declared `[int,3]`. Resolves the
- * object's type through the general expression resolver, so it works
- * through arbitrarily deep member chains (`o.inner.items`). */
-static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
-    if (!e || e->kind != NODE_MEMBER_EXPR) return false;
+/* If a member expression's final field is a fixed-size struct field, e.g.
+ * `w.items` where `items` is declared `[int,3]`, returns its declared size
+ * (3); otherwise 0. Resolves the object's type through the general
+ * expression resolver, so it works through arbitrarily deep member chains
+ * (`o.inner.items`). */
+static int member_expr_fixed_array_field_size(TypeChecker *checker, AstNode *e) {
+    if (!e || e->kind != NODE_MEMBER_EXPR) return 0;
     GrayType *obj_t = resolve_expression(checker, e->data.member.object);
-    if (!obj_t) return false;
+    if (!obj_t) return 0;
     /* The dot operator auto-derefs pointers to structs (p.field == p^.field),
      * so a pointer object resolves to TK_POINTER with the struct name in
      * element_type, not TK_STRUCT — mirror resolve_member_expr's unwrap. */
     const char *struct_name = NULL;
     if (obj_t->kind == TK_STRUCT) struct_name = obj_t->name;
     else if (obj_t->kind == TK_POINTER) struct_name = obj_t->element_type;
-    if (!struct_name) return false;
+    if (!struct_name) return 0;
     AstNode *sdecl = find_struct_in_program(checker, struct_name);
-    if (!sdecl) return false;
+    if (!sdecl) return 0;
     for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
-        if (strcmp(sdecl->data.struct_decl.fields[i].name, e->data.member.member) == 0)
-            return array_spelling_is_fixed(sdecl->data.struct_decl.fields[i].type_name);
+        if (strcmp(sdecl->data.struct_decl.fields[i].name, e->data.member.member) == 0) {
+            const char *ftn = sdecl->data.struct_decl.fields[i].type_name;
+            if (!array_spelling_is_fixed(ftn)) return 0;
+            const char *comma = strchr(ftn, ',');
+            return comma ? atoi(comma + 1) : 0;
+        }
+    }
+    return 0;
+}
+
+/* True when a member expression's final field is a fixed-size struct
+ * field, e.g. `w.items` where `items` is declared `[int,3]`. */
+static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
+    return member_expr_fixed_array_field_size(checker, e) > 0;
+}
+
+/* If `expr`'s length is statically known — an array literal, a reference to
+ * a fixed-size local/parameter, or a fixed-size struct field — returns true
+ * and sets `*out_len`. Any other expression (a dynamic '[T]' local, a
+ * function/stdlib call, ...) has no length the typechecker can prove without
+ * running the program, so this returns false rather than guessing. */
+static bool try_get_static_array_length(TypeChecker *checker, AstNode *expr, int *out_len) {
+    if (!expr) return false;
+    if (expr->kind == NODE_ARRAY_VALUE) {
+        *out_len = expr->data.array_value.count;
+        return true;
+    }
+    if (expr->kind == NODE_LABEL) {
+        Symbol *sym = scope_lookup(checker->current_scope, expr->data.label.value);
+        if (sym && sym->declared_type && array_spelling_is_fixed(sym->declared_type)) {
+            const char *comma = strchr(sym->declared_type, ',');
+            int n = comma ? atoi(comma + 1) : 0;
+            if (n > 0) { *out_len = n; return true; }
+        }
+        return false;
+    }
+    if (expr->kind == NODE_MEMBER_EXPR) {
+        int n = member_expr_fixed_array_field_size(checker, expr);
+        if (n > 0) { *out_len = n; return true; }
+        return false;
     }
     return false;
+}
+
+/* Shared W3003/E3052 length check for a fixed-size struct field ([T,N])
+ * receiving `value`, whether at struct-literal construction or plain
+ * reassignment: too many elements is an error, too few is a warning (the
+ * rest zero-value), and anything whose length isn't statically known (per
+ * try_get_static_array_length) is left unchecked rather than guessed at. */
+static void check_fixed_array_field_size(TypeChecker *checker, const char *field_name,
+                                          const char *field_type_name, AstNode *value) {
+    if (!array_spelling_is_fixed(field_type_name)) return;
+    const char *comma = strchr(field_type_name, ',');
+    int fixed_size = comma ? atoi(comma + 1) : 0;
+    if (fixed_size <= 0) return;
+    int actual_len;
+    if (!try_get_static_array_length(checker, value, &actual_len)) return;
+    if (actual_len > fixed_size) {
+        diagnostic_error_code_formatted(checker->diag, "E3052",
+            NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+            fixed_size, actual_len);
+    } else if (actual_len < fixed_size) {
+        char *msg = typechecker_format(checker,
+            "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
+            field_name, actual_len, fixed_size);
+        diagnostic_warning_message(checker->diag, "W3003", msg,
+            NODE_FILE(checker, value), value->token.line, value->token.column, 0);
+    }
 }
 
 /* True when `node` is a call to one of the length-changing 'arrays.*'
@@ -10580,30 +10645,20 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                     check_integer_range(checker->diag, NODE_FILE(checker, fv),
                         fv->token.line, fv->token.column, expected_t->name, field_lit, field_lit_neg);
             }
-            /* W3003/E3052: fixed-size array field ([T,N]) set in a
-             * struct literal with too many/too few elements — mirrors
-             * the local `const f [T,N] = {...}` initializer check. */
-            if (found && node->data.struct_value.field_values[i]->kind == NODE_ARRAY_VALUE) {
+            /* W3003/E3052: fixed-size array field ([T,N]) set in a struct
+             * literal with too many/too few elements. Runs for any RHS whose
+             * length is statically known (an array literal, or a reference
+             * to another fixed-size array/field) — not just a literal node
+             * — so `Widget{items: arrays.slice(base, 0, 5)}` no longer
+             * skips the check just because the initializer isn't itself an
+             * array-literal node. */
+            if (found) {
                 AstNode *sdecl_f = find_struct_in_program(checker, struct_name);
                 for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {
                     if (strcmp(sdecl_f->data.struct_decl.fields[fi].name, fname) != 0) continue;
-                    const char *ftn = sdecl_f->data.struct_decl.fields[fi].type_name;
-                    if (array_spelling_is_fixed(ftn)) {
-                        const char *comma = strchr(ftn, ',');
-                        int fixed_size = comma ? atoi(comma + 1) : 0;
-                        AstNode *av = node->data.struct_value.field_values[i];
-                        if (fixed_size > 0 && av->data.array_value.count > fixed_size) {
-                            diagnostic_error_code_formatted(checker->diag, "E3052",
-                                NODE_FILE(checker, av), av->token.line, av->token.column, 0,
-                                fixed_size, av->data.array_value.count);
-                        } else if (fixed_size > 0 && av->data.array_value.count < fixed_size) {
-                            char *msg = typechecker_format(checker,
-                                "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
-                                fname, av->data.array_value.count, fixed_size);
-                            diagnostic_warning_message(checker->diag, "W3003", msg,
-                                NODE_FILE(checker, av), av->token.line, av->token.column, 0);
-                        }
-                    }
+                    check_fixed_array_field_size(checker, fname,
+                        sdecl_f->data.struct_decl.fields[fi].type_name,
+                        node->data.struct_value.field_values[i]);
                     break;
                 }
             }
@@ -14247,6 +14302,27 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                         field_t->name, lit_val, lit_neg);
                 }
             }
+        }
+    }
+    /* W3003/E3052: fixed-size array field ([T,N]) reassigned with too
+     * many/too few elements. The struct-literal-construction check above
+     * never sees this — a plain `w.items = <expr>` is an ordinary
+     * assignment statement, not a struct-literal node — so this is a
+     * second, independent call site for the same shared check. */
+    if (target->kind == NODE_MEMBER_EXPR && node->data.assign.value) {
+        GrayType *obj_t = resolve_expression(checker, target->data.member.object);
+        const char *struct_name = NULL;
+        if (obj_t) {
+            if (obj_t->kind == TK_STRUCT) struct_name = obj_t->name;
+            else if (obj_t->kind == TK_POINTER) struct_name = obj_t->element_type;
+        }
+        AstNode *sdecl_f = struct_name ? find_struct_in_program(checker, struct_name) : NULL;
+        for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {
+            if (strcmp(sdecl_f->data.struct_decl.fields[fi].name, target->data.member.member) != 0) continue;
+            check_fixed_array_field_size(checker, target->data.member.member,
+                sdecl_f->data.struct_decl.fields[fi].type_name,
+                node->data.assign.value);
+            break;
         }
     }
     /* Also handle dereferenced pointer field: p^.field = value */
