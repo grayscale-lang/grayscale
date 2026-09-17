@@ -7180,13 +7180,25 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 desc ? "true" : "false");
             return true;
         }
+        /* An enum element is a plain C `enum` (int32_t-width) unless it's
+         * string-backed (a GrayString at the C level, matching [string]'s
+         * width instead) — same elem_size/stride mismatch min_index/
+         * max_index were already fixed for, just not extended to
+         * sort_asc/sort_desc's runtime-function dispatch. No dedicated sort
+         * variant is needed: an int-backed enum's ordinal values compare
+         * correctly as plain int32_t, the same width and comparison
+         * '_char' already sorts by. */
+        GrayType *sa_elem_t = sa_elem ? type_from_name(sa_elem) : NULL;
+        bool sa_elem_is_str_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM &&
+            codegen_enum_is_string(codegen, codegen_resolve_type(codegen, sa_elem));
+        bool sa_elem_is_int_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM && !sa_elem_is_str_enum;
         if (sa_elem && strcmp(sa_elem, "float") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_float(", desc ? "desc" : "asc");
-        else if (sa_elem && strcmp(sa_elem, "string") == 0)
+        else if ((sa_elem && strcmp(sa_elem, "string") == 0) || sa_elem_is_str_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
         else if (sa_elem && strcmp(sa_elem, "byte") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_byte(", desc ? "desc" : "asc");
-        else if (sa_elem && strcmp(sa_elem, "char") == 0)
+        else if ((sa_elem && strcmp(sa_elem, "char") == 0) || sa_elem_is_int_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_char(", desc ? "desc" : "asc");
         else
             emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");

@@ -1,0 +1,65 @@
+/*
+ * arrays_sort_enum_elements.gray - arrays.sort_asc/sort_desc on enum-element
+ * arrays.
+ *
+ * sort_asc/sort_desc dispatch to precompiled runtime functions keyed by
+ * element width (byte/char/float/string/the generic int64 fallback). An
+ * enum element fell to the generic int64-width fallback, which mismatches
+ * a C enum's real (int32) storage width for anything past a two-element
+ * array, and misorders the result with no diagnostic. Covers both an
+ * int-backed and a string-backed enum, which take different codegen paths.
+ */
+
+import @arrays
+
+const OpCode enum {
+    PUSH
+    ADD
+    SUB
+    MUL
+    HALT
+}
+
+const Status enum {
+    OK = "ok"
+    BAD = "bad"
+    MID = "mid"
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut ops [OpCode] = {OpCode.MUL, OpCode.PUSH, OpCode.ADD, OpCode.HALT}
+    arrays.sort_asc(ops)
+    if ops[0] == OpCode.PUSH && ops[1] == OpCode.ADD &&
+       ops[2] == OpCode.MUL && ops[3] == OpCode.HALT {
+        passed++
+    } otherwise {
+        println("FAIL: sort_asc misordered an int-backed enum array")
+        failed++
+    }
+
+    arrays.sort_desc(ops)
+    if ops[0] == OpCode.HALT && ops[1] == OpCode.MUL &&
+       ops[2] == OpCode.ADD && ops[3] == OpCode.PUSH {
+        passed++
+    } otherwise {
+        println("FAIL: sort_desc misordered an int-backed enum array")
+        failed++
+    }
+
+    mut statuses [Status] = {Status.MID, Status.OK, Status.BAD}
+    arrays.sort_asc(statuses)
+    if statuses[0] == Status.BAD && statuses[1] == Status.MID && statuses[2] == Status.OK {
+        passed++
+    } otherwise {
+        println("FAIL: sort_asc misordered a string-backed enum array")
+        failed++
+    }
+
+    println("arrays_sort_enum_elements: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}
