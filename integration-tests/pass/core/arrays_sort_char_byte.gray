@@ -1,0 +1,50 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // char sort_asc
+    mut cs [char] = {'z', 'a', 'm'}
+    arrays.sort_asc(cs)
+    if cs[0] == 'a' && cs[1] == 'm' && cs[2] == 'z' {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // char sort_desc
+    mut cs2 [char] = {'z', 'a', 'm'}
+    arrays.sort_desc(cs2)
+    if cs2[0] == 'z' && cs2[1] == 'm' && cs2[2] == 'a' {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte sort_asc
+    mut bs [byte] = {9, 1, 5}
+    arrays.sort_asc(bs)
+    if bs[0] == cast(1, byte) && bs[1] == cast(5, byte) && bs[2] == cast(9, byte) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte sort_desc
+    mut bs2 [byte] = {9, 1, 5}
+    arrays.sort_desc(bs2)
+    if bs2[0] == cast(9, byte) && bs2[1] == cast(5, byte) && bs2[2] == cast(1, byte) {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

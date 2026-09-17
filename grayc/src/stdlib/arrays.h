@@ -476,6 +476,8 @@ int64_t gray_arrays_max_index_float(GrayArray *arr);
 void gray_arrays_sort_asc(GrayArray *arr);
 void gray_arrays_sort_asc_float(GrayArray *arr);
 void gray_arrays_sort_asc_str(GrayArray *arr);
+void gray_arrays_sort_asc_byte(GrayArray *arr);
+void gray_arrays_sort_asc_char(GrayArray *arr);
 
 /*@man sort_desc
  *@module arrays
@@ -492,6 +494,8 @@ void gray_arrays_sort_asc_str(GrayArray *arr);
 void gray_arrays_sort_desc(GrayArray *arr);
 void gray_arrays_sort_desc_float(GrayArray *arr);
 void gray_arrays_sort_desc_str(GrayArray *arr);
+void gray_arrays_sort_desc_byte(GrayArray *arr);
+void gray_arrays_sort_desc_char(GrayArray *arr);
 
 /* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
  * int64/float/str paths only look at the low 64 bits; this orders by the full

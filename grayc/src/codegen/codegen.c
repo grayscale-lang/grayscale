@@ -7077,6 +7077,10 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "gray_arrays_sort_%s_float(", desc ? "desc" : "asc");
         else if (sa_elem && strcmp(sa_elem, "string") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
+        else if (sa_elem && strcmp(sa_elem, "byte") == 0)
+            emit_formatted(codegen, "gray_arrays_sort_%s_byte(", desc ? "desc" : "asc");
+        else if (sa_elem && strcmp(sa_elem, "char") == 0)
+            emit_formatted(codegen, "gray_arrays_sort_%s_char(", desc ? "desc" : "asc");
         else
             emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");
         emit_array_argument_address(codegen, node->data.call.args[0]);
