@@ -7619,10 +7619,24 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 tag, tag, tag, tag, tag, bi, bi, tag, tag, bi, tag, tag, tag, tag);
             return true;
         }
+        /* An enum element is a plain C `enum` (int32_t-width) unless it's
+         * string-backed (a GrayString, matching [string]'s width instead)
+         * — same split arrays.sort_asc/sort_desc dispatch on. */
+        GrayType *is_elem_t = is_elem ? type_from_name(is_elem) : NULL;
+        bool is_elem_is_str_enum = is_elem_t && is_elem_t->kind == TK_ENUM &&
+            codegen_enum_is_string(codegen, codegen_resolve_type(codegen, is_elem));
+        bool is_elem_is_int_enum = is_elem_t && is_elem_t->kind == TK_ENUM && !is_elem_is_str_enum;
         if (is_elem && strcmp(is_elem, "float") == 0)
             emit(codegen, "gray_arrays_is_sorted_float(");
-        else if (is_elem && strcmp(is_elem, "string") == 0)
+        else if ((is_elem && strcmp(is_elem, "string") == 0) || is_elem_is_str_enum)
             emit(codegen, "gray_arrays_is_sorted_str(");
+        /* bool is 1 byte, the same width gray_arrays_is_sorted_byte reads —
+         * the plain int64_t-width fallback below silently over-read past a
+         * bool array's real (1-byte-strided) backing store. */
+        else if (is_elem && (strcmp(is_elem, "byte") == 0 || strcmp(is_elem, "bool") == 0))
+            emit(codegen, "gray_arrays_is_sorted_byte(");
+        else if ((is_elem && strcmp(is_elem, "char") == 0) || is_elem_is_int_enum)
+            emit(codegen, "gray_arrays_is_sorted_char(");
         else
             emit(codegen, "gray_arrays_is_sorted(");
         emit_array_argument_address(codegen, node->data.call.args[0]);

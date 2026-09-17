@@ -1,0 +1,54 @@
+/*
+ * arrays_is_sorted_narrow_elements.gray - arrays.is_sorted on element types
+ * narrower than int64_t (bool, char, and an int-backed enum).
+ *
+ * is_sorted's fallback path read every element as a plain int64_t
+ * regardless of the array's real per-element width. For a 1-byte bool
+ * array (or a 4-byte char/enum array), that overlapping/out-of-bounds
+ * read produced a wrong answer even on an array that was genuinely sorted.
+ */
+
+import @arrays
+
+const OpCode enum {
+    PUSH
+    ADD
+    HALT
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut bools [bool] = {true, false}
+    arrays.sort_asc(bools)
+    if arrays.is_sorted(bools) {
+        passed++
+    } otherwise {
+        println("FAIL: is_sorted wrong on a sorted bool array")
+        failed++
+    }
+
+    mut cs [char] = {'z', 'a', 'm'}
+    arrays.sort_asc(cs)
+    if arrays.is_sorted(cs) {
+        passed++
+    } otherwise {
+        println("FAIL: is_sorted wrong on a sorted char array")
+        failed++
+    }
+
+    mut ops [OpCode] = {OpCode.HALT, OpCode.PUSH, OpCode.ADD}
+    arrays.sort_asc(ops)
+    if arrays.is_sorted(ops) {
+        passed++
+    } otherwise {
+        println("FAIL: is_sorted wrong on a sorted enum array")
+        failed++
+    }
+
+    println("arrays_is_sorted_narrow_elements: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

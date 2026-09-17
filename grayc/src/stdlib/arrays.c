@@ -750,6 +750,26 @@ bool gray_arrays_is_sorted(GrayArray *arr) {
     return true;
 }
 
+/* uint8_t width — byte elements, and bool (1 byte, ordered false < true). */
+bool gray_arrays_is_sorted_byte(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        uint8_t prev = *(uint8_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        uint8_t curr = *(uint8_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
+/* int32_t width — char elements, and an int-backed enum (a plain C enum). */
+bool gray_arrays_is_sorted_char(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        int32_t prev = *(int32_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        int32_t curr = *(int32_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
 bool gray_arrays_is_sorted_float(GrayArray *arr) {
     for (int32_t i = 1; i < arr->len; i++) {
         double prev = *(double *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);

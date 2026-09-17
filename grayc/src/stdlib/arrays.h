@@ -264,6 +264,8 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
  *@end
  */
 bool gray_arrays_is_sorted(GrayArray *arr);
+bool gray_arrays_is_sorted_byte(GrayArray *arr);
+bool gray_arrays_is_sorted_char(GrayArray *arr);
 bool gray_arrays_is_sorted_float(GrayArray *arr);
 bool gray_arrays_is_sorted_str(GrayArray *arr);
 
