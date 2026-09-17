@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3158 - a Grayscale function with an array parameter cannot be
+ * passed as a C callback.
+ * A `[T]` parameter lowers to a GrayArray struct, not the `void *` C
+ * callback APIs such as qsort's comparator require, so the C API's raw
+ * address gets reinterpreted as a GrayArray that was never actually there.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do cmp(a [int], b [int]) -> i32 {
+    return 0
+}
+
+do main() {
+    mut buf ^int = extern.malloc(16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    extern.free(buf)
+}

@@ -9185,12 +9185,33 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 if (cb_target) {
                     FuncSig *cb_sig = find_func(checker, cb_target);
                     for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
-                        if (cb_sig->param_types[p] &&
-                            cb_sig->param_types[p]->kind == TK_POINTER) {
+                        GrayType *cb_pt = cb_sig->param_types[p];
+                        if (!cb_pt) continue;
+                        if (cb_pt->kind == TK_POINTER) {
                             char *msg = typechecker_format(checker,
                                 "cannot pass '%s' as a C callback; its pointer parameter lowers to a "
                                 "typed C pointer, but C callback APIs require 'void *', which Grayscale "
                                 "cannot express", cb_target);
+                            diagnostic_error_message(checker->diag, "E3158", msg,
+                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
+                            break;
+                        }
+                        /* string/array/map/struct parameters are just as
+                         * C-incompatible as a pointer one: none of them lower
+                         * to 'void *' either, so the C API's raw address gets
+                         * reinterpreted as a GrayString/GrayArray/GrayMap/
+                         * struct layout that was never actually there. */
+                        const char *cb_bad_kind = NULL;
+                        if (cb_pt->kind == TK_STRING) cb_bad_kind = "string";
+                        else if (cb_pt->kind == TK_ARRAY) cb_bad_kind = "array";
+                        else if (cb_pt->kind == TK_MAP) cb_bad_kind = "map";
+                        else if (cb_pt->kind == TK_STRUCT && cb_pt->name &&
+                                 is_struct_name(checker, cb_pt->name)) cb_bad_kind = "struct";
+                        if (cb_bad_kind) {
+                            char *msg = typechecker_format(checker,
+                                "cannot pass '%s' as a C callback; its %s parameter has no "
+                                "C-compatible layout, but C callback APIs require 'void *', which "
+                                "Grayscale cannot express", cb_target, cb_bad_kind);
                             diagnostic_error_message(checker->diag, "E3158", msg,
                                 NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
                             break;
