@@ -119,6 +119,56 @@ static char *compile_and_run(const char *gray_source) {
     return output;
 }
 
+/* Compile a Grayscale program with -c (emit C, no binary) and return the
+ * raw generated C source text. Writes the .gray source's own path into
+ * gray_file_out so the caller can check for #line directives naming it —
+ * used to test compiler-internal line mapping that program output alone
+ * can't observe. */
+static char *compile_to_c(const char *gray_source, char *gray_file_out, size_t gray_file_cap) {
+    test_number++;
+    static char c_source[16384];
+    char c_file[128];
+
+    snprintf(gray_file_out, gray_file_cap, "%s/grayc_e2e_%d.gray", e2e_tmpdir(), test_number);
+    snprintf(c_file, sizeof(c_file), "%s/grayc_e2e_%d.c", e2e_tmpdir(), test_number);
+
+    FILE *file = fopen(gray_file_out, "w");
+    if (!file) return NULL;
+    fputs(gray_source, file);
+    fclose(file);
+
+    char command[1024];
+    snprintf(command, sizeof(command), E2E_COMPILER " build \"%s\" -c -o \"%s\" 2>&1",
+        gray_file_out, c_file);
+    FILE *pipe = popen(command, "r");
+    if (!pipe) {
+        unlink(gray_file_out);
+        return NULL;
+    }
+    char cc_out[2048];
+    size_t n = fread(cc_out, 1, sizeof(cc_out) - 1, pipe);
+    cc_out[n] = '\0';
+    int rc = pclose(pipe);
+    if (rc != 0) {
+        fprintf(stderr, "  test %d: -c compile failed:\n%s", test_number, cc_out);
+        unlink(gray_file_out);
+        return NULL;
+    }
+
+    FILE *cf = fopen(c_file, "r");
+    if (!cf) {
+        unlink(gray_file_out);
+        return NULL;
+    }
+    size_t total = fread(c_source, 1, sizeof(c_source) - 1, cf);
+    c_source[total] = '\0';
+    fclose(cf);
+
+    unlink(gray_file_out);
+    unlink(c_file);
+    return c_source;
+}
+
 /* --- Hello World --- */
 
 static void test_e2e_hello(void) {
@@ -2888,6 +2938,44 @@ static void test_e2e_uuid_module(void) {
     ASSERT_STR_EQ(output, "true\nfalse\n0\n00000000-0000-0000-0000-000000000000");
 }
 
+/* --- #line directive mapping --- */
+
+static void test_e2e_line_directives(void) {
+    char gray_file[128];
+    char *c = compile_to_c(
+        ""
+        "do add(a int, b int) -> int {\n"  /* line 1 */
+        "    return a + b\n"                /* line 2 */
+        "}\n"                                /* line 3 */
+        "\n"                                 /* line 4 */
+        "do main() {\n"                      /* line 5 */
+        "    mut x int = 1\n"                /* line 6 */
+        "    println(add(x, x))\n"           /* line 7 */
+        "}",
+        gray_file, sizeof(gray_file));
+    ASSERT_NOT_NULL(c);
+
+    char needle[256];
+    /* Each real statement gets its own directive naming the .gray file and
+     * its exact source line. */
+    snprintf(needle, sizeof(needle), "#line 2 \"%s\"\n", gray_file);
+    char *at_return = strstr(c, needle);
+    ASSERT(at_return != NULL);
+    snprintf(needle, sizeof(needle), "#line 6 \"%s\"", gray_file);
+    ASSERT(strstr(c, needle) != NULL);
+    snprintf(needle, sizeof(needle), "#line 7 \"%s\"", gray_file);
+    ASSERT(strstr(c, needle) != NULL);
+    /* The directive must be immediately followed by `return a + b`'s own C,
+     * not by the panic-location stamp (compiler scaffolding for the same
+     * statement) — otherwise every diagnostic past it in the function is
+     * off by however many scaffolding lines came before the directive. */
+    ASSERT(strncmp(at_return + strlen(needle), "    gray_panic_call_file", 25) != 0);
+    /* Between add()'s body and main()'s own prologue, generated code is
+     * reset to a synthetic marker so it doesn't inherit add()'s last .gray
+     * location. */
+    ASSERT(strstr(c, "#line 1 \"<generated>\"") != NULL);
+}
+
 int main(void) {
     /* Must run from the grayc/ directory */
     if (access(E2E_COMPILER, 0) != 0) {
@@ -3170,6 +3258,7 @@ int main(void) {
     RUN_TEST(test_e2e_enum_explicit_values);
     RUN_TEST(test_e2e_strconv_module);
     RUN_TEST(test_e2e_uuid_module);
+    RUN_TEST(test_e2e_line_directives);
 
     PRINT_RESULTS();
     return _test_fail > 0 ? 1 : 0;

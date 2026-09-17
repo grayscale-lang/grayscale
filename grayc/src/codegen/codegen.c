@@ -75,6 +75,7 @@ static const char *operator_to_c_string(TokenType op) {
 
 /* Forward declarations */
 static void emit_statement(CodeGen *codegen, AstNode *node);
+static void reset_line_directive(CodeGen *codegen);
 static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
@@ -12044,6 +12045,10 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     free(fn_file);
     codegen->indent--;
     emit(codegen, "}\n\n");
+    /* Whatever comes next — another function's own prologue, or top-level
+     * scaffolding — has no .gray origin of its own until the next statement
+     * stamps one; don't let it inherit this function's last .gray location. */
+    reset_line_directive(codegen);
 }
 
 static void emit_expression_statement(CodeGen *codegen, AstNode *node) {
@@ -12323,6 +12328,28 @@ static bool stmt_needs_panic_location(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* Emits `#line N "file"` at column 0 (a directive must not be indented).
+ * file is codegen->file, already forward-slash normalized by
+ * normalize_path_separators — never re-escaped here. */
+static void emit_line_directive(CodeGen *codegen, const char *file, int line) {
+    if (!codegen->emit_line_directives) return;
+    emit_formatted(codegen, "#line %d \"%s\"\n", line, file);
+}
+
+/* Points subsequent generated C — compiler scaffolding with no .gray origin,
+ * such as a function's own prologue before its first statement, or anything
+ * emitted between one function body and the next — back at a synthetic
+ * marker instead of letting it inherit whatever .gray location the last
+ * directive named. Without this, a cc diagnostic in that scaffolding would
+ * misreport a stale .gray file/line instead of the generated C. */
+static void reset_line_directive(CodeGen *codegen) {
+    if (!codegen->emit_line_directives) return;
+    emit(codegen, "#line 1 \"<generated>\"\n");
+    free(codegen->last_line_directive_file);
+    codegen->last_line_directive_file = NULL;
+    codegen->last_line_directive_line = 0;
+}
+
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     codegen_enter_node(codegen, node);
     if (!node) return;
@@ -12334,12 +12361,32 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
      * function body (indent > 0) — file-scope initializers cannot call, so
      * cannot panic this way. codegen->file is the enclosing function's own
      * module here (emit_function_declaration points it there). Statements that
-     * evaluate only located operations skip the stamp. */
+     * evaluate only located operations skip the stamp. Emitted before the
+     * #line directive below: it is itself scaffolding, not the statement's
+     * own C, and must not shift the directive off the line it names. */
     if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
         stmt_needs_panic_location(codegen, node)) {
         emit_indent(codegen);
         emit_formatted(codegen, "gray_panic_call_file = \"%s\"; gray_panic_call_line = %d;\n",
                        codegen->file, node->token.line);
+    }
+
+    /* Map this statement back to its .gray source for cc diagnostics,
+     * sanitizers, and gcov. Only inside a function body (indent > 0) —
+     * file-scope initializers are emitted in the preamble, which has no
+     * .gray-mapped code around it. Skipped when the last directive already
+     * named this exact file/line, so a run of statements sharing one source
+     * line (or synthetic sub-statements) doesn't emit one directive each.
+     * Emitted last, immediately before the statement's own C, so the line
+     * it names is that C's actual line — not the panic stamp's. */
+    if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
+        (!codegen->last_line_directive_file ||
+         codegen->last_line_directive_line != node->token.line ||
+         strcmp(codegen->last_line_directive_file, codegen->file) != 0)) {
+        emit_line_directive(codegen, codegen->file, node->token.line);
+        free(codegen->last_line_directive_file);
+        codegen->last_line_directive_file = strdup(codegen->file);
+        codegen->last_line_directive_line = node->token.line;
     }
 
     switch (node->kind) {
@@ -12761,6 +12808,7 @@ CodeGen codegen_create(const char *file) {
     codegen.has_fmt = false;
     codegen.file_owned = normalize_path_separators(file);
     codegen.file = codegen.file_owned;
+    codegen.emit_line_directives = true;
     codegen.enum_names = NULL;
     codegen.enum_is_string = NULL;
     codegen.enum_is_tagged = NULL;
@@ -13855,4 +13903,5 @@ void codegen_destroy(CodeGen *codegen) {
     for (int i = 0; i < codegen->ns_func_name_count; i++)
         free(codegen->ns_func_names[i]);
     free(codegen->ns_func_names);
+    free(codegen->last_line_directive_file);
 }

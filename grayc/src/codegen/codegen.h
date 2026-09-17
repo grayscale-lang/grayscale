@@ -217,6 +217,16 @@ typedef struct {
     char **ns_func_names;
     int ns_func_name_count;
     int ns_func_name_cap;
+
+    /* #line directive emission (maps generated C back to the .gray source
+     * for cc diagnostics, sanitizers, and gcov). On by default; a raw-C
+     * debugging mode can turn it off to read the generated C's own line
+     * numbers instead. last_line_directive_file/_line track the .gray
+     * location the last directive pointed at, so a run of statements on
+     * the same source line emits one directive, not one per statement. */
+    bool emit_line_directives;
+    char *last_line_directive_file;
+    int last_line_directive_line;
 } CodeGen;
 
 CodeGen codegen_create(const char *file);
