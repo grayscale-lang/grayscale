@@ -12,6 +12,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -70,6 +72,51 @@ func TestFormatGraySourceCleanInputUnchanged(t *testing.T) {
 	got := string(formatGraySource([]byte(in)))
 	if got != in {
 		t.Fatalf("clean input rewritten\ngot:  %q\nwant: %q", got, in)
+	}
+}
+
+// TestRunFmtAppliesTextNormalizations guards the wiring between runFmt and
+// formatGraySource: formatGraySource alone was fully correct and tested
+// above, but runFmt never called it, so `gray fmt` only re-indented and
+// left trailing whitespace, blank-line runs, and missing EOF newlines
+// untouched.
+func TestRunFmtAppliesTextNormalizations(t *testing.T) {
+	repoRoot, err := filepath.Abs("..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graycPath := filepath.Join(repoRoot, "grayc", "grayc")
+	if _, err := os.Stat(graycPath); err != nil {
+		t.Skipf("grayc binary not built at %s; run `make build` first", graycPath)
+	}
+	t.Setenv("GRAY_COMPILER_PATH", graycPath)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "repro.gray")
+	in := "do main() {\n    println(\"a\")   \n    \n\n\n\n    println(\"b\")\n}\n\n\n\n"
+	if err := os.WriteFile(path, []byte(in), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if exit := runFmt([]string{path}, true); exit == 0 {
+		t.Fatalf("gray fmt --check exited 0 on unformatted input")
+	}
+
+	if exit := runFmt([]string{path}, false); exit != 0 {
+		t.Fatalf("gray fmt exited %d", exit)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "do main() {\n    println(\"a\")\n\n\n    println(\"b\")\n}\n"
+	if string(got) != want {
+		t.Fatalf("gray fmt did not fully normalize output\ngot:  %q\nwant: %q", got, want)
+	}
+
+	if exit := runFmt([]string{path}, true); exit != 0 {
+		t.Fatalf("gray fmt --check exited %d on freshly formatted file", exit)
 	}
 }
 

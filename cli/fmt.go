@@ -155,6 +155,12 @@ func runFmt(args []string, checkMode bool) int {
 	changed := 0
 
 	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
+			exit = 1
+			continue
+		}
 		orig, err := os.ReadFile(path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
@@ -183,6 +189,7 @@ func runFmt(args []string, checkMode bool) int {
 				exit = 1
 				continue
 			}
+			formatted = formatGraySource(formatted)
 			if string(orig) != string(formatted) {
 				fmt.Printf("would format: %s\n", path)
 				if exit == 0 {
@@ -201,6 +208,12 @@ func runFmt(args []string, checkMode bool) int {
 		}
 		after, err := os.ReadFile(path)
 		if err != nil {
+			fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
+			exit = 1
+			continue
+		}
+		after = formatGraySource(after)
+		if err := os.WriteFile(path, after, info.Mode()); err != nil {
 			fmt.Fprintf(os.Stderr, "gray fmt: %v\n", err)
 			exit = 1
 			continue
