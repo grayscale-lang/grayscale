@@ -9180,8 +9180,18 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                  * take `const void *`, which Grayscale has no type to express —
                  * the emitted function pointer can never match and the C
                  * compiler rejects the call. Functions with no pointer
-                 * parameters (extern.atexit(()handler)) lower cleanly and pass. */
+                 * parameters (extern.atexit(()handler)) lower cleanly and pass.
+                 * `ca` itself may be a bare variable holding a func-ref
+                 * initializer (`const f func = ()cmp; extern.qsort(..., f)`)
+                 * rather than the inline `()cmp`/`ref(cmp)` form; see through
+                 * it the same way resolve_call_sig_in_body() does. */
                 const char *cb_target = func_ref_target_name(ca);
+                if (!cb_target && ca && ca->kind == NODE_LABEL &&
+                    checker->current_func_decl) {
+                    cb_target = func_ref_target_name(local_initializer(
+                        checker->current_func_decl->data.func_decl.body,
+                        ca->data.label.value));
+                }
                 if (cb_target) {
                     FuncSig *cb_sig = find_func(checker, cb_target);
                     for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
