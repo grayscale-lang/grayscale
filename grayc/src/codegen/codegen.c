@@ -7537,15 +7537,44 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         }
         if (bs_elem && strcmp(bs_elem, "string") == 0) {
             emit(codegen, "gray_arrays_binary_search_str(");
-        } else if (bs_elem && strcmp(bs_elem, "float") == 0) {
-            emit(codegen, "gray_arrays_binary_search_float(");
-        } else {
-            emit(codegen, "gray_arrays_binary_search(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
         }
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
+        if (bs_elem && strcmp(bs_elem, "float") == 0) {
+            emit(codegen, "gray_arrays_binary_search_float(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        /* Every other element type: read each slot as its real C type so the
+         * stride and width are correct ([byte], [char], sized ints all broke
+         * when read as int64 — see the contains handler above. */
+        char bs_c_elem[MSG_BUF_SIZE];
+        snprintf(bs_c_elem, sizeof(bs_c_elem), "%s",
+            gray_type_to_c_codegen(codegen, bs_elem ? bs_elem : "int"));
+        int bs_tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _bs%d = ", bs_tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; int64_t _bv%d = ", bs_tag);
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
+        emit_formatted(codegen,
+            "; int64_t _blo%d = 0, _bhi%d = (int64_t)_bs%d.len - 1, _br%d = -1; "
+            "while (_blo%d <= _bhi%d) { int64_t _bm%d = _blo%d + (_bhi%d - _blo%d) / 2; "
+            "int64_t _bev%d = (int64_t)((%s *)_bs%d.data)[_bm%d]; "
+            "if (_bev%d < _bv%d) _blo%d = _bm%d + 1; "
+            "else if (_bev%d > _bv%d) _bhi%d = _bm%d - 1; "
+            "else { _br%d = _bm%d; break; } } _br%d; })",
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_c_elem, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag);
         return true;
     }
     if ((strcmp(func, "min_index") == 0 || strcmp(func, "max_index") == 0) &&
@@ -7577,11 +7606,32 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         }
         if (mi_elem && strcmp(mi_elem, "float") == 0) {
             emit_formatted(codegen, "gray_arrays_%s_float(", func);
-        } else {
-            emit_formatted(codegen, "gray_arrays_%s(", func);
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ")");
+            return true;
         }
-        emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
+        /* Every other element type: read each slot as its real C type so the
+         * stride and width are correct ([byte], [char], sized ints all broke
+         * when read as int64 — see the contains handler above. */
+        char mi_c_elem[MSG_BUF_SIZE];
+        snprintf(mi_c_elem, sizeof(mi_c_elem), "%s",
+            gray_type_to_c_codegen(codegen, mi_elem ? mi_elem : "int"));
+        const char *mi_rel = want_max ? ">" : "<";
+        int mi_tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _mi%d = ", mi_tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen,
+            "; int64_t _mr%d = -1; if (_mi%d.len > 0) { _mr%d = 0; "
+            "int64_t _mb%d = (int64_t)((%s *)_mi%d.data)[0]; "
+            "for (int32_t _mj%d = 1; _mj%d < _mi%d.len; _mj%d++) { "
+            "int64_t _mv%d = (int64_t)((%s *)_mi%d.data)[_mj%d]; "
+            "if (_mv%d %s _mb%d) { _mb%d = _mv%d; _mr%d = _mj%d; } } } _mr%d; })",
+            mi_tag, mi_tag, mi_tag,
+            mi_tag, mi_c_elem, mi_tag,
+            mi_tag, mi_tag, mi_tag, mi_tag,
+            mi_tag, mi_c_elem, mi_tag, mi_tag,
+            mi_tag, mi_rel, mi_tag, mi_tag, mi_tag, mi_tag, mi_tag,
+            mi_tag);
         return true;
     }
 
