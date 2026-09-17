@@ -6766,6 +6766,19 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
                 return true;
             }
         }
+        /* Array of #json structs: [StructName]. Without this, an array
+         * argument fell straight to the map fallback below, which
+         * reinterprets the GrayArray's raw memory as a GrayMap and
+         * segfaults reading its (nonexistent) key/value metadata. */
+        if (arg_t && arg_t->kind == TK_ARRAY && arg_t->element_type) {
+            AstNode *sdecl = find_struct_declaration(codegen, arg_t->element_type);
+            if (sdecl && sdecl->data.struct_decl.is_json) {
+                emit_formatted(codegen, "gray_json_stringify_array_%s(gray_default_arena, ", arg_t->element_type);
+                emit_expression(codegen, arg);
+                emit(codegen, ")");
+                return true;
+            }
+        }
         /* Fallback: encode as map */
         emit(codegen, "({ __auto_type _jtmp = ");
         emit_expression(codegen, arg);
@@ -13898,6 +13911,33 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "        gray_array_push(arena, &_result, &_item, __FILE__, __LINE__);\n");
         emit_formatted(codegen, "    }\n");
         emit_formatted(codegen, "    return _result;\n");
+        emit_formatted(codegen, "}\n\n");
+
+        /* --- stringify array: GrayArray of structs → JSON array string ---
+         * Symmetric with parse array above; json.stringify() previously had
+         * no dedicated codegen path for an array argument at all and fell
+         * to the generic map-fallback, which reinterprets the GrayArray's
+         * raw memory as a GrayMap and segfaults. */
+        emit_formatted(codegen, "static GrayString gray_json_stringify_array_%s(GrayArena *arena, GrayArray _arr) {\n", struct_name);
+        emit_formatted(codegen, "    GrayString *_parts = (GrayString *)gray_arena_alloc(arena, sizeof(GrayString) * (size_t)(_arr.len > 0 ? _arr.len : 1));\n");
+        emit_formatted(codegen, "    size_t _need = 2;\n");
+        emit_formatted(codegen, "    for (int32_t _i = 0; _i < _arr.len; _i++) {\n");
+        emit_formatted(codegen, "        GrayStruct_%s _item = *(GrayStruct_%s *)((char *)_arr.data + (size_t)_i * (size_t)_arr.elem_size);\n", struct_name, struct_name);
+        emit_formatted(codegen, "        GrayString _js = gray_json_stringify_%s(arena, _item);\n", struct_name);
+        emit_formatted(codegen, "        _parts[_i] = _js;\n");
+        emit_formatted(codegen, "        _need += (size_t)_js.len;\n");
+        emit_formatted(codegen, "        if (_i > 0) _need += 2;\n");
+        emit_formatted(codegen, "    }\n");
+        emit_formatted(codegen, "    char *_buf = gray_arena_alloc(arena, _need + 1);\n");
+        emit_formatted(codegen, "    int _pos = 0;\n");
+        emit_formatted(codegen, "    _buf[_pos++] = '[';\n");
+        emit_formatted(codegen, "    for (int32_t _i = 0; _i < _arr.len; _i++) {\n");
+        emit_formatted(codegen, "        if (_i > 0) { _buf[_pos++] = ','; _buf[_pos++] = ' '; }\n");
+        emit_formatted(codegen, "        memcpy(_buf + _pos, _parts[_i].data, (size_t)_parts[_i].len); _pos += _parts[_i].len;\n");
+        emit_formatted(codegen, "    }\n");
+        emit_formatted(codegen, "    _buf[_pos++] = ']';\n");
+        emit_formatted(codegen, "    _buf[_pos] = '\\0';\n");
+        emit_formatted(codegen, "    return (GrayString){_buf, (int32_t)_pos};\n");
         emit_formatted(codegen, "}\n\n");
     }
 
