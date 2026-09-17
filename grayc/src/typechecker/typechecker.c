@@ -7019,8 +7019,15 @@ static bool array_spelling_is_fixed(const char *s) {
 static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
     if (!e || e->kind != NODE_MEMBER_EXPR) return false;
     GrayType *obj_t = resolve_expression(checker, e->data.member.object);
-    if (!obj_t || obj_t->kind != TK_STRUCT || !obj_t->name) return false;
-    AstNode *sdecl = find_struct_in_program(checker, obj_t->name);
+    if (!obj_t) return false;
+    /* The dot operator auto-derefs pointers to structs (p.field == p^.field),
+     * so a pointer object resolves to TK_POINTER with the struct name in
+     * element_type, not TK_STRUCT — mirror resolve_member_expr's unwrap. */
+    const char *struct_name = NULL;
+    if (obj_t->kind == TK_STRUCT) struct_name = obj_t->name;
+    else if (obj_t->kind == TK_POINTER) struct_name = obj_t->element_type;
+    if (!struct_name) return false;
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
     if (!sdecl) return false;
     for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
         if (strcmp(sdecl->data.struct_decl.fields[i].name, e->data.member.member) == 0)
