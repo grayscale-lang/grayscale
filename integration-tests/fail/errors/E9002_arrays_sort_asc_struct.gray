@@ -1,0 +1,21 @@
+/*
+ * Error Test: E9002 - 'arrays.sort_asc()' (and sort_desc/is_sorted/
+ * binary_search) on a struct-element array. Previously had no
+ * comparable-type check at all: sort_asc/sort_desc/is_sorted compiled and
+ * ran clean, silently reinterpreting the struct's raw leading bytes as the
+ * sort key.
+ */
+// expect-error: E9002
+// expect-error-count: 1
+
+import @arrays
+
+const Person struct {
+    name string
+    age int
+}
+
+do main() {
+    mut arr [Person] = {Person{name: "Zed", age: 1}, Person{name: "Amy", age: 2}}
+    arrays.sort_asc(arr)
+}

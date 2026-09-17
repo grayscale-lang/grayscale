@@ -5588,7 +5588,12 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 tc_err_arg_type(checker, idx_node, msg);
             }
         }
-        /* E9002: arrays.sum/min/max require numeric array */
+        /* E9002: arrays.sum/min/max require numeric array. Same stricter
+         * !type_is_numeric() check as average below — a struct element is
+         * just as non-numeric as a string/bool one, and the codegen for
+         * these (a value cast to int64_t) leaks a raw C error on a struct
+         * array exactly like it used to for string/bool before this
+         * matched average's check. */
         if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
              strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
              strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
@@ -5598,8 +5603,35 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             GrayType *arr_t = resolve_expression(checker, arg0);
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (elem_t->kind == TK_STRING || elem_t->kind == TK_BOOL) {
+                if (!type_is_numeric(elem_t)) {
                     diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
+                }
+            }
+        }
+        /* E9002: arrays.binary_search/sort_asc/sort_desc/is_sorted require
+         * an orderable element type. Unlike sum/min/max above, these four
+         * do support string and bool (dedicated string codegen paths; bool
+         * casts cleanly to int64_t) and enum (a plain C enum, comparable as
+         * an int) — only a struct/array/map element has no ordering and no
+         * safe scalar cast, which otherwise either leaks a raw C error
+         * (binary_search, a value cast) or silently reinterprets the
+         * struct's raw leading bytes as the sort/comparison key
+         * (sort_asc/sort_desc/is_sorted, a pointer-reinterpret read). */
+        if ((strcmp(mfn, "binary_search") == 0 || strcmp(mfn, "sort_asc") == 0 ||
+             strcmp(mfn, "sort_desc") == 0 || strcmp(mfn, "is_sorted") == 0) &&
+            node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            GrayType *arr_t = resolve_expression(checker, arg0);
+            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                bool orderable = type_is_numeric(elem_t) || elem_t->kind == TK_STRING ||
+                                  elem_t->kind == TK_BOOL || elem_t->kind == TK_ENUM;
+                if (!orderable) {
+                    char *msg = typechecker_format(checker,
+                        "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s'",
+                        mfn, arr_t->element_type);
+                    diagnostic_error_message(checker->diag, "E9002", msg,
+                        NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0);
                 }
             }
         }
