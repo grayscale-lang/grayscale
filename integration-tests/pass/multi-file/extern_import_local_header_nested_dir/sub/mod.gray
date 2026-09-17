@@ -1,0 +1,6 @@
+extern import "./util.h"
+
+do call_it() -> int {
+    mut r int = extern.helper(1, 2)
+    return r
+}

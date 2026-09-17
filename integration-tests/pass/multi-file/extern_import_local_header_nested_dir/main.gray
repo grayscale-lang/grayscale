@@ -1,0 +1,15 @@
+/*
+ * A local ("./x.h") extern import written in a file other than the entry
+ * point must resolve relative to that importing file's own directory, not
+ * the entry file's — matching how a plain `import "./x"` resolves.
+ */
+
+import "./sub/mod"
+
+do main() {
+    if mod.call_it() == 3 {
+        println("PASS")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

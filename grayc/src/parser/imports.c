@@ -618,7 +618,21 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                             bool all_sibling = true;
                             for (int xi = 0; xi < transitive_stmt->data.import_stmt.count; xi++) {
                                 ImportItem *titem = &transitive_stmt->data.import_stmt.items[xi];
-                                if (titem->is_stdlib || titem->is_c_import) {
+                                if (titem->is_c_import) {
+                                    /* A local ("./x.h") header is resolved
+                                     * relative to the importing file, same as
+                                     * an ordinary import — main.c's header
+                                     * lookups fall back to the entry file's
+                                     * directory when source_dir is unset, so
+                                     * a local header must get this file's
+                                     * directory here, not be skipped like a
+                                     * stdlib import (which never consults
+                                     * source_dir at all). */
+                                    all_sibling = false;
+                                    if (!titem->source_dir) titem->source_dir = src_dir;
+                                    continue;
+                                }
+                                if (titem->is_stdlib) {
                                     all_sibling = false;
                                     continue;
                                 }
