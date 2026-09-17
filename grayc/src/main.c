@@ -364,8 +364,9 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diag, Arena *a
                 char help[512];
                 snprintf(help, sizeof(help),
                     "'%s' is not available for this target, or the library that "
-                    "provides it is not installed. Platform-specific C headers "
-                    "must be guarded per target.", item->path);
+                    "provides it is not installed. Grayscale has no conditional "
+                    "import: only import C headers that are available on every "
+                    "target you build for.", item->path);
                 diagnostic_error_code_formatted_help(diag, "E6015",
                     item->token.file ? item->token.file : entry_file,
                     item->token.line, item->token.column, 0,
