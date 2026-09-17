@@ -265,6 +265,34 @@ static bool c_header_is_local(const char *path) {
            (path[1] == '.' && path[2] == '/'));
 }
 
+/* Directory to resolve a local C header import against: item->source_dir,
+ * or (for an import written directly in the entry file, where source_dir is
+ * NULL) the entry file's own directory. Shared by preflight_c_headers,
+ * add_local_c_header_dirs, and append_c_header_includes so all three treat
+ * "./x.h" the same way. */
+static const char *local_c_header_dir(const ImportItem *item, const char *entry_file,
+                                      char *buf, size_t buf_size) {
+    if (item->source_dir) return item->source_dir;
+    snprintf(buf, buf_size, "%s", entry_file);
+    char *sep = gray_path_rsep(buf);
+    if (sep) sep[1] = '\0';
+    else snprintf(buf, buf_size, "./");
+    return buf;
+}
+
+/* item->path resolved against its importing file's directory — "./x.h" in
+ * sub/mod.gray becomes "sub/./x.h". Used both to check/emit a local header
+ * and, critically, as the *dedup key* for one: two different directories
+ * each importing their own "./bindings.h" must not collapse into a single
+ * check/emission just because the raw spelling is identical (#2729) — the
+ * resolved path differs even though the written text doesn't. */
+static void resolve_local_c_header_path(const ImportItem *item, const char *entry_file,
+                                        char *out, size_t out_size) {
+    char dir_buf[PATH_BUF_SIZE];
+    const char *dir = local_c_header_dir(item, entry_file, dir_buf, sizeof(dir_buf));
+    snprintf(out, out_size, "%s%s", dir, item->path);
+}
+
 /* Preflight every distinct C header named by an `extern import` before the
  * real compile. A header that is missing, misspelled, or exists only on
  * another platform otherwise surfaces as the C compiler's own "file not
@@ -286,26 +314,26 @@ static bool preflight_c_headers(AstNode *program, DiagnosticList *diag, Arena *a
             ImportItem *item = &stmt->data.import_stmt.items[ii];
             if (!item->is_c_import || !item->path) continue;
 
+            /* A local header's dedup key must be its resolved path, not the
+             * raw spelling: two different directories each importing their
+             * own "./bindings.h" are two different files that both need
+             * checking, even though the text is identical (#2729). A
+             * system header has no directory to resolve against, so the
+             * raw name is already the right key. */
+            char resolved[PATH_BUF_SIZE];
+            bool is_local = c_header_is_local(item->path);
+            if (is_local) resolve_local_c_header_path(item, entry_file, resolved, sizeof(resolved));
+            const char *key = is_local ? resolved : item->path;
+
             bool dup = false;
             for (int k = 0; k < seen_count; k++)
-                if (strcmp(seen[k], item->path) == 0) { dup = true; break; }
+                if (strcmp(seen[k], key) == 0) { dup = true; break; }
             if (dup) continue;
-            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item->path;
+            if (seen_count < MAX_CC_ARGS)
+                seen[seen_count++] = arena_copy_string(arena, key);
 
             bool found;
-            if (c_header_is_local(item->path)) {
-                /* Resolve against the directory of the importing file. */
-                char base[PATH_BUF_SIZE];
-                const char *dir = item->source_dir;
-                if (!dir) {
-                    snprintf(base, sizeof(base), "%s", entry_file);
-                    char *sep = gray_path_rsep(base);
-                    if (sep) sep[1] = '\0';
-                    else snprintf(base, sizeof(base), "./");
-                    dir = base;
-                }
-                char resolved[PATH_BUF_SIZE];
-                snprintf(resolved, sizeof(resolved), "%s%s", dir, item->path);
+            if (is_local) {
                 found = gray_file_readable(resolved);
             } else {
                 /* Angle-bracket header: ask the target compiler whether it
@@ -397,7 +425,12 @@ static void add_local_c_header_dirs(ArgV *cc_argv, Arena *arena, AstNode *progra
  * translation unit for probing real C function signatures. */
 static void append_c_header_includes(AstNode *program, const char *entry_file,
                                      char *out, size_t out_size) {
-    const char *seen[MAX_CC_ARGS];
+    /* Dedup key per seen item: its resolved path for a local header, its raw
+     * name for a system one. Compared on demand rather than stored, so this
+     * needs no scratch buffer beyond the one line/resolved pair in flight —
+     * see the dedup-key comment in preflight_c_headers for why a local
+     * header can't be deduped by its raw "./x.h" spelling (#2729). */
+    const ImportItem *seen[MAX_CC_ARGS];
     int seen_count = 0;
     size_t used = 0;
     out[0] = '\0';
@@ -409,25 +442,29 @@ static void append_c_header_includes(AstNode *program, const char *entry_file,
             ImportItem *item = &stmt->data.import_stmt.items[ii];
             if (!item->is_c_import || !item->path) continue;
 
+            bool is_local = c_header_is_local(item->path);
+            char resolved[PATH_BUF_SIZE];
+            if (is_local) resolve_local_c_header_path(item, entry_file, resolved, sizeof(resolved));
+
             bool dup = false;
-            for (int k = 0; k < seen_count; k++)
-                if (strcmp(seen[k], item->path) == 0) { dup = true; break; }
+            for (int k = 0; k < seen_count; k++) {
+                const ImportItem *s = seen[k];
+                bool s_local = c_header_is_local(s->path);
+                if (s_local != is_local) continue;
+                if (is_local) {
+                    char s_resolved[PATH_BUF_SIZE];
+                    resolve_local_c_header_path(s, entry_file, s_resolved, sizeof(s_resolved));
+                    if (strcmp(s_resolved, resolved) == 0) { dup = true; break; }
+                } else if (strcmp(s->path, item->path) == 0) {
+                    dup = true;
+                    break;
+                }
+            }
             if (dup) continue;
-            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item->path;
+            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item;
 
             char line[PATH_BUF_SIZE];
-            if (c_header_is_local(item->path)) {
-                char base[PATH_BUF_SIZE];
-                const char *dir = item->source_dir;
-                if (!dir) {
-                    snprintf(base, sizeof(base), "%s", entry_file);
-                    char *sep = gray_path_rsep(base);
-                    if (sep) sep[1] = '\0';
-                    else snprintf(base, sizeof(base), "./");
-                    dir = base;
-                }
-                char resolved[PATH_BUF_SIZE];
-                snprintf(resolved, sizeof(resolved), "%s%s", dir, item->path);
+            if (is_local) {
                 snprintf(line, sizeof(line), "#include \"%s\"\n", resolved);
             } else {
                 snprintf(line, sizeof(line), "#include <%s>\n", item->path);

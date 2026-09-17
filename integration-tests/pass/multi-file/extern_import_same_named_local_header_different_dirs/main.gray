@@ -1,0 +1,18 @@
+/*
+ * Two modules in different directories each import their own same-named
+ * local header ("./bindings.h"). Deduping/emitting those C imports by raw
+ * spelling instead of resolved path collapses both into one #include, so
+ * only one module's real header ever reaches the compiled C. Each module's
+ * own C function must be reachable independently.
+ */
+
+import "./mod_a/mod_a"
+import "./mod_b/mod_b"
+
+do main() {
+    if mod_a.a_which() == 111 && mod_b.b_which() == 222 {
+        println("PASS")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

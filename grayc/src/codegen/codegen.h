@@ -152,8 +152,13 @@ typedef struct {
     int imported_module_count;
     int imported_module_cap;
 
-    /* C interop headers from extern import "header.h" */
+    /* C interop headers from extern import "header.h". c_header_is_local[i]
+     * says whether c_headers[i] is a "./x.h"/"../x.h" header — resolved to
+     * its canonical absolute path by the time it lands here, so it no longer
+     * carries the "./" spelling that would otherwise mark it — and so must
+     * be emitted as a quoted #include rather than an angle-bracket one. */
     const char **c_headers;
+    bool *c_header_is_local;
     int c_header_count;
     int c_header_cap;
     bool has_c_imports;

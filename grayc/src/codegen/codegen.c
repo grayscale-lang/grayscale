@@ -35,6 +35,7 @@
 #define VAR_NAME_BUF         64
 #define SHORT_VAR_BUF        32
 #define CYCLE_GUARD_DEPTH    64
+#define C_HEADER_PATH_BUF    2048
 
 /* Return the C-syntax string for an operator TokenType. Used when emitting
  * the operator literally into C source code. */
@@ -12912,6 +12913,7 @@ CodeGen codegen_create(const char *file) {
     codegen.imported_module_count = 0;
     codegen.imported_module_cap = 0;
     codegen.c_headers = NULL;
+    codegen.c_header_is_local = NULL;
     codegen.c_header_count = 0;
     codegen.c_header_cap = 0;
     codegen.has_c_imports = false;
@@ -12988,6 +12990,39 @@ static void codegen_emit_tagged_enum_body(CodeGen *codegen, AstNode *enum_node) 
     emit_formatted(codegen, "};\n\n");
 }
 
+/* Resolve a local C header import ("./x.h" / "../x.h") to its canonical
+ * absolute path, using the importing file's own directory (item->source_dir,
+ * falling back to the entry file's directory for an import written directly
+ * in it — mirrors main.c's preflight_c_headers/add_local_c_header_dirs).
+ *
+ * Emitting the raw "./x.h" spelling verbatim, as written, is ambiguous once
+ * two different directories each import their own same-named local header:
+ * both produce the identical #include line, and the C preprocessor can only
+ * resolve that text one way, so only one module's actual header ever lands
+ * in the compiled C (#2729). A canonical absolute path makes each line name
+ * its own file outright, independent of -iquote search order.
+ *
+ * Returns NULL (caller keeps the raw spelling) if the file cannot be
+ * resolved — should not happen post-preflight, but codegen must not crash
+ * either way. Caller-owned; deliberately never freed — see the c_headers[]
+ * comment at the free site in codegen_destroy(). */
+static const char *resolve_local_c_header(CodeGen *codegen, ImportItem *item) {
+    char dir[C_HEADER_PATH_BUF];
+    if (item->source_dir) {
+        snprintf(dir, sizeof(dir), "%s", item->source_dir);
+    } else {
+        snprintf(dir, sizeof(dir), "%s", codegen->file ? codegen->file : "");
+        char *sep = gray_path_rsep(dir);
+        if (sep) sep[1] = '\0';
+        else snprintf(dir, sizeof(dir), "./");
+    }
+    char joined[C_HEADER_PATH_BUF];
+    snprintf(joined, sizeof(joined), "%s%s", dir, item->path);
+    char resolved[C_HEADER_PATH_BUF];
+    if (!gray_realpath_into(joined, resolved, sizeof(resolved))) return NULL;
+    return strdup(resolved);
+}
+
 void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (program->kind != NODE_PROGRAM) return;
 
@@ -13029,9 +13064,25 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 /* Collect C interop headers */
                 if (item->is_c_import && item->path) {
                     codegen->has_c_imports = true;
-                    GROW_ARRAY(codegen->c_headers, codegen->c_header_count,
-                        codegen->c_header_cap);
-                    codegen->c_headers[codegen->c_header_count++] = item->path;
+                    bool is_local = strncmp(item->path, "./", 2) == 0 ||
+                                    strncmp(item->path, "../", 3) == 0;
+                    /* c_headers/c_header_is_local grow in lockstep on a
+                     * shared cap — GROW_ARRAY on each separately would only
+                     * bump the second array every other resize, since the
+                     * first call's cap bump already makes its own
+                     * count>=cap check false. */
+                    if (codegen->c_header_count >= codegen->c_header_cap) {
+                        codegen->c_header_cap = GROW_NEXT_CAP(codegen->c_header_cap);
+                        codegen->c_headers = xrealloc(codegen->c_headers,
+                            sizeof(*codegen->c_headers) * (size_t)codegen->c_header_cap);
+                        codegen->c_header_is_local = xrealloc(codegen->c_header_is_local,
+                            sizeof(*codegen->c_header_is_local) * (size_t)codegen->c_header_cap);
+                    }
+                    const char *resolved = is_local
+                        ? resolve_local_c_header(codegen, item) : NULL;
+                    codegen->c_headers[codegen->c_header_count] = resolved ? resolved : item->path;
+                    codegen->c_header_is_local[codegen->c_header_count] = is_local;
+                    codegen->c_header_count++;
                 }
                 /* Track imported stdlib module names — codegen_module_imported()
                  * is a stdlib-only lookup; a user module's membership comes from
@@ -13179,17 +13230,26 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit(codegen, "\n/* C interop headers */\n");
         for (int i = 0; i < codegen->c_header_count; i++) {
             const char *hdr = codegen->c_headers[i];
-            /* Defense-in-depth: skip any path that slipped through with dangerous chars */
+            /* Defense-in-depth: skip any path that slipped through with a
+             * character that could break out of the #include "..."/<...>
+             * string and inject arbitrary C. A local header is now resolved
+             * to a real filesystem path (resolve_local_c_header, #2729) that
+             * may legitimately contain spaces or other characters an
+             * allowlist would reject — so deny only what can actually break
+             * a quoted or angle-bracket #include: '"' and '>' end the two
+             * delimited forms early, '\' starts a C escape, and control
+             * characters (including newline) cannot appear on a directive
+             * line at all. */
             bool safe = true;
             for (const char *scan = hdr; *scan; scan++) {
                 unsigned char ch = (unsigned char)*scan;
-                bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                          (ch >= '0' && ch <= '9') ||
-                          ch == '/' || ch == '.' || ch == '_' || ch == '-' || ch == '+';
-                if (!ok) { safe = false; break; }
+                if (ch == '"' || ch == '>' || ch == '\\' || ch < 0x20 || ch == 0x7f) {
+                    safe = false;
+                    break;
+                }
             }
             if (!safe) continue;
-            if (strncmp(hdr, "./", 2) == 0 || strncmp(hdr, "../", 3) == 0) {
+            if (codegen->c_header_is_local[i]) {
                 emit_formatted(codegen, "#include \"%s\"\n", hdr);
             } else {
                 emit_formatted(codegen, "#include <%s>\n", hdr);
@@ -13961,7 +14021,12 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->type_alias_names);
     free(codegen->type_alias_targets);
     free(codegen->imported_modules);
+    /* Individual c_headers[] entries for a resolved local header are
+     * strdup'd by resolve_local_c_header() and deliberately left unfreed —
+     * grayc is a one-shot-per-process CLI compiler, and their number is
+     * bounded by the program's own `extern import "./x.h"` count. */
     free(codegen->c_headers);
+    free(codegen->c_header_is_local);
     free(codegen->scope_arenas);
     for (int i = 0; i < codegen->iter_guard_count; i++)
         free(codegen->iter_guards[i]);
