@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3126 - a literal `0` written directly in a fixed-size array's
+ * size position. The size >0 check only ran along the const-identifier
+ * resolution path; a literal digit skipped it entirely and compiled clean.
+ */
+// expect-error: E3126
+// expect-error-count: 1
+
+do main() {
+    const f [int, 0] = {}
+    println(len(f))
+}

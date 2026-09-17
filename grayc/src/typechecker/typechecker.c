@@ -4636,11 +4636,18 @@ static void typechecker_resolve_array_size_str(TypeChecker *checker,
     memcpy(size_buf, size_start, sz_len);
     size_buf[sz_len] = '\0';
 
-    /* If already numeric, nothing to resolve. */
+    /* If already numeric, nothing to resolve — but a literal zero (or
+     * negative) digit still needs the same >0 check the named-const path
+     * below gets; it was skipped here entirely, so `[T, 0]` compiled clean
+     * while `[T, N]` with `const N int = 0` correctly hit E3126. */
     char *end_pointer = NULL;
     long val = strtol(size_buf, &end_pointer, 10);
     if (end_pointer && *end_pointer == '\0') {
-        (void)val;
+        if (val <= 0) {
+            char *msg = typechecker_format(checker,
+                "array size must be greater than zero; got %ld", val);
+            diagnostic_error_message(checker->diag, "E3126", msg, file, line, col, 0);
+        }
         return;
     }
 
