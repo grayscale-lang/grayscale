@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3174 - json.stringify() on a struct without the #json
+ * attribute. Without it, codegen falls back to reinterpreting the struct's
+ * raw memory as a GrayMap, compiling and running clean while silently
+ * discarding every field and returning "{}" with no diagnostic.
+ */
+// expect-error: E3174
+// expect-error-count: 1
+
+import @json
+
+const Plain struct {
+    x int
+}
+
+do main() {
+    mut p Plain = Plain{x: 1}
+    println(json.stringify(p))
+}

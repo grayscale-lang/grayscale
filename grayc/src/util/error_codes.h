@@ -258,7 +258,8 @@
     GRAY_ERROR("E3170", "types", "malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"`") \
     GRAY_ERROR("E3171", "types", "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s") \
     GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'") \
-    GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation")
+    GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation") \
+    GRAY_ERROR("E3174", "types", "'%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

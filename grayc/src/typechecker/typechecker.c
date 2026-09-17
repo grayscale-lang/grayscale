@@ -5212,6 +5212,50 @@ static bool csv_array_element_ok(const GrayType *t) {
            strcmp(inner->element_type, "string") == 0;
 }
 
+/* True when a struct type by this name carries the #json attribute — the
+ * only shape json.parse()/json.stringify() can actually process.
+ * gray_json_parse_<Name> is only generated for a #json struct, and
+ * stringify's field-walking codegen only exists for one; anything else
+ * falls back to a raw GrayMap decode (parse) or emits no fields at all
+ * (stringify). */
+static bool struct_name_has_json_attr(TypeChecker *checker, const char *struct_name) {
+    if (!struct_name) return false;
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
+    return sdecl && sdecl->data.struct_decl.is_json;
+}
+
+/* True when `t` is a #json struct, an array of one, or a map — the only
+ * target/argument shapes json.parse()/json.stringify() can process. A map
+ * target/argument goes through the dedicated map-based fallback
+ * (gray_json_decode / gray_json_encode_map), which is a genuinely valid
+ * path, not a mistake — only a bare scalar, a non-#json struct, or an
+ * array of anything but a #json struct falls through it unsafely. */
+static bool type_is_json_struct_or_array(TypeChecker *checker, GrayType *t) {
+    if (!t) return false;
+    if (t->kind == TK_MAP) return true;
+    if (t->kind == TK_STRUCT) return struct_name_has_json_attr(checker, t->name);
+    if (t->kind == TK_ARRAY && t->element_type) {
+        GrayType *elem = type_from_name(t->element_type);
+        return elem && elem->kind == TK_STRUCT && struct_name_has_json_attr(checker, elem->name);
+    }
+    return false;
+}
+
+/* True when `node` is a call to `mod.fn(...)`, resolved through any import
+ * alias — used to spot a json.parse() call sitting in a var-decl
+ * initializer or assignment RHS, whose own return type is context-dependent
+ * on that target rather than resolvable from the call itself. */
+static bool call_is_stdlib_fn(TypeChecker *checker, AstNode *node, const char *mod, const char *fn) {
+    if (!node || node->kind != NODE_CALL_EXPR) return false;
+    AstNode *fnnode = node->data.call.function;
+    if (!fnnode || fnnode->kind != NODE_MEMBER_EXPR) return false;
+    const char *mod_raw = ast_member_base_qualifier(fnnode);
+    if (!mod_raw) return false;
+    const char *resolved_mod = typechecker_resolve_alias(checker, mod_raw);
+    return resolved_mod && strcmp(resolved_mod, mod) == 0 &&
+           strcmp(fnnode->data.member.member, fn) == 0;
+}
+
 static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn) {
     GrayType *result = &TYPE_UNKNOWN;
     /* E5034: named arguments are not supported for stdlib functions */
@@ -5936,6 +5980,20 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 tc_err_arg_type(checker, a0, typechecker_format(checker,
                     "'json.encode()' cannot serialize '%s'; it accepts any primitive (int, uint, sized ints, byte, float, f32/f64, char, bool, string), a flat array of those, or a string-keyed map of those",
                     type_name(t0)));
+            }
+        }
+        /* E3174: json.stringify()'s argument must be a #json struct (or
+         * array of one) — its field-walking codegen only exists for one;
+         * anything else (a plain struct, a bare primitive, ...) compiles
+         * and runs clean, silently producing "{}" with none of the
+         * value's data. */
+        if (strcmp(mfn, "stringify") == 0 && node->data.call.arg_count >= 1) {
+            AstNode *a0 = node->data.call.args[0];
+            GrayType *t0 = resolve_expression(checker, a0);
+            if (t0 && t0->kind != TK_UNKNOWN && !type_is_json_struct_or_array(checker, t0)) {
+                diagnostic_error_code_formatted(checker->diag, "E3174",
+                    NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
+                    type_display_name(checker, t0), "stringify");
             }
         }
     } else if (strcmp(mod, "csv") == 0) {
@@ -12806,6 +12864,21 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    /* E3174: json.parse()'s target must be a #json struct (or array of
+     * one) — codegen only generates gray_json_parse_<Name> for one;
+     * anything else falls back to the raw gray_json_decode(), which
+     * returns a GrayMap, not the declared struct, and leaks a raw C
+     * initialization-type error. json.parse()'s own return type is
+     * context-dependent on this declared type, so the typechecker never
+     * otherwise sees the mismatch. */
+    if (call_is_stdlib_fn(checker, node->data.var_decl.value, "json", "parse") &&
+        declared->kind != TK_UNKNOWN &&
+        !type_is_json_struct_or_array(checker, declared)) {
+        diagnostic_error_code_formatted(checker->diag, "E3174",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, declared), "parse");
+    }
+
     if (node->data.var_decl.value) {
         /* Set expected_type for implicit enum resolution (.VARIANT) */
         GrayType *saved_expected = checker->expected_type;
@@ -14075,6 +14148,20 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
         checker->expected_type = target_t;
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
+
+    /* E3174: json.parse()'s target must be a #json struct (or array of
+     * one) reassigned here — codegen only generates gray_json_parse_<Name>
+     * for one; anything else falls back to the raw gray_json_decode(),
+     * which returns a GrayMap, not the declared struct. json.parse()'s own
+     * return type is context-dependent on the assignment target, so the
+     * typechecker never otherwise sees this mismatch. */
+    if (call_is_stdlib_fn(checker, node->data.assign.value, "json", "parse") &&
+        target_t && target_t->kind != TK_UNKNOWN &&
+        !type_is_json_struct_or_array(checker, target_t)) {
+        diagnostic_error_code_formatted(checker->diag, "E3174",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, target_t), "parse");
+    }
 
     /* Pointer checker: `a = mem.arena(n)` re-binds a fresh, live arena handle
      * (a common idiom right after `mem.destroy(a)`); `p = mem.init(a, T)` /
