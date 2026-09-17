@@ -5644,7 +5644,13 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
          * just as non-numeric as a string/bool one, and the codegen for
          * these (a value cast to int64_t) leaks a raw C error on a struct
          * array exactly like it used to for string/bool before this
-         * matched average's check. */
+         * matched average's check. An int-backed enum element is exempted:
+         * it's read through gray_type_to_c_codegen at its own real C enum
+         * type, and a C enum-to-int64_t cast is always legal, so this was
+         * already correct for int-backed enum arrays before this check
+         * existed at all. A string-backed enum is a GrayString at the C
+         * level, not int-castable, so it stays rejected like any other
+         * non-numeric element. */
         if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
              strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
              strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
@@ -5654,7 +5660,9 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             GrayType *arr_t = resolve_expression(checker, arg0);
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (!type_is_numeric(elem_t)) {
+                bool is_int_enum = elem_t->kind == TK_ENUM && elem_t->name &&
+                    !typechecker_enum_is_string(checker, elem_t->name);
+                if (!type_is_numeric(elem_t) && !is_int_enum) {
                     diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
                 }
             }
