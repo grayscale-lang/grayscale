@@ -1,0 +1,47 @@
+/*
+ * nested_struct_omitted_fixed_array.gray - A fixed-size array field nested
+ * inside a struct field, or reached through a bare no-initializer
+ * declaration, still carries its declared length rather than dropping to 0.
+ *
+ * Both paths zero-construct the struct without going through an explicit
+ * struct-literal node for the inner type, so the fixed-array-field
+ * defaulting that a direct `Type{}` literal already gets right has to be
+ * applied recursively/by the same zero-value path instead of falling
+ * through to a flat C {0}.
+ */
+
+const Inner struct {
+    data [int, 3] = {1, 2}
+}
+
+const Outer struct {
+    inner Inner
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Omitted nested-struct field: inner's own fixed field keeps length 3
+    const o Outer = Outer{}
+    if len(o.inner.data) == 3 && o.inner.data[0] == 1 && o.inner.data[1] == 2 && o.inner.data[2] == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: omitted nested struct field dropped its fixed-array length")
+        failed++
+    }
+
+    // Bare declaration with no initializer at all: same zero-value path
+    mut x Inner
+    if len(x.data) == 3 && x.data[0] == 1 && x.data[1] == 2 && x.data[2] == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: no-initializer struct var dropped its fixed-array length")
+        failed++
+    }
+
+    println("nested_struct_omitted_fixed_array: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

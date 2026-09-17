@@ -2206,6 +2206,96 @@ static bool struct_literal_specifies_field(AstNode *node, const char *field_name
     return false;
 }
 
+static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth);
+
+/* Emits the zero-value default for one struct field that has no literal
+ * value in scope: the field's own syntactic default if it has one, or (for
+ * map/array/fixed-array/string-enum/struct fields, which C's implicit {0}
+ * leaves unusable — an all-zero GrayArray/GrayMap has elem_size 0, and an
+ * all-zero string-backed enum is not a valid variant) a real runtime zero
+ * value. Recurses into emit_struct_zero_value_literal for a struct-typed
+ * field so a nested struct gets the same treatment at any depth, instead of
+ * falling through to a flat C {0}. Writes at most one designated
+ * initializer, prefixed with ", " once `*emitted` is already true. */
+static void emit_struct_field_zero_default(CodeGen *codegen, StructField *sf, int depth, bool *emitted) {
+    const char *ftn = sf->type_name;
+    if (sf->default_value) {
+        if (*emitted) emit(codegen, ", ");
+        *emitted = true;
+        emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+        int default_fixed_size = extract_array_size(ftn);
+        if (default_fixed_size > 0 && sf->default_value->kind == NODE_ARRAY_VALUE) {
+            const char *saved_dv = codegen->current_var_type;
+            codegen->current_var_type = ftn;
+            const char *delem = extract_array_element_type(ftn);
+            emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
+            codegen->current_var_type = saved_dv;
+        } else {
+            emit_expression(codegen, sf->default_value);
+        }
+        return;
+    }
+    if (!ftn) return;
+    bool field_is_map = strncmp(ftn, "map[", 4) == 0;
+    bool field_is_array = ftn[0] == '[';
+    const char *senum = codegen_resolve_type(codegen, ftn);
+    bool field_is_str_enum = codegen_enum_is_string(codegen, senum);
+    GrayType *ft = type_from_name(ftn);
+    bool field_is_struct = !field_is_map && !field_is_array && !field_is_str_enum &&
+                            ft && ft->kind == TK_STRUCT;
+    if (!field_is_map && !field_is_array && !field_is_str_enum && !field_is_struct) return;
+    if (*emitted) emit(codegen, ", ");
+    *emitted = true;
+    emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+    if (field_is_str_enum) {
+        int eidx = codegen_enum_index(codegen, senum);
+        const char *fv = codegen->enum_decls[eidx]->data.enum_decl.values[0].name;
+        emit_formatted(codegen, "GrayEnum_%s_%s", senum, fv);
+    } else if (field_is_struct) {
+        emit_struct_zero_value_literal(codegen, ftn, depth + 1);
+    } else if (field_is_map) {
+        const char *c_kt = "GrayString";
+        const char *c_vt = "int64_t";
+        if (ft && ft->key_type) c_kt = gray_map_element_c_type(codegen, ft->key_type);
+        if (ft && ft->value_type) c_vt = gray_map_element_c_type(codegen, ft->value_type);
+        emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
+            c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+    } else {
+        const char *c_elem = "int64_t";
+        if (ft && ft->element_type) c_elem = gray_map_element_c_type(codegen, ft->element_type);
+        int fixed_size = extract_array_size(ftn);
+        if (fixed_size > 0) {
+            emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d)",
+                c_elem, fixed_size, c_elem, fixed_size);
+        } else {
+            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+        }
+    }
+}
+
+/* Emits `(GrayStruct_X){ ... }` for a struct type with no literal at all —
+ * every field its own syntactic default, or a real runtime zero value
+ * instead of C's raw {0}, recursively. Used both for a struct-typed field
+ * entirely omitted from an enclosing literal (via
+ * emit_struct_field_zero_default's field_is_struct case) and for a
+ * struct-typed variable declared with no initializer at all
+ * (emit_c_zero_value), so both share the exact defaulting a direct `Type{}`
+ * literal already gets right instead of falling back to a flat zero. depth
+ * guards against runaway recursion through mutually-referential struct
+ * fields. */
+static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth) {
+    AstNode *sdecl = type_name ? find_struct_declaration(codegen, type_name) : NULL;
+    if (!sdecl || depth > 8) {
+        emit(codegen, "{0}");
+        return;
+    }
+    emit_formatted(codegen, "(%s){", gray_type_to_c_codegen(codegen, type_name));
+    bool emitted = false;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++)
+        emit_struct_field_zero_default(codegen, &sdecl->data.struct_decl.fields[i], depth, &emitted);
+    emit(codegen, "}");
+}
+
 static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Struct literal: (GrayStruct_Name){.field = value, ...} */
     /* Resolve ? → concrete binding for type params */
@@ -2331,7 +2421,17 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
              * Seed it with the first variant, matching new(EnumType). */
             const char *senum = codegen_resolve_type(codegen, ftn);
             bool field_is_str_enum = codegen_enum_is_string(codegen, senum);
-            if (!field_is_map && !field_is_array && !field_is_str_enum) continue;
+            GrayType *ft = type_from_name(ftn);
+            /* A struct-typed field left out entirely still needs its own
+             * fixed-array/map/string-enum fields defaulted the same way — an
+             * omitted nested struct otherwise falls through to a flat C
+             * {0}, dropping any fixed-size array field inside it to length
+             * 0 instead of its declared N (e.g. Outer{} omitting an `inner
+             * Inner` field whose own `data [int,3]` field then reads back
+             * as a 0-length array). */
+            bool field_is_struct = !field_is_map && !field_is_array && !field_is_str_enum &&
+                                    ft && ft->kind == TK_STRUCT;
+            if (!field_is_map && !field_is_array && !field_is_str_enum && !field_is_struct) continue;
             if (struct_literal_specifies_field(node, sf->name)) continue;
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
@@ -2342,7 +2442,10 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "GrayEnum_%s_%s", senum, fv);
                 continue;
             }
-            GrayType *ft = type_from_name(ftn);
+            if (field_is_struct) {
+                emit_struct_zero_value_literal(codegen, ftn, 1);
+                continue;
+            }
             if (field_is_map) {
                 const char *c_kt = "GrayString";
                 const char *c_vt = "int64_t";
@@ -9640,7 +9743,13 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
 /* Emit the C zero value for c_type (no leading " = "). Used both for
  * value-less declarations and for file-scope globals whose real
  * initializer is deferred into the global-init buffer. */
-static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
+/* gray_type_name is the Grayscale type as written (e.g. "Inner"), needed
+ * only to recurse into emit_struct_zero_value_literal when c_type doesn't
+ * match any of the special-cased primitives below — a bare `mut x Inner`
+ * with no initializer would otherwise fall through to a flat C {0}, which
+ * drops any fixed-size array field inside Inner to length 0 instead of its
+ * declared N, the same gap an omitted nested-struct field has. */
+static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *gray_type_name) {
     if (strcmp(c_type, "int64_t") == 0) emit(codegen, "0");
     else if (strcmp(c_type, "double") == 0) emit(codegen, "0.0");
     else if (strcmp(c_type, "bool") == 0) emit(codegen, "false");
@@ -9651,7 +9760,11 @@ static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
     else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, "GRAY_U128_ZERO");
     else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, "GRAY_I256_ZERO");
     else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
-    else emit(codegen, "{0}");
+    else {
+        GrayType *gt = gray_type_name ? type_from_name(gray_type_name) : NULL;
+        if (gt && gt->kind == TK_STRUCT) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
+        else emit(codegen, "{0}");
+    }
 }
 
 /* True when a scalar/struct variable initializer lowers to a C constant
@@ -9811,7 +9924,7 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
     } else {
         /* Zero-initialize when no value is provided */
         emit(codegen, " = ");
-        emit_c_zero_value(codegen, c_type);
+        emit_c_zero_value(codegen, c_type, type_name);
     }
 
     emit(codegen, ";\n");
@@ -10021,7 +10134,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         strcmp(c_type, "__auto_type") != 0 &&
         !initializer_is_c_constant(node->data.var_decl.value)) {
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
-        emit_c_zero_value(codegen, c_type);
+        emit_c_zero_value(codegen, c_type, type_name);
         emit(codegen, ";\n");
         Buf saved = codegen->output;
         codegen->output = codegen->global_init;
