@@ -7092,6 +7092,87 @@ static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
     return false;
 }
 
+/* True when `node` is a call to one of the length-changing 'arrays.*'
+ * functions with `param_name` as its first (array) argument — the same
+ * function set the direct member-expression E5051 guard checks, applied
+ * instead to a bare local/parameter name. On a match, `*out_mfn` is set to
+ * the called function's name for the diagnostic. */
+static bool call_is_length_changing_arrays_call_on_name(TypeChecker *checker, AstNode *node,
+                                                          const char *param_name, const char **out_mfn) {
+    if (node->kind != NODE_CALL_EXPR) return false;
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return false;
+    const char *mod_raw = ast_member_base_qualifier(fn);
+    if (!mod_raw) return false;
+    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+    if (!mod || strcmp(mod, "arrays") != 0) return false;
+    const char *mfn = fn->data.member.member;
+    if (!(strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
+          strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
+          strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
+          strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
+          strcmp(mfn, "deduplicate") == 0))
+        return false;
+    if (node->data.call.arg_count == 0) return false;
+    AstNode *arg0 = node->data.call.args[0];
+    if (arg0->kind != NODE_LABEL || strcmp(arg0->data.label.value, param_name) != 0)
+        return false;
+    *out_mfn = mfn;
+    return true;
+}
+
+/* Recursively scans a function body for a length-changing 'arrays.*' call
+ * made directly on `param_name` — the one-level interprocedural half of the
+ * E5051 guard: a fixed-size struct field passed by mutable reference into a
+ * plain '[T]' parameter loses its fixed-ness at that boundary, so the
+ * member-expression check alone never sees the mutation, which instead
+ * happens on the bare parameter name inside the callee. Statement coverage
+ * mirrors pointer_checker_mem_walk. */
+static bool func_body_mutates_array_param(TypeChecker *checker, AstNode *node,
+                                           const char *param_name, const char **out_mfn) {
+    if (!node) return false;
+    switch (node->kind) {
+    case NODE_CALL_EXPR: {
+        if (call_is_length_changing_arrays_call_on_name(checker, node, param_name, out_mfn))
+            return true;
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            if (func_body_mutates_array_param(checker, node->data.call.args[i], param_name, out_mfn))
+                return true;
+        return false;
+    }
+    case NODE_VAR_DECL:
+        return func_body_mutates_array_param(checker, node->data.var_decl.value, param_name, out_mfn);
+    case NODE_ASSIGN_STMT:
+        return func_body_mutates_array_param(checker, node->data.assign.value, param_name, out_mfn);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            if (func_body_mutates_array_param(checker, node->data.block.stmts[i], param_name, out_mfn))
+                return true;
+        return false;
+    case NODE_IF_STMT:
+        return func_body_mutates_array_param(checker, node->data.if_stmt.consequence, param_name, out_mfn) ||
+               func_body_mutates_array_param(checker, node->data.if_stmt.alternative, param_name, out_mfn);
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            if (func_body_mutates_array_param(checker, node->data.when_stmt.cases[i].body, param_name, out_mfn))
+                return true;
+        return func_body_mutates_array_param(checker, node->data.when_stmt.default_body, param_name, out_mfn);
+    case NODE_FOR_STMT:      return func_body_mutates_array_param(checker, node->data.for_stmt.body, param_name, out_mfn);
+    case NODE_FOR_EACH_STMT: return func_body_mutates_array_param(checker, node->data.for_each.body, param_name, out_mfn);
+    case NODE_WHILE_STMT:    return func_body_mutates_array_param(checker, node->data.while_stmt.body, param_name, out_mfn);
+    case NODE_LOOP_STMT:     return func_body_mutates_array_param(checker, node->data.loop_stmt.body, param_name, out_mfn);
+    case NODE_EXPR_STMT:     return func_body_mutates_array_param(checker, node->data.expr_stmt.expr, param_name, out_mfn);
+    case NODE_ENSURE_STMT:   return func_body_mutates_array_param(checker, node->data.ensure_stmt.expr, param_name, out_mfn);
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            if (func_body_mutates_array_param(checker, node->data.return_stmt.values[i], param_name, out_mfn))
+                return true;
+        return false;
+    default:
+        return false;
+    }
+}
+
 /* True when `left` indexes a dynamic '[T]' array. A dynamic array's
  * backing store relocates on grow (append / prepend / insert_at), so a
  * raw pointer to an element dangles after any such call — the same
@@ -8202,6 +8283,24 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         fdecl->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, node->data.call.args[argument_index],
                         param_desc, function_name);
+                    /* E5051: a fixed-size struct field passed by mutable
+                     * reference into a plain '[T]' parameter loses its
+                     * fixed-ness at the boundary; catch it one level deep by
+                     * checking whether the callee itself runs a
+                     * length-changing arrays.* call directly on that
+                     * parameter. */
+                    AstNode *arg0 = node->data.call.args[argument_index];
+                    if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
+                        const char *offending_mfn = NULL;
+                        if (func_body_mutates_array_param(checker,
+                                fdecl->data.func_decl.body,
+                                fdecl->data.func_decl.params[argument_index].name,
+                                &offending_mfn)) {
+                            diagnostic_error_code_formatted(checker->diag, "E5051",
+                                NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0,
+                                offending_mfn, arg0->data.member.member);
+                        }
+                    }
                 }
             }
         }
