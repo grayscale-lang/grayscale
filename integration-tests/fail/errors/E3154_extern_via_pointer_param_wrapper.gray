@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3154 - the address of a stack local passed to a C function is
+ * rejected even when it crosses a function boundary first: a helper that
+ * takes a `^T` parameter and passes it straight into its own extern. call
+ * still leaks the caller's stack address into C, so the caller passing
+ * addr(local) for that parameter must be rejected exactly like a direct
+ * extern.free(addr(local)) would be.
+ */
+// expect-error: E3154
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do do_free(p ^int) {
+    extern.free(p)
+}
+
+do main() {
+    mut local int = 5
+    do_free(addr(local))
+}

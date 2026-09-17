@@ -972,6 +972,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    fs->passes_param_to_extern = 0;
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
@@ -1729,6 +1730,18 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                     node->data.call.args[sink->value_arg]), dest,
                     dest == PARAM_ESCAPE_GLOBAL ? croot : NULL);
         }
+        /* passes_param_to_extern (#2732): a parameter's address reaching an
+         * extern.func() call directly, right here in this function's own
+         * body — the callee-side half of the E3154 stack-address-to-C
+         * guard, computed structurally alongside the rest of this summary
+         * the same way returns_param_addr is. */
+        AstNode *fn = node->data.call.function;
+        if (fn && fn->kind == NODE_MEMBER_EXPR && ast_member_qualifier(fn) &&
+            strcmp(ast_member_qualifier(fn), "extern") == 0) {
+            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
+                fs->passes_param_to_extern |= return_expr_param_bits(checker, fs,
+                    node->data.call.args[i]);
+        }
         FuncSig *callee = resolve_call_sig_in_body(checker, body, node);
         if (callee && callee != fs) {
             ensure_escape_summary(checker, callee);
@@ -1750,6 +1763,17 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                         record_param_escape(fs, bits, dest,
                             dest == PARAM_ESCAPE_GLOBAL ? droot : NULL);
                 }
+            }
+            /* passes_param_to_extern forwards through a call to another
+             * summarised function the same way param_escape_into does just
+             * above: `helper(a) { extern.free(a) }` called as
+             * `outer(x) { helper(x) }` makes outer's own parameter 0 reach
+             * extern too. */
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
+                if (!((callee->passes_param_to_extern >> k) & 1)) continue;
+                fs->passes_param_to_extern |= return_expr_param_bits(checker, fs,
+                    node->data.call.args[k]);
             }
         } else if (!callee && call_target_is_opaque_func(fs, node)) {
             for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
@@ -1813,6 +1837,7 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    fs->passes_param_to_extern = 0;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
@@ -2385,6 +2410,35 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
         pointer_checker_apply_arena_lifecycle(checker, key, destroys,
                                  node, func_display_name(csig));
+    }
+}
+
+/* E3154, forwarded through a pointer-parameter function boundary (#2732): the
+ * direct check at an extern.func() call site only sees a stack address
+ * written out inline (or laundered through a local) in the *same* function
+ * as the call. A helper that takes a `^T` parameter and passes it straight
+ * into its own extern. call defeats that check entirely — the parameter is
+ * just an opaque value from the callee's point of view, with no origin to
+ * trace. `csig`'s passes_param_to_extern summary (computed structurally by
+ * escape_walk, the same pass that computes returns_param_addr) names which
+ * of its parameters reach extern. that way; this applies it at the call
+ * site, exactly like a direct extern.func(addr(local)) would be. */
+static void apply_call_param_extern_effects(TypeChecker *checker,
+    AstNode *node, FuncSig *csig) {
+    if (!csig || checker->current_func_scope_depth <= 0) return;
+    ensure_escape_summary(checker, csig);
+    if (!csig->passes_param_to_extern) return;
+    int argc = node->data.call.arg_count;
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
+        if (!((csig->passes_param_to_extern >> a) & 1)) continue;
+        AstNode *arg = node->data.call.args[a];
+        const char *root = NULL;
+        int d = expression_origin(checker, arg, &root);
+        if (d > 0 && d >= checker->current_func_scope_depth && root) {
+            diagnostic_error_code_formatted(checker->diag, "E3154",
+                NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                root);
+        }
     }
 }
 
@@ -6801,6 +6855,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * been prepended into args[0]. Now that the rewrite above
                      * has happened, apply it directly against ssig. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
+                    apply_call_param_extern_effects(checker, node, ssig);
                 } else if (ssig) {
                     /* Non-self struct function called on an instance.
                      * Rewrite the AST so the member-expr object uses
@@ -6912,6 +6967,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * above for why this must run here rather than in
                      * resolve_call_expr's own copy of the check. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
+                    apply_call_param_extern_effects(checker, node, ssig);
                 } else {
                     diagnostic_error_code_formatted(checker->diag, "E4018",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -8772,6 +8828,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * once that rewrite has happened. */
         apply_call_param_escape_and_mem_effects(checker,
             node, resolve_call_sig(checker, node), reported_arg);
+        apply_call_param_extern_effects(checker, node, resolve_call_sig(checker, node));
 
         /* E3163: an opaque call target — a func value read from an array/map
          * element, or a func-typed variable the checker cannot pin to one

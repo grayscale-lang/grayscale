@@ -136,6 +136,13 @@ typedef struct {
      * global-lifetime sink has no single name (a forward through a
      * func-typed parameter or an opaque indirect call). */
     const char *param_escape_global_name[64];
+    /* passes_param_to_extern: bit i set if parameter i's address may reach
+     * an extern.func() call as an argument — directly, or forwarded through
+     * another summarised call that itself passes one of ITS parameters into
+     * extern. Lets the E3154 stack-address-to-C guard follow an address
+     * through a pointer-parameter wrapper function the same way
+     * returns_param_addr lets it follow one through a `return`. */
+    unsigned long long passes_param_to_extern;
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
      * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
