@@ -1,0 +1,54 @@
+/*
+ * c_interop_pointer_callback.gray - a Grayscale function with `^T` parameters
+ * can be passed as a C callback: `^T` lowers to `T *`, the shape qsort's
+ * comparator takes.
+ */
+
+extern import "stdlib.h", "string.h"
+
+mut calls int = 0
+
+do cmp(a ^int, b ^int) -> i32 {
+    calls += 1
+    if a^ < b^ { return -1 }
+    if a^ > b^ { return 1 }
+    return 0
+}
+
+do main() {
+    println("=== C Interop Pointer Callback Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut buf ^int = extern.malloc(16)
+    extern.memset(buf, 0, 16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    if calls > 0 {
+        println("  [PASS] qsort called the pointer-parameter comparator")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] comparator was never called")
+        failed += 1
+    }
+
+    calls = 0
+    const f func = ()cmp
+    extern.qsort(buf, 2, 8, f)
+    if calls > 0 {
+        println("  [PASS] comparator held in a variable is accepted too")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] variable comparator was never called")
+        failed += 1
+    }
+    extern.free(buf)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

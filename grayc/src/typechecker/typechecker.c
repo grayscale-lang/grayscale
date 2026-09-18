@@ -9619,12 +9619,11 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     }
                 }
                 /* E3158: a Grayscale function passed as a C callback must lower
-                 * to a C-compatible function pointer. A `^T` parameter lowers to
-                 * `T *`, but C callback APIs (qsort/bsearch comparators, ...)
-                 * take `const void *`, which Grayscale has no type to express —
-                 * the emitted function pointer can never match and the C
-                 * compiler rejects the call. Functions with no pointer
-                 * parameters (extern.atexit(()handler)) lower cleanly and pass.
+                 * to a C-compatible function pointer. A `^T` parameter or
+                 * return lowers to `T *`, which is what C callback APIs
+                 * (qsort/bsearch comparators, thread start routines, ...)
+                 * declare as `void *`, so pointers pass. A string, array, map,
+                 * or struct has no C-compatible layout, so it does not.
                  * `ca` itself may be a bare variable holding a func-ref
                  * initializer (`const f func = ()cmp; extern.qsort(..., f)`)
                  * rather than the inline `()cmp`/`ref(cmp)` form; see through
@@ -9641,18 +9640,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
                         GrayType *cb_pt = cb_sig->param_types[p];
                         if (!cb_pt) continue;
-                        if (cb_pt->kind == TK_POINTER) {
-                            char *msg = typechecker_format(checker,
-                                "cannot pass '%s' as a C callback; its pointer parameter lowers to a "
-                                "typed C pointer, but C callback APIs require 'void *', which Grayscale "
-                                "cannot express", cb_target);
-                            diagnostic_error_message(checker->diag, "E3158", msg,
-                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
-                            break;
-                        }
-                        /* string/array/map/struct parameters are just as
-                         * C-incompatible as a pointer one: none of them lower
-                         * to 'void *' either, so the C API's raw address gets
+                        /* string/array/map/struct parameters have no
+                         * C-compatible layout: the C API's raw address gets
                          * reinterpreted as a GrayString/GrayArray/GrayMap/
                          * struct layout that was never actually there. */
                         const char *cb_bad_kind = NULL;
@@ -9676,28 +9665,19 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                      * which the C API's function-pointer type never declares. */
                     if (cb_sig && cb_sig->return_count >= 1 && cb_sig->return_types[0]) {
                         GrayType *cb_rt = cb_sig->return_types[0];
-                        if (cb_rt->kind == TK_POINTER) {
+                        const char *cb_bad_ret_kind = NULL;
+                        if (cb_rt->kind == TK_STRING) cb_bad_ret_kind = "string";
+                        else if (cb_rt->kind == TK_ARRAY) cb_bad_ret_kind = "array";
+                        else if (cb_rt->kind == TK_MAP) cb_bad_ret_kind = "map";
+                        else if (cb_rt->kind == TK_STRUCT && cb_rt->name &&
+                                 is_struct_name(checker, cb_rt->name)) cb_bad_ret_kind = "struct";
+                        if (cb_bad_ret_kind) {
                             char *msg = typechecker_format(checker,
-                                "cannot pass '%s' as a C callback; its pointer return type lowers to a "
-                                "typed C pointer, but the C API's function-pointer type declares a scalar "
-                                "return, which Grayscale cannot express", cb_target);
+                                "cannot pass '%s' as a C callback; its %s return type has no "
+                                "C-compatible layout, but the C API's function-pointer type declares a "
+                                "scalar return, which Grayscale cannot express", cb_target, cb_bad_ret_kind);
                             diagnostic_error_message(checker->diag, "E3158", msg,
                                 NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
-                        } else {
-                            const char *cb_bad_ret_kind = NULL;
-                            if (cb_rt->kind == TK_STRING) cb_bad_ret_kind = "string";
-                            else if (cb_rt->kind == TK_ARRAY) cb_bad_ret_kind = "array";
-                            else if (cb_rt->kind == TK_MAP) cb_bad_ret_kind = "map";
-                            else if (cb_rt->kind == TK_STRUCT && cb_rt->name &&
-                                     is_struct_name(checker, cb_rt->name)) cb_bad_ret_kind = "struct";
-                            if (cb_bad_ret_kind) {
-                                char *msg = typechecker_format(checker,
-                                    "cannot pass '%s' as a C callback; its %s return type has no "
-                                    "C-compatible layout, but the C API's function-pointer type declares a "
-                                    "scalar return, which Grayscale cannot express", cb_target, cb_bad_ret_kind);
-                                diagnostic_error_message(checker->diag, "E3158", msg,
-                                    NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
-                            }
                         }
                     }
                 }

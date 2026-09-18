@@ -1,5 +1,5 @@
 /*
- * Error Test: E3158 - a Grayscale function with a pointer parameter cannot be
+ * Error Test: E3158 - a Grayscale function with a string parameter cannot be
  * passed as a C callback, even when the func-ref is held in a variable first.
  * `const f func = ()cmp; extern.qsort(..., f)` must be rejected exactly like
  * the inline `()cmp` form, since the callback check must see through the
@@ -10,7 +10,7 @@
 
 extern import "stdlib.h"
 
-do cmp(a ^int, b ^int) -> i32 {
+do cmp(a string, b string) -> i32 {
     return 0
 }
 

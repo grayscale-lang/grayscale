@@ -3055,6 +3055,8 @@ do main() {
 }
 ```
 
+**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `byte`, and pointers (`^T` is `T*`, so `^void` or `^int` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
+
 **Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
 - as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
