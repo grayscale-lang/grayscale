@@ -10195,10 +10195,17 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
      * rejects non-constant file-scope initializers (runtime-checked
      * negation, struct literals with array/map fields, string
      * interpolation, ...). __auto_type needs its initializer inline, so
-     * leave those on the normal path. */
-    if (codegen->indent == 0 && node->data.var_decl.value &&
-        strcmp(c_type, "__auto_type") != 0 &&
-        !initializer_is_c_constant(node->data.var_decl.value)) {
+     * leave those on the normal path. A value-less struct declaration
+     * defers too: its real zero value (emit_c_zero_value's recursive,
+     * non-force_constant form) can itself emit gray_array_new()/
+     * gray_map_new_kind() calls for array/map fields with no default, which
+     * are just as non-constant as an explicit struct-literal initializer. */
+    GrayType *vdecl_struct_t = type_name ? type_from_name(type_name) : NULL;
+    bool vdecl_needs_deferral = node->data.var_decl.value
+        ? !initializer_is_c_constant(node->data.var_decl.value)
+        : (vdecl_struct_t && vdecl_struct_t->kind == TK_STRUCT);
+    if (codegen->indent == 0 && strcmp(c_type, "__auto_type") != 0 &&
+        vdecl_needs_deferral) {
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
         emit_c_zero_value(codegen, c_type, type_name, true);
         emit(codegen, ";\n");
