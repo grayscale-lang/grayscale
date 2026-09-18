@@ -1,0 +1,13 @@
+/*
+ * Pass Test: a directory import followed by a direct import of a file
+ * already in that directory compiles, with a W2015 warning that the
+ * second import is redundant (STANDARD 8.2) -- not the E6011 hard error
+ * this used to raise.
+ */
+
+import "./lib"
+import "./lib/helper_a"
+
+do main() {
+    println(lib.w2015_helper_a() + lib.w2015_helper_b())
+}

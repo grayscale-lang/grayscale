@@ -521,6 +521,7 @@
     GRAY_WARNING("W2011", "safety", "named return value is declared in the signature but no matching variable exists in the function body") \
     GRAY_WARNING("W2012", "safety", "'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon'") \
     GRAY_WARNING("W2014", "imports", "intra-directory import already included by directory import") \
+    GRAY_WARNING("W2015", "imports", "direct import of a file already covered by a directory import in this file is redundant") \
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \
     GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored") \

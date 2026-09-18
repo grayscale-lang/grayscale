@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 477 codes** (332 errors, 16 warnings, 129 panics)
+**Total: 478 codes** (332 errors, 17 warnings, 129 panics)
 
 ---
 
@@ -362,6 +362,7 @@
 | `W2011` | safety | named return value is declared in the signature but no matching variable exists in the function body |
 | `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
 | `W2014` | imports | intra-directory import already included by directory import |
+| `W2015` | imports | direct import of a file already covered by a directory import in this file is redundant |
 | `W3003` | safety | fixed-size array is not fully initialized; remaining elements will be zero-valued |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
 | `W3006` | safety | empty default branch in when statement; unmatched values are silently ignored |
@@ -528,4 +529,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-18 14:34:36 UTC*
+*Generated on 2026-09-18 14:58:00 UTC*
