@@ -1132,6 +1132,26 @@ int main(int argc, char **argv) {
 
     /* Check-only mode: stop after type checking */
     if (opts.check_only) {
+        /* extern.func()/extern.CONST validation needs a C compiler; detect
+         * one the same way the full build does, but skip the check entirely
+         * when none is found (fails open, same as validate_c_extern_signatures
+         * itself) — gray check's fast path never requires a C compiler. */
+        const char *check_cc_cmd = opts.cc_override ? opts.cc_override : detect_cc();
+        if (check_cc_cmd) {
+            validate_c_extern_signatures(program, checker, diag, arena, check_cc_cmd,
+                                         opts.cc_override != NULL, opts.input_file);
+        }
+
+        if (diagnostic_has_errors(diag)) {
+            diagnostic_print_all(diag);
+            diagnostic_print_summary(diag);
+            typechecker_free(checker);
+            diagnostic_destroy(diag);
+            arena_destroy(arena);
+            free(source);
+            return 1;
+        }
+
         double t_end = monotonic_ms();
         if (opts.show_time) {
             double ms = t_end - t_start;
