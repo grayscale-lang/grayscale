@@ -18,12 +18,38 @@
 #include <time.h>
 #include <string.h>
 
+#define SECONDS_PER_DAY 86400
+#define SECONDS_PER_HOUR 3600
+#define SECONDS_PER_MINUTE 60
+
 #if defined(_WIN32)
 /* mingw-w64 implements strptime in libmingwex (linked by default) but never
  * declares it in <time.h>, so GCC 14's -Wimplicit-function-declaration (now an
  * error) rejects the call. Declare it ourselves. */
 char *strptime(const char *s, const char *format, struct tm *tm);
 #endif
+
+/* The UTC inverse of mktime. glibc/BSD/macOS provide timegm, but only when
+ * a permissive feature-test macro unlocks it, which this file's own
+ * _XOPEN_SOURCE (and the Makefile's _POSIX_C_SOURCE) both suppress; there is
+ * no standard Windows equivalent at all. Implemented directly instead of
+ * chasing per-platform feature macros: Howard Hinnant's days_from_civil,
+ * a closed-form Gregorian date -> day-count conversion valid for every
+ * proleptic Gregorian year, positive or negative. */
+static int64_t gray_days_from_civil(int64_t y, int m, int d) {
+    y -= m <= 2;
+    int64_t era = (y >= 0 ? y : y - 399) / 400;
+    int64_t yoe = y - era * 400;                                   /* [0, 399] */
+    int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;   /* [0, 365] */
+    int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;            /* [0, 146096] */
+    return era * 146097 + doe - 719468;                             /* days since 1970-01-01 */
+}
+
+static time_t gray_timegm(struct tm *tm) {
+    int64_t days = gray_days_from_civil(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
+    return (time_t)(days * SECONDS_PER_DAY + tm->tm_hour * SECONDS_PER_HOUR +
+                     tm->tm_min * SECONDS_PER_MINUTE + tm->tm_sec);
+}
 
 int64_t gray_time_now(void) { return (int64_t)time(NULL); }
 
@@ -41,7 +67,7 @@ int64_t gray_time_now_ns(void) {
 
 static struct tm *get_tm(int64_t ts) {
     time_t t = (time_t)ts;
-    return localtime(&t);
+    return gmtime(&t);
 }
 
 int64_t gray_time_year(int64_t ts) { return get_tm(ts)->tm_year + 1900; }
@@ -64,7 +90,7 @@ GrayString gray_time_format(GrayArena *arena, GrayString fmt, int64_t ts) {
 }
 
 GrayString gray_time_to_iso(GrayArena *arena, int64_t ts) {
-    return gray_time_format(arena, gray_string_lit("%Y-%m-%dT%H:%M:%S"), ts);
+    return gray_time_format(arena, gray_string_lit("%Y-%m-%dT%H:%M:%SZ"), ts);
 }
 
 GrayString gray_time_date(GrayArena *arena, int64_t ts) {
@@ -79,29 +105,22 @@ GrayString gray_time_to_clock(GrayArena *arena, int64_t ts) {
  * Returns true on a full match of a real calendar date.
  *
  * strptime range-checks each field in isolation, so it accepts a day that
- * does not exist in the parsed month, and mktime is then documented to
- * normalize the impossible combination rather than fail: 2023-02-29 becomes
- * 2023-03-01, and day zero rolls backwards into the previous month. The
- * t == -1 guard does not catch either, since mktime only reports failure for
- * times it cannot represent at all. Compare the calendar fields across the
- * mktime call instead and reject anything it had to move.
- *
- * Only the date fields are compared. tm_hour is legitimately shifted when a
- * local time falls in a DST gap, and the time-of-day fields need no help:
- * strptime range-checks them and no cross-field normalization applies. */
+ * does not exist in the parsed month (2023-02-29, day zero, Apr 31, ...).
+ * gray_timegm, unlike mktime, does not normalize an impossible date into a
+ * real one, so those must be rejected explicitly before converting: month
+ * in range, then day against the real length of that month/year. */
 static bool time_parse_to_timestamp(GrayString text, GrayString layout, int64_t *out) {
     struct tm tm;
     memset(&tm, 0, sizeof(tm));
     char *end = strptime(text.data, layout.data, &tm);
     if (end == NULL || *end != '\0') return false;
 
-    int year = tm.tm_year, mon = tm.tm_mon, mday = tm.tm_mday;
-    tm.tm_isdst = -1;
-    time_t t = mktime(&tm);
-    if (t == (time_t)-1) return false;
-    if (tm.tm_year != year || tm.tm_mon != mon || tm.tm_mday != mday) return false;
+    int64_t year = tm.tm_year + 1900;
+    int month = tm.tm_mon + 1;
+    if (month < 1 || month > 12) return false;
+    if (tm.tm_mday < 1 || tm.tm_mday > gray_time_days_in_month(year, month)) return false;
 
-    *out = (int64_t)t;
+    *out = (int64_t)gray_timegm(&tm);
     return true;
 }
 
@@ -135,10 +154,6 @@ int64_t gray_time_tick(void) {
 int64_t gray_time_elapsed_ms(int64_t start_tick) {
     return (gray_time_tick() - start_tick) / NS_PER_MS;
 }
-
-#define SECONDS_PER_DAY 86400
-#define SECONDS_PER_HOUR 3600
-#define SECONDS_PER_MINUTE 60
 
 static int64_t time_floordiv(int64_t numerator, int64_t denominator) {
     int64_t quotient = numerator / denominator, remainder = numerator % denominator;
