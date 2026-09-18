@@ -17072,12 +17072,20 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
      * apply. A concrete #error_code enum (PayErr, ...) is a closed set and
      * stays usable as an ordinary when subject (STANDARD 10.5), so this keys
      * on the literal ErrorCode type, not the whole ErrorCode value space. */
+    bool errorcode_strict_rejected = false;
     if (when_t && when_t->kind == TK_ENUM && when_t->name &&
         strcmp(when_t->name, "ErrorCode") == 0) {
         AstNode *subj = node->data.when_stmt.value;
         if (node->data.when_stmt.is_strict) {
             diagnostic_error_code(checker->diag, "E3151",
                 NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+            /* #strict is never valid on the open ErrorCode enum, so the
+             * shared #strict-exhaustiveness block below must not also run
+             * for this statement — it infers the enum independently from
+             * the case values (not from when_t), so it would walk every
+             * ErrorCode variant and report each one missing on top of the
+             * E3151 already emitted above. */
+            errorcode_strict_rejected = true;
         } else if (!node->data.when_stmt.default_body) {
             diagnostic_error_code(checker->diag, "E3149",
                 NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
@@ -17275,7 +17283,8 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     /* #strict exhaustiveness check for enum types */
-    if (node->data.when_stmt.is_strict && !node->data.when_stmt.default_body) {
+    if (node->data.when_stmt.is_strict && !node->data.when_stmt.default_body &&
+        !errorcode_strict_rejected) {
         /* Infer the enum name from case values (e.g., Color.RED → "Color") */
         const char *enum_name = NULL;
         for (int const_index = 0; const_index < node->data.when_stmt.case_count && !enum_name; const_index++) {
