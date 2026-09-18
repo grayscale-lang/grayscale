@@ -17423,6 +17423,26 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
+        } else if (when_t && when_t->kind == TK_BOOL) {
+            /* A bool subject has exactly two values; strict means both are
+             * handled. */
+            bool has_true = false, has_false = false;
+            for (int ci = 0; ci < node->data.when_stmt.case_count; ci++) {
+                for (int cj = 0; cj < node->data.when_stmt.cases[ci].value_count; cj++) {
+                    AstNode *cv = node->data.when_stmt.cases[ci].values[cj];
+                    if (cv->kind != NODE_BOOL_VALUE) continue;
+                    if (cv->data.bool_value.value) has_true = true;
+                    else has_false = true;
+                }
+            }
+            if (!has_true)
+                diagnostic_error_message(checker->diag, "E3056",
+                    "#strict when is not exhaustive; missing value 'true'",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            if (!has_false)
+                diagnostic_error_message(checker->diag, "E3056",
+                    "#strict when is not exhaustive; missing value 'false'",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         } else {
             /* #strict on non-enum: just warn that it has no effect without default */
             diagnostic_error_message(checker->diag, "E3056",
