@@ -16501,6 +16501,13 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = ptype;
             GrayType *def_t = resolve_expression(checker, p->default_value);
             checker->expected_type = saved_def_expected;
+            /* E3040/E3089: a fallible or multi-return call baked into a
+             * parameter default is not a call site under the caller's
+             * control — the resolved type above collapses to just the
+             * success type, so without this the result silently slides
+             * past into an uncatchable runtime panic instead of the
+             * compile-time diagnostic STANDARD 4.5 requires. */
+            reject_multi_return_in_single_position(checker, p->default_value);
             if (def_t->kind != TK_UNKNOWN && ptype->kind != TK_UNKNOWN &&
                 !types_assignable(checker, ptype, def_t) &&
                 !(def_t->kind == TK_NIL)) {

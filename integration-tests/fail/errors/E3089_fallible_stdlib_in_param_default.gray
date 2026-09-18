@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3089 - a fallible stdlib call baked into a function
+ * parameter default is not a call site under the caller's control; without
+ * this check it collapses to its success type and escalates to an
+ * uncatchable runtime panic instead of a compile-time diagnostic.
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @strconv
+
+do greet(n int = strconv.to_int("not_a_number")) { println("${n}") }
+
+do main() { greet() }
