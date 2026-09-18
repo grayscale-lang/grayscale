@@ -1,0 +1,24 @@
+// expect-error: E3001
+// expect-error-count: 2
+/*
+ * Error Test: E3001 - a type error inside a generic function body is
+ * reported once, at the offending line, however many call sites instantiate
+ * the function, and without an "in instantiation of" wrapper.
+ * Covers both the '?' wildcard and the 'T <?>' forms.
+ */
+
+do wrap(s ?) -> int {
+    mut v int = "not an int"
+    return v
+}
+
+do first(T <?>) -> int {
+    mut v int = "also not an int"
+    return v
+}
+
+do main() {
+    println("${wrap(42)}")
+    println("${wrap("x")}")
+    println("${first(int)}")
+}

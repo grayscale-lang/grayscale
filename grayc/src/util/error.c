@@ -85,6 +85,16 @@ static void diagnostic_add(DiagnosticList *diagnostics, Severity sev, const char
     /* Cap errors at 20 to avoid flooding output */
     if (sev == SEV_ERROR && diagnostics->error_count >= MAX_ERRORS_DISPLAYED) return;
 
+    if (diagnostics->skip_duplicates) {
+        for (int i = 0; i < diagnostics->count; i++) {
+            const Diagnostic *e = &diagnostics->items[i];
+            if (e->severity == sev && e->line == line && e->column == col_start &&
+                strcmp(e->code, code) == 0 && strcmp(e->message, message) == 0 &&
+                ((!e->file && !file) || (e->file && file && strcmp(e->file, file) == 0)))
+                return;
+        }
+    }
+
     if (diagnostics->count >= diagnostics->cap) {
         diagnostics->cap = diagnostics->cap ? diagnostics->cap * 2 : DIAG_INITIAL_CAP;
         diagnostics->items = xrealloc(diagnostics->items, sizeof(Diagnostic) * diagnostics->cap);

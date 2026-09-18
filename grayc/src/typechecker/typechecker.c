@@ -19583,9 +19583,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
             int errs_before = diagnostic_error_count(checker->diag);
             checker->suppress_typetable_writes = true;
+            checker->diag->skip_duplicates = true;
             if (decl->data.func_decl.body) {
                 check_block(checker, decl->data.func_decl.body);
             }
+            checker->diag->skip_duplicates = false;
             checker->suppress_typetable_writes = false;
             int errs_after = diagnostic_error_count(checker->diag);
 
