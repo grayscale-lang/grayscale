@@ -40,7 +40,7 @@ static int cp_to_utf8(int32_t cp, char *out) {
 
 /* Decode next UTF-8 character; returns bytes consumed (1-4).
    Writes decoded codepoint to *cp_out (0xFFFD on invalid input). */
-static int utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
+int gray_builtin_utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out) {
     uint8_t b = *p;
     int32_t cp;
     int bytes;
@@ -375,7 +375,7 @@ int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, in
     int64_t cp_idx = 0;
     while (p < end) {
         int32_t cp;
-        int bytes = utf8_next(p, end, &cp);
+        int bytes = gray_builtin_utf8_next(p, end, &cp);
         if (cp_idx == index) return cp;
         p += bytes;
         cp_idx++;
@@ -391,7 +391,7 @@ int64_t gray_builtin_char_count(GrayString str) {
     int64_t count = 0;
     while (p < end) {
         int32_t cp;
-        p += utf8_next(p, end, &cp);
+        p += gray_builtin_utf8_next(p, end, &cp);
         count++;
     }
     return count;
