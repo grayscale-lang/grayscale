@@ -44,8 +44,9 @@
  *   println(math.abs(-3.14))
  *@end
  */
-static inline int64_t gray_math_abs_int(int64_t n) { return n < 0 ? -n : n; }
-static inline double  gray_math_abs_float(double n) { return fabs(n); }
+static inline int64_t  gray_math_abs_int(int64_t n) { return n < 0 ? -n : n; }
+static inline uint64_t gray_math_abs_uint(uint64_t n) { return n; }
+static inline double   gray_math_abs_float(double n) { return fabs(n); }
 
 /*@man neg
  *@module math
@@ -85,8 +86,9 @@ static inline int64_t gray_math_sign(int64_t n) { return n > 0 ? 1 : (n < 0 ? -1
  *   println(math.min(1.5, 2.5))
  *@end
  */
-static inline int64_t gray_math_min_int(int64_t a, int64_t b) { return a < b ? a : b; }
-static inline double  gray_math_min_float(double a, double b) { return a < b ? a : b; }
+static inline int64_t  gray_math_min_int(int64_t a, int64_t b) { return a < b ? a : b; }
+static inline uint64_t gray_math_min_uint(uint64_t a, uint64_t b) { return a < b ? a : b; }
+static inline double   gray_math_min_float(double a, double b) { return a < b ? a : b; }
 
 /*@man max
  *@module math
@@ -99,8 +101,9 @@ static inline double  gray_math_min_float(double a, double b) { return a < b ? a
  *   println(math.max(1.5, 2.5))
  *@end
  */
-static inline int64_t gray_math_max_int(int64_t a, int64_t b) { return a > b ? a : b; }
-static inline double  gray_math_max_float(double a, double b) { return a > b ? a : b; }
+static inline int64_t  gray_math_max_int(int64_t a, int64_t b) { return a > b ? a : b; }
+static inline uint64_t gray_math_max_uint(uint64_t a, uint64_t b) { return a > b ? a : b; }
+static inline double   gray_math_max_float(double a, double b) { return a > b ? a : b; }
 
 /*@man clamp
  *@module math
@@ -114,6 +117,9 @@ static inline double  gray_math_max_float(double a, double b) { return a > b ? a
  *@end
  */
 static inline int64_t gray_math_clamp_int(int64_t v, int64_t lo, int64_t hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+static inline uint64_t gray_math_clamp_uint(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 static inline double  gray_math_clamp_float(double v, double lo, double hi) {

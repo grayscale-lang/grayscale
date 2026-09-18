@@ -5419,7 +5419,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             strcmp(mfn, "clamp") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
+                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT :
+                         (arg_t && arg_t->kind == TK_UINT) ? &TYPE_UINT : &TYPE_INT;
             } else {
                 result = &TYPE_INT;
             }

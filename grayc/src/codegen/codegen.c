@@ -5735,7 +5735,9 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
 static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "abs") == 0 && node->data.call.arg_count == 1) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_abs_%s(", (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_abs_%s(", suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
@@ -5748,7 +5750,9 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if ((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_%s_%s(", func, (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_%s_%s(", func, suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
@@ -5757,7 +5761,9 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if (strcmp(func, "clamp") == 0 && node->data.call.arg_count == 3) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_clamp_%s(", (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_clamp_%s(", suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
