@@ -136,6 +136,15 @@ typedef struct {
      * global-lifetime sink has no single name (a forward through a
      * func-typed parameter or an opaque indirect call). */
     const char *param_escape_global_name[64];
+    /* param_escape_via_func[i] / param_escape_via_pos[i]: when param_escape_into[i]
+     * is PARAM_ESCAPE_GLOBAL *solely* because parameter i's address is forwarded
+     * as argument `param_escape_via_pos[i]` of an indirect call through this
+     * function's own func-typed parameter `param_escape_via_func[i]`, that
+     * parameter's index (-1 otherwise). A call site that passes a statically
+     * known function for that parameter judges the escape by that function's
+     * own summary instead of assuming the worst. */
+    signed char param_escape_via_func[64];
+    signed char param_escape_via_pos[64];
     /* passes_param_to_extern: bit i set if parameter i's address may reach
      * an extern.func() call as an argument — directly, or forwarded through
      * another summarised call that itself passes one of ITS parameters into

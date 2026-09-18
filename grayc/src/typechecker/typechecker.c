@@ -973,6 +973,7 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
@@ -1671,23 +1672,46 @@ static void record_param_escape(FuncSig *fs, unsigned long long bits,
             if (dest == PARAM_ESCAPE_GLOBAL)
                 fs->param_escape_global_name[i] = global_name;
         }
+        fs->param_escape_via_func[i] = -1;
     }
 }
 
-/* True if `call`'s target is one of `fs`'s own function-typed parameters — an
- * indirect call whose real callee is not statically known. Escape analysis
- * cannot see into it, so every argument such a call receives must be treated
- * as escaping to an unknown, program-lifetime sink (#2692). */
-static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
+/* record_param_escape() for an argument forwarded through an indirect call
+ * via func-typed parameter `func_param`, at argument position `pos`. The
+ * escape stays attributable to that one call only while nothing else has
+ * escaped the parameter (param_escape_via_func). */
+static void record_param_escape_via_func(FuncSig *fs, unsigned long long bits,
+                                         int func_param, int pos) {
+    for (int i = 0; i < fs->param_count && i < MAX_TRACKED_PARAMS; i++) {
+        if (!(bits & (1ull << i))) continue;
+        if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE) {
+            fs->param_escape_into[i] = PARAM_ESCAPE_GLOBAL;
+            fs->param_escape_via_func[i] = func_param;
+            fs->param_escape_via_pos[i] = pos;
+        } else if (fs->param_escape_into[i] != PARAM_ESCAPE_GLOBAL ||
+                   fs->param_escape_via_func[i] != func_param ||
+                   fs->param_escape_via_pos[i] != pos) {
+            fs->param_escape_into[i] = PARAM_ESCAPE_GLOBAL;
+            fs->param_escape_via_func[i] = -1;
+        }
+    }
+}
+
+/* Index of the `fs` parameter that `call`'s target names, when that parameter
+ * is function-typed — an indirect call whose real callee is not statically
+ * known. Escape analysis cannot see into it, so every argument such a call
+ * receives is treated as escaping to an unknown, program-lifetime sink
+ * (#2692), until a call site supplies a known function for it. -1 otherwise. */
+static int call_func_typed_param_index(FuncSig *fs, AstNode *call) {
     AstNode *fn = call->data.call.function;
-    if (!fn || fn->kind != NODE_LABEL || !fs->decl) return false;
+    if (!fn || fn->kind != NODE_LABEL || !fs->decl) return -1;
     int param_count = fs->decl->data.func_decl.param_count;
     for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
         const Param *p = &fs->decl->data.func_decl.params[i];
         if (p->name && strcmp(p->name, fn->data.label.value) == 0)
-            return p->type_name && strncmp(p->type_name, "func(", 5) == 0;
+            return p->type_name && strncmp(p->type_name, "func(", 5) == 0 ? i : -1;
     }
-    return false;
+    return -1;
 }
 
 /* True when a call's target is a func *value* that cannot be pinned to one
@@ -1698,7 +1722,7 @@ static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
 static bool call_target_is_opaque_func(FuncSig *fs, AstNode *call) {
     AstNode *fn = call->data.call.function;
     if (fn && fn->kind == NODE_INDEX_EXPR) return true;
-    return call_targets_func_typed_param(fs, call);
+    return call_func_typed_param_index(fs, call) >= 0;
 }
 
 /* Scan a function body for places a parameter's address is stored into
@@ -1777,9 +1801,15 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                     node->data.call.args[k]);
             }
         } else if (!callee && call_target_is_opaque_func(fs, node)) {
-            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
-                record_param_escape(fs, return_expr_param_bits(checker, fs,
-                    node->data.call.args[i]), PARAM_ESCAPE_GLOBAL, NULL);
+            int func_param = call_func_typed_param_index(fs, node);
+            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++) {
+                unsigned long long bits = return_expr_param_bits(checker, fs,
+                    node->data.call.args[i]);
+                if (func_param >= 0)
+                    record_param_escape_via_func(fs, bits, func_param, i);
+                else
+                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL, NULL);
+            }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
             escape_walk(checker, fs, body, node->data.call.args[i]);
@@ -1838,6 +1868,7 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
@@ -2372,6 +2403,22 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         }
         int sink_depth;
         const char *sink_name;
+        const char *via_global_name = NULL;
+        if (pe == PARAM_ESCAPE_GLOBAL && csig->param_escape_via_func[a] >= 0) {
+            /* The escape is only a forward into an indirect call through one
+             * of csig's func-typed parameters. When this call supplies a known
+             * function for it, that function's own summary decides. */
+            int fp = csig->param_escape_via_func[a];
+            int pos = csig->param_escape_via_pos[a];
+            const char *target = fp < argc
+                ? func_ref_target_name(node->data.call.args[fp]) : NULL;
+            FuncSig *cb = target ? find_func(checker, target) : NULL;
+            if (cb && pos < cb->param_count && pos < MAX_TRACKED_PARAMS) {
+                ensure_escape_summary(checker, cb);
+                if (cb->param_escape_into[pos] == PARAM_ESCAPE_NONE) continue;
+                via_global_name = cb->param_escape_global_name[pos];
+            }
+        }
         if (pe == PARAM_ESCAPE_GLOBAL) {
             /* A global outlives the program, so only an origin genuinely
              * local to *this* function escapes it — a module-level source
@@ -2385,7 +2432,8 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
              * some global is reached but which one is unknowable — falling
              * back to onm (the origin/pointee name) here would print the
              * same name in both message slots. */
-            sink_name = (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
+            sink_name = via_global_name ? via_global_name
+                : (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
                 ? csig->param_escape_global_name[a] : "a global";
         } else {
             const char *droot = (pe < argc)
