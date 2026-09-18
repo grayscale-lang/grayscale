@@ -748,7 +748,16 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         if (us && us[1] >= 'A' && us[1] <= 'Z') is_user_type = true;
     }
     if (is_user_type) {
-        static char buffer[MSG_BUF_SIZE];
+        /* Ring buffer: a caller may hold this return value across another
+         * call to this function before using it (e.g. emitting a for_each
+         * element type while the collection expression it iterates is
+         * itself emitted next, which needs its own struct name here) — a
+         * single shared static buffer let that second call silently
+         * overwrite the first result out from under its caller. */
+        static char bufs[4][MSG_BUF_SIZE];
+        static int slot = 0;
+        char *buffer = bufs[slot];
+        slot = (slot + 1) & 3;
         const char *resolved = type_name;
         if (codegen && type_name[0] >= 'A' && type_name[0] <= 'Z' && !strchr(type_name, '_')) {
             resolved = codegen_resolve_type(codegen, type_name);
@@ -777,9 +786,9 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
             }
         }
         if (codegen && codegen_is_enum(codegen, resolved)) {
-            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayEnum_%s", resolved);
         } else {
-            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayStruct_%s", resolved);
         }
         return buffer;
     }
