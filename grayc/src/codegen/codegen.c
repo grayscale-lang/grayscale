@@ -9808,8 +9808,14 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
  * match any of the special-cased primitives below — a bare `mut x Inner`
  * with no initializer would otherwise fall through to a flat C {0}, which
  * drops any fixed-size array field inside Inner to length 0 instead of its
- * declared N, the same gap an omitted nested-struct field has. */
-static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *gray_type_name) {
+ * declared N, the same gap an omitted nested-struct field has.
+ * force_constant is true for the file-scope deferred-init placeholder: that
+ * value must be a pure C compile-time constant (the real, possibly
+ * non-constant, initializer runs later in gray_init_globals), so struct
+ * types fall back to a flat {0} there instead of recursing into
+ * emit_struct_zero_value_literal, which can emit gray_array_new()/
+ * gray_map_new_kind() runtime calls for array/map fields. */
+static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *gray_type_name, bool force_constant) {
     if (strcmp(c_type, "int64_t") == 0) emit(codegen, "0");
     else if (strcmp(c_type, "double") == 0) emit(codegen, "0.0");
     else if (strcmp(c_type, "bool") == 0) emit(codegen, "false");
@@ -9822,7 +9828,7 @@ static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *
     else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
     else {
         GrayType *gt = gray_type_name ? type_from_name(gray_type_name) : NULL;
-        if (gt && gt->kind == TK_STRUCT) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
+        if (gt && gt->kind == TK_STRUCT && !force_constant) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
         else emit(codegen, "{0}");
     }
 }
@@ -9984,7 +9990,7 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
     } else {
         /* Zero-initialize when no value is provided */
         emit(codegen, " = ");
-        emit_c_zero_value(codegen, c_type, type_name);
+        emit_c_zero_value(codegen, c_type, type_name, false);
     }
 
     emit(codegen, ";\n");
@@ -10194,7 +10200,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
         strcmp(c_type, "__auto_type") != 0 &&
         !initializer_is_c_constant(node->data.var_decl.value)) {
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
-        emit_c_zero_value(codegen, c_type, type_name);
+        emit_c_zero_value(codegen, c_type, type_name, true);
         emit(codegen, ";\n");
         Buf saved = codegen->output;
         codegen->output = codegen->global_init;
