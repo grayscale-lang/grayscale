@@ -725,11 +725,17 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         const char *unaliased = resolve_type_alias_codegen(codegen, resolved);
         if (unaliased != resolved && strcmp(unaliased, type_name) != 0)
             return gray_type_to_c_codegen(codegen, unaliased);
-        static char buffer[MSG_BUF_SIZE];
+        /* Ring buffer: see the identical comment on the user-type branch
+         * below — a caller may hold this return value across another call
+         * to this function before using it. */
+        static char bufs[4][MSG_BUF_SIZE];
+        static int slot = 0;
+        char *buffer = bufs[slot];
+        slot = (slot + 1) & 3;
         if (codegen && codegen_is_enum(codegen, resolved)) {
-            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayEnum_%s", resolved);
         } else {
-            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayStruct_%s", resolved);
         }
         return buffer;
     }
