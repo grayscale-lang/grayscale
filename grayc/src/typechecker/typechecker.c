@@ -2378,8 +2378,15 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
              * (addr of another global) is program-lifetime and fine. */
             sink_depth = checker->current_func_scope_depth > 0
                 ? checker->current_func_scope_depth - 1 : 0;
+            /* The specific global is only known when the escape was traced
+             * through a direct callee (param_escape_global_name[a] set at
+             * the point the escape was recorded). An opaque call target
+             * (record_param_escape(..., PARAM_ESCAPE_GLOBAL, NULL)) means
+             * some global is reached but which one is unknowable — falling
+             * back to onm (the origin/pointee name) here would print the
+             * same name in both message slots. */
             sink_name = (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
-                ? csig->param_escape_global_name[a] : onm;
+                ? csig->param_escape_global_name[a] : "a global";
         } else {
             const char *droot = (pe < argc)
                 ? assignment_target_root_name(node->data.call.args[pe])
@@ -9083,7 +9090,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             const char *addr_var = arg->data.call.args[0]->data.label.value;
             if (!scope_lookup_local(checker->current_scope, addr_var)) continue;
             /* Check if any other argument is an outer-scope variable */
-            bool has_outer_arg = false;
+            const char *outer_arg_name = NULL;
             for (int j = 0; j < node->data.call.arg_count; j++) {
                 if (j == i) continue;
                 AstNode *other = node->data.call.args[j];
@@ -9091,15 +9098,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     const char *oname = other->data.label.value;
                     if (!scope_lookup_local(checker->current_scope, oname) &&
                         scope_lookup(checker->current_scope, oname)) {
-                        has_outer_arg = true;
+                        outer_arg_name = oname;
                         break;
                     }
                 }
             }
-            if (has_outer_arg) {
+            if (outer_arg_name) {
                 diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                    addr_var, addr_var);
+                    outer_arg_name, addr_var);
                 reported_arg |= 1ull << i;
             }
         }
@@ -9163,9 +9170,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     const char *onm = NULL;
                     int od = expression_origin(checker, arg, &onm);
                     if (od > 0 && od >= checker->current_func_scope_depth) {
+                        /* The opaque call could stash this argument anywhere,
+                         * so unlike the other E3163 sites there is no real
+                         * destination name to report — using onm for both
+                         * slots would print the same name twice. */
                         diagnostic_error_code_formatted(checker->diag, "E3163",
                             NODE_FILE(checker, arg), arg->token.line,
-                            arg->token.column, 0, onm, onm);
+                            arg->token.column, 0, "a global", onm);
                         reported_arg |= 1ull << i;
                     }
                 }

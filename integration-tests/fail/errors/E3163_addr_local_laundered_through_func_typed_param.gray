@@ -1,5 +1,6 @@
 // expect-error: E3163
 // expect-error-count: 3
+// expect-not: 'x' outlives the variable 'x'
 /*
  * Error Test: E3163 - a local's address must not be passed into a call
  * whose target is a function-typed parameter (#2692). Escape analysis
@@ -10,6 +11,10 @@
  *   1. indirect call stashes the pointer into a global
  *   2. indirect call writes the pointer through a ^^int out-parameter
  *      (both the out-pointer and the payload pointer are flagged)
+ *
+ * The specific global reached through an opaque callee's own summary is
+ * unknowable, so the message must say so generically rather than repeat
+ * the pointee's own name in both slots (#2755).
  */
 
 mut leaked ^int = nil

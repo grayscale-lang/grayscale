@@ -1,3 +1,13 @@
+/*
+ * Error Test: E3163 - addr() of a loop-local variable passed into
+ * arrays.append alongside an outer-scope destination must name that
+ * destination (ptrs), not repeat the pointee's own name (x), in the
+ * message (#2755).
+ */
+// expect-error: E3163
+// expect-error-count: 1
+// expect-not: 'x' outlives the variable 'x'
+
 import @arrays
 
 do main() {
