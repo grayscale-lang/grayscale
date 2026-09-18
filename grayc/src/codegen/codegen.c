@@ -7539,7 +7539,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, "({ GrayArray _r_src = ");
         emit_expression(codegen, node->data.call.args[0]);
         emit_formatted(codegen, "; %s _r_acc = ", c_elem);
-        emit_expression(codegen, node->data.call.args[1]);
+        if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+            emit_expression(codegen, node->data.call.args[1]);
         emit_formatted(codegen, "; %s (*_r_fn)(%s, %s) = (void *)", c_elem, c_elem, c_elem);
         emit_expression(codegen, node->data.call.args[2]);
         emit_formatted(codegen, "; for (int32_t _r_i = 0; _r_i < _r_src.len; _r_i++) { ");

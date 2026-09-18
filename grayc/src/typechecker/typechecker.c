@@ -5881,7 +5881,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     if (init_t) {
                                         const char *init_tn = type_name(init_t);
                                         const char *ret_tn = type_name(cb_fs->return_types[0]);
-                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0) {
+                                        TypeKind ret_kind = cb_fs->return_types[0]->kind;
+                                        /* A bare literal always resolves to plain int/float
+                                         * (resolve_expression has no expected-type hint for
+                                         * literals), so it never matches a sized/unsigned
+                                         * return type by name. Loosen the check the same way
+                                         * maps.get_or_default does for its default argument:
+                                         * a literal of the right broad numeric family (int vs
+                                         * float) is coercible to any return type in that
+                                         * family, matching what codegen actually emits (a
+                                         * plain C literal assigned to the accumulator's C
+                                         * type). */
+                                        bool loose_literal_ok =
+                                            (init_arg->kind == NODE_INT_VALUE &&
+                                             (ret_kind == TK_INT || ret_kind == TK_UINT || ret_kind == TK_BYTE)) ||
+                                            (init_arg->kind == NODE_FLOAT_VALUE && ret_kind == TK_FLOAT);
+                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0 &&
+                                            !loose_literal_ok) {
                                             char *msg = typechecker_format(checker,
                                                 "reduce callback must return the same type as the accumulator (%s)",
                                                 init_tn);
