@@ -1502,10 +1502,26 @@ int main(int argc, char **argv) {
         argv_print(&cc_argv, stderr);
     }
 
-    int ret = gray_spawn_path(cc_argv.v);
+    /* The compiler's own text is captured, not inherited: warnings from a
+     * build that succeeded are raw C output the user did not ask for, so they
+     * are shown only under --verbose. A failed build still shows everything
+     * the compiler said. */
+    FILE *cc_err = gray_tmpfile();
+    int ret = cc_err ? gray_spawn_capture_stderr(cc_argv.v, cc_err)
+                     : gray_spawn_path(cc_argv.v);
     if (ret < 0) {
         fprintf(stderr, "gray: could not run the C compiler '%s'\n", cc_argv.v[0]);
         ret = 1;
+    }
+    if (cc_err) {
+        if (ret != 0 || opts.verbose) {
+            char cc_buf[4096];
+            size_t got;
+            rewind(cc_err);
+            while ((got = fread(cc_buf, 1, sizeof(cc_buf), cc_err)) > 0)
+                fwrite(cc_buf, 1, got, stderr);
+        }
+        fclose(cc_err);
     }
 
     double t_cc_end = monotonic_ms();

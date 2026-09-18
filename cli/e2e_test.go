@@ -228,6 +228,33 @@ func TestE2E_Build_TimeCountsCC(t *testing.T) {
 	}
 }
 
+func TestE2E_Build_CompilerWarningsStayQuiet(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.h"), []byte("#define MAX_SIZE 100\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "b.h"), []byte("#define MAX_SIZE 200\n"), 0644)
+	src := filepath.Join(dir, "redef.gray")
+	os.WriteFile(src, []byte("extern import \"./a.h\", \"./b.h\"\n\ndo main() {\n    mut m int = extern.MAX_SIZE\n    println(\"${m}\")\n}\n"), 0644)
+	out := filepath.Join(dir, "redef")
+
+	stdout, stderr, code := runGray(t, "build", "-o", out, src)
+	combined := combinedOutput(stdout, stderr)
+	if strings.Contains(combined, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray build exited %d:\n%s", code, combined)
+	}
+	if strings.Contains(stderr, "macro redefined") || strings.Contains(stderr, "warning generated") {
+		t.Errorf("raw C compiler warning leaked on a successful build:\n%s", stderr)
+	}
+
+	// --verbose still shows what the compiler said.
+	_, vstderr, _ := runGray(t, "build", "-v", "-o", out, src)
+	if !strings.Contains(vstderr, "macro redefined") {
+		t.Errorf("--verbose should show the compiler's warnings, got:\n%s", vstderr)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // gray fmt
 // ---------------------------------------------------------------------------
