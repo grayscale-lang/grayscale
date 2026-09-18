@@ -18390,13 +18390,28 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                     break;
                 }
             }
-            /* Resolve implicit enum selectors in field default values */
+            /* Resolve implicit enum selectors in field default values, and
+             * E3175: validate the default value's type against the field's
+             * declared type, the same way E5026 does for a function
+             * parameter default (typechecker.c ~16497). */
             if (stmt->data.struct_decl.fields[j].default_value) {
+                AstNode *field_default = stmt->data.struct_decl.fields[j].default_value;
                 GrayType *saved_expected = checker->expected_type;
                 if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
                     checker->expected_type = ftypes[j];
-                resolve_expression(checker, stmt->data.struct_decl.fields[j].default_value);
+                GrayType *def_t = resolve_expression(checker, field_default);
                 checker->expected_type = saved_expected;
+                if (def_t && ftypes[j] && def_t->kind != TK_UNKNOWN &&
+                    ftypes[j]->kind != TK_UNKNOWN &&
+                    !types_assignable(checker, ftypes[j], def_t) &&
+                    def_t->kind != TK_NIL) {
+                    char *msg = typechecker_format(checker,
+                        "default value for field '%s' has wrong type; expected %s, got %s",
+                        fnames[j], type_name(ftypes[j]), type_name(def_t));
+                    diagnostic_error_message(checker->diag, "E3175", msg,
+                        NODE_FILE(checker, field_default), field_default->token.line,
+                        field_default->token.column, 0);
+                }
             }
         }
         /* E2037/E2038: reserved name check for structs */

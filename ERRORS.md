@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 476 codes** (331 errors, 16 warnings, 129 panics)
+**Total: 477 codes** (332 errors, 16 warnings, 129 panics)
 
 ---
 
@@ -244,6 +244,7 @@
 | `E3172` | types | #json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s' |
 | `E3173` | types | #json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation |
 | `E3174` | types | '%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute |
+| `E3175` | types | struct field default value has wrong type; expected %s, got %s |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -527,4 +528,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-17 22:57:17 UTC*
+*Generated on 2026-09-18 14:34:36 UTC*

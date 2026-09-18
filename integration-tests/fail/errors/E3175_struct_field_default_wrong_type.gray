@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3175 - struct field default value has wrong type
+ * Expected: E3175 error
+ */
+// expect-error: E3175
+// expect-error-count: 1
+
+const S struct {
+    x int = "not an int"
+}
+
+do main() {
+    mut s S = S{}
+    println("${s.x}")
+}
