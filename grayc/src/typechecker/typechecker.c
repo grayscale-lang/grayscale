@@ -4075,6 +4075,22 @@ static bool reject_if_private(TypeChecker *checker, AstNode *node,
     return true;
 }
 
+/* A bare name that resolved to a private function, constant or variable of
+ * another file of this same directory module: `private` is private to the
+ * declaring file, so reaching it unqualified is as wrong as `mod.name` is.
+ * Types are reported by reject_private_type() from their annotations. */
+static bool reject_private_bare_use(TypeChecker *checker, AstNode *node,
+                                    const DeclEntry *entry) {
+    if (!entry || entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM ||
+        entry->kind == DECL_ALIAS)
+        return false;
+    ResolveScope scope = checker_scope(checker);
+    if (module_decl_visible(&scope, entry)) return false;
+    diagnostic_error_code_formatted(checker->diag, "E4015",
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
+    return true;
+}
+
 /* Does `name` name a module-level constant or variable visible from here?
  * Scope symbols for those are bound during the statement walk, but a struct
  * field's default value is checked while declarations are still being
@@ -8341,6 +8357,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
          * that name wins unambiguously and is exempt. */
         {
             DeclEntry *be = checker_resolve_entry(checker, bare_name);
+            reject_private_bare_use(checker,
+                node->data.call.function ? node->data.call.function : node, be);
             if (be && be->module_name && be->module_name[0] && !be->module_is_entry) {
                 const char *amb_a = NULL, *amb_b = NULL;
                 if (count_using_call_providers(checker, bare_name, &amb_a, &amb_b) >= 2) {
@@ -11357,6 +11375,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (!sym) {
             DeclEntry *entry = checker_cache_resolution(checker, node, name);
             if (entry) {
+                reject_private_bare_use(checker, node, entry);
                 if (entry->module_is_entry)
                     node->data.label.refers_to_file_global = true;
                 char key[MSG_BUF_SIZE];

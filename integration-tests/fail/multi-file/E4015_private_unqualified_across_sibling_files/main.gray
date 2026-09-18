@@ -1,0 +1,13 @@
+// expect-error: E4015
+// expect-error-count: 3
+/*
+ * Error Test: E4015 - a private function, constant, or variable declared in
+ * one file of a directory module is private to that file, so a sibling file
+ * of the same module cannot reach it by its bare name either.
+ */
+
+import "./lib"
+
+do main() {
+    println("${lib.use_func(1)} ${lib.use_const()} ${lib.use_var()} ${lib.stamp()}")
+}
