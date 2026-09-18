@@ -162,8 +162,10 @@ FILE *gray_tmpfile(void);
 /* Resolve argv[0] against PATH. */
 int gray_spawn_path(const char *const *argv);
 
-/* Use argv[0] verbatim as a filesystem path — no PATH search. */
-int gray_spawn_exact(const char *const *argv);
+/* Use argv[0] verbatim as a filesystem path — no PATH search. When the child
+ * dies from a signal, the return value is 128 + the signal number and
+ * *term_signal is set to the signal (0 otherwise; always 0 on Windows). */
+int gray_spawn_exact(const char *const *argv, int *term_signal);
 
 /* Like gray_spawn_path, but with the child's stdout and stderr discarded. */
 int gray_spawn_quiet(const char *const *argv);

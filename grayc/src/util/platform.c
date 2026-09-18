@@ -451,7 +451,8 @@ FILE *gray_tmpfile(void) {
 
 #if GRAY_OS_WINDOWS
 
-static int spawn_child(const char *const *argv, bool search_path) {
+static int spawn_child(const char *const *argv, bool search_path, int *term_signal) {
+    (void)term_signal;
     intptr_t rc = search_path ? _spawnvp(_P_WAIT, argv[0], argv)
                               : _spawnv(_P_WAIT, argv[0], argv);
     /* _P_WAIT yields the child's exit code directly; -1 means it never ran. */
@@ -460,7 +461,7 @@ static int spawn_child(const char *const *argv, bool search_path) {
 
 #else
 
-static int spawn_child(const char *const *argv, bool search_path) {
+static int spawn_child(const char *const *argv, bool search_path, int *term_signal) {
     pid_t pid = 0;
     /* posix_spawn takes a non-const argv purely for historical reasons; it does
      * not modify the strings. */
@@ -478,18 +479,22 @@ static int spawn_child(const char *const *argv, bool search_path) {
         if (errno != EINTR) return -1;
     }
     if (WIFEXITED(status)) return WEXITSTATUS(status);
-    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    if (WIFSIGNALED(status)) {
+        if (term_signal) *term_signal = WTERMSIG(status);
+        return 128 + WTERMSIG(status);
+    }
     return -1;
 }
 
 #endif
 
 int gray_spawn_path(const char *const *argv) {
-    return spawn_child(argv, true);
+    return spawn_child(argv, true, NULL);
 }
 
-int gray_spawn_exact(const char *const *argv) {
-    return spawn_child(argv, false);
+int gray_spawn_exact(const char *const *argv, int *term_signal) {
+    if (term_signal) *term_signal = 0;
+    return spawn_child(argv, false, term_signal);
 }
 
 int gray_spawn_quiet(const char *const *argv) {
@@ -504,7 +509,7 @@ int gray_spawn_quiet(const char *const *argv) {
     gray_sys_dup2(devnull, 1);
     gray_sys_dup2(devnull, 2);
 
-    int rc = spawn_child(argv, true);
+    int rc = spawn_child(argv, true, NULL);
 
     if (saved_out >= 0) {
         gray_sys_dup2(saved_out, 1);
@@ -532,7 +537,7 @@ int gray_spawn_capture_stdout(const char *const *argv, FILE *capture) {
     gray_sys_dup2(cap_fd, 1);
     gray_sys_dup2(devnull, 2);
 
-    int rc = spawn_child(argv, true);
+    int rc = spawn_child(argv, true, NULL);
     fflush(NULL);
 
     if (saved_out >= 0) {
@@ -561,7 +566,7 @@ int gray_spawn_capture_stderr(const char *const *argv, FILE *capture) {
     gray_sys_dup2(devnull, 1);
     gray_sys_dup2(cap_fd, 2);
 
-    int rc = spawn_child(argv, true);
+    int rc = spawn_child(argv, true, NULL);
     fflush(NULL);
 
     if (saved_out >= 0) {

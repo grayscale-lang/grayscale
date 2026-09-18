@@ -122,6 +122,38 @@ func TestE2E_Report(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// gray <file> — the program's own exit status
+// ---------------------------------------------------------------------------
+
+func TestE2E_Run_ExitCodePropagates(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "exit3.gray")
+	os.WriteFile(src, []byte("do main() {\n    exit(3)\n}\n"), 0644)
+
+	_, stderr, code := runGray(t, src)
+	if code != 3 {
+		t.Fatalf("gray exit(3) program exited %d, want 3; stderr: %s", code, stderr)
+	}
+}
+
+func TestE2E_Run_NativeCrashIsReported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal death is a POSIX notion")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "crash.gray")
+	os.WriteFile(src, []byte("extern import \"signal.h\"\n\ndo main() {\n    extern.raise(11)\n}\n"), 0644)
+
+	_, stderr, code := runGray(t, src)
+	if code != 128+11 {
+		t.Errorf("crashed program exited %d, want %d", code, 128+11)
+	}
+	if !strings.Contains(stderr, "program crashed: signal 11") {
+		t.Errorf("expected a crash message naming signal 11, got:\n%s", stderr)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // gray check
 // ---------------------------------------------------------------------------
 

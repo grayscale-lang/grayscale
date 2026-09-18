@@ -1557,13 +1557,20 @@ int main(int argc, char **argv) {
     /* Run mode: execute the binary and clean up. Spawned without a shell and
      * without a PATH search — the output path comes from user-supplied CLI
      * input, and a bare name must not resolve to some unrelated binary. */
+    bool ran_program = false;
     if (ret == 0 && opts.run_mode) {
         const char *run_argv[] = {opts.output_file, NULL};
-        ret = gray_spawn_exact(run_argv);
+        int term_signal = 0;
+        ret = gray_spawn_exact(run_argv, &term_signal);
         if (ret < 0) {
             fprintf(stderr, "gray: cannot execute '%s'\n", opts.output_file);
             ret = 1;
+        } else if (term_signal) {
+            fflush(stdout);
+            fprintf(stderr, "gray: program crashed: signal %d (%s)\n",
+                    term_signal, strsignal(term_signal));
         }
+        ran_program = true;
         gray_remove_file(opts.output_file);
     }
 
@@ -1574,5 +1581,7 @@ int main(int argc, char **argv) {
     free(source);
     free(default_output);
 
-    return ret != 0 ? 1 : 0;
+    /* The program's own status (exit(code), or 128 + signal for a crash) is
+     * the process status; a compile-side failure is a flat 1. */
+    return ran_program ? ret : (ret != 0 ? 1 : 0);
 }
