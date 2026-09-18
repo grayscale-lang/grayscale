@@ -9538,13 +9538,19 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
              strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
     else if (strcmp(target, "u16")  == 0) { is_unsigned = true; smax = "65535"; }
     else if (strcmp(target, "u32")  == 0) { is_unsigned = true; smax = "4294967295ULL"; }
-    else if (strcmp(target, "uint") == 0 ||
-             strcmp(target, "u64")  == 0) {
+    else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
+             codegen->type_table &&
+             typetable_get(codegen->type_table, val) &&
+             typetable_get(codegen->type_table, val)->kind == TK_UNKNOWN) {
         /* Already 64-bit, so no upper bound can be exceeded — but a value
          * whose real signedness Grayscale can't see (an extern C-interop
-         * result) may still be negative, which would silently reinterpret
-         * as a huge unsigned number. gray_ucast_check's negative check
-         * catches that; the max is a no-op since int64_t can't exceed it. */
+         * result, typed TK_UNKNOWN) may still be negative, which would
+         * silently reinterpret as a huge unsigned number. gray_ucast_check's
+         * negative check catches that; the max is a no-op since int64_t
+         * can't exceed it. Ordinary Grayscale-typed values (TK_INT, TK_UINT,
+         * literals) are skipped: a legitimate uint64 value >= 2^63 has the
+         * same two's-complement bit pattern as a negative int64 and would
+         * otherwise trip this check on valid input. */
         is_unsigned = true; smax = "18446744073709551615ULL";
     }
     else return false;
