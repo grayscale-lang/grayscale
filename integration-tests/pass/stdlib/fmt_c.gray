@@ -44,6 +44,21 @@ do main() {
         failed += 1
     }
 
+    // pad_left/pad_right/center with a non-ASCII (2-byte UTF-8) pad char
+    mut e_ch char = char(233)
+    mut pl_utf8 string = fmt.pad_left("hi", 4, e_ch)
+    mut pr_utf8 string = fmt.pad_right("hi", 4, e_ch)
+    mut ct_utf8 string = fmt.center("hi", 4, e_ch)
+    if pl_utf8 == "ééhi" && len(pl_utf8) == 6 &&
+       pr_utf8 == "hiéé" && len(pr_utf8) == 6 &&
+       ct_utf8 == "éhié" && len(ct_utf8) == 6 {
+        println("  [PASS] pad_left/pad_right/center with non-ASCII pad char")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] non-ASCII pad char: got '${pl_utf8}' (${len(pl_utf8)}), '${pr_utf8}' (${len(pr_utf8)}), '${ct_utf8}' (${len(ct_utf8)})")
+        failed += 1
+    }
+
     // int_to_hex
     mut hex_val string = fmt.int_to_hex(255)
     if hex_val == "ff" {

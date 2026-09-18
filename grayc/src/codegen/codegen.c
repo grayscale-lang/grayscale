@@ -8073,7 +8073,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;
@@ -8084,7 +8084,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;
@@ -8095,7 +8095,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;

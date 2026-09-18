@@ -9,40 +9,60 @@
  */
 
 #include "fmt.h"
+#include "builtins.h" /* gray_builtin_char_to_utf8 */
 #include <inttypes.h>
 
 #define GRAY_INT64_BITS       64
 #define GRAY_FMT_INT_BUF      32
 #define GRAY_FMT_FLOAT_BUF    64
 
-GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, char ch) {
-    if (str.len >= width) return str;
-    int64_t pad = width - str.len;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)width);
-    memset(buf, ch, (size_t)pad);
-    memcpy(buf + pad, str.data, (size_t)str.len);
-    return (GrayString){buf, width};
+/* Fill `count` repetitions of the UTF-8 encoding of pad codepoint `ch` into
+ * `buf`, returning the number of bytes written. A Grayscale char is a full
+ * Unicode codepoint (int32_t), so a raw memset(buf, ch, count) truncates
+ * anything above U+007F to its low byte instead of writing a proper
+ * multi-byte UTF-8 sequence. */
+static int64_t fmt_fill_pad_char(GrayArena *arena, char *buf, int64_t count, int32_t ch) {
+    GrayString enc = gray_builtin_char_to_utf8(arena, ch);
+    char *p = buf;
+    for (int64_t i = 0; i < count; i++) {
+        memcpy(p, enc.data, (size_t)enc.len);
+        p += enc.len;
+    }
+    return (int64_t)enc.len * count;
 }
 
-GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, char ch) {
+GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, int32_t ch) {
     if (str.len >= width) return str;
     int64_t pad = width - str.len;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)width);
+    int max_enc = 4;
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)(pad * max_enc + str.len));
+    int64_t pad_bytes = fmt_fill_pad_char(arena, buf, pad, ch);
+    memcpy(buf + pad_bytes, str.data, (size_t)str.len);
+    return (GrayString){buf, (int32_t)(pad_bytes + str.len)};
+}
+
+GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, int32_t ch) {
+    if (str.len >= width) return str;
+    int64_t pad = width - str.len;
+    int max_enc = 4;
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)(str.len + pad * max_enc));
     memcpy(buf, str.data, (size_t)str.len);
-    memset(buf + str.len, ch, (size_t)pad);
-    return (GrayString){buf, width};
+    int64_t pad_bytes = fmt_fill_pad_char(arena, buf + str.len, pad, ch);
+    return (GrayString){buf, (int32_t)(str.len + pad_bytes)};
 }
 
-GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, char ch) {
+GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, int32_t ch) {
     if (str.len >= width) return str;
     int64_t total_pad = width - str.len;
     int64_t left_pad = total_pad / 2;
     int64_t right_pad = total_pad - left_pad;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)width);
-    memset(buf, ch, (size_t)left_pad);
-    memcpy(buf + left_pad, str.data, (size_t)str.len);
-    memset(buf + left_pad + str.len, ch, (size_t)right_pad);
-    return (GrayString){buf, width};
+    int max_enc = 4;
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena,
+        (size_t)(left_pad * max_enc + str.len + right_pad * max_enc));
+    int64_t left_bytes = fmt_fill_pad_char(arena, buf, left_pad, ch);
+    memcpy(buf + left_bytes, str.data, (size_t)str.len);
+    int64_t right_bytes = fmt_fill_pad_char(arena, buf + left_bytes + str.len, right_pad, ch);
+    return (GrayString){buf, (int32_t)(left_bytes + str.len + right_bytes)};
 }
 
 GrayString gray_fmt_int_to_hex(GrayArena *arena, int64_t value) {
