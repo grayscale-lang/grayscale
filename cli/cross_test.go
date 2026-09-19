@@ -9,6 +9,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -186,5 +187,32 @@ func TestCrossBuildCmd_HasExpectedFlags(t *testing.T) {
 		if crossBuildCmd.Flags().Lookup(name) == nil {
 			t.Errorf("crossBuildCmd missing flag %q", name)
 		}
+	}
+}
+
+func TestCrossBuildCmd_ProducesTargetBinary(t *testing.T) {
+	if _, err := findZig(); err != nil {
+		t.Skip("zig not installed")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "hello.gray")
+	if err := os.WriteFile(src, []byte("do main() { println(\"hello\") }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "hello_linux")
+	crossBuildCmd.Flags().Set("target", "linux-amd64")
+	crossBuildCmd.Flags().Set("output", out)
+	defer crossBuildCmd.Flags().Set("target", "")
+	defer crossBuildCmd.Flags().Set("output", "")
+
+	if err := crossBuildCmd.RunE(crossBuildCmd, []string{src}); err != nil {
+		t.Fatalf("cross build failed: %v", err)
+	}
+	bin, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("no output binary: %v", err)
+	}
+	if len(bin) < 4 || string(bin[:4]) != "\x7fELF" {
+		t.Errorf("output is not an ELF binary for linux-amd64")
 	}
 }

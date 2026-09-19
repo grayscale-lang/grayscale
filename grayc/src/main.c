@@ -1477,9 +1477,13 @@ int main(int argc, char **argv) {
     char lib_path[PATH_BUF_SIZE];
     bool has_archive = false;
 
-    /* Check for libgrayrt.a next to the runtime dir, then next to the binary */
+    /* Check for libgrayrt.a next to the runtime dir, then next to the binary.
+     * The archive is built for the host; a --cc compiler (a cross target) needs
+     * the runtime compiled from source for its own target instead. */
     gray_path_join(lib_path, sizeof(lib_path), runtime_dir, "../libgrayrt.a");
-    if (gray_file_readable(lib_path)) {
+    if (opts.cc_override) {
+        /* fall through to the from-source build below */
+    } else if (gray_file_readable(lib_path)) {
         has_archive = true;
     } else {
         const char *self = gray_self_dir(NULL);
@@ -1516,6 +1520,10 @@ int main(int argc, char **argv) {
      * declarations in the shared runtime headers against the archive. */
     argv_push(&cc_argv, "-std=c11");
     argv_push(&cc_argv, "-D_POSIX_C_SOURCE=200809L");
+    /* Darwin's -D_POSIX_C_SOURCE strict mode hides BSD names (u_int, ...) that
+     * its own system headers use; vendored sqlite3.c, built from source for a
+     * mac target, includes those headers. Inert on glibc. */
+    argv_push(&cc_argv, "-D_DARWIN_C_SOURCE");
 #endif
     if (opts.debug_symbols) argv_push(&cc_argv, "-g");
     argv_push(&cc_argv, opts.opt_level);
@@ -1556,6 +1564,8 @@ int main(int argc, char **argv) {
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "runtime", runtime_dir);
     argv_push(&cc_argv, "-isystem");
     argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "stdlib", runtime_dir);
+    argv_push(&cc_argv, "-isystem");
+    argv_push(&cc_argv, runtime_dir);
     /* Local C headers ("./x.h") are written relative to the .gray source, not
      * the temp .c handed to the compiler. */
     add_local_c_header_dirs(&cc_argv, arena, program, opts.input_file);
@@ -1566,18 +1576,16 @@ int main(int argc, char **argv) {
     if (has_archive) {
         argv_push(&cc_argv, lib_path);
     } else {
-        /* The runtime sources reach shared headers via "util/..." includes
-         * (runtime.c wants util/colors.h); expose the src root so those
-         * resolve when building the runtime from source. */
-        argv_push(&cc_argv, "-isystem");
-        argv_push(&cc_argv, runtime_dir);
-        /* Build source list from all runtime and stdlib .c files */
+        /* Build source list from all runtime and stdlib .c files. Mirrors
+         * RT_SRC in grayc/Makefile; atomic_builtin.c stands in for the
+         * per-architecture assembly, which is written for the host. */
         static const char *runtime_srcs[] = {
             "runtime/runtime.c", "runtime/array.c", "runtime/map.c",
+            "runtime/test.c", "runtime/atomic_builtin.c",
         };
         static const char *stdlib_srcs[] = {
             "stdlib/arrays.c",   "stdlib/binary.c",   "stdlib/builtins.c",
-            "stdlib/bytes.c",    "stdlib/channels.c", "stdlib/crypto.c",
+            "stdlib/chars.c",    "stdlib/channels.c", "stdlib/crypto.c",
             "stdlib/csv.c",      "stdlib/encoding.c", "stdlib/fmt.c",
             "stdlib/http.c",     "stdlib/io.c",       "stdlib/json.c",
             "stdlib/maps.c",     "stdlib/math.c",     "stdlib/mem.c",
@@ -1585,12 +1593,21 @@ int main(int argc, char **argv) {
             "stdlib/regex.c",    "stdlib/server.c",   "stdlib/sqlite.c",
             "stdlib/strings.c",  "stdlib/sync.c",     "stdlib/atomic.c",
             "stdlib/threads.c",  "stdlib/runtime_mod.c",
-            "stdlib/time.c",     "stdlib/uuid.c", "stdlib/strconv.c"
+            "stdlib/time.c",     "stdlib/uuid.c",     "stdlib/strconv.c",
+            "vendor/sqlite3.c"
         };
         for (size_t i = 0; i < sizeof(runtime_srcs) / sizeof(runtime_srcs[0]); i++) {
             argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, runtime_srcs[i]);
         }
+        /* The vendored SQLite amalgamation is not part of the extracted
+         * runtime a release binary carries; without it sqlite.c cannot build. */
+        char vendor_probe[PATH_BUF_SIZE];
+        gray_path_join(vendor_probe, sizeof(vendor_probe), runtime_dir, "vendor/sqlite3.c");
+        bool has_vendor = gray_file_readable(vendor_probe);
         for (size_t i = 0; i < sizeof(stdlib_srcs) / sizeof(stdlib_srcs[0]); i++) {
+            if (!has_vendor && (strcmp(stdlib_srcs[i], "stdlib/sqlite.c") == 0 ||
+                                strcmp(stdlib_srcs[i], "vendor/sqlite3.c") == 0))
+                continue;
             argv_pushf(&cc_argv, arena, "%s" GRAY_PATH_SEP_STR "%s", runtime_dir, stdlib_srcs[i]);
         }
     }

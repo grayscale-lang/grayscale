@@ -13368,7 +13368,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"runtime.h\"\n");
     emit(codegen, "#include \"array.h\"\n");
     emit(codegen, "#include \"map.h\"\n");
-    emit(codegen, "#include \"builtins.h\"\n");
+    /* Qualified, unlike its siblings: clang's own resource directory (which
+     * zig cc searches ahead of -isystem) ships a builtins.h that would win. */
+    emit(codegen, "#include \"stdlib/builtins.h\"\n");
     /* os.h is always needed — generated main() calls gray_os_init(). */
     emit(codegen, "#include \"os.h\"\n");
     /* test.h declares the test-runner entry points used by the generated
