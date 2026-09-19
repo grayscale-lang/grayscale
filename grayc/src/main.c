@@ -419,23 +419,14 @@ static void add_local_c_header_dirs(ArgV *cc_argv, Arena *arena, AstNode *progra
     }
 }
 
-/* Append `#include <path>` (angle-bracket header) or `#include "resolved"`
- * (a "./x.h" / "../x.h" local header, resolved against the importing file's
- * directory) for every distinct header named by an `extern import`, mirroring
- * exactly what the real generated .c file includes. Used to build a stub
- * translation unit for probing real C function signatures. */
-static void append_c_header_includes(AstNode *program, const char *entry_file,
-                                     char *out, size_t out_size) {
-    /* Dedup key per seen item: its resolved path for a local header, its raw
-     * name for a system one. Compared on demand rather than stored, so this
-     * needs no scratch buffer beyond the one line/resolved pair in flight —
-     * see the dedup-key comment in preflight_c_headers for why a local
-     * header can't be deduped by its raw "./x.h" spelling (#2729). */
-    const ImportItem *seen[MAX_CC_ARGS];
-    int seen_count = 0;
-    size_t used = 0;
-    out[0] = '\0';
-
+/* Every distinct C header named by an `extern import` anywhere in the program,
+ * in first-seen order. The dedup key per item is its resolved path for a local
+ * header, its raw name for a system one — see the dedup-key comment in
+ * preflight_c_headers for why a local header can't be deduped by its raw
+ * "./x.h" spelling (#2729). Returns the number of items stored. */
+static int collect_distinct_c_headers(AstNode *program, const char *entry_file,
+                                      const ImportItem **out, int max) {
+    int count = 0;
     for (int si = 0; si < program->data.program.stmt_count; si++) {
         AstNode *stmt = program->data.program.stmts[si];
         if (stmt->kind != NODE_IMPORT_STMT) continue;
@@ -448,8 +439,8 @@ static void append_c_header_includes(AstNode *program, const char *entry_file,
             if (is_local) resolve_local_c_header_path(item, entry_file, resolved, sizeof(resolved));
 
             bool dup = false;
-            for (int k = 0; k < seen_count; k++) {
-                const ImportItem *s = seen[k];
+            for (int k = 0; k < count; k++) {
+                const ImportItem *s = out[k];
                 bool s_local = c_header_is_local(s->path);
                 if (s_local != is_local) continue;
                 if (is_local) {
@@ -462,20 +453,42 @@ static void append_c_header_includes(AstNode *program, const char *entry_file,
                 }
             }
             if (dup) continue;
-            if (seen_count < MAX_CC_ARGS) seen[seen_count++] = item;
+            if (count < max) out[count++] = item;
+        }
+    }
+    return count;
+}
 
-            char line[PATH_BUF_SIZE];
-            if (is_local) {
-                snprintf(line, sizeof(line), "#include \"%s\"\n", resolved);
-            } else {
-                snprintf(line, sizeof(line), "#include <%s>\n", item->path);
-            }
-            size_t line_len = strlen(line);
-            if (used + line_len < out_size) {
-                memcpy(out + used, line, line_len);
-                used += line_len;
-                out[used] = '\0';
-            }
+/* Append `#include <path>` (angle-bracket header) or `#include "resolved"`
+ * (a "./x.h" / "../x.h" local header, resolved against the importing file's
+ * directory) for each of `headers`, mirroring exactly what the real generated
+ * .c file includes. Used to build a stub translation unit for probing real C
+ * function signatures. */
+static void append_c_header_includes(const ImportItem *const *headers, int count,
+                                     const char *entry_file, char *out, size_t out_size) {
+    size_t used = 0;
+    out[0] = '\0';
+
+    for (int i = 0; i < count; i++) {
+        const ImportItem *item = headers[i];
+        char line[PATH_BUF_SIZE];
+        if (c_header_is_local(item->path)) {
+            char resolved[PATH_BUF_SIZE];
+            char canonical[PATH_BUF_SIZE];
+            resolve_local_c_header_path(item, entry_file, resolved, sizeof(resolved));
+            /* Canonical absolute path, as codegen emits it: a stub written to
+             * a temp dir cannot resolve a cwd-relative path. */
+            const char *target = gray_realpath_into(resolved, canonical, sizeof(canonical))
+                ? canonical : resolved;
+            snprintf(line, sizeof(line), "#include \"%s\"\n", target);
+        } else {
+            snprintf(line, sizeof(line), "#include <%s>\n", item->path);
+        }
+        size_t line_len = strlen(line);
+        if (used + line_len < out_size) {
+            memcpy(out + used, line, line_len);
+            used += line_len;
+            out[used] = '\0';
         }
     }
 }
@@ -707,7 +720,119 @@ static void append_extern_probe_body(const ExternCallSite *calls, int call_count
 #undef PROBE_APPEND
 }
 
-/* Validates every extern.func(...) call and extern.CONST access the type
+/* Compiles a stub that includes only `headers` with -fsyntax-only. Returns
+ * true when the compiler rejects it; `err` receives the compiler's stderr. */
+static bool c_headers_fail_to_compile(AstNode *program, Arena *arena, const char *cc_cmd,
+                                      bool cc_is_command, const char *entry_file,
+                                      const ImportItem *const *headers, int count,
+                                      char *err, size_t err_size) {
+    err[0] = '\0';
+    char src[4096];
+    append_c_header_includes(headers, count, entry_file, src, sizeof(src));
+
+    char stub[PATH_BUF_SIZE];
+    int sn = gray_temp_path(stub, sizeof(stub), "gray_hdrconflict_", ".c");
+    if (sn < 0 || (size_t)sn >= sizeof(stub)) return false;
+    if (!write_file(stub, src)) { gray_remove_file(stub); return false; }
+
+    FILE *capture = gray_tmpfile();
+    if (!capture) { gray_remove_file(stub); return false; }
+
+    ArgV a = {0};
+    if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
+    else argv_push(&a, cc_cmd);
+    argv_push(&a, "-fsyntax-only");
+    add_local_c_header_dirs(&a, arena, program, entry_file);
+    argv_push(&a, "-x");
+    argv_push(&a, "c");
+    argv_push(&a, stub);
+    argv_end(&a);
+
+    bool failed = !a.overflow && gray_spawn_capture_stderr(a.v, capture) != 0;
+    gray_remove_file(stub);
+
+    long len = ftell(capture);
+    if (failed && len > 0) {
+        rewind(capture);
+        size_t got = fread(err, 1, err_size - 1 < (size_t)len ? err_size - 1 : (size_t)len, capture);
+        err[got] = '\0';
+    }
+    fclose(capture);
+    return failed;
+}
+
+/* Copies the quoted name following `marker` in `text` (clang's
+ * "conflicting types for 'name'") into `out`. False when absent. */
+static bool extract_quoted_after(const char *text, const char *marker, char *out, size_t out_size) {
+    const char *p = strstr(text, marker);
+    if (!p) return false;
+    p += strlen(marker);
+    if (*p != '\'') return false;
+    p++;
+    const char *end = strchr(p, '\'');
+    if (!end || (size_t)(end - p) >= out_size) return false;
+    memcpy(out, p, (size_t)(end - p));
+    out[end - p] = '\0';
+    return true;
+}
+
+/* Every `extern import` in the program, from every file, is #included into one
+ * generated C translation unit, so two headers that declare the same C symbol
+ * differently cannot both be imported even from different files. Detects that
+ * by compiling the headers together, then narrows to the offending pair so the
+ * diagnostic names both headers and the symbol. Fails open — a header that
+ * does not compile on its own, or a compiler error this does not recognise,
+ * is left for the real compile. Returns true when a conflict was reported. */
+static bool report_c_header_conflicts(AstNode *program, DiagnosticList *diag, Arena *arena,
+                                      const char *cc_cmd, bool cc_is_command,
+                                      const char *entry_file) {
+    const ImportItem *headers[MAX_CC_ARGS];
+    int n = collect_distinct_c_headers(program, entry_file, headers, MAX_CC_ARGS);
+    if (n < 2) return false;
+
+    char err[8192];
+    if (!c_headers_fail_to_compile(program, arena, cc_cmd, cc_is_command, entry_file,
+                                   headers, n, err, sizeof(err)))
+        return false;
+
+    for (int i = 0; i < n; i++)
+        if (c_headers_fail_to_compile(program, arena, cc_cmd, cc_is_command, entry_file,
+                                      &headers[i], 1, err, sizeof(err)))
+            return false;
+
+    for (int i = 1; i < n; i++) {
+        for (int j = 0; j < i; j++) {
+            const ImportItem *pair[2] = { headers[j], headers[i] };
+            if (!c_headers_fail_to_compile(program, arena, cc_cmd, cc_is_command, entry_file,
+                                           pair, 2, err, sizeof(err)))
+                continue;
+
+            char symbol[256];
+            if (!extract_quoted_after(err, "conflicting types for ", symbol, sizeof(symbol)) &&
+                !extract_quoted_after(err, "redefinition of ", symbol, sizeof(symbol)))
+                return false;
+
+            const ImportItem *later = headers[i];
+            const ImportItem *earlier = headers[j];
+            const char *earlier_file = earlier->token.file ? earlier->token.file : entry_file;
+            char help[PATH_BUF_SIZE + 256];
+            snprintf(help, sizeof(help),
+                "every 'extern import' in the program shares one C namespace; '%s' is "
+                "imported in %s. Import only one of the two headers, or rename the symbol "
+                "in one of them.", earlier->path, earlier_file);
+            diagnostic_error_code_formatted_help(diag, "E6016",
+                later->token.file ? later->token.file : entry_file,
+                later->token.line, later->token.column, 0,
+                arena_copy_string(arena, help), later->path, earlier->path, symbol);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* First reports any two imported C headers that declare the same symbol
+ * differently (E6016). Then validates every extern.func(...) call and
+ * extern.CONST access the type
  * checker recorded against the real C header(s) this program imports, using
  * the target compiler itself as the source of truth (the typechecker has no
  * C header parser). Two checks, both anchored at the call/access site so a
@@ -731,12 +856,17 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                                          DiagnosticList *diag, Arena *arena,
                                          const char *cc_cmd, bool cc_is_command,
                                          const char *entry_file) {
+    if (report_c_header_conflicts(program, diag, arena, cc_cmd, cc_is_command, entry_file))
+        return;
+
     int call_count = 0;
     const ExternCallSite *calls = typechecker_get_extern_calls(checker, &call_count);
     if (call_count == 0) return;
 
+    const ImportItem *headers[MAX_CC_ARGS];
+    int header_count = collect_distinct_c_headers(program, entry_file, headers, MAX_CC_ARGS);
     char includes[4096];
-    append_c_header_includes(program, entry_file, includes, sizeof(includes));
+    append_c_header_includes(headers, header_count, entry_file, includes, sizeof(includes));
     if (!includes[0]) return;
 
     /* Check 1: does each referenced symbol exist at all? */
