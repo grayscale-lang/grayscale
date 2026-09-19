@@ -158,6 +158,10 @@ typedef struct {
      * writes through its own parameter. Lets a call site refuse a pointer to
      * a const-declared variable for a callee that would modify it. */
     unsigned long long writes_through_param;
+    /* returns_const_pointer: this function can return a pointer to a
+     * module-level const-declared variable (`return addr(DEFAULTS)`), or the
+     * result of another function that does. */
+    bool returns_const_pointer;
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
      * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,

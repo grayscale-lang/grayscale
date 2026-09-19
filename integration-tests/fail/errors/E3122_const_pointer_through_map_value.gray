@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3122 - pointer to a const-declared variable read out of a map,
+ * passed to a function that writes through it
+ * Expected: E3122 error — the map value's pointer is still read-only
+ */
+
+const Counter struct {
+    n int
+}
+
+do bump(c ^Counter) {
+    c^.n += 1
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    mut m map[string:^Counter] = {"a": addr(k)}
+    bump(m["a"])
+}

@@ -1,0 +1,20 @@
+/*
+ * Error Test: E3122 - write through a pointer to a module-level const that a
+ * function returns
+ * Expected: E3122 error — the returned pointer is read-only
+ */
+
+const Counter struct {
+    n int
+}
+
+const DEFAULTS Counter = Counter{n: 1}
+
+do defaults() -> ^Counter {
+    return addr(DEFAULTS)
+}
+
+do main() {
+    mut p ^Counter = defaults()
+    p^.n = 3
+}

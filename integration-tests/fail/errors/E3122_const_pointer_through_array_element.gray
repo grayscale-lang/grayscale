@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3122 - write through a pointer to a const-declared variable
+ * read out of an array
+ * Expected: E3122 error — the element's pointer is still read-only
+ */
+
+const Counter struct {
+    n int
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    mut arr [^Counter] = {addr(k)}
+    arr[0]^.n = 1
+}

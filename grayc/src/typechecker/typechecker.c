@@ -976,6 +976,7 @@ static void register_func(TypeChecker *checker, const char *name,
     memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
     fs->writes_through_param = 0;
+    fs->returns_const_pointer = false;
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
@@ -1727,6 +1728,52 @@ static bool call_target_is_opaque_func(FuncSig *fs, AstNode *call) {
     return call_func_typed_param_index(fs, call) >= 0;
 }
 
+/* Is `name` a module-level const-declared variable of the program being
+ * checked? */
+static bool is_module_level_const(TypeChecker *checker, const char *name) {
+    AstNode *program = checker->program;
+    if (!program || program->kind != NODE_PROGRAM || !name) return false;
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_VAR_DECL && !stmt->data.var_decl.mutable &&
+            stmt->data.var_decl.name && strcmp(stmt->data.var_decl.name, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* Structural: does a value `fs` returns point at a module-level const-declared
+ * variable — `addr(GLOBAL)`, a local initialised from one, or the result of
+ * another function that returns one. */
+static bool return_expr_points_to_const(TypeChecker *checker, FuncSig *fs,
+                                        AstNode *body, AstNode *e) {
+    if (!e) return false;
+    if (e->kind == NODE_LABEL) {
+        AstNode *init = local_initializer(body, e->data.label.value);
+        return init && init != e && return_expr_points_to_const(checker, fs, body, init);
+    }
+    if (e->kind != NODE_CALL_EXPR) return false;
+    AstNode *f = e->data.call.function;
+    if (f && f->kind == NODE_LABEL && e->data.call.arg_count == 1) {
+        if (strcmp(f->data.label.value, "addr") == 0) {
+            const char *root = assignment_target_root_name(e->data.call.args[0]);
+            if (!root || declared_in_subtree(body, root)) return false;
+            int param_count = fs->decl->data.func_decl.param_count;
+            for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
+                const char *pn = fs->decl->data.func_decl.params[i].name;
+                if (pn && strcmp(pn, root) == 0) return false;
+            }
+            return is_module_level_const(checker, root);
+        }
+        if (strcmp(f->data.label.value, "copy") == 0)
+            return return_expr_points_to_const(checker, fs, body, e->data.call.args[0]);
+    }
+    FuncSig *callee = resolve_call_sig_in_body(checker, body, e);
+    if (!callee || callee == fs) return false;
+    ensure_escape_summary(checker, callee);
+    return callee->returns_const_pointer;
+}
+
 /* Bit of the pointer parameter of `fs` that a write rooted at `root` lands
  * in: `root` names the parameter itself, or a local declared as a plain copy
  * of it (`mut q = p`). 0 for anything else, including a by-value parameter. */
@@ -1946,8 +1993,12 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
         escape_walk(checker, fs, body, node->data.ensure_stmt.expr);
         break;
     case NODE_RETURN_STMT:
-        for (int i = 0; i < node->data.return_stmt.count; i++)
+        for (int i = 0; i < node->data.return_stmt.count; i++) {
+            if (return_expr_points_to_const(checker, fs, body,
+                                            node->data.return_stmt.values[i]))
+                fs->returns_const_pointer = true;
             escape_walk(checker, fs, body, node->data.return_stmt.values[i]);
+        }
         break;
     default:
         break;
@@ -1967,6 +2018,7 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
     fs->writes_through_param = 0;
+    fs->returns_const_pointer = false;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
@@ -2001,6 +2053,166 @@ static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *f
     if (!fs) return 0;
     ensure_escape_summary(checker, fs);
     return fs->returns_param_addr;
+}
+
+/* --- const-sourced pointers ---
+ *
+ * A pointer to a const-declared variable is read-only: writing through it is
+ * E3122. Symbol.const_source marks a variable that holds such a pointer, or
+ * an aggregate that holds one in a field or element. It is set from anything
+ * that points at a const — addr(const), a marked variable, a field or element
+ * of one, a literal built from one, or a call that returns one — not only from
+ * a direct `addr(const)` initializer. One flag covers the whole variable, so a
+ * struct holding a const pointer and a mutable one is treated as holding
+ * const pointers throughout. */
+
+static GrayType *const_walk_expr_type(TypeChecker *checker, AstNode *e) {
+    GrayType *t = typetable_get(checker->type_table, e);
+    if (t) return t;
+    if (e->kind == NODE_LABEL) {
+        Symbol *sym = checker_lookup_symbol(checker, e->data.label.value);
+        return sym ? sym->type : NULL;
+    }
+    return NULL;
+}
+
+static bool expr_points_to_const(TypeChecker *checker, AstNode *e);
+
+/* The pointer expression that a write through `place` dereferences, when it
+ * points at a const-declared variable — `p^`, `p^.f`, `p.f` (auto-deref),
+ * `h.p^.f` — else NULL. */
+static AstNode *place_derefs_const_pointer(TypeChecker *checker, AstNode *place) {
+    AstNode *cur = place;
+    while (cur) {
+        AstNode *inner = NULL;
+        bool deref = false;
+        switch (cur->kind) {
+        case NODE_POSTFIX_EXPR:
+            if (cur->data.postfix.op != TOK_CARET) return NULL;
+            inner = cur->data.postfix.left;
+            deref = true;
+            break;
+        case NODE_MEMBER_EXPR: {
+            inner = cur->data.member.object;
+            GrayType *t = inner ? const_walk_expr_type(checker, inner) : NULL;
+            deref = t && t->kind == TK_POINTER;
+            break;
+        }
+        case NODE_INDEX_EXPR:
+            inner = cur->data.index_expr.left;
+            break;
+        default:
+            return NULL;
+        }
+        if (!inner) return NULL;
+        if (deref && expr_points_to_const(checker, inner)) return inner;
+        cur = inner;
+    }
+    return NULL;
+}
+
+static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_LABEL: {
+        Symbol *sym = checker_lookup_symbol(checker, e->data.label.value);
+        return sym && sym->const_source;
+    }
+    case NODE_MEMBER_EXPR:
+    case NODE_INDEX_EXPR: {
+        /* A field or element of a marked aggregate is marked; one read out of
+         * memory behind a pointer is a different pointer. */
+        AstNode *inner = e->kind == NODE_MEMBER_EXPR ? e->data.member.object
+                                                     : e->data.index_expr.left;
+        GrayType *t = inner ? const_walk_expr_type(checker, inner) : NULL;
+        if (!inner || (t && t->kind == TK_POINTER)) return false;
+        return expr_points_to_const(checker, inner);
+    }
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < e->data.struct_value.count; i++)
+            if (expr_points_to_const(checker, e->data.struct_value.field_values[i]))
+                return true;
+        return false;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < e->data.array_value.count; i++)
+            if (expr_points_to_const(checker, e->data.array_value.elements[i]))
+                return true;
+        return false;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < e->data.map_value.count; i++)
+            if (expr_points_to_const(checker, e->data.map_value.values[i]))
+                return true;
+        return false;
+    case NODE_CALL_EXPR: {
+        AstNode *f = e->data.call.function;
+        if (f && f->kind == NODE_LABEL && e->data.call.arg_count == 1) {
+            if (strcmp(f->data.label.value, "addr") == 0) {
+                AstNode *target = e->data.call.args[0];
+                /* A module-level declaration is bound under its module's
+                 * spelling, hence checker_lookup_symbol. A pointer root
+                 * auto-derefs, so its own constness says nothing about the
+                 * pointee. */
+                const char *root = assignment_target_root_name(target);
+                Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
+                if (sym && !sym->mutable &&
+                    !(sym->type && sym->type->kind == TK_POINTER))
+                    return true;
+                return place_derefs_const_pointer(checker, target) != NULL;
+            }
+            if (strcmp(f->data.label.value, "copy") == 0)
+                return expr_points_to_const(checker, e->data.call.args[0]);
+        }
+        FuncSig *callee = resolve_call_sig(checker, e);
+        if (!callee) {
+            /* A stdlib call (arrays.get_first, maps.get_values, ...), a builtin,
+             * or a tagged-enum variant has no FuncSig to summarise: assume a
+             * pointer-carrying result was read out of its arguments. */
+            GrayType *rt = typetable_get(checker->type_table, e);
+            if (!is_tagged_enum_variant_call(checker, e) &&
+                !(rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                         rt->kind == TK_ARRAY || rt->kind == TK_MAP)))
+                return false;
+            for (int k = 0; k < e->data.call.arg_count; k++)
+                if (expr_points_to_const(checker, e->data.call.args[k]))
+                    return true;
+            return false;
+        }
+        ensure_escape_summary(checker, callee);
+        if (callee->returns_const_pointer) return true;
+        for (int k = 0; k < e->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++)
+            if (((callee->returns_param_addr >> k) & 1) &&
+                expr_points_to_const(checker, e->data.call.args[k]))
+                return true;
+        return false;
+    }
+    default:
+        return false;
+    }
+}
+
+/* `dst` now holds a pointer to a const-declared variable, if `value` does. */
+static void propagate_const_source(TypeChecker *checker, Symbol *dst, AstNode *value) {
+    if (!dst || dst->const_source || !dst->type) return;
+    TypeKind k = dst->type->kind;
+    if (k != TK_POINTER && k != TK_STRUCT && k != TK_ARRAY && k != TK_MAP) return;
+    if (expr_points_to_const(checker, value)) dst->const_source = true;
+}
+
+/* E3122: report a write to `place` that goes through a pointer to a
+ * const-declared variable. */
+static bool report_write_through_const_pointer(TypeChecker *checker,
+                                               AstNode *at, AstNode *place) {
+    AstNode *ptr = place_derefs_const_pointer(checker, place);
+    if (!ptr) return false;
+    if (ptr->kind == NODE_LABEL)
+        diagnostic_error_code_formatted(checker->diag, "E3122",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            ptr->data.label.value);
+    else
+        diagnostic_error_message(checker->diag, "E3122",
+            "cannot modify value through a pointer; the pointee is a const-declared variable",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0);
+    return true;
 }
 
 /* --- pointer_checker_mem_walk: cross-function @mem summary --- */
@@ -2610,28 +2822,10 @@ static void apply_call_param_write_effects(TypeChecker *checker,
     for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
         if (!((csig->writes_through_param >> a) & 1)) continue;
         AstNode *arg = node->data.call.args[a];
-        const char *const_name = NULL;
-        bool via_pointer_var = false;
-        if (arg->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, arg->data.label.value);
-            if (sym && sym->const_source) {
-                const_name = arg->data.label.value;
-                via_pointer_var = true;
-            }
-        } else if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
-                   arg->data.call.function->kind == NODE_LABEL &&
-                   strcmp(arg->data.call.function->data.label.value, "addr") == 0 &&
-                   arg->data.call.arg_count == 1) {
-            const char *root = assignment_target_root_name(arg->data.call.args[0]);
-            Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
-            if (sym && !sym->mutable) const_name = root;
-        }
-        if (!const_name) continue;
+        if (!expr_points_to_const(checker, arg)) continue;
         char *msg = typechecker_format(checker,
-            via_pointer_var
-                ? "cannot pass pointer '%s' to parameter '%s' of '%s'; its pointee is a const-declared variable and the function modifies it"
-                : "cannot pass a pointer to constant '%s' to parameter '%s' of '%s'; the function modifies the value through it",
-            const_name, csig->decl->data.func_decl.params[a].name,
+            "cannot pass a pointer to a const-declared variable to parameter '%s' of '%s'; the function modifies the value through it",
+            csig->decl->data.func_decl.params[a].name,
             FUNC_DISPLAY_NAME(csig->decl));
         diagnostic_error_message(checker->diag, "E3122", msg,
             NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
@@ -5324,6 +5518,7 @@ static void retarget_member_object(AstNode *member, const char *type_name) {
 static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                                const char *param_desc, const char *func_display) {
     const char *qualifier = ast_member_qualifier(arg);
+    if (report_write_through_const_pointer(checker, arg, arg)) return;
     if (arg->kind == NODE_LABEL) {
         Symbol *sym = scope_lookup(checker->current_scope, arg->data.label.value);
         if (sym && !sym->mutable) {
@@ -5356,37 +5551,12 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                 diagnostic_error_message(checker->diag, "E3027", msg,
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
             }
-        } else {
-            /* The chain crosses a pointer dereference (pp^.field, pp^[i]).
-             * Modifying that place writes into the pointee — reject it when
-             * the pointer was taken from a const-declared variable, the same
-             * E3122 check the 'pp^.field = v' assignment path performs.
-             * escape_root_name sees through the '^' to the pointer label. */
-            const char *ptr_name = escape_root_name(arg);
-            if (ptr_name) {
-                Symbol *sym = scope_lookup(checker->current_scope, ptr_name);
-                if (sym && sym->const_source) {
-                    diagnostic_error_code_formatted(checker->diag, "E3122",
-                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                        ptr_name);
-                }
-            }
         }
     } else if (arg->kind == NODE_POSTFIX_EXPR &&
                arg->data.postfix.op == TOK_CARET) {
         /* A pointer dereference is a mutable place (p^ = v is a valid
-         * assignment target). Reject it only when the pointer was taken
-         * from a const-declared variable — the same E3122 check the
-         * 'p^ = v' assignment path performs. */
-        AstNode *ptr = arg->data.postfix.left;
-        if (ptr && ptr->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, ptr->data.label.value);
-            if (sym && sym->const_source) {
-                diagnostic_error_code_formatted(checker->diag, "E3122",
-                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                    ptr->data.label.value);
-            }
-        }
+         * assignment target); a pointer to a const-declared variable was
+         * rejected above. */
     } else if (arg->kind != NODE_MEMBER_EXPR &&
                arg->kind != NODE_INDEX_EXPR) {
         /* Anything else — a literal, an arithmetic or logical expression, a
@@ -9365,6 +9535,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         int argc = node->data.call.arg_count;
         /* stdlib container inserts (arrays.append/prepend/insert_at/fill) */
         const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && argc > sink->value_arg && argc > sink->container_arg) {
+            const char *croot =
+                assignment_target_root_name(node->data.call.args[sink->container_arg]);
+            if (croot)
+                propagate_const_source(checker, checker_lookup_symbol(checker, croot),
+                                       node->data.call.args[sink->value_arg]);
+        }
         if (sink && argc > sink->value_arg && argc > sink->container_arg &&
             !((reported_arg >> sink->value_arg) & 1)) {
             const char *dest =
@@ -14058,26 +14235,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
-            /* Mark const_source when addr() takes a const variable,
-             * so writes through the resulting pointer are caught. */
-            if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "addr") == 0 &&
-                node->data.var_decl.value->data.call.arg_count == 1) {
-                AstNode *src = node->data.var_decl.value->data.call.args[0];
-                const char *root = assignment_target_root_name(src);
-                if (root) {
-                    /* A module-level declaration is bound under its module's
-                     * spelling, so a bare reference from inside the module
-                     * misses a plain scope_lookup — and addr() on a const one
-                     * left the pointer unmarked, so the write through it was
-                     * never caught. */
-                    Symbol *src_sym = checker_lookup_symbol(checker, root);
-                    if (src_sym && !src_sym->mutable) {
-                        Symbol *sym = scope_lookup_local(checker->current_scope,
-                            node->data.var_decl.name);
-                        if (sym) sym->const_source = true;
-                    }
-                }
-            }
             /* Store multi-return types for temp variables from calls.
              * For generic functions, substitute the wildcard binding
              * so destructured slots get concrete types instead of
@@ -14211,19 +14368,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        /* Propagate const_source through pointer assignment so that
-         * mut q = p inherits the flag when p originated from addr()
-         * on a const variable. */
-        if (node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_LABEL) {
-            Symbol *src_sym = scope_lookup(checker->current_scope,
-                node->data.var_decl.value->data.label.value);
-            if (src_sym && src_sym->const_source) {
-                Symbol *dst_sym = scope_lookup_local(checker->current_scope,
-                    node->data.var_decl.name);
-                if (dst_sym) dst_sym->const_source = true;
-            }
-        }
+        /* The declared variable holds a pointer to a const-declared variable
+         * when its initializer does, so writes through it are caught. */
+        if (node->data.var_decl.value)
+            propagate_const_source(checker,
+                scope_lookup_local(checker->current_scope, node->data.var_decl.name),
+                node->data.var_decl.value);
         /* Record the lifetime origin of a pointer declared from addr()/raw()
          * or copied from another tracked pointer. A declaration is always
          * legal — the pointer cannot outlive its own scope — but the origin
@@ -14597,41 +14747,18 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     /* E3122: cannot modify value through a pointer whose pointee is a
-     * const-declared variable (taken via addr()).  Covers p^ = v,
-     * p^.field = v, and compound assignments (p^ += v). */
-    if (target->kind == NODE_POSTFIX_EXPR &&
-        target->data.postfix.op == TOK_CARET &&
-        target->data.postfix.left->kind == NODE_LABEL) {
-        Symbol *sym = scope_lookup(checker->current_scope,
-            target->data.postfix.left->data.label.value);
-        if (sym && sym->const_source) {
-            diagnostic_error_code_formatted(checker->diag, "E3122",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                target->data.postfix.left->data.label.value);
-        }
-    } else if (target->kind == NODE_MEMBER_EXPR &&
-               target->data.member.object->kind == NODE_POSTFIX_EXPR &&
-               target->data.member.object->data.postfix.op == TOK_CARET &&
-               target->data.member.object->data.postfix.left->kind == NODE_LABEL) {
-        Symbol *sym = scope_lookup(checker->current_scope,
-            target->data.member.object->data.postfix.left->data.label.value);
-        if (sym && sym->const_source) {
-            diagnostic_error_code_formatted(checker->diag, "E3122",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                target->data.member.object->data.postfix.left->data.label.value);
-        }
-    }
+     * const-declared variable.  Covers p^ = v, p^.field = v, p.field = v,
+     * h.p^.field = v, and compound assignments (p^ += v). */
+    report_write_through_const_pointer(checker, node, target);
 
-    /* Propagate const_source through pointer reassignment (q = p). */
-    if (target->kind == NODE_LABEL && node->data.assign.value &&
-        node->data.assign.value->kind == NODE_LABEL) {
-        Symbol *src_sym = scope_lookup(checker->current_scope,
-            node->data.assign.value->data.label.value);
-        if (src_sym && src_sym->const_source) {
-            Symbol *dst_sym = scope_lookup(checker->current_scope,
-                target->data.label.value);
-            if (dst_sym) dst_sym->const_source = true;
-        }
+    /* A variable that now holds a pointer to a const-declared variable — in
+     * itself, a field or an element — is marked so writes through it are
+     * caught (q = p, h.p = addr(k), arr[0] = ident(addr(k))). */
+    if (node->data.assign.value) {
+        const char *root = assignment_target_root_name(target);
+        if (root)
+            propagate_const_source(checker, checker_lookup_symbol(checker, root),
+                                   node->data.assign.value);
     }
 
     /* E3004: string index assignment is not supported; strings are immutable
@@ -16511,6 +16638,13 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+
+    /* An element read out of a container that holds a pointer to a
+     * const-declared variable is such a pointer itself. */
+    if (node->data.for_each.var_name)
+        propagate_const_source(checker,
+            scope_lookup_local(loop_scope, node->data.for_each.var_name),
+            node->data.for_each.collection);
 
     checker->loop_depth++;
     pointer_checker_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
