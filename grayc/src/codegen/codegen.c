@@ -2300,11 +2300,15 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *sf, in
  * fields. */
 static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth) {
     AstNode *sdecl = type_name ? find_struct_declaration(codegen, type_name) : NULL;
+    const char *c_type = gray_type_to_c_codegen(codegen, type_name);
     if (!sdecl || depth > 8) {
-        emit(codegen, "{0}");
+        /* A compound literal, not a bare {0}: the latter is only valid as a
+         * declaration initializer, and this is also the right-hand side of the
+         * deferred assignment of a file-scope global inside gray_init_globals. */
+        emit_formatted(codegen, "(%s){0}", c_type);
         return;
     }
-    emit_formatted(codegen, "(%s){", gray_type_to_c_codegen(codegen, type_name));
+    emit_formatted(codegen, "(%s){", c_type);
     bool emitted = false;
     for (int i = 0; i < sdecl->data.struct_decl.field_count; i++)
         emit_struct_field_zero_default(codegen, &sdecl->data.struct_decl.fields[i], depth, &emitted);
