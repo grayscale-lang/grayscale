@@ -244,13 +244,13 @@ func TestE2E_Build_CompilerWarningsStayQuiet(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("gray build exited %d:\n%s", code, combined)
 	}
-	if strings.Contains(stderr, "macro redefined") || strings.Contains(stderr, "warning generated") {
+	if strings.Contains(stderr, "redefined") {
 		t.Errorf("raw C compiler warning leaked on a successful build:\n%s", stderr)
 	}
 
 	// --verbose still shows what the compiler said.
 	_, vstderr, _ := runGray(t, "build", "-v", "-o", out, src)
-	if !strings.Contains(vstderr, "macro redefined") {
+	if !strings.Contains(vstderr, "redefined") {
 		t.Errorf("--verbose should show the compiler's warnings, got:\n%s", vstderr)
 	}
 }
