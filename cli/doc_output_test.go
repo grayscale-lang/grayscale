@@ -255,3 +255,27 @@ func TestGenerateDocs_CreatesParentDirectories(t *testing.T) {
 		t.Fatalf("nested output %s should be created: %v", nested, err)
 	}
 }
+
+func TestCollectDocsFromFile_DocSurvivesSiblingAttributes(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "orders.gray")
+	body := "#doc(\"Order A: doc then test.\")\n" +
+		"#test\n" +
+		"do orderA() { assert(true) }\n\n" +
+		"#test\n" +
+		"#doc(\"Order B: test then doc.\")\n" +
+		"do orderB() { assert(true) }\n"
+	if err := os.WriteFile(src, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]string{}
+	for _, e := range collectDocsFromFile(src) {
+		got[e.Name] = e.Description
+	}
+	if got["orderA"] != "Order A: doc then test." {
+		t.Errorf("orderA description = %q, want it documented", got["orderA"])
+	}
+	if got["orderB"] != "Order B: test then doc." {
+		t.Errorf("orderB description = %q, want it documented", got["orderB"])
+	}
+}
