@@ -260,7 +260,8 @@
     GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'") \
     GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation") \
     GRAY_ERROR("E3174", "types", "'%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute") \
-    GRAY_ERROR("E3175", "types", "struct field default value has wrong type; expected %s, got %s")
+    GRAY_ERROR("E3175", "types", "struct field default value has wrong type; expected %s, got %s") \
+    GRAY_ERROR("E3176", "types", "#flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two)")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \

@@ -18160,6 +18160,27 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
                 }
             }
         }
+        /* E3176: a #flags variant with an explicit value must occupy exactly
+         * one usable bit. 0 is allowed as a "none" sentinel; a literal above
+         * INT64_MAX reaches the sign bit or beyond. */
+        if (stmt->data.enum_decl.is_flags) {
+            for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+                AstNode *fv = stmt->data.enum_decl.values[j].value;
+                bool negated = fv && fv->kind == NODE_PREFIX_EXPR && fv->data.prefix.op == TOK_MINUS &&
+                               fv->data.prefix.right->kind == NODE_INT_VALUE;
+                AstNode *lit = negated ? fv->data.prefix.right : fv;
+                if (!lit || lit->kind != NODE_INT_VALUE) continue;
+                int64_t v = lit->data.int_value.value;
+                bool single_bit = !negated && !lit->data.int_value.overflow &&
+                                  (v == 0 || (v & (v - 1)) == 0);
+                if (single_bit) continue;
+                char shown[MSG_BUF_SIZE];
+                snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", lit->data.int_value.literal);
+                diagnostic_error_code_formatted(checker->diag, "E3176", NODE_FILE(checker, stmt),
+                    fv->token.line, fv->token.column, 0,
+                    en, stmt->data.enum_decl.values[j].name, arena_copy_string(checker->arena, shown));
+            }
+        }
         /* E2014: check for duplicate enum variant names */
         /* E2065: check variant name vs enum type name */
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
