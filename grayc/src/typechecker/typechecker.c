@@ -17939,6 +17939,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 
     case NODE_ENSURE_STMT:
         resolve_expression(checker, node->data.ensure_stmt.expr);
+        /* E3040/E3089: the deferred call's result is dropped, so a multi-value
+         * or fallible call cannot be deferred. */
+        reject_multi_return_in_single_position(checker, node->data.ensure_stmt.expr);
         if (node->data.ensure_stmt.expr &&
             node->data.ensure_stmt.expr->kind != NODE_CALL_EXPR) {
             diagnostic_error_code(checker->diag, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
