@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3161 - pointer-receiver struct function called on a dynamic
+ * array element
+ * Expected: E3161 error — the receiver is addressed, and a dynamic array's
+ * backing store may relocate when the array grows
+ */
+
+const Counter struct {
+    n int
+
+    do inc(c ^Counter) {
+        c^.n += 1
+    }
+}
+
+do main() {
+    mut arr [Counter] = {Counter{n: 0}}
+    arr[0].inc()
+}

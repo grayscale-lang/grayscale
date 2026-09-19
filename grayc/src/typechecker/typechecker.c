@@ -6531,6 +6531,24 @@ static bool self_param_names_struct(TypeChecker *checker, AstNode *decl,
     return mangled && strcmp(mangled, struct_name) == 0;
 }
 
+/* Wrap a struct-value receiver in `addr(...)` so instance dispatch can pass it
+ * to a struct function whose first parameter is a pointer to the struct. */
+static AstNode *wrap_receiver_in_addr(AstNode *recv, Token token) {
+    AstNode *fn_label = xcalloc(1, sizeof(AstNode));
+    fn_label->kind = NODE_LABEL;
+    fn_label->token = token;
+    fn_label->data.label.value = strdup("addr");
+    AstNode **addr_args = xmalloc(sizeof(AstNode *));
+    addr_args[0] = recv;
+    AstNode *addr_call = xcalloc(1, sizeof(AstNode));
+    addr_call->kind = NODE_CALL_EXPR;
+    addr_call->token = token;
+    addr_call->data.call.function = fn_label;
+    addr_call->data.call.args = addr_args;
+    addr_call->data.call.arg_count = 1;
+    return addr_call;
+}
+
 static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn, const char *mod_raw, AstNode *fn) {
     GrayType *result = &TYPE_UNKNOWN;
     if (is_struct_name(checker, mod)) {
@@ -6911,6 +6929,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         deref->data.postfix.left = self_arg;
                         deref->data.postfix.op = TOK_CARET;
                         new_args[0] = deref;
+                    } else if (sym->type->kind == TK_STRUCT && p0_tn[0] == '^') {
+                        new_args[0] = wrap_receiver_in_addr(self_arg, node->token);
                     } else {
                         new_args[0] = self_arg;
                     }
@@ -9092,6 +9112,8 @@ static void normalize_instance_call_on_expr(TypeChecker *checker, AstNode *node)
         deref->data.postfix.left = obj;
         deref->data.postfix.op = TOK_CARET;
         recv = deref;
+    } else if (obj_t->kind == TK_STRUCT && p0_tn[0] == '^') {
+        recv = wrap_receiver_in_addr(obj, obj->token);
     }
     retarget_member_object(fn, struct_name);
     int orig_count = node->data.call.arg_count;
