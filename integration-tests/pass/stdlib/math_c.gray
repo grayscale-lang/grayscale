@@ -76,6 +76,19 @@ do main() {
         failed += 1
     }
 
+    // abs/min/max/clamp on uint/u64 values >= 2^63, which have the same
+    // bit pattern as a negative int64 and must not be compared as signed.
+    mut u_big u64 = 18446744073709551615
+    mut u_small u64 = 5
+    if math.max(u_big, u_small) == u_big && math.min(u_big, u_small) == u_small &&
+       math.abs(u_big) == u_big && math.clamp(u_big, u_small, u_big) == u_big {
+        println("  [PASS] abs/min/max/clamp on uint")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] abs/min/max/clamp on uint: got max=${math.max(u_big, u_small)}, min=${math.min(u_big, u_small)}, abs=${math.abs(u_big)}, clamp=${math.clamp(u_big, u_small, u_big)}")
+        failed += 1
+    }
+
     // --- Rounding ---
 
     // floor

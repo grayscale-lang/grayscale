@@ -95,6 +95,11 @@ typedef struct {
     const char *name;
     const char *type_name;
     AstNode *default_value;
+    /* Optional trailing tag, written `` `json:"Name"` `` right after the
+     * type. NULL when absent. The parser stores the raw backtick-string
+     * content verbatim; the typechecker validates it (for #json structs)
+     * and rewrites it in place to just the extracted key. */
+    const char *json_tag;
 } StructField;
 
 /* Function in struct declaration (namespaced free function) */
@@ -160,7 +165,9 @@ struct AstNode {
          *        (cast to uint64_t to recover the original positive value
          *         when overflow=true)
          * overflow:     literal exceeds INT64_MAX (still ≤ UINT64_MAX)
-         * overflow_u64: literal exceeds UINT64_MAX entirely */
+         * overflow_u64: literal exceeds UINT64_MAX entirely
+         * literal:      the digits as decimal text ('_' kept for a decimal
+         *               literal; a hex/octal/binary literal is converted) */
         struct {
             int64_t value;
             const char *literal;

@@ -122,6 +122,38 @@ func TestE2E_Report(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// gray <file> — the program's own exit status
+// ---------------------------------------------------------------------------
+
+func TestE2E_Run_ExitCodePropagates(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "exit3.gray")
+	os.WriteFile(src, []byte("do main() {\n    exit(3)\n}\n"), 0644)
+
+	_, stderr, code := runGray(t, src)
+	if code != 3 {
+		t.Fatalf("gray exit(3) program exited %d, want 3; stderr: %s", code, stderr)
+	}
+}
+
+func TestE2E_Run_NativeCrashIsReported(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("signal death is a POSIX notion")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "crash.gray")
+	os.WriteFile(src, []byte("extern import \"signal.h\"\n\ndo main() {\n    extern.raise(11)\n}\n"), 0644)
+
+	_, stderr, code := runGray(t, src)
+	if code != 128+11 {
+		t.Errorf("crashed program exited %d, want %d", code, 128+11)
+	}
+	if !strings.Contains(stderr, "program crashed: signal 11") {
+		t.Errorf("expected a crash message naming signal 11, got:\n%s", stderr)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // gray check
 // ---------------------------------------------------------------------------
 
@@ -193,6 +225,33 @@ func TestE2E_Build_TimeCountsCC(t *testing.T) {
 	ccMS := parseTimingMS(t, combined, "cc:")
 	if ccMS < 2.0 {
 		t.Fatalf("cc phase reported %.1fms; expected real wall-clock time:\n%s", ccMS, combined)
+	}
+}
+
+func TestE2E_Build_CompilerWarningsStayQuiet(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "a.h"), []byte("#define MAX_SIZE 100\n"), 0644)
+	os.WriteFile(filepath.Join(dir, "b.h"), []byte("#define MAX_SIZE 200\n"), 0644)
+	src := filepath.Join(dir, "redef.gray")
+	os.WriteFile(src, []byte("extern import \"./a.h\", \"./b.h\"\n\ndo main() {\n    mut m int = extern.MAX_SIZE\n    println(\"${m}\")\n}\n"), 0644)
+	out := filepath.Join(dir, "redef")
+
+	stdout, stderr, code := runGray(t, "build", "-o", out, src)
+	combined := combinedOutput(stdout, stderr)
+	if strings.Contains(combined, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code != 0 {
+		t.Fatalf("gray build exited %d:\n%s", code, combined)
+	}
+	if strings.Contains(stderr, "redefined") {
+		t.Errorf("raw C compiler warning leaked on a successful build:\n%s", stderr)
+	}
+
+	// --verbose still shows what the compiler said.
+	_, vstderr, _ := runGray(t, "build", "-v", "-o", out, src)
+	if !strings.Contains(vstderr, "redefined") {
+		t.Errorf("--verbose should show the compiler's warnings, got:\n%s", vstderr)
 	}
 }
 
@@ -303,6 +362,29 @@ func TestE2E_Test_PassAndFail(t *testing.T) {
 		t.Fatalf("gray test should exit non-zero when a test fails; output:\n%s", out)
 	}
 	for _, want := range []string{"test_pass", "test_fail", "FAIL", "1 passed", "1 failed", "2 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestE2E_Test_PanicBuiltinFailsOnlyThatTest(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "demo.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_one() { assert(true) }\n\n"+
+			"#test\ndo test_panics() { panic(\"deliberate panic\") }\n\n"+
+			"#test\ndo test_three() { assert(true) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code == 0 {
+		t.Fatalf("gray test should exit non-zero when a test panics; output:\n%s", out)
+	}
+	for _, want := range []string{"test_three", "deliberate panic", "2 passed", "1 failed", "3 total"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gray test output missing %q:\n%s", want, out)
 		}

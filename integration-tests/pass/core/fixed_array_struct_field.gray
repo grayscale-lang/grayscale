@@ -1,0 +1,107 @@
+/*
+ * fixed_array_struct_field.gray - Fixed-size arrays as struct fields
+ *
+ * A struct field written `[T, N]` is a genuinely fixed-length array, just
+ * like a local `const f [T, N]`: struct-literal partial init zero-fills
+ * the remainder, a fully-omitted field still carries its declared length,
+ * element read/write works when the instance is mut, and in-place ops
+ * (fill/swap/sort_asc) are still allowed since they don't change length.
+ */
+
+import @arrays
+
+const N int = 4
+
+const Widget struct {
+    items   [int, 3]
+    tags    [string, 2]
+    samples [int, N]
+}
+
+const Wrapper struct {
+    inner Widget
+}
+
+const WithDefault struct {
+    data [int, 3] = {1, 2}
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // Full init
+    const w1 Widget = Widget{items: {1, 2, 3}, tags: {"a", "b"}, samples: {10, 20, 30, 40}}
+    if w1.items[0] == 1 && w1.items[1] == 2 && w1.items[2] == 3 &&
+       w1.tags[0] == "a" && w1.tags[1] == "b" &&
+       w1.samples[0] == 10 && w1.samples[3] == 40 {
+        passed++
+    } otherwise {
+        println("FAIL: full struct-field init wrong")
+        failed++
+    }
+
+    // Partial init: remaining slots zero-valued
+    const w2 Widget = Widget{items: {5, 6}}
+    if w2.items[0] == 5 && w2.items[1] == 6 && w2.items[2] == 0 &&
+       len(w2.tags) == 2 && len(w2.samples) == 4 && w2.samples[0] == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: partial struct-field init not zero-filled")
+        failed++
+    }
+
+    // Entirely omitted fixed-size fields still carry their declared length
+    const w3 Widget = Widget{}
+    if len(w3.items) == 3 && len(w3.tags) == 2 && len(w3.samples) == 4 {
+        passed++
+    } otherwise {
+        println("FAIL: omitted struct-field length wrong")
+        failed++
+    }
+
+    // Element write allowed when the instance is mut
+    mut w4 Widget = Widget{items: {1, 2, 3}}
+    w4.items[0] = 99
+    if w4.items[0] == 99 {
+        passed++
+    } otherwise {
+        println("FAIL: mut struct-field element write failed")
+        failed++
+    }
+
+    // In-place ops (not length-changing) still allowed on a mut instance
+    mut w5 Widget = Widget{items: {1, 2, 3}}
+    arrays.fill(w5.items, 7, 3)
+    arrays.swap(w5.items, 0, 2)
+    arrays.sort_asc(w5.items)
+    if w5.items[0] == 7 && w5.items[1] == 7 && w5.items[2] == 7 {
+        passed++
+    } otherwise {
+        println("FAIL: in-place ops on fixed struct field were rejected")
+        failed++
+    }
+
+    // Fixed-size field resolved through a member-expression chain
+    const wr Wrapper = Wrapper{inner: Widget{items: {1, 2, 3}}}
+    if len(wr.inner.items) == 3 {
+        passed++
+    } otherwise {
+        println("FAIL: nested member-chain fixed field wrong")
+        failed++
+    }
+
+    // An inline field default (`[T,N] = {...}`) zero-fills the same way
+    const wd WithDefault = WithDefault{}
+    if wd.data[0] == 1 && wd.data[1] == 2 && wd.data[2] == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: inline fixed-field default not zero-filled")
+        failed++
+    }
+
+    println("fixed_array_struct_field: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

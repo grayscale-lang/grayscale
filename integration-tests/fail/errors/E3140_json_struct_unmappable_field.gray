@@ -6,18 +6,18 @@
 
 import @json
 
-const Kind enum {
-    A
-    B
+const Inner struct {
+    x int
 }
 
 #json
 const S struct {
     a int
-    e Kind
+    n Inner
 }
 
 do main() {
-    mut s S = S{a: 1, e: Kind.B}
+    mut inner Inner = Inner{x: 1}
+    mut s S = S{a: 1, n: inner}
     println(s.a)
 }

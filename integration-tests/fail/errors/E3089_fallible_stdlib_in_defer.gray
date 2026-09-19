@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3089 - fallible stdlib call as a defer statement
+ * Expected: E3089 error — a deferred call's (T, Error) result is dropped
+ */
+// expect-error: E3089
+// expect-error-count: 1
+
+import @io
+
+do main() {
+    defer io.read_file("data.txt")
+    println("done")
+}

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3040 - a user-defined multi-return call baked into a
+ * function parameter default is not a call site under the caller's
+ * control; without this check it collapses to its first return type and
+ * silently drops the rest.
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do risky() -> (int, string) { return 42, "err" }
+
+do greet(n int = risky()) { println("${n}") }
+
+do main() { greet() }

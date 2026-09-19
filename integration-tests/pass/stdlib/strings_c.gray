@@ -289,6 +289,18 @@ do main() {
         failed += 1
     }
 
+    // to_chars/from_chars: multi-byte UTF-8 decodes to one char per
+    // codepoint, not one per byte, and round-trips losslessly.
+    mut utf8_chars [char] = strings.to_chars("héllo")
+    mut utf8_back string = strings.from_chars(utf8_chars)
+    if len(utf8_chars) == 5 && int(utf8_chars[1]) == 233 && utf8_back == "héllo" {
+        println("  [PASS] to_chars/from_chars (UTF-8 codepoint)")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] to_chars/from_chars (UTF-8): len ${len(utf8_chars)}, got '${utf8_back}'")
+        failed += 1
+    }
+
     println("")
     println("Results: ${passed} passed, ${failed} failed")
     if failed > 0 {

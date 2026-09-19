@@ -1,7 +1,8 @@
 /*
- * Test: chars module - scalar ASCII case folding
- * Verifies chars.to_upper / chars.to_lower fold ASCII letters and
- * pass everything else (digits, symbols, non-ASCII bytes) through.
+ * Test: chars module - scalar ASCII case folding and Unicode display width
+ * Verifies chars.to_upper / chars.to_lower fold ASCII letters and pass
+ * everything else through, and chars.width / chars.string_width follow
+ * wcwidth semantics (normal, wide, zero-width, control).
  */
 
 import and use @chars
@@ -12,6 +13,15 @@ do check(label string, got char, want char) -> int {
         return 1
     }
     println("  [FAIL] ${label}: got '${got}' want '${want}'")
+    return 0
+}
+
+do check_int(label string, got int, want int) -> int {
+    if got == want {
+        println("  [PASS] ${label}")
+        return 1
+    }
+    println("  [FAIL] ${label}: got ${got} want ${want}")
     return 0
 }
 
@@ -46,9 +56,21 @@ do main() {
     passed += check("bare to_upper('q')", to_upper('q'), 'Q')
     passed += check("bare to_lower('Q')", to_lower('Q'), 'q')
 
+    // chars.width — wcwidth semantics
+    passed += check_int("width('A') is 1 (normal)", chars.width('A'), 1)
+    passed += check_int("width('中') is 2 (CJK, wide)", chars.width('中'), 2)
+    mut combining char = char(0x301) // COMBINING ACUTE ACCENT
+    passed += check_int("width(U+0301) is 0 (combining mark)", chars.width(combining), 0)
+    passed += check_int("width('\\n') is -1 (control)", chars.width('\n'), -1)
+
+    // chars.string_width — sums width() over codepoints, control chars count as 0
+    passed += check_int("string_width(\"café\") is 4", chars.string_width("café"), 4)
+    passed += check_int("string_width(\"中文\") is 4 (two wide chars)", chars.string_width("中文"), 4)
+    passed += check_int("string_width mixed ASCII+CJK+control", chars.string_width("hi 中\t"), 5)
+
     println("")
-    println("Results: ${passed}/14 passed")
-    if passed == 14 {
+    println("Results: ${passed}/21 passed")
+    if passed == 21 {
         println("ALL TESTS PASSED")
     } otherwise {
         println("SOME TESTS FAILED")

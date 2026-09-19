@@ -14,6 +14,14 @@ const Outer struct {
     inner Bag
 }
 
+const Widget struct {
+    label string
+}
+
+const Container struct {
+    widgets [Widget]
+}
+
 do main() {
     println("=== for_each Field Through Pointer Tests ===")
     mut passed int = 0
@@ -62,6 +70,23 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] for_each over p.a.b nested field: ${sum}")
+        failed += 1
+    }
+
+    /* struct-array field through an explicit deref, used inline as the
+     * collection (not copied to a local first) — the loop variable must
+     * type as the array's element struct, not the container's struct. */
+    c = new(Container)
+    c^.widgets = {Widget{label: "a"}, Widget{label: "b"}}
+    mut labels string = ""
+    for_each w in c^.widgets {
+        labels += w.label
+    }
+    if labels == "ab" {
+        println("  [PASS] for_each over p^.field where field is a struct array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] for_each over p^.field where field is a struct array: ${labels}")
         failed += 1
     }
 

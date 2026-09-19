@@ -1,0 +1,19 @@
+/*
+ * Error Test: E9002 - 'arrays.min_index()' (and max_index/get_sum/get_min/
+ * get_max) on a struct-element array. Previously slipped through the
+ * typechecker's numeric-only check (it only tested for string/bool) and
+ * leaked a raw C compiler error from a struct-to-int64_t value cast.
+ */
+// expect-error: E9002
+// expect-error-count: 1
+
+import @arrays
+
+const P struct {
+    x int
+}
+
+do main() {
+    mut arr [P] = {P{x: 1}, P{x: 2}}
+    println(arrays.min_index(arr))
+}

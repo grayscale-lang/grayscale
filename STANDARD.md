@@ -498,7 +498,7 @@ do make_node(parent ^Node) -> ^Node {
 root = make_node(nil)  // OK: nil satisfies the ^Node parameter
 ```
 
-**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
+**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p.field = ...`, `p^ += ...`). This protection follows the pointer wherever it goes — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction, and so does a pointer read back out of a function's return value, a struct field, an array element, or a map value. Passing such a pointer to a function that writes through that parameter is rejected at the call. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
 
 ```gray
 const x int = 42
@@ -634,6 +634,14 @@ const Person struct {
 
 > 💡 **Tip:** Struct and enum declarations must be at the top level of a file, never inside a function or block. Fields must be on separate lines; semicolons are not allowed. This is intentional. Unlike functions and control flow, structs and enums define *types*, not logic. Types belong where they are visible, nameable, and reusable. Burying a type inside a function makes it invisible to the rest of your program and harder to find when reading code.
 
+A field may be a fixed-size array (`[T,N]`), the same spelling used for a local `const f [T,N]`. Its length never changes: `arrays.append`, `prepend`, `insert_at`, `remove`, `remove_at`, `remove_first`, `remove_last`, `clear`, and `deduplicate` are all rejected on it, whether called directly or through a member-expression chain like `o.inner.items`. Reading and writing individual elements works as long as the containing instance is `mut`. A struct literal that under-initializes the field zero-fills the rest (`W3003`); over-initializing it is an error (`E3052`) — the same rules as a local fixed-size array.
+
+```gray
+const Buffer struct {
+    data [byte, 256]
+}
+```
+
 #### Recursive Structs
 
 A struct may reference itself through a **pointer field**. Value-type self-reference is rejected at compile time.
@@ -742,6 +750,28 @@ const Foobar enum {
 > 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `int` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status int = Direction.NORTH` assigns `0`.
 
 > 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, int) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
+
+**Printing enum values** depends on the enum's backing:
+
+| Enum kind | `println(value)` prints |
+|-----------|--------------------------|
+| Plain int-backed (default) | The underlying integer (e.g. `0` for the first variant) |
+| String-backed | The variant's string value (e.g. `"todo"`) |
+| `#error_code`-tagged (and `ErrorCode` itself) | The variant's name (e.g. `"PAYMENT_DECLINED"`) — see [Section 10.5](#105-errorcode) |
+
+```gray
+const Color enum { RED GREEN BLUE }
+println(Color.RED)              // "0" — plain enums print their integer
+
+const Status enum { TODO = "todo" DONE = "done" }
+println(Status.TODO)            // "todo" — string enums print their string
+
+#error_code
+const PaymentErrors enum { PAYMENT_DECLINED PAYMENT_CANCELED }
+println(PaymentErrors.PAYMENT_DECLINED)  // "PAYMENT_DECLINED" — error-code enums print their name
+```
+
+A plain enum has no name table generated for it, so printing one falls back to its widened integer value — consistent with the earlier tip that a plain enum's underlying value is a real integer under the hood. String-backed and `#error_code`-tagged enums each carry an obvious human-readable form already (the string literal, or the compiler-owned error-code name table), so those print that instead.
 
 **Flags enums** (powers of 2, annotated with `#flags`):
 
@@ -1746,6 +1776,7 @@ By default, parameters are passed by value and cannot modify the caller's variab
 do double(x int) -> int {
     return x * 2
 }
+```
 
 #### 7.2.2 Mutable Parameters
 
@@ -1933,7 +1964,7 @@ if err != nil {
 
 #### 7.3.4 Named Return Values
 
-Return values can be given names to document what each position in the return tuple represents. Named return values are **labels only**; they do not implicitly declare variables in the function body. The programmer must explicitly declare any variables they use:
+Return values can be given names to document what each position in the return tuple represents. Naming a return value does not implicitly declare a variable — the programmer must still explicitly declare a variable with that exact name in the function body:
 
 ```gray
 do divide(a, b int) -> (quotient int, remainder int) {
@@ -1956,7 +1987,19 @@ do get_info() -> (name, city string, age int) {
 }
 ```
 
-Named return values must be enclosed in parentheses. The names serve as documentation for callers and tooling (e.g., `gray doc`) but have no effect on the function's scope or variable declarations.
+Named return values must be enclosed in parentheses.
+
+**The `return` statement must reference the named variable itself, not merely an equal or same-typed expression.** Once a return position is named, `return` in that position accepts only the variable declared under that exact name — assigning an equivalent value to a differently-named variable and returning that instead is a compile-time error (`E3080`):
+
+```gray
+do square(x int) -> (result int) {
+    mut result int = x * x
+    mut other int = result
+    return other        // error[E3080]: function must return named variable 'result', not a different expression
+}
+```
+
+So the names are not purely cosmetic documentation: they constrain what a `return` in that position may name, in addition to documenting the position for callers and tooling (e.g., `gray doc`).
 
 **Restriction:** Wildcard types (`?`) cannot be used in named return positions. Since `?` resolves to a different concrete type at each call site, the name adds no useful documentation. Use an unnamed return instead:
 
@@ -2084,7 +2127,7 @@ const MAX_RETRIES int = 5
 
 #### 7.5.2 `#json` Attribute
 
-The `#json` attribute marks a struct for JSON serialization and deserialization. The compiler generates all marshaling and unmarshaling code automatically, with no field tags, no manual encoding/decoding calls, and no error juggling at every step. Just annotate the struct and use `json.parse()` / `json.stringify()`.
+The `#json` attribute marks a struct for JSON serialization and deserialization. The compiler generates all marshaling and unmarshaling code automatically, with no manual encoding/decoding calls and no error juggling at every step. Just annotate the struct and use `json.parse()` / `json.stringify()`.
 
 ```gray
 import @json
@@ -2108,12 +2151,60 @@ do main() {
 
 `json.parse()` returns a fully typed struct (or array of structs), and `json.stringify()` accepts any `#json` struct and returns a string. The compiler knows the struct layout at compile time, so it generates field-by-field serialization code directly with no reflection, no runtime schema lookup, and no intermediate map step.
 
+By default, a field's JSON key is its Grayscale name. A field can serialize under a different key with a trailing tag, the same backtick-string spelling Go and Odin use:
+
+```gray
+#json
+const User struct {
+    name string `json:"Name"`
+    age  int    `json:"Age"`
+}
+```
+
+`json.stringify()`/`json.parse()` then use `"Name"`/`"Age"` as the JSON keys instead of `name`/`age`.
+
+An enum field is serialized by the enum's backing type. An int-backed enum (the default) becomes a JSON number — the variant's underlying value; a string-backed enum becomes a JSON string — the variant's string value. `json.parse()` reverses the mapping:
+
+```gray
+const Priority enum {
+    LOW      // 0
+    HIGH     // 1
+}
+
+const Role enum {
+    ADMIN = "admin"
+    USER  = "user"
+}
+
+#json
+const Task struct {
+    name     string
+    priority Priority
+    owner    Role
+}
+
+do main() {
+    mut t Task = Task{name: "deploy", priority: Priority.HIGH, owner: Role.ADMIN}
+    println(json.stringify(t)) // {"name": "deploy", "priority": 1, "owner": "admin"}
+
+    mut back Task = json.parse(json.stringify(t))
+    println(back.priority == Priority.HIGH) // true
+}
+```
+
+A JSON value that names no variant of the field's enum is a `json.parse()` failure (`P0129`), the same as any other malformed field value. A tagged enum (variants with payloads) has no flat JSON representation and is rejected on a `#json` struct at compile time (E3173).
+
 **Rules:**
 
-- Field names in the JSON must match the struct field names exactly.
+- Without a tag, a field's JSON key must match the struct field name exactly.
+- A tag is written `` `json:"Name"` `` immediately after the field's type, before any default value. The key can be any non-empty text but cannot contain a `"` or a backslash.
+- A tag cannot be shared across a comma-grouped field list (`x, y int \`json:"V"\`` is rejected — E2095); give each field its own line and its own tag.
+- A `#json` struct's fields are either all tagged or all untagged — mixing the two within one struct is rejected (E3171). This is scoped per struct, not per file: a file that aggregates many structs is free to tag some and leave others untagged, as long as each struct is internally consistent.
+- Two fields of the same `#json` struct cannot serialize under the same key (E3172).
 - A `#json` struct requires `import @json` in the same file; the generated serializer helpers depend on the json module (E6012).
 - Without `#json`, the struct has no serialization machinery and `json.parse()` / `json.stringify()` will fail.
-- Supported field types: `int`, `uint`, `float`, `string`, `bool`.
+- Supported field types: `int`, `uint`, `float`, `string`, `bool`, and non-tagged enums (serialized by backing type).
+- `json.parse()` into an array of a `#json` struct (`[Task]`) parses each element independently, so an enum field works there with no extra handling.
 
 #### 7.5.3 `#discard` Attribute
 
@@ -2999,6 +3090,8 @@ do main() {
 }
 ```
 
+**Callbacks:** a Grayscale function can be passed to a C function as a callback with a func-ref (`()cmp`). Its parameters and return type must have a C layout: numbers, `bool`, `char`, `byte`, and pointers (`^T` is `T*`, so `^void` or `^int` fits a `void *` parameter). A `string`, array, map, or struct parameter or return type is rejected with `E3158`.
+
 **Return types:** a C function's return type is known only to the C compiler. Grayscale gives the result of an `extern.` call — and the value of an `extern.` constant or macro — no type of its own, so it may only be used where the type is supplied or where the raw C value is handled directly:
 
 - as the initializer of a **type-annotated declaration** whose type C can return directly — a number, `bool`, `char`, `byte`, or a pointer
@@ -3211,6 +3304,7 @@ do main() {
 | `count` | `(arr [T], value T) -> int` | Count occurrences of value |
 | `is_equal` | `(a [T], b [T]) -> bool` | Structural equality. Compares length first, then elements. `T` must be a primitive (`int`, `uint`, `float`, `bool`, `char`, `byte`, sized variants) or `string`; arrays of nested composites are rejected at compile time. |
 | `is_sorted` | `(arr [T]) -> bool` | True if elements are in ascending order (each `<=` the next). Empty and single-element arrays are sorted. `T` must be comparable, as for `sort_asc`. |
+| `binary_search` | `(arr [T], val T) -> int` | Search a sorted array for val (index, or -1 if absent). `arr` must already be sorted ascending, as by `sort_asc`; behavior on an unsorted array is undefined. `T` must be comparable, as for `sort_asc`. |
 
 The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b)` for equality.
 
@@ -3243,6 +3337,7 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `reverse` | `(arr [T]) -> [T]` | Return reversed copy |
+| `rotate` | `(arr [T], n int) -> [T]` | Return a copy rotated left by n (negative n rotates right) |
 | `slice` | `(arr [T], start int, end int) -> [T]` | Return slice |
 | `concat` | `(a [T], b [T]) -> [T]` | Concatenate two arrays |
 | `deduplicate` | `(arr [T]) -> [T]` | Remove duplicate values |
@@ -3257,6 +3352,8 @@ The `==` and `!=` operators on arrays are not allowed; use `arrays.is_equal(a, b
 | `get_sum` | `(arr [T]) -> T` | Sum all elements. Accepts int, float, or any sized integer/float type. |
 | `get_min` | `(arr [T]) -> T` | Minimum element |
 | `get_max` | `(arr [T]) -> T` | Maximum element |
+| `min_index` | `(arr [T]) -> int` | Index of the minimum element, or -1 if arr is empty |
+| `max_index` | `(arr [T]) -> int` | Index of the maximum element, or -1 if arr is empty |
 | `average` | `(arr [T]) -> float` | Arithmetic mean as a `float`. `T` must be numeric; panics on an empty array. |
 
 #### Higher-Order Functions
@@ -3807,9 +3904,11 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `get_env` | `(name string) -> string` | Get environment variable |
+| `get_env` | `(name string) -> string` | Get environment variable. Returns `""` for both an unset variable and one explicitly set to `""` |
+| `lookup_env` | `(name string) -> (string, bool)` | Get environment variable and whether it is actually set, distinguishing an unset variable from one set to `""` |
 | `set_env` | `(name string, value string)` | Set environment variable |
 | `unset_env` | `(name string)` | Remove environment variable |
+| `environ` | `() -> [string]` | Every environment variable of the current process, as `"KEY=VALUE"` strings |
 
 #### System Information
 
@@ -3817,6 +3916,7 @@ io.read_file("/etc/hosts")            // absolute path, unaffected by cwd
 |----------|-----------|-------------|
 | `args` | `() -> [string]` | Get command-line arguments |
 | `current_dir` | `() -> string` | Get current working directory |
+| `home_dir` | `() -> string` | Get the current user's home directory (`$HOME` on Unix, `%USERPROFILE%` on Windows) |
 | `hostname` | `() -> string` | Get machine hostname |
 | `pid` | `() -> int` | Get process ID |
 | `current_os` | `() -> Platform` | Get the current OS as a `Platform` enum value |
@@ -3930,7 +4030,7 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 
 ### 9.14 UUID Module (`@uuid`)
 
-UUID is a struct type wrapping a canonical 36-character hyphenated string. All generator and parse functions return `UUID`.
+`UUID` is an opaque struct type (see [Section 2.5](#25-keywords)) with no user-visible fields; printing a `UUID` value directly does not yield its hyphenated string form. Call `to_string()` to get the canonical 36-character hyphenated string. All generator and parse functions return `UUID`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
@@ -4486,17 +4586,37 @@ Every predicate is ASCII-only: a non-ASCII codepoint always returns `false`.
 two-character escapes, other control characters and DEL as `\xNN`, non-ASCII codepoints as
 `\u{...}`, and printable ASCII unchanged.
 
-**Behavior:**
-- No function in this module fails.
+#### Width
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `width` | `(c char) -> int` | Terminal display width of c |
+| `string_width` | `(s string) -> int` | Total terminal display width of s |
+
+`width` follows `wcwidth` semantics: `-1` for a C0/C1 control character, `0` for a
+zero-width codepoint (combining marks, joiners, variation selectors), `2` for a wide
+codepoint (CJK ideographs, Hangul syllables, fullwidth forms, default-presentation
+emoji), `1` for everything else — including East Asian "ambiguous width" codepoints,
+which this module always treats as `1`.
+
+`string_width` sums `width` over the string's codepoints, treating a `-1` result as
+`0`. It does not expand tabs — a literal `\t` contributes `0`, not a tab stop's worth
+of columns. Width is computed per codepoint: a ZWJ emoji sequence (family emoji, flag
+sequences) is summed from its parts rather than treated as the one terminal cell it
+occupies, so `string_width` over-counts those; grapheme-cluster segmentation is out
+of scope for this module.
 
 ```gray
 import @chars
 
-println(chars.to_upper('a'))       // 'A'
-println(chars.is_word_char('_'))   // true
-println(chars.is_hex_digit('g'))   // false
-println(chars.escape('\t'))        // \t
+println(chars.width('A'))          // 1
+println(chars.width('中'))         // 2 (CJK ideograph)
+println(chars.string_width("café")) // 4
+println(chars.string_width("中文")) // 4 (two wide chars)
 ```
+
+**Behavior:**
+- No function in this module fails.
 
 ---
 

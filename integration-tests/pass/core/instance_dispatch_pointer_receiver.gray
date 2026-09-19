@@ -1,0 +1,60 @@
+/*
+ * instance_dispatch_pointer_receiver.gray - a struct function whose first
+ * parameter is a pointer to the struct (^Struct) participates in instance
+ * dispatch: instance.func() addresses a value receiver, and a pointer
+ * receiver is passed through unchanged.
+ */
+
+const Counter struct {
+    n int
+
+    do inc(c ^Counter) {
+        c^.n += 1
+    }
+
+    do add(c ^Counter, amount int) -> int {
+        c^.n += amount
+        return c^.n
+    }
+}
+
+const Wrap struct {
+    counter Counter
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // value receiver is addressed and mutated in place
+    mut c Counter = Counter{n: 0}
+    c.inc()
+    c.inc()
+    if c.n == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // extra arguments after the receiver
+    if c.add(5) == 7 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if c.n == 7 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // nested field receiver
+    mut w Wrap = Wrap{counter: Counter{n: 10}}
+    w.counter.inc()
+    if w.counter.n == 11 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // pointer receiver is passed through
+    mut p ^Counter = addr(c)
+    p.inc()
+    if c.n == 8 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    // explicit form still works
+    Counter.inc(addr(c))
+    if c.n == 9 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

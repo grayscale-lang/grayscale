@@ -1,0 +1,48 @@
+import @arrays
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    // char min_index/max_index
+    const cs [char, 4] = {'z', 'a', 'm', 'q'}
+    if arrays.min_index(cs) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    if arrays.max_index(cs) == 0 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte min_index/max_index
+    const bs [byte, 4] = {5, 1, 9, 3}
+    if arrays.min_index(bs) == 1 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+    if arrays.max_index(bs) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // byte binary_search
+    const sorted [byte, 4] = {1, 2, 3, 4}
+    if arrays.binary_search(sorted, cast(3, byte)) == 2 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

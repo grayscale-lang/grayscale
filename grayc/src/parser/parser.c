@@ -618,6 +618,36 @@ static AstNode *parse_identifier(Parser *parser) {
     return node;
 }
 
+/* The decimal spelling of the digits of a hex/octal/binary literal (base
+ * prefix already stripped, '_' separators allowed), at any width. The wide
+ * integer types parse their literals from decimal text only. */
+static const char *radix_digits_to_decimal(Parser *parser, const char *digits, unsigned base) {
+    size_t n = strlen(digits);
+    char *dec = arena_alloc(parser->arena, 2 * n + 2); /* little-endian decimal digits */
+    size_t dec_len = 1;
+    dec[0] = 0;
+    for (const char *p = digits; *p; p++) {
+        if (*p == '_') continue;
+        unsigned carry = 0;
+        if (*p >= '0' && *p <= '9') carry = (unsigned)(*p - '0');
+        else if (*p >= 'a' && *p <= 'f') carry = (unsigned)(*p - 'a' + 10);
+        else if (*p >= 'A' && *p <= 'F') carry = (unsigned)(*p - 'A' + 10);
+        for (size_t j = 0; j < dec_len; j++) {
+            unsigned v = (unsigned)dec[j] * base + carry;
+            dec[j] = (char)(v % 10);
+            carry = v / 10;
+        }
+        while (carry) {
+            dec[dec_len++] = (char)(carry % 10);
+            carry /= 10;
+        }
+    }
+    char *out = arena_alloc(parser->arena, dec_len + 1);
+    for (size_t j = 0; j < dec_len; j++) out[j] = (char)('0' + dec[dec_len - 1 - j]);
+    out[dec_len] = '\0';
+    return out;
+}
+
 static AstNode *parse_int_literal(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_INT_VALUE, parser->cur_token);
     const char *s = parser->cur_token.literal;
@@ -668,7 +698,14 @@ static AstNode *parse_int_literal(Parser *parser) {
     }
 
     node->data.int_value.value = (int64_t)uval;
-    node->data.int_value.literal = parser->cur_token.literal;
+    const char *lit = parser->cur_token.literal;
+    if (lit[0] == '0' && (lit[1] == 'x' || lit[1] == 'X'))
+        lit = radix_digits_to_decimal(parser, lit + 2, 16);
+    else if (lit[0] == '0' && (lit[1] == 'o' || lit[1] == 'O'))
+        lit = radix_digits_to_decimal(parser, lit + 2, 8);
+    else if (lit[0] == '0' && (lit[1] == 'b' || lit[1] == 'B'))
+        lit = radix_digits_to_decimal(parser, lit + 2, 2);
+    node->data.int_value.literal = lit;
     node->data.int_value.overflow = overflow_u64 || uval > (uint64_t)INT64_MAX;
     node->data.int_value.overflow_u64 = overflow_u64;
     return node;
@@ -2732,6 +2769,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             StructField *field = &node->data.struct_decl.fields[node->data.struct_decl.field_count];
             field->name = parser->cur_token.literal;
             field->type_name = NULL;
+            field->json_tag = NULL;
             node->data.struct_decl.field_count++;
             next_token(parser);
             if (current_token_is(parser, TOK_COMMA)) {
@@ -2761,8 +2799,28 @@ static AstNode *parse_struct_declaration(Parser *parser) {
         for (int i = group_start; i < node->data.struct_decl.field_count; i++) {
             node->data.struct_decl.fields[i].type_name = type_name;
             node->data.struct_decl.fields[i].default_value = NULL;
+            node->data.struct_decl.fields[i].json_tag = NULL;
         }
         next_token(parser);
+
+        /* Optional field tag: `` `json:"Name"` `` right after the type,
+         * before any default value. Stored raw here; the typechecker
+         * validates it (for #json structs) and extracts the key. */
+        if (current_token_is(parser, TOK_RAW_STRING)) {
+            /* E2095: a tag names one JSON key, so it can't be shared by a
+             * comma-grouped field list (`x, y int `json:"..."``) — every
+             * field would serialize under the same key. */
+            if (node->data.struct_decl.field_count - group_start > 1) {
+                diagnostic_error_message(parser->diag, "E2095",
+                    arena_copy_string(parser->arena,
+                        "a field tag cannot be shared across grouped field names; give each field its own line and tag"),
+                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
+            } else {
+                const char *tag = parser->cur_token.literal;
+                node->data.struct_decl.fields[group_start].json_tag = tag;
+            }
+            next_token(parser);
+        }
 
         /* Parse optional default value: `= expr` */
         if (current_token_is(parser, TOK_ASSIGN)) {

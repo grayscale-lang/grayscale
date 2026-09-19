@@ -1,0 +1,50 @@
+/*
+ * param_default_wide_integer.gray - a wide-integer parameter default
+ * (i128/u128/i256/u256) wider than 64 bits is parsed as a wide integer when a
+ * call omits the argument: a plain function and a struct function.
+ */
+
+const Holder struct {
+    n int
+
+    do widen(x u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935) -> u256 {
+        return x
+    }
+}
+
+do local(x i128 = 99999999999999999999999999999999999999) -> i128 {
+    return x
+}
+
+do main() {
+    println("=== Param default: wide integers ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    if "${local()}" == "99999999999999999999999999999999999999" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] function default")
+    }
+    if "${local(5)}" == "5" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] explicit argument")
+    }
+    mut h Holder = Holder{n: 1}
+    if "${h.widen()}" == "115792089237316195423570985008687907853269984665640564039457584007913129639935" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] struct function default")
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

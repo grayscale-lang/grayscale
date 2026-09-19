@@ -60,6 +60,12 @@ typedef struct {
     /* Options */
     bool use_color;
 
+    /* While set, a diagnostic identical to one already recorded (same
+     * severity, code, message and location) is dropped. Used while a generic
+     * function body is re-checked per instantiation, so a problem the
+     * declaration pass already reported is not reported again. */
+    bool skip_duplicates;
+
     /* Warning suppression (-q / --quiet) */
     bool suppress_all_warnings;
     const char **suppressed_codes;

@@ -136,6 +136,32 @@ typedef struct {
      * global-lifetime sink has no single name (a forward through a
      * func-typed parameter or an opaque indirect call). */
     const char *param_escape_global_name[64];
+    /* param_escape_via_func[i] / param_escape_via_pos[i]: when param_escape_into[i]
+     * is PARAM_ESCAPE_GLOBAL *solely* because parameter i's address is forwarded
+     * as argument `param_escape_via_pos[i]` of an indirect call through this
+     * function's own func-typed parameter `param_escape_via_func[i]`, that
+     * parameter's index (-1 otherwise). A call site that passes a statically
+     * known function for that parameter judges the escape by that function's
+     * own summary instead of assuming the worst. */
+    signed char param_escape_via_func[64];
+    signed char param_escape_via_pos[64];
+    /* passes_param_to_extern: bit i set if parameter i's address may reach
+     * an extern.func() call as an argument — directly, or forwarded through
+     * another summarised call that itself passes one of ITS parameters into
+     * extern. Lets the E3154 stack-address-to-C guard follow an address
+     * through a pointer-parameter wrapper function the same way
+     * returns_param_addr lets it follow one through a `return`. */
+    unsigned long long passes_param_to_extern;
+    /* writes_through_param: bit i set if this function assigns through pointer
+     * parameter i — `p^ = v`, `p^.f = v`, `p.f = v` — directly, through a
+     * local copy of the pointer, or forwarded to another summarised call that
+     * writes through its own parameter. Lets a call site refuse a pointer to
+     * a const-declared variable for a callee that would modify it. */
+    unsigned long long writes_through_param;
+    /* returns_const_pointer: this function can return a pointer to a
+     * module-level const-declared variable (`return addr(DEFAULTS)`), or the
+     * result of another function that does. */
+    bool returns_const_pointer;
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
      * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,
@@ -184,15 +210,24 @@ typedef struct {
     int instantiation_cap;
 } FuncSig;
 
-/* One extern.func(...) call site, recorded during type checking so main.c
- * can validate its argument count against the real C signature after
- * probing the imported header (the typechecker has no C header parser). */
+/* One extern.func(...) call or extern.CONST access site, recorded during
+ * type checking so main.c can probe the real header through the C compiler
+ * (the typechecker has no C header parser) and validate the symbol against
+ * it: is_call sites get their argument count checked against the real C
+ * signature, and every site (call or constant) gets checked for existence,
+ * catching a misspelled C function/constant/macro name. A call whose result
+ * is declared or cast to a type also records that type, so the real C return
+ * type can be checked against it. */
 typedef struct {
     const char *func_name;
     int arg_count;
+    bool is_call;
     const char *file;
     int line;
     int column;
+    const AstNode *node;       /* the call expression, to attach an assertion */
+    GrayType *asserted;        /* type the result is declared or cast to, or NULL */
+    bool asserted_via_cast;    /* cast() converts explicitly; a declaration asserts */
 } ExternCallSite;
 
 typedef struct {

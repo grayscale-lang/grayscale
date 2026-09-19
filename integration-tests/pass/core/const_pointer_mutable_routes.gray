@@ -1,0 +1,52 @@
+/*
+ * const_pointer_mutable_routes.gray - pointers to mutable variables keep
+ * working through the routes that carry const-pointer protection: a function
+ * return, a struct field, an array element and a map value.
+ */
+
+const Counter struct {
+    n int
+}
+
+const Holder struct {
+    p ^Counter
+}
+
+do ident(c ^Counter) -> ^Counter {
+    return c
+}
+
+do bump(c ^Counter) {
+    c^.n += 1
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut m Counter = Counter{n: 0}
+
+    mut q ^Counter = ident(addr(m))
+    q^.n = 1
+    if m.n == 1 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut h Holder = Holder{p: addr(m)}
+    bump(h.p)
+    if m.n == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut arr [^Counter] = {addr(m)}
+    arr[0]^.n = 10
+    if m.n == 10 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut lookup map[string:^Counter] = {"a": addr(m)}
+    bump(lookup["a"])
+    if m.n == 11 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

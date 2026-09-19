@@ -1,0 +1,41 @@
+/*
+ * global_opaque_handle_no_initializer.gray - a compiler-builtin opaque handle
+ * type (sync.Mutex, threads.Thread, channels.Channel, ...) declared as a
+ * value-less file-scope global compiles, and the global is a real zero-valued
+ * handle (null, so it can be assigned in main and then used from any function).
+ */
+
+import @sync
+import @threads
+import @channels
+
+mut g_mutex sync.Mutex
+mut g_thread threads.Thread
+mut g_channel channels.Channel
+
+do touch_global() -> bool {
+    return sync.try_lock(g_mutex)
+}
+
+do main() {
+    println("=== Global opaque handle without initializer ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    g_mutex = sync.mutex()
+    if touch_global() {
+        println("  [PASS] value-less global sync.Mutex compiles and, once assigned, try_lock succeeds")
+        passed += 1
+        sync.unlock(g_mutex)
+    } otherwise {
+        println("  [FAIL] try_lock on assigned global sync.Mutex failed")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

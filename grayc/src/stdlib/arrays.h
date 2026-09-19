@@ -264,8 +264,25 @@ bool gray_arrays_is_equal_str(GrayArray *left, GrayArray *right);
  *@end
  */
 bool gray_arrays_is_sorted(GrayArray *arr);
+bool gray_arrays_is_sorted_byte(GrayArray *arr);
+bool gray_arrays_is_sorted_char(GrayArray *arr);
 bool gray_arrays_is_sorted_float(GrayArray *arr);
 bool gray_arrays_is_sorted_str(GrayArray *arr);
+
+/*@man binary_search
+ *@module arrays
+ *@group Query
+ *@sig binary_search(arr [T], val T) -> int
+ *@desc Searches a sorted array for val using binary search, returning its index or -1 if absent. arr must already be sorted in ascending order (as by sort_asc); behavior on an unsorted array is undefined. T must be comparable, as for sort_asc.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {1, 3, 5, 7, 9}
+ *   println(arrays.binary_search(nums, 7))
+ *@end
+ */
+int64_t gray_arrays_binary_search(GrayArray *arr, int64_t val);
+int64_t gray_arrays_binary_search_float(GrayArray *arr, double val);
+int64_t gray_arrays_binary_search_str(GrayArray *arr, GrayString val);
 
 /* Transformation */
 
@@ -362,6 +379,19 @@ GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size
  */
 GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right);
 
+/*@man rotate
+ *@module arrays
+ *@group Transformation
+ *@sig rotate(arr [T], n int) -> [T]
+ *@desc Returns a new array with elements rotated left by n. A negative n rotates right. Does not modify the original.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {1, 2, 3, 4, 5}
+ *   println(arrays.rotate(nums, 2))
+ *@end
+ */
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int32_t n);
+
 /* Computation */
 
 /*@man get_sum
@@ -403,6 +433,34 @@ int64_t gray_arrays_get_min(GrayArray *arr);
  */
 int64_t gray_arrays_get_max(GrayArray *arr);
 
+/*@man min_index
+ *@module arrays
+ *@group Computation
+ *@sig min_index(arr [T]) -> int
+ *@desc Returns the index of the smallest element in arr, or -1 if arr is empty.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   println(arrays.min_index(nums))
+ *@end
+ */
+int64_t gray_arrays_min_index(GrayArray *arr);
+int64_t gray_arrays_min_index_float(GrayArray *arr);
+
+/*@man max_index
+ *@module arrays
+ *@group Computation
+ *@sig max_index(arr [T]) -> int
+ *@desc Returns the index of the largest element in arr, or -1 if arr is empty.
+ *@example
+ *   import @arrays
+ *   mut nums [int] = {3, 1, 4, 1, 5}
+ *   println(arrays.max_index(nums))
+ *@end
+ */
+int64_t gray_arrays_max_index(GrayArray *arr);
+int64_t gray_arrays_max_index_float(GrayArray *arr);
+
 /* Sort */
 
 /*@man sort_asc
@@ -420,6 +478,8 @@ int64_t gray_arrays_get_max(GrayArray *arr);
 void gray_arrays_sort_asc(GrayArray *arr);
 void gray_arrays_sort_asc_float(GrayArray *arr);
 void gray_arrays_sort_asc_str(GrayArray *arr);
+void gray_arrays_sort_asc_byte(GrayArray *arr);
+void gray_arrays_sort_asc_char(GrayArray *arr);
 
 /*@man sort_desc
  *@module arrays
@@ -436,6 +496,8 @@ void gray_arrays_sort_asc_str(GrayArray *arr);
 void gray_arrays_sort_desc(GrayArray *arr);
 void gray_arrays_sort_desc_float(GrayArray *arr);
 void gray_arrays_sort_desc_str(GrayArray *arr);
+void gray_arrays_sort_desc_byte(GrayArray *arr);
+void gray_arrays_sort_desc_char(GrayArray *arr);
 
 /* Wide-integer element sort (16/32-byte [i128]/[u128]/[i256]/[u256]). The
  * int64/float/str paths only look at the low 64 bits; this orders by the full

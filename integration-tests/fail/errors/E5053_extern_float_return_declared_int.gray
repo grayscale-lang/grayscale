@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5053 - a declaration annotates an extern.func() result with an
+ * integer type while the real C function returns double. C would truncate the
+ * value silently, so it is a Grayscale diagnostic naming the C return type.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "math.h"
+
+do main() {
+    mut x int = extern.sqrt(2.0)
+    println("${x}")
+}

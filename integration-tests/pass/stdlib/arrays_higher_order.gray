@@ -15,6 +15,8 @@ do is_even(x int) -> bool { return x % 2 == 0 }
 // --- reduce callbacks ---
 do add(a int, b int) -> int { return a + b }
 do multiply(a int, b int) -> int { return a * b }
+do add_byte(a byte, b byte) -> byte { return a + b }
+do add_i128(a i128, b i128) -> i128 { return a + b }
 
 do main() {
     mut passed int = 0
@@ -186,6 +188,29 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] reduce: single expected 10, got ${reduce_single}")
+        failed += 1
+    }
+
+    // Test 12: reduce with a bare-literal initial value on a non-int
+    // element type — the literal must coerce to the element type instead
+    // of being checked against the callback's return type as plain int.
+    mut bytes [byte] = {5, 10}
+    mut reduce_byte byte = arrays.reduce(bytes, 0, ()add_byte)
+    if reduce_byte == 15 {
+        println("  [PASS] reduce: bare literal initial value on byte array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reduce: byte expected 15, got ${reduce_byte}")
+        failed += 1
+    }
+
+    mut wide [i128] = {5, 10}
+    mut reduce_wide i128 = arrays.reduce(wide, 0, ()add_i128)
+    if reduce_wide == 15 {
+        println("  [PASS] reduce: bare literal initial value on i128 array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reduce: i128 expected 15, got ${reduce_wide}")
         failed += 1
     }
 

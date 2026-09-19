@@ -1,0 +1,21 @@
+/*
+ * Error Test: E4032 - a bare function reference to a generic ('?' wildcard)
+ * function cannot be resolved to a single C symbol. Codegen only emits one
+ * specialised copy per concrete call-site instantiation; a func-ref held or
+ * passed as a value (here, as a C callback) is never itself a call site, so
+ * the unspecialised name it would emit is never defined anywhere.
+ */
+// expect-error: E4032
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do cmp(a ?, b ?) -> i32 {
+    return 0
+}
+
+do main() {
+    mut buf ^int = extern.malloc(16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    extern.free(buf)
+}

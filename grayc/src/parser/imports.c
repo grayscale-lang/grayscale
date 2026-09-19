@@ -44,6 +44,7 @@ typedef struct {
     const char *path;
     const char *module;
     const char *from;   /* file whose import statement first pulled this path in */
+    bool from_directory; /* true if `path` was pulled in as one file of a directory import */
 } ImportHashEntry;
 
 static ImportHashEntry *import_hash = NULL;
@@ -58,13 +59,15 @@ static uint32_t import_path_hash(const char *s) {
 
 /* Place an entry during a rehash, where the key is known to be unique. */
 static void import_hash_place(ImportHashEntry *table, uint32_t buckets,
-                              const char *path, const char *module, const char *from) {
+                              const char *path, const char *module, const char *from,
+                              bool from_directory) {
     uint32_t slot = import_path_hash(path) & (buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (buckets - 1)) {
         if (!table[i].path) {
             table[i].path = path;
             table[i].module = module;
             table[i].from = from;
+            table[i].from_directory = from_directory;
             return;
         }
     }
@@ -82,7 +85,8 @@ static void import_hash_reserve(void) {
     for (uint32_t i = 0; i < import_hash_buckets; i++) {
         if (import_hash[i].path)
             import_hash_place(new_table, new_buckets,
-                import_hash[i].path, import_hash[i].module, import_hash[i].from);
+                import_hash[i].path, import_hash[i].module, import_hash[i].from,
+                import_hash[i].from_directory);
     }
     free(import_hash);
     import_hash = new_table;
@@ -119,7 +123,22 @@ static const char *imported_by_file(const char *path) {
     }
 }
 
-static void mark_imported_from(const char *path, const char *module, const char *from) {
+/* True when `path` was first pulled in as one file of a directory import,
+ * rather than a direct single-file import. Distinguishes a redundant
+ * single-file import of something a directory import already covers
+ * (STANDARD 8.2, a warning) from a genuine duplicate direct import of the
+ * same file (an error). */
+static bool imported_from_directory(const char *path) {
+    if (!import_hash) return false;
+    uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
+    for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
+        if (!import_hash[i].path) return false;
+        if (strcmp(import_hash[i].path, path) == 0) return import_hash[i].from_directory;
+    }
+}
+
+static void mark_imported_from(const char *path, const char *module, const char *from,
+                               bool from_directory) {
     import_hash_reserve();
     uint32_t slot = import_path_hash(path) & (import_hash_buckets - 1);
     for (uint32_t i = slot; ; i = (i + 1) & (import_hash_buckets - 1)) {
@@ -127,6 +146,7 @@ static void mark_imported_from(const char *path, const char *module, const char 
             import_hash[i].path = path;
             import_hash[i].module = module;
             import_hash[i].from = from;
+            import_hash[i].from_directory = from_directory;
             imported_file_count++;
             return;
         }
@@ -144,7 +164,7 @@ static bool same_import_file(const char *a, const char *b) {
 }
 
 static void mark_imported(const char *path) {
-    mark_imported_from(path, NULL, NULL);
+    mark_imported_from(path, NULL, NULL, false);
 }
 
 /* qsort comparator over the fixed-width path buffers scan_gray_files fills. */
@@ -319,6 +339,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                  * Build a list of actual .gray file paths to import. */
                 char (*file_list)[PATH_BUF_SIZE] = NULL;
                 int file_count = 0;
+                bool is_dir_import = false;
 
                 size_t iplen = strlen(import_path);
                 if (iplen >= GRAY_EXT_LEN && strcmp(import_path + iplen - GRAY_EXT_LEN, GRAY_EXT) == 0) {
@@ -362,6 +383,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         }
 
                         file_count = scan_gray_files(arena, import_path, &file_list);
+                        is_dir_import = true;
                         if (file_count == 0) {
                             char msg[MSG_BUF_LARGE];
                             snprintf(msg, sizeof(msg), "directory '%s' contains no .gray files", item->path);
@@ -533,11 +555,22 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                                 item->path);
                             diagnostic_warning_message(diag, "W2014", strdup(msg),
                                 stmt_file, stmt->token.line, stmt->token.column, 0);
+                        } else if (file_count == 1 && imported_from_directory(norm_path) &&
+                                   same_import_file(imported_by_file(norm_path), stmt_file)) {
+                            /* A directory import already covers this file, and this
+                             * single-file import directly names it (STANDARD 8.2) —
+                             * redundant, not a collision. */
+                            char msg[MSG_BUF_SIZE];
+                            snprintf(msg, sizeof(msg),
+                                "import of '%s' is redundant; already included by directory import",
+                                item->path);
+                            diagnostic_warning_message(diag, "W2015", strdup(msg),
+                                stmt_file, stmt->token.line, stmt->token.column, 0);
                         } else if (file_count == 1 &&
                                    same_import_file(imported_by_file(norm_path), stmt_file)) {
                             /* The same file already imported this target, under
-                             * whatever namespace — importing a directory and
-                             * then a file inside it names one module twice. */
+                             * whatever namespace — a genuine duplicate direct
+                             * import, not one covered by a directory. */
                             const char *owner_mod = imported_by_module(norm_path);
                             char msg[MSG_BUF_LARGE], help[MSG_BUF_SIZE];
                             if (owner_mod) {
@@ -557,7 +590,7 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                         }
                         continue;
                     }
-                    mark_imported_from(norm_path, mod_name, stmt_file);
+                    mark_imported_from(norm_path, mod_name, stmt_file, is_dir_import);
 
                     /* Attribute this file to its module. Every file of a
                      * directory import records the same module name, which is
@@ -618,7 +651,21 @@ void imports_resolve(Arena *arena, DiagnosticList *diag, AstNode *program,
                             bool all_sibling = true;
                             for (int xi = 0; xi < transitive_stmt->data.import_stmt.count; xi++) {
                                 ImportItem *titem = &transitive_stmt->data.import_stmt.items[xi];
-                                if (titem->is_stdlib || titem->is_c_import) {
+                                if (titem->is_c_import) {
+                                    /* A local ("./x.h") header is resolved
+                                     * relative to the importing file, same as
+                                     * an ordinary import — main.c's header
+                                     * lookups fall back to the entry file's
+                                     * directory when source_dir is unset, so
+                                     * a local header must get this file's
+                                     * directory here, not be skipped like a
+                                     * stdlib import (which never consults
+                                     * source_dir at all). */
+                                    all_sibling = false;
+                                    if (!titem->source_dir) titem->source_dir = src_dir;
+                                    continue;
+                                }
+                                if (titem->is_stdlib) {
                                     all_sibling = false;
                                     continue;
                                 }

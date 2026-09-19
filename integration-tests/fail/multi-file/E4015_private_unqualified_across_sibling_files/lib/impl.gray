@@ -1,0 +1,8 @@
+private const LIMIT int = 7
+private mut counter int = 0
+private do bump(x int) -> int { return x + LIMIT }
+
+do stamp() -> int {
+    counter += 1
+    return bump(counter)
+}

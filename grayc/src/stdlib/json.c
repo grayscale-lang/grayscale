@@ -52,6 +52,38 @@ void json_append_escaped(char *buf, int *pos, GrayString str) {
     buf[(*pos)++] = '"';
 }
 
+/* Enum field helpers. Both fall through every variant, matching the linear
+ * scan gray_enum_cast_check uses for a plain-enum cast; a #json struct's
+ * enum field count is small enough that this never needs a table. */
+int64_t gray_json_enum_from_number(GrayString raw, int64_t value,
+    const int64_t *variants, int32_t count, const char *type_name) {
+    for (int32_t i = 0; i < count; i++) {
+        if (variants[i] == value) return value;
+    }
+    char buf[64];
+    int len = raw.len < (int32_t)sizeof(buf) - 1 ? raw.len : (int32_t)sizeof(buf) - 1;
+    memcpy(buf, raw.data, (size_t)len);
+    buf[len] = '\0';
+    gray_panic_code("P0129", "cannot convert '%s' to enum %s", buf, type_name);
+    return value;
+}
+
+GrayString gray_json_enum_from_str(GrayString raw,
+    const GrayString *variants, int32_t count, const char *type_name) {
+    for (int32_t i = 0; i < count; i++) {
+        if (variants[i].len == raw.len &&
+            (raw.len == 0 || memcmp(variants[i].data, raw.data, (size_t)raw.len) == 0)) {
+            return raw;
+        }
+    }
+    char buf[64];
+    int len = raw.len < (int32_t)sizeof(buf) - 1 ? raw.len : (int32_t)sizeof(buf) - 1;
+    memcpy(buf, raw.data, (size_t)len);
+    buf[len] = '\0';
+    gray_panic_code("P0129", "cannot convert '%s' to enum %s", buf, type_name);
+    return raw;
+}
+
 /* Read a packed primitive slot (array element or map value) of the given
  * byte width. Grayscale stores int/uint/byte/char and f32/f64 at their
  * natural width, so a fixed *(int64_t*) read walked off the slot. */

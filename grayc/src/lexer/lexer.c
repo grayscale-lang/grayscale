@@ -537,7 +537,8 @@ Token lexer_next_token(Lexer *lexer) {
         } else if (peek_char(lexer) == 'i' && lexer->read_position + 1 < lexer->input_len &&
                    lexer->input[lexer->read_position + 1] == 'n' &&
                    (lexer->read_position + 2 >= lexer->input_len ||
-                    !isalpha((unsigned char)lexer->input[lexer->read_position + 2]))) {
+                    !(isalnum((unsigned char)lexer->input[lexer->read_position + 2]) ||
+                      lexer->input[lexer->read_position + 2] == '_'))) {
             /* !in → NOT_IN */
             read_char(lexer); /* skip i */
             read_char(lexer); /* skip n */

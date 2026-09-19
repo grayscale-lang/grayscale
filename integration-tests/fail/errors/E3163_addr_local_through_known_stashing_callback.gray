@@ -1,0 +1,20 @@
+// expect-error: E3163
+/*
+ * Error Test: E3163 - a local's address forwarded through a higher-order
+ * function is still rejected when the function passed for the callback is
+ * known at the call site and itself stores the pointer into a global.
+ */
+
+mut leaked ^int = nil
+
+do stash(p ^int) { leaked = p }
+
+do apply(f func(^int), p ^int) { f(p) }
+
+do main() {
+    if true {
+        mut x int = 42
+        apply(()stash, addr(x))
+    }
+    println("unreachable")
+}

@@ -501,4 +501,9 @@ int64_t gray_builtin_char_count(GrayString str);
 /* char_to_utf8 — encode a codepoint to an GrayString (for interpolation) */
 GrayString gray_builtin_char_to_utf8(GrayArena *arena, int32_t cp);
 
+/* Decode the next UTF-8 character starting at p (< end); writes the decoded
+ * codepoint to *cp_out (0xFFFD on invalid input) and returns bytes consumed
+ * (1-4). */
+int gray_builtin_utf8_next(const uint8_t *p, const uint8_t *end, int32_t *cp_out);
+
 #endif

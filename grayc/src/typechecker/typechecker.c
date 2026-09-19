@@ -170,6 +170,12 @@ static bool string_set_contains(const char *const *sorted, int n, const char *na
  * routines and stdlib arg-type validation. */
 static GrayType *resolve_expression(TypeChecker *checker, AstNode *node);
 
+/* Forward declarations — fixed-size array helpers, defined near the pointer
+ * checker but needed earlier by the mutating-array-call guard. */
+static bool array_spelling_is_fixed(const char *s);
+static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e);
+static int member_expr_fixed_array_field_size(TypeChecker *checker, AstNode *e);
+
 /* Forward declarations — pointer checker @mem lifetime helpers, defined near
  * check_expr_stmt but hooked into expression resolution and var-decl. */
 static void pointer_checker_apply_mem_call(TypeChecker *checker, AstNode *call, AstNode *at,
@@ -967,6 +973,10 @@ static void register_func(TypeChecker *checker, const char *name,
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
+    fs->passes_param_to_extern = 0;
+    fs->writes_through_param = 0;
+    fs->returns_const_pointer = false;
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
@@ -1236,6 +1246,7 @@ static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
 
 static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
 static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs);
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
 
 /* The value a local named `name` was declared with, searched anywhere in
  * `node`, or NULL. Lets the param-bit walk follow `mut b = Box{p: q};
@@ -1664,23 +1675,46 @@ static void record_param_escape(FuncSig *fs, unsigned long long bits,
             if (dest == PARAM_ESCAPE_GLOBAL)
                 fs->param_escape_global_name[i] = global_name;
         }
+        fs->param_escape_via_func[i] = -1;
     }
 }
 
-/* True if `call`'s target is one of `fs`'s own function-typed parameters — an
- * indirect call whose real callee is not statically known. Escape analysis
- * cannot see into it, so every argument such a call receives must be treated
- * as escaping to an unknown, program-lifetime sink (#2692). */
-static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
+/* record_param_escape() for an argument forwarded through an indirect call
+ * via func-typed parameter `func_param`, at argument position `pos`. The
+ * escape stays attributable to that one call only while nothing else has
+ * escaped the parameter (param_escape_via_func). */
+static void record_param_escape_via_func(FuncSig *fs, unsigned long long bits,
+                                         int func_param, int pos) {
+    for (int i = 0; i < fs->param_count && i < MAX_TRACKED_PARAMS; i++) {
+        if (!(bits & (1ull << i))) continue;
+        if (fs->param_escape_into[i] == PARAM_ESCAPE_NONE) {
+            fs->param_escape_into[i] = PARAM_ESCAPE_GLOBAL;
+            fs->param_escape_via_func[i] = func_param;
+            fs->param_escape_via_pos[i] = pos;
+        } else if (fs->param_escape_into[i] != PARAM_ESCAPE_GLOBAL ||
+                   fs->param_escape_via_func[i] != func_param ||
+                   fs->param_escape_via_pos[i] != pos) {
+            fs->param_escape_into[i] = PARAM_ESCAPE_GLOBAL;
+            fs->param_escape_via_func[i] = -1;
+        }
+    }
+}
+
+/* Index of the `fs` parameter that `call`'s target names, when that parameter
+ * is function-typed — an indirect call whose real callee is not statically
+ * known. Escape analysis cannot see into it, so every argument such a call
+ * receives is treated as escaping to an unknown, program-lifetime sink
+ * (#2692), until a call site supplies a known function for it. -1 otherwise. */
+static int call_func_typed_param_index(FuncSig *fs, AstNode *call) {
     AstNode *fn = call->data.call.function;
-    if (!fn || fn->kind != NODE_LABEL || !fs->decl) return false;
+    if (!fn || fn->kind != NODE_LABEL || !fs->decl) return -1;
     int param_count = fs->decl->data.func_decl.param_count;
     for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
         const Param *p = &fs->decl->data.func_decl.params[i];
         if (p->name && strcmp(p->name, fn->data.label.value) == 0)
-            return p->type_name && strncmp(p->type_name, "func(", 5) == 0;
+            return p->type_name && strncmp(p->type_name, "func(", 5) == 0 ? i : -1;
     }
-    return false;
+    return -1;
 }
 
 /* True when a call's target is a func *value* that cannot be pinned to one
@@ -1691,7 +1725,130 @@ static bool call_targets_func_typed_param(FuncSig *fs, AstNode *call) {
 static bool call_target_is_opaque_func(FuncSig *fs, AstNode *call) {
     AstNode *fn = call->data.call.function;
     if (fn && fn->kind == NODE_INDEX_EXPR) return true;
-    return call_targets_func_typed_param(fs, call);
+    return call_func_typed_param_index(fs, call) >= 0;
+}
+
+/* Is `name` a module-level const-declared variable of the program being
+ * checked? */
+static bool is_module_level_const(TypeChecker *checker, const char *name) {
+    AstNode *program = checker->program;
+    if (!program || program->kind != NODE_PROGRAM || !name) return false;
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt && stmt->kind == NODE_VAR_DECL && !stmt->data.var_decl.mutable &&
+            stmt->data.var_decl.name && strcmp(stmt->data.var_decl.name, name) == 0)
+            return true;
+    }
+    return false;
+}
+
+/* Structural: does a value `fs` returns point at a module-level const-declared
+ * variable — `addr(GLOBAL)`, a local initialised from one, or the result of
+ * another function that returns one. */
+static bool return_expr_points_to_const(TypeChecker *checker, FuncSig *fs,
+                                        AstNode *body, AstNode *e) {
+    if (!e) return false;
+    if (e->kind == NODE_LABEL) {
+        AstNode *init = local_initializer(body, e->data.label.value);
+        return init && init != e && return_expr_points_to_const(checker, fs, body, init);
+    }
+    if (e->kind != NODE_CALL_EXPR) return false;
+    AstNode *f = e->data.call.function;
+    if (f && f->kind == NODE_LABEL && e->data.call.arg_count == 1) {
+        if (strcmp(f->data.label.value, "addr") == 0) {
+            const char *root = assignment_target_root_name(e->data.call.args[0]);
+            if (!root || declared_in_subtree(body, root)) return false;
+            int param_count = fs->decl->data.func_decl.param_count;
+            for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
+                const char *pn = fs->decl->data.func_decl.params[i].name;
+                if (pn && strcmp(pn, root) == 0) return false;
+            }
+            return is_module_level_const(checker, root);
+        }
+        if (strcmp(f->data.label.value, "copy") == 0)
+            return return_expr_points_to_const(checker, fs, body, e->data.call.args[0]);
+    }
+    FuncSig *callee = resolve_call_sig_in_body(checker, body, e);
+    if (!callee || callee == fs) return false;
+    ensure_escape_summary(checker, callee);
+    return callee->returns_const_pointer;
+}
+
+/* Bit of the pointer parameter of `fs` that a write rooted at `root` lands
+ * in: `root` names the parameter itself, or a local declared as a plain copy
+ * of it (`mut q = p`). 0 for anything else, including a by-value parameter. */
+static unsigned long long pointer_param_bit_for_root(FuncSig *fs, AstNode *body,
+                                                     const char *root) {
+    for (int hop = 0; root && hop < MAX_TRACKED_PARAMS; hop++) {
+        int param_count = fs->decl->data.func_decl.param_count;
+        for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
+            const Param *p = &fs->decl->data.func_decl.params[i];
+            if (p->name && strcmp(p->name, root) == 0)
+                return p->type_name && p->type_name[0] == '^' ? 1ull << i : 0;
+        }
+        AstNode *init = local_initializer(body, root);
+        root = init && init->kind == NODE_LABEL ? init->data.label.value : NULL;
+    }
+    return 0;
+}
+
+/* Bit of the pointer parameter that assigning to `target` writes through —
+ * a `p^`, `p^.f`, `p.f` or `p^[i]` target, never the bare `p = ...`, which
+ * only repoints the parameter. */
+static unsigned long long write_target_param_bit(FuncSig *fs, AstNode *body,
+                                                 AstNode *target) {
+    if (!target || target->kind == NODE_LABEL) return 0;
+    return pointer_param_bit_for_root(fs, body, escape_root_name(target));
+}
+
+/* Bit of the pointer parameter that a callee writing through the argument
+ * `arg` reaches: the parameter itself (`f(p)`), or the place `addr(p^.f)`
+ * takes the address of. */
+static unsigned long long pointer_arg_param_bit(FuncSig *fs, AstNode *body,
+                                                AstNode *arg) {
+    if (!arg) return 0;
+    if (arg->kind == NODE_LABEL)
+        return pointer_param_bit_for_root(fs, body, arg->data.label.value);
+    if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
+        arg->data.call.function->kind == NODE_LABEL &&
+        strcmp(arg->data.call.function->data.label.value, "addr") == 0 &&
+        arg->data.call.arg_count == 1)
+        return write_target_param_bit(fs, body, arg->data.call.args[0]);
+    return 0;
+}
+
+/* Bit of the pointer parameter that instance dispatch `p.f()` (or `p^.f()`)
+ * writes through, for a call dispatch has not rewritten yet — a function
+ * summarised before its own body is checked still sees the instance form, not
+ * `Type.f(p)`. The struct function must write through its receiver: a `^T`
+ * one that writes through it, or a `&` one, which takes it by reference. */
+static unsigned long long dispatch_receiver_write_bit(TypeChecker *checker,
+                                                      FuncSig *fs, AstNode *body,
+                                                      AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return 0;
+    AstNode *obj = fn->data.member.object;
+    if (obj && obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
+        obj = obj->data.postfix.left;
+    if (!obj || obj->kind != NODE_LABEL) return 0;
+    unsigned long long bit = pointer_param_bit_for_root(fs, body, obj->data.label.value);
+    if (!bit) return 0;
+    int param_index = 0;
+    while (!((bit >> param_index) & 1)) param_index++;
+    GrayType *pt = param_index < fs->param_count ? fs->param_types[param_index] : NULL;
+    if (!pt || pt->kind != TK_POINTER || !pt->element_type) return 0;
+    char key[MSG_BUF_SIZE], sfn[MSG_BUF_SIZE];
+    snprintf(sfn, sizeof(sfn), "%s_%s",
+        checker_resolve_decl_into(checker, pt->element_type, key, sizeof(key)),
+        fn->data.member.member);
+    FuncSig *callee = find_func(checker, sfn);
+    if (!callee || !callee->decl || callee->decl->kind != NODE_FUNC_DECL ||
+        callee->decl->data.func_decl.param_count == 0)
+        return 0;
+    ensure_escape_summary(checker, callee);
+    bool writes = (callee->writes_through_param & 1) ||
+                  callee->decl->data.func_decl.params[0].mutable;
+    return writes ? bit : 0;
 }
 
 /* Scan a function body for places a parameter's address is stored into
@@ -1703,6 +1860,8 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
     if (!node) return;
     switch (node->kind) {
     case NODE_ASSIGN_STMT: {
+        fs->writes_through_param |=
+            write_target_param_bit(fs, body, node->data.assign.target);
         const char *troot = escape_root_name(node->data.assign.target);
         signed char dest = escape_dest_for_root(checker, fs, troot, body);
         if (dest != PARAM_ESCAPE_NONE)
@@ -1724,9 +1883,34 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                     node->data.call.args[sink->value_arg]), dest,
                     dest == PARAM_ESCAPE_GLOBAL ? croot : NULL);
         }
+        /* passes_param_to_extern (#2732): a parameter's address reaching an
+         * extern.func() call directly, right here in this function's own
+         * body — the callee-side half of the E3154 stack-address-to-C
+         * guard, computed structurally alongside the rest of this summary
+         * the same way returns_param_addr is. */
+        AstNode *fn = node->data.call.function;
+        if (fn && fn->kind == NODE_MEMBER_EXPR && ast_member_qualifier(fn) &&
+            strcmp(ast_member_qualifier(fn), "extern") == 0) {
+            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
+                fs->passes_param_to_extern |= return_expr_param_bits(checker, fs,
+                    node->data.call.args[i]);
+        }
         FuncSig *callee = resolve_call_sig_in_body(checker, body, node);
+        if (!callee)
+            fs->writes_through_param |= dispatch_receiver_write_bit(checker, fs, body, node);
         if (callee && callee != fs) {
             ensure_escape_summary(checker, callee);
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
+                if ((callee->writes_through_param >> k) & 1)
+                    fs->writes_through_param |=
+                        pointer_arg_param_bit(fs, body, node->data.call.args[k]);
+                if (callee->decl && callee->decl->kind == NODE_FUNC_DECL &&
+                    k < callee->decl->data.func_decl.param_count &&
+                    callee->decl->data.func_decl.params[k].mutable)
+                    fs->writes_through_param |=
+                        write_target_param_bit(fs, body, node->data.call.args[k]);
+            }
             for (int k = 0; k < callee->param_count &&
                             k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
                 signed char cdest = callee->param_escape_into[k];
@@ -1746,10 +1930,29 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                             dest == PARAM_ESCAPE_GLOBAL ? droot : NULL);
                 }
             }
+            /* passes_param_to_extern forwards through a call to another
+             * summarised function the same way param_escape_into does just
+             * above: `helper(a) { extern.free(a) }` called as
+             * `outer(x) { helper(x) }` makes outer's own parameter 0 reach
+             * extern too. */
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
+                if (!((callee->passes_param_to_extern >> k) & 1)) continue;
+                fs->passes_param_to_extern |= return_expr_param_bits(checker, fs,
+                    node->data.call.args[k]);
+            }
         } else if (!callee && call_target_is_opaque_func(fs, node)) {
-            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++)
-                record_param_escape(fs, return_expr_param_bits(checker, fs,
-                    node->data.call.args[i]), PARAM_ESCAPE_GLOBAL, NULL);
+            int func_param = call_func_typed_param_index(fs, node);
+            for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++) {
+                fs->writes_through_param |=
+                    pointer_arg_param_bit(fs, body, node->data.call.args[i]);
+                unsigned long long bits = return_expr_param_bits(checker, fs,
+                    node->data.call.args[i]);
+                if (func_param >= 0)
+                    record_param_escape_via_func(fs, bits, func_param, i);
+                else
+                    record_param_escape(fs, bits, PARAM_ESCAPE_GLOBAL, NULL);
+            }
         }
         for (int i = 0; i < node->data.call.arg_count; i++)
             escape_walk(checker, fs, body, node->data.call.args[i]);
@@ -1790,8 +1993,12 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
         escape_walk(checker, fs, body, node->data.ensure_stmt.expr);
         break;
     case NODE_RETURN_STMT:
-        for (int i = 0; i < node->data.return_stmt.count; i++)
+        for (int i = 0; i < node->data.return_stmt.count; i++) {
+            if (return_expr_points_to_const(checker, fs, body,
+                                            node->data.return_stmt.values[i]))
+                fs->returns_const_pointer = true;
             escape_walk(checker, fs, body, node->data.return_stmt.values[i]);
+        }
         break;
     default:
         break;
@@ -1808,6 +2015,10 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     fs->returns_param_addr = 0;
     memset(fs->param_escape_into, PARAM_ESCAPE_NONE, sizeof fs->param_escape_into);
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
+    memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
+    fs->passes_param_to_extern = 0;
+    fs->writes_through_param = 0;
+    fs->returns_const_pointer = false;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
@@ -1842,6 +2053,166 @@ static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *f
     if (!fs) return 0;
     ensure_escape_summary(checker, fs);
     return fs->returns_param_addr;
+}
+
+/* --- const-sourced pointers ---
+ *
+ * A pointer to a const-declared variable is read-only: writing through it is
+ * E3122. Symbol.const_source marks a variable that holds such a pointer, or
+ * an aggregate that holds one in a field or element. It is set from anything
+ * that points at a const — addr(const), a marked variable, a field or element
+ * of one, a literal built from one, or a call that returns one — not only from
+ * a direct `addr(const)` initializer. One flag covers the whole variable, so a
+ * struct holding a const pointer and a mutable one is treated as holding
+ * const pointers throughout. */
+
+static GrayType *const_walk_expr_type(TypeChecker *checker, AstNode *e) {
+    GrayType *t = typetable_get(checker->type_table, e);
+    if (t) return t;
+    if (e->kind == NODE_LABEL) {
+        Symbol *sym = checker_lookup_symbol(checker, e->data.label.value);
+        return sym ? sym->type : NULL;
+    }
+    return NULL;
+}
+
+static bool expr_points_to_const(TypeChecker *checker, AstNode *e);
+
+/* The pointer expression that a write through `place` dereferences, when it
+ * points at a const-declared variable — `p^`, `p^.f`, `p.f` (auto-deref),
+ * `h.p^.f` — else NULL. */
+static AstNode *place_derefs_const_pointer(TypeChecker *checker, AstNode *place) {
+    AstNode *cur = place;
+    while (cur) {
+        AstNode *inner = NULL;
+        bool deref = false;
+        switch (cur->kind) {
+        case NODE_POSTFIX_EXPR:
+            if (cur->data.postfix.op != TOK_CARET) return NULL;
+            inner = cur->data.postfix.left;
+            deref = true;
+            break;
+        case NODE_MEMBER_EXPR: {
+            inner = cur->data.member.object;
+            GrayType *t = inner ? const_walk_expr_type(checker, inner) : NULL;
+            deref = t && t->kind == TK_POINTER;
+            break;
+        }
+        case NODE_INDEX_EXPR:
+            inner = cur->data.index_expr.left;
+            break;
+        default:
+            return NULL;
+        }
+        if (!inner) return NULL;
+        if (deref && expr_points_to_const(checker, inner)) return inner;
+        cur = inner;
+    }
+    return NULL;
+}
+
+static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
+    if (!e) return false;
+    switch (e->kind) {
+    case NODE_LABEL: {
+        Symbol *sym = checker_lookup_symbol(checker, e->data.label.value);
+        return sym && sym->const_source;
+    }
+    case NODE_MEMBER_EXPR:
+    case NODE_INDEX_EXPR: {
+        /* A field or element of a marked aggregate is marked; one read out of
+         * memory behind a pointer is a different pointer. */
+        AstNode *inner = e->kind == NODE_MEMBER_EXPR ? e->data.member.object
+                                                     : e->data.index_expr.left;
+        GrayType *t = inner ? const_walk_expr_type(checker, inner) : NULL;
+        if (!inner || (t && t->kind == TK_POINTER)) return false;
+        return expr_points_to_const(checker, inner);
+    }
+    case NODE_STRUCT_VALUE:
+        for (int i = 0; i < e->data.struct_value.count; i++)
+            if (expr_points_to_const(checker, e->data.struct_value.field_values[i]))
+                return true;
+        return false;
+    case NODE_ARRAY_VALUE:
+        for (int i = 0; i < e->data.array_value.count; i++)
+            if (expr_points_to_const(checker, e->data.array_value.elements[i]))
+                return true;
+        return false;
+    case NODE_MAP_VALUE:
+        for (int i = 0; i < e->data.map_value.count; i++)
+            if (expr_points_to_const(checker, e->data.map_value.values[i]))
+                return true;
+        return false;
+    case NODE_CALL_EXPR: {
+        AstNode *f = e->data.call.function;
+        if (f && f->kind == NODE_LABEL && e->data.call.arg_count == 1) {
+            if (strcmp(f->data.label.value, "addr") == 0) {
+                AstNode *target = e->data.call.args[0];
+                /* A module-level declaration is bound under its module's
+                 * spelling, hence checker_lookup_symbol. A pointer root
+                 * auto-derefs, so its own constness says nothing about the
+                 * pointee. */
+                const char *root = assignment_target_root_name(target);
+                Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
+                if (sym && !sym->mutable &&
+                    !(sym->type && sym->type->kind == TK_POINTER))
+                    return true;
+                return place_derefs_const_pointer(checker, target) != NULL;
+            }
+            if (strcmp(f->data.label.value, "copy") == 0)
+                return expr_points_to_const(checker, e->data.call.args[0]);
+        }
+        FuncSig *callee = resolve_call_sig(checker, e);
+        if (!callee) {
+            /* A stdlib call (arrays.get_first, maps.get_values, ...), a builtin,
+             * or a tagged-enum variant has no FuncSig to summarise: assume a
+             * pointer-carrying result was read out of its arguments. */
+            GrayType *rt = typetable_get(checker->type_table, e);
+            if (!is_tagged_enum_variant_call(checker, e) &&
+                !(rt && (rt->kind == TK_POINTER || rt->kind == TK_STRUCT ||
+                         rt->kind == TK_ARRAY || rt->kind == TK_MAP)))
+                return false;
+            for (int k = 0; k < e->data.call.arg_count; k++)
+                if (expr_points_to_const(checker, e->data.call.args[k]))
+                    return true;
+            return false;
+        }
+        ensure_escape_summary(checker, callee);
+        if (callee->returns_const_pointer) return true;
+        for (int k = 0; k < e->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++)
+            if (((callee->returns_param_addr >> k) & 1) &&
+                expr_points_to_const(checker, e->data.call.args[k]))
+                return true;
+        return false;
+    }
+    default:
+        return false;
+    }
+}
+
+/* `dst` now holds a pointer to a const-declared variable, if `value` does. */
+static void propagate_const_source(TypeChecker *checker, Symbol *dst, AstNode *value) {
+    if (!dst || dst->const_source || !dst->type) return;
+    TypeKind k = dst->type->kind;
+    if (k != TK_POINTER && k != TK_STRUCT && k != TK_ARRAY && k != TK_MAP) return;
+    if (expr_points_to_const(checker, value)) dst->const_source = true;
+}
+
+/* E3122: report a write to `place` that goes through a pointer to a
+ * const-declared variable. */
+static bool report_write_through_const_pointer(TypeChecker *checker,
+                                               AstNode *at, AstNode *place) {
+    AstNode *ptr = place_derefs_const_pointer(checker, place);
+    if (!ptr) return false;
+    if (ptr->kind == NODE_LABEL)
+        diagnostic_error_code_formatted(checker->diag, "E3122",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+            ptr->data.label.value);
+    else
+        diagnostic_error_message(checker->diag, "E3122",
+            "cannot modify value through a pointer; the pointee is a const-declared variable",
+            NODE_FILE(checker, at), at->token.line, at->token.column, 0);
+    return true;
 }
 
 /* --- pointer_checker_mem_walk: cross-function @mem summary --- */
@@ -2341,14 +2712,38 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         }
         int sink_depth;
         const char *sink_name;
+        const char *via_global_name = NULL;
+        if (pe == PARAM_ESCAPE_GLOBAL && csig->param_escape_via_func[a] >= 0) {
+            /* The escape is only a forward into an indirect call through one
+             * of csig's func-typed parameters. When this call supplies a known
+             * function for it, that function's own summary decides. */
+            int fp = csig->param_escape_via_func[a];
+            int pos = csig->param_escape_via_pos[a];
+            const char *target = fp < argc
+                ? func_ref_target_name(node->data.call.args[fp]) : NULL;
+            FuncSig *cb = target ? find_func(checker, target) : NULL;
+            if (cb && pos < cb->param_count && pos < MAX_TRACKED_PARAMS) {
+                ensure_escape_summary(checker, cb);
+                if (cb->param_escape_into[pos] == PARAM_ESCAPE_NONE) continue;
+                via_global_name = cb->param_escape_global_name[pos];
+            }
+        }
         if (pe == PARAM_ESCAPE_GLOBAL) {
             /* A global outlives the program, so only an origin genuinely
              * local to *this* function escapes it — a module-level source
              * (addr of another global) is program-lifetime and fine. */
             sink_depth = checker->current_func_scope_depth > 0
                 ? checker->current_func_scope_depth - 1 : 0;
-            sink_name = (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
-                ? csig->param_escape_global_name[a] : onm;
+            /* The specific global is only known when the escape was traced
+             * through a direct callee (param_escape_global_name[a] set at
+             * the point the escape was recorded). An opaque call target
+             * (record_param_escape(..., PARAM_ESCAPE_GLOBAL, NULL)) means
+             * some global is reached but which one is unknowable — falling
+             * back to onm (the origin/pointee name) here would print the
+             * same name in both message slots. */
+            sink_name = via_global_name ? via_global_name
+                : (a < MAX_TRACKED_PARAMS && csig->param_escape_global_name[a])
+                ? csig->param_escape_global_name[a] : "a global";
         } else {
             const char *droot = (pe < argc)
                 ? assignment_target_root_name(node->data.call.args[pe])
@@ -2380,6 +2775,60 @@ static void apply_call_param_escape_and_mem_effects(TypeChecker *checker,
         bool destroys = (csig->destroys_param_arena & (1ull << a)) != 0;
         pointer_checker_apply_arena_lifecycle(checker, key, destroys,
                                  node, func_display_name(csig));
+    }
+}
+
+/* E3154, forwarded through a pointer-parameter function boundary (#2732): the
+ * direct check at an extern.func() call site only sees a stack address
+ * written out inline (or laundered through a local) in the *same* function
+ * as the call. A helper that takes a `^T` parameter and passes it straight
+ * into its own extern. call defeats that check entirely — the parameter is
+ * just an opaque value from the callee's point of view, with no origin to
+ * trace. `csig`'s passes_param_to_extern summary (computed structurally by
+ * escape_walk, the same pass that computes returns_param_addr) names which
+ * of its parameters reach extern. that way; this applies it at the call
+ * site, exactly like a direct extern.func(addr(local)) would be. */
+static void apply_call_param_extern_effects(TypeChecker *checker,
+    AstNode *node, FuncSig *csig) {
+    if (!csig || checker->current_func_scope_depth <= 0) return;
+    ensure_escape_summary(checker, csig);
+    if (!csig->passes_param_to_extern) return;
+    int argc = node->data.call.arg_count;
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
+        if (!((csig->passes_param_to_extern >> a) & 1)) continue;
+        AstNode *arg = node->data.call.args[a];
+        const char *root = NULL;
+        int d = expression_origin(checker, arg, &root);
+        if (d > 0 && d >= checker->current_func_scope_depth && root) {
+            diagnostic_error_code_formatted(checker->diag, "E3154",
+                NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
+                root);
+        }
+    }
+}
+
+/* E3122, forwarded through a pointer-parameter function boundary: writing
+ * through a pointer to a const-declared variable is caught where the write
+ * is spelled (`p^ = v`), but a helper that takes a `^T` parameter and writes
+ * through it never sees the const — the pointer is just an opaque parameter.
+ * `csig`'s writes_through_param summary names which parameters it writes
+ * through; this refuses a pointer to a constant for any of them. */
+static void apply_call_param_write_effects(TypeChecker *checker,
+    AstNode *node, FuncSig *csig) {
+    if (!csig || !csig->decl || csig->decl->kind != NODE_FUNC_DECL) return;
+    ensure_escape_summary(checker, csig);
+    if (!csig->writes_through_param) return;
+    int argc = node->data.call.arg_count;
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
+        if (!((csig->writes_through_param >> a) & 1)) continue;
+        AstNode *arg = node->data.call.args[a];
+        if (!expr_points_to_const(checker, arg)) continue;
+        char *msg = typechecker_format(checker,
+            "cannot pass a pointer to a const-declared variable to parameter '%s' of '%s'; the function modifies the value through it",
+            csig->decl->data.func_decl.params[a].name,
+            FUNC_DISPLAY_NAME(csig->decl));
+        diagnostic_error_message(checker->diag, "E3122", msg,
+            NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
     }
 }
 
@@ -2561,6 +3010,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "any",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "append",       2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "average",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "float"},
+    {"arrays", "binary_search",2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"arrays", "clear",        1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "concat",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, NULL},
     {"arrays", "contains",     2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
@@ -2582,6 +3032,8 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "is_equal",     2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "bool"},
     {"arrays", "is_sorted",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "bool"},
     {"arrays", "map",          2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "max_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
+    {"arrays", "min_index",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "int"},
     {"arrays", "pair",         2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_ARRAY}}, "[[int]]"},
     {"arrays", "prepend",      2, 2, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "reduce",       3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
@@ -2590,6 +3042,7 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"arrays", "remove_first", 1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "remove_last",  1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "reverse",      1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
+    {"arrays", "rotate",       2, 2, false, FT_NONE, 2, {{0, ARG_ARRAY}, {1, ARG_INT}}, NULL},
     {"arrays", "slice",        3, 3, false, FT_NONE, 1, {{0, ARG_ARRAY}}, NULL},
     {"arrays", "sort_asc",     1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
     {"arrays", "sort_desc",    1, 1, false, FT_NONE, 1, {{0, ARG_ARRAY}}, "void"},
@@ -2686,8 +3139,10 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"chars", "is_printable", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"chars", "is_punct",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
     {"chars", "is_word_char", 1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "bool"},
+    {"chars", "string_width", 1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "int"},
     {"chars", "to_lower",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
     {"chars", "to_upper",     1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "char"},
+    {"chars", "width",        1, 1, false, FT_NONE, 1, {{0, ARG_CHAR}}, "int"},
     /* crypto */
     {"crypto", "constant_time_equal", 2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "bool"},
     {"crypto", "crc32",      1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "uint"},
@@ -2880,10 +3335,13 @@ static const StdlibFuncMeta stdlib_func_meta[] = {
     {"os", "cpu_count",   0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "current_dir", 0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "current_os",  0, 0, false, FT_NONE, 0, {{0}},"Platform"},
+    {"os", "environ",     0, 0, false, FT_NONE, 0, {{0}},"[string]"},
     {"os", "exec",        2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_ARRAY}}, "bool"},
     {"os", "get_env",     1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
+    {"os", "home_dir",    0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "hostname",    0, 0, false, FT_NONE, 0, {{0}},"string"},
     {"os", "is_tty",      0, 0, false, FT_NONE, 0, {{0}},"bool"},
+    {"os", "lookup_env",  1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "string"},
     {"os", "pid",         0, 0, false, FT_NONE, 0, {{0}},"int"},
     {"os", "set_env",     2, 2, false, FT_NONE, 2, {{0, ARG_STRING}, {1, ARG_STRING}}, "void"},
     {"os", "unset_env",   1, 1, false, FT_NONE, 1, {{0, ARG_STRING}}, "void"},
@@ -3678,6 +4136,7 @@ static const StdlibMultiReturn _stdlib_multi_returns[] = {
     {"math",     "modf",        2, {&TYPE_FLOAT, &TYPE_FLOAT}},
     {"uuid",     "timestamp",   2, {&TYPE_INT, &TYPE_BOOL}},
     {"os",       "exec",        4, {&TYPE_INT, &TYPE_STRING, &TYPE_STRING, &TYPE_BOOL}},
+    {"os",       "lookup_env",  2, {&TYPE_STRING, &TYPE_BOOL}},
     {NULL, NULL, 0, {NULL}}
 };
 
@@ -3947,6 +4406,22 @@ static bool reject_if_private(TypeChecker *checker, AstNode *node,
     const char *code = entry->kind == DECL_ALIAS ? "E4021" : "E4015";
     diagnostic_error_code_formatted(checker->diag, code,
         NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
+    return true;
+}
+
+/* A bare name that resolved to a private function, constant or variable of
+ * another file of this same directory module: `private` is private to the
+ * declaring file, so reaching it unqualified is as wrong as `mod.name` is.
+ * Types are reported by reject_private_type() from their annotations. */
+static bool reject_private_bare_use(TypeChecker *checker, AstNode *node,
+                                    const DeclEntry *entry) {
+    if (!entry || entry->kind == DECL_STRUCT || entry->kind == DECL_ENUM ||
+        entry->kind == DECL_ALIAS)
+        return false;
+    ResolveScope scope = checker_scope(checker);
+    if (module_decl_visible(&scope, entry)) return false;
+    diagnostic_error_code_formatted(checker->diag, "E4015",
+        NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
     return true;
 }
 
@@ -4365,6 +4840,19 @@ static bool c_func_result_fits(GrayType *t) {
     }
 }
 
+/* Records the type a C call's result is declared or cast to on the call's
+ * extern site, so main.c can check it against the real C return type. */
+static void extern_call_assert_type(TypeChecker *checker, const AstNode *call,
+                                    GrayType *asserted, bool via_cast) {
+    for (int i = 0; i < checker->extern_call_count; i++) {
+        ExternCallSite *site = &checker->extern_calls[i];
+        if (site->is_call && site->node == call) {
+            site->asserted = asserted;
+            site->asserted_via_cast = via_cast;
+        }
+    }
+}
+
 static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src) {
     if (!dest || !src) return false;
     /* A C function result carries no statically known Grayscale type; it is
@@ -4537,14 +5025,15 @@ static void typechecker_register_const_int(TypeChecker *checker, const char *nam
 /* Resolve a non-numeric array size identifier in a fixed-size array type
  * string like "[int,SIZE]".  If the size field is already numeric this is
  * a no-op.  Otherwise the name is looked up in const_int_names/values and
- * the type string on the var_decl node is rewritten to its numeric form
- * so that downstream code (E3052/W3003, codegen extract_array_size) sees
- * only numeric size strings.
+ * *type_name_slot is rewritten to its numeric form so that downstream code
+ * (E3052/W3003, codegen extract_array_size) sees only numeric size strings.
+ * `file`/`line`/`col` locate any diagnostic emitted.
  *
  * Emits E3125 if the identifier is not a known const int.
  * Emits E3126 if the resolved value is <= 0. */
-static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) {
-    const char *tn = node->data.var_decl.type_name;
+static void typechecker_resolve_array_size_str(TypeChecker *checker,
+        const char **type_name_slot, const char *file, int line, int col) {
+    const char *tn = *type_name_slot;
     /* Find the top-level comma separating element type from size. */
     const char *size_comma = NULL;
     int depth = 0;
@@ -4565,11 +5054,18 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
     memcpy(size_buf, size_start, sz_len);
     size_buf[sz_len] = '\0';
 
-    /* If already numeric, nothing to resolve. */
+    /* If already numeric, nothing to resolve — but a literal zero (or
+     * negative) digit still needs the same >0 check the named-const path
+     * below gets; it was skipped here entirely, so `[T, 0]` compiled clean
+     * while `[T, N]` with `const N int = 0` correctly hit E3126. */
     char *end_pointer = NULL;
     long val = strtol(size_buf, &end_pointer, 10);
     if (end_pointer && *end_pointer == '\0') {
-        (void)val;
+        if (val <= 0) {
+            char *msg = typechecker_format(checker,
+                "array size must be greater than zero; got %ld", val);
+            diagnostic_error_message(checker->diag, "E3126", msg, file, line, col, 0);
+        }
         return;
     }
 
@@ -4587,16 +5083,14 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
         char *msg = typechecker_format(checker,
             "'%s' is not a compile-time integer constant; array size must be a const int/uint value",
             size_buf);
-        diagnostic_error_message(checker->diag, "E3125", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        diagnostic_error_message(checker->diag, "E3125", msg, file, line, col, 0);
         return;
     }
     if (resolved <= 0) {
         char *msg = typechecker_format(checker,
             "array size must be greater than zero; '%s' resolves to %d",
             size_buf, (int)resolved);
-        diagnostic_error_message(checker->diag, "E3126", msg,
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        diagnostic_error_message(checker->diag, "E3126", msg, file, line, col, 0);
         return;
     }
 
@@ -4611,7 +5105,12 @@ static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) 
     memcpy(new_tn + prefix_len, num_buf, (size_t)num_len);
     new_tn[prefix_len + (size_t)num_len] = ']';
     new_tn[prefix_len + (size_t)num_len + 1] = '\0';
-    node->data.var_decl.type_name = new_tn;
+    *type_name_slot = new_tn;
+}
+
+static void typechecker_resolve_array_size(TypeChecker *checker, AstNode *node) {
+    typechecker_resolve_array_size_str(checker, &node->data.var_decl.type_name,
+        NODE_FILE(checker, node), node->token.line, node->token.column);
 }
 
 /* Try to evaluate node as a compile-time integer constant.
@@ -5019,6 +5518,7 @@ static void retarget_member_object(AstNode *member, const char *type_name) {
 static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                                const char *param_desc, const char *func_display) {
     const char *qualifier = ast_member_qualifier(arg);
+    if (report_write_through_const_pointer(checker, arg, arg)) return;
     if (arg->kind == NODE_LABEL) {
         Symbol *sym = scope_lookup(checker->current_scope, arg->data.label.value);
         if (sym && !sym->mutable) {
@@ -5051,37 +5551,12 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
                 diagnostic_error_message(checker->diag, "E3027", msg,
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
             }
-        } else {
-            /* The chain crosses a pointer dereference (pp^.field, pp^[i]).
-             * Modifying that place writes into the pointee — reject it when
-             * the pointer was taken from a const-declared variable, the same
-             * E3122 check the 'pp^.field = v' assignment path performs.
-             * escape_root_name sees through the '^' to the pointer label. */
-            const char *ptr_name = escape_root_name(arg);
-            if (ptr_name) {
-                Symbol *sym = scope_lookup(checker->current_scope, ptr_name);
-                if (sym && sym->const_source) {
-                    diagnostic_error_code_formatted(checker->diag, "E3122",
-                        NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                        ptr_name);
-                }
-            }
         }
     } else if (arg->kind == NODE_POSTFIX_EXPR &&
                arg->data.postfix.op == TOK_CARET) {
         /* A pointer dereference is a mutable place (p^ = v is a valid
-         * assignment target). Reject it only when the pointer was taken
-         * from a const-declared variable — the same E3122 check the
-         * 'p^ = v' assignment path performs. */
-        AstNode *ptr = arg->data.postfix.left;
-        if (ptr && ptr->kind == NODE_LABEL) {
-            Symbol *sym = scope_lookup(checker->current_scope, ptr->data.label.value);
-            if (sym && sym->const_source) {
-                diagnostic_error_code_formatted(checker->diag, "E3122",
-                    NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                    ptr->data.label.value);
-            }
-        }
+         * assignment target); a pointer to a const-declared variable was
+         * rejected above. */
     } else if (arg->kind != NODE_MEMBER_EXPR &&
                arg->kind != NODE_INDEX_EXPR) {
         /* Anything else — a literal, an arithmetic or logical expression, a
@@ -5136,6 +5611,50 @@ static bool csv_array_element_ok(const GrayType *t) {
     GrayType *inner = type_from_name(t->element_type);
     return inner && inner->kind == TK_ARRAY && inner->element_type &&
            strcmp(inner->element_type, "string") == 0;
+}
+
+/* True when a struct type by this name carries the #json attribute — the
+ * only shape json.parse()/json.stringify() can actually process.
+ * gray_json_parse_<Name> is only generated for a #json struct, and
+ * stringify's field-walking codegen only exists for one; anything else
+ * falls back to a raw GrayMap decode (parse) or emits no fields at all
+ * (stringify). */
+static bool struct_name_has_json_attr(TypeChecker *checker, const char *struct_name) {
+    if (!struct_name) return false;
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
+    return sdecl && sdecl->data.struct_decl.is_json;
+}
+
+/* True when `t` is a #json struct, an array of one, or a map — the only
+ * target/argument shapes json.parse()/json.stringify() can process. A map
+ * target/argument goes through the dedicated map-based fallback
+ * (gray_json_decode / gray_json_encode_map), which is a genuinely valid
+ * path, not a mistake — only a bare scalar, a non-#json struct, or an
+ * array of anything but a #json struct falls through it unsafely. */
+static bool type_is_json_struct_or_array(TypeChecker *checker, GrayType *t) {
+    if (!t) return false;
+    if (t->kind == TK_MAP) return true;
+    if (t->kind == TK_STRUCT) return struct_name_has_json_attr(checker, t->name);
+    if (t->kind == TK_ARRAY && t->element_type) {
+        GrayType *elem = type_from_name(t->element_type);
+        return elem && elem->kind == TK_STRUCT && struct_name_has_json_attr(checker, elem->name);
+    }
+    return false;
+}
+
+/* True when `node` is a call to `mod.fn(...)`, resolved through any import
+ * alias — used to spot a json.parse() call sitting in a var-decl
+ * initializer or assignment RHS, whose own return type is context-dependent
+ * on that target rather than resolvable from the call itself. */
+static bool call_is_stdlib_fn(TypeChecker *checker, AstNode *node, const char *mod, const char *fn) {
+    if (!node || node->kind != NODE_CALL_EXPR) return false;
+    AstNode *fnnode = node->data.call.function;
+    if (!fnnode || fnnode->kind != NODE_MEMBER_EXPR) return false;
+    const char *mod_raw = ast_member_base_qualifier(fnnode);
+    if (!mod_raw) return false;
+    const char *resolved_mod = typechecker_resolve_alias(checker, mod_raw);
+    return resolved_mod && strcmp(resolved_mod, mod) == 0 &&
+           strcmp(fnnode->data.member.member, fn) == 0;
 }
 
 static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn) {
@@ -5294,7 +5813,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             strcmp(mfn, "clamp") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT : &TYPE_INT;
+                result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_FLOAT :
+                         (arg_t && arg_t->kind == TK_UINT) ? &TYPE_UINT : &TYPE_INT;
             } else {
                 result = &TYPE_INT;
             }
@@ -5325,7 +5845,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
         /* Context-dependent array return types */
         if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
             strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
-            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0) {
+            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
+            strcmp(mfn, "rotate") == 0) {
             if (node->data.call.arg_count > 0) {
                 GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
                 result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("int");
@@ -5391,6 +5912,46 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
+        /* E5051: length-changing array functions on a fixed-size struct
+         * field, resolved through member-expression chains (o.field,
+         * o.inner.field) — a field written `[T,N]` never changes length,
+         * regardless of whether the containing instance is mut. */
+        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
+             strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
+             strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
+             strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
+             strcmp(mfn, "deduplicate") == 0) &&
+            node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
+                diagnostic_error_code_formatted(checker->diag, "E5051",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    mfn, arg0->data.member.member);
+            }
+        }
+        /* E5051: 'fill' is length-changing too — gray_arrays_fill clears the
+         * array and pushes exactly 'count' new elements, independent of its
+         * prior length — but count == the field's declared size is a
+         * legitimate in-place refill, unlike append/insert_at/etc above, so
+         * it isn't blanket-rejected. Only a call whose 'count' isn't
+         * provably that exact size (a literal mismatch, or a non-literal
+         * count the typechecker can't verify) is rejected. */
+        if (strcmp(mfn, "fill") == 0 && node->data.call.arg_count >= 3) {
+            AstNode *arg0 = node->data.call.args[0];
+            int fixed_size = (arg0->kind == NODE_MEMBER_EXPR)
+                ? member_expr_fixed_array_field_size(checker, arg0) : 0;
+            if (fixed_size > 0) {
+                int64_t count_lit;
+                bool count_neg;
+                bool count_matches = try_get_signed_literal_int(node->data.call.args[2], &count_lit, &count_neg) &&
+                    !count_neg && count_lit == fixed_size;
+                if (!count_matches) {
+                    diagnostic_error_code_formatted(checker->diag, "E5051",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                        mfn, arg0->data.member.member);
+                }
+            }
+        }
         /* E5026: arrays.append/prepend/insert_at element type mismatch */
         {
             AstNode *val_node = NULL;
@@ -5441,6 +6002,25 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
         }
+        /* E5026: arrays.binary_search value type must match element type */
+        if (strcmp(mfn, "binary_search") == 0 && node->data.call.arg_count >= 2) {
+            AstNode *arr_arg = node->data.call.args[0];
+            AstNode *val_node = node->data.call.args[1];
+            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
+            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
+            GrayType *val_t = resolve_expression(checker, val_node);
+            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
+                val_t && val_t->kind != TK_UNKNOWN) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
+                    !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
+                    char *msg = typechecker_format(checker,
+                        "type mismatch in 'arrays.binary_search()'; cannot search for '%s' in array of '%s'",
+                        type_name(val_t), arr_t->element_type);
+                    tc_err_arg_type(checker, val_node, msg);
+                }
+            }
+        }
         /* E5026: arrays.remove_at/insert_at index must be int */
         if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
             (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
@@ -5454,17 +6034,58 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 tc_err_arg_type(checker, idx_node, msg);
             }
         }
-        /* E9002: arrays.sum/min/max require numeric array */
+        /* E9002: arrays.sum/min/max require numeric array. Same stricter
+         * !type_is_numeric() check as average below — a struct element is
+         * just as non-numeric as a string/bool one, and the codegen for
+         * these (a value cast to int64_t) leaks a raw C error on a struct
+         * array exactly like it used to for string/bool before this
+         * matched average's check. An int-backed enum element is exempted:
+         * it's read through gray_type_to_c_codegen at its own real C enum
+         * type, and a C enum-to-int64_t cast is always legal, so this was
+         * already correct for int-backed enum arrays before this check
+         * existed at all. A string-backed enum is a GrayString at the C
+         * level, not int-castable, so it stays rejected like any other
+         * non-numeric element. */
         if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
              strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
-             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0) &&
+             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
+             strcmp(mfn, "min_index") == 0 || strcmp(mfn, "max_index") == 0) &&
             node->data.call.arg_count > 0) {
             AstNode *arg0 = node->data.call.args[0];
             GrayType *arr_t = resolve_expression(checker, arg0);
             if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
                 GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (elem_t->kind == TK_STRING || elem_t->kind == TK_BOOL) {
+                bool is_int_enum = elem_t->kind == TK_ENUM && elem_t->name &&
+                    !typechecker_enum_is_string(checker, elem_t->name);
+                if (!type_is_numeric(elem_t) && !is_int_enum) {
                     diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
+                }
+            }
+        }
+        /* E9002: arrays.binary_search/sort_asc/sort_desc/is_sorted require
+         * an orderable element type. Unlike sum/min/max above, these four
+         * do support string and bool (dedicated string codegen paths; bool
+         * casts cleanly to int64_t) and enum (a plain C enum, comparable as
+         * an int) — only a struct/array/map element has no ordering and no
+         * safe scalar cast, which otherwise either leaks a raw C error
+         * (binary_search, a value cast) or silently reinterprets the
+         * struct's raw leading bytes as the sort/comparison key
+         * (sort_asc/sort_desc/is_sorted, a pointer-reinterpret read). */
+        if ((strcmp(mfn, "binary_search") == 0 || strcmp(mfn, "sort_asc") == 0 ||
+             strcmp(mfn, "sort_desc") == 0 || strcmp(mfn, "is_sorted") == 0) &&
+            node->data.call.arg_count > 0) {
+            AstNode *arg0 = node->data.call.args[0];
+            GrayType *arr_t = resolve_expression(checker, arg0);
+            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                bool orderable = type_is_numeric(elem_t) || elem_t->kind == TK_STRING ||
+                                  elem_t->kind == TK_BOOL || elem_t->kind == TK_ENUM;
+                if (!orderable) {
+                    char *msg = typechecker_format(checker,
+                        "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s'",
+                        mfn, arr_t->element_type);
+                    diagnostic_error_message(checker->diag, "E9002", msg,
+                        NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0);
                 }
             }
         }
@@ -5654,7 +6275,23 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                                     if (init_t) {
                                         const char *init_tn = type_name(init_t);
                                         const char *ret_tn = type_name(cb_fs->return_types[0]);
-                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0) {
+                                        TypeKind ret_kind = cb_fs->return_types[0]->kind;
+                                        /* A bare literal always resolves to plain int/float
+                                         * (resolve_expression has no expected-type hint for
+                                         * literals), so it never matches a sized/unsigned
+                                         * return type by name. Loosen the check the same way
+                                         * maps.get_or_default does for its default argument:
+                                         * a literal of the right broad numeric family (int vs
+                                         * float) is coercible to any return type in that
+                                         * family, matching what codegen actually emits (a
+                                         * plain C literal assigned to the accumulator's C
+                                         * type). */
+                                        bool loose_literal_ok =
+                                            (init_arg->kind == NODE_INT_VALUE &&
+                                             (ret_kind == TK_INT || ret_kind == TK_UINT || ret_kind == TK_BYTE)) ||
+                                            (init_arg->kind == NODE_FLOAT_VALUE && ret_kind == TK_FLOAT);
+                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0 &&
+                                            !loose_literal_ok) {
                                             char *msg = typechecker_format(checker,
                                                 "reduce callback must return the same type as the accumulator (%s)",
                                                 init_tn);
@@ -5769,6 +6406,20 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 tc_err_arg_type(checker, a0, typechecker_format(checker,
                     "'json.encode()' cannot serialize '%s'; it accepts any primitive (int, uint, sized ints, byte, float, f32/f64, char, bool, string), a flat array of those, or a string-keyed map of those",
                     type_name(t0)));
+            }
+        }
+        /* E3174: json.stringify()'s argument must be a #json struct (or
+         * array of one) — its field-walking codegen only exists for one;
+         * anything else (a plain struct, a bare primitive, ...) compiles
+         * and runs clean, silently producing "{}" with none of the
+         * value's data. */
+        if (strcmp(mfn, "stringify") == 0 && node->data.call.arg_count >= 1) {
+            AstNode *a0 = node->data.call.args[0];
+            GrayType *t0 = resolve_expression(checker, a0);
+            if (t0 && t0->kind != TK_UNKNOWN && !type_is_json_struct_or_array(checker, t0)) {
+                diagnostic_error_code_formatted(checker->diag, "E3174",
+                    NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
+                    type_display_name(checker, t0), "stringify");
             }
         }
     } else if (strcmp(mod, "csv") == 0) {
@@ -6190,6 +6841,24 @@ static bool self_param_names_struct(TypeChecker *checker, AstNode *decl,
     return mangled && strcmp(mangled, struct_name) == 0;
 }
 
+/* Wrap a struct-value receiver in `addr(...)` so instance dispatch can pass it
+ * to a struct function whose first parameter is a pointer to the struct. */
+static AstNode *wrap_receiver_in_addr(AstNode *recv, Token token) {
+    AstNode *fn_label = xcalloc(1, sizeof(AstNode));
+    fn_label->kind = NODE_LABEL;
+    fn_label->token = token;
+    fn_label->data.label.value = strdup("addr");
+    AstNode **addr_args = xmalloc(sizeof(AstNode *));
+    addr_args[0] = recv;
+    AstNode *addr_call = xcalloc(1, sizeof(AstNode));
+    addr_call->kind = NODE_CALL_EXPR;
+    addr_call->token = token;
+    addr_call->data.call.function = fn_label;
+    addr_call->data.call.args = addr_args;
+    addr_call->data.call.arg_count = 1;
+    return addr_call;
+}
+
 static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn, const char *mod_raw, AstNode *fn) {
     GrayType *result = &TYPE_UNKNOWN;
     if (is_struct_name(checker, mod)) {
@@ -6570,6 +7239,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                         deref->data.postfix.left = self_arg;
                         deref->data.postfix.op = TOK_CARET;
                         new_args[0] = deref;
+                    } else if (sym->type->kind == TK_STRUCT && p0_tn[0] == '^') {
+                        new_args[0] = wrap_receiver_in_addr(self_arg, node->token);
                     } else {
                         new_args[0] = self_arg;
                     }
@@ -6744,6 +7415,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * been prepended into args[0]. Now that the rewrite above
                      * has happened, apply it directly against ssig. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
+                    apply_call_param_extern_effects(checker, node, ssig);
+                    apply_call_param_write_effects(checker, node, ssig);
                 } else if (ssig) {
                     /* Non-self struct function called on an instance.
                      * Rewrite the AST so the member-expr object uses
@@ -6855,6 +7528,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * above for why this must run here rather than in
                      * resolve_call_expr's own copy of the check. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
+                    apply_call_param_extern_effects(checker, node, ssig);
+                    apply_call_param_write_effects(checker, node, ssig);
                 } else {
                     diagnostic_error_code_formatted(checker->diag, "E4018",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -6953,6 +7628,176 @@ static bool array_spelling_is_fixed(const char *s) {
         else if (*c == ',' && depth == 1) return true;
     }
     return false;
+}
+
+/* If a member expression's final field is a fixed-size struct field, e.g.
+ * `w.items` where `items` is declared `[int,3]`, returns its declared size
+ * (3); otherwise 0. Resolves the object's type through the general
+ * expression resolver, so it works through arbitrarily deep member chains
+ * (`o.inner.items`). */
+static int member_expr_fixed_array_field_size(TypeChecker *checker, AstNode *e) {
+    if (!e || e->kind != NODE_MEMBER_EXPR) return 0;
+    GrayType *obj_t = resolve_expression(checker, e->data.member.object);
+    if (!obj_t) return 0;
+    /* The dot operator auto-derefs pointers to structs (p.field == p^.field),
+     * so a pointer object resolves to TK_POINTER with the struct name in
+     * element_type, not TK_STRUCT — mirror resolve_member_expr's unwrap. */
+    const char *struct_name = NULL;
+    if (obj_t->kind == TK_STRUCT) struct_name = obj_t->name;
+    else if (obj_t->kind == TK_POINTER) struct_name = obj_t->element_type;
+    if (!struct_name) return 0;
+    AstNode *sdecl = find_struct_in_program(checker, struct_name);
+    if (!sdecl) return 0;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
+        if (strcmp(sdecl->data.struct_decl.fields[i].name, e->data.member.member) == 0) {
+            const char *ftn = sdecl->data.struct_decl.fields[i].type_name;
+            if (!array_spelling_is_fixed(ftn)) return 0;
+            const char *comma = strchr(ftn, ',');
+            return comma ? atoi(comma + 1) : 0;
+        }
+    }
+    return 0;
+}
+
+/* True when a member expression's final field is a fixed-size struct
+ * field, e.g. `w.items` where `items` is declared `[int,3]`. */
+static bool member_expr_is_fixed_array_field(TypeChecker *checker, AstNode *e) {
+    return member_expr_fixed_array_field_size(checker, e) > 0;
+}
+
+/* If `expr`'s length is statically known — an array literal, a reference to
+ * a fixed-size local/parameter, or a fixed-size struct field — returns true
+ * and sets `*out_len`. Any other expression (a dynamic '[T]' local, a
+ * function/stdlib call, ...) has no length the typechecker can prove without
+ * running the program, so this returns false rather than guessing. */
+static bool try_get_static_array_length(TypeChecker *checker, AstNode *expr, int *out_len) {
+    if (!expr) return false;
+    if (expr->kind == NODE_ARRAY_VALUE) {
+        *out_len = expr->data.array_value.count;
+        return true;
+    }
+    if (expr->kind == NODE_LABEL) {
+        Symbol *sym = scope_lookup(checker->current_scope, expr->data.label.value);
+        if (sym && sym->declared_type && array_spelling_is_fixed(sym->declared_type)) {
+            const char *comma = strchr(sym->declared_type, ',');
+            int n = comma ? atoi(comma + 1) : 0;
+            if (n > 0) { *out_len = n; return true; }
+        }
+        return false;
+    }
+    if (expr->kind == NODE_MEMBER_EXPR) {
+        int n = member_expr_fixed_array_field_size(checker, expr);
+        if (n > 0) { *out_len = n; return true; }
+        return false;
+    }
+    return false;
+}
+
+/* Shared W3003/E3052 length check for a fixed-size struct field ([T,N])
+ * receiving `value`, whether at struct-literal construction or plain
+ * reassignment: too many elements is an error, too few is a warning (the
+ * rest zero-value), and anything whose length isn't statically known (per
+ * try_get_static_array_length) is left unchecked rather than guessed at. */
+static void check_fixed_array_field_size(TypeChecker *checker, const char *field_name,
+                                          const char *field_type_name, AstNode *value) {
+    if (!array_spelling_is_fixed(field_type_name)) return;
+    const char *comma = strchr(field_type_name, ',');
+    int fixed_size = comma ? atoi(comma + 1) : 0;
+    if (fixed_size <= 0) return;
+    int actual_len;
+    if (!try_get_static_array_length(checker, value, &actual_len)) return;
+    if (actual_len > fixed_size) {
+        diagnostic_error_code_formatted(checker->diag, "E3052",
+            NODE_FILE(checker, value), value->token.line, value->token.column, 0,
+            fixed_size, actual_len);
+    } else if (actual_len < fixed_size) {
+        char *msg = typechecker_format(checker,
+            "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
+            field_name, actual_len, fixed_size);
+        diagnostic_warning_message(checker->diag, "W3003", msg,
+            NODE_FILE(checker, value), value->token.line, value->token.column, 0);
+    }
+}
+
+/* True when `node` is a call to one of the length-changing 'arrays.*'
+ * functions with `param_name` as its first (array) argument — the same
+ * function set the direct member-expression E5051 guard checks, applied
+ * instead to a bare local/parameter name. On a match, `*out_mfn` is set to
+ * the called function's name for the diagnostic. */
+static bool call_is_length_changing_arrays_call_on_name(TypeChecker *checker, AstNode *node,
+                                                          const char *param_name, const char **out_mfn) {
+    if (node->kind != NODE_CALL_EXPR) return false;
+    AstNode *fn = node->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return false;
+    const char *mod_raw = ast_member_base_qualifier(fn);
+    if (!mod_raw) return false;
+    const char *mod = typechecker_resolve_alias(checker, mod_raw);
+    if (!mod || strcmp(mod, "arrays") != 0) return false;
+    const char *mfn = fn->data.member.member;
+    if (!(strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
+          strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
+          strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
+          strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
+          strcmp(mfn, "deduplicate") == 0))
+        return false;
+    if (node->data.call.arg_count == 0) return false;
+    AstNode *arg0 = node->data.call.args[0];
+    if (arg0->kind != NODE_LABEL || strcmp(arg0->data.label.value, param_name) != 0)
+        return false;
+    *out_mfn = mfn;
+    return true;
+}
+
+/* Recursively scans a function body for a length-changing 'arrays.*' call
+ * made directly on `param_name` — the one-level interprocedural half of the
+ * E5051 guard: a fixed-size struct field passed by mutable reference into a
+ * plain '[T]' parameter loses its fixed-ness at that boundary, so the
+ * member-expression check alone never sees the mutation, which instead
+ * happens on the bare parameter name inside the callee. Statement coverage
+ * mirrors pointer_checker_mem_walk. */
+static bool func_body_mutates_array_param(TypeChecker *checker, AstNode *node,
+                                           const char *param_name, const char **out_mfn) {
+    if (!node) return false;
+    switch (node->kind) {
+    case NODE_CALL_EXPR: {
+        if (call_is_length_changing_arrays_call_on_name(checker, node, param_name, out_mfn))
+            return true;
+        for (int i = 0; i < node->data.call.arg_count; i++)
+            if (func_body_mutates_array_param(checker, node->data.call.args[i], param_name, out_mfn))
+                return true;
+        return false;
+    }
+    case NODE_VAR_DECL:
+        return func_body_mutates_array_param(checker, node->data.var_decl.value, param_name, out_mfn);
+    case NODE_ASSIGN_STMT:
+        return func_body_mutates_array_param(checker, node->data.assign.value, param_name, out_mfn);
+    case NODE_BLOCK_STMT:
+        for (int i = 0; i < node->data.block.count; i++)
+            if (func_body_mutates_array_param(checker, node->data.block.stmts[i], param_name, out_mfn))
+                return true;
+        return false;
+    case NODE_IF_STMT:
+        return func_body_mutates_array_param(checker, node->data.if_stmt.consequence, param_name, out_mfn) ||
+               func_body_mutates_array_param(checker, node->data.if_stmt.alternative, param_name, out_mfn);
+    case NODE_WHEN_STMT:
+        for (int i = 0; i < node->data.when_stmt.case_count; i++)
+            if (func_body_mutates_array_param(checker, node->data.when_stmt.cases[i].body, param_name, out_mfn))
+                return true;
+        return func_body_mutates_array_param(checker, node->data.when_stmt.default_body, param_name, out_mfn);
+    case NODE_FOR_STMT:      return func_body_mutates_array_param(checker, node->data.for_stmt.body, param_name, out_mfn);
+    case NODE_FOR_EACH_STMT: return func_body_mutates_array_param(checker, node->data.for_each.body, param_name, out_mfn);
+    case NODE_WHILE_STMT:    return func_body_mutates_array_param(checker, node->data.while_stmt.body, param_name, out_mfn);
+    case NODE_LOOP_STMT:     return func_body_mutates_array_param(checker, node->data.loop_stmt.body, param_name, out_mfn);
+    case NODE_EXPR_STMT:     return func_body_mutates_array_param(checker, node->data.expr_stmt.expr, param_name, out_mfn);
+    case NODE_ENSURE_STMT:   return func_body_mutates_array_param(checker, node->data.ensure_stmt.expr, param_name, out_mfn);
+    case NODE_RETURN_STMT:
+        for (int i = 0; i < node->data.return_stmt.count; i++)
+            if (func_body_mutates_array_param(checker, node->data.return_stmt.values[i], param_name, out_mfn))
+                return true;
+        return false;
+    default:
+        return false;
+    }
 }
 
 /* True when `left` indexes a dynamic '[T]' array. A dynamic array's
@@ -7857,6 +8702,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
          * that name wins unambiguously and is exempt. */
         {
             DeclEntry *be = checker_resolve_entry(checker, bare_name);
+            reject_private_bare_use(checker,
+                node->data.call.function ? node->data.call.function : node, be);
             if (be && be->module_name && be->module_name[0] && !be->module_is_entry) {
                 const char *amb_a = NULL, *amb_b = NULL;
                 if (count_using_call_providers(checker, bare_name, &amb_a, &amb_b) >= 2) {
@@ -8065,6 +8912,24 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                         fdecl->data.func_decl.params[argument_index].name);
                     check_mutable_arg(checker, node->data.call.args[argument_index],
                         param_desc, function_name);
+                    /* E5051: a fixed-size struct field passed by mutable
+                     * reference into a plain '[T]' parameter loses its
+                     * fixed-ness at the boundary; catch it one level deep by
+                     * checking whether the callee itself runs a
+                     * length-changing arrays.* call directly on that
+                     * parameter. */
+                    AstNode *arg0 = node->data.call.args[argument_index];
+                    if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
+                        const char *offending_mfn = NULL;
+                        if (func_body_mutates_array_param(checker,
+                                fdecl->data.func_decl.body,
+                                fdecl->data.func_decl.params[argument_index].name,
+                                &offending_mfn)) {
+                            diagnostic_error_code_formatted(checker->diag, "E5051",
+                                NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0,
+                                offending_mfn, arg0->data.member.member);
+                        }
+                    }
                 }
             }
         }
@@ -8559,6 +9424,8 @@ static void normalize_instance_call_on_expr(TypeChecker *checker, AstNode *node)
         deref->data.postfix.left = obj;
         deref->data.postfix.op = TOK_CARET;
         recv = deref;
+    } else if (obj_t->kind == TK_STRUCT && p0_tn[0] == '^') {
+        recv = wrap_receiver_in_addr(obj, obj->token);
     }
     retarget_member_object(fn, struct_name);
     int orig_count = node->data.call.arg_count;
@@ -8636,7 +9503,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
             const char *addr_var = arg->data.call.args[0]->data.label.value;
             if (!scope_lookup_local(checker->current_scope, addr_var)) continue;
             /* Check if any other argument is an outer-scope variable */
-            bool has_outer_arg = false;
+            const char *outer_arg_name = NULL;
             for (int j = 0; j < node->data.call.arg_count; j++) {
                 if (j == i) continue;
                 AstNode *other = node->data.call.args[j];
@@ -8644,15 +9511,15 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     const char *oname = other->data.label.value;
                     if (!scope_lookup_local(checker->current_scope, oname) &&
                         scope_lookup(checker->current_scope, oname)) {
-                        has_outer_arg = true;
+                        outer_arg_name = oname;
                         break;
                     }
                 }
             }
-            if (has_outer_arg) {
+            if (outer_arg_name) {
                 diagnostic_error_code_formatted(checker->diag, "E3163",
                     NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
-                    addr_var, addr_var);
+                    outer_arg_name, addr_var);
                 reported_arg |= 1ull << i;
             }
         }
@@ -8668,6 +9535,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         int argc = node->data.call.arg_count;
         /* stdlib container inserts (arrays.append/prepend/insert_at/fill) */
         const ContainerSink *sink = find_container_sink(checker, node);
+        if (sink && argc > sink->value_arg && argc > sink->container_arg) {
+            const char *croot =
+                assignment_target_root_name(node->data.call.args[sink->container_arg]);
+            if (croot)
+                propagate_const_source(checker, checker_lookup_symbol(checker, croot),
+                                       node->data.call.args[sink->value_arg]);
+        }
         if (sink && argc > sink->value_arg && argc > sink->container_arg &&
             !((reported_arg >> sink->value_arg) & 1)) {
             const char *dest =
@@ -8691,6 +9565,8 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
          * once that rewrite has happened. */
         apply_call_param_escape_and_mem_effects(checker,
             node, resolve_call_sig(checker, node), reported_arg);
+        apply_call_param_extern_effects(checker, node, resolve_call_sig(checker, node));
+        apply_call_param_write_effects(checker, node, resolve_call_sig(checker, node));
 
         /* E3163: an opaque call target — a func value read from an array/map
          * element, or a func-typed variable the checker cannot pin to one
@@ -8715,9 +9591,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     const char *onm = NULL;
                     int od = expression_origin(checker, arg, &onm);
                     if (od > 0 && od >= checker->current_func_scope_depth) {
+                        /* The opaque call could stash this argument anywhere,
+                         * so unlike the other E3163 sites there is no real
+                         * destination name to report — using onm for both
+                         * slots would print the same name twice. */
                         diagnostic_error_code_formatted(checker->diag, "E3163",
                             NODE_FILE(checker, arg), arg->token.line,
-                            arg->token.column, 0, onm, onm);
+                            arg->token.column, 0, "a global", onm);
                         reported_arg |= 1ull << i;
                     }
                 }
@@ -9094,25 +9974,65 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                     }
                 }
                 /* E3158: a Grayscale function passed as a C callback must lower
-                 * to a C-compatible function pointer. A `^T` parameter lowers to
-                 * `T *`, but C callback APIs (qsort/bsearch comparators, ...)
-                 * take `const void *`, which Grayscale has no type to express —
-                 * the emitted function pointer can never match and the C
-                 * compiler rejects the call. Functions with no pointer
-                 * parameters (extern.atexit(()handler)) lower cleanly and pass. */
+                 * to a C-compatible function pointer. A `^T` parameter or
+                 * return lowers to `T *`, which is what C callback APIs
+                 * (qsort/bsearch comparators, thread start routines, ...)
+                 * declare as `void *`, so pointers pass. A string, array, map,
+                 * or struct has no C-compatible layout, so it does not.
+                 * `ca` itself may be a bare variable holding a func-ref
+                 * initializer (`const f func = ()cmp; extern.qsort(..., f)`)
+                 * rather than the inline `()cmp`/`ref(cmp)` form; see through
+                 * it the same way resolve_call_sig_in_body() does. */
                 const char *cb_target = func_ref_target_name(ca);
+                if (!cb_target && ca && ca->kind == NODE_LABEL &&
+                    checker->current_func_decl) {
+                    cb_target = func_ref_target_name(local_initializer(
+                        checker->current_func_decl->data.func_decl.body,
+                        ca->data.label.value));
+                }
                 if (cb_target) {
                     FuncSig *cb_sig = find_func(checker, cb_target);
                     for (int p = 0; cb_sig && p < cb_sig->param_count; p++) {
-                        if (cb_sig->param_types[p] &&
-                            cb_sig->param_types[p]->kind == TK_POINTER) {
+                        GrayType *cb_pt = cb_sig->param_types[p];
+                        if (!cb_pt) continue;
+                        /* string/array/map/struct parameters have no
+                         * C-compatible layout: the C API's raw address gets
+                         * reinterpreted as a GrayString/GrayArray/GrayMap/
+                         * struct layout that was never actually there. */
+                        const char *cb_bad_kind = NULL;
+                        if (cb_pt->kind == TK_STRING) cb_bad_kind = "string";
+                        else if (cb_pt->kind == TK_ARRAY) cb_bad_kind = "array";
+                        else if (cb_pt->kind == TK_MAP) cb_bad_kind = "map";
+                        else if (cb_pt->kind == TK_STRUCT && cb_pt->name &&
+                                 is_struct_name(checker, cb_pt->name)) cb_bad_kind = "struct";
+                        if (cb_bad_kind) {
                             char *msg = typechecker_format(checker,
-                                "cannot pass '%s' as a C callback; its pointer parameter lowers to a "
-                                "typed C pointer, but C callback APIs require 'void *', which Grayscale "
-                                "cannot express", cb_target);
+                                "cannot pass '%s' as a C callback; its %s parameter has no "
+                                "C-compatible layout, but C callback APIs require 'void *', which "
+                                "Grayscale cannot express", cb_target, cb_bad_kind);
                             diagnostic_error_message(checker->diag, "E3158", msg,
                                 NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
                             break;
+                        }
+                    }
+                    /* The return type must lower to a C-compatible scalar too:
+                     * a callback returning 'string' lowers to 'GrayString',
+                     * which the C API's function-pointer type never declares. */
+                    if (cb_sig && cb_sig->return_count >= 1 && cb_sig->return_types[0]) {
+                        GrayType *cb_rt = cb_sig->return_types[0];
+                        const char *cb_bad_ret_kind = NULL;
+                        if (cb_rt->kind == TK_STRING) cb_bad_ret_kind = "string";
+                        else if (cb_rt->kind == TK_ARRAY) cb_bad_ret_kind = "array";
+                        else if (cb_rt->kind == TK_MAP) cb_bad_ret_kind = "map";
+                        else if (cb_rt->kind == TK_STRUCT && cb_rt->name &&
+                                 is_struct_name(checker, cb_rt->name)) cb_bad_ret_kind = "struct";
+                        if (cb_bad_ret_kind) {
+                            char *msg = typechecker_format(checker,
+                                "cannot pass '%s' as a C callback; its %s return type has no "
+                                "C-compatible layout, but the C API's function-pointer type declares a "
+                                "scalar return, which Grayscale cannot express", cb_target, cb_bad_ret_kind);
+                            diagnostic_error_message(checker->diag, "E3158", msg,
+                                NODE_FILE(checker, ca), ca->token.line, ca->token.column, 0);
                         }
                     }
                 }
@@ -9185,9 +10105,13 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 ExternCallSite *site = &checker->extern_calls[checker->extern_call_count++];
                 site->func_name = mfn;
                 site->arg_count = node->data.call.arg_count;
+                site->is_call = true;
                 site->file = NODE_FILE(checker, node);
                 site->line = node->token.line;
                 site->column = node->token.column;
+                site->node = node;
+                site->asserted = NULL;
+                site->asserted_via_cast = false;
             }
             result = &TYPE_C_FUNC;
             return result;
@@ -9857,6 +10781,25 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
          * like a C call result, so it carries TYPE_C_FUNC and is confined to
          * the same positions by the E3168 checks. */
         if (strcmp(obj_name, "extern") == 0 && typechecker_is_imported_module(checker, "extern")) {
+            /* Record for main.c: it probes the real header through the C
+             * compiler after type checking succeeds and checks that this
+             * constant/macro name actually exists there, catching a typo
+             * like extern.EXIT_SUCESS the same way a misspelled call is. */
+            if (checker->extern_call_count >= checker->extern_call_cap) {
+                checker->extern_call_cap = checker->extern_call_cap ? checker->extern_call_cap * 2 : 8;
+                checker->extern_calls = xrealloc(checker->extern_calls,
+                    sizeof(ExternCallSite) * checker->extern_call_cap);
+            }
+            ExternCallSite *csite = &checker->extern_calls[checker->extern_call_count++];
+            csite->func_name = member;
+            csite->arg_count = 0;
+            csite->is_call = false;
+            csite->file = NODE_FILE(checker, node);
+            csite->line = node->token.line;
+            csite->column = node->token.column;
+            csite->node = node;
+            csite->asserted = NULL;
+            csite->asserted_via_cast = false;
             result = &TYPE_C_FUNC;
             return result;
         }
@@ -10266,6 +11209,23 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
                     check_integer_range(checker->diag, NODE_FILE(checker, fv),
                         fv->token.line, fv->token.column, expected_t->name, field_lit, field_lit_neg);
             }
+            /* W3003/E3052: fixed-size array field ([T,N]) set in a struct
+             * literal with too many/too few elements. Runs for any RHS whose
+             * length is statically known (an array literal, or a reference
+             * to another fixed-size array/field) — not just a literal node
+             * — so `Widget{items: arrays.slice(base, 0, 5)}` no longer
+             * skips the check just because the initializer isn't itself an
+             * array-literal node. */
+            if (found) {
+                AstNode *sdecl_f = find_struct_in_program(checker, struct_name);
+                for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {
+                    if (strcmp(sdecl_f->data.struct_decl.fields[fi].name, fname) != 0) continue;
+                    check_fixed_array_field_size(checker, fname,
+                        sdecl_f->data.struct_decl.fields[fi].type_name,
+                        node->data.struct_value.field_values[i]);
+                    break;
+                }
+            }
             /* E3066: func signature mismatch on a struct-literal field. The
              * mismatch check above treats any two func types as assignable, so
              * a reference with the wrong signature only got caught when it was
@@ -10429,6 +11389,23 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
         ref_sig->used = true;
         warn_if_func_deprecated(checker, node, ref_sig);
         reject_test_fn_reference(checker, node, ref_sig);
+        /* E4032: a bare function reference to a generic ('?' wildcard)
+         * function can't be resolved to any C symbol — codegen only emits
+         * one specialisation per concrete call-site instantiation, and a
+         * func-ref used as a plain value (held, passed, or handed to a C
+         * callback API) is never itself a call site, so the unspecialised
+         * name it emits (e.g. `gray_fn_cmp`) is never defined anywhere. */
+        if (ref_sig->is_generic) {
+            const char *display = (ref_struct_name && ref_member_name)
+                ? typechecker_format(checker, "%s.%s", ref_struct_name, ref_member_name)
+                : ref_name;
+            char *msg = typechecker_format(checker,
+                "cannot take a function reference to '%s'; it has a wildcard ('?') "
+                "parameter or return type, which can only be resolved by calling it "
+                "directly with concrete argument types", display);
+            diagnostic_error_message(checker->diag, "E4032", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        }
         /* E4017: private struct function referenced from outside the struct */
         if (ref_sig->is_private && ref_struct_name &&
             !(checker->current_struct_name &&
@@ -10739,6 +11716,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
         if (!sym) {
             DeclEntry *entry = checker_cache_resolution(checker, node, name);
             if (entry) {
+                reject_private_bare_use(checker, node, entry);
                 if (entry->module_is_entry)
                     node->data.label.refers_to_file_global = true;
                 char key[MSG_BUF_SIZE];
@@ -11268,8 +12246,10 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* A C interop result carries no Grayscale type; cast() to a
              * C-representable scalar is the inline form of the
              * annotated-declaration assertion (STANDARD.md 8.6). */
-            if (src_t->kind == TK_C_FUNC && c_func_result_fits(dst_t))
+            if (src_t->kind == TK_C_FUNC && c_func_result_fits(dst_t)) {
                 allowed = true;
+                extern_call_assert_type(checker, node->data.cast.value, dst_t, true);
+            }
             /* Numeric <-> Numeric (int, uint, float, char, byte, sized types) */
             if (type_is_numeric(src_t) && type_is_numeric(dst_t))
                 allowed = true;
@@ -12337,6 +13317,21 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    /* E3174: json.parse()'s target must be a #json struct (or array of
+     * one) — codegen only generates gray_json_parse_<Name> for one;
+     * anything else falls back to the raw gray_json_decode(), which
+     * returns a GrayMap, not the declared struct, and leaks a raw C
+     * initialization-type error. json.parse()'s own return type is
+     * context-dependent on this declared type, so the typechecker never
+     * otherwise sees the mismatch. */
+    if (call_is_stdlib_fn(checker, node->data.var_decl.value, "json", "parse") &&
+        declared->kind != TK_UNKNOWN &&
+        !type_is_json_struct_or_array(checker, declared)) {
+        diagnostic_error_code_formatted(checker->diag, "E3174",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, declared), "parse");
+    }
+
     if (node->data.var_decl.value) {
         /* Set expected_type for implicit enum resolution (.VARIANT) */
         GrayType *saved_expected = checker->expected_type;
@@ -12547,6 +13542,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     "type mismatch: cannot assign %s to %s; convert it with c_string() for text, or read individual fields",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
                 tc_err_assign_type(checker, node, msg);
+            } else {
+                extern_call_assert_type(checker, node->data.var_decl.value, declared, false);
             }
         } else if (!func_decl_reported &&
                    value_type->kind != TK_UNKNOWN &&
@@ -13238,26 +14235,6 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
-            /* Mark const_source when addr() takes a const variable,
-             * so writes through the resulting pointer are caught. */
-            if (fn->kind == NODE_LABEL && strcmp(fn->data.label.value, "addr") == 0 &&
-                node->data.var_decl.value->data.call.arg_count == 1) {
-                AstNode *src = node->data.var_decl.value->data.call.args[0];
-                const char *root = assignment_target_root_name(src);
-                if (root) {
-                    /* A module-level declaration is bound under its module's
-                     * spelling, so a bare reference from inside the module
-                     * misses a plain scope_lookup — and addr() on a const one
-                     * left the pointer unmarked, so the write through it was
-                     * never caught. */
-                    Symbol *src_sym = checker_lookup_symbol(checker, root);
-                    if (src_sym && !src_sym->mutable) {
-                        Symbol *sym = scope_lookup_local(checker->current_scope,
-                            node->data.var_decl.name);
-                        if (sym) sym->const_source = true;
-                    }
-                }
-            }
             /* Store multi-return types for temp variables from calls.
              * For generic functions, substitute the wildcard binding
              * so destructured slots get concrete types instead of
@@ -13391,19 +14368,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 }
             }
         }
-        /* Propagate const_source through pointer assignment so that
-         * mut q = p inherits the flag when p originated from addr()
-         * on a const variable. */
-        if (node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_LABEL) {
-            Symbol *src_sym = scope_lookup(checker->current_scope,
-                node->data.var_decl.value->data.label.value);
-            if (src_sym && src_sym->const_source) {
-                Symbol *dst_sym = scope_lookup_local(checker->current_scope,
-                    node->data.var_decl.name);
-                if (dst_sym) dst_sym->const_source = true;
-            }
-        }
+        /* The declared variable holds a pointer to a const-declared variable
+         * when its initializer does, so writes through it are caught. */
+        if (node->data.var_decl.value)
+            propagate_const_source(checker,
+                scope_lookup_local(checker->current_scope, node->data.var_decl.name),
+                node->data.var_decl.value);
         /* Record the lifetime origin of a pointer declared from addr()/raw()
          * or copied from another tracked pointer. A declaration is always
          * legal — the pointer cannot outlive its own scope — but the origin
@@ -13607,6 +14577,20 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
 
+    /* E3174: json.parse()'s target must be a #json struct (or array of
+     * one) reassigned here — codegen only generates gray_json_parse_<Name>
+     * for one; anything else falls back to the raw gray_json_decode(),
+     * which returns a GrayMap, not the declared struct. json.parse()'s own
+     * return type is context-dependent on the assignment target, so the
+     * typechecker never otherwise sees this mismatch. */
+    if (call_is_stdlib_fn(checker, node->data.assign.value, "json", "parse") &&
+        target_t && target_t->kind != TK_UNKNOWN &&
+        !type_is_json_struct_or_array(checker, target_t)) {
+        diagnostic_error_code_formatted(checker->diag, "E3174",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, target_t), "parse");
+    }
+
     /* Pointer checker: `a = mem.arena(n)` re-binds a fresh, live arena handle
      * (a common idiom right after `mem.destroy(a)`); `p = mem.init(a, T)` /
      * `mem.alloc(a, n)` re-binds which arena a pointer variable tracks. */
@@ -13763,41 +14747,18 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     }
 
     /* E3122: cannot modify value through a pointer whose pointee is a
-     * const-declared variable (taken via addr()).  Covers p^ = v,
-     * p^.field = v, and compound assignments (p^ += v). */
-    if (target->kind == NODE_POSTFIX_EXPR &&
-        target->data.postfix.op == TOK_CARET &&
-        target->data.postfix.left->kind == NODE_LABEL) {
-        Symbol *sym = scope_lookup(checker->current_scope,
-            target->data.postfix.left->data.label.value);
-        if (sym && sym->const_source) {
-            diagnostic_error_code_formatted(checker->diag, "E3122",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                target->data.postfix.left->data.label.value);
-        }
-    } else if (target->kind == NODE_MEMBER_EXPR &&
-               target->data.member.object->kind == NODE_POSTFIX_EXPR &&
-               target->data.member.object->data.postfix.op == TOK_CARET &&
-               target->data.member.object->data.postfix.left->kind == NODE_LABEL) {
-        Symbol *sym = scope_lookup(checker->current_scope,
-            target->data.member.object->data.postfix.left->data.label.value);
-        if (sym && sym->const_source) {
-            diagnostic_error_code_formatted(checker->diag, "E3122",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                target->data.member.object->data.postfix.left->data.label.value);
-        }
-    }
+     * const-declared variable.  Covers p^ = v, p^.field = v, p.field = v,
+     * h.p^.field = v, and compound assignments (p^ += v). */
+    report_write_through_const_pointer(checker, node, target);
 
-    /* Propagate const_source through pointer reassignment (q = p). */
-    if (target->kind == NODE_LABEL && node->data.assign.value &&
-        node->data.assign.value->kind == NODE_LABEL) {
-        Symbol *src_sym = scope_lookup(checker->current_scope,
-            node->data.assign.value->data.label.value);
-        if (src_sym && src_sym->const_source) {
-            Symbol *dst_sym = scope_lookup(checker->current_scope,
-                target->data.label.value);
-            if (dst_sym) dst_sym->const_source = true;
-        }
+    /* A variable that now holds a pointer to a const-declared variable — in
+     * itself, a field or an element — is marked so writes through it are
+     * caught (q = p, h.p = addr(k), arr[0] = ident(addr(k))). */
+    if (node->data.assign.value) {
+        const char *root = assignment_target_root_name(target);
+        if (root)
+            propagate_const_source(checker, checker_lookup_symbol(checker, root),
+                                   node->data.assign.value);
     }
 
     /* E3004: string index assignment is not supported; strings are immutable
@@ -13889,6 +14850,27 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                         field_t->name, lit_val, lit_neg);
                 }
             }
+        }
+    }
+    /* W3003/E3052: fixed-size array field ([T,N]) reassigned with too
+     * many/too few elements. The struct-literal-construction check above
+     * never sees this — a plain `w.items = <expr>` is an ordinary
+     * assignment statement, not a struct-literal node — so this is a
+     * second, independent call site for the same shared check. */
+    if (target->kind == NODE_MEMBER_EXPR && node->data.assign.value) {
+        GrayType *obj_t = resolve_expression(checker, target->data.member.object);
+        const char *struct_name = NULL;
+        if (obj_t) {
+            if (obj_t->kind == TK_STRUCT) struct_name = obj_t->name;
+            else if (obj_t->kind == TK_POINTER) struct_name = obj_t->element_type;
+        }
+        AstNode *sdecl_f = struct_name ? find_struct_in_program(checker, struct_name) : NULL;
+        for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {
+            if (strcmp(sdecl_f->data.struct_decl.fields[fi].name, target->data.member.member) != 0) continue;
+            check_fixed_array_field_size(checker, target->data.member.member,
+                sdecl_f->data.struct_decl.fields[fi].type_name,
+                node->data.assign.value);
+            break;
         }
     }
     /* Also handle dereferenced pointer field: p^.field = value */
@@ -15657,6 +16639,13 @@ static void check_for_each_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
 
+    /* An element read out of a container that holds a pointer to a
+     * const-declared variable is such a pointer itself. */
+    if (node->data.for_each.var_name)
+        propagate_const_source(checker,
+            scope_lookup_local(loop_scope, node->data.for_each.var_name),
+            node->data.for_each.collection);
+
     checker->loop_depth++;
     pointer_checker_premark_loop_body(checker, node->data.for_each.body, node->data.for_each.body);
     check_block(checker, node->data.for_each.body);
@@ -15892,6 +16881,13 @@ static void check_func_decl(TypeChecker *checker, AstNode *node) {
                 checker->expected_type = ptype;
             GrayType *def_t = resolve_expression(checker, p->default_value);
             checker->expected_type = saved_def_expected;
+            /* E3040/E3089: a fallible or multi-return call baked into a
+             * parameter default is not a call site under the caller's
+             * control — the resolved type above collapses to just the
+             * success type, so without this the result silently slides
+             * past into an uncatchable runtime panic instead of the
+             * compile-time diagnostic STANDARD 4.5 requires. */
+            reject_multi_return_in_single_position(checker, p->default_value);
             if (def_t->kind != TK_UNKNOWN && ptype->kind != TK_UNKNOWN &&
                 !types_assignable(checker, ptype, def_t) &&
                 !(def_t->kind == TK_NIL)) {
@@ -16225,7 +17221,68 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 "add 'import @json' to this file", STRUCT_DISPLAY_NAME(node));
         }
+        /* E3171: within THIS struct, fields are either all tagged or all
+         * untagged — a struct with a couple of tagged fields and the rest
+         * untagged is almost always a mistake. Scoped to one struct, not
+         * the whole file: a file that aggregates many structs (types.gray)
+         * is free to tag some and not others, as long as each struct is
+         * internally consistent. */
+        bool json_tag_dialect_set = false;
+        bool json_tag_dialect_tagged = false;
+        const char *json_tag_dialect_field = NULL;
         for (int field_index = 0; field_index < node->data.struct_decl.field_count; field_index++) {
+            /* E3170/E3171: field tags (`` `json:"Name"` ``) — validate the
+             * tag format and rewrite it in place to just the extracted key
+             * so codegen can use it directly, then enforce per-struct tag
+             * consistency. */
+            {
+                StructField *sf = &node->data.struct_decl.fields[field_index];
+                bool has_tag = sf->json_tag != NULL;
+                if (has_tag) {
+                    const char *raw = sf->json_tag;
+                    static const char prefix[] = "json:\"";
+                    size_t plen = sizeof(prefix) - 1;
+                    size_t rlen = strlen(raw);
+                    const char *key = NULL;
+                    size_t klen = 0;
+                    if (rlen > plen + 1 && strncmp(raw, prefix, plen) == 0 && raw[rlen - 1] == '"') {
+                        key = raw + plen;
+                        klen = rlen - plen - 1;
+                        if (klen == 0) key = NULL;
+                        /* The key is spliced verbatim into a generated C string
+                         * literal (codegen has no escaping pass for it) — a
+                         * quote, backslash, or control character would either
+                         * break out of that literal or corrupt it. */
+                        for (size_t ki = 0; key && ki < klen; ki++) {
+                            unsigned char kc = (unsigned char)key[ki];
+                            if (kc == '"' || kc == '\\' || kc < 0x20) key = NULL;
+                        }
+                    }
+                    if (!key) {
+                        char *msg = typechecker_format(checker,
+                            "malformed #json field tag '%s' on '%s.%s'; expected exactly `json:\"Name\"`",
+                            raw, STRUCT_DISPLAY_NAME(node), sf->name);
+                        diagnostic_error_message(checker->diag, "E3170", msg,
+                            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                        has_tag = false;
+                    } else {
+                        sf->json_tag = arena_copy_string_with_length(checker->arena, key, klen);
+                    }
+                }
+                if (!json_tag_dialect_set) {
+                    json_tag_dialect_set = true;
+                    json_tag_dialect_tagged = has_tag;
+                    json_tag_dialect_field = sf->name;
+                } else if (has_tag != json_tag_dialect_tagged) {
+                    char *msg = typechecker_format(checker,
+                        "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s",
+                        STRUCT_DISPLAY_NAME(node),
+                        sf->name, has_tag ? "is tagged" : "isn't tagged",
+                        json_tag_dialect_field, json_tag_dialect_tagged ? "is tagged" : "isn't tagged");
+                    diagnostic_error_message(checker->diag, "E3171", msg,
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+                }
+            }
             const char *ftype = node->data.struct_decl.fields[field_index].type_name;
             if (ftype && strncmp(ftype, "func", 4) == 0) {
                 char *msg = NULL;
@@ -16245,19 +17302,52 @@ static void check_struct_decl(TypeChecker *checker, AstNode *node) {
                 diagnostic_error_message(checker->diag, "E3109", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* E3173: an enum field is serialized by its backing type (int or
+             * string), but a tagged enum's variants carry payloads with no
+             * flat JSON form. Checked before E3140 so a tagged enum gets
+             * this specific diagnostic instead of the generic "no JSON
+             * representation" one. */
+            if (ftype && is_enum_name(checker, ftype) && typechecker_enum_is_tagged(checker, ftype)) {
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation",
+                    STRUCT_DISPLAY_NAME(node),
+                    node->data.struct_decl.fields[field_index].name, enum_display_name(checker, ftype));
+                diagnostic_error_message(checker->diag, "E3173", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
             /* E3140: field types the JSON serializer codegen cannot marshal.
-             * The func-typed case is already reported as E3103 above. */
+             * The func-typed case is already reported as E3103 above. An
+             * enum field is allowed (serialized by backing type, see the
+             * E3173 check above for the tagged-enum exception). */
             if (ftype && strncmp(ftype, "func", 4) != 0 &&
                 strcmp(ftype, "int") != 0 && strcmp(ftype, "i64") != 0 &&
                 strcmp(ftype, "uint") != 0 && strcmp(ftype, "u64") != 0 &&
                 strcmp(ftype, "float") != 0 && strcmp(ftype, "f64") != 0 &&
-                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0) {
+                strcmp(ftype, "string") != 0 && strcmp(ftype, "bool") != 0 &&
+                !is_enum_name(checker, ftype)) {
                 char *msg = typechecker_format(checker,
                     "#json struct '%s' field '%s' has type '%s', which has no JSON representation; "
-                    "#json fields must be int, uint, float, string, or bool",
+                    "#json fields must be int, uint, float, string, bool, or enum",
                     STRUCT_DISPLAY_NAME(node),
                     node->data.struct_decl.fields[field_index].name, ftype);
                 diagnostic_error_message(checker->diag, "E3140", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            }
+        }
+        /* E3172: two fields tagged into the same JSON key — grouped fields
+         * can no longer cause this (E2095), but two fields individually
+         * given the same tag string still can. */
+        for (int a = 0; a < node->data.struct_decl.field_count; a++) {
+            StructField *fa = &node->data.struct_decl.fields[a];
+            const char *ka = fa->json_tag ? fa->json_tag : fa->name;
+            for (int b = a + 1; b < node->data.struct_decl.field_count; b++) {
+                StructField *fb = &node->data.struct_decl.fields[b];
+                const char *kb = fb->json_tag ? fb->json_tag : fb->name;
+                if (strcmp(ka, kb) != 0) continue;
+                char *msg = typechecker_format(checker,
+                    "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'",
+                    STRUCT_DISPLAY_NAME(node), fa->name, fb->name, ka);
+                diagnostic_error_message(checker->diag, "E3172", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
         }
@@ -16362,12 +17452,20 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
      * apply. A concrete #error_code enum (PayErr, ...) is a closed set and
      * stays usable as an ordinary when subject (STANDARD 10.5), so this keys
      * on the literal ErrorCode type, not the whole ErrorCode value space. */
+    bool errorcode_strict_rejected = false;
     if (when_t && when_t->kind == TK_ENUM && when_t->name &&
         strcmp(when_t->name, "ErrorCode") == 0) {
         AstNode *subj = node->data.when_stmt.value;
         if (node->data.when_stmt.is_strict) {
             diagnostic_error_code(checker->diag, "E3151",
                 NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
+            /* #strict is never valid on the open ErrorCode enum, so the
+             * shared #strict-exhaustiveness block below must not also run
+             * for this statement — it infers the enum independently from
+             * the case values (not from when_t), so it would walk every
+             * ErrorCode variant and report each one missing on top of the
+             * E3151 already emitted above. */
+            errorcode_strict_rejected = true;
         } else if (!node->data.when_stmt.default_body) {
             diagnostic_error_code(checker->diag, "E3149",
                 NODE_FILE(checker, subj), subj->token.line, subj->token.column, 0);
@@ -16565,7 +17663,8 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
         }
     }
     /* #strict exhaustiveness check for enum types */
-    if (node->data.when_stmt.is_strict && !node->data.when_stmt.default_body) {
+    if (node->data.when_stmt.is_strict && !node->data.when_stmt.default_body &&
+        !errorcode_strict_rejected) {
         /* Infer the enum name from case values (e.g., Color.RED → "Color") */
         const char *enum_name = NULL;
         for (int const_index = 0; const_index < node->data.when_stmt.case_count && !enum_name; const_index++) {
@@ -16645,6 +17744,26 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                     }
                 }
             }
+        } else if (when_t && when_t->kind == TK_BOOL) {
+            /* A bool subject has exactly two values; strict means both are
+             * handled. */
+            bool has_true = false, has_false = false;
+            for (int ci = 0; ci < node->data.when_stmt.case_count; ci++) {
+                for (int cj = 0; cj < node->data.when_stmt.cases[ci].value_count; cj++) {
+                    AstNode *cv = node->data.when_stmt.cases[ci].values[cj];
+                    if (cv->kind != NODE_BOOL_VALUE) continue;
+                    if (cv->data.bool_value.value) has_true = true;
+                    else has_false = true;
+                }
+            }
+            if (!has_true)
+                diagnostic_error_message(checker->diag, "E3056",
+                    "#strict when is not exhaustive; missing value 'true'",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+            if (!has_false)
+                diagnostic_error_message(checker->diag, "E3056",
+                    "#strict when is not exhaustive; missing value 'false'",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         } else {
             /* #strict on non-enum: just warn that it has no effect without default */
             diagnostic_error_message(checker->diag, "E3056",
@@ -16820,6 +17939,9 @@ static void check_statement(TypeChecker *checker, AstNode *node) {
 
     case NODE_ENSURE_STMT:
         resolve_expression(checker, node->data.ensure_stmt.expr);
+        /* E3040/E3089: the deferred call's result is dropped, so a multi-value
+         * or fallible call cannot be deferred. */
+        reject_multi_return_in_single_position(checker, node->data.ensure_stmt.expr);
         if (node->data.ensure_stmt.expr &&
             node->data.ensure_stmt.expr->kind != NODE_CALL_EXPR) {
             diagnostic_error_code(checker->diag, "E3039", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
@@ -17340,6 +18462,27 @@ static void register_decl_enums(TypeChecker *checker, AstNode *program) {
                 }
             }
         }
+        /* E3176: a #flags variant with an explicit value must occupy exactly
+         * one usable bit. 0 is allowed as a "none" sentinel; a literal above
+         * INT64_MAX reaches the sign bit or beyond. */
+        if (stmt->data.enum_decl.is_flags) {
+            for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
+                AstNode *fv = stmt->data.enum_decl.values[j].value;
+                bool negated = fv && fv->kind == NODE_PREFIX_EXPR && fv->data.prefix.op == TOK_MINUS &&
+                               fv->data.prefix.right->kind == NODE_INT_VALUE;
+                AstNode *lit = negated ? fv->data.prefix.right : fv;
+                if (!lit || lit->kind != NODE_INT_VALUE) continue;
+                int64_t v = lit->data.int_value.value;
+                bool single_bit = !negated && !lit->data.int_value.overflow &&
+                                  (v == 0 || (v & (v - 1)) == 0);
+                if (single_bit) continue;
+                char shown[MSG_BUF_SIZE];
+                snprintf(shown, sizeof(shown), "%s%s", negated ? "-" : "", lit->data.int_value.literal);
+                diagnostic_error_code_formatted(checker->diag, "E3176", NODE_FILE(checker, stmt),
+                    fv->token.line, fv->token.column, 0,
+                    en, stmt->data.enum_decl.values[j].name, arena_copy_string(checker->arena, shown));
+            }
+        }
         /* E2014: check for duplicate enum variant names */
         /* E2065: check variant name vs enum type name */
         for (int j = 0; j < stmt->data.enum_decl.value_count; j++) {
@@ -17582,6 +18725,36 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                 if (resolved != key)
                     stmt->data.struct_decl.fields[j].type_name = resolved;
             }
+            /* Fixed-size array fields ([T,N]): resolve a const-identifier
+             * size to its numeric form (mirrors local `const f [T,N]`),
+             * then check any inline default_value's element count. A
+             * field has no mut/const keyword of its own — mutability
+             * follows the containing instance — so E3054/E3055's
+             * mut/const coupling doesn't apply here. */
+            if (stmt->data.struct_decl.fields[j].type_name &&
+                array_spelling_is_fixed(stmt->data.struct_decl.fields[j].type_name)) {
+                typechecker_resolve_array_size_str(checker,
+                    &stmt->data.struct_decl.fields[j].type_name,
+                    NODE_FILE(checker, stmt), stmt->token.line, stmt->token.column);
+                ftypes[j] = typechecker_type_from_name(checker, stmt->data.struct_decl.fields[j].type_name);
+                AstNode *dv = stmt->data.struct_decl.fields[j].default_value;
+                if (dv && dv->kind == NODE_ARRAY_VALUE) {
+                    const char *ftn = stmt->data.struct_decl.fields[j].type_name;
+                    const char *comma = strchr(ftn, ',');
+                    int fixed_size = comma ? atoi(comma + 1) : 0;
+                    if (fixed_size > 0 && dv->data.array_value.count > fixed_size) {
+                        diagnostic_error_code_formatted(checker->diag, "E3052",
+                            NODE_FILE(checker, dv), dv->token.line, dv->token.column, 0,
+                            fixed_size, dv->data.array_value.count);
+                    } else if (fixed_size > 0 && dv->data.array_value.count < fixed_size) {
+                        char *msg = typechecker_format(checker,
+                            "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
+                            fnames[j], dv->data.array_value.count, fixed_size);
+                        diagnostic_warning_message(checker->diag, "W3003", msg,
+                            NODE_FILE(checker, dv), dv->token.line, dv->token.column, 0);
+                    }
+                }
+            }
             /* E3038: void field type */
             if (stmt->data.struct_decl.fields[j].type_name &&
                 strcmp(stmt->data.struct_decl.fields[j].type_name, "void") == 0) {
@@ -17657,13 +18830,28 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
                     break;
                 }
             }
-            /* Resolve implicit enum selectors in field default values */
+            /* Resolve implicit enum selectors in field default values, and
+             * E3175: validate the default value's type against the field's
+             * declared type, the same way E5026 does for a function
+             * parameter default (typechecker.c ~16497). */
             if (stmt->data.struct_decl.fields[j].default_value) {
+                AstNode *field_default = stmt->data.struct_decl.fields[j].default_value;
                 GrayType *saved_expected = checker->expected_type;
                 if (ftypes[j] && ftypes[j]->kind == TK_ENUM && ftypes[j]->name)
                     checker->expected_type = ftypes[j];
-                resolve_expression(checker, stmt->data.struct_decl.fields[j].default_value);
+                GrayType *def_t = resolve_expression(checker, field_default);
                 checker->expected_type = saved_expected;
+                if (def_t && ftypes[j] && def_t->kind != TK_UNKNOWN &&
+                    ftypes[j]->kind != TK_UNKNOWN &&
+                    !types_assignable(checker, ftypes[j], def_t) &&
+                    def_t->kind != TK_NIL) {
+                    char *msg = typechecker_format(checker,
+                        "default value for field '%s' has wrong type; expected %s, got %s",
+                        fnames[j], type_name(ftypes[j]), type_name(def_t));
+                    diagnostic_error_message(checker->diag, "E3175", msg,
+                        NODE_FILE(checker, field_default), field_default->token.line,
+                        field_default->token.column, 0);
+                }
             }
         }
         /* E2037/E2038: reserved name check for structs */
@@ -18066,8 +19254,31 @@ static void check_mangle_collisions(TypeChecker *checker) {
     }
 }
 
+/* Eagerly fold and register file-scope int consts before struct/field
+ * registration runs. The normal registration path for const values
+ * (typechecker_register_const_int) is only reached from check_var_decl,
+ * which runs during the later statement-checking pass — but struct field
+ * registration (register_decl_structs) happens earlier, during this
+ * function. Without this, a const-identifier struct-field size like
+ * `[int, N]` would always report E3125 ("not a compile-time constant"),
+ * regardless of where N is declared in the file. */
+static void register_file_scope_const_ints(TypeChecker *checker, AstNode *program) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
+        AstNode *stmt = program->data.program.stmts[i];
+        if (stmt->kind != NODE_VAR_DECL || stmt->data.var_decl.mutable ||
+            stmt->data.var_decl.synthetic || !stmt->data.var_decl.type_name ||
+            !stmt->data.var_decl.value) continue;
+        if (!is_any_int_type(stmt->data.var_decl.type_name)) continue;
+        int64_t folded = 0;
+        bool overflowed = false;
+        if (typechecker_fold_const_int(checker, stmt->data.var_decl.value, &folded, &overflowed))
+            typechecker_register_const_int(checker, stmt->data.var_decl.name, folded);
+    }
+}
+
 static void register_declarations(TypeChecker *checker, AstNode *program) {
     checker->registering = true;
+    register_file_scope_const_ints(checker, program);
     register_decl_symbols(checker, program);
     register_decl_usings(checker, program);
     register_decl_imports(checker, program);
@@ -18717,9 +19928,11 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
 
             int errs_before = diagnostic_error_count(checker->diag);
             checker->suppress_typetable_writes = true;
+            checker->diag->skip_duplicates = true;
             if (decl->data.func_decl.body) {
                 check_block(checker, decl->data.func_decl.body);
             }
+            checker->diag->skip_duplicates = false;
             checker->suppress_typetable_writes = false;
             int errs_after = diagnostic_error_count(checker->diag);
 

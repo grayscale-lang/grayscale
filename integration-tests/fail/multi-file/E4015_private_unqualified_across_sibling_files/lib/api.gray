@@ -1,0 +1,11 @@
+do use_func(x int) -> int {
+    return bump(x)
+}
+
+do use_const() -> int {
+    return LIMIT
+}
+
+do use_var() -> int {
+    return counter
+}

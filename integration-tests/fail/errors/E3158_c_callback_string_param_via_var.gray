@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3158 - a Grayscale function with a string parameter cannot be
+ * passed as a C callback, even when the func-ref is held in a variable first.
+ * `const f func = ()cmp; extern.qsort(..., f)` must be rejected exactly like
+ * the inline `()cmp` form, since the callback check must see through the
+ * variable to its func-ref initializer.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do cmp(a string, b string) -> i32 {
+    return 0
+}
+
+do main() {
+    const f func = ()cmp
+    mut buf ^int = extern.malloc(16)
+    extern.qsort(buf, 2, 8, f)
+    extern.free(buf)
+}

@@ -42,6 +42,38 @@ GrayArray gray_os_args(GrayArena *arena);
 /* os.get_env(name) — get environment variable */
 GrayString gray_os_get_env(GrayArena *arena, GrayString name);
 
+/*@man lookup_env
+ *@module os
+ *@group Environment
+ *@sig lookup_env(name string) -> (string, bool)
+ *@desc Returns the value of the environment variable name and whether it is actually set. Unlike get_env, this distinguishes an unset variable from one explicitly set to "".
+ *@example
+ *   import @os
+ *   mut val, ok = os.lookup_env("MY_VAR")
+ *   if ok { println(val) } otherwise { println("not set") }
+ *@end
+ */
+/* os.lookup_env(name) — get environment variable and whether it is set.
+ * Layout must match the {GrayString v0; bool v1;} tuple codegen emits for
+ * a multi-return stdlib call. */
+typedef struct { GrayString v0; bool v1; } GrayOsLookupEnvResult;
+GrayOsLookupEnvResult gray_os_lookup_env(GrayArena *arena, GrayString name);
+
+/*@man environ
+ *@module os
+ *@group Environment
+ *@sig environ() -> [string]
+ *@desc Returns every environment variable of the current process as an array of "KEY=VALUE" strings.
+ *@example
+ *   import @os
+ *   for_each kv in os.environ() {
+ *       println(kv)
+ *   }
+ *@end
+ */
+/* os.environ() — all environment variables as "KEY=VALUE" strings */
+GrayArray gray_os_environ(GrayArena *arena);
+
 /*@man set_env
  *@module os
  *@group Environment
@@ -84,6 +116,19 @@ void gray_os_unset_env(GrayString name);
  */
 /* os.current_dir() — current working directory */
 GrayString gray_os_cwd(GrayArena *arena);
+
+/*@man home_dir
+ *@module os
+ *@group System
+ *@sig home_dir() -> string
+ *@desc Returns the current user's home directory. Reads $HOME on Unix and %USERPROFILE% on Windows.
+ *@example
+ *   import @os
+ *   println(os.home_dir())
+ *@end
+ */
+/* os.home_dir() — current user's home directory */
+GrayString gray_os_home_dir(GrayArena *arena);
 
 /*@man hostname
  *@module os

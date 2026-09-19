@@ -35,6 +35,7 @@
 #define VAR_NAME_BUF         64
 #define SHORT_VAR_BUF        32
 #define CYCLE_GUARD_DEPTH    64
+#define C_HEADER_PATH_BUF    2048
 
 /* Return the C-syntax string for an operator TokenType. Used when emitting
  * the operator literally into C source code. */
@@ -75,6 +76,7 @@ static const char *operator_to_c_string(TokenType op) {
 
 /* Forward declarations */
 static void emit_statement(CodeGen *codegen, AstNode *node);
+static void reset_line_directive(CodeGen *codegen);
 static void emit_expression(CodeGen *codegen, AstNode *node);
 static void emit_call_expression(CodeGen *codegen, AstNode *node);
 static bool codegen_is_enum(CodeGen *codegen, const char *name);
@@ -85,6 +87,10 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg);
 static bool emit_narrowing_cast(CodeGen *codegen, const char *target, AstNode *val, int line);
 static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *codegen_resolve_type(CodeGen *codegen, const char *written);
+static int extract_array_size(const char *type_name);
+static const char *extract_array_element_type(const char *type_name);
+static void emit_fixed_size_array_initializer(CodeGen *codegen, AstNode *value,
+                                       const char *elem_type, int fixed_size);
 
 
 /* The C name for a declaration node: the mangled name of the symbol-table
@@ -719,11 +725,17 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         const char *unaliased = resolve_type_alias_codegen(codegen, resolved);
         if (unaliased != resolved && strcmp(unaliased, type_name) != 0)
             return gray_type_to_c_codegen(codegen, unaliased);
-        static char buffer[MSG_BUF_SIZE];
+        /* Ring buffer: see the identical comment on the user-type branch
+         * below — a caller may hold this return value across another call
+         * to this function before using it. */
+        static char bufs[4][MSG_BUF_SIZE];
+        static int slot = 0;
+        char *buffer = bufs[slot];
+        slot = (slot + 1) & 3;
         if (codegen && codegen_is_enum(codegen, resolved)) {
-            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayEnum_%s", resolved);
         } else {
-            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayStruct_%s", resolved);
         }
         return buffer;
     }
@@ -742,7 +754,16 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
         if (us && us[1] >= 'A' && us[1] <= 'Z') is_user_type = true;
     }
     if (is_user_type) {
-        static char buffer[MSG_BUF_SIZE];
+        /* Ring buffer: a caller may hold this return value across another
+         * call to this function before using it (e.g. emitting a for_each
+         * element type while the collection expression it iterates is
+         * itself emitted next, which needs its own struct name here) — a
+         * single shared static buffer let that second call silently
+         * overwrite the first result out from under its caller. */
+        static char bufs[4][MSG_BUF_SIZE];
+        static int slot = 0;
+        char *buffer = bufs[slot];
+        slot = (slot + 1) & 3;
         const char *resolved = type_name;
         if (codegen && type_name[0] >= 'A' && type_name[0] <= 'Z' && !strchr(type_name, '_')) {
             resolved = codegen_resolve_type(codegen, type_name);
@@ -771,9 +792,9 @@ static const char *gray_type_to_c_codegen(CodeGen *codegen, const char *type_nam
             }
         }
         if (codegen && codegen_is_enum(codegen, resolved)) {
-            snprintf(buffer, sizeof(buffer), "GrayEnum_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayEnum_%s", resolved);
         } else {
-            snprintf(buffer, sizeof(buffer), "GrayStruct_%s", resolved);
+            snprintf(buffer, sizeof(bufs[0]), "GrayStruct_%s", resolved);
         }
         return buffer;
     }
@@ -1432,6 +1453,14 @@ static bool emit_bigint_coerced(CodeGen *codegen, const char *bi, AstNode *value
     if (resolve_bigint_type(codegen, value)) return false;
     emit_scalar_to_bigint(codegen, bi, value, NULL);
     return true;
+}
+
+/* Emits a parameter's default value where a call omits the argument,
+ * wrapping it in the bigint constructor for a wide-integer parameter as an
+ * explicit argument is. */
+static void emit_param_default_value(CodeGen *codegen, Param *param) {
+    if (!emit_bigint_coerced(codegen, param->type_name, param->default_value))
+        emit_expression(codegen, param->default_value);
 }
 
 /* Emit `value` for a map key or value slot whose Grayscale type is `gray_tn`:
@@ -2200,6 +2229,108 @@ static bool struct_literal_specifies_field(AstNode *node, const char *field_name
     return false;
 }
 
+static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth);
+
+/* Emits a struct field's own default value, wrapping it in the bigint
+ * constructor when the field is a wide integer, exactly as an explicit field
+ * value in a struct literal is. */
+static void emit_struct_field_default_value(CodeGen *codegen, StructField *sf) {
+    if (!emit_bigint_coerced(codegen, sf->type_name, sf->default_value))
+        emit_expression(codegen, sf->default_value);
+}
+
+/* Emits the zero-value default for one struct field that has no literal
+ * value in scope: the field's own syntactic default if it has one, or (for
+ * map/array/fixed-array/string-enum/struct fields, which C's implicit {0}
+ * leaves unusable — an all-zero GrayArray/GrayMap has elem_size 0, and an
+ * all-zero string-backed enum is not a valid variant) a real runtime zero
+ * value. Recurses into emit_struct_zero_value_literal for a struct-typed
+ * field so a nested struct gets the same treatment at any depth, instead of
+ * falling through to a flat C {0}. Writes at most one designated
+ * initializer, prefixed with ", " once `*emitted` is already true. */
+static void emit_struct_field_zero_default(CodeGen *codegen, StructField *sf, int depth, bool *emitted) {
+    const char *ftn = sf->type_name;
+    if (sf->default_value) {
+        if (*emitted) emit(codegen, ", ");
+        *emitted = true;
+        emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+        int default_fixed_size = extract_array_size(ftn);
+        if (default_fixed_size > 0 && sf->default_value->kind == NODE_ARRAY_VALUE) {
+            const char *saved_dv = codegen->current_var_type;
+            codegen->current_var_type = ftn;
+            const char *delem = extract_array_element_type(ftn);
+            emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
+            codegen->current_var_type = saved_dv;
+        } else {
+            emit_struct_field_default_value(codegen, sf);
+        }
+        return;
+    }
+    if (!ftn) return;
+    bool field_is_map = strncmp(ftn, "map[", 4) == 0;
+    bool field_is_array = ftn[0] == '[';
+    const char *senum = codegen_resolve_type(codegen, ftn);
+    bool field_is_str_enum = codegen_enum_is_string(codegen, senum);
+    GrayType *ft = type_from_name(ftn);
+    bool field_is_struct = !field_is_map && !field_is_array && !field_is_str_enum &&
+                            ft && ft->kind == TK_STRUCT;
+    if (!field_is_map && !field_is_array && !field_is_str_enum && !field_is_struct) return;
+    if (*emitted) emit(codegen, ", ");
+    *emitted = true;
+    emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
+    if (field_is_str_enum) {
+        int eidx = codegen_enum_index(codegen, senum);
+        const char *fv = codegen->enum_decls[eidx]->data.enum_decl.values[0].name;
+        emit_formatted(codegen, "GrayEnum_%s_%s", senum, fv);
+    } else if (field_is_struct) {
+        emit_struct_zero_value_literal(codegen, ftn, depth + 1);
+    } else if (field_is_map) {
+        const char *c_kt = "GrayString";
+        const char *c_vt = "int64_t";
+        if (ft && ft->key_type) c_kt = gray_map_element_c_type(codegen, ft->key_type);
+        if (ft && ft->value_type) c_vt = gray_map_element_c_type(codegen, ft->value_type);
+        emit_formatted(codegen, "gray_map_new_kind(gray_default_arena, sizeof(%s), sizeof(%s), 8, %s)",
+            c_kt, c_vt, gray_map_key_kind_macro(c_kt));
+    } else {
+        const char *c_elem = "int64_t";
+        if (ft && ft->element_type) c_elem = gray_map_element_c_type(codegen, ft->element_type);
+        int fixed_size = extract_array_size(ftn);
+        if (fixed_size > 0) {
+            emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d)",
+                c_elem, fixed_size, c_elem, fixed_size);
+        } else {
+            emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+        }
+    }
+}
+
+/* Emits `(GrayStruct_X){ ... }` for a struct type with no literal at all —
+ * every field its own syntactic default, or a real runtime zero value
+ * instead of C's raw {0}, recursively. Used both for a struct-typed field
+ * entirely omitted from an enclosing literal (via
+ * emit_struct_field_zero_default's field_is_struct case) and for a
+ * struct-typed variable declared with no initializer at all
+ * (emit_c_zero_value), so both share the exact defaulting a direct `Type{}`
+ * literal already gets right instead of falling back to a flat zero. depth
+ * guards against runaway recursion through mutually-referential struct
+ * fields. */
+static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth) {
+    AstNode *sdecl = type_name ? find_struct_declaration(codegen, type_name) : NULL;
+    const char *c_type = gray_type_to_c_codegen(codegen, type_name);
+    if (!sdecl || depth > 8) {
+        /* A compound literal, not a bare {0}: the latter is only valid as a
+         * declaration initializer, and this is also the right-hand side of the
+         * deferred assignment of a file-scope global inside gray_init_globals. */
+        emit_formatted(codegen, "(%s){0}", c_type);
+        return;
+    }
+    emit_formatted(codegen, "(%s){", c_type);
+    bool emitted = false;
+    for (int i = 0; i < sdecl->data.struct_decl.field_count; i++)
+        emit_struct_field_zero_default(codegen, &sdecl->data.struct_decl.fields[i], depth, &emitted);
+    emit(codegen, "}");
+}
+
 static void emit_struct_value(CodeGen *codegen, AstNode *node) {
     /* Struct literal: (GrayStruct_Name){.field = value, ...} */
     /* Resolve ? → concrete binding for type params */
@@ -2263,8 +2394,17 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
         if (field_type) {
             const char *saved = codegen->current_var_type;
             codegen->current_var_type = field_type;
-            if (!emit_bigint_coerced(codegen, field_type, node->data.struct_value.field_values[i]))
-                emit_expression(codegen, node->data.struct_value.field_values[i]);
+            AstNode *fv = node->data.struct_value.field_values[i];
+            int fixed_size = extract_array_size(field_type);
+            if (fixed_size > 0 && fv->kind == NODE_ARRAY_VALUE) {
+                /* [T,N] field: pad a partial literal to N so the field's
+                 * declared length is what codegen sees, not the literal's
+                 * own element count (mirrors emit_vardecl_array). */
+                const char *felem = extract_array_element_type(field_type);
+                emit_fixed_size_array_initializer(codegen, fv, felem ? felem : "int", fixed_size);
+            } else if (!emit_bigint_coerced(codegen, field_type, fv)) {
+                emit_expression(codegen, fv);
+            }
             codegen->current_var_type = saved;
         } else {
             emit_expression(codegen, node->data.struct_value.field_values[i]);
@@ -2289,7 +2429,16 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
             emit_formatted(codegen, ".%s = ", sanitize_name(sf->name));
-            emit_expression(codegen, sf->default_value);
+            int default_fixed_size = extract_array_size(sf->type_name);
+            if (default_fixed_size > 0 && sf->default_value->kind == NODE_ARRAY_VALUE) {
+                const char *saved_dv = codegen->current_var_type;
+                codegen->current_var_type = sf->type_name;
+                const char *delem = extract_array_element_type(sf->type_name);
+                emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
+                codegen->current_var_type = saved_dv;
+            } else {
+                emit_struct_field_default_value(codegen, sf);
+            }
         }
         /* Map and array fields the literal leaves out still need a real
          * table. C zero-fills them, and a zero-filled GrayMap/GrayArray has
@@ -2307,7 +2456,17 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
              * Seed it with the first variant, matching new(EnumType). */
             const char *senum = codegen_resolve_type(codegen, ftn);
             bool field_is_str_enum = codegen_enum_is_string(codegen, senum);
-            if (!field_is_map && !field_is_array && !field_is_str_enum) continue;
+            GrayType *ft = type_from_name(ftn);
+            /* A struct-typed field left out entirely still needs its own
+             * fixed-array/map/string-enum fields defaulted the same way — an
+             * omitted nested struct otherwise falls through to a flat C
+             * {0}, dropping any fixed-size array field inside it to length
+             * 0 instead of its declared N (e.g. Outer{} omitting an `inner
+             * Inner` field whose own `data [int,3]` field then reads back
+             * as a 0-length array). */
+            bool field_is_struct = !field_is_map && !field_is_array && !field_is_str_enum &&
+                                    ft && ft->kind == TK_STRUCT;
+            if (!field_is_map && !field_is_array && !field_is_str_enum && !field_is_struct) continue;
             if (struct_literal_specifies_field(node, sf->name)) continue;
             if (emitted_field) emit(codegen, ", ");
             emitted_field = true;
@@ -2318,7 +2477,10 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "GrayEnum_%s_%s", senum, fv);
                 continue;
             }
-            GrayType *ft = type_from_name(ftn);
+            if (field_is_struct) {
+                emit_struct_zero_value_literal(codegen, ftn, 1);
+                continue;
+            }
             if (field_is_map) {
                 const char *c_kt = "GrayString";
                 const char *c_vt = "int64_t";
@@ -2329,7 +2491,18 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
             } else {
                 const char *c_elem = "int64_t";
                 if (ft && ft->element_type) c_elem = gray_map_element_c_type(codegen, ft->element_type);
-                emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+                /* A [T,N] field omitted entirely is still a zero-valued
+                 * array of length N, not an empty dynamic array —
+                 * gray_array_new's capacity argument doesn't set length,
+                 * so Buffer{} has to build the same zero-filled [T;N]
+                 * compound literal an empty `= {}` initializer would. */
+                int fixed_size = extract_array_size(ftn);
+                if (fixed_size > 0) {
+                    emit_formatted(codegen, "gray_array_from(gray_default_arena, (%s[%d]){}, sizeof(%s), %d)",
+                        c_elem, fixed_size, c_elem, fixed_size);
+                } else {
+                    emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem);
+                }
             }
         }
     }
@@ -3752,8 +3925,11 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, val);
             emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, node->token.line);
         } else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
-                   val_kind == TK_INT) {
-            /* signed int → uint/u64: panic if value is negative */
+                   (val_kind == TK_INT || val_kind == TK_UNKNOWN || val_kind == TK_C_FUNC)) {
+            /* signed int → uint/u64: panic if value is negative. TK_C_FUNC
+             * also covers an extern.call()/extern.CONST C-interop value,
+             * which carries no Grayscale type of its own and so could be
+             * either sign. */
             emit_formatted(codegen, "(uint64_t)gray_ucast_check((int64_t)(");
             emit_expression(codegen, val);
             emit_formatted(codegen, "), 18446744073709551615ULL, \"%s\", \"%s\", %d)", target, codegen->file, node->token.line);
@@ -3869,7 +4045,7 @@ static void emit_new_struct_init(CodeGen *codegen, AstNode *sdecl,
         }
         if (sdecl->data.struct_decl.fields[i].default_value) {
             emit_formatted(codegen, "%s%s = ", access, sanitize_name(field_name));
-            emit_expression(codegen, sdecl->data.struct_decl.fields[i].default_value);
+            emit_struct_field_default_value(codegen, &sdecl->data.struct_decl.fields[i]);
             emit(codegen, "; ");
         }
     }
@@ -5579,7 +5755,9 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
 static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "abs") == 0 && node->data.call.arg_count == 1) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_abs_%s(", (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_abs_%s(", suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ")");
         return true;
@@ -5592,7 +5770,9 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if ((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_%s_%s(", func, (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_%s_%s(", func, suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
@@ -5601,7 +5781,9 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if (strcmp(func, "clamp") == 0 && node->data.call.arg_count == 3) {
         GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        emit_formatted(codegen, "gray_math_clamp_%s(", (arg_type && arg_type->kind == TK_FLOAT) ? "float" : "int");
+        const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
+                              (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
+        emit_formatted(codegen, "gray_math_clamp_%s(", suffix);
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
@@ -6625,6 +6807,19 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
                 return true;
             }
         }
+        /* Array of #json structs: [StructName]. Without this, an array
+         * argument fell straight to the map fallback below, which
+         * reinterprets the GrayArray's raw memory as a GrayMap and
+         * segfaults reading its (nonexistent) key/value metadata. */
+        if (arg_t && arg_t->kind == TK_ARRAY && arg_t->element_type) {
+            AstNode *sdecl = find_struct_declaration(codegen, arg_t->element_type);
+            if (sdecl && sdecl->data.struct_decl.is_json) {
+                emit_formatted(codegen, "gray_json_stringify_array_%s(gray_default_arena, ", arg_t->element_type);
+                emit_expression(codegen, arg);
+                emit(codegen, ")");
+                return true;
+            }
+        }
         /* Fallback: encode as map */
         emit(codegen, "({ __auto_type _jtmp = ");
         emit_expression(codegen, arg);
@@ -7039,10 +7234,26 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 desc ? "true" : "false");
             return true;
         }
+        /* An enum element is a plain C `enum` (int32_t-width) unless it's
+         * string-backed (a GrayString at the C level, matching [string]'s
+         * width instead) — same elem_size/stride mismatch min_index/
+         * max_index were already fixed for, just not extended to
+         * sort_asc/sort_desc's runtime-function dispatch. No dedicated sort
+         * variant is needed: an int-backed enum's ordinal values compare
+         * correctly as plain int32_t, the same width and comparison
+         * '_char' already sorts by. */
+        GrayType *sa_elem_t = sa_elem ? type_from_name(sa_elem) : NULL;
+        bool sa_elem_is_str_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM &&
+            codegen_enum_is_string(codegen, codegen_resolve_type(codegen, sa_elem));
+        bool sa_elem_is_int_enum = sa_elem_t && sa_elem_t->kind == TK_ENUM && !sa_elem_is_str_enum;
         if (sa_elem && strcmp(sa_elem, "float") == 0)
             emit_formatted(codegen, "gray_arrays_sort_%s_float(", desc ? "desc" : "asc");
-        else if (sa_elem && strcmp(sa_elem, "string") == 0)
+        else if ((sa_elem && strcmp(sa_elem, "string") == 0) || sa_elem_is_str_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
+        else if (sa_elem && strcmp(sa_elem, "byte") == 0)
+            emit_formatted(codegen, "gray_arrays_sort_%s_byte(", desc ? "desc" : "asc");
+        else if ((sa_elem && strcmp(sa_elem, "char") == 0) || sa_elem_is_int_enum)
+            emit_formatted(codegen, "gray_arrays_sort_%s_char(", desc ? "desc" : "asc");
         else
             emit_formatted(codegen, "gray_arrays_sort_%s(", desc ? "desc" : "asc");
         emit_array_argument_address(codegen, node->data.call.args[0]);
@@ -7348,7 +7559,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, "({ GrayArray _r_src = ");
         emit_expression(codegen, node->data.call.args[0]);
         emit_formatted(codegen, "; %s _r_acc = ", c_elem);
-        emit_expression(codegen, node->data.call.args[1]);
+        if (!emit_bigint_coerced(codegen, elem_tn, node->data.call.args[1]))
+            emit_expression(codegen, node->data.call.args[1]);
         emit_formatted(codegen, "; %s (*_r_fn)(%s, %s) = (void *)", c_elem, c_elem, c_elem);
         emit_expression(codegen, node->data.call.args[2]);
         emit_formatted(codegen, "; for (int32_t _r_i = 0; _r_i < _r_src.len; _r_i++) { ");
@@ -7462,14 +7674,156 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                 tag, tag, tag, tag, tag, bi, bi, tag, tag, bi, tag, tag, tag, tag);
             return true;
         }
+        /* An enum element is a plain C `enum` (int32_t-width) unless it's
+         * string-backed (a GrayString, matching [string]'s width instead)
+         * — same split arrays.sort_asc/sort_desc dispatch on. */
+        GrayType *is_elem_t = is_elem ? type_from_name(is_elem) : NULL;
+        bool is_elem_is_str_enum = is_elem_t && is_elem_t->kind == TK_ENUM &&
+            codegen_enum_is_string(codegen, codegen_resolve_type(codegen, is_elem));
+        bool is_elem_is_int_enum = is_elem_t && is_elem_t->kind == TK_ENUM && !is_elem_is_str_enum;
         if (is_elem && strcmp(is_elem, "float") == 0)
             emit(codegen, "gray_arrays_is_sorted_float(");
-        else if (is_elem && strcmp(is_elem, "string") == 0)
+        else if ((is_elem && strcmp(is_elem, "string") == 0) || is_elem_is_str_enum)
             emit(codegen, "gray_arrays_is_sorted_str(");
+        /* bool is 1 byte, the same width gray_arrays_is_sorted_byte reads —
+         * the plain int64_t-width fallback below silently over-read past a
+         * bool array's real (1-byte-strided) backing store. */
+        else if (is_elem && (strcmp(is_elem, "byte") == 0 || strcmp(is_elem, "bool") == 0))
+            emit(codegen, "gray_arrays_is_sorted_byte(");
+        else if ((is_elem && strcmp(is_elem, "char") == 0) || is_elem_is_int_enum)
+            emit(codegen, "gray_arrays_is_sorted_char(");
         else
             emit(codegen, "gray_arrays_is_sorted(");
         emit_array_argument_address(codegen, node->data.call.args[0]);
         emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "binary_search") == 0 && node->data.call.arg_count == 2) {
+        GrayType *bs_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *bs_elem = (bs_t && bs_t->kind == TK_ARRAY) ? bs_t->element_type : NULL;
+        if (bs_elem && is_bigint_type(bs_elem)) {
+            /* Wide elements: the int64/double reads only see the low word;
+             * order with the width's gray_<w>_lt helper instead. */
+            const char *bi = bigint_prefix(bs_elem);
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _bs%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen, "; %s _bv%d = ", bi, tag);
+            if (!emit_bigint_coerced(codegen, bs_elem, node->data.call.args[1]))
+                emit_expression(codegen, node->data.call.args[1]);
+            emit_formatted(codegen,
+                "; int64_t _blo%d = 0, _bhi%d = (int64_t)_bs%d.len - 1, _br%d = -1; "
+                "while (_blo%d <= _bhi%d) { int64_t _bm%d = _blo%d + (_bhi%d - _blo%d) / 2; "
+                "%s _bev%d = ((%s *)_bs%d.data)[_bm%d]; "
+                "if (%s_lt(_bev%d, _bv%d)) _blo%d = _bm%d + 1; "
+                "else if (%s_lt(_bv%d, _bev%d)) _bhi%d = _bm%d - 1; "
+                "else { _br%d = _bm%d; break; } } _br%d; })",
+                tag, tag, tag, tag,
+                tag, tag, tag, tag, tag, tag,
+                bi, tag, bi, tag, tag,
+                bi, tag, tag, tag, tag,
+                bi, tag, tag, tag, tag,
+                tag, tag,
+                tag);
+            return true;
+        }
+        if (bs_elem && strcmp(bs_elem, "string") == 0) {
+            emit(codegen, "gray_arrays_binary_search_str(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        if (bs_elem && strcmp(bs_elem, "float") == 0) {
+            emit(codegen, "gray_arrays_binary_search_float(");
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[1]);
+            emit(codegen, ")");
+            return true;
+        }
+        /* Every other element type: read each slot as its real C type so the
+         * stride and width are correct ([byte], [char], sized ints all broke
+         * when read as int64 — see the contains handler above. */
+        char bs_c_elem[MSG_BUF_SIZE];
+        snprintf(bs_c_elem, sizeof(bs_c_elem), "%s",
+            gray_type_to_c_codegen(codegen, bs_elem ? bs_elem : "int"));
+        int bs_tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _bs%d = ", bs_tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen, "; int64_t _bv%d = ", bs_tag);
+        emit_expression(codegen, node->data.call.args[1]);
+        emit_formatted(codegen,
+            "; int64_t _blo%d = 0, _bhi%d = (int64_t)_bs%d.len - 1, _br%d = -1; "
+            "while (_blo%d <= _bhi%d) { int64_t _bm%d = _blo%d + (_bhi%d - _blo%d) / 2; "
+            "int64_t _bev%d = (int64_t)((%s *)_bs%d.data)[_bm%d]; "
+            "if (_bev%d < _bv%d) _blo%d = _bm%d + 1; "
+            "else if (_bev%d > _bv%d) _bhi%d = _bm%d - 1; "
+            "else { _br%d = _bm%d; break; } } _br%d; })",
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_c_elem, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag, bs_tag,
+            bs_tag, bs_tag, bs_tag);
+        return true;
+    }
+    if ((strcmp(func, "min_index") == 0 || strcmp(func, "max_index") == 0) &&
+        node->data.call.arg_count == 1) {
+        bool want_max = strcmp(func, "max_index") == 0;
+        GrayType *mi_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        const char *mi_elem = (mi_t && mi_t->kind == TK_ARRAY) ? mi_t->element_type : NULL;
+        if (mi_elem && is_bigint_type(mi_elem)) {
+            /* Wide elements: gray_arrays_min_index/max_index read only the low
+             * word; compare with the width's gray_<w>_lt/gt helper instead. */
+            const char *bi = bigint_prefix(mi_elem);
+            const char *rel = want_max ? "gt" : "lt";
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ GrayArray _mi%d = ", tag);
+            emit_expression(codegen, node->data.call.args[0]);
+            emit_formatted(codegen,
+                "; int64_t _mr%d = -1; if (_mi%d.len > 0) { _mr%d = 0; "
+                "%s _mb%d = ((%s *)_mi%d.data)[0]; "
+                "for (int32_t _mj%d = 1; _mj%d < _mi%d.len; _mj%d++) { "
+                "%s _mv%d = ((%s *)_mi%d.data)[_mj%d]; "
+                "if (%s_%s(_mv%d, _mb%d)) { _mb%d = _mv%d; _mr%d = _mj%d; } } } _mr%d; })",
+                tag, tag, tag,
+                bi, tag, bi, tag,
+                tag, tag, tag, tag,
+                bi, tag, bi, tag, tag,
+                bi, rel, tag, tag, tag, tag, tag, tag,
+                tag);
+            return true;
+        }
+        if (mi_elem && strcmp(mi_elem, "float") == 0) {
+            emit_formatted(codegen, "gray_arrays_%s_float(", func);
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, ")");
+            return true;
+        }
+        /* Every other element type: read each slot as its real C type so the
+         * stride and width are correct ([byte], [char], sized ints all broke
+         * when read as int64 — see the contains handler above. */
+        char mi_c_elem[MSG_BUF_SIZE];
+        snprintf(mi_c_elem, sizeof(mi_c_elem), "%s",
+            gray_type_to_c_codegen(codegen, mi_elem ? mi_elem : "int"));
+        const char *mi_rel = want_max ? ">" : "<";
+        int mi_tag = codegen_next_id(codegen);
+        emit_formatted(codegen, "({ GrayArray _mi%d = ", mi_tag);
+        emit_expression(codegen, node->data.call.args[0]);
+        emit_formatted(codegen,
+            "; int64_t _mr%d = -1; if (_mi%d.len > 0) { _mr%d = 0; "
+            "int64_t _mb%d = (int64_t)((%s *)_mi%d.data)[0]; "
+            "for (int32_t _mj%d = 1; _mj%d < _mi%d.len; _mj%d++) { "
+            "int64_t _mv%d = (int64_t)((%s *)_mi%d.data)[_mj%d]; "
+            "if (_mv%d %s _mb%d) { _mb%d = _mv%d; _mr%d = _mj%d; } } } _mr%d; })",
+            mi_tag, mi_tag, mi_tag,
+            mi_tag, mi_c_elem, mi_tag,
+            mi_tag, mi_tag, mi_tag, mi_tag,
+            mi_tag, mi_c_elem, mi_tag, mi_tag,
+            mi_tag, mi_rel, mi_tag, mi_tag, mi_tag, mi_tag, mi_tag,
+            mi_tag);
         return true;
     }
 
@@ -7477,7 +7831,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     bool needs_arena = (strcmp(func, "reverse") == 0 || strcmp(func, "slice") == 0 ||
         strcmp(func, "concat") == 0 || strcmp(func, "deduplicate") == 0 ||
         strcmp(func, "flatten") == 0 || strcmp(func, "split_every") == 0 ||
-        strcmp(func, "pair") == 0);
+        strcmp(func, "pair") == 0 || strcmp(func, "rotate") == 0);
     bool ref_args = (strcmp(func, "concat") == 0 || strcmp(func, "pair") == 0);
     emit_formatted(codegen, "gray_arrays_%s(", func);
     if (needs_arena) emit(codegen, "gray_default_arena, ");
@@ -7519,8 +7873,20 @@ static bool emit_os_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
+    if (strcmp(func, "lookup_env") == 0) {
+        emit(codegen, "gray_os_lookup_env(gray_default_arena, ");
+        emit_expression(codegen, node->data.call.args[0]);
+        emit(codegen, ")");
+        return true;
+    }
+    if (strcmp(func, "environ") == 0) {
+        emit(codegen, "gray_os_environ(gray_default_arena)"); return true;
+    }
     if (strcmp(func, "current_dir") == 0) {
         emit(codegen, "gray_os_cwd(gray_default_arena)"); return true;
+    }
+    if (strcmp(func, "home_dir") == 0) {
+        emit(codegen, "gray_os_home_dir(gray_default_arena)"); return true;
     }
     if (strcmp(func, "hostname") == 0) {
         emit(codegen, "gray_os_hostname(gray_default_arena)"); return true;
@@ -7727,7 +8093,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;
@@ -7738,7 +8104,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;
@@ -7749,7 +8115,7 @@ static bool emit_format_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_expression(codegen, node->data.call.args[0]);
         emit(codegen, ", ");
         emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", (char)(");
+        emit(codegen, ", (int32_t)(");
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "))");
         return true;
@@ -8530,7 +8896,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         if (any_emitted) emit(codegen, ", ");
                         any_emitted = true;
                         if (ns_func->data.func_decl.params[i].default_value) {
-                            emit_expression(codegen, ns_func->data.func_decl.params[i].default_value);
+                            emit_param_default_value(codegen, &ns_func->data.func_decl.params[i]);
                         } else {
                             emit(codegen, "0");
                         }
@@ -8653,7 +9019,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                                 emit_namespaced_call_argument(codegen, node->data.call.args[i],
                                     uf, i, node->token.line);
                             } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
-                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
+                                emit_param_default_value(codegen, &uf->data.func_decl.params[i]);
                             }
                         }
                         emit(codegen, ")");
@@ -9024,7 +9390,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     const char *pname = target_func->data.func_decl.params[i].name;
                     emit_formatted(codegen, "%s", pname ? sanitize_name(pname) : "_arg");
                 } else {
-                    emit_expression(codegen, target_func->data.func_decl.params[i].default_value);
+                    emit_param_default_value(codegen, &target_func->data.func_decl.params[i]);
                 }
             }
         }
@@ -9064,7 +9430,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         } else if (target_func && i < param_count &&
                    target_func->data.func_decl.params[i].default_value) {
             /* Default value */
-            emit_expression(codegen, target_func->data.func_decl.params[i].default_value);
+            emit_param_default_value(codegen, &target_func->data.func_decl.params[i]);
         } else {
             /* No arg and no default; emit zero */
             emit(codegen, "0");
@@ -9199,6 +9565,22 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
              strcmp(target, "byte") == 0) { is_unsigned = true; smax = "255"; }
     else if (strcmp(target, "u16")  == 0) { is_unsigned = true; smax = "65535"; }
     else if (strcmp(target, "u32")  == 0) { is_unsigned = true; smax = "4294967295ULL"; }
+    else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
+             codegen->type_table &&
+             typetable_get(codegen->type_table, val) &&
+             (typetable_get(codegen->type_table, val)->kind == TK_UNKNOWN ||
+              typetable_get(codegen->type_table, val)->kind == TK_C_FUNC)) {
+        /* Already 64-bit, so no upper bound can be exceeded — but a value
+         * whose real signedness Grayscale can't see (an extern C-interop
+         * result, typed TK_C_FUNC) may still be negative, which would
+         * silently reinterpret as a huge unsigned number. gray_ucast_check's
+         * negative check catches that; the max is a no-op since int64_t
+         * can't exceed it. Ordinary Grayscale-typed values (TK_INT, TK_UINT,
+         * literals) are skipped: a legitimate uint64 value >= 2^63 has the
+         * same two's-complement bit pattern as a negative int64 and would
+         * otherwise trip this check on valid input. */
+        is_unsigned = true; smax = "18446744073709551615ULL";
+    }
     else return false;
 
     const char *c_target = gray_type_to_c_codegen(codegen, target);
@@ -9449,7 +9831,19 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
 /* Emit the C zero value for c_type (no leading " = "). Used both for
  * value-less declarations and for file-scope globals whose real
  * initializer is deferred into the global-init buffer. */
-static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
+/* gray_type_name is the Grayscale type as written (e.g. "Inner"), needed
+ * only to recurse into emit_struct_zero_value_literal when c_type doesn't
+ * match any of the special-cased primitives below — a bare `mut x Inner`
+ * with no initializer would otherwise fall through to a flat C {0}, which
+ * drops any fixed-size array field inside Inner to length 0 instead of its
+ * declared N, the same gap an omitted nested-struct field has.
+ * force_constant is true for the file-scope deferred-init placeholder: that
+ * value must be a pure C compile-time constant (the real, possibly
+ * non-constant, initializer runs later in gray_init_globals), so struct
+ * types fall back to a flat {0} there instead of recursing into
+ * emit_struct_zero_value_literal, which can emit gray_array_new()/
+ * gray_map_new_kind() runtime calls for array/map fields. */
+static void emit_c_zero_value(CodeGen *codegen, const char *c_type, const char *gray_type_name, bool force_constant) {
     if (strcmp(c_type, "int64_t") == 0) emit(codegen, "0");
     else if (strcmp(c_type, "double") == 0) emit(codegen, "0.0");
     else if (strcmp(c_type, "bool") == 0) emit(codegen, "false");
@@ -9460,7 +9854,11 @@ static void emit_c_zero_value(CodeGen *codegen, const char *c_type) {
     else if (strcmp(c_type, "gray_u128") == 0) emit(codegen, "GRAY_U128_ZERO");
     else if (strcmp(c_type, "gray_i256") == 0) emit(codegen, "GRAY_I256_ZERO");
     else if (strcmp(c_type, "gray_u256") == 0) emit(codegen, "GRAY_U256_ZERO");
-    else emit(codegen, "{0}");
+    else {
+        GrayType *gt = gray_type_name ? type_from_name(gray_type_name) : NULL;
+        if (gt && gt->kind == TK_STRUCT && !force_constant) emit_struct_zero_value_literal(codegen, gray_type_name, 0);
+        else emit(codegen, "{0}");
+    }
 }
 
 /* True when a scalar/struct variable initializer lowers to a C constant
@@ -9620,7 +10018,7 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
     } else {
         /* Zero-initialize when no value is provided */
         emit(codegen, " = ");
-        emit_c_zero_value(codegen, c_type);
+        emit_c_zero_value(codegen, c_type, type_name, false);
     }
 
     emit(codegen, ";\n");
@@ -9825,12 +10223,19 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
      * rejects non-constant file-scope initializers (runtime-checked
      * negation, struct literals with array/map fields, string
      * interpolation, ...). __auto_type needs its initializer inline, so
-     * leave those on the normal path. */
-    if (codegen->indent == 0 && node->data.var_decl.value &&
-        strcmp(c_type, "__auto_type") != 0 &&
-        !initializer_is_c_constant(node->data.var_decl.value)) {
+     * leave those on the normal path. A value-less struct declaration
+     * defers too: its real zero value (emit_c_zero_value's recursive,
+     * non-force_constant form) can itself emit gray_array_new()/
+     * gray_map_new_kind() calls for array/map fields with no default, which
+     * are just as non-constant as an explicit struct-literal initializer. */
+    GrayType *vdecl_struct_t = type_name ? type_from_name(type_name) : NULL;
+    bool vdecl_needs_deferral = node->data.var_decl.value
+        ? !initializer_is_c_constant(node->data.var_decl.value)
+        : (vdecl_struct_t && vdecl_struct_t->kind == TK_STRUCT);
+    if (codegen->indent == 0 && strcmp(c_type, "__auto_type") != 0 &&
+        vdecl_needs_deferral) {
         emit_formatted(codegen, "%s %s = ", c_type, sanitize_name(node->data.var_decl.name));
-        emit_c_zero_value(codegen, c_type);
+        emit_c_zero_value(codegen, c_type, type_name, true);
         emit(codegen, ";\n");
         Buf saved = codegen->output;
         codegen->output = codegen->global_init;
@@ -11921,6 +12326,10 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     free(fn_file);
     codegen->indent--;
     emit(codegen, "}\n\n");
+    /* Whatever comes next — another function's own prologue, or top-level
+     * scaffolding — has no .gray origin of its own until the next statement
+     * stamps one; don't let it inherit this function's last .gray location. */
+    reset_line_directive(codegen);
 }
 
 static void emit_expression_statement(CodeGen *codegen, AstNode *node) {
@@ -12200,6 +12609,28 @@ static bool stmt_needs_panic_location(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* Emits `#line N "file"` at column 0 (a directive must not be indented).
+ * file is codegen->file, already forward-slash normalized by
+ * normalize_path_separators — never re-escaped here. */
+static void emit_line_directive(CodeGen *codegen, const char *file, int line) {
+    if (!codegen->emit_line_directives) return;
+    emit_formatted(codegen, "#line %d \"%s\"\n", line, file);
+}
+
+/* Points subsequent generated C — compiler scaffolding with no .gray origin,
+ * such as a function's own prologue before its first statement, or anything
+ * emitted between one function body and the next — back at a synthetic
+ * marker instead of letting it inherit whatever .gray location the last
+ * directive named. Without this, a cc diagnostic in that scaffolding would
+ * misreport a stale .gray file/line instead of the generated C. */
+static void reset_line_directive(CodeGen *codegen) {
+    if (!codegen->emit_line_directives) return;
+    emit(codegen, "#line 1 \"<generated>\"\n");
+    free(codegen->last_line_directive_file);
+    codegen->last_line_directive_file = NULL;
+    codegen->last_line_directive_line = 0;
+}
+
 static void emit_statement(CodeGen *codegen, AstNode *node) {
     codegen_enter_node(codegen, node);
     if (!node) return;
@@ -12211,12 +12642,32 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
      * function body (indent > 0) — file-scope initializers cannot call, so
      * cannot panic this way. codegen->file is the enclosing function's own
      * module here (emit_function_declaration points it there). Statements that
-     * evaluate only located operations skip the stamp. */
+     * evaluate only located operations skip the stamp. Emitted before the
+     * #line directive below: it is itself scaffolding, not the statement's
+     * own C, and must not shift the directive off the line it names. */
     if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
         stmt_needs_panic_location(codegen, node)) {
         emit_indent(codegen);
         emit_formatted(codegen, "gray_panic_call_file = \"%s\"; gray_panic_call_line = %d;\n",
                        codegen->file, node->token.line);
+    }
+
+    /* Map this statement back to its .gray source for cc diagnostics,
+     * sanitizers, and gcov. Only inside a function body (indent > 0) —
+     * file-scope initializers are emitted in the preamble, which has no
+     * .gray-mapped code around it. Skipped when the last directive already
+     * named this exact file/line, so a run of statements sharing one source
+     * line (or synthetic sub-statements) doesn't emit one directive each.
+     * Emitted last, immediately before the statement's own C, so the line
+     * it names is that C's actual line — not the panic stamp's. */
+    if (codegen->indent > 0 && codegen->file && node->token.line > 0 &&
+        (!codegen->last_line_directive_file ||
+         codegen->last_line_directive_line != node->token.line ||
+         strcmp(codegen->last_line_directive_file, codegen->file) != 0)) {
+        emit_line_directive(codegen, codegen->file, node->token.line);
+        free(codegen->last_line_directive_file);
+        codegen->last_line_directive_file = strdup(codegen->file);
+        codegen->last_line_directive_line = node->token.line;
     }
 
     switch (node->kind) {
@@ -12638,6 +13089,7 @@ CodeGen codegen_create(const char *file) {
     codegen.has_fmt = false;
     codegen.file_owned = normalize_path_separators(file);
     codegen.file = codegen.file_owned;
+    codegen.emit_line_directives = true;
     codegen.enum_names = NULL;
     codegen.enum_is_string = NULL;
     codegen.enum_is_tagged = NULL;
@@ -12675,6 +13127,7 @@ CodeGen codegen_create(const char *file) {
     codegen.imported_module_count = 0;
     codegen.imported_module_cap = 0;
     codegen.c_headers = NULL;
+    codegen.c_header_is_local = NULL;
     codegen.c_header_count = 0;
     codegen.c_header_cap = 0;
     codegen.has_c_imports = false;
@@ -12751,6 +13204,39 @@ static void codegen_emit_tagged_enum_body(CodeGen *codegen, AstNode *enum_node) 
     emit_formatted(codegen, "};\n\n");
 }
 
+/* Resolve a local C header import ("./x.h" / "../x.h") to its canonical
+ * absolute path, using the importing file's own directory (item->source_dir,
+ * falling back to the entry file's directory for an import written directly
+ * in it — mirrors main.c's preflight_c_headers/add_local_c_header_dirs).
+ *
+ * Emitting the raw "./x.h" spelling verbatim, as written, is ambiguous once
+ * two different directories each import their own same-named local header:
+ * both produce the identical #include line, and the C preprocessor can only
+ * resolve that text one way, so only one module's actual header ever lands
+ * in the compiled C (#2729). A canonical absolute path makes each line name
+ * its own file outright, independent of -iquote search order.
+ *
+ * Returns NULL (caller keeps the raw spelling) if the file cannot be
+ * resolved — should not happen post-preflight, but codegen must not crash
+ * either way. Caller-owned; deliberately never freed — see the c_headers[]
+ * comment at the free site in codegen_destroy(). */
+static const char *resolve_local_c_header(CodeGen *codegen, ImportItem *item) {
+    char dir[C_HEADER_PATH_BUF];
+    if (item->source_dir) {
+        snprintf(dir, sizeof(dir), "%s", item->source_dir);
+    } else {
+        snprintf(dir, sizeof(dir), "%s", codegen->file ? codegen->file : "");
+        char *sep = gray_path_rsep(dir);
+        if (sep) sep[1] = '\0';
+        else snprintf(dir, sizeof(dir), "./");
+    }
+    char joined[C_HEADER_PATH_BUF];
+    snprintf(joined, sizeof(joined), "%s%s", dir, item->path);
+    char resolved[C_HEADER_PATH_BUF];
+    if (!gray_realpath_into(joined, resolved, sizeof(resolved))) return NULL;
+    return strdup(resolved);
+}
+
 void codegen_generate(CodeGen *codegen, AstNode *program) {
     if (program->kind != NODE_PROGRAM) return;
 
@@ -12792,9 +13278,25 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 /* Collect C interop headers */
                 if (item->is_c_import && item->path) {
                     codegen->has_c_imports = true;
-                    GROW_ARRAY(codegen->c_headers, codegen->c_header_count,
-                        codegen->c_header_cap);
-                    codegen->c_headers[codegen->c_header_count++] = item->path;
+                    bool is_local = strncmp(item->path, "./", 2) == 0 ||
+                                    strncmp(item->path, "../", 3) == 0;
+                    /* c_headers/c_header_is_local grow in lockstep on a
+                     * shared cap — GROW_ARRAY on each separately would only
+                     * bump the second array every other resize, since the
+                     * first call's cap bump already makes its own
+                     * count>=cap check false. */
+                    if (codegen->c_header_count >= codegen->c_header_cap) {
+                        codegen->c_header_cap = GROW_NEXT_CAP(codegen->c_header_cap);
+                        codegen->c_headers = xrealloc(codegen->c_headers,
+                            sizeof(*codegen->c_headers) * (size_t)codegen->c_header_cap);
+                        codegen->c_header_is_local = xrealloc(codegen->c_header_is_local,
+                            sizeof(*codegen->c_header_is_local) * (size_t)codegen->c_header_cap);
+                    }
+                    const char *resolved = is_local
+                        ? resolve_local_c_header(codegen, item) : NULL;
+                    codegen->c_headers[codegen->c_header_count] = resolved ? resolved : item->path;
+                    codegen->c_header_is_local[codegen->c_header_count] = is_local;
+                    codegen->c_header_count++;
                 }
                 /* Track imported stdlib module names — codegen_module_imported()
                  * is a stdlib-only lookup; a user module's membership comes from
@@ -12883,7 +13385,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"runtime.h\"\n");
     emit(codegen, "#include \"array.h\"\n");
     emit(codegen, "#include \"map.h\"\n");
-    emit(codegen, "#include \"builtins.h\"\n");
+    /* Qualified, unlike its siblings: clang's own resource directory (which
+     * zig cc searches ahead of -isystem) ships a builtins.h that would win. */
+    emit(codegen, "#include \"stdlib/builtins.h\"\n");
     /* os.h is always needed — generated main() calls gray_os_init(). */
     emit(codegen, "#include \"os.h\"\n");
     /* test.h declares the test-runner entry points used by the generated
@@ -12942,17 +13446,26 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit(codegen, "\n/* C interop headers */\n");
         for (int i = 0; i < codegen->c_header_count; i++) {
             const char *hdr = codegen->c_headers[i];
-            /* Defense-in-depth: skip any path that slipped through with dangerous chars */
+            /* Defense-in-depth: skip any path that slipped through with a
+             * character that could break out of the #include "..."/<...>
+             * string and inject arbitrary C. A local header is now resolved
+             * to a real filesystem path (resolve_local_c_header, #2729) that
+             * may legitimately contain spaces or other characters an
+             * allowlist would reject — so deny only what can actually break
+             * a quoted or angle-bracket #include: '"' and '>' end the two
+             * delimited forms early, '\' starts a C escape, and control
+             * characters (including newline) cannot appear on a directive
+             * line at all. */
             bool safe = true;
             for (const char *scan = hdr; *scan; scan++) {
                 unsigned char ch = (unsigned char)*scan;
-                bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                          (ch >= '0' && ch <= '9') ||
-                          ch == '/' || ch == '.' || ch == '_' || ch == '-' || ch == '+';
-                if (!ok) { safe = false; break; }
+                if (ch == '"' || ch == '>' || ch == '\\' || ch < 0x20 || ch == 0x7f) {
+                    safe = false;
+                    break;
+                }
             }
             if (!safe) continue;
-            if (strncmp(hdr, "./", 2) == 0 || strncmp(hdr, "../", 3) == 0) {
+            if (codegen->c_header_is_local[i]) {
                 emit_formatted(codegen, "#include \"%s\"\n", hdr);
             } else {
                 emit_formatted(codegen, "#include <%s>\n", hdr);
@@ -13313,19 +13826,56 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "    GrayMap _m = gray_json_decode(arena, text);\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
+            /* A `` `json:"Name"` `` tag maps the field under that JSON key
+             * instead of the Grayscale field name; the C struct member
+             * accessed below stays keyed by the field name either way. */
+            const char *jkey = field->json_tag ? field->json_tag : field->name;
             if (strcmp(field->type_name, "string") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) _r.%s = *(GrayString *)_v; }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
                        strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = gray_builtin_string_to_int(_sv); } }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = gray_builtin_string_to_float(_sv); } }\n", sanitize_name(field->name));
             } else if (strcmp(field->type_name, "bool") == 0) {
-                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", field->name);
+                emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
                 emit_formatted(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v; _r.%s = (_sv.len == 4 && memcmp(_sv.data, \"true\", 4) == 0); } }\n", sanitize_name(field->name));
+            } else {
+                /* Enum field: serialized by backing type. Tagged enums are
+                 * rejected on #json structs at typecheck time (E3173), so
+                 * only plain int-backed and string-backed enums reach here. */
+                const char *rft = codegen_resolve_type(codegen, field->type_name);
+                if (codegen_is_enum(codegen, rft) && !codegen_enum_is_tagged(codegen, rft)) {
+                    int eidx = codegen_enum_index(codegen, rft);
+                    AstNode *edecl = codegen->enum_decls[eidx];
+                    const char *edisplay = edecl->data.enum_decl.original_name
+                        ? edecl->data.enum_decl.original_name : rft;
+                    emit_formatted(codegen, "    { GrayString _k = gray_string_lit(\"%s\"); void *_v = gray_map_get(&_m, &_k);\n", jkey);
+                    emit(codegen, "      if (_v) { GrayString _sv = *(GrayString *)_v;\n");
+                    if (codegen_enum_is_string(codegen, rft)) {
+                        emit_formatted(codegen, "        _r.%s = gray_json_enum_from_str(_sv, (const GrayString[]){",
+                            sanitize_name(field->name));
+                        for (int vi = 0; vi < edecl->data.enum_decl.value_count; vi++) {
+                            if (vi > 0) emit(codegen, ", ");
+                            emit_formatted(codegen, "GrayEnum_%s_%s", rft, edecl->data.enum_decl.values[vi].name);
+                        }
+                        emit_formatted(codegen, "}, %d, \"%s\"); } }\n",
+                            edecl->data.enum_decl.value_count, edisplay);
+                    } else {
+                        emit(codegen, "        int64_t _iv = gray_builtin_string_to_int(_sv);\n");
+                        emit_formatted(codegen, "        _r.%s = (%s)gray_json_enum_from_number(_sv, _iv, (const int64_t[]){",
+                            sanitize_name(field->name), gray_type_to_c_codegen(codegen, rft));
+                        for (int vi = 0; vi < edecl->data.enum_decl.value_count; vi++) {
+                            if (vi > 0) emit(codegen, ", ");
+                            emit_formatted(codegen, "GrayEnum_%s_%s", rft, edecl->data.enum_decl.values[vi].name);
+                        }
+                        emit_formatted(codegen, "}, %d, \"%s\"); } }\n",
+                            edecl->data.enum_decl.value_count, edisplay);
+                    }
+                }
             }
         }
         emit_formatted(codegen, "    return _r;\n}\n\n");
@@ -13342,25 +13892,35 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             int fixed = 2; /* { } */
             for (int j = 0; j < field_count; j++) {
                 StructField *field = &stmt->data.struct_decl.fields[j];
+                const char *jkey = field->json_tag ? field->json_tag : field->name;
                 if (j > 0) fixed += 2; /* ", " */
-                fixed += 2 + (int)strlen(field->name) + 2; /* "key": */
+                fixed += 2 + (int)strlen(jkey) + 2; /* "key": */
+                /* Enum fields serialize by backing type: a string-backed enum
+                 * needs the runtime json_escaped_len() pass below, same as a
+                 * string field; a plain int-backed enum takes the int64
+                 * upper bound. Tagged enums never reach here (E3173). */
+                const char *rft = codegen_resolve_type(codegen, field->type_name);
+                bool is_num_enum = codegen_is_enum(codegen, rft) && !codegen_enum_is_string(codegen, rft);
                 /* Value upper bound for non-string types */
                 if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 ||
-                    strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
+                    strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0 ||
+                    is_num_enum) {
                     fixed += 21;
                 } else if (strcmp(field->type_name, "float") == 0 || strcmp(field->type_name, "f64") == 0) {
                     fixed += 24;
                 } else if (strcmp(field->type_name, "bool") == 0) {
                     fixed += 5;
                 }
-                /* string fields are added at runtime below */
+                /* string fields (and string-backed enum fields) are added at runtime below */
             }
             emit_formatted(codegen, "    size_t _need = %d;\n", fixed);
         }
         /* Add runtime string field sizes */
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
-            if (strcmp(field->type_name, "string") == 0) {
+            const char *rft = codegen_resolve_type(codegen, field->type_name);
+            bool is_str_enum = codegen_is_enum(codegen, rft) && codegen_enum_is_string(codegen, rft);
+            if (strcmp(field->type_name, "string") == 0 || is_str_enum) {
                 emit_formatted(codegen, "    _need += json_escaped_len(_s.%s);\n", sanitize_name(field->name));
             }
         }
@@ -13371,17 +13931,21 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "    _buf[_pos++] = '{';\n");
         for (int j = 0; j < field_count; j++) {
             StructField *field = &stmt->data.struct_decl.fields[j];
+            const char *jkey = field->json_tag ? field->json_tag : field->name;
             if (j > 0) emit_formatted(codegen, "    _buf[_pos++] = ','; _buf[_pos++] = ' ';\n");
             /* Key */
             emit_formatted(codegen, "    _buf[_pos++] = '\"';\n");
-            int fname_len = (int)strlen(field->name);
+            int fname_len = (int)strlen(jkey);
             emit_formatted(codegen, "    memcpy(_buf + _pos, \"%s\", %d); _pos += %d;\n",
-                field->name, fname_len, fname_len);
+                jkey, fname_len, fname_len);
             emit_formatted(codegen, "    _buf[_pos++] = '\"'; _buf[_pos++] = ':'; _buf[_pos++] = ' ';\n");
             /* Value */
-            if (strcmp(field->type_name, "string") == 0) {
+            const char *rft = codegen_resolve_type(codegen, field->type_name);
+            bool is_str_enum = codegen_is_enum(codegen, rft) && codegen_enum_is_string(codegen, rft);
+            bool is_num_enum = codegen_is_enum(codegen, rft) && !codegen_enum_is_string(codegen, rft);
+            if (strcmp(field->type_name, "string") == 0 || is_str_enum) {
                 emit_formatted(codegen, "    json_append_escaped(_buf, &_pos, _s.%s);\n", sanitize_name(field->name));
-            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0) {
+            } else if (strcmp(field->type_name, "int") == 0 || strcmp(field->type_name, "i64") == 0 || is_num_enum) {
                 emit_formatted(codegen, "    _pos += snprintf(_buf + _pos, _need + 1 - (size_t)_pos, \"%%lld\", (long long)_s.%s);\n",
                     sanitize_name(field->name));
             } else if (strcmp(field->type_name, "uint") == 0 || strcmp(field->type_name, "u64") == 0) {
@@ -13411,6 +13975,33 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "        gray_array_push(arena, &_result, &_item, __FILE__, __LINE__);\n");
         emit_formatted(codegen, "    }\n");
         emit_formatted(codegen, "    return _result;\n");
+        emit_formatted(codegen, "}\n\n");
+
+        /* --- stringify array: GrayArray of structs → JSON array string ---
+         * Symmetric with parse array above; json.stringify() previously had
+         * no dedicated codegen path for an array argument at all and fell
+         * to the generic map-fallback, which reinterprets the GrayArray's
+         * raw memory as a GrayMap and segfaults. */
+        emit_formatted(codegen, "static GrayString gray_json_stringify_array_%s(GrayArena *arena, GrayArray _arr) {\n", struct_name);
+        emit_formatted(codegen, "    GrayString *_parts = (GrayString *)gray_arena_alloc(arena, sizeof(GrayString) * (size_t)(_arr.len > 0 ? _arr.len : 1));\n");
+        emit_formatted(codegen, "    size_t _need = 2;\n");
+        emit_formatted(codegen, "    for (int32_t _i = 0; _i < _arr.len; _i++) {\n");
+        emit_formatted(codegen, "        GrayStruct_%s _item = *(GrayStruct_%s *)((char *)_arr.data + (size_t)_i * (size_t)_arr.elem_size);\n", struct_name, struct_name);
+        emit_formatted(codegen, "        GrayString _js = gray_json_stringify_%s(arena, _item);\n", struct_name);
+        emit_formatted(codegen, "        _parts[_i] = _js;\n");
+        emit_formatted(codegen, "        _need += (size_t)_js.len;\n");
+        emit_formatted(codegen, "        if (_i > 0) _need += 2;\n");
+        emit_formatted(codegen, "    }\n");
+        emit_formatted(codegen, "    char *_buf = gray_arena_alloc(arena, _need + 1);\n");
+        emit_formatted(codegen, "    int _pos = 0;\n");
+        emit_formatted(codegen, "    _buf[_pos++] = '[';\n");
+        emit_formatted(codegen, "    for (int32_t _i = 0; _i < _arr.len; _i++) {\n");
+        emit_formatted(codegen, "        if (_i > 0) { _buf[_pos++] = ','; _buf[_pos++] = ' '; }\n");
+        emit_formatted(codegen, "        memcpy(_buf + _pos, _parts[_i].data, (size_t)_parts[_i].len); _pos += _parts[_i].len;\n");
+        emit_formatted(codegen, "    }\n");
+        emit_formatted(codegen, "    _buf[_pos++] = ']';\n");
+        emit_formatted(codegen, "    _buf[_pos] = '\\0';\n");
+        emit_formatted(codegen, "    return (GrayString){_buf, (int32_t)_pos};\n");
         emit_formatted(codegen, "}\n\n");
     }
 
@@ -13673,7 +14264,12 @@ void codegen_destroy(CodeGen *codegen) {
     free(codegen->type_alias_names);
     free(codegen->type_alias_targets);
     free(codegen->imported_modules);
+    /* Individual c_headers[] entries for a resolved local header are
+     * strdup'd by resolve_local_c_header() and deliberately left unfreed —
+     * grayc is a one-shot-per-process CLI compiler, and their number is
+     * bounded by the program's own `extern import "./x.h"` count. */
     free(codegen->c_headers);
+    free(codegen->c_header_is_local);
     free(codegen->scope_arenas);
     for (int i = 0; i < codegen->iter_guard_count; i++)
         free(codegen->iter_guards[i]);
@@ -13681,4 +14277,5 @@ void codegen_destroy(CodeGen *codegen) {
     for (int i = 0; i < codegen->ns_func_name_count; i++)
         free(codegen->ns_func_names[i]);
     free(codegen->ns_func_names);
+    free(codegen->last_line_directive_file);
 }

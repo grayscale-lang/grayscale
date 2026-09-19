@@ -6,7 +6,10 @@
  * literal with array/map fields lowers to gray_array_new(...) /
  * gray_map_new_kind(...). Neither is a C constant expression, so the
  * codegen must emit a zero-initialized global and defer the real
- * initializer instead of inlining it at file scope.
+ * initializer instead of inlining it at file scope. A value-less struct
+ * global with array/map fields hits the same non-constant zero value
+ * through a different path (no initializer to defer at all) and must
+ * defer too.
  */
 
 import @arrays
@@ -20,6 +23,7 @@ const Bag struct {
 }
 
 mut bag Bag = Bag{}
+mut bag2 Bag
 
 do main() {
     mut passed int = 0
@@ -58,6 +62,17 @@ do main() {
         passed += 1
     } otherwise {
         println("  [FAIL] struct global map field")
+        failed += 1
+    }
+
+    arrays.append(bag2.items, 5)
+    bag2.index["b"] = 20
+
+    if len(bag2.items) == 1 && bag2.items[0] == 5 && bag2.index["b"] == 20 {
+        println("  [PASS] value-less struct global array/map field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] value-less struct global array/map field")
         failed += 1
     }
 

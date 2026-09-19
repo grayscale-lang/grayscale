@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3122 - pointer to a const-declared variable passed to a
+ * function that writes through it
+ * Expected: E3122 error — the callee would modify the constant
+ */
+
+const Counter struct {
+    n int
+}
+
+do bump(c ^Counter) {
+    c^.n += 1
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    bump(addr(k))
+}

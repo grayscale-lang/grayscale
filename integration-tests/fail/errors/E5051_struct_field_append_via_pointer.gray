@@ -1,0 +1,18 @@
+/*
+ * Error Test: E5051 - length-changing array op on a fixed-size struct field,
+ * reached through a pointer (dot operator auto-derefs, so p.data == p^.data)
+ * Expected: compiler should reject this with E5051
+ */
+// expect-error: E5051
+
+import @arrays
+
+const Buffer struct {
+    data [int, 4]
+}
+
+do main() {
+    mut b Buffer = Buffer{data: {1, 2, 3, 4}}
+    mut p ^Buffer = addr(b)
+    arrays.append(p.data, 5)  // ERROR: 'data' is a fixed-size array field
+}

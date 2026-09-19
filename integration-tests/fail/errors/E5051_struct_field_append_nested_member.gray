@@ -1,0 +1,21 @@
+/*
+ * Error Test: E5051 - length-changing array op on a fixed-size struct field,
+ * resolved through a multi-level member-expression chain.
+ * Expected: compiler should reject this with E5051
+ */
+// expect-error: E5051
+
+import @arrays
+
+const Inner struct {
+    items [int, 3]
+}
+
+const Outer struct {
+    inner Inner
+}
+
+do main() {
+    mut o Outer = Outer{inner: Inner{items: {1, 2, 3}}}
+    arrays.append(o.inner.items, 4)  // ERROR: 'items' is a fixed-size array field
+}

@@ -1,0 +1,13 @@
+// expect-error: E3171
+// expect-error-count: 1
+// A #json struct with one tagged field and one untagged field.
+
+import @json
+
+#json
+const User struct {
+    name string `json:"Name"`
+    age int
+}
+
+do main() {}

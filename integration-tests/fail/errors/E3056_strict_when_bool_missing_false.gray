@@ -1,0 +1,13 @@
+// expect-error: E3056
+/*
+ * Error Test: E3056 - #strict when over a bool subject must handle both
+ * true and false; this one never handles false.
+ */
+
+do main() {
+    mut flag bool = true
+    #strict
+    when flag {
+        is true { println("yes") }
+    }
+}

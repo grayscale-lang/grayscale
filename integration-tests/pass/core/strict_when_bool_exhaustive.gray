@@ -1,0 +1,39 @@
+/*
+ * #strict when over a bool subject is satisfied when both true and false are
+ * handled, with no default branch.
+ */
+
+do describe(flag bool) -> string {
+    mut out string = ""
+    #strict
+    when flag {
+        is true { out = "yes" }
+        is false { out = "no" }
+    }
+    return out
+}
+
+do main() {
+    mut passed int = 0
+
+    if describe(true) == "yes" {
+        println("  [PASS] true branch")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] true branch")
+    }
+
+    if describe(false) == "no" {
+        println("  [PASS] false branch")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] false branch")
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

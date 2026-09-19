@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5052 - a misspelled extern.func() name that does not exist in
+ * any imported C header is caught with a Grayscale diagnostic instead of
+ * leaking a raw C compiler error against a generated temp file.
+ */
+// expect-error: E5052
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+do main() {
+    extern.printfx("hi\n")
+}

@@ -1,0 +1,53 @@
+/*
+ * json_struct_tag_roundtrip.gray - #json struct fields tagged with
+ * `json:"Name"` serialize/deserialize under the tag's key instead of the
+ * Grayscale field name, through both json.stringify and json.parse.
+ */
+
+import @json
+
+#json
+const User struct {
+    name string `json:"Name"`
+    age  int    `json:"Age"`
+}
+
+do main() {
+    println("=== #json Struct Tag Roundtrip Tests ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut u User = User{name: "Alice", age: 25}
+    mut js string = json.stringify(u)
+
+    if js == "{\"Name\": \"Alice\", \"Age\": 25}" {
+        println("  [PASS] stringify uses tag keys, not field names")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] stringify: got ${js}")
+        failed += 1
+    }
+
+    mut back User = json.parse("{\"Name\": \"Bob\", \"Age\": 30}")
+    if back.name == "Bob" {
+        println("  [PASS] parse reads the tag key into the Grayscale field")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse name: ${back.name}")
+        failed += 1
+    }
+    if back.age == 30 {
+        println("  [PASS] parse reads a second tagged field correctly")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse age: ${back.age}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        panic("SOME TESTS FAILED")
+    }
+    println("ALL TESTS PASSED")
+}

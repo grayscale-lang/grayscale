@@ -410,26 +410,37 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep) {
 
 
 GrayArray gray_strings_to_chars(GrayArena *arena, GrayString str) {
-    /* Result is exactly str.len wide; fill it with a direct byte->int32
-     * widening loop the compiler can vectorize, not a call per byte. */
+    /* A char is a full Unicode codepoint, not a raw byte — decode UTF-8
+     * instead of widening each byte directly. Codepoint count is at most
+     * str.len (one array slot per byte is an over-allocation for any
+     * multi-byte content, but never too small). */
     GrayArray arr = gray_array_new(arena, sizeof(int32_t), str.len);
     int32_t *out = (int32_t *)arr.data;
-    for (int32_t i = 0; i < str.len; i++) {
-        out[i] = (int32_t)(unsigned char)str.data[i];
+    const uint8_t *p = (const uint8_t *)str.data;
+    const uint8_t *end = p + str.len;
+    int32_t count = 0;
+    while (p < end) {
+        int32_t cp;
+        p += gray_builtin_utf8_next(p, end, &cp);
+        out[count++] = cp;
     }
-    arr.len = str.len;
+    arr.len = count;
     return arr;
 }
 
 GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
     int32_t count = chars->len;
-    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)count + 1);
     int32_t *data = (int32_t *)chars->data;
+    /* Each codepoint UTF-8-encodes to at most 4 bytes. */
+    char *buf = gray_arena_alloc_uninitialized(arena, (size_t)count * 4 + 1);
+    int32_t pos = 0;
     for (int32_t i = 0; i < count; i++) {
-        buf[i] = (char)data[i];
+        GrayString enc = gray_builtin_char_to_utf8(arena, data[i]);
+        memcpy(buf + pos, enc.data, (size_t)enc.len);
+        pos += enc.len;
     }
-    buf[count] = '\0';
-    return gray_string_new(arena, buf, count);
+    buf[pos] = '\0';
+    return gray_string_new(arena, buf, pos);
 }
 
 char gray_strings_char_at(GrayString str, int64_t index) {

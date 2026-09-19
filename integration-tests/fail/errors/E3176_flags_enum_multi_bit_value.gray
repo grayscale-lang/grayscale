@@ -1,0 +1,18 @@
+// expect-error: E3176
+// expect-error-count: 1
+// A #flags variant with an explicit value must occupy exactly one bit. WRITE = 3
+// carries READ's bit, so composing and testing flags would alias the two.
+// 0 stays valid as a "none" sentinel.
+
+#flags
+const Permissions enum {
+    NONE = 0
+    READ = 1
+    WRITE = 3
+    EXECUTE = 4
+}
+
+do main() {
+    mut p = Permissions.WRITE
+    println("${cast(p, int)}")
+}

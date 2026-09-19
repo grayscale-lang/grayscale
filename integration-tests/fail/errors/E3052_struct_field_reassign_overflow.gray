@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3052 - a fixed-size struct field ([T,N]) reassigned after
+ * construction with more elements than its declared size. The struct-literal
+ * construction check alone never sees a plain reassignment statement; this
+ * is a distinct code path that needs its own check.
+ */
+// expect-error: E3052
+// expect-error-count: 1
+
+const Widget struct {
+    items [int, 3]
+}
+
+do main() {
+    mut w Widget = Widget{items: {1, 2, 3}}
+    w.items = {9, 8, 7, 6, 5}
+    println(len(w.items))
+}

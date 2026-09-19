@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3175 - an extern.func() result used as a struct field default
+ * is caught before it reaches the C compiler. STANDARD 8.6 only allows an
+ * extern result in a type-annotated declaration, cast(), c_string(), or an
+ * extern-call argument -- not a struct field default.
+ */
+// expect-error: E3175
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+const S struct {
+    x int = extern.abs(-5)
+}
+
+do main() {
+    mut s S = S{}
+    println("${s.x}")
+}

@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.sh` to regenerate.
+> Run `./scripts/generate_errors.gray` to regenerate.
 
-**Total: 466 codes** (322 errors, 16 warnings, 128 panics)
+**Total: 481 codes** (335 errors, 17 warnings, 129 panics)
 
 ---
 
@@ -86,6 +86,7 @@
 | `E2092` | syntax | '#[...]' attribute list must be on a single line |
 | `E2093` | syntax | malformed '#[...]' attribute list |
 | `E2094` | syntax | attribute is applied to the wrong kind of declaration, or its argument is malformed |
+| `E2095` | syntax | a field tag cannot be shared across grouped field names; give each field its own line and tag |
 | `E3001` | types | type mismatch; a value of one type is used where a different type is expected |
 | `E3002` | types | this operator does not work on this type; for example, strings cannot be subtracted |
 | `E3003` | types | invalid array index type; array indices must be integers |
@@ -238,6 +239,13 @@
 | `E3167` | safety | cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported |
 | `E3168` | types | a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here |
 | `E3169` | safety | '%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used |
+| `E3170` | types | malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"` |
+| `E3171` | types | #json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s |
+| `E3172` | types | #json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s' |
+| `E3173` | types | #json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation |
+| `E3174` | types | '%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute |
+| `E3175` | types | struct field default value has wrong type; expected %s, got %s |
+| `E3176` | types | #flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two) |
 | `E4001` | names | this variable does not exist; check the spelling or make sure it is declared above this line |
 | `E4002` | names | this function does not exist; check the spelling or make sure it is defined |
 | `E4003` | names | variable '%s' already declared in this scope (line %d) |
@@ -266,6 +274,7 @@
 | `E4029` | names | the 'private' modifier can only be applied to top-level declarations |
 | `E4030` | names | a local variable or parameter shadows a C function of the same name called via 'extern.' |
 | `E4031` | names | '%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s' |
+| `E4032` | names | cannot take a function reference to '%s'; it has a wildcard ('?') parameter or return type |
 | `E5007` | usage | cannot modify immutable %s '%s'; declare with 'mut' to allow modification |
 | `E5008` | arguments | wrong number of arguments; the call passes more or fewer arguments than the function accepts |
 | `E5009` | arguments | invalid base for integer conversion; base must be between 2 and 36 |
@@ -304,6 +313,9 @@
 | `E5048` | usage | 'error()' takes an ErrorCode, a message string, or a code and a message; got %s |
 | `E5049` | arguments | return type mismatch; the returned value's type does not match the function's declared return type |
 | `E5050` | arguments | wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d |
+| `E5051` | usage | cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change |
+| `E5052` | usage | unknown C symbol '%s'; no such function, constant, or macro in the imported header(s) |
+| `E5053` | types | C function '%s' returns '%s', which cannot be used as '%s' |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -319,6 +331,7 @@
 | `E6013` | imports | C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.' |
 | `E6014` | imports | malformed import statement |
 | `E6015` | imports | C header '%s' could not be found for the current target |
+| `E6016` | imports | C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types |
 | `E7004` | stdlib | function argument must be an integer, not a float |
 | `E7006` | stdlib | 'threads.spawn()' needs a function reference; use '()function_name' to pass a function |
 | `E7014` | stdlib | cannot convert %lld to char; value must be a valid Unicode code point (0 or greater) |
@@ -352,6 +365,7 @@
 | `W2011` | safety | named return value is declared in the signature but no matching variable exists in the function body |
 | `W2012` | safety | 'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon' |
 | `W2014` | imports | intra-directory import already included by directory import |
+| `W2015` | imports | direct import of a file already covered by a directory import in this file is redundant |
 | `W3003` | safety | fixed-size array is not fully initialized; remaining elements will be zero-valued |
 | `W3005` | safety | when statement matches on enum values without #strict and no default; exhaustiveness is not checked |
 | `W3006` | safety | empty default branch in when statement; unmatched values are silently ignored |
@@ -493,6 +507,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0126` | crypto | crypto.totp: digits must be between 1 and 9 |
 | `P0127` | time | time.parse_duration: cannot parse the duration string |
 | `P0128` | time | time.days_in_month: month must be between 1 and 12 |
+| `P0129` | runtime | cannot convert '%s' to enum %s |
 
 ---
 
@@ -517,4 +532,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-14 06:14:07 UTC*
+*Generated on 2026-09-19 22:24:53 UTC*

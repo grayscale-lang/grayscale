@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3126 - a literal `0` written directly in a struct field's
+ * fixed-size array size position. Same gap as the local-variable form: the
+ * size >0 check only ran along the const-identifier resolution path.
+ */
+// expect-error: E3126
+// expect-error-count: 1
+
+const Widget struct {
+    data [int, 0]
+}
+
+do main() {
+    println("unreachable")
+}

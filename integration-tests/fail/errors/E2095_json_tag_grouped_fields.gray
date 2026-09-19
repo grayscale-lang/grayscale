@@ -1,0 +1,12 @@
+// expect-error: E2095
+// expect-error-count: 1
+// A field tag applied to a comma-grouped field list.
+
+import @json
+
+#json
+const Pair struct {
+    x, y int `json:"V"`
+}
+
+do main() {}

@@ -27,14 +27,14 @@ do main() {
         failed += 1
     }
 
-    // -- to_chars: empty and high byte --
+    // -- to_chars: empty and a non-ASCII (multi-byte UTF-8) codepoint --
     mut empty_cs [char] = strings.to_chars("")
-    mut hi_cs [char] = strings.to_chars("x\xE9y")
+    mut hi_cs [char] = strings.to_chars("x${char(233)}y")
     if len(empty_cs) == 0 && len(hi_cs) == 3 && int(hi_cs[1]) == 233 {
-        println("  [PASS] to_chars empty + high byte")
+        println("  [PASS] to_chars empty + non-ASCII codepoint")
         passed += 1
     } otherwise {
-        println("  [FAIL] to_chars empty/high: ${len(empty_cs)} ${len(hi_cs)} ${int(hi_cs[1])}")
+        println("  [FAIL] to_chars empty/non-ASCII: ${len(empty_cs)} ${len(hi_cs)} ${int(hi_cs[1])}")
         failed += 1
     }
 

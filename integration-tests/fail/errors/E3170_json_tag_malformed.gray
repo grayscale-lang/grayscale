@@ -1,0 +1,12 @@
+// expect-error: E3170
+// expect-error-count: 1
+// A #json field tag that isn't exactly `json:"Name"`.
+
+import @json
+
+#json
+const User struct {
+    name string `bogus`
+}
+
+do main() {}

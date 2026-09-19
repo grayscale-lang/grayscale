@@ -378,6 +378,21 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right) 
     return result;
 }
 
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int32_t n) {
+    int32_t len = arr->len;
+    if (len == 0) return gray_array_new(arena, arr->elem_size, 1);
+    size_t es = (size_t)arr->elem_size;
+    int32_t shift = ((n % len) + len) % len;
+    GrayArray result = gray_array_new(arena, arr->elem_size, len);
+    const char *src = (const char *)arr->data;
+    char *dst = (char *)result.data;
+    for (int32_t i = 0; i < len; i++) {
+        memcpy(dst + (size_t)i * es, src + (size_t)((i + shift) % len) * es, es);
+    }
+    result.len = len;
+    return result;
+}
+
 /* === Computation === */
 
 int64_t gray_arrays_get_sum(GrayArray *arr) {
@@ -406,6 +421,50 @@ int64_t gray_arrays_get_max(GrayArray *arr) {
         if (value > largest) largest = value;
     }
     return largest;
+}
+
+int64_t gray_arrays_min_index(GrayArray *arr) {
+    if (arr->len == 0) return -1;
+    int64_t best = 0;
+    int64_t smallest = *(int64_t *)arr->data;
+    for (int32_t i = 1; i < arr->len; i++) {
+        int64_t value = *(int64_t *)((char *)arr->data + i * arr->elem_size);
+        if (value < smallest) { smallest = value; best = i; }
+    }
+    return best;
+}
+
+int64_t gray_arrays_min_index_float(GrayArray *arr) {
+    if (arr->len == 0) return -1;
+    int64_t best = 0;
+    double smallest = *(double *)arr->data;
+    for (int32_t i = 1; i < arr->len; i++) {
+        double value = *(double *)((char *)arr->data + i * arr->elem_size);
+        if (value < smallest) { smallest = value; best = i; }
+    }
+    return best;
+}
+
+int64_t gray_arrays_max_index(GrayArray *arr) {
+    if (arr->len == 0) return -1;
+    int64_t best = 0;
+    int64_t largest = *(int64_t *)arr->data;
+    for (int32_t i = 1; i < arr->len; i++) {
+        int64_t value = *(int64_t *)((char *)arr->data + i * arr->elem_size);
+        if (value > largest) { largest = value; best = i; }
+    }
+    return best;
+}
+
+int64_t gray_arrays_max_index_float(GrayArray *arr) {
+    if (arr->len == 0) return -1;
+    int64_t best = 0;
+    double largest = *(double *)arr->data;
+    for (int32_t i = 1; i < arr->len; i++) {
+        double value = *(double *)((char *)arr->data + i * arr->elem_size);
+        if (value > largest) { largest = value; best = i; }
+    }
+    return best;
 }
 
 /* === Sort ===
@@ -493,6 +552,11 @@ static void gray_sort_##SUF(T *v, int64_t n) {                                \
 GRAY_DEFINE_INTROSORT(i64, int64_t, GRAY_SORT_LT)
 GRAY_DEFINE_INTROSORT(f64, double, GRAY_SORT_LT)
 GRAY_DEFINE_INTROSORT(str, GrayString, gray_sort_str_lt)
+/* byte ([byte], elem_size 1) and char ([char], elem_size 4) are narrower than
+ * the int64_t the generic sort_asc/sort_desc assume; sorting them through
+ * that path reads past each element's real width. */
+GRAY_DEFINE_INTROSORT(u8, uint8_t, GRAY_SORT_LT)
+GRAY_DEFINE_INTROSORT(i32, int32_t, GRAY_SORT_LT)
 
 /* Fallback comparators for the rare element widths the specialized paths do
  * not cover — a [i128]/[u128]/[i256]/[u256] array reaches sort_asc with an
@@ -514,6 +578,16 @@ static int cmp_str_asc(const void *l, const void *r) {
          : gray_sort_str_lt(*(const GrayString *)r, *(const GrayString *)l) ? 1 : 0;
 }
 static int cmp_str_desc(const void *l, const void *r) { return cmp_str_asc(r, l); }
+static int cmp_u8_asc(const void *l, const void *r) {
+    uint8_t a = *(const uint8_t *)l, b = *(const uint8_t *)r;
+    return (a > b) - (a < b);
+}
+static int cmp_u8_desc(const void *l, const void *r) { return cmp_u8_asc(r, l); }
+static int cmp_i32_asc(const void *l, const void *r) {
+    int32_t a = *(const int32_t *)l, b = *(const int32_t *)r;
+    return (a > b) - (a < b);
+}
+static int cmp_i32_desc(const void *l, const void *r) { return cmp_i32_asc(r, l); }
 
 void gray_arrays_sort_asc(GrayArray *arr) {
     ARRAY_CHECK_ITER(arr);
@@ -531,6 +605,24 @@ void gray_arrays_sort_asc_float(GrayArray *arr) {
         gray_sort_f64((double *)arr->data, arr->len);
     else
         qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_asc);
+}
+
+void gray_arrays_sort_asc_byte(GrayArray *arr) {
+    ARRAY_CHECK_ITER(arr);
+    if (arr->len <= 1) return;
+    if (arr->elem_size == (int32_t)sizeof(uint8_t))
+        gray_sort_u8((uint8_t *)arr->data, arr->len);
+    else
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_u8_asc);
+}
+
+void gray_arrays_sort_asc_char(GrayArray *arr) {
+    ARRAY_CHECK_ITER(arr);
+    if (arr->len <= 1) return;
+    if (arr->elem_size == (int32_t)sizeof(int32_t))
+        gray_sort_i32((int32_t *)arr->data, arr->len);
+    else
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i32_asc);
 }
 
 void gray_arrays_sort_asc_str(GrayArray *arr) {
@@ -567,6 +659,34 @@ void gray_arrays_sort_desc_float(GrayArray *arr) {
         }
     } else {
         qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_f64_desc);
+    }
+}
+
+void gray_arrays_sort_desc_byte(GrayArray *arr) {
+    ARRAY_CHECK_ITER(arr);
+    if (arr->len <= 1) return;
+    if (arr->elem_size == (int32_t)sizeof(uint8_t)) {
+        gray_sort_u8((uint8_t *)arr->data, arr->len);
+        uint8_t *v = (uint8_t *)arr->data;
+        for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {
+            uint8_t t = v[a]; v[a] = v[b]; v[b] = t;
+        }
+    } else {
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_u8_desc);
+    }
+}
+
+void gray_arrays_sort_desc_char(GrayArray *arr) {
+    ARRAY_CHECK_ITER(arr);
+    if (arr->len <= 1) return;
+    if (arr->elem_size == (int32_t)sizeof(int32_t)) {
+        gray_sort_i32((int32_t *)arr->data, arr->len);
+        int32_t *v = (int32_t *)arr->data;
+        for (int64_t a = 0, b = arr->len - 1; a < b; a++, b--) {
+            int32_t t = v[a]; v[a] = v[b]; v[b] = t;
+        }
+    } else {
+        qsort(arr->data, (size_t)arr->len, (size_t)arr->elem_size, cmp_i32_desc);
     }
 }
 
@@ -630,6 +750,26 @@ bool gray_arrays_is_sorted(GrayArray *arr) {
     return true;
 }
 
+/* uint8_t width — byte elements, and bool (1 byte, ordered false < true). */
+bool gray_arrays_is_sorted_byte(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        uint8_t prev = *(uint8_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        uint8_t curr = *(uint8_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
+/* int32_t width — char elements, and an int-backed enum (a plain C enum). */
+bool gray_arrays_is_sorted_char(GrayArray *arr) {
+    for (int32_t i = 1; i < arr->len; i++) {
+        int32_t prev = *(int32_t *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
+        int32_t curr = *(int32_t *)((char *)arr->data + (size_t)i * arr->elem_size);
+        if (prev > curr) return false;
+    }
+    return true;
+}
+
 bool gray_arrays_is_sorted_float(GrayArray *arr) {
     for (int32_t i = 1; i < arr->len; i++) {
         double prev = *(double *)((char *)arr->data + (size_t)(i - 1) * arr->elem_size);
@@ -646,6 +786,44 @@ bool gray_arrays_is_sorted_str(GrayArray *arr) {
         if (gray_sort_str_lt(*curr, *prev)) return false;
     }
     return true;
+}
+
+/* Binary search assumes arr is already sorted ascending (as by sort_asc);
+ * behavior on an unsorted array is undefined. Mirrors is_sorted's type split. */
+int64_t gray_arrays_binary_search(GrayArray *arr, int64_t val) {
+    int64_t lo = 0, hi = (int64_t)arr->len - 1;
+    while (lo <= hi) {
+        int64_t mid = lo + (hi - lo) / 2;
+        int64_t v = *(int64_t *)((char *)arr->data + (size_t)mid * arr->elem_size);
+        if (v < val) lo = mid + 1;
+        else if (v > val) hi = mid - 1;
+        else return mid;
+    }
+    return -1;
+}
+
+int64_t gray_arrays_binary_search_float(GrayArray *arr, double val) {
+    int64_t lo = 0, hi = (int64_t)arr->len - 1;
+    while (lo <= hi) {
+        int64_t mid = lo + (hi - lo) / 2;
+        double v = *(double *)((char *)arr->data + (size_t)mid * arr->elem_size);
+        if (v < val) lo = mid + 1;
+        else if (v > val) hi = mid - 1;
+        else return mid;
+    }
+    return -1;
+}
+
+int64_t gray_arrays_binary_search_str(GrayArray *arr, GrayString val) {
+    int64_t lo = 0, hi = (int64_t)arr->len - 1;
+    while (lo <= hi) {
+        int64_t mid = lo + (hi - lo) / 2;
+        GrayString v = *(GrayString *)((char *)arr->data + (size_t)mid * arr->elem_size);
+        if (gray_sort_str_lt(v, val)) lo = mid + 1;
+        else if (gray_sort_str_lt(val, v)) hi = mid - 1;
+        else return mid;
+    }
+    return -1;
 }
 
 /* In-place swap of the elem_size bytes at i and j. */

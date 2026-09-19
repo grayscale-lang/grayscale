@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3122 - field write through a pointer to a const-declared
+ * variable using the auto-dereferencing form p.field
+ * Expected: E3122 error — the same as p^.field = v
+ */
+
+const Counter struct {
+    n int
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    mut q ^Counter = addr(k)
+    q.n = 7
+}

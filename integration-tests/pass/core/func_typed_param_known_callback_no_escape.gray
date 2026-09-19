@@ -1,0 +1,46 @@
+/*
+ * A pointer forwarded through a higher-order function is fine when the
+ * function passed for the callback parameter is known at the call site and
+ * does not let the pointer escape. The same pointer, given to a callback that
+ * does stash it, is still rejected (see the E3163 fail test).
+ */
+
+do reader(p ^int) -> int {
+    return p^
+}
+
+do bump(p ^int) { p^ += 1 }
+
+do read_it(getter func(^int) -> int, val ^int) -> int {
+    return getter(val)
+}
+
+do apply_to(f func(^int), val ^int) { f(val) }
+
+do main() {
+    mut passed int = 0
+
+    mut x int = 5
+    if read_it(()reader, addr(x)) == 5 {
+        println("  [PASS] read through callback")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] read through callback")
+    }
+
+    mut y int = 10
+    apply_to(ref(bump), addr(y))
+    if y == 11 {
+        println("  [PASS] mutate through callback")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] mutate through callback: ${y}")
+    }
+
+    println("Results: ${passed} passed")
+    if passed == 2 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

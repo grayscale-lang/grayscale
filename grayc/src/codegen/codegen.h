@@ -152,8 +152,13 @@ typedef struct {
     int imported_module_count;
     int imported_module_cap;
 
-    /* C interop headers from extern import "header.h" */
+    /* C interop headers from extern import "header.h". c_header_is_local[i]
+     * says whether c_headers[i] is a "./x.h"/"../x.h" header — resolved to
+     * its canonical absolute path by the time it lands here, so it no longer
+     * carries the "./" spelling that would otherwise mark it — and so must
+     * be emitted as a quoted #include rather than an angle-bracket one. */
     const char **c_headers;
+    bool *c_header_is_local;
     int c_header_count;
     int c_header_cap;
     bool has_c_imports;
@@ -217,6 +222,16 @@ typedef struct {
     char **ns_func_names;
     int ns_func_name_count;
     int ns_func_name_cap;
+
+    /* #line directive emission (maps generated C back to the .gray source
+     * for cc diagnostics, sanitizers, and gcov). On by default; a raw-C
+     * debugging mode can turn it off to read the generated C's own line
+     * numbers instead. last_line_directive_file/_line track the .gray
+     * location the last directive pointed at, so a run of statements on
+     * the same source line emits one directive, not one per statement. */
+    bool emit_line_directives;
+    char *last_line_directive_file;
+    int last_line_directive_line;
 } CodeGen;
 
 CodeGen codegen_create(const char *file);

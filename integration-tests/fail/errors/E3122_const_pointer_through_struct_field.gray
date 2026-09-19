@@ -1,0 +1,23 @@
+/*
+ * Error Test: E3122 - pointer to a const-declared variable held in a struct
+ * field, passed to a function that writes through it
+ * Expected: E3122 error — the field's pointer is still read-only
+ */
+
+const Counter struct {
+    n int
+}
+
+const Holder struct {
+    p ^Counter
+}
+
+do bump(c ^Counter) {
+    c^.n += 1
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    mut h Holder = Holder{p: addr(k)}
+    bump(h.p)
+}

@@ -98,7 +98,8 @@
     GRAY_ERROR("E2091", "syntax", "unknown attribute '%s'; valid attributes are doc, json, flags, strict, discard, deprecated, test") \
     GRAY_ERROR("E2092", "syntax", "'#[...]' attribute list must be on a single line") \
     GRAY_ERROR("E2093", "syntax", "malformed '#[...]' attribute list") \
-    GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed")
+    GRAY_ERROR("E2094", "syntax", "attribute is applied to the wrong kind of declaration, or its argument is malformed") \
+    GRAY_ERROR("E2095", "syntax", "a field tag cannot be shared across grouped field names; give each field its own line and tag")
 
 /* --- E3xxx: Type Problems (Typechecker) --- */
 #define GRAY_TYPE_ERRORS \
@@ -253,7 +254,14 @@
     GRAY_ERROR("E3166", "safety", "'%s(%s)' called again; '%s' was already destroyed") \
     GRAY_ERROR("E3167", "safety", "cast() cannot reinterpret pointer types ('%s' to '%s'); pointer casts are not supported") \
     GRAY_ERROR("E3168", "types", "a C interop value's type is only known to the C compiler; assign it to a typed variable (e.g. 'mut n i64 = extern.strlen(s)'), or convert it with 'c_string()', before using it here") \
-    GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used")
+    GRAY_ERROR("E3169", "safety", "'%s' escapes this function but points into arena '%s', which is torn down before the pointer can be used") \
+    GRAY_ERROR("E3170", "types", "malformed #json field tag on '%s.%s'; expected exactly `json:\"Name\"`") \
+    GRAY_ERROR("E3171", "types", "#json struct '%s' mixes tagged and untagged fields; '%s' %s, but '%s' %s") \
+    GRAY_ERROR("E3172", "types", "#json struct '%s' fields '%s' and '%s' both serialize under JSON key '%s'") \
+    GRAY_ERROR("E3173", "types", "#json struct '%s' field '%s' has tagged enum type '%s'; tagged enum variants carry payloads with no flat JSON representation") \
+    GRAY_ERROR("E3174", "types", "'%s' is not a #json struct (or an array of one); json.%s() requires the #json attribute") \
+    GRAY_ERROR("E3175", "types", "struct field default value has wrong type; expected %s, got %s") \
+    GRAY_ERROR("E3176", "types", "#flags enum '%s' variant '%s' has value %s; a flag must be a single bit (a power of two)")
 
 /* --- E4xxx: Name Problems (References) --- */
 #define GRAY_REFERENCE_ERRORS \
@@ -284,7 +292,8 @@
     GRAY_ERROR("E4028", "names", "a built-in name cannot be used as a user-defined name") \
     GRAY_ERROR("E4029", "names", "the 'private' modifier can only be applied to top-level declarations") \
     GRAY_ERROR("E4030", "names", "a local variable or parameter shadows a C function of the same name called via 'extern.'") \
-    GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'")
+    GRAY_ERROR("E4031", "names", "'%s' is provided by more than one module in scope ('%s' and '%s'); call it qualified, e.g. '%s.%s'") \
+    GRAY_ERROR("E4032", "names", "cannot take a function reference to '%s'; it has a wildcard ('?') parameter or return type")
 
 /* --- E5xxx: Usage Problems --- */
 #define GRAY_USAGE_ERRORS \
@@ -325,7 +334,10 @@
     GRAY_ERROR("E5047", "usage", "'#test' function '%s' cannot be called directly; it runs only under 'gray test'") \
     GRAY_ERROR("E5048", "usage", "'error()' takes an ErrorCode, a message string, or a code and a message; got %s") \
     GRAY_ERROR("E5049", "arguments", "return type mismatch; the returned value's type does not match the function's declared return type") \
-    GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d")
+    GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d") \
+    GRAY_ERROR("E5051", "usage", "cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change") \
+    GRAY_ERROR("E5052", "usage", "unknown C symbol '%s'; no such function, constant, or macro in the imported header(s)") \
+    GRAY_ERROR("E5053", "types", "C function '%s' returns '%s', which cannot be used as '%s'")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -343,7 +355,8 @@
     GRAY_ERROR("E6012", "imports", "#json struct '%s' requires 'import @json' in the same file") \
     GRAY_ERROR("E6013", "imports", "C interop symbols cannot be brought into scope with 'using'; every C call must stay qualified with 'extern.'") \
     GRAY_ERROR("E6014", "imports", "malformed import statement") \
-    GRAY_ERROR("E6015", "imports", "C header '%s' could not be found for the current target")
+    GRAY_ERROR("E6015", "imports", "C header '%s' could not be found for the current target") \
+    GRAY_ERROR("E6016", "imports", "C header '%s' conflicts with C header '%s': both declare '%s' with incompatible types")
 
 /* --- E7xxx+: Standard Library --- */
 #define GRAY_STDLIB_ERRORS \
@@ -494,7 +507,8 @@
     GRAY_PANIC("P0125", "csv",        "csv: referenced a column that is not in the header") \
     GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
     GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
-    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12")
+    GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
+    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \
@@ -510,6 +524,7 @@
     GRAY_WARNING("W2011", "safety", "named return value is declared in the signature but no matching variable exists in the function body") \
     GRAY_WARNING("W2012", "safety", "'when' condition is a float; equality checks on floats are imprecise; prefer 'math.abs(x - y) < epsilon'") \
     GRAY_WARNING("W2014", "imports", "intra-directory import already included by directory import") \
+    GRAY_WARNING("W2015", "imports", "direct import of a file already covered by a directory import in this file is redundant") \
     GRAY_WARNING("W3003", "safety", "fixed-size array is not fully initialized; remaining elements will be zero-valued") \
     GRAY_WARNING("W3005", "safety", "when statement matches on enum values without #strict and no default; exhaustiveness is not checked") \
     GRAY_WARNING("W3006", "safety", "empty default branch in when statement; unmatched values are silently ignored") \

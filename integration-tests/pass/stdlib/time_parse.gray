@@ -54,6 +54,33 @@ do main() {
         failed += 1
     }
 
+    // The calendar/formatting surface (get_tm) must treat a Unix timestamp
+    // as UTC, not the host's local timezone -- and time.parse must be its
+    // exact inverse. 1704067200 is 2024-01-01T00:00:00Z, a Monday; the
+    // Unix epoch (0) is 1970-01-01, a Thursday.
+    mut epoch_utc int = 1704067200
+    if time.hour(time.start_of_day(epoch_utc)) == 0 &&
+       time.to_iso(epoch_utc) == "2024-01-01T00:00:00Z" &&
+       time.date(epoch_utc) == "2024-01-01" &&
+       time.weekday(epoch_utc) == 1 &&
+       time.weekday(0) == 4 {
+        println("  [PASS] calendar/formatting is UTC, not local time")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] calendar/formatting is UTC: hour=${time.hour(time.start_of_day(epoch_utc))}, iso=${time.to_iso(epoch_utc)}, date=${time.date(epoch_utc)}, weekday=${time.weekday(epoch_utc)}, epoch_weekday=${time.weekday(0)}")
+        failed += 1
+    }
+
+    // time.parse is the exact inverse of the UTC read path above.
+    mut parsed_utc, _ = time.parse("2024-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+    if parsed_utc == epoch_utc {
+        println("  [PASS] parse interprets input as UTC, not local time")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] parse interprets input as UTC: expected ${epoch_utc}, got ${parsed_utc}")
+        failed += 1
+    }
+
     // time.parse destructured success path
     mut val, err = time.parse("2025-01-01", "%Y-%m-%d")
     if err == nil && time.year(val) == 2025 {

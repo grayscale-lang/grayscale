@@ -1,0 +1,6 @@
+extern import "./bindings.h"
+
+do b_which() -> int {
+    mut r int = extern.b_helper()
+    return r
+}

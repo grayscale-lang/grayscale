@@ -7,12 +7,18 @@
  *   - a new() heap pointer passed directly
  *   - a pointer returned from C passed straight into another C call
  *   - plain value / string-literal arguments
+ *   - a heap pointer forwarded through a helper that itself passes its
+ *     pointer parameter straight into an extern. call
  */
 
 extern import "string.h"
 extern import "stdlib.h"
 
 mut g_counter int = 0
+
+do do_free(p ^byte) {
+    extern.free(p)
+}
 
 do main() {
     // file-scope global address into C
@@ -25,6 +31,10 @@ do main() {
     // pointer from C handed straight to another C call
     mut m ^byte = extern.malloc(16)
     extern.free(m)
+
+    // heap pointer forwarded through a pointer-parameter wrapper
+    mut m2 ^byte = extern.malloc(16)
+    do_free(m2)
 
     // plain value + string-literal arguments
     mut slen i64 = extern.strlen("hello")

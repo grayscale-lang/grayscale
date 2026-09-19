@@ -1,11 +1,14 @@
 // expect-error: E3163
 // expect-error-count: 1
+// expect-not: 'x' outlives the variable 'x'
 /*
  * Error Test: E3163 - a call whose target is a func value read from an array
  * element (`handlers[0](...)`) cannot be pinned to one declaration, so every
  * pointer argument is treated as escaping to an unknown sink (#2661). Here
  * the called function stashes its argument into a global; `x` is freed when
- * `leak` returns.
+ * `leak` returns. There is no way to name the real destination for an
+ * opaque call target, so the message must say so generically rather than
+ * repeat the pointee's own name in both slots (#2755).
  */
 
 mut GLOBAL ^int = nil

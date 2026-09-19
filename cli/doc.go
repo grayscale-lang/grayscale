@@ -195,6 +195,11 @@ func collectDocsFromFile(filename string) []DocEntry {
 
 		// If we have a pending doc, the next non-empty line should be a declaration
 		if pendingDoc != "" && trimmed != "" {
+			if strings.HasPrefix(trimmed, "#") {
+				// Another attribute (#test, ...) stacked with #doc — the
+				// declaration is still ahead.
+				continue
+			}
 			if strings.HasPrefix(trimmed, "do ") || strings.HasPrefix(trimmed, "private do ") {
 				// Function declaration — capture the signature line
 				sig := trimmed

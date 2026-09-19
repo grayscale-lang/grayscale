@@ -1,0 +1,16 @@
+// Error Test: E6016 - two files each `extern import` their own local C header,
+// and the headers declare the same C symbol with incompatible signatures. All
+// extern imports share one generated C translation unit, so this is a
+// Grayscale diagnostic naming both headers and the symbol, not a raw C
+// "conflicting types" error against a temp file.
+// expect-error: E6016
+// expect-error-count: 1
+
+extern import "./header2.h"
+import "./lib"
+
+do main() {
+    println("${lib.lib_call(5)}")
+    mut r float = extern.myfunc(1.0, 2.0)
+    println("${r}")
+}

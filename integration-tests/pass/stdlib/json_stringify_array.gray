@@ -1,0 +1,54 @@
+/*
+ * json_stringify_array.gray - json.stringify() on an array of a #json
+ * struct.
+ *
+ * json.stringify() had no dedicated codegen path for an array argument: it
+ * fell straight to the generic map fallback, which reinterprets the
+ * GrayArray's raw memory as a GrayMap and segfaults reading its
+ * (nonexistent) key/value metadata. json.parse() already had the symmetric
+ * array-of-struct path (gray_json_parse_array_<Name>); stringify needed the
+ * same treatment.
+ */
+
+import @json
+
+#json
+const User struct {
+    name string
+    age int
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut users [User] = json.parse("[{\"name\": \"Bob\", \"age\": 30}, {\"name\": \"Amy\", \"age\": 25}]")
+    mut s string = json.stringify(users)
+    if s == "[{\"name\": \"Bob\", \"age\": 30}, {\"name\": \"Amy\", \"age\": 25}]" {
+        passed++
+    } otherwise {
+        println("FAIL: stringify array mismatch: ${s}")
+        failed++
+    }
+
+    mut roundtrip [User] = json.parse(s)
+    if len(roundtrip) == 2 && roundtrip[0].name == "Bob" && roundtrip[1].age == 25 {
+        passed++
+    } otherwise {
+        println("FAIL: parse(stringify(array)) roundtrip")
+        failed++
+    }
+
+    mut empty [User] = {}
+    if json.stringify(empty) == "[]" {
+        passed++
+    } otherwise {
+        println("FAIL: empty array stringify")
+        failed++
+    }
+
+    println("json_stringify_array: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

@@ -1,0 +1,24 @@
+/*
+ * Error Test: E3154 - the pointer-parameter wrapper gap reproduces for a
+ * struct instance function exactly like a plain top-level function: a
+ * struct function that takes a `^T` parameter and passes it straight into
+ * its own extern. call still leaks the caller's stack address into C.
+ */
+// expect-error: E3154
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+const Wrapper struct {
+    tag int
+
+    do do_free(self Wrapper, p ^int) {
+        extern.free(p)
+    }
+}
+
+do main() {
+    mut local int = 5
+    mut w Wrapper = Wrapper{tag: 1}
+    w.do_free(addr(local))
+}

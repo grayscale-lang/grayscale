@@ -1,0 +1,11 @@
+/*
+ * Error Test: E9002 - arrays-min-index-string
+ * Expected: "numeric" or "array"
+ */
+
+import @arrays
+
+do main() {
+    mut arr [string] = {"a", "b", "c"}
+    mut idx = arrays.min_index(arr)  // min_index requires numeric array
+}

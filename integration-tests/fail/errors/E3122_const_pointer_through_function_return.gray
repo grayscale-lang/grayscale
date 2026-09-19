@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3122 - write through a pointer to a const-declared variable
+ * that came back from a function
+ * Expected: E3122 error — the pointer is still read-only after the call
+ */
+
+const Counter struct {
+    n int
+}
+
+do ident(c ^Counter) -> ^Counter {
+    return c
+}
+
+do main() {
+    const k Counter = Counter{n: 5}
+    mut q ^Counter = ident(addr(k))
+    q^.n = 7
+}

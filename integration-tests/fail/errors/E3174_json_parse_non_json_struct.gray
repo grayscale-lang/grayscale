@@ -1,0 +1,19 @@
+/*
+ * Error Test: E3174 - json.parse() into a struct without the #json
+ * attribute. Without it, gray_json_parse_<Name> is never generated, so
+ * codegen fell back to gray_json_decode (which returns a GrayMap, not the
+ * struct) and leaked a raw C initialization-type error.
+ */
+// expect-error: E3174
+// expect-error-count: 1
+
+import @json
+
+const Plain struct {
+    x int
+}
+
+do main() {
+    mut p Plain = json.parse("{\"x\": 1}")
+    println(p.x)
+}

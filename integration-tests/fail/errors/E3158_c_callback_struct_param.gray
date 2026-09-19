@@ -1,0 +1,27 @@
+/*
+ * Error Test: E3158 - a Grayscale function with a struct parameter cannot be
+ * passed as a C callback.
+ * A Grayscale struct parameter has no stable C-compatible layout, not the
+ * `void *` C callback APIs such as qsort's comparator require, so the C
+ * API's raw address gets reinterpreted as struct fields that were never
+ * actually there.
+ */
+// expect-error: E3158
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+const Pair struct {
+    x int
+    y int
+}
+
+do cmp(a Pair, b Pair) -> i32 {
+    return 0
+}
+
+do main() {
+    mut buf ^int = extern.malloc(16)
+    extern.qsort(buf, 2, 8, ()cmp)
+    extern.free(buf)
+}

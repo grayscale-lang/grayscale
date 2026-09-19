@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3040 - multi-return function as a defer statement
+ * Expected: E3040 error — a deferred call's results are dropped
+ */
+// expect-error: E3040
+// expect-error-count: 1
+
+do pair() -> (int, Error) {
+    return 1, nil
+}
+
+do main() {
+    defer pair()
+    println("done")
+}
