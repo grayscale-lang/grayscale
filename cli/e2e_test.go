@@ -368,6 +368,29 @@ func TestE2E_Test_PassAndFail(t *testing.T) {
 	}
 }
 
+func TestE2E_Test_PanicBuiltinFailsOnlyThatTest(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "demo.gray")
+	os.WriteFile(src, []byte(
+		"#test\ndo test_one() { assert(true) }\n\n"+
+			"#test\ndo test_panics() { panic(\"deliberate panic\") }\n\n"+
+			"#test\ndo test_three() { assert(true) }\n"), 0644)
+
+	stdout, stderr, code := runGray(t, "test", "--no-color", src)
+	out := combinedOutput(stdout, stderr)
+	if strings.Contains(out, "no C compiler") {
+		t.Skip("no C compiler available")
+	}
+	if code == 0 {
+		t.Fatalf("gray test should exit non-zero when a test panics; output:\n%s", out)
+	}
+	for _, want := range []string{"test_three", "deliberate panic", "2 passed", "1 failed", "3 total"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gray test output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestE2E_Test_StrippedFromNormalBuild(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "app.gray")

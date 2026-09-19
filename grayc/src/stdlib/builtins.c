@@ -183,6 +183,10 @@ void gray_builtin_assert(bool condition, GrayString message, const char *file, i
 /* --- panic --- */
 
 void gray_builtin_panic_msg(GrayString message) {
+    /* Under `gray test`, a panic is a test failure — same as gray_builtin_assert. */
+    if (gray_test_active)
+        gray_test_fail("P0076", NULL, 0, "%.*s", (int)message.len, message.data);
+
     fflush(stdout);
     fprintf(stderr, "panic[P0076]: ");
     fwrite(message.data, 1, (size_t)message.len, stderr);
