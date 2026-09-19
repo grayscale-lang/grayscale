@@ -1,0 +1,66 @@
+/*
+ * bigint_radix_literal_overflow.gray - hex, octal and binary integer literals
+ * wider than 64 bits initialize the wide integer types (i128/u128/i256/u256)
+ * with the right value, including '_' separators and a leading minus.
+ */
+
+do main() {
+    println("=== Wide integers: hex/octal/binary literals ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut hex i128 = 0xFFFFFFFFFFFFFFFF
+    if "${hex}" == "18446744073709551615" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] i128 hex")
+    }
+
+    mut oct i128 = 0o1777777777777777777777
+    if "${oct}" == "18446744073709551615" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] i128 octal")
+    }
+
+    mut bin i128 = 0b1111111111111111111111111111111111111111111111111111111111111111
+    if "${bin}" == "18446744073709551615" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] i128 binary")
+    }
+
+    mut wide u128 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+    if "${wide}" == "340282366920938463463374607431768211455" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] u128 hex")
+    }
+
+    mut widest u256 = 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF
+    if "${widest}" == "115792089237316195423570985008687907853269984665640564039457584007913129639935" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] u256 hex with separators")
+    }
+
+    mut neg i128 = -0x10000000000000000
+    if "${neg}" == "-18446744073709551616" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] negated hex")
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

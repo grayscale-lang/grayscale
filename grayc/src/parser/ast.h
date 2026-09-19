@@ -165,7 +165,9 @@ struct AstNode {
          *        (cast to uint64_t to recover the original positive value
          *         when overflow=true)
          * overflow:     literal exceeds INT64_MAX (still ≤ UINT64_MAX)
-         * overflow_u64: literal exceeds UINT64_MAX entirely */
+         * overflow_u64: literal exceeds UINT64_MAX entirely
+         * literal:      the digits as decimal text ('_' kept for a decimal
+         *               literal; a hex/octal/binary literal is converted) */
         struct {
             int64_t value;
             const char *literal;
