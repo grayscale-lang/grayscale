@@ -1,0 +1,16 @@
+/*
+ * A wide-integer parameter default (i128/u128/i256/u256) wider than 64 bits is
+ * parsed as a wide integer when a call to another module's function omits
+ * the argument.
+ */
+// expect-not: SOME TESTS FAILED
+
+import "./lib"
+
+do main() {
+    if "${lib.wide()}" == "99999999999999999999999999999999999999" {
+        println("PASS")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}

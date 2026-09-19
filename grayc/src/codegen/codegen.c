@@ -1455,6 +1455,14 @@ static bool emit_bigint_coerced(CodeGen *codegen, const char *bi, AstNode *value
     return true;
 }
 
+/* Emits a parameter's default value where a call omits the argument,
+ * wrapping it in the bigint constructor for a wide-integer parameter as an
+ * explicit argument is. */
+static void emit_param_default_value(CodeGen *codegen, Param *param) {
+    if (!emit_bigint_coerced(codegen, param->type_name, param->default_value))
+        emit_expression(codegen, param->default_value);
+}
+
 /* Emit `value` for a map key or value slot whose Grayscale type is `gray_tn`:
  * a wide-integer slot needs the scalar wrapped in its constructor, everything
  * else emits verbatim. Safe to call with any `gray_tn`. */
@@ -8888,7 +8896,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         if (any_emitted) emit(codegen, ", ");
                         any_emitted = true;
                         if (ns_func->data.func_decl.params[i].default_value) {
-                            emit_expression(codegen, ns_func->data.func_decl.params[i].default_value);
+                            emit_param_default_value(codegen, &ns_func->data.func_decl.params[i]);
                         } else {
                             emit(codegen, "0");
                         }
@@ -9011,7 +9019,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                                 emit_namespaced_call_argument(codegen, node->data.call.args[i],
                                     uf, i, node->token.line);
                             } else if (i < param_count && uf->data.func_decl.params[i].default_value) {
-                                emit_expression(codegen, uf->data.func_decl.params[i].default_value);
+                                emit_param_default_value(codegen, &uf->data.func_decl.params[i]);
                             }
                         }
                         emit(codegen, ")");
@@ -9382,7 +9390,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                     const char *pname = target_func->data.func_decl.params[i].name;
                     emit_formatted(codegen, "%s", pname ? sanitize_name(pname) : "_arg");
                 } else {
-                    emit_expression(codegen, target_func->data.func_decl.params[i].default_value);
+                    emit_param_default_value(codegen, &target_func->data.func_decl.params[i]);
                 }
             }
         }
@@ -9422,7 +9430,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
         } else if (target_func && i < param_count &&
                    target_func->data.func_decl.params[i].default_value) {
             /* Default value */
-            emit_expression(codegen, target_func->data.func_decl.params[i].default_value);
+            emit_param_default_value(codegen, &target_func->data.func_decl.params[i]);
         } else {
             /* No arg and no default; emit zero */
             emit(codegen, "0");
