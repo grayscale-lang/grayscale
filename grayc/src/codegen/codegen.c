@@ -2223,6 +2223,14 @@ static bool struct_literal_specifies_field(AstNode *node, const char *field_name
 
 static void emit_struct_zero_value_literal(CodeGen *codegen, const char *type_name, int depth);
 
+/* Emits a struct field's own default value, wrapping it in the bigint
+ * constructor when the field is a wide integer, exactly as an explicit field
+ * value in a struct literal is. */
+static void emit_struct_field_default_value(CodeGen *codegen, StructField *sf) {
+    if (!emit_bigint_coerced(codegen, sf->type_name, sf->default_value))
+        emit_expression(codegen, sf->default_value);
+}
+
 /* Emits the zero-value default for one struct field that has no literal
  * value in scope: the field's own syntactic default if it has one, or (for
  * map/array/fixed-array/string-enum/struct fields, which C's implicit {0}
@@ -2246,7 +2254,7 @@ static void emit_struct_field_zero_default(CodeGen *codegen, StructField *sf, in
             emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
             codegen->current_var_type = saved_dv;
         } else {
-            emit_expression(codegen, sf->default_value);
+            emit_struct_field_default_value(codegen, sf);
         }
         return;
     }
@@ -2421,7 +2429,7 @@ static void emit_struct_value(CodeGen *codegen, AstNode *node) {
                 emit_fixed_size_array_initializer(codegen, sf->default_value, delem ? delem : "int", default_fixed_size);
                 codegen->current_var_type = saved_dv;
             } else {
-                emit_expression(codegen, sf->default_value);
+                emit_struct_field_default_value(codegen, sf);
             }
         }
         /* Map and array fields the literal leaves out still need a real
@@ -4029,7 +4037,7 @@ static void emit_new_struct_init(CodeGen *codegen, AstNode *sdecl,
         }
         if (sdecl->data.struct_decl.fields[i].default_value) {
             emit_formatted(codegen, "%s%s = ", access, sanitize_name(field_name));
-            emit_expression(codegen, sdecl->data.struct_decl.fields[i].default_value);
+            emit_struct_field_default_value(codegen, &sdecl->data.struct_decl.fields[i]);
             emit(codegen, "; ");
         }
     }

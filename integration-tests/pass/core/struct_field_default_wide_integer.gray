@@ -1,0 +1,56 @@
+/*
+ * struct_field_default_wide_integer.gray - a struct field's own default value
+ * for an i128/u128/i256/u256 field is parsed as a wide integer, whichever way
+ * the struct is created: value-less declaration, empty or partial literal,
+ * new().
+ */
+
+const Box struct {
+    a i128 = 99999999999999999999999999999999999999
+    b u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935
+    c i128 = 100
+    n int = 7
+}
+
+do main() {
+    println("=== Struct field default: wide integers ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut declared Box
+    mut literal Box = Box{}
+    mut partial Box = Box{n: 1}
+    mut heap = new(Box)
+
+    if "${declared.a}" == "99999999999999999999999999999999999999" && "${declared.c}" == "100" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] value-less declaration")
+    }
+    if "${literal.b}" == "115792089237316195423570985008687907853269984665640564039457584007913129639935" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] empty literal")
+    }
+    if "${partial.a}" == "99999999999999999999999999999999999999" && partial.n == 1 {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] partial literal")
+    }
+    if "${heap^.a}" == "99999999999999999999999999999999999999" && "${heap^.b}" == "115792089237316195423570985008687907853269984665640564039457584007913129639935" {
+        passed += 1
+    } otherwise {
+        failed += 1
+        println("  [FAIL] new()")
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
