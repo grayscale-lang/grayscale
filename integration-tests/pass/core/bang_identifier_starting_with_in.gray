@@ -1,0 +1,94 @@
+/*
+ * bang_identifier_starting_with_in.gray - Test !ident where ident starts with "in"
+ *
+ * Verifies that '!' followed by an identifier beginning with "in" and then
+ * '_' or a digit lexes as logical NOT plus the identifier, not as the !in
+ * operator, while the real !in operator keeps working.
+ */
+
+do in_range(n int) -> bool {
+    return n > 0
+}
+
+do in2(n int) -> bool {
+    return n > 0
+}
+
+do inside(n int) -> bool {
+    return n > 0
+}
+
+do main() {
+    println("=== Bang Before Identifiers Starting With 'in' ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut in_stock bool = true
+    mut in3 bool = false
+    mut x int = 5
+    mut xs [int] = {1, 2, 3}
+
+    // Test 1: !variable with underscore after "in"
+    if !in_stock == false {
+        println("  [PASS] !in_stock is false")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] !in_stock should be false")
+        failed += 1
+    }
+
+    // Test 2: !variable with digit after "in"
+    if !in3 {
+        println("  [PASS] !in3 is true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] !in3 should be true")
+        failed += 1
+    }
+
+    // Test 3: !call with underscore after "in"
+    if !in_range(x) == false {
+        println("  [PASS] !in_range(5) is false")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] !in_range(5) should be false")
+        failed += 1
+    }
+
+    // Test 4: !call with digit after "in"
+    if !in2(0 - x) {
+        println("  [PASS] !in2(-5) is true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] !in2(-5) should be true")
+        failed += 1
+    }
+
+    // Test 5: !call with letter after "in" (baseline)
+    if !inside(0 - x) {
+        println("  [PASS] !inside(-5) is true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] !inside(-5) should be true")
+        failed += 1
+    }
+
+    // Test 6: the !in operator itself still works
+    if 7 !in xs {
+        println("  [PASS] 7 !in xs is true")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] 7 !in xs should be true")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}
