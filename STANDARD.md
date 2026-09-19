@@ -498,7 +498,7 @@ do make_node(parent ^Node) -> ^Node {
 root = make_node(nil)  // OK: nil satisfies the ^Node parameter
 ```
 
-**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p^ += ...`). This protection follows through assignment — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
+**Const-sourced pointers:** `addr()` can be called on a const-declared variable. The resulting pointer allows reading the value, but the compiler rejects any attempt to write through it (`p^ = ...`, `p^.field = ...`, `p.field = ...`, `p^ += ...`). This protection follows the pointer wherever it goes — if `q = p` and `p` points to a const-declared variable, `q` inherits the restriction, and so does a pointer read back out of a function's return value, a struct field, an array element, or a map value. Passing such a pointer to a function that writes through that parameter is rejected at the call. This matches the behavior of `ref()` on const sources — the address is safe to take, the mutation is not.
 
 ```gray
 const x int = 42
@@ -750,6 +750,28 @@ const Foobar enum {
 > 💡 **Tip:** Enums are not integers. Even though integer enums are backed by numeric values under the hood, you cannot compare an enum variable with an integer (`d == 0`), assign an integer to an enum variable (`d = 2`), or perform arithmetic on enum values. Enums can only be compared with values of the same enum type using `==` and `!=`. Use `Direction.NORTH`, `.NORTH`, or another `Direction` variable — never a raw number. However, assigning an enum value to an `int` variable is allowed — the enum is implicitly widened to its underlying integer value: `mut status int = Direction.NORTH` assigns `0`.
 
 > 💡 **Tip:** If you genuinely need to compare an enum value against an integer, use `cast()` to bridge the gap: `if cast(Direction.NORTH, int) == 0 { ... }`. You can also cast the other way: `cast(0, Direction)`.
+
+**Printing enum values** depends on the enum's backing:
+
+| Enum kind | `println(value)` prints |
+|-----------|--------------------------|
+| Plain int-backed (default) | The underlying integer (e.g. `0` for the first variant) |
+| String-backed | The variant's string value (e.g. `"todo"`) |
+| `#error_code`-tagged (and `ErrorCode` itself) | The variant's name (e.g. `"PAYMENT_DECLINED"`) — see [Section 10.5](#105-errorcode) |
+
+```gray
+const Color enum { RED GREEN BLUE }
+println(Color.RED)              // "0" — plain enums print their integer
+
+const Status enum { TODO = "todo" DONE = "done" }
+println(Status.TODO)            // "todo" — string enums print their string
+
+#error_code
+const PaymentErrors enum { PAYMENT_DECLINED PAYMENT_CANCELED }
+println(PaymentErrors.PAYMENT_DECLINED)  // "PAYMENT_DECLINED" — error-code enums print their name
+```
+
+A plain enum has no name table generated for it, so printing one falls back to its widened integer value — consistent with the earlier tip that a plain enum's underlying value is a real integer under the hood. String-backed and `#error_code`-tagged enums each carry an obvious human-readable form already (the string literal, or the compiler-owned error-code name table), so those print that instead.
 
 **Flags enums** (powers of 2, annotated with `#flags`):
 
@@ -1754,6 +1776,7 @@ By default, parameters are passed by value and cannot modify the caller's variab
 do double(x int) -> int {
     return x * 2
 }
+```
 
 #### 7.2.2 Mutable Parameters
 
@@ -1941,7 +1964,7 @@ if err != nil {
 
 #### 7.3.4 Named Return Values
 
-Return values can be given names to document what each position in the return tuple represents. Named return values are **labels only**; they do not implicitly declare variables in the function body. The programmer must explicitly declare any variables they use:
+Return values can be given names to document what each position in the return tuple represents. Naming a return value does not implicitly declare a variable — the programmer must still explicitly declare a variable with that exact name in the function body:
 
 ```gray
 do divide(a, b int) -> (quotient int, remainder int) {
@@ -1964,7 +1987,19 @@ do get_info() -> (name, city string, age int) {
 }
 ```
 
-Named return values must be enclosed in parentheses. The names serve as documentation for callers and tooling (e.g., `gray doc`) but have no effect on the function's scope or variable declarations.
+Named return values must be enclosed in parentheses.
+
+**The `return` statement must reference the named variable itself, not merely an equal or same-typed expression.** Once a return position is named, `return` in that position accepts only the variable declared under that exact name — assigning an equivalent value to a differently-named variable and returning that instead is a compile-time error (`E3080`):
+
+```gray
+do square(x int) -> (result int) {
+    mut result int = x * x
+    mut other int = result
+    return other        // error[E3080]: function must return named variable 'result', not a different expression
+}
+```
+
+So the names are not purely cosmetic documentation: they constrain what a `return` in that position may name, in addition to documenting the position for callers and tooling (e.g., `gray doc`).
 
 **Restriction:** Wildcard types (`?`) cannot be used in named return positions. Since `?` resolves to a different concrete type at each call site, the name adds no useful documentation. Use an unnamed return instead:
 
@@ -3995,7 +4030,7 @@ The `HttpResponse` struct is available when either `@http` or `@server` is impor
 
 ### 9.14 UUID Module (`@uuid`)
 
-UUID is a struct type wrapping a canonical 36-character hyphenated string. All generator and parse functions return `UUID`.
+`UUID` is an opaque struct type (see [Section 2.5](#25-keywords)) with no user-visible fields; printing a `UUID` value directly does not yield its hyphenated string form. Call `to_string()` to get the canonical 36-character hyphenated string. All generator and parse functions return `UUID`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
