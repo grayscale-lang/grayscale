@@ -152,6 +152,12 @@ typedef struct {
      * through a pointer-parameter wrapper function the same way
      * returns_param_addr lets it follow one through a `return`. */
     unsigned long long passes_param_to_extern;
+    /* writes_through_param: bit i set if this function assigns through pointer
+     * parameter i — `p^ = v`, `p^.f = v`, `p.f = v` — directly, through a
+     * local copy of the pointer, or forwarded to another summarised call that
+     * writes through its own parameter. Lets a call site refuse a pointer to
+     * a const-declared variable for a callee that would modify it. */
+    unsigned long long writes_through_param;
 
     /* Pointer checker: cross-function @mem summary, filled lazily by
      * pointer_checker_ensure_mem_summary(). mem_state: 0 = not computed, 1 = in progress,

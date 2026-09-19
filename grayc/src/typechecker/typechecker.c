@@ -975,6 +975,7 @@ static void register_func(TypeChecker *checker, const char *name,
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
     memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
+    fs->writes_through_param = 0;
     fs->mem_state = 0;
     fs->destroys_param_arena = 0;
     fs->resets_param_arena = 0;
@@ -1244,6 +1245,7 @@ static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
 
 static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
 static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs);
+static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
 
 /* The value a local named `name` was declared with, searched anywhere in
  * `node`, or NULL. Lets the param-bit walk follow `mut b = Box{p: q};
@@ -1725,6 +1727,83 @@ static bool call_target_is_opaque_func(FuncSig *fs, AstNode *call) {
     return call_func_typed_param_index(fs, call) >= 0;
 }
 
+/* Bit of the pointer parameter of `fs` that a write rooted at `root` lands
+ * in: `root` names the parameter itself, or a local declared as a plain copy
+ * of it (`mut q = p`). 0 for anything else, including a by-value parameter. */
+static unsigned long long pointer_param_bit_for_root(FuncSig *fs, AstNode *body,
+                                                     const char *root) {
+    for (int hop = 0; root && hop < MAX_TRACKED_PARAMS; hop++) {
+        int param_count = fs->decl->data.func_decl.param_count;
+        for (int i = 0; i < param_count && i < MAX_TRACKED_PARAMS; i++) {
+            const Param *p = &fs->decl->data.func_decl.params[i];
+            if (p->name && strcmp(p->name, root) == 0)
+                return p->type_name && p->type_name[0] == '^' ? 1ull << i : 0;
+        }
+        AstNode *init = local_initializer(body, root);
+        root = init && init->kind == NODE_LABEL ? init->data.label.value : NULL;
+    }
+    return 0;
+}
+
+/* Bit of the pointer parameter that assigning to `target` writes through —
+ * a `p^`, `p^.f`, `p.f` or `p^[i]` target, never the bare `p = ...`, which
+ * only repoints the parameter. */
+static unsigned long long write_target_param_bit(FuncSig *fs, AstNode *body,
+                                                 AstNode *target) {
+    if (!target || target->kind == NODE_LABEL) return 0;
+    return pointer_param_bit_for_root(fs, body, escape_root_name(target));
+}
+
+/* Bit of the pointer parameter that a callee writing through the argument
+ * `arg` reaches: the parameter itself (`f(p)`), or the place `addr(p^.f)`
+ * takes the address of. */
+static unsigned long long pointer_arg_param_bit(FuncSig *fs, AstNode *body,
+                                                AstNode *arg) {
+    if (!arg) return 0;
+    if (arg->kind == NODE_LABEL)
+        return pointer_param_bit_for_root(fs, body, arg->data.label.value);
+    if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
+        arg->data.call.function->kind == NODE_LABEL &&
+        strcmp(arg->data.call.function->data.label.value, "addr") == 0 &&
+        arg->data.call.arg_count == 1)
+        return write_target_param_bit(fs, body, arg->data.call.args[0]);
+    return 0;
+}
+
+/* Bit of the pointer parameter that instance dispatch `p.f()` (or `p^.f()`)
+ * writes through, for a call dispatch has not rewritten yet — a function
+ * summarised before its own body is checked still sees the instance form, not
+ * `Type.f(p)`. The struct function must write through its receiver: a `^T`
+ * one that writes through it, or a `&` one, which takes it by reference. */
+static unsigned long long dispatch_receiver_write_bit(TypeChecker *checker,
+                                                      FuncSig *fs, AstNode *body,
+                                                      AstNode *call) {
+    AstNode *fn = call->data.call.function;
+    if (!fn || fn->kind != NODE_MEMBER_EXPR) return 0;
+    AstNode *obj = fn->data.member.object;
+    if (obj && obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
+        obj = obj->data.postfix.left;
+    if (!obj || obj->kind != NODE_LABEL) return 0;
+    unsigned long long bit = pointer_param_bit_for_root(fs, body, obj->data.label.value);
+    if (!bit) return 0;
+    int param_index = 0;
+    while (!((bit >> param_index) & 1)) param_index++;
+    GrayType *pt = param_index < fs->param_count ? fs->param_types[param_index] : NULL;
+    if (!pt || pt->kind != TK_POINTER || !pt->element_type) return 0;
+    char key[MSG_BUF_SIZE], sfn[MSG_BUF_SIZE];
+    snprintf(sfn, sizeof(sfn), "%s_%s",
+        checker_resolve_decl_into(checker, pt->element_type, key, sizeof(key)),
+        fn->data.member.member);
+    FuncSig *callee = find_func(checker, sfn);
+    if (!callee || !callee->decl || callee->decl->kind != NODE_FUNC_DECL ||
+        callee->decl->data.func_decl.param_count == 0)
+        return 0;
+    ensure_escape_summary(checker, callee);
+    bool writes = (callee->writes_through_param & 1) ||
+                  callee->decl->data.func_decl.params[0].mutable;
+    return writes ? bit : 0;
+}
+
 /* Scan a function body for places a parameter's address is stored into
  * caller-visible memory: an assignment whose target roots at another
  * parameter or a module-level variable, a stdlib container insert, or a
@@ -1734,6 +1813,8 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
     if (!node) return;
     switch (node->kind) {
     case NODE_ASSIGN_STMT: {
+        fs->writes_through_param |=
+            write_target_param_bit(fs, body, node->data.assign.target);
         const char *troot = escape_root_name(node->data.assign.target);
         signed char dest = escape_dest_for_root(checker, fs, troot, body);
         if (dest != PARAM_ESCAPE_NONE)
@@ -1768,8 +1849,21 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
                     node->data.call.args[i]);
         }
         FuncSig *callee = resolve_call_sig_in_body(checker, body, node);
+        if (!callee)
+            fs->writes_through_param |= dispatch_receiver_write_bit(checker, fs, body, node);
         if (callee && callee != fs) {
             ensure_escape_summary(checker, callee);
+            for (int k = 0; k < callee->param_count &&
+                            k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
+                if ((callee->writes_through_param >> k) & 1)
+                    fs->writes_through_param |=
+                        pointer_arg_param_bit(fs, body, node->data.call.args[k]);
+                if (callee->decl && callee->decl->kind == NODE_FUNC_DECL &&
+                    k < callee->decl->data.func_decl.param_count &&
+                    callee->decl->data.func_decl.params[k].mutable)
+                    fs->writes_through_param |=
+                        write_target_param_bit(fs, body, node->data.call.args[k]);
+            }
             for (int k = 0; k < callee->param_count &&
                             k < node->data.call.arg_count && k < MAX_TRACKED_PARAMS; k++) {
                 signed char cdest = callee->param_escape_into[k];
@@ -1803,6 +1897,8 @@ static void escape_walk(TypeChecker *checker, FuncSig *fs, AstNode *body,
         } else if (!callee && call_target_is_opaque_func(fs, node)) {
             int func_param = call_func_typed_param_index(fs, node);
             for (int i = 0; i < node->data.call.arg_count && i < MAX_TRACKED_PARAMS; i++) {
+                fs->writes_through_param |=
+                    pointer_arg_param_bit(fs, body, node->data.call.args[i]);
                 unsigned long long bits = return_expr_param_bits(checker, fs,
                     node->data.call.args[i]);
                 if (func_param >= 0)
@@ -1870,6 +1966,7 @@ static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs) {
     memset(fs->param_escape_global_name, 0, sizeof fs->param_escape_global_name);
     memset(fs->param_escape_via_func, -1, sizeof fs->param_escape_via_func);
     fs->passes_param_to_extern = 0;
+    fs->writes_through_param = 0;
     AstNode *body = (fs->decl && fs->decl->kind == NODE_FUNC_DECL)
                     ? fs->decl->data.func_decl.body : NULL;
     if (body && fs->decl->data.func_decl.param_count <= 64) {
@@ -2495,6 +2592,49 @@ static void apply_call_param_extern_effects(TypeChecker *checker,
                 NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0,
                 root);
         }
+    }
+}
+
+/* E3122, forwarded through a pointer-parameter function boundary: writing
+ * through a pointer to a const-declared variable is caught where the write
+ * is spelled (`p^ = v`), but a helper that takes a `^T` parameter and writes
+ * through it never sees the const — the pointer is just an opaque parameter.
+ * `csig`'s writes_through_param summary names which parameters it writes
+ * through; this refuses a pointer to a constant for any of them. */
+static void apply_call_param_write_effects(TypeChecker *checker,
+    AstNode *node, FuncSig *csig) {
+    if (!csig || !csig->decl || csig->decl->kind != NODE_FUNC_DECL) return;
+    ensure_escape_summary(checker, csig);
+    if (!csig->writes_through_param) return;
+    int argc = node->data.call.arg_count;
+    for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
+        if (!((csig->writes_through_param >> a) & 1)) continue;
+        AstNode *arg = node->data.call.args[a];
+        const char *const_name = NULL;
+        bool via_pointer_var = false;
+        if (arg->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope, arg->data.label.value);
+            if (sym && sym->const_source) {
+                const_name = arg->data.label.value;
+                via_pointer_var = true;
+            }
+        } else if (arg->kind == NODE_CALL_EXPR && arg->data.call.function &&
+                   arg->data.call.function->kind == NODE_LABEL &&
+                   strcmp(arg->data.call.function->data.label.value, "addr") == 0 &&
+                   arg->data.call.arg_count == 1) {
+            const char *root = assignment_target_root_name(arg->data.call.args[0]);
+            Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
+            if (sym && !sym->mutable) const_name = root;
+        }
+        if (!const_name) continue;
+        char *msg = typechecker_format(checker,
+            via_pointer_var
+                ? "cannot pass pointer '%s' to parameter '%s' of '%s'; its pointee is a const-declared variable and the function modifies it"
+                : "cannot pass a pointer to constant '%s' to parameter '%s' of '%s'; the function modifies the value through it",
+            const_name, csig->decl->data.func_decl.params[a].name,
+            FUNC_DISPLAY_NAME(csig->decl));
+        diagnostic_error_message(checker->diag, "E3122", msg,
+            NODE_FILE(checker, arg), arg->token.line, arg->token.column, 0);
     }
 }
 
@@ -7106,6 +7246,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * has happened, apply it directly against ssig. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
                     apply_call_param_extern_effects(checker, node, ssig);
+                    apply_call_param_write_effects(checker, node, ssig);
                 } else if (ssig) {
                     /* Non-self struct function called on an instance.
                      * Rewrite the AST so the member-expr object uses
@@ -7218,6 +7359,7 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                      * resolve_call_expr's own copy of the check. */
                     apply_call_param_escape_and_mem_effects(checker, node, ssig, 0);
                     apply_call_param_extern_effects(checker, node, ssig);
+                    apply_call_param_write_effects(checker, node, ssig);
                 } else {
                     diagnostic_error_code_formatted(checker->diag, "E4018",
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
@@ -9247,6 +9389,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         apply_call_param_escape_and_mem_effects(checker,
             node, resolve_call_sig(checker, node), reported_arg);
         apply_call_param_extern_effects(checker, node, resolve_call_sig(checker, node));
+        apply_call_param_write_effects(checker, node, resolve_call_sig(checker, node));
 
         /* E3163: an opaque call target — a func value read from an array/map
          * element, or a func-typed variable the checker cannot pin to one

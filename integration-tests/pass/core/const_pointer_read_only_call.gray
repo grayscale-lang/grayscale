@@ -1,0 +1,39 @@
+/*
+ * const_pointer_read_only_call.gray - a pointer to a const-declared variable
+ * may be passed to a function that only reads through it, and a pointer to a
+ * mutable variable may be passed to one that writes through it.
+ */
+
+const Counter struct {
+    n int
+}
+
+do read(c ^Counter) -> int {
+    return c^.n
+}
+
+do bump(c ^Counter) {
+    c^.n += 1
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const k Counter = Counter{n: 5}
+    mut p ^Counter = addr(k)
+    if read(addr(k)) == 5 { passed = passed + 1 } otherwise { failed = failed + 1 }
+    if read(p) == 5 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    mut m Counter = Counter{n: 1}
+    bump(addr(m))
+    if m.n == 2 { passed = passed + 1 } otherwise { failed = failed + 1 }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed == 0 {
+        println("ALL TESTS PASSED")
+    } otherwise {
+        println("SOME TESTS FAILED")
+    }
+}
