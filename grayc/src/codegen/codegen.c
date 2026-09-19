@@ -3925,8 +3925,8 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, val);
             emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, node->token.line);
         } else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
-                   (val_kind == TK_INT || val_kind == TK_UNKNOWN)) {
-            /* signed int → uint/u64: panic if value is negative. TK_UNKNOWN
+                   (val_kind == TK_INT || val_kind == TK_UNKNOWN || val_kind == TK_C_FUNC)) {
+            /* signed int → uint/u64: panic if value is negative. TK_C_FUNC
              * also covers an extern.call()/extern.CONST C-interop value,
              * which carries no Grayscale type of its own and so could be
              * either sign. */
@@ -9568,10 +9568,11 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
     else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
              codegen->type_table &&
              typetable_get(codegen->type_table, val) &&
-             typetable_get(codegen->type_table, val)->kind == TK_UNKNOWN) {
+             (typetable_get(codegen->type_table, val)->kind == TK_UNKNOWN ||
+              typetable_get(codegen->type_table, val)->kind == TK_C_FUNC)) {
         /* Already 64-bit, so no upper bound can be exceeded — but a value
          * whose real signedness Grayscale can't see (an extern C-interop
-         * result, typed TK_UNKNOWN) may still be negative, which would
+         * result, typed TK_C_FUNC) may still be negative, which would
          * silently reinterpret as a huge unsigned number. gray_ucast_check's
          * negative check catches that; the max is a no-op since int64_t
          * can't exceed it. Ordinary Grayscale-typed values (TK_INT, TK_UINT,

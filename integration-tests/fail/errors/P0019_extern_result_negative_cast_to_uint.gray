@@ -1,0 +1,11 @@
+/*
+ * Panic Test: P0019 - a negative C interop result cast to uint/u64 must
+ * panic rather than silently reinterpreting as a huge unsigned number.
+ */
+
+extern import "stdlib.h"
+
+do main() {
+    mut u uint = cast(extern.atoi("-1"), uint)
+    println(u)
+}
