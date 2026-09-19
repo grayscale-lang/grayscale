@@ -1,0 +1,34 @@
+/*
+ * c_interop_return_type_kinds.gray - an extern.func() result may be declared
+ * as, or cast to, a type of the same kind as the real C return type; cast()
+ * also converts explicitly across the integer and floating-point kinds.
+ */
+
+extern import "math.h"
+extern import "stdlib.h"
+
+do main() {
+    println("=== C interop result: return type kinds ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut root float = extern.sqrt(2.0)
+    if root > 1.41 && root < 1.42 { passed += 1 } otherwise { failed += 1 }
+
+    mut truncated int = cast(extern.sqrt(9.5), int)
+    if truncated == 3 { passed += 1 } otherwise { failed += 1 }
+
+    mut absolute int = extern.abs(-7)
+    if absolute == 7 { passed += 1 } otherwise { failed += 1 }
+
+    mut p ^byte = extern.malloc(16)
+    extern.free(p)
+    passed += 1
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

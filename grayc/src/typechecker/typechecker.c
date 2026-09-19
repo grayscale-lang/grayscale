@@ -4506,6 +4506,19 @@ static bool c_func_result_fits(GrayType *t) {
     }
 }
 
+/* Records the type a C call's result is declared or cast to on the call's
+ * extern site, so main.c can check it against the real C return type. */
+static void extern_call_assert_type(TypeChecker *checker, const AstNode *call,
+                                    GrayType *asserted, bool via_cast) {
+    for (int i = 0; i < checker->extern_call_count; i++) {
+        ExternCallSite *site = &checker->extern_calls[i];
+        if (site->is_call && site->node == call) {
+            site->asserted = asserted;
+            site->asserted_via_cast = via_cast;
+        }
+    }
+}
+
 static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src) {
     if (!dest || !src) return false;
     /* A C function result carries no statically known Grayscale type; it is
@@ -9754,6 +9767,9 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 site->file = NODE_FILE(checker, node);
                 site->line = node->token.line;
                 site->column = node->token.column;
+                site->node = node;
+                site->asserted = NULL;
+                site->asserted_via_cast = false;
             }
             result = &TYPE_C_FUNC;
             return result;
@@ -10439,6 +10455,9 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
             csite->file = NODE_FILE(checker, node);
             csite->line = node->token.line;
             csite->column = node->token.column;
+            csite->node = node;
+            csite->asserted = NULL;
+            csite->asserted_via_cast = false;
             result = &TYPE_C_FUNC;
             return result;
         }
@@ -11885,8 +11904,10 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* A C interop result carries no Grayscale type; cast() to a
              * C-representable scalar is the inline form of the
              * annotated-declaration assertion (STANDARD.md 8.6). */
-            if (src_t->kind == TK_C_FUNC && c_func_result_fits(dst_t))
+            if (src_t->kind == TK_C_FUNC && c_func_result_fits(dst_t)) {
                 allowed = true;
+                extern_call_assert_type(checker, node->data.cast.value, dst_t, true);
+            }
             /* Numeric <-> Numeric (int, uint, float, char, byte, sized types) */
             if (type_is_numeric(src_t) && type_is_numeric(dst_t))
                 allowed = true;
@@ -13179,6 +13200,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                     "type mismatch: cannot assign %s to %s; convert it with c_string() for text, or read individual fields",
                     type_display_name(checker, value_type), type_display_name(checker, declared));
                 tc_err_assign_type(checker, node, msg);
+            } else {
+                extern_call_assert_type(checker, node->data.var_decl.value, declared, false);
             }
         } else if (!func_decl_reported &&
                    value_type->kind != TK_UNKNOWN &&

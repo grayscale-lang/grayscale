@@ -205,7 +205,9 @@ typedef struct {
  * (the typechecker has no C header parser) and validate the symbol against
  * it: is_call sites get their argument count checked against the real C
  * signature, and every site (call or constant) gets checked for existence,
- * catching a misspelled C function/constant/macro name. */
+ * catching a misspelled C function/constant/macro name. A call whose result
+ * is declared or cast to a type also records that type, so the real C return
+ * type can be checked against it. */
 typedef struct {
     const char *func_name;
     int arg_count;
@@ -213,6 +215,9 @@ typedef struct {
     const char *file;
     int line;
     int column;
+    const AstNode *node;       /* the call expression, to attach an assertion */
+    GrayType *asserted;        /* type the result is declared or cast to, or NULL */
+    bool asserted_via_cast;    /* cast() converts explicitly; a declaration asserts */
 } ExternCallSite;
 
 typedef struct {

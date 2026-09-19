@@ -504,6 +504,61 @@ static bool range_contains(const char *start, const char *end, const char *needl
     return false;
 }
 
+/* What a C function hands back, as far as a Grayscale declaration or cast
+ * can tell: the return type's kind, not its exact width. C_RET_UNKNOWN is a
+ * spelling this does not recognise (a typedef name); it is never rejected. */
+typedef enum {
+    C_RET_UNKNOWN, C_RET_VOID, C_RET_INTEGER, C_RET_FLOAT, C_RET_POINTER, C_RET_AGGREGATE
+} CReturnClass;
+
+typedef struct {
+    int min_params;
+    bool is_variadic;
+    CReturnClass ret_class;
+    char ret_text[128];
+} CFuncSig;
+
+/* Classifies a C return type spelled the way clang's AST dump prints it
+ * ("unsigned long", "void *", "enum E", "struct tm"). */
+static CReturnClass classify_c_return(const char *spelling) {
+    if (strchr(spelling, '*') || strchr(spelling, '[')) return C_RET_POINTER;
+
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s", spelling);
+    bool saw_int = false, saw_float = false, saw_void = false;
+    for (char *save = NULL, *w = strtok_r(buf, " ", &save); w; w = strtok_r(NULL, " ", &save)) {
+        if (strcmp(w, "const") == 0 || strcmp(w, "volatile") == 0) continue;
+        if (strcmp(w, "struct") == 0 || strcmp(w, "union") == 0) return C_RET_AGGREGATE;
+        if (strcmp(w, "enum") == 0 || strcmp(w, "_Bool") == 0 || strcmp(w, "unsigned") == 0 ||
+            strcmp(w, "signed") == 0 || strcmp(w, "char") == 0 || strcmp(w, "short") == 0 ||
+            strcmp(w, "int") == 0) { saw_int = true; continue; }
+        if (strcmp(w, "long") == 0) continue;
+        if (strcmp(w, "float") == 0 || strcmp(w, "double") == 0) { saw_float = true; continue; }
+        if (strcmp(w, "void") == 0) { saw_void = true; continue; }
+        return C_RET_UNKNOWN;
+    }
+    if (saw_void) return C_RET_VOID;
+    if (saw_float) return C_RET_FLOAT;
+    return saw_int || strstr(spelling, "long") ? C_RET_INTEGER : C_RET_UNKNOWN;
+}
+
+/* True when a C result of class `rc` may be declared as, or cast to,
+ * `asserted`. A declaration only accepts the matching family — integer kinds
+ * (int, uint, byte, char, bool) among themselves, float, pointer — because C
+ * would otherwise truncate silently or reject the initializer. cast() is the
+ * explicit conversion, so it also crosses families where C allows it. A void
+ * or aggregate result fits nothing. */
+static bool c_return_fits(CReturnClass rc, const GrayType *asserted, bool via_cast) {
+    if (rc == C_RET_UNKNOWN) return true;
+    if (rc == C_RET_VOID || rc == C_RET_AGGREGATE) return false;
+
+    if (asserted->kind == TK_FLOAT)
+        return rc == C_RET_FLOAT || (via_cast && rc == C_RET_INTEGER);
+    if (asserted->kind == TK_POINTER)
+        return rc == C_RET_POINTER || (via_cast && rc == C_RET_INTEGER);
+    return rc == C_RET_INTEGER || via_cast;
+}
+
 /* Parses a clang `-ast-dump` FunctionDecl type spelling, e.g.
  * "int (int, FILE *)" or "int (const char *, ...)", into a required
  * parameter count and a variadic flag. Counts only top-level commas — a
@@ -511,9 +566,13 @@ static bool range_contains(const char *start, const char *end, const char *needl
  * its own parens) does not split the outer list. Returns false when `sig`
  * does not have the expected "(...)" shape, so the caller skips validation
  * instead of guessing. */
-static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) {
+static bool count_c_params(const char *sig, CFuncSig *out) {
+    int *min_params = &out->min_params;
+    bool *is_variadic = &out->is_variadic;
     *min_params = 0;
     *is_variadic = false;
+    out->ret_class = C_RET_UNKNOWN;
+    out->ret_text[0] = '\0';
 
     size_t len = strlen(sig);
     if (len == 0 || sig[len - 1] != ')') return false;
@@ -570,6 +629,8 @@ static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) 
                 if (inner_close >= 0) {
                     params = gc + inner_open + 1;
                     params_len = (size_t)inner_close - inner_open - 1;
+                    out->ret_class = C_RET_POINTER;
+                    snprintf(out->ret_text, sizeof(out->ret_text), "function pointer");
                 }
             }
         }
@@ -580,6 +641,15 @@ static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) 
          * above, the final) top-level group is the parameter list. */
         params = sig + last_open + 1;
         params_len = len - 1 - (size_t)(last_open + 1);
+
+        /* Everything before the parameter list is the return type. */
+        size_t ret_len = (size_t)last_open;
+        while (ret_len > 0 && sig[ret_len - 1] == ' ') ret_len--;
+        if (ret_len > 0 && ret_len < sizeof(out->ret_text)) {
+            memcpy(out->ret_text, sig, ret_len);
+            out->ret_text[ret_len] = '\0';
+            out->ret_class = classify_c_return(out->ret_text);
+        }
     }
 
     while (params_len > 0 && params[0] == ' ') { params++; params_len--; }
@@ -621,8 +691,7 @@ static bool count_c_params(const char *sig, int *min_params, bool *is_variadic) 
  * lists the most complete declaration last. Returns false when the dump has
  * no FunctionDecl for `name` at all (a macro, or a dump this parser cannot
  * make sense of) — the caller then skips validation for that call. */
-static bool find_c_function_signature(const char *dump, const char *name,
-                                      int *min_params, bool *is_variadic) {
+static bool find_c_function_signature(const char *dump, const char *name, CFuncSig *out) {
     size_t name_len = strlen(name);
     const char *sig_start = NULL;
     const char *sig_end = NULL;
@@ -660,7 +729,7 @@ static bool find_c_function_signature(const char *dump, const char *name,
     memcpy(sig, sig_start, sig_len);
     sig[sig_len] = '\0';
 
-    return count_c_params(sig, min_params, is_variadic);
+    return count_c_params(sig, out);
 }
 
 /* True if `text` (a captured C compiler stderr) flags `name` as unknown.
@@ -950,22 +1019,34 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
     fclose(capture);
 
     for (int i = 0; i < call_count; i++) {
-        int min_params;
-        bool is_variadic;
-        if (!find_c_function_signature(dump, calls[i].func_name, &min_params, &is_variadic))
+        CFuncSig sig;
+        if (!find_c_function_signature(dump, calls[i].func_name, &sig))
             continue;
 
         int actual = calls[i].arg_count;
-        bool ok = is_variadic ? (actual >= min_params) : (actual == min_params);
-        if (ok) continue;
+        bool ok = sig.is_variadic ? (actual >= sig.min_params) : (actual == sig.min_params);
+        if (!ok) {
+            char expected[32];
+            if (sig.is_variadic) snprintf(expected, sizeof(expected), "at least %d", sig.min_params);
+            else snprintf(expected, sizeof(expected), "%d", sig.min_params);
+            diagnostic_error_code_formatted(diag, "E5050",
+                calls[i].file ? calls[i].file : entry_file,
+                calls[i].line, calls[i].column, 0,
+                calls[i].func_name, expected, actual);
+        }
 
-        char expected[32];
-        if (is_variadic) snprintf(expected, sizeof(expected), "at least %d", min_params);
-        else snprintf(expected, sizeof(expected), "%d", min_params);
-        diagnostic_error_code_formatted(diag, "E5050",
-            calls[i].file ? calls[i].file : entry_file,
-            calls[i].line, calls[i].column, 0,
-            calls[i].func_name, expected, actual);
+        if (calls[i].asserted &&
+            !c_return_fits(sig.ret_class, calls[i].asserted, calls[i].asserted_via_cast)) {
+            const char *help = sig.ret_class == C_RET_VOID
+                ? "this C function returns nothing; call it as a statement"
+                : c_return_fits(sig.ret_class, calls[i].asserted, true)
+                    ? "declare the result with a type of the same kind, or convert it explicitly with cast()"
+                    : "declare the result with a type of the same kind as the C return type";
+            diagnostic_error_code_formatted_help(diag, "E5053",
+                calls[i].file ? calls[i].file : entry_file,
+                calls[i].line, calls[i].column, 0, help,
+                calls[i].func_name, sig.ret_text, type_name(calls[i].asserted));
+        }
     }
 
     free(dump);

@@ -1,0 +1,14 @@
+/*
+ * Error Test: E5053 - cast() of an extern.func() call whose real C return type
+ * is void; there is no value to convert.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut p ^byte = extern.malloc(16)
+    mut x int = cast(extern.free(p), int)
+    println("${x}")
+}
