@@ -8263,6 +8263,19 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 diagnostic_error_message(checker->diag, "E3083", msg,
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             }
+            /* A C call result has no Grayscale type, so it passes the check
+             * above. Assert it is a pointer for main.c to verify against the
+             * C function's real return type — directly, or through a variable
+             * inferred from the call. */
+            if (arg0 && arg0->kind == TK_C_FUNC) {
+                AstNode *c_arg = node->data.call.args[0];
+                const AstNode *origin = c_arg;
+                if (c_arg->kind == NODE_LABEL) {
+                    Symbol *c_sym = scope_lookup(checker->current_scope, c_arg->data.label.value);
+                    origin = c_sym ? c_sym->c_call : NULL;
+                }
+                if (origin) extern_call_assert_type(checker, origin, type_pointer("byte"), false);
+            }
         }
         result = &TYPE_STRING;
     } else if (strcmp(function_name, "input") == 0) {
@@ -14192,6 +14205,8 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
              * which outlives every function scope — storing a local's address
              * into one of its pointer fields is an escape (#2650). */
             AstNode *dv = node->data.var_decl.value;
+            if (declared && declared->kind == TK_C_FUNC && dv && dv->kind == NODE_CALL_EXPR)
+                def_sym->c_call = dv;
             if (dv && dv->kind == NODE_NEW_EXPR) def_sym->is_heap = true;
             else if (dv && dv->kind == NODE_LABEL) {
                 Symbol *src = scope_lookup(checker->current_scope, dv->data.label.value);

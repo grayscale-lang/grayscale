@@ -542,6 +542,39 @@ static CReturnClass classify_c_return(const char *spelling) {
     return saw_int || strstr(spelling, "long") ? C_RET_INTEGER : C_RET_UNKNOWN;
 }
 
+/* Classifies a C typedef name by its TypedefDecl line in a clang AST dump,
+ * which spells the type as written ('struct div_t') and, when that differs, the
+ * fully resolved type after a colon ('__darwin_size_t':'unsigned long'). The
+ * written spelling is tried first, then the resolved one. */
+static CReturnClass classify_c_typedef(const char *dump, const char *name) {
+    size_t name_len = strlen(name);
+    for (const char *p = dump; (p = strstr(p, name)) != NULL; p += name_len) {
+        if (p == dump || p[-1] != ' ' || p[name_len] != ' ' || p[name_len + 1] != '\'') continue;
+        const char *line_start = p;
+        while (line_start > dump && line_start[-1] != '\n') line_start--;
+        if (!range_contains(line_start, p, "TypedefDecl")) continue;
+
+        const char *spelling = p + name_len + 2;
+        const char *spelling_end = strchr(spelling, '\'');
+        if (!spelling_end) continue;
+        for (int pass = 0; pass < 2; pass++) {
+            char text[128];
+            size_t text_len = (size_t)(spelling_end - spelling);
+            if (text_len >= sizeof(text)) return C_RET_UNKNOWN;
+            memcpy(text, spelling, text_len);
+            text[text_len] = '\0';
+            CReturnClass rc = classify_c_return(text);
+            if (rc != C_RET_UNKNOWN) return rc;
+            if (pass == 1 || spelling_end[1] != ':' || spelling_end[2] != '\'') break;
+            spelling = spelling_end + 3;
+            spelling_end = strchr(spelling, '\'');
+            if (!spelling_end) break;
+        }
+        return C_RET_UNKNOWN;
+    }
+    return C_RET_UNKNOWN;
+}
+
 /* True when a C result of class `rc` may be declared as, or cast to,
  * `asserted`. A declaration only accepts the matching family — integer kinds
  * (int, uint, byte, char, bool) among themselves, float, pointer — because C
@@ -729,7 +762,12 @@ static bool find_c_function_signature(const char *dump, const char *name, CFuncS
     memcpy(sig, sig_start, sig_len);
     sig[sig_len] = '\0';
 
-    return count_c_params(sig, out);
+    if (!count_c_params(sig, out)) return false;
+    /* A return type spelled as a typedef name classifies as unknown until the
+     * typedef itself is looked up. */
+    if (out->ret_class == C_RET_UNKNOWN && out->ret_text[0])
+        out->ret_class = classify_c_typedef(dump, out->ret_text);
+    return true;
 }
 
 /* True if `text` (a captured C compiler stderr) flags `name` as unknown.

@@ -1,0 +1,12 @@
+/*
+ * Error Test: E5053 - c_string() of an extern.func() result whose real C
+ * return type is an integer. Only a pointer return can be read as C text.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "string.h"
+
+do main() {
+    println(c_string(extern.strlen("abc")))
+}
