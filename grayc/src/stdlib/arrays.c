@@ -35,7 +35,7 @@ void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, cons
             (long long)index, arr->len);
     }
 
-    /* NULL/0 keeps the P0035 panic locationless, as it has always been here. */
+    /* NULL/0 keeps the P0130 panic locationless, as it has always been here. */
     gray_array_grow(arena, arr, NULL, 0);
 
     size_t element_size = (size_t)arr->elem_size;
@@ -100,7 +100,7 @@ void gray_arrays_clear(GrayArray *arr) {
 void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count) {
     gray_arrays_clear(arr);
     if (count > INT32_MAX)
-        gray_panic_code("P0035", "array capacity overflow");
+        gray_panic_code("P0130", "array capacity overflow");
     for (int64_t i = 0; i < count; i++) {
         GRAY_ARRAY_PUSH(arena, arr, value);
     }

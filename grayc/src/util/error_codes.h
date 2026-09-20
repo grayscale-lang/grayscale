@@ -509,7 +509,8 @@
     GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
     GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
     GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
-    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s")
+    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s") \
+    GRAY_PANIC("P0130", "runtime",    "array capacity overflow")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

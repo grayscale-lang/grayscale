@@ -42,7 +42,7 @@ void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char
  * lives on until the arena is reset or destroyed. Grows into the array's
  * owning arena when it has one, so an array reached through a mutable
  * reference does not end up backed by a shorter-lived scope arena.
- * file/line locate the P0035 panic on capacity overflow; pass NULL/0 for
+ * file/line locate the P0130 panic on capacity overflow; pass NULL/0 for
  * a panic without a source location. */
 void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int line);
 

@@ -69,7 +69,7 @@ void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int lin
     if (arr->cap < GRAY_ARRAY_MIN_CAP) {
         new_cap = GRAY_ARRAY_MIN_CAP;
     } else if (arr->cap > INT32_MAX / 2) {
-        gray_panic_code_at(file, line, "P0035", "array capacity overflow");
+        gray_panic_code_at(file, line, "P0130", "array capacity overflow");
     } else {
         new_cap = arr->cap * 2;
     }

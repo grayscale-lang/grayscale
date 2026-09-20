@@ -1,0 +1,8 @@
+// expect-contains: .gray:
+/* Panic Test: P0130 - arrays.fill with a count beyond the array capacity limit */
+import @arrays
+
+do main() {
+    mut a [int] = {}
+    arrays.fill(a, 1, 3000000000)
+}
