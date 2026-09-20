@@ -433,10 +433,10 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0051` | crypto | crypto.random_hex: length must be non-negative (got %lld) |
 | `P0052` | crypto | crypto.random_hex: failed to read from /dev/urandom |
 | `P0053` | io | io.read_file: input exceeds maximum string length |
-| `P0054` | strconv | strconv.to_int: invalid base %d; must be between 2 and 36 |
-| `P0055` | strconv | strconv.to_int: cannot convert '%s' to int (base %d) |
-| `P0056` | strconv | strconv.to_uint: invalid base %d; must be between 2 and 36 |
-| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to uint (base %d) |
+| `P0054` | strconv | strconv.to_int: invalid base %lld; must be between 2 and 36 |
+| `P0055` | strconv | strconv.to_int: cannot convert '%s' to int (base %lld) |
+| `P0056` | strconv | strconv.to_uint: invalid base %lld; must be between 2 and 36 |
+| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to uint (base %lld) |
 | `P0058` | strconv | strconv.to_uint: cannot convert '%s' to uint; value is negative |
 | `P0059` | strconv | strconv.to_float: cannot convert '%s' to float |
 | `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
@@ -534,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-20 23:39:39 UTC*
+*Generated on 2026-09-20 23:44:11 UTC*

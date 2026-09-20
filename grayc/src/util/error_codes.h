@@ -434,10 +434,10 @@
     GRAY_PANIC("P0051", "crypto",     "crypto.random_hex: length must be non-negative (got %lld)") \
     GRAY_PANIC("P0052", "crypto",     "crypto.random_hex: failed to read from /dev/urandom") \
     GRAY_PANIC("P0053", "io",         "io.read_file: input exceeds maximum string length") \
-    GRAY_PANIC("P0054", "strconv",    "strconv.to_int: invalid base %d; must be between 2 and 36") \
-    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to int (base %d)") \
-    GRAY_PANIC("P0056", "strconv",    "strconv.to_uint: invalid base %d; must be between 2 and 36") \
-    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to uint (base %d)") \
+    GRAY_PANIC("P0054", "strconv",    "strconv.to_int: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to int (base %lld)") \
+    GRAY_PANIC("P0056", "strconv",    "strconv.to_uint: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to uint (base %lld)") \
     GRAY_PANIC("P0058", "strconv",    "strconv.to_uint: cannot convert '%s' to uint; value is negative") \
     GRAY_PANIC("P0059", "strconv",    "strconv.to_float: cannot convert '%s' to float") \
     GRAY_PANIC("P0060", "strconv",    "strconv.to_bool: cannot convert '%s' to bool") \
