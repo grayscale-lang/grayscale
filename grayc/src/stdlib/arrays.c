@@ -367,14 +367,14 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size) {
+GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size) {
     if (size <= 0) size = 1;
     GrayArray result = gray_array_new(arena, sizeof(GrayArray), 4);
     char *data = (char *)arr->data;
     size_t element_size = (size_t)arr->elem_size;
-    for (int32_t i = 0; i < arr->len; i += size) {
-        int32_t chunk_len = (i + size <= arr->len) ? size : (arr->len - i);
-        GrayArray chunk = gray_array_from(arena, data + i * element_size, arr->elem_size, chunk_len);
+    for (int64_t i = 0; i < arr->len; i += size) {
+        int32_t chunk_len = (size <= arr->len - i) ? (int32_t)size : (int32_t)(arr->len - i);
+        GrayArray chunk = gray_array_from(arena, data + (size_t)i * element_size, arr->elem_size, chunk_len);
         GRAY_ARRAY_PUSH(arena, &result, &chunk);
     }
     return result;

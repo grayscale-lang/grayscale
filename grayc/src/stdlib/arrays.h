@@ -363,7 +363,7 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr);
  *   println(arrays.split_every(nums, 2))
  *@end
  */
-GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size);
+GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size);
 
 /*@man pair
  *@module arrays

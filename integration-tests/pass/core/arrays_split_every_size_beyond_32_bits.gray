@@ -1,0 +1,19 @@
+// Test: arrays.split_every keeps a chunk size larger than 32 bits instead of truncating it
+import @arrays
+
+do main() {
+    mut a [int] = {1, 2, 3, 4}
+    mut size int = 4294967298
+    mut chunks = arrays.split_every(a, size)
+
+    if len(chunks) == 1 {
+        println("  [PASS] chunk size 2^32 + 2 gives one chunk")
+    } else {
+        println("  [FAIL] chunk size 2^32 + 2 gives one chunk")
+    }
+    if len(chunks[0]) == 4 {
+        println("  [PASS] the single chunk holds every element")
+    } else {
+        println("  [FAIL] the single chunk holds every element")
+    }
+}
