@@ -165,13 +165,13 @@ GrayArray gray_random_shuffle(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int32_t count) {
+GrayArray gray_random_sample(GrayArena *arena, GrayArray *arr, int64_t count) {
     if (count > arr->len)
-        gray_panic_code("P0062", "random.sample() count %d exceeds array length %d", (int)count, (int)arr->len);
+        gray_panic_code("P0062", "random.sample() count %lld exceeds array length %d", (long long)count, (int)arr->len);
     if (count < 0)
-        gray_panic_code("P0063", "random.sample() count cannot be negative (%d)", (int)count);
+        gray_panic_code("P0063", "random.sample() count cannot be negative (%lld)", (long long)count);
     GrayArray shuffled = gray_random_shuffle(arena, arr);
-    shuffled.len = count;
+    shuffled.len = (int32_t)count;
     return shuffled;
 }
 

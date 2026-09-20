@@ -441,8 +441,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0059` | strconv | strconv.to_float: cannot convert '%s' to float |
 | `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
 | `P0061` | memory | mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB |
-| `P0062` | random | random.sample() count %d exceeds array length %d |
-| `P0063` | random | random.sample() count cannot be negative (%d) |
+| `P0062` | random | random.sample() count %lld exceeds array length %d |
+| `P0063` | random | random.sample() count cannot be negative (%lld) |
 | `P0064` | math | math.sqrt() requires a non-negative number, got %g |
 | `P0065` | math | math.log() requires a positive number, got %g |
 | `P0066` | math | math.log2() requires a positive number, got %g |
@@ -534,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-20 23:44:11 UTC*
+*Generated on 2026-09-20 23:44:55 UTC*

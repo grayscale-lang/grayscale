@@ -442,8 +442,8 @@
     GRAY_PANIC("P0059", "strconv",    "strconv.to_float: cannot convert '%s' to float") \
     GRAY_PANIC("P0060", "strconv",    "strconv.to_bool: cannot convert '%s' to bool") \
     GRAY_PANIC("P0061", "memory",     "mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB") \
-    GRAY_PANIC("P0062", "random",     "random.sample() count %d exceeds array length %d") \
-    GRAY_PANIC("P0063", "random",     "random.sample() count cannot be negative (%d)") \
+    GRAY_PANIC("P0062", "random",     "random.sample() count %lld exceeds array length %d") \
+    GRAY_PANIC("P0063", "random",     "random.sample() count cannot be negative (%lld)") \
     GRAY_PANIC("P0064", "math",       "math.sqrt() requires a non-negative number, got %g") \
     GRAY_PANIC("P0065", "math",       "math.log() requires a positive number, got %g") \
     GRAY_PANIC("P0066", "math",       "math.log2() requires a positive number, got %g") \
