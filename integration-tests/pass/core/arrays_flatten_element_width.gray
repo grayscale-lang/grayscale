@@ -1,0 +1,44 @@
+// Test: arrays.flatten keeps every element intact for element types wider than 8 bytes
+import @arrays
+
+const P struct {
+    a int
+    s string
+}
+
+do main() {
+    mut strs [[string]] = {{"alpha", "beta"}, {"gamma", "delta", "epsilon"}}
+    mut flat_strs [string] = arrays.flatten(strs)
+    if len(flat_strs) == 5 && flat_strs[0] == "alpha" && flat_strs[1] == "beta" &&
+       flat_strs[2] == "gamma" && flat_strs[3] == "delta" && flat_strs[4] == "epsilon" {
+        println("  [PASS] flatten [[string]]")
+    } else {
+        println("  [FAIL] flatten [[string]]")
+    }
+
+    mut structs [[P]] = {{P{a: 1, s: "x"}}, {P{a: 2, s: "y"}, P{a: 3, s: "z"}}}
+    mut flat_structs [P] = arrays.flatten(structs)
+    if len(flat_structs) == 3 && flat_structs[0].s == "x" && flat_structs[1].a == 2 &&
+       flat_structs[2].s == "z" {
+        println("  [PASS] flatten [[struct]]")
+    } else {
+        println("  [FAIL] flatten [[struct]]")
+    }
+
+    mut deep [[[int]]] = {{{1}}, {{2, 3}}}
+    mut flat_deep [[int]] = arrays.flatten(deep)
+    if len(flat_deep) == 2 && len(flat_deep[0]) == 1 && len(flat_deep[1]) == 2 && flat_deep[1][1] == 3 {
+        println("  [PASS] flatten [[[int]]]")
+    } else {
+        println("  [FAIL] flatten [[[int]]]")
+    }
+
+    mut none [[string]] = {{}, {}}
+    mut flat_none [string] = arrays.flatten(none)
+    arrays.append(flat_none, "z")
+    if len(flat_none) == 1 && flat_none[0] == "z" {
+        println("  [PASS] flatten of empty inner arrays keeps the element width")
+    } else {
+        println("  [FAIL] flatten of empty inner arrays keeps the element width")
+    }
+}

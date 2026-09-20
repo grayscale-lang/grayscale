@@ -328,25 +328,37 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
 }
 
 GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
-    /* Flatten one level: [[int]] -> [int]. Each element is a GrayArray, and
-     * the result holds int64-wide elements (as the push loop always did). */
-    const size_t out_es = sizeof(int64_t);
+    /* Flatten one level: [[T]] -> [T]. Each element of `arr` is a GrayArray,
+     * and the result holds elements as wide as the inner arrays' own. */
+    size_t out_es = 0;
+    size_t empty_es = 0;
     int64_t total = 0;
     for (int32_t i = 0; i < arr->len; i++) {
-        total += ((GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size))->len;
+        GrayArray *inner = (GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size);
+        total += inner->len;
+        if (out_es == 0 && inner->len > 0) out_es = (size_t)inner->elem_size;
+        if (empty_es == 0) empty_es = (size_t)inner->elem_size;
     }
+    if (out_es == 0) out_es = empty_es ? empty_es : sizeof(int64_t);
     GrayArray result = gray_array_new(arena, (int32_t)out_es, (int32_t)total);
     char *out = (char *)result.data;
     int32_t pos = 0;
     for (int32_t i = 0; i < arr->len; i++) {
         GrayArray *inner = (GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size);
         if (inner->len <= 0) continue;
-        if ((size_t)inner->elem_size == out_es) {
+        size_t inner_es = (size_t)inner->elem_size;
+        if (inner_es == out_es) {
             memcpy(out + (size_t)pos * out_es, inner->data, (size_t)inner->len * out_es);
         } else {
+            /* An inner array packed at a different width (a [byte] literal
+             * versus one a runtime helper built): widen or narrow each
+             * element rather than read past it. */
+            size_t common = inner_es < out_es ? inner_es : out_es;
             char *id = (char *)inner->data;
             for (int32_t j = 0; j < inner->len; j++) {
-                memcpy(out + (size_t)(pos + j) * out_es, id + (size_t)j * (size_t)inner->elem_size, out_es);
+                char *dst = out + (size_t)(pos + j) * out_es;
+                memcpy(dst, id + (size_t)j * inner_es, common);
+                memset(dst + common, 0, out_es - common);
             }
         }
         pos += inner->len;
