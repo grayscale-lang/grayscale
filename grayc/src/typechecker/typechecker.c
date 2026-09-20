@@ -1752,7 +1752,33 @@ static bool return_expr_points_to_const(TypeChecker *checker, FuncSig *fs,
         AstNode *init = local_initializer(body, e->data.label.value);
         return init && init != e && return_expr_points_to_const(checker, fs, body, init);
     }
+    /* A struct, array or map literal, or a tagged-enum variant, that holds
+     * such a pointer carries it out of the function. */
+    if (e->kind == NODE_STRUCT_VALUE) {
+        for (int i = 0; i < e->data.struct_value.count; i++)
+            if (return_expr_points_to_const(checker, fs, body, e->data.struct_value.field_values[i]))
+                return true;
+        return false;
+    }
+    if (e->kind == NODE_ARRAY_VALUE) {
+        for (int i = 0; i < e->data.array_value.count; i++)
+            if (return_expr_points_to_const(checker, fs, body, e->data.array_value.elements[i]))
+                return true;
+        return false;
+    }
+    if (e->kind == NODE_MAP_VALUE) {
+        for (int i = 0; i < e->data.map_value.count; i++)
+            if (return_expr_points_to_const(checker, fs, body, e->data.map_value.values[i]))
+                return true;
+        return false;
+    }
     if (e->kind != NODE_CALL_EXPR) return false;
+    if (is_tagged_enum_variant_call(checker, e)) {
+        for (int i = 0; i < e->data.call.arg_count; i++)
+            if (return_expr_points_to_const(checker, fs, body, e->data.call.args[i]))
+                return true;
+        return false;
+    }
     AstNode *f = e->data.call.function;
     if (f && f->kind == NODE_LABEL && e->data.call.arg_count == 1) {
         if (strcmp(f->data.label.value, "addr") == 0) {
@@ -2078,6 +2104,13 @@ static GrayType *const_walk_expr_type(TypeChecker *checker, AstNode *e) {
 
 static bool expr_points_to_const(TypeChecker *checker, AstNode *e);
 
+/* `^^T`: a pointer to a pointer. A variable of this type marked const_source
+ * holds a pointer to a pointer at a const-declared variable, so it is what
+ * `pp^` reads, not what `pp^` writes, that reaches the const. */
+static bool is_pointer_to_pointer(GrayType *t) {
+    return t && t->kind == TK_POINTER && t->element_type && t->element_type[0] == '^';
+}
+
 /* The pointer expression that a write through `place` dereferences, when it
  * points at a const-declared variable — `p^`, `p^.f`, `p.f` (auto-deref),
  * `h.p^.f` — else NULL. */
@@ -2105,7 +2138,8 @@ static AstNode *place_derefs_const_pointer(TypeChecker *checker, AstNode *place)
             return NULL;
         }
         if (!inner) return NULL;
-        if (deref && expr_points_to_const(checker, inner)) return inner;
+        if (deref && !is_pointer_to_pointer(const_walk_expr_type(checker, inner)) &&
+            expr_points_to_const(checker, inner)) return inner;
         cur = inner;
     }
     return NULL;
@@ -2125,8 +2159,21 @@ static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
         AstNode *inner = e->kind == NODE_MEMBER_EXPR ? e->data.member.object
                                                      : e->data.index_expr.left;
         GrayType *t = inner ? const_walk_expr_type(checker, inner) : NULL;
-        if (!inner || (t && t->kind == TK_POINTER)) return false;
+        /* A destructuring temp is typed as its first slot, but its `.vN`
+         * fields are the return values, not memory behind that slot. */
+        Symbol *inner_sym = inner && inner->kind == NODE_LABEL
+            ? checker_lookup_symbol(checker, inner->data.label.value) : NULL;
+        bool tuple_temp = inner_sym && inner_sym->ret_count > 0;
+        if (!inner || (t && t->kind == TK_POINTER && !tuple_temp)) return false;
         return expr_points_to_const(checker, inner);
+    }
+    case NODE_POSTFIX_EXPR: {
+        /* `pp^` reads the pointer a `^^T` points at, which is a pointer to
+         * the const whenever pp is one. */
+        if (e->data.postfix.op != TOK_CARET) return false;
+        AstNode *inner = e->data.postfix.left;
+        return is_pointer_to_pointer(const_walk_expr_type(checker, inner)) &&
+               expr_points_to_const(checker, inner);
     }
     case NODE_STRUCT_VALUE:
         for (int i = 0; i < e->data.struct_value.count; i++)
@@ -2156,6 +2203,11 @@ static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
                 Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
                 if (sym && !sym->mutable &&
                     !(sym->type && sym->type->kind == TK_POINTER))
+                    return true;
+                /* The address of a variable that holds a pointer to a const
+                 * is a pointer to a pointer at it. */
+                if (target->kind == NODE_LABEL && sym && sym->const_source &&
+                    sym->type && sym->type->kind == TK_POINTER)
                     return true;
                 return place_derefs_const_pointer(checker, target) != NULL;
             }
@@ -2194,7 +2246,10 @@ static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
 static void propagate_const_source(TypeChecker *checker, Symbol *dst, AstNode *value) {
     if (!dst || dst->const_source || !dst->type) return;
     TypeKind k = dst->type->kind;
-    if (k != TK_POINTER && k != TK_STRUCT && k != TK_ARRAY && k != TK_MAP) return;
+    /* A destructuring temp holds several return values and has no type of
+     * its own; the variables bound from it are marked through it. */
+    if (k != TK_POINTER && k != TK_STRUCT && k != TK_ARRAY && k != TK_MAP && k != TK_ENUM &&
+        !(dst->ret_types && dst->ret_count > 0)) return;
     if (expr_points_to_const(checker, value)) dst->const_source = true;
 }
 
@@ -2822,6 +2877,7 @@ static void apply_call_param_write_effects(TypeChecker *checker,
     for (int a = 0; a < argc && a < csig->param_count && a < MAX_TRACKED_PARAMS; a++) {
         if (!((csig->writes_through_param >> a) & 1)) continue;
         AstNode *arg = node->data.call.args[a];
+        if (is_pointer_to_pointer(const_walk_expr_type(checker, arg))) continue;
         if (!expr_points_to_const(checker, arg)) continue;
         char *msg = typechecker_format(checker,
             "cannot pass a pointer to a const-declared variable to parameter '%s' of '%s'; the function modifies the value through it",
@@ -17643,6 +17699,12 @@ static void check_when_stmt(TypeChecker *checker, AstNode *node) {
                         for (int bi = 0; bi < limit; bi++) {
                             GrayType *bt = typechecker_type_from_name(checker, checker->enum_payload_types[eidx][vidx][bi]);
                             scope_define(checker->current_scope, val_i->data.when_pattern.bindings[bi], bt, false);
+                            /* A payload read out of a value that holds a pointer
+                             * to a const-declared variable is such a pointer. */
+                            propagate_const_source(checker,
+                                scope_lookup_local(checker->current_scope,
+                                    val_i->data.when_pattern.bindings[bi]),
+                                node->data.when_stmt.value);
                         }
                         /* Pointer checker: if the when-subject carries a
                          * buried @mem pointer (field_mem_arena — set when it
