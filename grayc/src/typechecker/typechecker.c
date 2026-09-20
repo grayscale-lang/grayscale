@@ -11350,7 +11350,9 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
      * Builtin and stdlib functions cannot be used as function references. */
     const char *ref_name = NULL;
     const char *ref_struct_name = NULL;  /* struct name for privacy check */
+    const char *ref_struct_key = NULL;   /* the struct as current_struct_name spells it */
     const char *ref_member_name = NULL;  /* member name for privacy check */
+    const char *chain_mod = NULL, *chain_type = NULL;
     if (node->data.func_ref.function->kind == NODE_LABEL) {
         const char *lname = node->data.func_ref.function->data.label.value;
         /* Surface 1: ()builtin_name — builtins are not first-class values */
@@ -11394,7 +11396,21 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
                         member);
                 }
                 ref_name = arena_copy_string(checker->arena, buffer);
+                ref_struct_key = ref_struct_name;
             }
+        } else if (ast_member_chain(node->data.func_ref.function, &chain_mod, &chain_type)) {
+            /* ()mod.Struct.func — the struct function of a struct in another
+             * module, named the way its direct call is. */
+            if (!mark_import_used(checker, chain_mod))
+                mark_import_used(checker, typechecker_resolve_alias(checker, chain_mod));
+            char struct_key[MSG_BUF_SIZE];
+            snprintf(struct_key, sizeof(struct_key), "%s_%s", chain_mod, chain_type);
+            char buffer[MSG_BUF_SIZE];
+            snprintf(buffer, sizeof(buffer), "%s_%s", struct_key, member);
+            ref_struct_name = chain_type;
+            ref_struct_key = arena_copy_string(checker->arena, struct_key);
+            ref_member_name = member;
+            ref_name = arena_copy_string(checker->arena, buffer);
         }
     }
     FuncSig *ref_sig = ref_name ? find_func(checker, ref_name) : NULL;
@@ -11420,9 +11436,9 @@ static GrayType *resolve_func_ref(TypeChecker *checker, AstNode *node) {
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* E4017: private struct function referenced from outside the struct */
-        if (ref_sig->is_private && ref_struct_name &&
+        if (ref_sig->is_private && ref_struct_key &&
             !(checker->current_struct_name &&
-              strcmp(checker->current_struct_name, ref_struct_name) == 0)) {
+              strcmp(checker->current_struct_name, ref_struct_key) == 0)) {
             diagnostic_error_code_formatted(checker->diag, "E4017", NODE_FILE(checker, node),
                 node->token.line, node->token.column, 0,
                 ref_struct_name, ref_member_name);

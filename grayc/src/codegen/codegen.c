@@ -3278,6 +3278,7 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
         /* ()StructName.funcName → gray_fn_StructName_funcName */
         AstNode *mem = node->data.func_ref.function;
         const char *qualifier = ast_member_qualifier(mem);
+        const char *chain_mod = NULL, *chain_type = NULL;
         if (mem->resolved_decl && mem->resolved_decl->kind == DECL_FUNC) {
             /* mod.func — the whole qualified name resolved to the function,
              * so its declaration names it outright. */
@@ -3286,6 +3287,18 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
         } else if (qualifier) {
             const char *qual = codegen_resolve_decl(codegen, qualifier);
             emit_formatted(codegen, "gray_fn_%s_%s", qual, mem->data.member.member);
+        } else if (ast_member_chain(mem, &chain_mod, &chain_type)) {
+            /* mod.Struct.func — the struct function, namespaced under its
+             * struct the way a direct call to it is. */
+            if (mem->data.member.object->resolved_decl) {
+                char owner[MSG_BUF_SIZE];
+                emit_formatted(codegen, "gray_fn_%s_%s",
+                    module_mangle_into(mem->data.member.object->resolved_decl, owner, sizeof(owner)),
+                    mem->data.member.member);
+            } else {
+                emit_formatted(codegen, "gray_fn_%s_%s_%s", chain_mod, chain_type,
+                    mem->data.member.member);
+            }
         } else {
             emit(codegen, "gray_fn_");
             emit_expression(codegen, node->data.func_ref.function);
