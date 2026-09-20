@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5054 - a string passed to an extern.func() parameter the
+ * imported header declares as a number.
+ */
+// expect-error: E5054
+// expect-error-count: 1
+
+extern import "math.h"
+
+do main() {
+    mut x float = extern.sqrt("x")
+    println("${x}")
+}

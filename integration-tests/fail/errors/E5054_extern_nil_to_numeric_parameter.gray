@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5054 - nil passed to an extern.func() parameter the imported
+ * header declares as an int.
+ */
+// expect-error: E5054
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut x i32 = extern.abs(nil)
+    println("${x}")
+}

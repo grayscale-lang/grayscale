@@ -337,7 +337,8 @@
     GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d") \
     GRAY_ERROR("E5051", "usage", "cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change") \
     GRAY_ERROR("E5052", "usage", "unknown C symbol '%s'; no such function, constant, or macro in the imported header(s)") \
-    GRAY_ERROR("E5053", "types", "C function '%s' returns '%s', which cannot be used as '%s'")
+    GRAY_ERROR("E5053", "types", "C function '%s' returns '%s', which cannot be used as '%s'") \
+    GRAY_ERROR("E5054", "arguments", "argument %d of C function '%s' has type '%s', which C cannot convert to the parameter type '%s' the imported header declares")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
