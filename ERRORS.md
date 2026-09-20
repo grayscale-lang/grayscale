@@ -1,7 +1,7 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
 **Total: 481 codes** (335 errors, 17 warnings, 129 panics)
 
@@ -411,7 +411,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0030` | arithmetic | u256 addition result is too large; value exceeds the range of u256 |
 | `P0031` | arithmetic | u256 subtraction result is negative, but u256 cannot hold negative values |
 | `P0032` | arithmetic | u256 multiplication result is too large; value exceeds the range of u256 |
-| `P0033` | bounds | index out of bounds; tried to access index %d but the length is %d |
+| `P0033` | bounds | index out of bounds; tried to access index %lld but the length is %d |
 | `P0034` | iteration | cannot modify array during for_each iteration |
 | `P0035` | iteration | cannot modify map during for_each iteration |
 | `P0036` | encoding | encoding.base64_decode: input length %d is not a multiple of 4 |
@@ -421,8 +421,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0040` | encoding | encoding.hex_decode: input length %d is not even |
 | `P0041` | encoding | encoding.hex_decode: invalid hex character at position %d |
 | `P0042` | encoding | encoding.url_decode: invalid percent-escape at position %d |
-| `P0043` | bounds | arrays.insert_at: index %d is out of bounds for an array of length %d |
-| `P0044` | bounds | arrays.remove_at: index %d is out of bounds for an array of length %d |
+| `P0043` | bounds | arrays.insert_at: index %lld is out of bounds for an array of length %d |
+| `P0044` | bounds | arrays.remove_at: index %lld is out of bounds for an array of length %d |
 | `P0045` | bounds | arrays.get_first called on an empty array |
 | `P0046` | bounds | arrays.get_last called on an empty array |
 | `P0047` | bounds | arrays.remove_first called on an empty array |
@@ -460,7 +460,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0079` | arithmetic | %s result is too large; value exceeds the range of this type |
 | `P0080` | runtime | nil pointer dereference |
 | `P0081` | runtime | key not found in map |
-| `P0082` | bounds | string index %d out of bounds (length %d) |
+| `P0082` | bounds | string index %lld out of bounds (length %d) |
 | `P0083` | runtime | sleep duration cannot be negative (%lld) |
 | `P0084` | runtime | cannot convert '%s' to int |
 | `P0085` | runtime | cannot convert '%s' to float |
@@ -532,4 +532,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-19 22:24:53 UTC*
+*Generated on 2026-09-20 18:15:25 UTC*

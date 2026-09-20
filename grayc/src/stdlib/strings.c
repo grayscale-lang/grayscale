@@ -445,8 +445,8 @@ GrayString gray_strings_from_chars(GrayArena *arena, GrayArray *chars) {
 
 char gray_strings_char_at(GrayString str, int64_t index) {
     if (index < 0 || index >= str.len) {
-        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
-                      (int)index, (int)str.len);
+        gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
+                      (long long)index, (int)str.len);
     }
     return str.data[index];
 }
@@ -475,24 +475,24 @@ GrayString gray_strings_prepend_char(GrayArena *arena, GrayString str, int32_t c
 
 GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint) {
     if (index < 0 || index > str.len) {
-        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
-                      (int)index, (int)str.len);
+        gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
+                      (long long)index, (int)str.len);
     }
     return strings_splice(arena, str, (int32_t)index, 0, gray_builtin_char_to_utf8(arena, codepoint));
 }
 
 GrayString gray_strings_remove_at(GrayArena *arena, GrayString str, int64_t index) {
     if (index < 0 || index >= str.len) {
-        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
-                      (int)index, (int)str.len);
+        gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
+                      (long long)index, (int)str.len);
     }
     return strings_splice(arena, str, (int32_t)index, 1, gray_string_lit(""));
 }
 
 GrayString gray_strings_set_char_at(GrayArena *arena, GrayString str, int64_t index, int32_t codepoint) {
     if (index < 0 || index >= str.len) {
-        gray_panic_code("P0082", "string index %d out of bounds (length %d)",
-                      (int)index, (int)str.len);
+        gray_panic_code("P0082", "string index %lld out of bounds (length %d)",
+                      (long long)index, (int)str.len);
     }
     return strings_splice(arena, str, (int32_t)index, 1, gray_builtin_char_to_utf8(arena, codepoint));
 }

@@ -1,0 +1,8 @@
+/* Panic Test: P0043 - arrays.insert_at with an index whose low 32 bits are in range */
+import @arrays
+
+do main() {
+    mut a [int] = {10, 20, 30}
+    arrays.insert_at(a, 4294967297, 99)
+    println(a)
+}

@@ -27,12 +27,12 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value) {
     GRAY_ARRAY_PUSH(arena, arr, value);
 }
 
-void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, const void *value) {
+void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, const void *value) {
     ARRAY_CHECK_ITER(arr);
     if (index < 0 || index > arr->len) {
         gray_panic_code("P0043",
-            "arrays.insert_at: index %d is out of bounds for an array of length %d",
-            index, arr->len);
+            "arrays.insert_at: index %lld is out of bounds for an array of length %d",
+            (long long)index, arr->len);
     }
 
     /* NULL/0 keeps the P0035 panic locationless, as it has always been here. */
@@ -52,12 +52,12 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value) {
     gray_arrays_insert_at(arena, arr, 0, value);
 }
 
-void gray_arrays_remove_at(GrayArray *arr, int32_t index) {
+void gray_arrays_remove_at(GrayArray *arr, int64_t index) {
     ARRAY_CHECK_ITER(arr);
     if (index < 0 || index >= arr->len)
         gray_panic_code("P0044",
-            "arrays.remove_at: index %d is out of bounds for an array of length %d",
-            index, arr->len);
+            "arrays.remove_at: index %lld is out of bounds for an array of length %d",
+            (long long)index, arr->len);
     char *data = (char *)arr->data;
     size_t element_size = (size_t)arr->elem_size;
     memmove(data + index * element_size, data + (index + 1) * element_size, (arr->len - 1 - index) * element_size);
@@ -97,9 +97,11 @@ void gray_arrays_clear(GrayArray *arr) {
     arr->len = 0;
 }
 
-void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int32_t count) {
+void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count) {
     gray_arrays_clear(arr);
-    for (int32_t i = 0; i < count; i++) {
+    if (count > INT32_MAX)
+        gray_panic_code("P0035", "array capacity overflow");
+    for (int64_t i = 0; i < count; i++) {
         GRAY_ARRAY_PUSH(arena, arr, value);
     }
 }
@@ -261,11 +263,11 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int32_t end) {
+GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int64_t end) {
     if (start < 0) start = 0;
     if (end > arr->len) end = arr->len;
     if (start >= end) return gray_array_new(arena, arr->elem_size, 1);
-    int32_t count = end - start;
+    int32_t count = (int32_t)(end - start);
     return gray_array_from(arena, (char *)arr->data + start * arr->elem_size, arr->elem_size, count);
 }
 
@@ -378,11 +380,11 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right) 
     return result;
 }
 
-GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int32_t n) {
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n) {
     int32_t len = arr->len;
     if (len == 0) return gray_array_new(arena, arr->elem_size, 1);
     size_t es = (size_t)arr->elem_size;
-    int32_t shift = ((n % len) + len) % len;
+    int32_t shift = (int32_t)(((n % len) + len) % len);
     GrayArray result = gray_array_new(arena, arr->elem_size, len);
     const char *src = (const char *)arr->data;
     char *dst = (char *)result.data;

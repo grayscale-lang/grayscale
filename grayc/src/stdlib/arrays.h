@@ -42,7 +42,7 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value);
  *   println(nums)
  *@end
  */
-void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, const void *value);
+void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, const void *value);
 
 /*@man prepend
  *@module arrays
@@ -70,7 +70,7 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value);
  *   println(nums)
  *@end
  */
-void gray_arrays_remove_at(GrayArray *arr, int32_t index);
+void gray_arrays_remove_at(GrayArray *arr, int64_t index);
 
 /*@man remove
  *@module arrays
@@ -114,7 +114,7 @@ void gray_arrays_clear(GrayArray *arr);
  *   println(nums)
  *@end
  */
-void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int32_t count);
+void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count);
 
 /* Access — typed via codegen cast */
 
@@ -310,7 +310,7 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr);
  *   println(arrays.slice(nums, 1, 3))
  *@end
  */
-GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int32_t end);
+GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int64_t end);
 
 /*@man concat
  *@module arrays
@@ -390,7 +390,7 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right);
  *   println(arrays.rotate(nums, 2))
  *@end
  */
-GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int32_t n);
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n);
 
 /* Computation */
 

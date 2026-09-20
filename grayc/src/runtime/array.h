@@ -32,10 +32,10 @@ GrayArray gray_array_new(GrayArena *arena, int32_t elem_size, int32_t initial_ca
 GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size, int32_t count);
 
 /* Get a pointer to element at index (with bounds checking) */
-void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int line);
+void *gray_array_get_ptr(GrayArray *arr, int64_t index, const char *file, int line);
 
 /* Set element at index (with bounds checking) */
-void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line);
+void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char *file, int line);
 
 /* Ensure room for one more element, growing the backing store if full.
  * Growth is allocate-and-copy: the arena has no realloc, so the old store

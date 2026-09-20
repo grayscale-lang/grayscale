@@ -3706,9 +3706,9 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         /* String indexing with bounds check: s.data[i] */
         emit_formatted(codegen, "({ GrayString _es = ");
         emit_expression(codegen, node->data.index_expr.left);
-        emit_formatted(codegen, "; int32_t _ei = (int32_t)(");
+        emit_formatted(codegen, "; int64_t _ei = (int64_t)(");
         emit_expression(codegen, node->data.index_expr.index);
-        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { %s; } ", panic_call(codegen, node, "P0082", ", _ei, _es.len"));
+        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { %s; } ", panic_call(codegen, node, "P0082", ", (long long)_ei, _es.len"));
         emit(codegen, "(int32_t)(unsigned char)_es.data[_ei]; })");
     } else {
         /* Fallback */
