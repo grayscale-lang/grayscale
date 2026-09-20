@@ -7362,8 +7362,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit(codegen, "gray_arrays_is_equal_prim(");
         }
         emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ", ");
+        emit_array_argument_address(codegen, node->data.call.args[1]);
         emit(codegen, ")");
         return true;
     }
