@@ -14816,6 +14816,14 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                     indexed_t->element_type, elem_lit, elem_lit_neg);
             }
         }
+        /* E3001: a C interop value has no Grayscale type to check against the
+         * map's value type; C would convert it silently or reject it. */
+        if (indexed_t && indexed_t->kind == TK_MAP && value_t && value_t->kind == TK_C_FUNC) {
+            char *msg = typechecker_format(checker,
+                "type mismatch: cannot assign a C interop value to element of '%s'",
+                type_display_name(checker, indexed_t));
+            tc_err_assign_type(checker, node, msg);
+        }
         /* E3019: assigning a signed value into an unsigned map value needs a cast. */
         if (indexed_t && indexed_t->kind == TK_MAP && indexed_t->value_type) {
             check_signedness_crossing(checker, indexed_t->value_type,
@@ -15185,6 +15193,18 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 tc_err_assign_type(checker, node, msg);
             }
         }
+    }
+    /* A C interop value assigned to a field reached through an element or a
+     * nested field (m[k].f, xs[i].f, a.b.c): the checks above only cover a
+     * variable or a dereference as the object. */
+    if (target->kind == NODE_MEMBER_EXPR && value_t->kind == TK_C_FUNC &&
+        target->data.member.object->kind != NODE_LABEL &&
+        !(target->data.member.object->kind == NODE_POSTFIX_EXPR &&
+          target->data.member.object->data.postfix.op == TOK_CARET)) {
+        char *msg = typechecker_format(checker,
+            "type mismatch: cannot assign a C interop value to %s field '%s'",
+            type_display_name(checker, target_t), target->data.member.member);
+        tc_err_assign_type(checker, node, msg);
     }
     /* E3163: storing a local's address into memory that outlives it, reached
      * through a pointer parameter, a &ref parameter, or a new() heap object's
