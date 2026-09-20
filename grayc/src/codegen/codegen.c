@@ -3653,36 +3653,39 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         if (arr_ptr_obj) {
             bool _arr_raw = (arr_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, arr_ptr_obj->data.label.value));
             int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
+            /* The element pointer is dereferenced outside the statement
+             * expression so the result is an lvalue: `b.items[i].n = v`,
+             * `b.items[i].n += v` and `b.items[i].n++` all assign through it
+             * or take its address. */
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
             emit_expression(codegen, arr_ptr_obj);
             if (_arr_raw) {
-                emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, sanitize_name(arr_ptr_field), c_elem);
+                emit_formatted(codegen, "; gray_array_get_ptr(&_adp%d->%s, ",
+                      my_dp, sanitize_name(arr_ptr_field));
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
-                          "GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field), c_elem);
+                          "gray_array_get_ptr(&_adp%d->%s, ",
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field));
             }
             emit_expression(codegen, node->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
+            emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
         } else if (node->data.index_expr.left->kind == NODE_POSTFIX_EXPR &&
                    node->data.index_expr.left->data.postfix.op == TOK_CARET) {
             /* p^[i]: direct dereference of container pointer */
             AstNode *_dp_inner = node->data.index_expr.left->data.postfix.left;
             bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
             int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
             emit_expression(codegen, _dp_inner);
             if (_dp_raw) {
-                emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
-                      my_dp, c_elem);
+                emit_formatted(codegen, "; gray_array_get_ptr(_adp%d, ", my_dp);
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
-                          "GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, c_elem);
+                          "gray_array_get_ptr(_adp%d, ",
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp);
             }
             emit_expression(codegen, node->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
+            emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
         } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR ||
                    index_left_is_map_lookup(codegen, node->data.index_expr.left) ||
                    (node->data.index_expr.left->kind == NODE_INDEX_EXPR &&
