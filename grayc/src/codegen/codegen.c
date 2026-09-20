@@ -465,10 +465,12 @@ static bool label_is_entry_global(AstNode *node) {
 }
 
 /* The variable a place expression is rooted at: field and index chains
- * stripped away. A dereference stops the walk — what a pointer addresses
+ * stripped away. A module-qualified variable (`mod.v`) is a root itself. A dereference stops the walk — what a pointer addresses
  * is not the variable's own storage. */
 static AstNode *place_root(AstNode *expr) {
     for (;;) {
+        if (expr->kind == NODE_MEMBER_EXPR && expr->resolved_decl &&
+            expr->resolved_decl->kind == DECL_CONST) return expr;
         if (expr->kind == NODE_MEMBER_EXPR) expr = expr->data.member.object;
         else if (expr->kind == NODE_INDEX_EXPR) expr = expr->data.index_expr.left;
         else return expr;
@@ -481,8 +483,8 @@ static AstNode *place_root(AstNode *expr) {
  * in an arena a function's return rewinds. */
 static bool place_is_module_storage(CodeGen *codegen, AstNode *expr) {
     AstNode *root = place_root(expr);
-    if (root->kind != NODE_LABEL) return false;
-    bool module_level = root->data.label.refers_to_file_global ||
+    if (root->kind != NODE_LABEL && root->kind != NODE_MEMBER_EXPR) return false;
+    bool module_level = (root->kind == NODE_LABEL && root->data.label.refers_to_file_global) ||
         (root->resolved_decl && root->resolved_decl->kind == DECL_CONST);
     if (!module_level) return false;
     GrayType *root_t = codegen->type_table ? typetable_get(codegen->type_table, root) : NULL;

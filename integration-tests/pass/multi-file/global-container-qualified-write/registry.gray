@@ -1,0 +1,4 @@
+import @arrays
+
+mut keys map[string:int] = {:}
+mut names [string] = {}
