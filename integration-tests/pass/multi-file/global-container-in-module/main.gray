@@ -1,0 +1,20 @@
+// Test: a module-level container mutated by that module's functions keeps its data across calls
+import "./registry.gray"
+
+do main() {
+    registry.register("a")
+    registry.register("b")
+    if registry.has_key("a") && registry.has_key("b") {
+        println("  [PASS] module map keys survive later calls")
+    } else {
+        println("  [FAIL] module map keys survive later calls")
+    }
+
+    registry.add_name("x")
+    registry.add_name("y")
+    if registry.first_name() == "x!" {
+        println("  [PASS] module array elements survive later calls")
+    } else {
+        println("  [FAIL] module array elements survive later calls")
+    }
+}

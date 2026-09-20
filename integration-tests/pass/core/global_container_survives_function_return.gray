@@ -1,0 +1,90 @@
+// Test: data stored into module-level containers by a function survives that function's return
+import @arrays
+
+const P struct {
+    name string
+}
+
+mut registry map[string:int] = {:}
+mut names [string] = {}
+mut labels [string] = {"", ""}
+mut by_id map[int:string] = {:}
+mut people [P] = {}
+mut renamed [P] = {P{name: ""}, P{name: ""}}
+mut groups map[int:[int]] = {:}
+mut title string = ""
+
+do register(name string) { registry[name] = 1 }
+do add_name(s string) { arrays.append(names, s + "!") }
+do set_label(i int, s string) { labels[i] = s + "!" }
+do set_by_id(k int, s string) { by_id[k] = s + "!" }
+do add_person(s string) { arrays.append(people, P{name: s + "!"}) }
+do rename(i int, s string) { renamed[i].name = s + "!" }
+do set_group(k int, n int) { groups[k] = {n, n, n} }
+do set_title(s string) { title = s + "!" }
+
+do main() {
+    register("a")
+    register("b")
+    if registry["a"] == 1 && registry["b"] == 1 {
+        println("  [PASS] map keys stored by a function")
+    } else {
+        println("  [FAIL] map keys stored by a function")
+    }
+
+    add_name("x")
+    add_name("y")
+    if names[0] == "x!" && names[1] == "y!" {
+        println("  [PASS] computed strings appended by a function")
+    } else {
+        println("  [FAIL] computed strings appended by a function")
+    }
+
+    set_label(0, "x")
+    set_label(1, "y")
+    if labels[0] == "x!" && labels[1] == "y!" {
+        println("  [PASS] array element assigned by a function")
+    } else {
+        println("  [FAIL] array element assigned by a function")
+    }
+
+    set_by_id(0, "x")
+    set_by_id(1, "y")
+    if by_id[0] == "x!" && by_id[1] == "y!" {
+        println("  [PASS] map value assigned by a function")
+    } else {
+        println("  [FAIL] map value assigned by a function")
+    }
+
+    add_person("x")
+    add_person("y")
+    if people[0].name == "x!" && people[1].name == "y!" {
+        println("  [PASS] struct appended by a function")
+    } else {
+        println("  [FAIL] struct appended by a function")
+    }
+
+    rename(0, "x")
+    rename(1, "y")
+    if renamed[0].name == "x!" && renamed[1].name == "y!" {
+        println("  [PASS] struct field of an array element assigned by a function")
+    } else {
+        println("  [FAIL] struct field of an array element assigned by a function")
+    }
+
+    set_group(0, 7)
+    set_group(1, 8)
+    if groups[0][0] == 7 && groups[1][0] == 8 {
+        println("  [PASS] array stored in a map by a function")
+    } else {
+        println("  [FAIL] array stored in a map by a function")
+    }
+
+    set_title("x")
+    set_title("y")
+    if title == "y!" {
+        println("  [PASS] string assigned by a function")
+    } else {
+        println("  [FAIL] string assigned by a function")
+    }
+}

@@ -464,6 +464,47 @@ static bool label_is_entry_global(AstNode *node) {
     return !node->resolved_decl || node->resolved_decl->kind == DECL_CONST;
 }
 
+/* The variable a place expression is rooted at: field and index chains
+ * stripped away. A dereference stops the walk — what a pointer addresses
+ * is not the variable's own storage. */
+static AstNode *place_root(AstNode *expr) {
+    for (;;) {
+        if (expr->kind == NODE_MEMBER_EXPR) expr = expr->data.member.object;
+        else if (expr->kind == NODE_INDEX_EXPR) expr = expr->data.index_expr.left;
+        else return expr;
+    }
+}
+
+/* True when `expr` is a place inside a module-level variable that holds
+ * allocated storage (a string, array, map or struct). Whatever is stored
+ * into one must outlive every function scope, so it cannot be allocated
+ * in an arena a function's return rewinds. */
+static bool place_is_module_storage(CodeGen *codegen, AstNode *expr) {
+    AstNode *root = place_root(expr);
+    if (root->kind != NODE_LABEL) return false;
+    bool module_level = root->data.label.refers_to_file_global ||
+        (root->resolved_decl && root->resolved_decl->kind == DECL_CONST);
+    if (!module_level) return false;
+    GrayType *root_t = codegen->type_table ? typetable_get(codegen->type_table, root) : NULL;
+    return root_t && (root_t->kind == TK_STRING || root_t->kind == TK_ARRAY ||
+                      root_t->kind == TK_MAP || root_t->kind == TK_STRUCT);
+}
+
+/* True when a statement stores into module-level storage: it assigns to a
+ * place inside one, or passes one to a call that may mutate it. */
+static bool statement_stores_into_module_storage(CodeGen *codegen, AstNode *stmt) {
+    if (stmt->kind == NODE_ASSIGN_STMT)
+        return place_is_module_storage(codegen, stmt->data.assign.target);
+    if (stmt->kind == NODE_EXPR_STMT && stmt->data.expr_stmt.expr &&
+        stmt->data.expr_stmt.expr->kind == NODE_CALL_EXPR) {
+        AstNode *call = stmt->data.expr_stmt.expr;
+        for (int i = 0; i < call->data.call.arg_count; i++) {
+            if (place_is_module_storage(codegen, call->data.call.args[i])) return true;
+        }
+    }
+    return false;
+}
+
 /* Build a mangled name for a generic instantiation: `base__concrete`
  * with non-alphanumeric characters replaced by underscores so
  * array/map bindings stay legal C identifiers. */
@@ -12691,13 +12732,30 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         break;
     }
     case NODE_ASSIGN_STMT:
-        emit_assign_statement(codegen, node);
+    case NODE_EXPR_STMT: {
+        /* A function's return rewinds the arena it ran in, but a module-level
+         * container outlives every function. Run a store into one in the
+         * heap arena, which is never rewound, so the copied map key, grown
+         * backing store and stored element all survive the return. The
+         * heap arena is null on a spawned thread, which keeps its own. */
+        bool to_module = statement_stores_into_module_storage(codegen, node);
+        if (to_module) {
+            emit_indent(codegen);
+            emit(codegen, "{ GrayArena *_gray_gsave = gray_default_arena; "
+                          "if (gray_heap_arena) gray_default_arena = gray_heap_arena;\n");
+            codegen->indent++;
+        }
+        if (node->kind == NODE_ASSIGN_STMT) emit_assign_statement(codegen, node);
+        else emit_expression_statement(codegen, node);
+        if (to_module) {
+            codegen->indent--;
+            emit_indent(codegen);
+            emit(codegen, "gray_default_arena = _gray_gsave; }\n");
+        }
         break;
+    }
     case NODE_RETURN_STMT:
         emit_return_statement(codegen, node);
-        break;
-    case NODE_EXPR_STMT:
-        emit_expression_statement(codegen, node);
         break;
     case NODE_IF_STMT:
         emit_if_statement(codegen, node);
@@ -14186,7 +14244,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "    gray_os_init(argc, argv);\n");
     /* Initialize file-scope arrays that can't use C static initializers */
     if (codegen->global_init.len > 0) {
+        /* Module-level containers grow and copy their keys into the arena they
+         * were created in. Create them in the heap arena, which no function
+         * return rewinds. */
+        emit(codegen, "    { GrayArena *_gray_init_saved = gray_default_arena; "
+                      "gray_default_arena = gray_heap_arena;\n");
         append_string_to_buffer(&codegen->output, codegen->global_init.data);
+        emit(codegen, "    gray_default_arena = _gray_init_saved; }\n");
     }
     if (codegen->test_mode) {
         /* Test runner: call each #test function under the runner's recovery
