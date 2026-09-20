@@ -272,11 +272,10 @@ GrayString gray_strings_replace(GrayArena *arena, GrayString str, GrayString old
 GrayString gray_strings_repeat(GrayArena *arena, GrayString str, int64_t count) {
     if (count < 0) gray_panic_code("P0072", "strings.repeat() count cannot be negative (%lld)", (long long)count);
     if (count == 0 || str.len == 0) return gray_string_lit("");
-    int64_t new_len64 = (int64_t)str.len * count;
-    if (new_len64 > INT32_MAX) {
+    if (count > INT32_MAX / str.len) {
         gray_panic_code("P0073", "strings.repeat() result exceeds maximum string length");
     }
-    int32_t new_len = (int32_t)new_len64;
+    int32_t new_len = (int32_t)(str.len * count);
     char *buf = gray_arena_alloc_uninitialized(arena, (size_t)new_len + 1);
     for (int64_t i = 0; i < count; i++) {
         memcpy(buf + i * str.len, str.data, (size_t)str.len);

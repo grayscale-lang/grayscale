@@ -1,0 +1,7 @@
+/* Panic Test: P0073 - strings.repeat when length * count wraps around 64 bits */
+import @strings
+
+do main() {
+    mut s string = strings.repeat("abcdefgh", 2305843009213693953)
+    println(len(s))
+}
