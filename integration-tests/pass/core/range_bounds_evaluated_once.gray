@@ -1,0 +1,83 @@
+/*
+ * range_bounds_evaluated_once.gray - The end and step of range() are
+ * evaluated once, before the loop, not on every iteration
+ */
+
+mut calls int = 0
+
+do bound(n int) -> int {
+    calls += 1
+    return n
+}
+
+do main() {
+    println("=== Range Bounds Evaluated Once Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    // Test 1: a call in the end expression runs once
+    mut sum int = 0
+    for i in range(0, bound(3)) {
+        sum += i
+    }
+    if sum == 3 && calls == 1 {
+        println("  [PASS] range(0, bound(3)): sum = 3, calls = 1")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] range(0, bound(3)): sum = ${sum}, calls = ${calls}")
+        failed += 1
+    }
+
+    // Test 2: range(end) form
+    calls = 0
+    mut count int = 0
+    for _ in range(bound(4)) {
+        count += 1
+    }
+    if count == 4 && calls == 1 {
+        println("  [PASS] range(bound(4)): count = 4, calls = 1")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] range(bound(4)): count = ${count}, calls = ${calls}")
+        failed += 1
+    }
+
+    // Test 3: changing the bound variable inside the body does not change
+    // the number of iterations
+    mut n int = 3
+    mut runs int = 0
+    for i in range(0, n) {
+        n = 5
+        runs += 1
+    }
+    if runs == 3 {
+        println("  [PASS] bound changed in body: runs = 3")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bound changed in body: expected 3 runs, got ${runs}")
+        failed += 1
+    }
+
+    // Test 4: a negated call in the step runs once
+    calls = 0
+    mut total int = 0
+    for i in range(20, 0, -bound(2)) {
+        total += i
+    }
+    if total == 110 && calls == 1 {
+        println("  [PASS] range(20, 0, -bound(2)): total = 110, calls = 1")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] range(20, 0, -bound(2)): total = ${total}, calls = ${calls}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

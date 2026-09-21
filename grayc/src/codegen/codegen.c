@@ -12197,14 +12197,31 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                 emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = 0; 0; (void)0", var);
             } else {
+                /* The end (and a non-literal step) is evaluated once, before
+                 * the loop, not on every iteration. */
+                AstNode *step = iter->data.range_expr.step;
+                bool hoist_step = step && step->kind != NODE_INT_VALUE;
+                int hc = codegen_next_id(codegen);
+                emit_formatted(codegen, "__auto_type _gray_end_%d = ", hc);
+                emit_expression(codegen, iter->data.range_expr.end);
+                emit(codegen, ";\n");
+                if (hoist_step) {
+                    emit_indent(codegen);
+                    emit_formatted(codegen, "__auto_type _gray_step_%d = ", hc);
+                    emit_expression(codegen, step);
+                    emit(codegen, ";\n");
+                }
+                emit_indent(codegen);
                 emit_formatted(codegen, "for (int64_t %s = ", var);
                 emit_expression(codegen, iter->data.range_expr.start);
-                emit_formatted(codegen, "; %s %s ", var, neg_step ? ">" : "<");
-                emit_expression(codegen, iter->data.range_expr.end);
-                emit_formatted(codegen, "; %s", var);
-                if (iter->data.range_expr.step) {
+                emit_formatted(codegen, "; %s %s _gray_end_%d; %s", var, neg_step ? ">" : "<", hc, var);
+                if (step) {
                     emit_formatted(codegen, " = gray_add_check(%s, ", var);
-                    emit_expression(codegen, iter->data.range_expr.step);
+                    if (hoist_step) {
+                        emit_formatted(codegen, "_gray_step_%d", hc);
+                    } else {
+                        emit_expression(codegen, step);
+                    }
                     emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
                 } else {
                     emit(codegen, "++");
@@ -12212,9 +12229,12 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             }
         } else {
             /* range(end) - start at 0 */
-            emit_formatted(codegen, "for (int64_t %s = 0; %s < ", var, var);
+            int hc = codegen_next_id(codegen);
+            emit_formatted(codegen, "__auto_type _gray_end_%d = ", hc);
             emit_expression(codegen, iter->data.range_expr.end);
-            emit_formatted(codegen, "; %s++", var);
+            emit(codegen, ";\n");
+            emit_indent(codegen);
+            emit_formatted(codegen, "for (int64_t %s = 0; %s < _gray_end_%d; %s++", var, var, hc, var);
         }
 
         emit(codegen, ") {\n");
