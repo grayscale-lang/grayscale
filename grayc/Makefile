@@ -300,7 +300,8 @@ TEST_SRC_FILES = src/util/arena.c src/util/buf.c src/util/error.c src/util/error
                  src/lexer/token.c src/lexer/lexer.c \
                  src/parser/ast.c src/parser/parser.c \
                  src/typechecker/types.c src/typechecker/scope.c src/typechecker/module_table.c \
-                 src/typechecker/typechecker.c
+                 src/typechecker/typechecker.c \
+                 src/fmt/fmt.c
 
 # UBSan works everywhere; ASan needs Linux for reliable CI
 UBSAN_FLAGS = -fsanitize=undefined -fno-omit-frame-pointer -g -O1
