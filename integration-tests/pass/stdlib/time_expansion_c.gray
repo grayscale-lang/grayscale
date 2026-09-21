@@ -65,7 +65,13 @@ do main() {
     check("format_duration minutes", time.format_duration(90), "1m 30s", passed, failed)
     check("format_duration seconds", time.format_duration(45), "45s", passed, failed)
     check("format_duration zero", time.format_duration(0), "0s", passed, failed)
-    check("format_duration caps at hours", time.format_duration(90000), "25h 0m 0s", passed, failed)
+    check("format_duration caps at hours", time.format_duration(90000), "25h", passed, failed)
+    check("format_duration whole minute", time.format_duration(60), "1m", passed, failed)
+    check("format_duration whole hour", time.format_duration(3600), "1h", passed, failed)
+    check("format_duration hour and second", time.format_duration(3601), "1h 1s", passed, failed)
+    check("format_duration hour and minute", time.format_duration(3660), "1h 1m", passed, failed)
+    check("format_duration hours and seconds", time.format_duration(90015), "25h 15s", passed, failed)
+    check("format_duration negative whole hour", time.format_duration(-3600), "-1h", passed, failed)
 
     // -- arithmetic (pure Unix math) --
     mut base int = 1707955200

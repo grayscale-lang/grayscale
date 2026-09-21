@@ -229,9 +229,9 @@ GrayResult_int gray_time_parse_duration_result(GrayString text) {
     return (GrayResult_int){seconds, NULL};
 }
 
-/* Space-separated "1h 30m 15s". Capped at hours (no days bucket), so
- * 90000 seconds is "25h 0m 0s". A lone zero is "0s". Negative gets a
- * leading minus. Not a strict inverse of parse_duration. */
+/* Space-separated "1h 30m 15s" with zero components omitted. Capped at hours
+ * (no days bucket), so 90000 seconds is "25h". A lone zero is "0s". Negative
+ * gets a leading minus. Not a strict inverse of parse_duration. */
 GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds) {
     if (seconds == 0) return gray_string_lit("0s");
     bool neg = seconds < 0;
@@ -244,13 +244,13 @@ GrayString gray_time_format_duration(GrayArena *arena, int64_t seconds) {
     int pos = 0;
     if (neg) buf[pos++] = '-';
     if (hours > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%lldh %lldm %llds",
-                        (long long)hours, (long long)minutes, (long long)secs);
-    else if (minutes > 0)
-        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%lldm %llds",
-                        (long long)minutes, (long long)secs);
-    else
-        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%llds", (long long)secs);
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%lldh", (long long)hours);
+    if (minutes > 0)
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%s%lldm",
+                        hours > 0 ? " " : "", (long long)minutes);
+    if (secs > 0)
+        pos += snprintf(buf + pos, sizeof(buf) - (size_t)pos, "%s%llds",
+                        hours > 0 || minutes > 0 ? " " : "", (long long)secs);
     return gray_string_new(arena, buf, pos);
 }
 

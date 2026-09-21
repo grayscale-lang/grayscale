@@ -317,7 +317,7 @@ GrayResult_int gray_time_parse_duration_result(GrayString text);
  *@module time
  *@group Formatting
  *@sig format_duration(seconds int) -> string
- *@desc Renders a duration in seconds as "1h 30m 15s". Components are capped at hours (no days), so 90000 is "25h 0m 0s". Zero components are omitted unless the whole value is zero, which is "0s". A negative value gets a leading minus.
+ *@desc Renders a duration in seconds as "1h 30m 15s". Components are capped at hours (no days), so 90000 is "25h". Zero components are omitted unless the whole value is zero, which is "0s". A negative value gets a leading minus.
  *@example
  *   import @time
  *   println(time.format_duration(5415))
