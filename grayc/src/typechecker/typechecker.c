@@ -8237,9 +8237,21 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             result = type_array("string");
             return result;
         }
-        /* E5043: reject bare type names (fields() needs an instance) */
-        if (node->data.call.args[0]->kind == NODE_LABEL) {
-            const char *aname = node->data.call.args[0]->data.label.value;
+        /* E5043: reject type names (fields() needs an instance), bare or
+         * written through a module: `mod.Type`. A local named like the module
+         * makes `x.f` a field access, which is a value. */
+        AstNode *fields_arg = node->data.call.args[0];
+        const char *fields_qualifier = ast_member_qualifier(fields_arg);
+        char qualified_name[MSG_BUF_SIZE];
+        const char *aname = NULL;
+        if (fields_arg->kind == NODE_LABEL) {
+            aname = fields_arg->data.label.value;
+        } else if (fields_qualifier && !scope_lookup(checker->current_scope, fields_qualifier)) {
+            snprintf(qualified_name, sizeof(qualified_name), "%s.%s",
+                     fields_qualifier, fields_arg->data.member.member);
+            aname = qualified_name;
+        }
+        if (aname) {
             Symbol *sym = scope_lookup(checker->current_scope, aname);
             /* An alias names the same type its target does, so the registries
              * have to be consulted with the resolved name — `alias Vec2 =
