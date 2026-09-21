@@ -4968,6 +4968,37 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
     return false;
 }
 
+/* `dest` and `src` name the same shape of nested arrays and differ only in
+ * the width of the numeric elements at the bottom: [[i32]] against [[int]],
+ * map[string:[u8]] against map[string:[int]]. A flat integer map is not one:
+ * nothing is nested, so nothing is adapted. */
+static bool nested_widths_compatible(TypeChecker *checker, const char *dest,
+                                     const char *src, bool inside_array) {
+    if (!dest || !src) return false;
+    if (strcmp(dest, src) == 0) return true;
+    GrayType *d = typechecker_type_from_name(checker, dest);
+    GrayType *s = typechecker_type_from_name(checker, src);
+    if (!d || !s || d->kind == TK_UNKNOWN || s->kind == TK_UNKNOWN) return false;
+    if (d->kind == TK_ARRAY && s->kind == TK_ARRAY)
+        return nested_widths_compatible(checker, d->element_type, s->element_type, true);
+    if (d->kind == TK_MAP && s->kind == TK_MAP)
+        return d->key_type && s->key_type && strcmp(d->key_type, s->key_type) == 0 &&
+               nested_widths_compatible(checker, d->value_type, s->value_type, inside_array);
+    if (!inside_array) return false;
+    if (is_int_kind(d->kind) && is_int_kind(s->kind)) return true;
+    return d->kind == TK_FLOAT && (s->kind == TK_FLOAT || is_int_kind(s->kind));
+}
+
+/* True when `value` is an array or map literal whose nested numeric elements
+ * take the width `declared` gives them — {{1}, {2}} for [[i32]]. Codegen
+ * emits each inner literal at the declared width. */
+static bool literal_fits_nested_widths(TypeChecker *checker, AstNode *value,
+                                       GrayType *declared, GrayType *value_type) {
+    if (!value || (value->kind != NODE_ARRAY_VALUE && value->kind != NODE_MAP_VALUE)) return false;
+    if (!declared || !value_type) return false;
+    return nested_widths_compatible(checker, type_name(declared), type_name(value_type), false);
+}
+
 /* Rank for named integer types; 0 = not a named integer type.
  * Used to detect narrowing (declared rank < value rank). */
 static int int_type_name_rank(const char *n) {
@@ -8947,7 +8978,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 !typechecker_same_array_element(checker, arg_t->element_type, param_t->element_type)) {
                 GrayType *ae = type_from_name(arg_t->element_type);
                 GrayType *pe = type_from_name(param_t->element_type);
-                if (!(ae && pe && is_int_kind(ae->kind) && is_int_kind(pe->kind))) {
+                if (!(ae && pe && is_int_kind(ae->kind) && is_int_kind(pe->kind)) &&
+                    !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "argument %d of '%s': expected '%s', got '%s'",
@@ -8961,7 +8993,8 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     strcmp(arg_t->key_type, param_t->key_type) != 0;
                 bool val_mismatch = arg_t->value_type && param_t->value_type &&
                     strcmp(arg_t->value_type, param_t->value_type) != 0;
-                if (key_mismatch || val_mismatch) {
+                if ((key_mismatch || val_mismatch) &&
+                    !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
                     char *msg = NULL;
                     msg = typechecker_format(checker,
                         "argument %d of '%s': expected '%s', got '%s'",
@@ -13723,8 +13756,10 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             tc_err_assign_type(checker, node, msg);
         }
         /* Array element type mismatch (both TK_ARRAY but different element types) */
+        bool literal_widths_ok = literal_fits_nested_widths(checker,
+            node->data.var_decl.value, declared, value_type);
         if (declared->kind == TK_ARRAY && value_type->kind == TK_ARRAY &&
-            declared->element_type && value_type->element_type &&
+            declared->element_type && value_type->element_type && !literal_widths_ok &&
             !typechecker_same_array_element(checker, declared->element_type, value_type->element_type)) {
             GrayType *decl_elem = type_from_name(declared->element_type);
             GrayType *val_elem  = type_from_name(value_type->element_type);
@@ -13773,7 +13808,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                                 (val_is_literal && dv->kind == TK_FLOAT && is_int_kind(vv->kind))))
                     val_mismatch = false;
             }
-            if (key_mismatch || val_mismatch) {
+            if ((key_mismatch || val_mismatch) && !literal_widths_ok) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "type mismatch: cannot assign '%s' to '%s'",
@@ -15663,7 +15698,8 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
             !typechecker_same_array_element(checker, ret_t->element_type, expected->element_type)) {
             GrayType *re = type_from_name(ret_t->element_type);
             GrayType *ee = type_from_name(expected->element_type);
-            if (!(re && ee && is_int_kind(re->kind) && is_int_kind(ee->kind))) {
+            if (!(re && ee && is_int_kind(re->kind) && is_int_kind(ee->kind)) &&
+                !literal_fits_nested_widths(checker, node->data.return_stmt.values[0], expected, ret_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",
@@ -15678,7 +15714,8 @@ static void check_return_stmt(TypeChecker *checker, AstNode *node) {
                 strcmp(ret_t->key_type, expected->key_type) != 0;
             bool val_mismatch = ret_t->value_type && expected->value_type &&
                 strcmp(ret_t->value_type, expected->value_type) != 0;
-            if (key_mismatch || val_mismatch) {
+            if ((key_mismatch || val_mismatch) &&
+                !literal_fits_nested_widths(checker, node->data.return_stmt.values[0], expected, ret_t)) {
                 char *msg = NULL;
                 msg = typechecker_format(checker,
                     "return type mismatch: expected '%s', got '%s'",

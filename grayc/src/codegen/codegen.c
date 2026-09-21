@@ -2000,13 +2000,23 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
 
     /* Check if this is a nested array (elements are arrays) */
     if (node->data.array_value.elements[0]->kind == NODE_ARRAY_VALUE) {
-        /* Nested array: each element is an GrayArray */
+        /* Nested array: each element is an GrayArray. Each inner literal is
+         * emitted at the element type the declaration gives it, so a
+         * [[i32]] holds 4-byte rows and a [[f32]] holds floats. */
+        const char *saved_var_type = codegen->current_var_type;
+        char inner_var_type[TYPE_NAME_MAX];
+        const char *elem_tn = extract_array_element_type(saved_var_type);
+        if (elem_tn && elem_tn[0] == '[') {
+            snprintf(inner_var_type, sizeof(inner_var_type), "%s", elem_tn);
+            codegen->current_var_type = inner_var_type;
+        }
         emit_formatted(codegen, "gray_array_from(gray_default_arena, (GrayArray[]){");
         for (int i = 0; i < count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.array_value.elements[i]);
         }
         emit_formatted(codegen, "}, sizeof(GrayArray), %d)", count);
+        codegen->current_var_type = saved_var_type;
         return;
     }
 
@@ -2243,7 +2253,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
      * resolve their key/value C types correctly. */
     const char *inner_var_type = NULL;
     if (decl_mt && decl_mt->value_type &&
-        strncmp(decl_mt->value_type, "map[", 4) == 0) {
+        (strncmp(decl_mt->value_type, "map[", 4) == 0 || decl_mt->value_type[0] == '[')) {
         inner_var_type = decl_mt->value_type;
     }
 
@@ -9736,6 +9746,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
     }
 
     if (is_nested_array_type(type_name)) {
+        const char *saved_nested_var_type = codegen->current_var_type;
         codegen->current_var_type = type_name;
         AstNode *init = node->data.var_decl.value;
         bool label_init = init && init->kind == NODE_LABEL;
@@ -9763,6 +9774,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
             else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
             emit(codegen, ";\n");
         }
+        codegen->current_var_type = saved_nested_var_type;
         return;
     }
 
