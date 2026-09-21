@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.9.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.9.0...grayscale-v0.9.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **arrays:** stop narrowing the chunk size of arrays.split_every to 32 bits ([736d2f9](https://github.com/grayscale-lang/grayscale/commit/736d2f9f06a8e57ee85b2f291c0ee31bb148e648))
+* **codegen:** accept any array expression as the second argument of arrays.is_equal ([#2777](https://github.com/grayscale-lang/grayscale/issues/2777)) ([2184861](https://github.com/grayscale-lang/grayscale/commit/2184861f316bbc1bb40ac758416237a24d684e8e))
+* **codegen:** allocate stores into module-level containers outside the function scope arena ([#2774](https://github.com/grayscale-lang/grayscale/issues/2774)) ([f4421af](https://github.com/grayscale-lang/grayscale/commit/f4421afe03992b1fafcf31da75c23a21a6e31458))
+* **codegen:** allocate stores through a module-qualified variable outside the function scope arena ([fd101ac](https://github.com/grayscale-lang/grayscale/commit/fd101aca533b7139a91e64c8e19e148dd93b641e))
+* **codegen:** emit an array element reached through a pointer as an lvalue ([#2770](https://github.com/grayscale-lang/grayscale/issues/2770)) ([8adcd8c](https://github.com/grayscale-lang/grayscale/commit/8adcd8ce073cab633b7bbc3f1641f369d8063dba))
+* **random:** stop narrowing the count of random.sample to 32 bits before the bounds check ([9726d5f](https://github.com/grayscale-lang/grayscale/commit/9726d5f65bc73f4a4708072950087f8703529478))
+* **runtime:** give array capacity overflow its own panic code instead of reusing P0035 ([cf9b560](https://github.com/grayscale-lang/grayscale/commit/cf9b56004c4be101aefdf79cb76a8eadaa57c3e9))
+* **runtime:** read sized numeric array and map elements at their stored width in string interpolation ([#2782](https://github.com/grayscale-lang/grayscale/issues/2782)) ([3bfb3be](https://github.com/grayscale-lang/grayscale/commit/3bfb3bed502672cc54b83a3f4d81de17bcc6c4ff))
+* **runtime:** stop narrowing int indexes and counts to 32 bits before the bounds check ([#2784](https://github.com/grayscale-lang/grayscale/issues/2784)) ([15b6e8b](https://github.com/grayscale-lang/grayscale/commit/15b6e8b8f229c553e03cef99d86b45ac12145c10))
+* **stdlib:** check buffer-size arithmetic in strings.repeat and fmt.pad_left/pad_right/center ([#2780](https://github.com/grayscale-lang/grayscale/issues/2780)) ([312e16b](https://github.com/grayscale-lang/grayscale/commit/312e16b65396beb3105a4423826082b30eb51f30))
+* **stdlib:** decode string escapes and keep nested values intact in json.decode and json.parse ([#2791](https://github.com/grayscale-lang/grayscale/issues/2791)) ([b1792d6](https://github.com/grayscale-lang/grayscale/commit/b1792d6f4aff32a78b996278e7e0f5648ca54690))
+* **stdlib:** size arrays.flatten elements from the inner arrays instead of assuming 8 bytes ([#2779](https://github.com/grayscale-lang/grayscale/issues/2779)) ([4c98c83](https://github.com/grayscale-lang/grayscale/commit/4c98c83a34117799dc512f1c8722a16a9cb7309e))
+* **strconv:** stop narrowing the base of to_int and to_uint to 32 bits before the range check ([1b2d188](https://github.com/grayscale-lang/grayscale/commit/1b2d188b0220dc65991bc180e45953890892fc6a))
+* **typechecker:** accept a nested array literal for [[T]] and map[K:[T]] when T is a sized numeric type ([#2786](https://github.com/grayscale-lang/grayscale/issues/2786)) ([7c1d751](https://github.com/grayscale-lang/grayscale/commit/7c1d751a14023f813298274d3ac2f0958f6298ab))
+* **typechecker:** check extern call argument kinds against the C parameter types ([#2794](https://github.com/grayscale-lang/grayscale/issues/2794)) ([089f8fb](https://github.com/grayscale-lang/grayscale/commit/089f8fb064d393cb9e8eeedb0b0c8aee272a6339))
+* **typechecker:** check extern struct returns and c_string() arguments against the C return type ([#2795](https://github.com/grayscale-lang/grayscale/issues/2795)) ([3284983](https://github.com/grayscale-lang/grayscale/commit/3284983226d5cfab2b8bba43ceeaba2c4d3bb471))
+* **typechecker:** keep const protection on a pointer through enum payloads, tuple destructures, returned aggregates and pointer-to-pointer ([#2776](https://github.com/grayscale-lang/grayscale/issues/2776)) ([6331565](https://github.com/grayscale-lang/grayscale/commit/6331565ddf70b5d54f590381e803ea0d52c4c71a))
+* **typechecker:** reject an extern C value assigned to a map element or nested field ([#2775](https://github.com/grayscale-lang/grayscale/issues/2775)) ([bd69adb](https://github.com/grayscale-lang/grayscale/commit/bd69adb2977adb48cb02f2f89cd5841b51509f88))
+* **typechecker:** resolve a func reference to a struct function through a module ([#2788](https://github.com/grayscale-lang/grayscale/issues/2788)) ([ce09da2](https://github.com/grayscale-lang/grayscale/commit/ce09da2d239b5bfdea9bb2c795c631f96fe2d75d))
+* **typechecker:** type arrays.split_every and arrays.pair as [[T]] for the input element type ([#2778](https://github.com/grayscale-lang/grayscale/issues/2778)) ([5618a6e](https://github.com/grayscale-lang/grayscale/commit/5618a6ec9b98d4bb5e354c18189568ca69d5e03d))
+
 ## [0.9.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.8.4...grayscale-v0.9.0) (2026-09-19)
 
 
