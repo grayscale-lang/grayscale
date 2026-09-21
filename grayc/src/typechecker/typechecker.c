@@ -14685,16 +14685,27 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                 !find_func(checker, name)) {
                 /* Resolve RHS to infer type */
                 GrayType *val_t = resolve_expression(checker, node->data.assign.value);
-                if (val_t && val_t->kind != TK_UNKNOWN && val_t->kind != TK_VOID) {
-                    scope_define(checker->current_scope, name, val_t, true);
-                    Symbol *new_sym = scope_lookup_local(checker->current_scope, name);
-                    if (new_sym) {
-                        new_sym->def_line = node->token.line;
-                        new_sym->def_column = node->token.column;
-                    }
-                    node->data.assign.is_decl = true;
-                    return; /* done — skip normal assignment validation */
+                if (val_t && val_t->kind == TK_VOID) {
+                    diagnostic_error_message(checker->diag, "E3038",
+                        "cannot assign the result of a void function to a variable",
+                        NODE_FILE(checker, node), node->token.line, node->token.column, 0);
                 }
+                /* Same registration rule as a `mut` declaration: an
+                 * unresolved initializer already drew its own error, and only
+                 * a call or member access still binds the name so later reads
+                 * do not add an undefined-variable error apiece. */
+                bool unresolved = !val_t || val_t->kind == TK_UNKNOWN;
+                AstNode *init = node->data.assign.value;
+                if (unresolved && init->kind != NODE_CALL_EXPR && init->kind != NODE_MEMBER_EXPR)
+                    return;
+                scope_define(checker->current_scope, name, val_t ? val_t : &TYPE_UNKNOWN, true);
+                Symbol *new_sym = scope_lookup_local(checker->current_scope, name);
+                if (new_sym) {
+                    new_sym->def_line = node->token.line;
+                    new_sym->def_column = node->token.column;
+                }
+                node->data.assign.is_decl = true;
+                return; /* done — skip normal assignment validation */
             }
         }
     }
