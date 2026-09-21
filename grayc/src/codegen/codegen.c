@@ -7233,6 +7233,42 @@ static void emit_array_argument_address(CodeGen *codegen, AstNode *arg) {
     emit_address_of(codegen, arg);
 }
 
+/* C element type for a value staged by arrays.append/insert_at. Falls back to
+ * __auto_type when the value's type is unknown. */
+static const char *array_value_c_type(CodeGen *codegen, GrayType *val_t) {
+    if (!val_t) return "__auto_type";
+    switch (val_t->kind) {
+    case TK_INT:
+    case TK_UINT:
+        /* Wide ints share TK_INT/TK_UINT but need their own C types */
+        if (val_t->name) {
+            const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
+            if (mapped) return mapped;
+        }
+        return val_t->kind == TK_INT ? "int64_t" : "uint64_t";
+    case TK_FLOAT: return "double";
+    case TK_BOOL: return "bool";
+    case TK_CHAR: return "int32_t";
+    case TK_BYTE: return "uint8_t";
+    case TK_STRING: return "GrayString";
+    case TK_ARRAY: return "GrayArray";
+    case TK_MAP: return "GrayMap";
+    case TK_FUNCTION: return "void *";
+    case TK_STRUCT:
+    case TK_ENUM:
+        return gray_type_to_c_codegen(codegen, val_t->name);
+    case TK_POINTER:
+        if (val_t->name) {
+            /* val_t->name is the pointee (e.g. "int"); prepend ^ for gray_type_to_c_codegen */
+            static char ptr_tn[TYPE_NAME_MAX];
+            snprintf(ptr_tn, sizeof(ptr_tn), "^%s", val_t->name);
+            return gray_type_to_c_codegen(codegen, ptr_tn);
+        }
+        return "__auto_type";
+    default: return "__auto_type";
+    }
+}
+
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "append") == 0 && node->data.call.arg_count == 2) {
         GrayType *val_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[1]) : NULL;
@@ -7246,36 +7282,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
          * element type so the temporary is not declared as `__auto_type` and
          * then spliced into `sizeof(__auto_type)`. */
         if (val_t && val_t->kind != TK_UNKNOWN) {
-            switch (val_t->kind) {
-            case TK_INT: c_elem = "int64_t"; break;
-            case TK_UINT: c_elem = "uint64_t"; break;
-            case TK_FLOAT: c_elem = "double"; break;
-            case TK_BOOL: c_elem = "bool"; break;
-            case TK_CHAR: c_elem = "int32_t"; break;
-            case TK_BYTE: c_elem = "uint8_t"; break;
-            case TK_STRING: c_elem = "GrayString"; break;
-            case TK_ARRAY: c_elem = "GrayArray"; break;
-            case TK_MAP: c_elem = "GrayMap"; break;
-            case TK_FUNCTION: c_elem = "void *"; break;
-            default: break;
-            }
-            /* Wide ints share TK_INT/TK_UINT but need their own C types */
-            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
-                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
-                if (mapped) c_elem = mapped;
-            }
-            if (val_t->kind == TK_STRUCT) {
-                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
-            }
-            if (val_t->kind == TK_ENUM) {
-                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
-            }
-            if (val_t->kind == TK_POINTER && val_t->name) {
-                /* val_t->name is the pointee (e.g. "int"); prepend ^ for gray_type_to_c_codegen */
-                static char _ptr_tn[TYPE_NAME_MAX];
-                snprintf(_ptr_tn, sizeof(_ptr_tn), "^%s", val_t->name);
-                c_elem = gray_type_to_c_codegen(codegen, _ptr_tn);
-            }
+            c_elem = array_value_c_type(codegen, val_t);
         } else if (elem_is_string) {
             c_elem = "GrayString";
         } else if (elem_tn) {
@@ -7317,36 +7324,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if (strcmp(func, "insert_at") == 0 && node->data.call.arg_count == 3) {
         GrayType *val_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[2]) : NULL;
-        const char *c_elem = "__auto_type";
-        if (val_t) {
-            switch (val_t->kind) {
-            case TK_INT: c_elem = "int64_t"; break;
-            case TK_UINT: c_elem = "uint64_t"; break;
-            case TK_FLOAT: c_elem = "double"; break;
-            case TK_BOOL: c_elem = "bool"; break;
-            case TK_CHAR: c_elem = "int32_t"; break;
-            case TK_BYTE: c_elem = "uint8_t"; break;
-            case TK_STRING: c_elem = "GrayString"; break;
-            case TK_FUNCTION: c_elem = "void *"; break;
-            default: break;
-            }
-            /* Wide ints share TK_INT/TK_UINT but need their own C types */
-            if (val_t->name && (val_t->kind == TK_INT || val_t->kind == TK_UINT)) {
-                const char *mapped = gray_type_to_c_codegen(codegen, val_t->name);
-                if (mapped) c_elem = mapped;
-            }
-            if (val_t->kind == TK_STRUCT) {
-                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
-            }
-            if (val_t->kind == TK_ENUM) {
-                c_elem = gray_type_to_c_codegen(codegen, val_t->name);
-            }
-            if (val_t->kind == TK_POINTER && val_t->name) {
-                static char _ia_ptr_tn[TYPE_NAME_MAX];
-                snprintf(_ia_ptr_tn, sizeof(_ia_ptr_tn), "^%s", val_t->name);
-                c_elem = gray_type_to_c_codegen(codegen, _ia_ptr_tn);
-            }
-        }
+        const char *c_elem = array_value_c_type(codegen, val_t);
         const char *ia_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
         emit_formatted(codegen, "{ %s _iv = ", c_elem);
         emit_expression(codegen, node->data.call.args[2]);
