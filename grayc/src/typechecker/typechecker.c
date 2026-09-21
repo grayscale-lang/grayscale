@@ -19247,6 +19247,8 @@ static void register_decl_structs(TypeChecker *checker, AstNode *program) {
             const char *prefixed = arena_copy_string(checker->arena, buffer);
             register_func(checker, prefixed, ptypes, parameter_count, rtypes, return_count);
             checker->funcs[checker->func_count - 1].is_private = fn->data.func_decl.is_private;
+            /* Store line for unused function warning */
+            checker->funcs[checker->func_count - 1].def_line = fn->token.line;
             checker->funcs[checker->func_count - 1].is_discard = fn->data.func_decl.is_discard;
             checker->funcs[checker->func_count - 1].is_deprecated = fn->data.func_decl.is_deprecated;
             checker->funcs[checker->func_count - 1].deprecated_message = fn->data.func_decl.deprecated_message;
@@ -20251,15 +20253,22 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         }
     }
 
-    /* Warn about unused functions (skip main and struct-namespaced) */
+    /* Warn about unused functions (skip main). A private function is dead
+     * code the moment nothing in its file calls it. A public function is
+     * some module's API, so it is reported only in the entry file — a
+     * function of an imported module is the sub-file author's responsibility,
+     * as with unused imports — and a public struct function is API too. */
     for (int i = 0; i < checker->func_count; i++) {
         FuncSig *fs = &checker->funcs[i];
         bool is_test_fn = fs->decl && fs->decl->kind == NODE_FUNC_DECL &&
                           fs->decl->data.func_decl.is_test;
+        bool is_struct_fn = fs->name[0] >= 'A' && fs->name[0] <= 'Z' && strchr(fs->name, '_');
+        bool in_entry_file = same_source_file(
+            fs->decl ? NODE_FILE(checker, fs->decl) : checker->file, checker->file);
+        bool reportable = fs->is_private || (in_entry_file && !is_struct_fn);
         if (!fs->used && fs->def_line > 0 &&
             strcmp(fs->name, "main") != 0 &&
-            !fs->is_private && !is_test_fn &&
-            !(fs->name[0] >= 'A' && fs->name[0] <= 'Z' && strchr(fs->name, '_'))) {
+            reportable && !is_test_fn) {
             const char *display = func_display_name(fs);
             char *msg = NULL;
             msg = typechecker_format(checker,

@@ -1,0 +1,6 @@
+// expect-not: W1003
+import "./lib"
+
+do main() {
+    println(lib.used())
+}
