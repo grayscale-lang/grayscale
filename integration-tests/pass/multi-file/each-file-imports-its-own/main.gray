@@ -1,0 +1,17 @@
+/*
+ * Test: each file imports the modules it uses. The same stdlib module and the
+ * same local module are imported by several files, and every file resolves
+ * them through its own imports.
+ */
+import "./lib"
+import "./util"
+import @strings
+
+do main() {
+    assert(lib.go(2) == 9, "lib uses util through its own import")
+    assert(lib.shout("hi") == "HI", "lib uses strings through its own import")
+    assert(util.twice(3) == 6, "main uses util through its own import")
+    assert(strings.to_upper("ok") == "OK", "main uses strings through its own import")
+
+    println("ALL TESTS PASSED")
+}

@@ -51,20 +51,30 @@ static bool path_within_dir(const char *path, const char *dir) {
 /* Check if using_modules[using_index] is accessible from the current file being checked.
  * A using-module entry is accessible only if it was declared in the same file
  * that is currently being validated (prevents transitive import type leaking). */
-static inline bool using_module_accessible(TypeChecker *checker, int using_index) {
-    const char *using_file = checker->using_module_files ? checker->using_module_files[using_index] : NULL;
-    const char *check_file = checker->current_check_file;
+static inline bool same_source_file(const char *a, const char *b) {
     /* Both NULL — both from main file context */
-    if (!using_file && !check_file) return true;
+    if (!a && !b) return true;
     /* Both set — compare paths */
-    if (using_file && check_file && strcmp(using_file, check_file) == 0) return true;
-    return false;
+    return a && b && strcmp(a, b) == 0;
 }
 
-/* Mark an imported module as used by name. Returns true if found. */
+static inline bool using_module_accessible(TypeChecker *checker, int using_index) {
+    const char *using_file = checker->using_module_files ? checker->using_module_files[using_index] : NULL;
+    return same_source_file(using_file, checker->current_check_file);
+}
+
+/* True when imports[import_index] was written in the file being checked.
+ * imported_modules[] lists every file's imports; a module is in scope only in
+ * the file that imported it. */
+static inline bool import_in_current_file(TypeChecker *checker, int import_index) {
+    return same_source_file(checker->import_files[import_index], checker->current_check_file);
+}
+
+/* Mark a module imported by the current file as used. Returns true if found. */
 static bool mark_import_used(TypeChecker *checker, const char *mod_name) {
     for (int mi = 0; mi < checker->import_count; mi++) {
-        if (strcmp(checker->imported_modules[mi], mod_name) == 0) {
+        if (import_in_current_file(checker, mi) &&
+            strcmp(checker->imported_modules[mi], mod_name) == 0) {
             checker->import_used[mi] = true;
             return true;
         }
@@ -3825,7 +3835,18 @@ static const char *suggest_similar_name(TypeChecker *checker, const char *name) 
 
 /* --- Builtin name check --- */
 
+/* True when the file being checked imports `name`. */
 static bool typechecker_is_imported_module(TypeChecker *checker, const char *name) {
+    for (int i = 0; i < checker->import_count; i++) {
+        if (import_in_current_file(checker, i) &&
+            strcmp(checker->imported_modules[i], name) == 0) return true;
+    }
+    return false;
+}
+
+/* True when any file of the program imports `name`. For what is registered
+ * once for the whole program, where no single file is being checked. */
+static bool program_imports_module(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->import_count; i++) {
         if (strcmp(checker->imported_modules[i], name) == 0) return true;
     }
@@ -3838,6 +3859,7 @@ static const char *suggest_similar_module(TypeChecker *checker, const char *name
     const char *best = NULL;
     int best_dist = 3;
     for (int i = 0; i < checker->import_count; i++) {
+        if (!import_in_current_file(checker, i)) continue;
         int d = levenshtein(name, checker->imported_modules[i]);
         if (d > 0 && d < best_dist) {
             best_dist = d;
@@ -3870,7 +3892,8 @@ static const char *suggest_similar_module_func(TypeChecker *checker,
 
 static bool typechecker_is_stdlib_import(TypeChecker *checker, const char *name) {
     for (int i = 0; i < checker->import_count; i++) {
-        if (strcmp(checker->imported_modules[i], name) == 0)
+        if (import_in_current_file(checker, i) &&
+            strcmp(checker->imported_modules[i], name) == 0)
             return checker->import_is_stdlib[i];
     }
     return false;
@@ -4297,6 +4320,19 @@ static bool apply_stdlib_call_returns(TypeChecker *checker, const char *tmp_name
     return false;
 }
 
+/* True when `qualifier` (as written; `mod` is its resolved module name) names
+ * a user module that exists in the program but that the file being checked
+ * does not import. A variable, struct or enum of the same name is a value or a
+ * type rather than the module, and a file may always name its own module. */
+static bool is_unimported_user_module(TypeChecker *checker, const char *qualifier,
+                                      const char *mod) {
+    if (!checker->modules || !module_table_find(checker->modules, mod)) return false;
+    if (scope_lookup(checker->current_scope, qualifier)) return false;
+    if (is_struct_name(checker, mod) || is_enum_name(checker, mod)) return false;
+    ResolveScope scope = checker_scope(checker);
+    return !scope.module || strcmp(scope.module, mod) != 0;
+}
+
 /* Find the index of a module name in checker->imported_modules[], or -1. */
 static int typechecker_find_import_index(TypeChecker *checker, const char *mod) {
     const char *real = typechecker_resolve_alias(checker, mod);
@@ -4366,7 +4402,7 @@ static void register_enum(TypeChecker *checker, const char *name,
  * stripped (e.g. "Thread", not "threads_Thread"). */
 static bool is_stdlib_opaque_type_available(TypeChecker *checker, const char *bare_name) {
     const char *mod = stdlib_opaque_module(bare_name);
-    return mod && typechecker_is_imported_module(checker, mod);
+    return mod && program_imports_module(checker, mod);
 }
 
 /* Resolve a type name, returning TK_ENUM for known enum names instead of
@@ -10016,6 +10052,12 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
                 mod, mod);
             diagnostic_error_message(checker->diag, "E4001", msg,
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+        } else if (!mod_imported && is_unimported_user_module(checker, mod_raw, mod)) {
+            char *msg = typechecker_format(checker,
+                "module '%s' is not imported; add an import for it at the top of the file",
+                mod_raw);
+            diagnostic_error_message(checker->diag, "E4001", msg,
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
         }
         /* extern.func() without extern import "..."; but only if "extern" isn't a
          * local variable. A variable named `extern` with a struct type
@@ -11178,7 +11220,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
     {
         const char *opaque_bare = unqualified_display_name(struct_name);
         const char *opaque_owner = stdlib_opaque_module(opaque_bare);
-        if (opaque_owner && typechecker_is_imported_module(checker, opaque_owner)) {
+        if (opaque_owner && program_imports_module(checker, opaque_owner)) {
             /* The name resolves to the stdlib opaque type unless a user
              * struct/enum shadows it (only possible when the module is not
              * imported — but be defensive). A compiler-declared entry is
@@ -11964,6 +12006,12 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* Check if it looks like a number with a leading underscore */
             if (name[0] == '_' && name[1] >= '0' && name[1] <= '9') {
                 diagnostic_error_code_formatted(checker->diag, "E1012", NODE_FILE(checker, node), node->token.line, node->token.column, 0, name + 1);
+            } else if (is_unimported_user_module(checker, name,
+                                                 typechecker_resolve_alias(checker, name))) {
+                char *msg = typechecker_format(checker,
+                    "module '%s' is not imported; add an import for it at the top of the file", name);
+                diagnostic_error_message(checker->diag, "E4001", msg,
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
             } else {
                 char *msg = NULL;
                 msg = typechecker_format(checker, "undefined variable '%s'", name);
@@ -14844,7 +14892,8 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
          * write — including inside the file whose own module it names. */
         if (!scope_lookup(checker->current_scope, obj)) {
             for (int mi = 0; mi < checker->import_count; mi++) {
-                if (strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
+                if (import_in_current_file(checker, mi) &&
+                    strcmp(checker->imported_modules[mi], obj) == 0) { is_module = true; break; }
             }
         }
         if (is_module) {
@@ -17350,14 +17399,14 @@ static void check_stdlib_opaque_name_collision(TypeChecker *checker, AstNode *no
     /* Enums a stdlib module exposes (io.OpenFlag, os.Platform) are reserved the
      * same way opaque types are: only while the owning module is imported. */
     const char *enum_owner = stdlib_enum_module(name);
-    if (enum_owner && typechecker_is_imported_module(checker, enum_owner)) {
+    if (enum_owner && program_imports_module(checker, enum_owner)) {
         diagnostic_error_code_formatted(checker->diag, "E3099",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
         return;
     }
     if (!is_reserved_stdlib_struct_name(name)) return;
     const char *owner = stdlib_opaque_module(name);
-    if (!owner || typechecker_is_imported_module(checker, owner)) {
+    if (!owner || program_imports_module(checker, owner)) {
         diagnostic_error_code_formatted(checker->diag, "E3099",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0, name);
     }
@@ -19788,7 +19837,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
     }
 
     /* Register stdlib struct types scoped to their module imports */
-    if (typechecker_is_imported_module(checker, "server") || typechecker_is_imported_module(checker, "http")) {
+    if (program_imports_module(checker, "server") || program_imports_module(checker, "http")) {
         const char **fnames = arena_alloc(checker->arena, sizeof(const char *) * 3);
         GrayType **ftypes = arena_alloc(checker->arena, sizeof(GrayType *) * 3);
         fnames[0] = "status"; fnames[1] = "body"; fnames[2] = "headers";
@@ -19796,7 +19845,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         register_struct(checker, "HttpResponse", "HttpResponse", fnames, ftypes, 3);
     }
 
-    if (typechecker_is_imported_module(checker, "server")) {
+    if (program_imports_module(checker, "server")) {
         const char **fnames = arena_alloc(checker->arena, sizeof(const char *) * 6);
         GrayType **ftypes = arena_alloc(checker->arena, sizeof(GrayType *) * 6);
         fnames[0] = "method"; fnames[1] = "path"; fnames[2] = "body";
@@ -19808,7 +19857,7 @@ void typechecker_check(TypeChecker *checker, AstNode *program) {
         register_struct(checker, "HttpRequest", "HttpRequest", fnames, ftypes, 6);
     }
 
-    if (typechecker_is_imported_module(checker, "uuid")) {
+    if (program_imports_module(checker, "uuid")) {
         const char **fnames = arena_alloc(checker->arena, sizeof(const char *) * 1);
         GrayType **ftypes = arena_alloc(checker->arena, sizeof(GrayType *) * 1);
         fnames[0] = "value";

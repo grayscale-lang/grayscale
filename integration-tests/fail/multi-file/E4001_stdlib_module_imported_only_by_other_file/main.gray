@@ -1,0 +1,11 @@
+// Error Test: E4001 - a stdlib module is in scope only in the file that
+// imports it. lib.gray calls strings.to_upper without importing strings; the
+// import in this file does not cover it.
+// expect-error: E4001
+import "./lib"
+import @strings
+
+do main() {
+    println(lib.shout("hi"))
+    println(strings.to_upper("ok"))
+}
