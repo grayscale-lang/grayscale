@@ -1257,6 +1257,12 @@ static FuncSig *resolve_call_sig(TypeChecker *checker, AstNode *call) {
 static unsigned long long returns_param_address(TypeChecker *checker, FuncSig *fs);
 static void ensure_escape_summary(TypeChecker *checker, FuncSig *fs);
 static Symbol *checker_lookup_symbol(TypeChecker *checker, const char *name);
+static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target);
+static AstNode *target_root_module_ref(TypeChecker *checker, AstNode *target);
+static bool report_write_to_module_variable(TypeChecker *checker, AstNode *at, AstNode *place);
+static void report_write_to_module_constant(TypeChecker *checker, AstNode *at,
+                                            AstNode *container, const char *kind);
+static const char *target_root_display(TypeChecker *checker, AstNode *target);
 
 /* The value a local named `name` was declared with, searched anywhere in
  * `node`, or NULL. Lets the param-bit walk follow `mut b = Box{p: q};
@@ -2209,8 +2215,7 @@ static bool expr_points_to_const(TypeChecker *checker, AstNode *e) {
                  * spelling, hence checker_lookup_symbol. A pointer root
                  * auto-derefs, so its own constness says nothing about the
                  * pointee. */
-                const char *root = assignment_target_root_name(target);
-                Symbol *sym = root ? checker_lookup_symbol(checker, root) : NULL;
+                Symbol *sym = target_root_symbol(checker, target);
                 if (sym && !sym->mutable &&
                     !(sym->type && sym->type->kind == TK_POINTER))
                     return true;
@@ -3851,6 +3856,81 @@ static bool program_imports_module(TypeChecker *checker, const char *name) {
         if (strcmp(checker->imported_modules[i], name) == 0) return true;
     }
     return false;
+}
+
+/* The module variable or constant a qualified `mod.NAME` reference names, when
+ * `e` is one written in a file that imports `mod`. A local or parameter of the
+ * same name shadows the module. */
+static Symbol *qualified_module_symbol(TypeChecker *checker, AstNode *e) {
+    if (!e || e->kind != NODE_MEMBER_EXPR) return NULL;
+    AstNode *obj = e->data.member.object;
+    if (!obj || obj->kind != NODE_LABEL) return NULL;
+    const char *mod = obj->data.label.value;
+    if (scope_lookup(checker->current_scope, mod) ||
+        !typechecker_is_imported_module(checker, mod)) return NULL;
+    char key[MSG_BUF_SIZE];
+    module_member_key(checker, mod, e->data.member.member, key, sizeof(key));
+    return scope_lookup(checker->current_scope, key);
+}
+
+/* The `mod.NAME` reference a member/index chain starts from, or NULL when it
+ * starts from anything else. Stops at a pointer dereference, as
+ * assignment_target_root_name does. */
+static AstNode *target_root_module_ref(TypeChecker *checker, AstNode *target) {
+    while (target) {
+        if (target->kind == NODE_MEMBER_EXPR) {
+            if (qualified_module_symbol(checker, target)) return target;
+            target = target->data.member.object;
+        } else if (target->kind == NODE_INDEX_EXPR) {
+            target = target->data.index_expr.left;
+        } else {
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+/* The symbol an assignment target chain starts from: the variable
+ * `a.b[i].c` is rooted at, or the module variable a qualified `lib.X.c` is. */
+static Symbol *target_root_symbol(TypeChecker *checker, AstNode *target) {
+    AstNode *ref = target_root_module_ref(checker, target);
+    if (ref) return qualified_module_symbol(checker, ref);
+    const char *root = assignment_target_root_name(target);
+    return root ? checker_lookup_symbol(checker, root) : NULL;
+}
+
+/* The name a root symbol is reported under: `lib.X` for a module member. */
+static const char *target_root_display(TypeChecker *checker, AstNode *target) {
+    AstNode *ref = target_root_module_ref(checker, target);
+    if (!ref) return assignment_target_root_name(target);
+    return typechecker_format(checker, "%s.%s", ref->data.member.object->data.label.value,
+                              ref->data.member.member);
+}
+
+/* E6008: a write that reaches a `mut` module variable through a qualified
+ * path (`lib.X.f = v`, `lib.X[i] = v`, `arrays.append(lib.X, v)`); the
+ * variable is read-only from outside its module. A constant is not reported
+ * here: the caller reports it with the code its position calls for. */
+static bool report_write_to_module_variable(TypeChecker *checker, AstNode *at, AstNode *place) {
+    AstNode *ref = target_root_module_ref(checker, place);
+    Symbol *sym = ref ? qualified_module_symbol(checker, ref) : NULL;
+    if (!sym || !sym->mutable) return false;
+    diagnostic_error_code_formatted(checker->diag, "E6008",
+        NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+        ref->data.member.object->data.label.value, ref->data.member.member, "variable");
+    return true;
+}
+
+/* E5007: a mutating array or map function whose container is reached through
+ * a qualified module constant (`arrays.append(lib.NUMS, v)`). */
+static void report_write_to_module_constant(TypeChecker *checker, AstNode *at,
+                                            AstNode *container, const char *kind) {
+    AstNode *ref = target_root_module_ref(checker, container);
+    Symbol *sym = ref ? qualified_module_symbol(checker, ref) : NULL;
+    if (!sym || sym->mutable) return;
+    diagnostic_error_code_formatted(checker->diag, "E5007",
+        NODE_FILE(checker, at), at->token.line, at->token.column, 0,
+        kind, target_root_display(checker, container));
 }
 
 /* Nearest imported module name to `name`, or NULL. Kept separate from
@@ -5673,9 +5753,9 @@ static void check_mutable_arg(TypeChecker *checker, AstNode *arg,
          * check the direct-assignment lvalue path performs on 'p.x = v'. A
          * pointer root auto-derefs (p^.field), so the const-ness of the
          * pointer variable does not carry to the pointee. */
-        const char *root = assignment_target_root_name(arg);
+        const char *root = target_root_display(checker, arg);
         if (root) {
-            Symbol *sym = checker_lookup_symbol(checker, root);
+            Symbol *sym = target_root_symbol(checker, arg);
             if (sym && !sym->mutable &&
                 !(sym->type && sym->type->kind == TK_POINTER)) {
                 char *msg = typechecker_format(checker,
@@ -5937,6 +6017,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "map", arg0->data.label.value);
                 }
+            } else if (!report_write_to_module_variable(checker, node, arg0)) {
+                report_write_to_module_constant(checker, node, arg0, "map");
             }
         }
     } else if (strcmp(mod, "math") == 0) {
@@ -6054,6 +6136,8 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "array", arg0->data.label.value);
                 }
+            } else if (!report_write_to_module_variable(checker, node, arg0)) {
+                report_write_to_module_constant(checker, node, arg0, "array");
             }
         }
         /* E5051: length-changing array functions on a fixed-size struct
@@ -12147,12 +12231,15 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             /* ++ and -- only valid on mutable numeric types.
              * Walk nested member/index chains so that e.g. p.x++ is caught. */
             {
-                const char *root = assignment_target_root_name(node->data.postfix.left);
+                const char *root = target_root_display(checker, node->data.postfix.left);
                 if (root) {
-                    Symbol *sym = scope_lookup(checker->current_scope, root);
+                    Symbol *sym = target_root_module_ref(checker, node->data.postfix.left)
+                        ? target_root_symbol(checker, node->data.postfix.left)
+                        : scope_lookup(checker->current_scope, root);
                     if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))
                         diagnostic_error_code_formatted(checker->diag, "E3005", NODE_FILE(checker, node), node->token.line, node->token.column, 0, root);
                 }
+                report_write_to_module_variable(checker, node, node->data.postfix.left);
             }
             if (left_t->kind != TK_UNKNOWN && !type_is_integer(left_t)) {
                 diagnostic_error_code_formatted(checker->diag, "E5023", NODE_FILE(checker, node), node->token.line, node->token.column, 0, operator_display_name(node->data.postfix.op), type_display_name(checker, left_t));
@@ -14921,6 +15008,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     /* E6008: reject assignment to stdlib module constants (math.PI = x, etc.) */
     AstNode *target = node->data.assign.target;
     const char *target_qualifier = ast_member_qualifier(target);
+    bool e6008_reported = false;
     if (target_qualifier) {
         const char *obj = target_qualifier;
         bool is_module = false;
@@ -14944,8 +15032,11 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             diagnostic_error_code_formatted(checker->diag, "E6008",
                 NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                 obj, target->data.member.member, kind);
+            e6008_reported = true;
         }
     }
+    /* The same variable written through a field or an element. */
+    if (!e6008_reported) report_write_to_module_variable(checker, node, target);
 
     /* E5025: assignment target validation; reject assignment to non-assignable targets */
     if (target->kind != NODE_LABEL &&
@@ -14963,9 +15054,9 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
      * member/index chains so that e.g. o.inner.value = 999 is caught. */
     const char *const_name = NULL;
     {
-        const char *root = assignment_target_root_name(target);
-        if (root) {
-            Symbol *sym = checker_lookup_symbol(checker, root);
+        const char *root = target_root_display(checker, target);
+        if (root && !e6008_reported) {
+            Symbol *sym = target_root_symbol(checker, target);
             /* p.field on a pointer parameter auto-derefs to p^.field — the
              * pointer itself is not being modified, so don't flag it. */
             if (sym && !sym->mutable && !(sym->type && sym->type->kind == TK_POINTER))

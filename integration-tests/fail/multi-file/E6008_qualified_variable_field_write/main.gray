@@ -1,0 +1,12 @@
+/*
+ * Error Test: E6008 - writing a field of a mut module variable through a qualified path
+ */
+// expect-error: E6008
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    lib.live.port = 5
+    lib.show()
+}

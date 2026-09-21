@@ -1,0 +1,13 @@
+/*
+ * Error Test: E6008 - appending to a mut module variable array through a qualified path
+ */
+// expect-error: E6008
+// expect-error-count: 1
+
+import "./lib"
+import @arrays
+
+do main() {
+    arrays.append(lib.live_nums, 4)
+    lib.show()
+}

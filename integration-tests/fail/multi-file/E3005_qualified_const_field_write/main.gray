@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3005 - writing a field of a module constant through a qualified path
+ */
+// expect-error: E3005
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    lib.FROZEN.port = 5
+    lib.show()
+}
