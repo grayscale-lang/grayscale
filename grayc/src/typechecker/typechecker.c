@@ -5087,6 +5087,36 @@ static bool types_assignable(TypeChecker *checker, GrayType *dest, GrayType *src
     return false;
 }
 
+/* True when an argument of type `arg_t` cannot be passed to a parameter of
+ * type `param_t`. Owns the implicit coercions every call path accepts: an
+ * integer for an enum or struct, a bool for an integer, and nil for a pointer
+ * or Error. */
+static bool arg_type_mismatches(TypeChecker *checker, GrayType *param_t, GrayType *arg_t) {
+    return arg_t && param_t &&
+        arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
+        !types_assignable(checker, param_t, arg_t) &&
+        !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
+        !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
+        !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
+        !(arg_t->kind == TK_NIL && (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR));
+}
+
+/* Report the argument type mismatch for argument `index` (0-based) of `callee`.
+ * A NULL `kind_word` words it "expected T, got U"; otherwise both types are
+ * quoted and led by the word: "enum ", "struct ", or "" for a bare quoted name. */
+static void report_arg_mismatch(TypeChecker *checker, AstNode *arg_node, int index,
+                                const char *callee, GrayType *param_t, GrayType *arg_t,
+                                const char *kind_word) {
+    const char *expected = type_display_name(checker, param_t);
+    const char *got = type_display_name(checker, arg_t);
+    char *msg = kind_word
+        ? typechecker_format(checker, "argument %d of '%s': expected %s'%s', got %s'%s'",
+              index + 1, callee, kind_word, expected, kind_word, got)
+        : typechecker_format(checker, "argument %d of '%s': expected %s, got %s",
+              index + 1, callee, expected, got);
+    tc_err_arg_type(checker, arg_node, msg);
+}
+
 /* `dest` and `src` name the same shape of nested arrays and differ only in
  * the width of the numeric elements at the bottom: [[i32]] against [[int]],
  * map[string:[u8]] against map[string:[int]]. A flat integer map is not one:
@@ -7128,6 +7158,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
             /* Check argument types */
             int check_count = node->data.call.arg_count < sig->param_count
                 ? node->data.call.arg_count : sig->param_count;
+            char callee[MSG_BUF_SIZE];
+            snprintf(callee, sizeof(callee), "%s.%s", display_mod, mfn);
             for (int argument_index = 0; argument_index < check_count; argument_index++) {
                 GrayType *param_t = sig->param_types[argument_index];
                 /* Set expected_type for implicit enum resolution */
@@ -7137,45 +7169,28 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                 checker->expected_type = saved_expected_m;
                 bool arg_reported = false;
-                if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                    !types_assignable(checker, param_t, arg_t) &&
-                    !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
-                    !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                    !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                    !(arg_t->kind == TK_NIL &&
-                      (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s.%s': expected %s, got %s",
-                        argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                AstNode *arg_node = node->data.call.args[argument_index];
+                if (arg_type_mismatches(checker, param_t, arg_t)) {
+                    report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, NULL);
                     arg_reported = true;
                 }
                 /* Enum-to-enum: kinds both TK_ENUM but different names */
                 if (!arg_reported && arg_t->kind == TK_ENUM && param_t->kind == TK_ENUM &&
                     arg_t->name && param_t->name &&
                     !typechecker_same_enum_type(checker, arg_t->name, param_t->name)) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s.%s': expected enum '%s', got enum '%s'",
-                        argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                    report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "enum ");
                 }
                 /* Struct-to-struct: kinds both TK_STRUCT but different names */
                 if (!arg_reported && arg_t->kind == TK_STRUCT && param_t->kind == TK_STRUCT &&
                     arg_t->name && param_t->name &&
                     !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s.%s': expected struct '%s', got struct '%s'",
-                        argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                    report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "struct ");
                 }
                 /* Pointer-to-pointer: pointee types differ */
                 if (!arg_reported && arg_t->kind == TK_POINTER && param_t->kind == TK_POINTER &&
                     arg_t->name && param_t->name &&
                     !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s.%s': expected '%s', got '%s'",
-                        argument_index + 1, display_mod, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                    report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "");
                 }
                 /* E3027: non-assignable or const passed to mutable (&) param.
                  * Struct functions live inside NODE_STRUCT_DECL, not as
@@ -7298,16 +7313,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             sig->decl->data.func_decl.params[argument_index].name);
                         check_mutable_arg(checker, arg, param_desc, display);
                     }
-                    if (!arg_t || !param_t ||
-                        arg_t->kind == TK_UNKNOWN || param_t->kind == TK_UNKNOWN ||
-                        types_assignable(checker, param_t, arg_t) ||
-                        (param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) ||
-                        (param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) ||
-                        (is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) ||
-                        (arg_t->kind == TK_NIL &&
-                         (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR)))
-                        continue;
-                    tc_err_arg_type(checker, arg, typechecker_format(checker, "argument %d of '%s': expected %s, got %s", argument_index + 1, display, type_display_name(checker, param_t), type_display_name(checker, arg_t)));
+                    if (arg_type_mismatches(checker, param_t, arg_t))
+                        report_arg_mismatch(checker, arg, argument_index, display, param_t, arg_t, NULL);
                 }
             }
         } else {
@@ -7498,6 +7505,8 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     {
                         int check_count = node->data.call.arg_count < ssig->param_count
                             ? node->data.call.arg_count : ssig->param_count;
+                        char callee[MSG_BUF_SIZE];
+                        snprintf(callee, sizeof(callee), "%s.%s", display_sname, mfn);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
                             GrayType *param_t = ssig->param_types[argument_index];
                             /* Set expected_type for implicit enum resolution */
@@ -7507,19 +7516,9 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                             GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                             checker->expected_type = saved_expected_s;
                             bool arg_reported = false;
-                            if (arg_t && param_t &&
-                                arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                                !types_assignable(checker, param_t, arg_t) &&
-                                !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
-                                !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                                !(arg_t->kind == TK_NIL &&
-                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
-                                char amsg[MSG_BUF_SIZE];
-                                snprintf(amsg, sizeof(amsg),
-                                    "argument %d of '%s.%s': expected %s, got %s",
-                                    argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, amsg));
+                            AstNode *arg_node = node->data.call.args[argument_index];
+                            if (arg_type_mismatches(checker, param_t, arg_t)) {
+                                report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, NULL);
                                 arg_reported = true;
                             }
                             /* Struct-to-struct: kinds both TK_STRUCT but different names */
@@ -7527,22 +7526,14 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                                 arg_t->kind == TK_STRUCT && param_t->kind == TK_STRUCT &&
                                 arg_t->name && param_t->name &&
                                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                                char smsg[MSG_BUF_SIZE];
-                                snprintf(smsg, sizeof(smsg),
-                                    "argument %d of '%s.%s': expected struct '%s', got struct '%s'",
-                                    argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, smsg));
+                                report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "struct ");
                             }
                             /* Pointer-to-pointer: pointee types differ */
                             if (!arg_reported && arg_t && param_t &&
                                 arg_t->kind == TK_POINTER && param_t->kind == TK_POINTER &&
                                 arg_t->name && param_t->name &&
                                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                                char pmsg[MSG_BUF_SIZE];
-                                snprintf(pmsg, sizeof(pmsg),
-                                    "argument %d of '%s.%s': expected '%s', got '%s'",
-                                    argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, pmsg));
+                                report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, "");
                             }
                             /* E3019: an argument that crosses signedness vs the
                              * parameter needs a cast. resolve_call_expr's own
@@ -7656,22 +7647,14 @@ static GrayType *resolve_struct_or_module_call(TypeChecker *checker, AstNode *no
                     {
                         int check_count = node->data.call.arg_count < ssig->param_count
                             ? node->data.call.arg_count : ssig->param_count;
+                        char callee[MSG_BUF_SIZE];
+                        snprintf(callee, sizeof(callee), "%s.%s", display_sname, mfn);
                         for (int argument_index = 0; argument_index < check_count; argument_index++) {
                             GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
                             GrayType *param_t = ssig->param_types[argument_index];
-                            if (arg_t && param_t &&
-                                arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                                !types_assignable(checker, param_t, arg_t) &&
-                                !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
-                                !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                                !(arg_t->kind == TK_NIL &&
-                                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
-                                char amsg[MSG_BUF_SIZE];
-                                snprintf(amsg, sizeof(amsg),
-                                    "argument %d of '%s.%s': expected %s, got %s",
-                                    argument_index + 1, display_sname, mfn, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                                tc_err_arg_type(checker, node->data.call.args[argument_index], arena_copy_string(checker->arena, amsg));
+                            AstNode *arg_node = node->data.call.args[argument_index];
+                            if (arg_type_mismatches(checker, param_t, arg_t)) {
+                                report_arg_mismatch(checker, arg_node, argument_index, callee, param_t, arg_t, NULL);
                             }
                             /* E3019: an argument that crosses signedness vs the
                              * parameter needs a cast — same gap as the
@@ -8972,46 +8955,28 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 continue;
             }
             bool arg_reported = false;
-            if (arg_t->kind != TK_UNKNOWN && param_t->kind != TK_UNKNOWN &&
-                !types_assignable(checker, param_t, arg_t) &&
-                !(param_t->kind == TK_ENUM && is_int_kind(arg_t->kind)) &&
-                !(param_t->kind == TK_STRUCT && is_int_kind(arg_t->kind)) &&
-                !(is_int_kind(param_t->kind) && arg_t->kind == TK_BOOL) &&
-                /* nil is a valid value for pointer and Error parameters */
-                !(arg_t->kind == TK_NIL &&
-                  (param_t->kind == TK_POINTER || param_t->kind == TK_ERROR))) {
-                char *msg = typechecker_format(checker,
-                    "argument %d of '%s': expected %s, got %s",
-                    argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+            AstNode *arg_node = node->data.call.args[argument_index];
+            if (arg_type_mismatches(checker, param_t, arg_t)) {
+                report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, NULL);
                 arg_reported = true;
             }
             /* Enum-to-enum: kinds both TK_ENUM but different names */
             if (!arg_reported && arg_t->kind == TK_ENUM && param_t->kind == TK_ENUM &&
                 arg_t->name && param_t->name &&
                 !typechecker_same_enum_type(checker, arg_t->name, param_t->name)) {
-                char *msg = typechecker_format(checker,
-                    "argument %d of '%s': expected enum '%s', got enum '%s'",
-                    argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "enum ");
             }
             /* Struct-to-struct: kinds both TK_STRUCT but different names */
             if (!arg_reported && arg_t->kind == TK_STRUCT && param_t->kind == TK_STRUCT &&
                 arg_t->name && param_t->name &&
                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                char *msg = typechecker_format(checker,
-                    "argument %d of '%s': expected struct '%s', got struct '%s'",
-                    argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "struct ");
             }
             /* Pointer-to-pointer: pointee types differ (e.g., addr(Color) to ^Point) */
             if (!arg_reported && arg_t->kind == TK_POINTER && param_t->kind == TK_POINTER &&
                 arg_t->name && param_t->name &&
                 !typechecker_same_struct_type(checker, arg_t->name, param_t->name)) {
-                char *msg = typechecker_format(checker,
-                    "argument %d of '%s': expected '%s', got '%s'",
-                    argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
             }
             /* Bigint narrowing in call argument: i128 arg to i64 param, etc. */
             if (arg_t->name && param_t->name) {
@@ -9032,10 +8997,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 GrayType *pe = type_from_name(param_t->element_type);
                 if (!(ae && pe && is_int_kind(ae->kind) && is_int_kind(pe->kind)) &&
                     !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s': expected '%s', got '%s'",
-                        argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                    report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
                 }
             }
             /* Map key/value type mismatch */
@@ -9046,10 +9008,7 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                     strcmp(arg_t->value_type, param_t->value_type) != 0;
                 if ((key_mismatch || val_mismatch) &&
                     !literal_fits_nested_widths(checker, node->data.call.args[argument_index], param_t, arg_t)) {
-                    char *msg = typechecker_format(checker,
-                        "argument %d of '%s': expected '%s', got '%s'",
-                        argument_index + 1, function_name, type_display_name(checker, param_t), type_display_name(checker, arg_t));
-                    tc_err_arg_type(checker, node->data.call.args[argument_index], msg);
+                    report_arg_mismatch(checker, arg_node, argument_index, function_name, param_t, arg_t, "");
                 }
             }
             /* E3066: typed-func signatures must match exactly */
