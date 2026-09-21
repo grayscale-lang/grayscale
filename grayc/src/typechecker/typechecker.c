@@ -11913,6 +11913,8 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                 decl_scope = decl_scope->parent;
             if (decl_scope->parent == NULL)
                 node->data.label.refers_to_file_global = true;
+            else
+                node->data.label.refers_to_local = true;
         }
         /* A bare name that names a module-level declaration is bound under
          * that module's spelling, so a reference from inside the module has

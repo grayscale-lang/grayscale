@@ -201,6 +201,15 @@ static const char *codegen_resolve_ref(CodeGen *codegen, AstNode *node,
     return codegen_resolve_decl(codegen, written);
 }
 
+/* The spelling a bare name is emitted under. A local, parameter, loop
+ * variable or pattern binding is emitted as written: it hides a same-named
+ * module member a `using` brings in, so it must not be resolved as one. */
+static const char *codegen_resolve_label(CodeGen *codegen, AstNode *label,
+                                         const char *written) {
+    if (label->data.label.refers_to_local) return written;
+    return codegen_resolve_ref(codegen, label, written);
+}
+
 static const char *codegen_decl_name(CodeGen *codegen, AstNode *node,
                                      const char *fallback) {
     /* While a generic instantiation is being emitted the caller has already
@@ -1709,7 +1718,7 @@ static AstNode *find_referenced_function(CodeGen *codegen, AstNode *label) {
     const char *written = label->data.label.value;
     AstNode *target = find_function(codegen, written);
     if (target) return target;
-    const char *resolved = codegen_resolve_ref(codegen, label, written);
+    const char *resolved = codegen_resolve_label(codegen, label, written);
     return resolved != written ? find_function(codegen, resolved) : NULL;
 }
 
@@ -1764,7 +1773,8 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
         {NULL,NULL,NULL}
     };
     bool emitted_const = false;
-    for (int ui = 0; ui < codegen->using_module_count && !emitted_const; ui++) {
+    for (int ui = 0; ui < codegen->using_module_count && !emitted_const &&
+                     !node->data.label.refers_to_local; ui++) {
         const char *real_mod = resolve_alias(codegen, codegen->using_modules[ui]);
         for (int ci = 0; _cg_consts[ci].n; ci++) {
             if (strcmp(raw, _cg_consts[ci].n) == 0 &&
@@ -1788,7 +1798,7 @@ static void emit_label(CodeGen *codegen, AstNode *node) {
          * declarations, so they resolve to nothing and stay as written —
          * which is why a binding that merely shares a name with a sibling
          * file of its module is left alone. */
-        const char *resolved = codegen_resolve_ref(codegen, node, raw);
+        const char *resolved = codegen_resolve_label(codegen, node, raw);
         emit(codegen, resolved != raw ? sanitize_name(resolved) : name);
     }
 }
@@ -6113,7 +6123,7 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
         /* A bare name that names a module-level declaration is emitted under
          * its mangled name; resolve it the same way emit_label() does before
          * taking its address. */
-        const char *resolved = codegen_resolve_ref(codegen, arg, vn);
+        const char *resolved = codegen_resolve_label(codegen, arg, vn);
         emit_formatted(codegen, "&%s", sanitize_name(resolved != vn ? resolved : vn));
         return;
     }
@@ -11645,7 +11655,7 @@ static char *iter_guard_expr(CodeGen *codegen, bool needs_tmp,
         ? global_var_cname(codegen, raw)
         : NULL;
     if (!san) {
-        const char *resolved = codegen_resolve_decl(codegen, raw);
+        const char *resolved = codegen_resolve_label(codegen, coll, raw);
         san = sanitize_name(resolved != raw ? resolved : raw);
     }
     char buf[128];
