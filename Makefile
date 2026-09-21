@@ -75,6 +75,10 @@ ifdef WINDOWS
 else
 	@bash scripts/run_tests.sh
 endif
+	@"$(MAKE)" test-ubsan
+ifeq ($(shell uname -s),Linux)
+	@"$(MAKE)" test-asan
+endif
 	@echo ""
 	@echo "All test suites completed."
 
@@ -100,8 +104,9 @@ test-go: stubs
 test-ubsan:
 	@"$(MAKE)" -C grayc test-ubsan
 
+# Leak detection is off, as in CI.
 test-asan:
-	@"$(MAKE)" -C grayc test-asan
+	@ASAN_OPTIONS=detect_leaks=0 "$(MAKE)" -C grayc test-asan
 
 leaks:
 	@"$(MAKE)" -C grayc leaks
