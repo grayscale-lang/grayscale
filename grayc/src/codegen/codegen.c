@@ -924,11 +924,13 @@ static AstNode *find_struct_declaration(CodeGen *codegen, const char *name);
 static const char *type_name_deep_copy_visiting[CYCLE_GUARD_DEPTH];
 static int type_name_deep_copy_depth = 0;
 
-static bool type_needs_deep_copy(CodeGen *codegen, const char *gray_tn) {
+/* Walk a type for storage that a plain C copy would share with the source.
+ * Arrays and maps always qualify; strings only when `count_strings`. */
+static bool type_needs_copy_walk(CodeGen *codegen, const char *gray_tn, bool count_strings) {
     if (!gray_tn || !*gray_tn) return false;
     if (gray_tn[0] == '[') return true;
     if (strncmp(gray_tn, "map[", 4) == 0) return true;
-    if (strcmp(gray_tn, "string") == 0) return true;
+    if (strcmp(gray_tn, "string") == 0) return count_strings;
     if (gray_tn[0] == '^') return false; /* pointers alias; see header comment */
     AstNode *sdecl = find_struct_declaration(codegen, gray_tn);
     if (!sdecl) return false;
@@ -939,10 +941,20 @@ static bool type_needs_deep_copy(CodeGen *codegen, const char *gray_tn) {
     if (type_name_deep_copy_depth < CYCLE_GUARD_DEPTH) type_name_deep_copy_visiting[type_name_deep_copy_depth++] = gray_tn;
     for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
         const char *field_type = sdecl->data.struct_decl.fields[i].type_name;
-        if (type_needs_deep_copy(codegen, field_type)) { type_name_deep_copy_depth--; return true; }
+        if (type_needs_copy_walk(codegen, field_type, count_strings)) { type_name_deep_copy_depth--; return true; }
     }
     type_name_deep_copy_depth--;
     return false;
+}
+
+static bool type_needs_deep_copy(CodeGen *codegen, const char *gray_tn) {
+    return type_needs_copy_walk(codegen, gray_tn, true);
+}
+
+/* True for arrays, maps, and structs holding either: values whose C copy
+ * shares mutable backing storage with the source. */
+static bool type_shares_storage(CodeGen *codegen, const char *gray_tn) {
+    return type_needs_copy_walk(codegen, gray_tn, false);
 }
 
 /* Return a unique integer for temporary variable names, drawn from the
@@ -1166,6 +1178,58 @@ static void emit_deep_array_copy(CodeGen *codegen, AstNode *src_node, const char
     char full_tn[MSG_BUF_SIZE];
     snprintf(full_tn, sizeof(full_tn), "[%s]", elem_type_name ? elem_type_name : "");
     emit_value_deep_copy(codegen, full_tn, src_var);
+    emit(codegen, "; })");
+}
+
+/* True when `value` names storage that already exists — a variable, an
+ * element, a field, or a pointer's referent — so binding it to a second home
+ * needs a copy. Literals and call results are fresh and need none. */
+static bool names_existing_storage(AstNode *value) {
+    if (!value) return false;
+    switch (value->kind) {
+    case NODE_LABEL:
+    case NODE_MEMBER_EXPR:
+    case NODE_INDEX_EXPR:
+        return true;
+    case NODE_POSTFIX_EXPR:
+        return value->data.postfix.op == TOK_CARET;
+    default:
+        return false;
+    }
+}
+
+/* True when moving `value` (of type `gray_tn`) into or out of a container
+ * element would leave two homes sharing one backing store. */
+static bool composite_value_aliases(CodeGen *codegen, const char *gray_tn, AstNode *value) {
+    return names_existing_storage(value) && type_shares_storage(codegen, gray_tn);
+}
+
+/* Emit `value` as the operand of a composite store or a composite read out of
+ * a container: a deep copy when it aliases existing storage, otherwise the
+ * expression itself. Inside a scoped arena the copy is allocated on the outer
+ * arena, since the destination outlives the block. */
+static void emit_composite_operand(CodeGen *codegen, const char *gray_tn, AstNode *value) {
+    if (!composite_value_aliases(codegen, gray_tn, value)) {
+        emit_expression(codegen, value);
+        return;
+    }
+    int tag = codegen_next_id(codegen);
+    char src_var[SHORT_VAR_BUF];
+    snprintf(src_var, sizeof(src_var), "_cv%d", tag);
+    const char *c_type = gray_tn[0] == '[' ? "GrayArray"
+                       : strncmp(gray_tn, "map[", 4) == 0 ? "GrayMap"
+                       : gray_type_to_c_codegen(codegen, gray_tn);
+    emit_formatted(codegen, "({ %s %s = ", c_type, src_var);
+    emit_expression(codegen, value);
+    emit(codegen, "; ");
+    if (codegen->loop_scope_depth > 0) {
+        emit_formatted(codegen, "GrayArena *_cva%d = gray_default_arena; gray_default_arena = _gray_outer_arena; ", tag);
+        emit_formatted(codegen, "__auto_type _cvd%d = ", tag);
+        emit_value_deep_copy(codegen, gray_tn, src_var);
+        emit_formatted(codegen, "; gray_default_arena = _cva%d; _cvd%d; })", tag, tag);
+        return;
+    }
+    emit_value_deep_copy(codegen, gray_tn, src_var);
     emit(codegen, "; })");
 }
 
@@ -6103,9 +6167,24 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "get_values") == 0 && node->data.call.arg_count == 1) {
+        GrayType *gv_t = codegen->type_table
+            ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        bool gv_copy = gv_t && gv_t->kind == TK_MAP && gv_t->value_type &&
+            type_shares_storage(codegen, gv_t->value_type);
+        int tag = codegen_next_id(codegen);
+        if (gv_copy) emit_formatted(codegen, "({ GrayArray _gv%d = ", tag);
         emit(codegen, "gray_maps_get_values(gray_default_arena, ");
         emit_address_of(codegen, node->data.call.args[0]);
         emit(codegen, ")");
+        if (gv_copy) {
+            /* The values are composites: copy them out of the map's slots. */
+            char src_var[SHORT_VAR_BUF], full_tn[MSG_BUF_SIZE];
+            snprintf(src_var, sizeof(src_var), "_gv%d", tag);
+            snprintf(full_tn, sizeof(full_tn), "[%s]", gv_t->value_type);
+            emit(codegen, "; ");
+            emit_value_deep_copy(codegen, full_tn, src_var);
+            emit(codegen, "; })");
+        }
         return true;
     }
     if (strcmp(func, "has_key") == 0) {
@@ -7208,7 +7287,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         /* escape arena-allocated data to the outer arena when
          * inside a loop scope. Strings get a simple copy; arrays, maps,
          * and structs with embedded pointers need a full deep copy. */
-        if (codegen->loop_scope_depth > 0) {
+        if (codegen->loop_scope_depth > 0 ||
+            composite_value_aliases(codegen, elem_tn, node->data.call.args[1])) {
             if (elem_is_string) {
                 emit_formatted(codegen, "_av = gray_string_new(%s, _av.data, _av.len); ", alloc_arena);
             } else if (elem_tn && type_needs_deep_copy(codegen, elem_tn)) {
@@ -7265,7 +7345,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         const char *ia_elem_tn = (ia_arr_t && ia_arr_t->kind == TK_ARRAY) ? ia_arr_t->element_type : NULL;
         bool ia_str = (val_t && val_t->kind == TK_STRING) ||
             (ia_elem_tn && strcmp(ia_elem_tn, "string") == 0);
-        if (codegen->loop_scope_depth > 0) {
+        if (codegen->loop_scope_depth > 0 ||
+            composite_value_aliases(codegen, ia_elem_tn, node->data.call.args[2])) {
             if (ia_str) {
                 emit_formatted(codegen, "_iv = gray_string_new(%s, _iv.data, _iv.len); ", ia_arena);
             } else if (ia_elem_tn && type_needs_deep_copy(codegen, ia_elem_tn)) {
@@ -7552,7 +7633,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit_formatted(codegen, "{ %s _pv = ", pp_c_elem);
         emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, "; ");
-        if (codegen->loop_scope_depth > 0) {
+        if (codegen->loop_scope_depth > 0 ||
+            composite_value_aliases(codegen, pp_elem_tn, node->data.call.args[1])) {
             if (pp_str) {
                 emit_formatted(codegen, "_pv = gray_string_new(%s, _pv.data, _pv.len); ", pp_arena);
             } else if (pp_elem_tn && type_needs_deep_copy(codegen, pp_elem_tn)) {
@@ -7605,7 +7687,18 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
                                 ? "gray_arrays_first_ptr" : "gray_arrays_last_ptr";
         const char *af_raw_fn = (strcmp(func, "remove_first") == 0)
                                 ? "gray_arrays_remove_first_raw" : "gray_arrays_remove_last_raw";
-        if (af_is_get) {
+        if (af_is_get && af_elem && type_shares_storage(codegen, af_elem)) {
+            /* The element is a composite: hand back a copy, not a view of the
+             * array's own slot. */
+            int tag = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ %s _gf%d = *(%s *)%s(", af_ctype, tag, af_ctype, af_ptr_fn);
+            emit_array_argument_address(codegen, node->data.call.args[0]);
+            emit(codegen, "); ");
+            char src_var[SHORT_VAR_BUF];
+            snprintf(src_var, sizeof(src_var), "_gf%d", tag);
+            emit_value_deep_copy(codegen, af_elem, src_var);
+            emit(codegen, "; })");
+        } else if (af_is_get) {
             emit_formatted(codegen, "(*(%s *)%s(", af_ctype, af_ptr_fn);
             emit_array_argument_address(codegen, node->data.call.args[0]);
             emit(codegen, "))");
@@ -9800,7 +9893,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         const char *saved_nested_var_type = codegen->current_var_type;
         codegen->current_var_type = type_name;
         AstNode *init = node->data.var_decl.value;
-        bool label_init = init && init->kind == NODE_LABEL;
+        bool label_init = names_existing_storage(init);
         const char *label_elem_tn = NULL;
         if (label_init) {
             GrayType *src_t = codegen->type_table
@@ -9857,11 +9950,9 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         node->data.var_decl.value->data.array_value.count == 0) {
         /* Empty array literal with type annotation; use correct elem size */
         emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(%s), 4)", c_elem_type);
-    } else if (node->data.var_decl.value &&
-               (node->data.var_decl.value->kind == NODE_LABEL ||
-                node->data.var_decl.value->kind == NODE_MEMBER_EXPR)) {
-        /* Copy-by-default: deep copy when assigning from another variable
-         * or a struct field access (e.g. `mut copy [int] = s.field`).
+    } else if (names_existing_storage(node->data.var_decl.value)) {
+        /* Copy-by-default: deep copy when assigning from another variable,
+         * a struct field, or a container element (e.g. `mut copy [int] = s.field`).
          * Without this, member-expr sources share backing storage with the
          * originating struct field (#1789). */
         GrayType *src_t = codegen->type_table
@@ -9900,8 +9991,7 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
         emit_formatted(codegen, "GrayMap %s;\n", sanitize_name(node->data.var_decl.name));
         Buf saved = codegen->output; codegen->output = codegen->global_init; codegen->indent = 1;
         emit_formatted(codegen, "    %s = ", sanitize_name(node->data.var_decl.name));
-        if (node->data.var_decl.value &&
-            node->data.var_decl.value->kind == NODE_LABEL) {
+        if (names_existing_storage(node->data.var_decl.value)) {
             int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
             snprintf(src_var, sizeof(src_var), "_ms%d", tag);
@@ -9925,10 +10015,9 @@ static void emit_vardecl_map(CodeGen *codegen, AstNode *node,
     }
 
     emit_formatted(codegen, "GrayMap %s = ", sanitize_name(node->data.var_decl.name));
-    if (node->data.var_decl.value &&
-        node->data.var_decl.value->kind == NODE_LABEL) {
+    if (names_existing_storage(node->data.var_decl.value)) {
         /* Copy-by-default: deep copy when assigning a map from another
-         * variable so mutations to the copy don't alias the original. */
+         * variable or element so mutations to the copy don't alias the original. */
         int tag = codegen_next_id(codegen);
         char src_var[VAR_NAME_BUF];
         snprintf(src_var, sizeof(src_var), "_ms%d", tag);
@@ -10113,8 +10202,9 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
             /* addr() assigned to integer type; cast pointer to uintptr_t */
             emit(codegen, "(uintptr_t)");
             emit_expression(codegen, node->data.var_decl.value);
-        } else if (node->data.var_decl.value->kind == NODE_LABEL &&
-                   type_name && type_needs_deep_copy(codegen, type_name)) {
+        } else if ((node->data.var_decl.value->kind == NODE_LABEL &&
+                    type_name && type_needs_deep_copy(codegen, type_name)) ||
+                   composite_value_aliases(codegen, type_name, node->data.var_decl.value)) {
             /* Copy-by-default: deep copy structs (and maps) that contain
              * arrays/maps/strings so the copy is fully independent. */
             int tag = codegen_next_id(codegen);
@@ -10150,11 +10240,26 @@ static void emit_vardecl_init(CodeGen *codegen, AstNode *node,
  * raw/ref/heap-pointer trackers use, since reference sites look them up by
  * the source name. node->data.var_decl.name may already carry a mangled or
  * gray_g_-prefixed C name by the time this runs. */
+/* An inferred declaration bound to existing composite storage copies like an
+ * annotated one: name its type from the typetable so the copy path applies. */
+static bool inferred_composite_type(CodeGen *codegen, AstNode *value, char *out, size_t cap) {
+    if (!names_existing_storage(value) || !codegen->type_table) return false;
+    GrayType *t = typetable_get(codegen->type_table, value);
+    if (!t || (t->kind != TK_ARRAY && t->kind != TK_MAP && t->kind != TK_STRUCT)) return false;
+    snprintf(out, cap, "%s", type_name(t));
+    return type_shares_storage(codegen, out);
+}
+
 static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
                                       const char *source_name) {
     emit_indent(codegen);
 
+    char inferred_tn[TYPE_NAME_MAX];
     const char *type_name = node->data.var_decl.type_name;
+    if (!type_name && inferred_composite_type(codegen, node->data.var_decl.value,
+                                              inferred_tn, sizeof(inferred_tn))) {
+        type_name = inferred_tn;
+    }
     const char *elem_type = extract_array_element_type(type_name);
 
     if (elem_type) {
@@ -10560,7 +10665,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, ")");
                 } else {
-                    emit_expression(codegen, node->data.assign.value);
+                    emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
                 }
                 emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
                 return;
@@ -10618,7 +10723,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         emit_expression(codegen, node->data.assign.value);
                         emit(codegen, ")");
                     } else {
-                        emit_expression(codegen, node->data.assign.value);
+                        emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
                     }
                     emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
                     return;
@@ -10660,7 +10765,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, ")");
                 } else {
-                    emit_expression(codegen, node->data.assign.value);
+                    emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
                 }
                 emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
                 return;
@@ -10744,7 +10849,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_expression(codegen, node->data.assign.value);
                 emit(codegen, ")");
             } else {
-                emit_expression(codegen, node->data.assign.value);
+                emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
             }
             emit_formatted(codegen, ", \"%s\", %d);\n", codegen->file, node->token.line);
             return;
@@ -10885,6 +10990,10 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
                 emit_expression(codegen, node->data.assign.value);
                 emit(codegen, ")");
+            } else if (codegen->loop_scope_depth == 0 &&
+                       composite_value_aliases(codegen, left_t->value_type, node->data.assign.value)) {
+                /* Inside a loop the escape copy below already covers this. */
+                emit_composite_operand(codegen, left_t->value_type, node->data.assign.value);
             } else {
                 emit_map_slot_value(codegen, left_t->value_type, node->data.assign.value);
             }
@@ -10968,7 +11077,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit_bigint_operand(codegen, node->data.assign.value,
                                 bigint_prefix(bi_elem), bi_elem, NULL);
         } else {
-            emit_expression(codegen, node->data.assign.value);
+            emit_composite_operand(codegen, ptr_t ? ptr_t->element_type : NULL, node->data.assign.value);
         }
         emit(codegen, "; }\n");
         return;

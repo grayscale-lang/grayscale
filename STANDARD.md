@@ -4766,7 +4766,7 @@ for_each line in lines {
 
 ### 11.2 Reference Semantics
 
-Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, or into an existing struct field, copies it:
+Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, into an existing struct field, or into a container element (`grid[0] = row`, `m["k"] = arr`, `arrays.append(outer, row)`), or reading one out of a container (`mut e [int] = grid[0]`), copies it:
 
 ```gray
 mut a [int] = {1, 2, 3}
