@@ -39,19 +39,22 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
     return arr;
 }
 
+void gray_array_oob_panic(int64_t index, int32_t len, const char *file, int line) {
+    gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %lld but the length is %d", (long long)index, len);
+}
+
+void gray_array_iterating_panic(const char *file, int line) {
+    gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
+}
+
 void *gray_array_get_ptr(GrayArray *arr, int64_t index, const char *file, int line) {
-    if (index < 0 || index >= arr->len) {
-        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %lld but the length is %d", (long long)index, arr->len);
-    }
+    if (index < 0 || index >= arr->len) gray_array_oob_panic(index, arr->len, file, line);
     return (char *)arr->data + (size_t)index * (size_t)arr->elem_size;
 }
 
 void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char *file, int line) {
-    if (gray_atomic_load32(&arr->iterating) > 0)
-        gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
-    if (index < 0 || index >= arr->len) {
-        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %lld but the length is %d", (long long)index, arr->len);
-    }
+    if (gray_atomic_load32(&arr->iterating) > 0) gray_array_iterating_panic(file, line);
+    if (index < 0 || index >= arr->len) gray_array_oob_panic(index, arr->len, file, line);
     memcpy((char *)arr->data + (size_t)index * (size_t)arr->elem_size,
            value, (size_t)arr->elem_size);
 }

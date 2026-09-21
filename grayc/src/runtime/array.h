@@ -13,6 +13,7 @@
 
 #include "runtime.h"
 #include "atomic.h"
+#include <string.h>
 
 #define GRAY_ARRAY_MIN_CAP            4
 
@@ -37,6 +38,12 @@ void *gray_array_get_ptr(GrayArray *arr, int64_t index, const char *file, int li
 /* Set element at index (with bounds checking) */
 void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char *file, int line);
 
+/* Panic paths of the index macros, out of line so the inline check stays small */
+void gray_array_oob_panic(int64_t index, int32_t len, const char *file, int line)
+    __attribute__((noreturn, cold));
+void gray_array_iterating_panic(const char *file, int line)
+    __attribute__((noreturn, cold));
+
 /* Ensure room for one more element, growing the backing store if full.
  * Growth is allocate-and-copy: the arena has no realloc, so the old store
  * lives on until the arena is reset or destroyed. Grows into the array's
@@ -59,9 +66,26 @@ GrayArray gray_array_copy(GrayArena *arena, GrayArray *src);
 #define GRAY_ARRAY_GET(arr, type, i) (*(type *)gray_array_get_ptr(&(arr), (i), __FILE__, __LINE__))
 #define GRAY_ARRAY_SET(arr, type, i, val) do { type _v = (val); gray_array_set(&(arr), (i), &_v, __FILE__, __LINE__); } while(0)
 
-/* Typed access macros — codegen callers (pass Grayscale source location) */
-#define GRAY_ARRAY_GET_AT(arr, type, i, f, l) (*(type *)gray_array_get_ptr(&(arr), (i), (f), (l)))
-#define GRAY_ARRAY_SET_AT(arr, type, i, val, f, l) do { type _v = (val); gray_array_set(&(arr), (i), &_v, (f), (l)); } while(0)
+/* Typed access macros — codegen callers (pass Grayscale source location).
+ * The bounds check is inline; SET stores sizeof(type) bytes when the array's
+ * elem_size matches, and elem_size bytes otherwise, as gray_array_set does. */
+#define GRAY_ARRAY_GET_AT(arr, type, i, f, l) \
+    (*(type *)({ \
+        GrayArray *_ga = &(arr); int64_t _gi = (i); \
+        if (__builtin_expect(_gi < 0 || _gi >= _ga->len, 0)) \
+            gray_array_oob_panic(_gi, _ga->len, (f), (l)); \
+        (void *)((char *)_ga->data + (size_t)_gi * (size_t)_ga->elem_size); \
+    }))
+#define GRAY_ARRAY_SET_AT(arr, type, i, val, f, l) do { \
+        type _v = (val); GrayArray *_ga = &(arr); int64_t _gi = (i); \
+        if (__builtin_expect(__atomic_load_n(&_ga->iterating, __ATOMIC_RELAXED) > 0, 0)) \
+            gray_array_iterating_panic((f), (l)); \
+        if (__builtin_expect(_gi < 0 || _gi >= _ga->len, 0)) \
+            gray_array_oob_panic(_gi, _ga->len, (f), (l)); \
+        char *_gp = (char *)_ga->data + (size_t)_gi * (size_t)_ga->elem_size; \
+        if (_ga->elem_size == (int32_t)sizeof(type)) memcpy(_gp, &_v, sizeof(type)); \
+        else memcpy(_gp, &_v, (size_t)_ga->elem_size); \
+    } while(0)
 
 /* Create from typed literal — helper macros */
 #define GRAY_ARRAY_FROM_I64(arena, ...) \
