@@ -1,0 +1,81 @@
+// Test: json.decode and json.parse decode string escapes and keep nested arrays and objects intact
+import @json
+
+#json
+const P struct {
+    name string
+    n int
+}
+
+do main() {
+    mut esc, _ = json.decode("{\"k\":\"a\\nb\"}")
+    if len(esc["k"]) == 3 && esc["k"][1] == '\n' {
+        println("  [PASS] newline escape in a value")
+    } else {
+        println("  [FAIL] newline escape in a value")
+    }
+
+    mut quoted, _ = json.decode("{\"k\":\"a\\\"b\\\\c\\/d\"}")
+    if quoted["k"] == "a\"b\\c/d" {
+        println("  [PASS] quote, backslash and solidus escapes")
+    } else {
+        println("  [FAIL] quote, backslash and solidus escapes")
+    }
+
+    mut uni, _ = json.decode("{\"k\":\"\\u00e9\\ud83d\\ude00\"}")
+    if len(uni["k"]) == 6 && uni["k"] == "é😀" {
+        println("  [PASS] unicode escapes, including a surrogate pair")
+    } else {
+        println("  [FAIL] unicode escapes, including a surrogate pair")
+    }
+
+    mut keyed, _ = json.decode("{\"q\\\"k\":\"v\"}")
+    if len(keyed) == 1 && keyed["q\"k"] == "v" {
+        println("  [PASS] escape in a key")
+    } else {
+        println("  [FAIL] escape in a key")
+    }
+
+    mut obj, _ = json.decode("{\"h\":{\"i\":1,\"j\":2},\"k\":3}")
+    if len(obj) == 2 && obj["h"] == "{\"i\":1,\"j\":2}" && obj["k"] == "3" {
+        println("  [PASS] nested object value")
+    } else {
+        println("  [FAIL] nested object value")
+    }
+
+    mut arr, arr_err = json.decode("{\"tags\":[\"a\",\"b\"],\"k\":3}")
+    if arr_err == nil && arr["tags"] == "[\"a\",\"b\"]" && arr["k"] == "3" {
+        println("  [PASS] nested array value")
+    } else {
+        println("  [FAIL] nested array value")
+    }
+
+    mut top, top_err = json.decode("[1,2]")
+    if top_err != nil && len(top) == 0 {
+        println("  [PASS] top-level array is an error")
+    } else {
+        println("  [FAIL] top-level array is an error")
+    }
+
+    mut skipped P = json.parse("{\"extra\":{\"n\":9},\"name\":\"x\",\"n\":1}")
+    if skipped.name == "x" && skipped.n == 1 {
+        println("  [PASS] struct parse skips an unknown object key")
+    } else {
+        println("  [FAIL] struct parse skips an unknown object key")
+    }
+
+    mut listed P = json.parse("{\"name\":\"x\",\"extra\":[1,2,3]}")
+    if listed.name == "x" {
+        println("  [PASS] struct parse skips an unknown array key")
+    } else {
+        println("  [FAIL] struct parse skips an unknown array key")
+    }
+
+    mut original P = P{name: "q\"b\\c\nd\te", n: 4}
+    mut back P = json.parse(json.stringify(original))
+    if back.name == original.name && back.n == 4 {
+        println("  [PASS] struct round trip keeps escaped characters")
+    } else {
+        println("  [FAIL] struct round trip keeps escaped characters")
+    }
+}

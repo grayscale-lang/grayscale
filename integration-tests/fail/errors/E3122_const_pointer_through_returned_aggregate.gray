@@ -1,0 +1,52 @@
+/*
+ * Error Test: E3122 - a pointer to a const-declared variable held in a struct
+ * or array a function returns stays read-only
+ */
+
+// expect-error: E3122
+// expect-error-count: 4
+
+const Box struct {
+    v int
+}
+const K Box = Box{v: 1}
+
+const W struct {
+    p ^Box
+}
+
+do mk() -> W {
+    return W{p: addr(K)}
+}
+
+do mkarr() -> [^Box] {
+    return {addr(K)}
+}
+
+do write_call_result() {
+    mk().p^.v = 9
+}
+
+do write_returned_struct() {
+    mut w W = mk()
+    w.p^.v = 9
+}
+
+do write_returned_array() {
+    mut ps [^Box] = mkarr()
+    ps[0]^.v = 9
+}
+
+do write_iterated_array() {
+    mut ps [^Box] = mkarr()
+    for_each p in ps {
+        p^.v = 9
+    }
+}
+
+do main() {
+    write_call_result()
+    write_returned_struct()
+    write_returned_array()
+    write_iterated_array()
+}

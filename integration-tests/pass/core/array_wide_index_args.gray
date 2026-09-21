@@ -1,0 +1,46 @@
+// Test: 64-bit int arguments to arrays.slice and arrays.rotate are honoured, not narrowed to 32 bits
+import @arrays
+import @math
+
+do main() {
+    mut a [int] = {10, 20, 30}
+    mut whole [int] = {10, 20, 30}
+    mut rot2 [int] = {30, 10, 20}
+    mut rot1 [int] = {2, 3, 1}
+    mut src [int] = {1, 2, 3}
+
+    mut s1 [int] = arrays.slice(a, 0, 4294967297)
+    if arrays.is_equal(s1, whole) {
+        println("  [PASS] slice end past 2^32 clamps to length")
+    } else {
+        println("  [FAIL] slice end past 2^32 clamps to length")
+    }
+
+    mut s2 [int] = arrays.slice(a, 4294967297, 3)
+    if len(s2) == 0 {
+        println("  [PASS] slice start past 2^32 is empty")
+    } else {
+        println("  [FAIL] slice start past 2^32 is empty")
+    }
+
+    mut s3 [int] = arrays.slice(a, 0, math.MAX_INT)
+    if arrays.is_equal(s3, whole) {
+        println("  [PASS] slice end MAX_INT clamps to length")
+    } else {
+        println("  [FAIL] slice end MAX_INT clamps to length")
+    }
+
+    mut r1 [int] = arrays.rotate(a, 4294967297)
+    if arrays.is_equal(r1, rot2) {
+        println("  [PASS] rotate by 2^32 + 1")
+    } else {
+        println("  [FAIL] rotate by 2^32 + 1")
+    }
+
+    mut r2 [int] = arrays.rotate(src, math.MAX_INT)
+    if arrays.is_equal(r2, rot1) {
+        println("  [PASS] rotate by MAX_INT")
+    } else {
+        println("  [FAIL] rotate by MAX_INT")
+    }
+}

@@ -1,0 +1,11 @@
+/*
+ * lib.gray - Library with a private struct function
+ */
+
+const Box struct {
+    v int
+
+    private do secret(a int) -> int {
+        return a * 2
+    }
+}

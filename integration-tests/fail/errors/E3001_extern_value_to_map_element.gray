@@ -1,0 +1,15 @@
+/*
+ * Error Test: E3001 - an extern C call result assigned to a map element. A C
+ * value's type is only known to the C compiler, so it cannot be checked
+ * against the map's value type; it must go through a typed declaration first.
+ */
+// expect-error: E3001
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut m map[string:string] = {:}
+    m["a"] = extern.getenv("HOME")
+    println(m["a"])
+}

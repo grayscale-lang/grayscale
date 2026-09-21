@@ -1,0 +1,41 @@
+// Test: string interpolation of arrays and maps with sized numeric elements reads each element at its stored width
+const S struct {
+    v [i32]
+}
+
+do check(label string, got string, want string) {
+    if got == want {
+        println("  [PASS] ${label}")
+    } else {
+        println("  [FAIL] ${label}: got ${got}, want ${want}")
+    }
+}
+
+do main() {
+    mut a [i32] = {1, 2, 3}
+    mut b [u8] = {1, 2, 3}
+    mut c [f32] = {1.5, 2.5}
+    mut d [i8] = {1, -2}
+    mut e [u16] = {1, 2}
+    mut f [u32] = {4000000000, 1}
+    mut g [i16] = {-300, 5}
+    mut h [int] = {7, -8}
+    check("[i32]", "${a}", "{1, 2, 3}")
+    check("[u8]", "${b}", "{1, 2, 3}")
+    check("[f32]", "${c}", "{1.5, 2.5}")
+    check("[i8]", "${d}", "{1, -2}")
+    check("[u16]", "${e}", "{1, 2}")
+    check("[u32]", "${f}", "{4000000000, 1}")
+    check("[i16]", "${g}", "{-300, 5}")
+    check("[int]", "${h}", "{7, -8}")
+
+    mut m32 map[string:i32] = {"a": 7, "b": 8}
+    mut m8 map[string:u8] = {"a": 1, "b": 2}
+    mut mf map[string:f32] = {"a": 1.5}
+    check("map[string:i32]", "${m32}", "{\"a\": 7, \"b\": 8}")
+    check("map[string:u8]", "${m8}", "{\"a\": 1, \"b\": 2}")
+    check("map[string:f32]", "${mf}", "{\"a\": 1.5}")
+
+    mut s S = S{v: {4, 5}}
+    check("[i32] struct field", "${s.v}", "{4, 5}")
+}

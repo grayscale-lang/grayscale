@@ -1,0 +1,7 @@
+/* Panic Test: P0033 - assigning through an int index whose low 32 bits are in range */
+do main() {
+    mut a [int] = {10, 20, 30}
+    mut i int = 4294967296
+    a[i] = 99
+    println(a)
+}

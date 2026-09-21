@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5053 - cast() of an extern.func() result whose real C return
+ * type is the struct ldiv_t. A struct cannot be converted to a number.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut n i64 = cast(extern.ldiv(7, 2), i64)
+    println("${n}")
+}

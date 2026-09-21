@@ -339,17 +339,121 @@ static void skip_ws(const char **cursor, const char *end) {
     while (*cursor < end && isspace((unsigned char)**cursor)) (*cursor)++;
 }
 
+/* Value of a hex digit, or -1. */
+static int json_hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* The four hex digits at `p` as a code unit, or -1 when fewer than four
+ * digits remain before `limit`. */
+static int json_hex4(const char *p, const char *limit) {
+    if (limit - p < 4) return -1;
+    int value = 0;
+    for (int i = 0; i < 4; i++) {
+        int digit = json_hex_digit(p[i]);
+        if (digit < 0) return -1;
+        value = value * 16 + digit;
+    }
+    return value;
+}
+
+/* Write the UTF-8 encoding of `cp` at `out`; returns the byte count. */
+static int json_put_utf8(char *out, uint32_t cp) {
+    if (cp < 0x80) { out[0] = (char)cp; return 1; }
+    if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+/* Advance past a quoted string whose opening quote is at *cursor, stopping on
+ * the closing quote (or at `end` when the string is unterminated). */
+static const char *json_string_close(const char *p, const char *end) {
+    while (p < end && *p != '"') {
+        if (*p == '\\' && p + 1 < end) p++;
+        p++;
+    }
+    return p;
+}
+
+/* Parse a quoted string, decoding its escapes. Every escape decodes to no
+ * more bytes than it spans in the text, so the raw span bounds the result. */
 static GrayString parse_json_string(GrayArena *arena, const char **cursor, const char *end) {
-    if (**cursor != '"') return gray_string_lit("");
+    if (*cursor >= end || **cursor != '"') return gray_string_lit("");
     (*cursor)++;
     const char *start = *cursor;
-    while (*cursor < end && **cursor != '"') {
-        if (**cursor == '\\') (*cursor)++;
-        (*cursor)++;
+    const char *close = json_string_close(start, end);
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)(close - start) + 1);
+    int32_t len = 0;
+    for (const char *p = start; p < close; ) {
+        if (*p != '\\') { buf[len++] = *p++; continue; }
+        p++;
+        if (p >= close) break;
+        char esc = *p++;
+        switch (esc) {
+        case 'b': buf[len++] = '\b'; break;
+        case 'f': buf[len++] = '\f'; break;
+        case 'n': buf[len++] = '\n'; break;
+        case 'r': buf[len++] = '\r'; break;
+        case 't': buf[len++] = '\t'; break;
+        case 'u': {
+            int unit = json_hex4(p, close);
+            if (unit < 0) { buf[len++] = 'u'; break; }
+            p += 4;
+            uint32_t cp = (uint32_t)unit;
+            if (cp >= 0xD800 && cp <= 0xDBFF) {
+                int low = (close - p >= 2 && p[0] == '\\' && p[1] == 'u') ? json_hex4(p + 2, close) : -1;
+                if (low >= 0xDC00 && low <= 0xDFFF) {
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + ((uint32_t)low - 0xDC00);
+                    p += 6;
+                } else {
+                    cp = 0xFFFD;
+                }
+            } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                cp = 0xFFFD;
+            }
+            len += json_put_utf8(buf + len, cp);
+            break;
+        }
+        default: buf[len++] = esc; break; /* \" \\ \/ */
+        }
     }
-    GrayString result = gray_string_new(arena, start, (int32_t)(*cursor - start));
-    if (*cursor < end) (*cursor)++; /* skip closing quote */
-    return result;
+    buf[len] = '\0';
+    *cursor = close < end ? close + 1 : close;
+    return (GrayString){ buf, len };
+}
+
+/* The raw text of a nested array or object, through its matching close. */
+static GrayString parse_json_nested_as_string(GrayArena *arena, const char **cursor, const char *end) {
+    const char *start = *cursor;
+    int depth = 0;
+    while (*cursor < end) {
+        char c = **cursor;
+        if (c == '"') {
+            const char *close = json_string_close(*cursor + 1, end);
+            *cursor = close < end ? close + 1 : close;
+            continue;
+        }
+        (*cursor)++;
+        if (c == '{' || c == '[') depth++;
+        else if ((c == '}' || c == ']') && --depth == 0) break;
+    }
+    return gray_string_new(arena, start, (int32_t)(*cursor - start));
 }
 
 static GrayString parse_json_value_as_string(GrayArena *arena, const char **cursor, const char *end) {
@@ -358,6 +462,9 @@ static GrayString parse_json_value_as_string(GrayArena *arena, const char **curs
 
     if (**cursor == '"') {
         return parse_json_string(arena, cursor, end);
+    }
+    if (**cursor == '{' || **cursor == '[') {
+        return parse_json_nested_as_string(arena, cursor, end);
     }
 
     /* Number, bool, null — read until delimiter */
@@ -376,7 +483,9 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text) {
 
     while (cursor < end) {
         skip_ws(&cursor, end);
-        if (cursor >= end || *cursor == '}') break;
+        /* A key that is not a string cannot be scanned past: stop rather than
+         * loop on the same character. */
+        if (cursor >= end || *cursor != '"') break;
 
         GrayString key = parse_json_string(arena, &cursor, end);
         skip_ws(&cursor, end);
@@ -646,6 +755,14 @@ GrayResult_map gray_json_decode_result(GrayArena *arena, GrayString text) {
     if (!gray_json_is_valid(text)) {
         result.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
         result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "invalid JSON"));
+        return result;
+    }
+    const char *first = text.data;
+    const char *text_end = first + text.len;
+    skip_ws(&first, text_end);
+    if (*first != '{') {
+        result.v0 = gray_map_new(arena, sizeof(GrayString), sizeof(GrayString), 0);
+        result.v1 = gray_error_new(arena, GRAY_ERR_ParseFailure, gray_string_format(arena, "JSON value is not an object"));
         return result;
     }
     result.v0 = gray_json_decode(arena, text);

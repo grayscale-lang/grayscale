@@ -337,7 +337,8 @@
     GRAY_ERROR("E5050", "arguments", "wrong number of arguments to C function '%s'; the imported header declares %s argument(s), the call passes %d") \
     GRAY_ERROR("E5051", "usage", "cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change") \
     GRAY_ERROR("E5052", "usage", "unknown C symbol '%s'; no such function, constant, or macro in the imported header(s)") \
-    GRAY_ERROR("E5053", "types", "C function '%s' returns '%s', which cannot be used as '%s'")
+    GRAY_ERROR("E5053", "types", "C function '%s' returns '%s', which cannot be used as '%s'") \
+    GRAY_ERROR("E5054", "arguments", "argument %d of C function '%s' has type '%s', which C cannot convert to the parameter type '%s' the imported header declares")
 
 /* --- E6xxx: Import Problems --- */
 #define GRAY_IMPORT_ERRORS \
@@ -412,7 +413,7 @@
     GRAY_PANIC("P0030", "arithmetic", "u256 addition result is too large; value exceeds the range of u256") \
     GRAY_PANIC("P0031", "arithmetic", "u256 subtraction result is negative, but u256 cannot hold negative values") \
     GRAY_PANIC("P0032", "arithmetic", "u256 multiplication result is too large; value exceeds the range of u256") \
-    GRAY_PANIC("P0033", "bounds",     "index out of bounds; tried to access index %d but the length is %d") \
+    GRAY_PANIC("P0033", "bounds",     "index out of bounds; tried to access index %lld but the length is %d") \
     GRAY_PANIC("P0034", "iteration",  "cannot modify array during for_each iteration") \
     GRAY_PANIC("P0035", "iteration",  "cannot modify map during for_each iteration") \
     GRAY_PANIC("P0036", "encoding",   "encoding.base64_decode: input length %d is not a multiple of 4") \
@@ -422,8 +423,8 @@
     GRAY_PANIC("P0040", "encoding",   "encoding.hex_decode: input length %d is not even") \
     GRAY_PANIC("P0041", "encoding",   "encoding.hex_decode: invalid hex character at position %d") \
     GRAY_PANIC("P0042", "encoding",   "encoding.url_decode: invalid percent-escape at position %d") \
-    GRAY_PANIC("P0043", "bounds",     "arrays.insert_at: index %d is out of bounds for an array of length %d") \
-    GRAY_PANIC("P0044", "bounds",     "arrays.remove_at: index %d is out of bounds for an array of length %d") \
+    GRAY_PANIC("P0043", "bounds",     "arrays.insert_at: index %lld is out of bounds for an array of length %d") \
+    GRAY_PANIC("P0044", "bounds",     "arrays.remove_at: index %lld is out of bounds for an array of length %d") \
     GRAY_PANIC("P0045", "bounds",     "arrays.get_first called on an empty array") \
     GRAY_PANIC("P0046", "bounds",     "arrays.get_last called on an empty array") \
     GRAY_PANIC("P0047", "bounds",     "arrays.remove_first called on an empty array") \
@@ -433,16 +434,16 @@
     GRAY_PANIC("P0051", "crypto",     "crypto.random_hex: length must be non-negative (got %lld)") \
     GRAY_PANIC("P0052", "crypto",     "crypto.random_hex: failed to read from /dev/urandom") \
     GRAY_PANIC("P0053", "io",         "io.read_file: input exceeds maximum string length") \
-    GRAY_PANIC("P0054", "strconv",    "strconv.to_int: invalid base %d; must be between 2 and 36") \
-    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to int (base %d)") \
-    GRAY_PANIC("P0056", "strconv",    "strconv.to_uint: invalid base %d; must be between 2 and 36") \
-    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to uint (base %d)") \
+    GRAY_PANIC("P0054", "strconv",    "strconv.to_int: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to int (base %lld)") \
+    GRAY_PANIC("P0056", "strconv",    "strconv.to_uint: invalid base %lld; must be between 2 and 36") \
+    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to uint (base %lld)") \
     GRAY_PANIC("P0058", "strconv",    "strconv.to_uint: cannot convert '%s' to uint; value is negative") \
     GRAY_PANIC("P0059", "strconv",    "strconv.to_float: cannot convert '%s' to float") \
     GRAY_PANIC("P0060", "strconv",    "strconv.to_bool: cannot convert '%s' to bool") \
     GRAY_PANIC("P0061", "memory",     "mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB") \
-    GRAY_PANIC("P0062", "random",     "random.sample() count %d exceeds array length %d") \
-    GRAY_PANIC("P0063", "random",     "random.sample() count cannot be negative (%d)") \
+    GRAY_PANIC("P0062", "random",     "random.sample() count %lld exceeds array length %d") \
+    GRAY_PANIC("P0063", "random",     "random.sample() count cannot be negative (%lld)") \
     GRAY_PANIC("P0064", "math",       "math.sqrt() requires a non-negative number, got %g") \
     GRAY_PANIC("P0065", "math",       "math.log() requires a positive number, got %g") \
     GRAY_PANIC("P0066", "math",       "math.log2() requires a positive number, got %g") \
@@ -461,7 +462,7 @@
     GRAY_PANIC("P0079", "arithmetic", "%s result is too large; value exceeds the range of this type") \
     GRAY_PANIC("P0080", "runtime",    "nil pointer dereference") \
     GRAY_PANIC("P0081", "runtime",    "key not found in map") \
-    GRAY_PANIC("P0082", "bounds",     "string index %d out of bounds (length %d)") \
+    GRAY_PANIC("P0082", "bounds",     "string index %lld out of bounds (length %d)") \
     GRAY_PANIC("P0083", "runtime",    "sleep duration cannot be negative (%lld)") \
     GRAY_PANIC("P0084", "runtime",    "cannot convert '%s' to int") \
     GRAY_PANIC("P0085", "runtime",    "cannot convert '%s' to float") \
@@ -508,7 +509,8 @@
     GRAY_PANIC("P0126", "crypto",     "crypto.totp: digits must be between 1 and 9") \
     GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
     GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
-    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s")
+    GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s") \
+    GRAY_PANIC("P0130", "runtime",    "array capacity overflow")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

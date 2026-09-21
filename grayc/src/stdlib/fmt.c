@@ -31,11 +31,19 @@ static int64_t fmt_fill_pad_char(GrayArena *arena, char *buf, int64_t count, int
     return (int64_t)enc.len * count;
 }
 
+/* Bytes for `pad` pad characters (up to 4 UTF-8 bytes each) plus `fixed`
+ * bytes of text. A pad count too large for this arithmetic saturates, so the
+ * allocator refuses it with its arena-limit panic instead of the size
+ * wrapping to a small allocation the fill loop then runs off the end of. */
+static size_t fmt_pad_buffer_size(int64_t pad, int64_t fixed) {
+    if (pad > (INT64_MAX - fixed) / 4) return SIZE_MAX / 2;
+    return (size_t)(pad * 4 + fixed);
+}
+
 GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, int32_t ch) {
     if (str.len >= width) return str;
     int64_t pad = width - str.len;
-    int max_enc = 4;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)(pad * max_enc + str.len));
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(pad, str.len));
     int64_t pad_bytes = fmt_fill_pad_char(arena, buf, pad, ch);
     memcpy(buf + pad_bytes, str.data, (size_t)str.len);
     return (GrayString){buf, (int32_t)(pad_bytes + str.len)};
@@ -44,8 +52,7 @@ GrayString gray_fmt_pad_left(GrayArena *arena, GrayString str, int64_t width, in
 GrayString gray_fmt_pad_right(GrayArena *arena, GrayString str, int64_t width, int32_t ch) {
     if (str.len >= width) return str;
     int64_t pad = width - str.len;
-    int max_enc = 4;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena, (size_t)(str.len + pad * max_enc));
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(pad, str.len));
     memcpy(buf, str.data, (size_t)str.len);
     int64_t pad_bytes = fmt_fill_pad_char(arena, buf + str.len, pad, ch);
     return (GrayString){buf, (int32_t)(str.len + pad_bytes)};
@@ -56,9 +63,7 @@ GrayString gray_fmt_center(GrayArena *arena, GrayString str, int64_t width, int3
     int64_t total_pad = width - str.len;
     int64_t left_pad = total_pad / 2;
     int64_t right_pad = total_pad - left_pad;
-    int max_enc = 4;
-    char *buf = (char *)gray_arena_alloc_uninitialized(arena,
-        (size_t)(left_pad * max_enc + str.len + right_pad * max_enc));
+    char *buf = (char *)gray_arena_alloc_uninitialized(arena, fmt_pad_buffer_size(total_pad, str.len));
     int64_t left_bytes = fmt_fill_pad_char(arena, buf, left_pad, ch);
     memcpy(buf + left_bytes, str.data, (size_t)str.len);
     int64_t right_bytes = fmt_fill_pad_char(arena, buf + left_bytes + str.len, right_pad, ch);

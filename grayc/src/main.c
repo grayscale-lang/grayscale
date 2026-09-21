@@ -511,11 +511,17 @@ typedef enum {
     C_RET_UNKNOWN, C_RET_VOID, C_RET_INTEGER, C_RET_FLOAT, C_RET_POINTER, C_RET_AGGREGATE
 } CReturnClass;
 
+/* How many leading parameters of a C function have their kind recorded. */
+#define C_SIG_PARAMS 16
+
 typedef struct {
     int min_params;
     bool is_variadic;
     CReturnClass ret_class;
     char ret_text[128];
+    int param_count;                        /* entries of param_* filled in */
+    CReturnClass param_class[C_SIG_PARAMS];
+    char param_text[C_SIG_PARAMS][64];
 } CFuncSig;
 
 /* Classifies a C return type spelled the way clang's AST dump prints it
@@ -542,6 +548,39 @@ static CReturnClass classify_c_return(const char *spelling) {
     return saw_int || strstr(spelling, "long") ? C_RET_INTEGER : C_RET_UNKNOWN;
 }
 
+/* Classifies a C typedef name by its TypedefDecl line in a clang AST dump,
+ * which spells the type as written ('struct div_t') and, when that differs, the
+ * fully resolved type after a colon ('__darwin_size_t':'unsigned long'). The
+ * written spelling is tried first, then the resolved one. */
+static CReturnClass classify_c_typedef(const char *dump, const char *name) {
+    size_t name_len = strlen(name);
+    for (const char *p = dump; (p = strstr(p, name)) != NULL; p += name_len) {
+        if (p == dump || p[-1] != ' ' || p[name_len] != ' ' || p[name_len + 1] != '\'') continue;
+        const char *line_start = p;
+        while (line_start > dump && line_start[-1] != '\n') line_start--;
+        if (!range_contains(line_start, p, "TypedefDecl")) continue;
+
+        const char *spelling = p + name_len + 2;
+        const char *spelling_end = strchr(spelling, '\'');
+        if (!spelling_end) continue;
+        for (int pass = 0; pass < 2; pass++) {
+            char text[128];
+            size_t text_len = (size_t)(spelling_end - spelling);
+            if (text_len >= sizeof(text)) return C_RET_UNKNOWN;
+            memcpy(text, spelling, text_len);
+            text[text_len] = '\0';
+            CReturnClass rc = classify_c_return(text);
+            if (rc != C_RET_UNKNOWN) return rc;
+            if (pass == 1 || spelling_end[1] != ':' || spelling_end[2] != '\'') break;
+            spelling = spelling_end + 3;
+            spelling_end = strchr(spelling, '\'');
+            if (!spelling_end) break;
+        }
+        return C_RET_UNKNOWN;
+    }
+    return C_RET_UNKNOWN;
+}
+
 /* True when a C result of class `rc` may be declared as, or cast to,
  * `asserted`. A declaration only accepts the matching family — integer kinds
  * (int, uint, byte, char, bool) among themselves, float, pointer — because C
@@ -559,6 +598,19 @@ static bool c_return_fits(CReturnClass rc, const GrayType *asserted, bool via_ca
     return rc == C_RET_INTEGER || via_cast;
 }
 
+/* True when a Grayscale argument cannot be converted by C to a parameter of
+ * class `param`: a string, nil or pointer where C wants a number, or a number
+ * where C wants a pointer. Any other argument kind, or a parameter of a kind
+ * this does not recognise, is left to the C compiler. */
+static bool c_argument_kind_mismatch(CReturnClass param, const GrayType *arg) {
+    bool arg_is_number = arg->kind == TK_INT || arg->kind == TK_UINT || arg->kind == TK_FLOAT ||
+                         arg->kind == TK_BOOL || arg->kind == TK_CHAR || arg->kind == TK_BYTE;
+    bool arg_is_pointer = arg->kind == TK_STRING || arg->kind == TK_POINTER || arg->kind == TK_NIL;
+    if (param == C_RET_INTEGER || param == C_RET_FLOAT) return arg_is_pointer;
+    if (param == C_RET_POINTER) return arg_is_number;
+    return false;
+}
+
 /* Parses a clang `-ast-dump` FunctionDecl type spelling, e.g.
  * "int (int, FILE *)" or "int (const char *, ...)", into a required
  * parameter count and a variadic flag. Counts only top-level commas — a
@@ -573,6 +625,7 @@ static bool count_c_params(const char *sig, CFuncSig *out) {
     *is_variadic = false;
     out->ret_class = C_RET_UNKNOWN;
     out->ret_text[0] = '\0';
+    out->param_count = 0;
 
     size_t len = strlen(sig);
     if (len == 0 || sig[len - 1] != ')') return false;
@@ -674,7 +727,15 @@ static bool count_c_params(const char *sig, CFuncSig *out) {
             while (seg_len > 0 && seg[0] == ' ') { seg++; seg_len--; }
             while (seg_len > 0 && seg[seg_len - 1] == ' ') seg_len--;
             if (seg_len == 3 && memcmp(seg, "...", 3) == 0) variadic = true;
-            else if (seg_len > 0) count++;
+            else if (seg_len > 0) {
+                if (count < C_SIG_PARAMS && seg_len < sizeof(out->param_text[0])) {
+                    memcpy(out->param_text[count], seg, seg_len);
+                    out->param_text[count][seg_len] = '\0';
+                    out->param_class[count] = classify_c_return(out->param_text[count]);
+                    out->param_count = count + 1;
+                }
+                count++;
+            }
             seg_start = i + 1;
         }
     }
@@ -729,7 +790,16 @@ static bool find_c_function_signature(const char *dump, const char *name, CFuncS
     memcpy(sig, sig_start, sig_len);
     sig[sig_len] = '\0';
 
-    return count_c_params(sig, out);
+    if (!count_c_params(sig, out)) return false;
+    /* A return type spelled as a typedef name classifies as unknown until the
+     * typedef itself is looked up. */
+    if (out->ret_class == C_RET_UNKNOWN && out->ret_text[0])
+        out->ret_class = classify_c_typedef(dump, out->ret_text);
+    for (int i = 0; i < out->param_count; i++) {
+        if (out->param_class[i] == C_RET_UNKNOWN)
+            out->param_class[i] = classify_c_typedef(dump, out->param_text[i]);
+    }
+    return true;
 }
 
 /* True if `text` (a captured C compiler stderr) flags `name` as unknown.
@@ -931,6 +1001,7 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
     int call_count = 0;
     const ExternCallSite *calls = typechecker_get_extern_calls(checker, &call_count);
     if (call_count == 0) return;
+    TypeTable *type_table = typechecker_get_table(checker);
 
     const ImportItem *headers[MAX_CC_ARGS];
     int header_count = collect_distinct_c_headers(program, entry_file, headers, MAX_CC_ARGS);
@@ -1033,6 +1104,18 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                 calls[i].file ? calls[i].file : entry_file,
                 calls[i].line, calls[i].column, 0,
                 calls[i].func_name, expected, actual);
+        }
+
+        if (ok && calls[i].node && calls[i].node->kind == NODE_CALL_EXPR && type_table) {
+            for (int a = 0; a < actual && a < sig.param_count; a++) {
+                AstNode *arg = calls[i].node->data.call.args[a];
+                GrayType *arg_t = typetable_get(type_table, arg);
+                if (!arg_t || !c_argument_kind_mismatch(sig.param_class[a], arg_t)) continue;
+                diagnostic_error_code_formatted(diag, "E5054",
+                    arg->token.file ? arg->token.file : (calls[i].file ? calls[i].file : entry_file),
+                    arg->token.line, arg->token.column, 0,
+                    a + 1, calls[i].func_name, type_name(arg_t), sig.param_text[a]);
+            }
         }
 
         if (calls[i].asserted &&

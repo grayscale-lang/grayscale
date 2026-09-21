@@ -1,0 +1,56 @@
+// Test: writing to a struct field of an array element reached through a pointer
+import @arrays
+
+const Item struct {
+    n int
+}
+
+const Box struct {
+    items [Item]
+}
+
+do main() {
+    b = new(Box)
+    mut xs [Item] = {}
+    arrays.append(xs, Item{n: 1})
+    b^.items = xs
+
+    b^.items[0].n = 7
+    if b^.items[0].n == 7 {
+        println("  [PASS] plain assignment through p^")
+    } else {
+        println("  [FAIL] plain assignment through p^")
+    }
+
+    b^.items[0].n += 5
+    if b^.items[0].n == 12 {
+        println("  [PASS] compound assignment through p^")
+    } else {
+        println("  [FAIL] compound assignment through p^")
+    }
+
+    b^.items[0].n++
+    if b^.items[0].n == 13 {
+        println("  [PASS] increment through p^")
+    } else {
+        println("  [FAIL] increment through p^")
+    }
+
+    b.items[0].n = 40
+    if b.items[0].n == 40 {
+        println("  [PASS] plain assignment through auto-deref")
+    } else {
+        println("  [FAIL] plain assignment through auto-deref")
+    }
+
+    mut arr [Item] = {}
+    arrays.append(arr, Item{n: 3})
+    p = addr(arr)
+    p^[0].n = 11
+    p^[0].n++
+    if p^[0].n == 12 {
+        println("  [PASS] field of an element of a dereferenced array")
+    } else {
+        println("  [FAIL] field of an element of a dereferenced array")
+    }
+}

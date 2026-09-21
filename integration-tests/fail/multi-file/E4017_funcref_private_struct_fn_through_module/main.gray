@@ -1,0 +1,14 @@
+/*
+ * Error Test: E4017 - Referencing a private struct function through its module
+ * Expected: "is private and cannot be called from outside the struct"
+ */
+
+// expect-error: E4017
+// expect-error-count: 1
+
+import "./lib.gray"
+
+do main() {
+    const f = ()lib.Box.secret
+    println(f(4))
+}

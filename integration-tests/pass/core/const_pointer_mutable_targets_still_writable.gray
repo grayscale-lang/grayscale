@@ -1,0 +1,68 @@
+// Test: pointers to mutable variables carried in enum payloads, returned aggregates, tuples and pointer-to-pointer stay writable
+const Box struct {
+    v int
+}
+const K Box = Box{v: 1}
+
+const E enum {
+    P(^Box)
+    N
+}
+
+const W struct {
+    p ^Box
+}
+
+do mk(b ^Box) -> E {
+    return E.P(b)
+}
+
+do mkw(b ^Box) -> W {
+    return W{p: b}
+}
+
+do pair(b ^Box) -> (^Box, int) {
+    return b, 1
+}
+
+do main() {
+    mut m Box = Box{v: 1}
+
+    mut e E = mk(addr(m))
+    #strict
+    when e {
+        is E.P(p) { p^.v = 5 }
+        is E.N { }
+    }
+    if m.v == 5 {
+        println("  [PASS] enum payload write reaches the mutable variable")
+    } else {
+        println("  [FAIL] enum payload write reaches the mutable variable")
+    }
+
+    mut w W = mkw(addr(m))
+    w.p^.v += 1
+    if m.v == 6 {
+        println("  [PASS] returned struct field write reaches the mutable variable")
+    } else {
+        println("  [FAIL] returned struct field write reaches the mutable variable")
+    }
+
+    mut p, n = pair(addr(m))
+    p^.v += n
+    if m.v == 7 {
+        println("  [PASS] destructured tuple pointer write reaches the mutable variable")
+    } else {
+        println("  [FAIL] destructured tuple pointer write reaches the mutable variable")
+    }
+
+    mut other Box = Box{v: 100}
+    mut q ^Box = addr(K)
+    mut pp ^^Box = addr(q)
+    pp^ = addr(other)
+    if pp^ == addr(other) && K.v == 1 {
+        println("  [PASS] writing the middle pointer of a pointer to pointer is allowed")
+    } else {
+        println("  [FAIL] writing the middle pointer of a pointer to pointer is allowed")
+    }
+}

@@ -27,15 +27,15 @@ void gray_arrays_append(GrayArena *arena, GrayArray *arr, const void *value) {
     GRAY_ARRAY_PUSH(arena, arr, value);
 }
 
-void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int32_t index, const void *value) {
+void gray_arrays_insert_at(GrayArena *arena, GrayArray *arr, int64_t index, const void *value) {
     ARRAY_CHECK_ITER(arr);
     if (index < 0 || index > arr->len) {
         gray_panic_code("P0043",
-            "arrays.insert_at: index %d is out of bounds for an array of length %d",
-            index, arr->len);
+            "arrays.insert_at: index %lld is out of bounds for an array of length %d",
+            (long long)index, arr->len);
     }
 
-    /* NULL/0 keeps the P0035 panic locationless, as it has always been here. */
+    /* NULL/0 keeps the P0130 panic locationless, as it has always been here. */
     gray_array_grow(arena, arr, NULL, 0);
 
     size_t element_size = (size_t)arr->elem_size;
@@ -52,12 +52,12 @@ void gray_arrays_prepend(GrayArena *arena, GrayArray *arr, const void *value) {
     gray_arrays_insert_at(arena, arr, 0, value);
 }
 
-void gray_arrays_remove_at(GrayArray *arr, int32_t index) {
+void gray_arrays_remove_at(GrayArray *arr, int64_t index) {
     ARRAY_CHECK_ITER(arr);
     if (index < 0 || index >= arr->len)
         gray_panic_code("P0044",
-            "arrays.remove_at: index %d is out of bounds for an array of length %d",
-            index, arr->len);
+            "arrays.remove_at: index %lld is out of bounds for an array of length %d",
+            (long long)index, arr->len);
     char *data = (char *)arr->data;
     size_t element_size = (size_t)arr->elem_size;
     memmove(data + index * element_size, data + (index + 1) * element_size, (arr->len - 1 - index) * element_size);
@@ -97,9 +97,11 @@ void gray_arrays_clear(GrayArray *arr) {
     arr->len = 0;
 }
 
-void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int32_t count) {
+void gray_arrays_fill(GrayArena *arena, GrayArray *arr, const void *value, int64_t count) {
     gray_arrays_clear(arr);
-    for (int32_t i = 0; i < count; i++) {
+    if (count > INT32_MAX)
+        gray_panic_code("P0130", "array capacity overflow");
+    for (int64_t i = 0; i < count; i++) {
         GRAY_ARRAY_PUSH(arena, arr, value);
     }
 }
@@ -261,11 +263,11 @@ GrayArray gray_arrays_reverse(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int32_t start, int32_t end) {
+GrayArray gray_arrays_slice(GrayArena *arena, GrayArray *arr, int64_t start, int64_t end) {
     if (start < 0) start = 0;
     if (end > arr->len) end = arr->len;
     if (start >= end) return gray_array_new(arena, arr->elem_size, 1);
-    int32_t count = end - start;
+    int32_t count = (int32_t)(end - start);
     return gray_array_from(arena, (char *)arr->data + start * arr->elem_size, arr->elem_size, count);
 }
 
@@ -326,25 +328,37 @@ GrayArray gray_arrays_deduplicate(GrayArena *arena, GrayArray *arr) {
 }
 
 GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
-    /* Flatten one level: [[int]] -> [int]. Each element is a GrayArray, and
-     * the result holds int64-wide elements (as the push loop always did). */
-    const size_t out_es = sizeof(int64_t);
+    /* Flatten one level: [[T]] -> [T]. Each element of `arr` is a GrayArray,
+     * and the result holds elements as wide as the inner arrays' own. */
+    size_t out_es = 0;
+    size_t empty_es = 0;
     int64_t total = 0;
     for (int32_t i = 0; i < arr->len; i++) {
-        total += ((GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size))->len;
+        GrayArray *inner = (GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size);
+        total += inner->len;
+        if (out_es == 0 && inner->len > 0) out_es = (size_t)inner->elem_size;
+        if (empty_es == 0) empty_es = (size_t)inner->elem_size;
     }
+    if (out_es == 0) out_es = empty_es ? empty_es : sizeof(int64_t);
     GrayArray result = gray_array_new(arena, (int32_t)out_es, (int32_t)total);
     char *out = (char *)result.data;
     int32_t pos = 0;
     for (int32_t i = 0; i < arr->len; i++) {
         GrayArray *inner = (GrayArray *)((char *)arr->data + (size_t)i * arr->elem_size);
         if (inner->len <= 0) continue;
-        if ((size_t)inner->elem_size == out_es) {
+        size_t inner_es = (size_t)inner->elem_size;
+        if (inner_es == out_es) {
             memcpy(out + (size_t)pos * out_es, inner->data, (size_t)inner->len * out_es);
         } else {
+            /* An inner array packed at a different width (a [byte] literal
+             * versus one a runtime helper built): widen or narrow each
+             * element rather than read past it. */
+            size_t common = inner_es < out_es ? inner_es : out_es;
             char *id = (char *)inner->data;
             for (int32_t j = 0; j < inner->len; j++) {
-                memcpy(out + (size_t)(pos + j) * out_es, id + (size_t)j * (size_t)inner->elem_size, out_es);
+                char *dst = out + (size_t)(pos + j) * out_es;
+                memcpy(dst, id + (size_t)j * inner_es, common);
+                memset(dst + common, 0, out_es - common);
             }
         }
         pos += inner->len;
@@ -353,14 +367,14 @@ GrayArray gray_arrays_flatten(GrayArena *arena, GrayArray *arr) {
     return result;
 }
 
-GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int32_t size) {
+GrayArray gray_arrays_split_every(GrayArena *arena, GrayArray *arr, int64_t size) {
     if (size <= 0) size = 1;
     GrayArray result = gray_array_new(arena, sizeof(GrayArray), 4);
     char *data = (char *)arr->data;
     size_t element_size = (size_t)arr->elem_size;
-    for (int32_t i = 0; i < arr->len; i += size) {
-        int32_t chunk_len = (i + size <= arr->len) ? size : (arr->len - i);
-        GrayArray chunk = gray_array_from(arena, data + i * element_size, arr->elem_size, chunk_len);
+    for (int64_t i = 0; i < arr->len; i += size) {
+        int32_t chunk_len = (size <= arr->len - i) ? (int32_t)size : (int32_t)(arr->len - i);
+        GrayArray chunk = gray_array_from(arena, data + (size_t)i * element_size, arr->elem_size, chunk_len);
         GRAY_ARRAY_PUSH(arena, &result, &chunk);
     }
     return result;
@@ -378,11 +392,11 @@ GrayArray gray_arrays_pair(GrayArena *arena, GrayArray *left, GrayArray *right) 
     return result;
 }
 
-GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int32_t n) {
+GrayArray gray_arrays_rotate(GrayArena *arena, GrayArray *arr, int64_t n) {
     int32_t len = arr->len;
     if (len == 0) return gray_array_new(arena, arr->elem_size, 1);
     size_t es = (size_t)arr->elem_size;
-    int32_t shift = ((n % len) + len) % len;
+    int32_t shift = (int32_t)(((n % len) + len) % len);
     GrayArray result = gray_array_new(arena, arr->elem_size, len);
     const char *src = (const char *)arr->data;
     char *dst = (char *)result.data;

@@ -1,0 +1,22 @@
+/*
+ * Error Test: E3122 - a pointer to a const-declared variable returned in a
+ * tuple stays read-only once it is destructured
+ */
+
+// expect-error: E3122
+// expect-error-count: 1
+
+const Box struct {
+    v int
+}
+const K Box = Box{v: 1}
+
+do pair() -> (^Box, int) {
+    return addr(K), 1
+}
+
+do main() {
+    mut p, n = pair()
+    p^.v = 9
+    println(n)
+}

@@ -312,6 +312,34 @@ double gray_builtin_string_to_float(GrayString str) {
 
 /* --- composite to_string --- */
 
+/* An integer element of `size` bytes, widened to 64 bits. The container
+ * records the width its elements were stored at, so a [i32] or [u8] is read
+ * back at that width instead of as consecutive int64 values. */
+static int64_t element_as_signed(const void *p, int32_t size) {
+    switch (size) {
+    case 1: return *(const int8_t *)p;
+    case 2: return *(const int16_t *)p;
+    case 4: return *(const int32_t *)p;
+    default: return *(const int64_t *)p;
+    }
+}
+
+static uint64_t element_as_unsigned(const void *p, int32_t size) {
+    switch (size) {
+    case 1: return *(const uint8_t *)p;
+    case 2: return *(const uint16_t *)p;
+    case 4: return *(const uint32_t *)p;
+    default: return *(const uint64_t *)p;
+    }
+}
+
+/* A float element as println writes it: a 4-byte f32 with %g, a double as
+ * its shortest round-trip form. */
+static void format_float_element(char *out, size_t out_size, const void *p, int32_t size) {
+    if (size == 4) snprintf(out, out_size, "%g", (double)*(const float *)p);
+    else gray_fmt_shortest_float(out, out_size, *(const double *)p);
+}
+
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind) {
     char buf[GRAY_TOSTRING_BUF_SIZE];
     int pos = 0;
@@ -321,11 +349,12 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
         switch (elem_kind) {
         case 0:
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64,
-                GRAY_ARRAY_GET(*arr, int64_t, i));
+                element_as_signed((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size));
             break;
         case 1: {
             char float_buffer[GRAY_FLOAT_STR_BUF];
-            gray_fmt_shortest_float(float_buffer, sizeof(float_buffer), GRAY_ARRAY_GET(*arr, double, i));
+            format_float_element(float_buffer, sizeof(float_buffer),
+                (char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size);
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
             break;
         }
@@ -341,7 +370,7 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
             break;
         case 4:
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRIu64,
-                GRAY_ARRAY_GET(*arr, uint64_t, i));
+                element_as_unsigned((char *)arr->data + (size_t)i * (size_t)arr->elem_size, arr->elem_size));
             break;
         case 5:
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%u",
@@ -428,10 +457,11 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_ki
             (int)kp->len, kp->data ? kp->data : "");
         void *vp = (char *)map->values + (size_t)i * map->value_size;
         switch (val_kind) {
-        case 0: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64, *(int64_t *)vp); break;
+        case 0: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRId64,
+            element_as_signed(vp, (int32_t)map->value_size)); break;
         case 1: {
             char float_buffer[GRAY_FLOAT_STR_BUF];
-            gray_fmt_shortest_float(float_buffer, sizeof(float_buffer), *(double *)vp);
+            format_float_element(float_buffer, sizeof(float_buffer), vp, (int32_t)map->value_size);
             pos += snprintf(buf + pos, sizeof(buf) - pos, "%s", float_buffer);
             break;
         }
@@ -443,7 +473,8 @@ GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_ki
         }
         case 3: pos += snprintf(buf + pos, sizeof(buf) - pos, "%s",
             *(bool *)vp ? "true" : "false"); break;
-        case 4: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRIu64, *(uint64_t *)vp); break;
+        case 4: pos += snprintf(buf + pos, sizeof(buf) - pos, "%" PRIu64,
+            element_as_unsigned(vp, (int32_t)map->value_size)); break;
         case 5: pos += snprintf(buf + pos, sizeof(buf) - pos, "%u", (unsigned)*(uint8_t *)vp); break;
         case 6: {
             int32_t cp = *(int32_t *)vp;

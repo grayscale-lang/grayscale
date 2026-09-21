@@ -464,6 +464,49 @@ static bool label_is_entry_global(AstNode *node) {
     return !node->resolved_decl || node->resolved_decl->kind == DECL_CONST;
 }
 
+/* The variable a place expression is rooted at: field and index chains
+ * stripped away. A module-qualified variable (`mod.v`) is a root itself. A dereference stops the walk — what a pointer addresses
+ * is not the variable's own storage. */
+static AstNode *place_root(AstNode *expr) {
+    for (;;) {
+        if (expr->kind == NODE_MEMBER_EXPR && expr->resolved_decl &&
+            expr->resolved_decl->kind == DECL_CONST) return expr;
+        if (expr->kind == NODE_MEMBER_EXPR) expr = expr->data.member.object;
+        else if (expr->kind == NODE_INDEX_EXPR) expr = expr->data.index_expr.left;
+        else return expr;
+    }
+}
+
+/* True when `expr` is a place inside a module-level variable that holds
+ * allocated storage (a string, array, map or struct). Whatever is stored
+ * into one must outlive every function scope, so it cannot be allocated
+ * in an arena a function's return rewinds. */
+static bool place_is_module_storage(CodeGen *codegen, AstNode *expr) {
+    AstNode *root = place_root(expr);
+    if (root->kind != NODE_LABEL && root->kind != NODE_MEMBER_EXPR) return false;
+    bool module_level = (root->kind == NODE_LABEL && root->data.label.refers_to_file_global) ||
+        (root->resolved_decl && root->resolved_decl->kind == DECL_CONST);
+    if (!module_level) return false;
+    GrayType *root_t = codegen->type_table ? typetable_get(codegen->type_table, root) : NULL;
+    return root_t && (root_t->kind == TK_STRING || root_t->kind == TK_ARRAY ||
+                      root_t->kind == TK_MAP || root_t->kind == TK_STRUCT);
+}
+
+/* True when a statement stores into module-level storage: it assigns to a
+ * place inside one, or passes one to a call that may mutate it. */
+static bool statement_stores_into_module_storage(CodeGen *codegen, AstNode *stmt) {
+    if (stmt->kind == NODE_ASSIGN_STMT)
+        return place_is_module_storage(codegen, stmt->data.assign.target);
+    if (stmt->kind == NODE_EXPR_STMT && stmt->data.expr_stmt.expr &&
+        stmt->data.expr_stmt.expr->kind == NODE_CALL_EXPR) {
+        AstNode *call = stmt->data.expr_stmt.expr;
+        for (int i = 0; i < call->data.call.arg_count; i++) {
+            if (place_is_module_storage(codegen, call->data.call.args[i])) return true;
+        }
+    }
+    return false;
+}
+
 /* Build a mangled name for a generic instantiation: `base__concrete`
  * with non-alphanumeric characters replaced by underscores so
  * array/map bindings stay legal C identifiers. */
@@ -1957,13 +2000,23 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
 
     /* Check if this is a nested array (elements are arrays) */
     if (node->data.array_value.elements[0]->kind == NODE_ARRAY_VALUE) {
-        /* Nested array: each element is an GrayArray */
+        /* Nested array: each element is an GrayArray. Each inner literal is
+         * emitted at the element type the declaration gives it, so a
+         * [[i32]] holds 4-byte rows and a [[f32]] holds floats. */
+        const char *saved_var_type = codegen->current_var_type;
+        char inner_var_type[TYPE_NAME_MAX];
+        const char *elem_tn = extract_array_element_type(saved_var_type);
+        if (elem_tn && elem_tn[0] == '[') {
+            snprintf(inner_var_type, sizeof(inner_var_type), "%s", elem_tn);
+            codegen->current_var_type = inner_var_type;
+        }
         emit_formatted(codegen, "gray_array_from(gray_default_arena, (GrayArray[]){");
         for (int i = 0; i < count; i++) {
             if (i > 0) emit(codegen, ", ");
             emit_expression(codegen, node->data.array_value.elements[i]);
         }
         emit_formatted(codegen, "}, sizeof(GrayArray), %d)", count);
+        codegen->current_var_type = saved_var_type;
         return;
     }
 
@@ -2200,7 +2253,7 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
      * resolve their key/value C types correctly. */
     const char *inner_var_type = NULL;
     if (decl_mt && decl_mt->value_type &&
-        strncmp(decl_mt->value_type, "map[", 4) == 0) {
+        (strncmp(decl_mt->value_type, "map[", 4) == 0 || decl_mt->value_type[0] == '[')) {
         inner_var_type = decl_mt->value_type;
     }
 
@@ -3235,6 +3288,7 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
         /* ()StructName.funcName → gray_fn_StructName_funcName */
         AstNode *mem = node->data.func_ref.function;
         const char *qualifier = ast_member_qualifier(mem);
+        const char *chain_mod = NULL, *chain_type = NULL;
         if (mem->resolved_decl && mem->resolved_decl->kind == DECL_FUNC) {
             /* mod.func — the whole qualified name resolved to the function,
              * so its declaration names it outright. */
@@ -3243,6 +3297,18 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
         } else if (qualifier) {
             const char *qual = codegen_resolve_decl(codegen, qualifier);
             emit_formatted(codegen, "gray_fn_%s_%s", qual, mem->data.member.member);
+        } else if (ast_member_chain(mem, &chain_mod, &chain_type)) {
+            /* mod.Struct.func — the struct function, namespaced under its
+             * struct the way a direct call to it is. */
+            if (mem->data.member.object->resolved_decl) {
+                char owner[MSG_BUF_SIZE];
+                emit_formatted(codegen, "gray_fn_%s_%s",
+                    module_mangle_into(mem->data.member.object->resolved_decl, owner, sizeof(owner)),
+                    mem->data.member.member);
+            } else {
+                emit_formatted(codegen, "gray_fn_%s_%s_%s", chain_mod, chain_type,
+                    mem->data.member.member);
+            }
         } else {
             emit(codegen, "gray_fn_");
             emit_expression(codegen, node->data.func_ref.function);
@@ -3612,36 +3678,39 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         if (arr_ptr_obj) {
             bool _arr_raw = (arr_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, arr_ptr_obj->data.label.value));
             int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
+            /* The element pointer is dereferenced outside the statement
+             * expression so the result is an lvalue: `b.items[i].n = v`,
+             * `b.items[i].n += v` and `b.items[i].n++` all assign through it
+             * or take its address. */
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
             emit_expression(codegen, arr_ptr_obj);
             if (_arr_raw) {
-                emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, sanitize_name(arr_ptr_field), c_elem);
+                emit_formatted(codegen, "; gray_array_get_ptr(&_adp%d->%s, ",
+                      my_dp, sanitize_name(arr_ptr_field));
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
-                          "GRAY_ARRAY_GET_AT(_adp%d->%s, %s, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field), c_elem);
+                          "gray_array_get_ptr(&_adp%d->%s, ",
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field));
             }
             emit_expression(codegen, node->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
+            emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
         } else if (node->data.index_expr.left->kind == NODE_POSTFIX_EXPR &&
                    node->data.index_expr.left->data.postfix.op == TOK_CARET) {
             /* p^[i]: direct dereference of container pointer */
             AstNode *_dp_inner = node->data.index_expr.left->data.postfix.left;
             bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
             int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "({ __auto_type _adp%d = ", my_dp);
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
             emit_expression(codegen, _dp_inner);
             if (_dp_raw) {
-                emit_formatted(codegen, "; GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
-                      my_dp, c_elem);
+                emit_formatted(codegen, "; gray_array_get_ptr(_adp%d, ", my_dp);
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
-                          "GRAY_ARRAY_GET_AT(*_adp%d, %s, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, c_elem);
+                          "gray_array_get_ptr(_adp%d, ",
+                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp);
             }
             emit_expression(codegen, node->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d); })", codegen->file, node->token.line);
+            emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
         } else if (node->data.index_expr.left->kind == NODE_CALL_EXPR ||
                    index_left_is_map_lookup(codegen, node->data.index_expr.left) ||
                    (node->data.index_expr.left->kind == NODE_INDEX_EXPR &&
@@ -3706,9 +3775,9 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         /* String indexing with bounds check: s.data[i] */
         emit_formatted(codegen, "({ GrayString _es = ");
         emit_expression(codegen, node->data.index_expr.left);
-        emit_formatted(codegen, "; int32_t _ei = (int32_t)(");
+        emit_formatted(codegen, "; int64_t _ei = (int64_t)(");
         emit_expression(codegen, node->data.index_expr.index);
-        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { %s; } ", panic_call(codegen, node, "P0082", ", _ei, _es.len"));
+        emit_formatted(codegen, "); if (_ei < 0 || _ei >= _es.len) { %s; } ", panic_call(codegen, node, "P0082", ", (long long)_ei, _es.len"));
         emit(codegen, "(int32_t)(unsigned char)_es.data[_ei]; })");
     } else {
         /* Fallback */
@@ -7321,8 +7390,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit(codegen, "gray_arrays_is_equal_prim(");
         }
         emit_array_argument_address(codegen, node->data.call.args[0]);
-        emit(codegen, ", &");
-        emit_expression(codegen, node->data.call.args[1]);
+        emit(codegen, ", ");
+        emit_array_argument_address(codegen, node->data.call.args[1]);
         emit(codegen, ")");
         return true;
     }
@@ -9677,6 +9746,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
     }
 
     if (is_nested_array_type(type_name)) {
+        const char *saved_nested_var_type = codegen->current_var_type;
         codegen->current_var_type = type_name;
         AstNode *init = node->data.var_decl.value;
         bool label_init = init && init->kind == NODE_LABEL;
@@ -9704,6 +9774,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
             else emit_formatted(codegen, "gray_array_new(gray_default_arena, sizeof(GrayArray), 4)");
             emit(codegen, ";\n");
         }
+        codegen->current_var_type = saved_nested_var_type;
         return;
     }
 
@@ -12691,13 +12762,30 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         break;
     }
     case NODE_ASSIGN_STMT:
-        emit_assign_statement(codegen, node);
+    case NODE_EXPR_STMT: {
+        /* A function's return rewinds the arena it ran in, but a module-level
+         * container outlives every function. Run a store into one in the
+         * heap arena, which is never rewound, so the copied map key, grown
+         * backing store and stored element all survive the return. The
+         * heap arena is null on a spawned thread, which keeps its own. */
+        bool to_module = statement_stores_into_module_storage(codegen, node);
+        if (to_module) {
+            emit_indent(codegen);
+            emit(codegen, "{ GrayArena *_gray_gsave = gray_default_arena; "
+                          "if (gray_heap_arena) gray_default_arena = gray_heap_arena;\n");
+            codegen->indent++;
+        }
+        if (node->kind == NODE_ASSIGN_STMT) emit_assign_statement(codegen, node);
+        else emit_expression_statement(codegen, node);
+        if (to_module) {
+            codegen->indent--;
+            emit_indent(codegen);
+            emit(codegen, "gray_default_arena = _gray_gsave; }\n");
+        }
         break;
+    }
     case NODE_RETURN_STMT:
         emit_return_statement(codegen, node);
-        break;
-    case NODE_EXPR_STMT:
-        emit_expression_statement(codegen, node);
         break;
     case NODE_IF_STMT:
         emit_if_statement(codegen, node);
@@ -14186,7 +14274,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "    gray_os_init(argc, argv);\n");
     /* Initialize file-scope arrays that can't use C static initializers */
     if (codegen->global_init.len > 0) {
+        /* Module-level containers grow and copy their keys into the arena they
+         * were created in. Create them in the heap arena, which no function
+         * return rewinds. */
+        emit(codegen, "    { GrayArena *_gray_init_saved = gray_default_arena; "
+                      "gray_default_arena = gray_heap_arena;\n");
         append_string_to_buffer(&codegen->output, codegen->global_init.data);
+        emit(codegen, "    gray_default_arena = _gray_init_saved; }\n");
     }
     if (codegen->test_mode) {
         /* Test runner: call each #test function under the runner's recovery

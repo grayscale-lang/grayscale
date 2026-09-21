@@ -1,0 +1,8 @@
+/* Panic Test: P0044 - arrays.remove_at with an index whose low 32 bits are in range */
+import @arrays
+
+do main() {
+    mut a [int] = {10, 20, 30}
+    arrays.remove_at(a, 4294967296)
+    println(a)
+}

@@ -33,7 +33,7 @@ typedef struct { double v0; GrayError *v1; } GrayResult_float;
  *   mut val, err = strconv.to_int("ff", strconv.BASE_16)
  *@end
  */
-int64_t gray_strconv_to_int(GrayString str, int base);
+int64_t gray_strconv_to_int(GrayString str, int64_t base);
 
 /*@man to_uint
  *@module strconv
@@ -46,7 +46,7 @@ int64_t gray_strconv_to_int(GrayString str, int base);
  *   mut val, err = strconv.to_uint("ff", strconv.BASE_16)
  *@end
  */
-uint64_t gray_strconv_to_uint(GrayString str, int base);
+uint64_t gray_strconv_to_uint(GrayString str, int64_t base);
 
 /*@man to_float
  *@module strconv
@@ -77,8 +77,8 @@ bool gray_strconv_to_bool(GrayString str);
 /* Result forms — every Grayscale call compiles to one of these. The bare
  * forms above are no longer reachable (single-var assignment of a fallible
  * call is rejected with E3089). */
-GrayResult_int gray_strconv_to_int_result(GrayString str, int base);
-GrayResult_uint gray_strconv_to_uint_result(GrayString str, int base);
+GrayResult_int gray_strconv_to_int_result(GrayString str, int64_t base);
+GrayResult_uint gray_strconv_to_uint_result(GrayString str, int64_t base);
 GrayResult_float gray_strconv_to_float_result(GrayString str);
 GrayResult_bool gray_strconv_to_bool_result(GrayString str);
 

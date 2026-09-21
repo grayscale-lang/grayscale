@@ -13,6 +13,8 @@
 #include "types.h"
 #include <stdint.h>
 
+struct AstNode;
+
 typedef struct {
     const char *name;
     GrayType *type;
@@ -22,6 +24,10 @@ typedef struct {
     bool const_source;   /* true if pointer was taken from a const variable via addr() */
     bool is_heap;        /* true if bound to a new() result — the pointee lives in
                             the heap arena and outlives every function scope */
+    /* The extern C call a variable with no declared type was initialised
+     * from, so a later use of the variable can be checked against the C
+     * function's real return type. */
+    const struct AstNode *c_call;
     /* Lifetime origin of a pointer value: the depth of the scope declaring
      * the variable whose address this pointer holds, biased by +1 so that 0
      * means "no tracked origin", plus that variable's name for diagnostics.

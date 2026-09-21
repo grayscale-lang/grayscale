@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5054 - an integer passed to an extern.func() parameter the
+ * imported header declares as a pointer. C cannot convert it, so it is a
+ * Grayscale diagnostic on the argument instead of a C compiler error.
+ */
+// expect-error: E5054
+// expect-error-count: 1
+
+extern import "stdio.h"
+
+do main() {
+    extern.puts(5)
+}

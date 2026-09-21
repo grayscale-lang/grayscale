@@ -1,0 +1,7 @@
+/* Panic Test: P0104 - fmt.pad_left when the pad byte count wraps around 64 bits */
+import @fmt
+
+do main() {
+    mut s string = fmt.pad_left("x", 4611686018427387905, '*')
+    println(len(s))
+}

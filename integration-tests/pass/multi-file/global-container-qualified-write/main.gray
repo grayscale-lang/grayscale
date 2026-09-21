@@ -1,0 +1,28 @@
+// Test: a module-level container mutated through its module qualifier from another module keeps its data across calls
+import "./registry.gray"
+import @arrays
+
+do record(name string) {
+    registry.keys[name] = 1
+    arrays.append(registry.names, name + "!")
+}
+
+do main() {
+    record("a")
+    record("b")
+    for i in range(0, 200) {
+        record("k${i}")
+    }
+
+    if registry.keys["a"] == 1 && registry.keys["k100"] == 1 {
+        println("  [PASS] qualified map store survives later calls")
+    } else {
+        println("  [FAIL] qualified map store survives later calls")
+    }
+
+    if registry.names[0] == "a!" && registry.names[1] == "b!" {
+        println("  [PASS] qualified array append survives later calls")
+    } else {
+        println("  [FAIL] qualified array append survives later calls")
+    }
+}

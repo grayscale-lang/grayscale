@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3122 - a write through a pointer to a pointer at a
+ * const-declared variable
+ */
+
+// expect-error: E3122
+// expect-error-count: 1
+
+const Box struct {
+    v int
+}
+const K Box = Box{v: 1}
+
+do main() {
+    mut p ^Box = addr(K)
+    mut pp ^^Box = addr(p)
+    pp^^.v = 9
+}

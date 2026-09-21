@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5053 - c_string() of a variable inferred from an
+ * extern.func() call whose real C return type is the struct div_t.
+ */
+// expect-error: E5053
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+do main() {
+    mut d = extern.div(7, 2)
+    println(c_string(d))
+}

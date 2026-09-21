@@ -1,9 +1,9 @@
 # Grayscale Error Code Reference
 
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
-> Run `./scripts/generate_errors.gray` to regenerate.
+> Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 481 codes** (335 errors, 17 warnings, 129 panics)
+**Total: 483 codes** (336 errors, 17 warnings, 130 panics)
 
 ---
 
@@ -316,6 +316,7 @@
 | `E5051` | usage | cannot call '%s' on '%s'; it is a fixed-size array field and its length cannot change |
 | `E5052` | usage | unknown C symbol '%s'; no such function, constant, or macro in the imported header(s) |
 | `E5053` | types | C function '%s' returns '%s', which cannot be used as '%s' |
+| `E5054` | arguments | argument %d of C function '%s' has type '%s', which C cannot convert to the parameter type '%s' the imported header declares |
 | `E6001` | imports | unknown module '@%s' |
 | `E6002` | imports | cannot find file or directory '%s' |
 | `E6003` | imports | directory '%s' contains no .gray files |
@@ -411,7 +412,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0030` | arithmetic | u256 addition result is too large; value exceeds the range of u256 |
 | `P0031` | arithmetic | u256 subtraction result is negative, but u256 cannot hold negative values |
 | `P0032` | arithmetic | u256 multiplication result is too large; value exceeds the range of u256 |
-| `P0033` | bounds | index out of bounds; tried to access index %d but the length is %d |
+| `P0033` | bounds | index out of bounds; tried to access index %lld but the length is %d |
 | `P0034` | iteration | cannot modify array during for_each iteration |
 | `P0035` | iteration | cannot modify map during for_each iteration |
 | `P0036` | encoding | encoding.base64_decode: input length %d is not a multiple of 4 |
@@ -421,8 +422,8 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0040` | encoding | encoding.hex_decode: input length %d is not even |
 | `P0041` | encoding | encoding.hex_decode: invalid hex character at position %d |
 | `P0042` | encoding | encoding.url_decode: invalid percent-escape at position %d |
-| `P0043` | bounds | arrays.insert_at: index %d is out of bounds for an array of length %d |
-| `P0044` | bounds | arrays.remove_at: index %d is out of bounds for an array of length %d |
+| `P0043` | bounds | arrays.insert_at: index %lld is out of bounds for an array of length %d |
+| `P0044` | bounds | arrays.remove_at: index %lld is out of bounds for an array of length %d |
 | `P0045` | bounds | arrays.get_first called on an empty array |
 | `P0046` | bounds | arrays.get_last called on an empty array |
 | `P0047` | bounds | arrays.remove_first called on an empty array |
@@ -432,16 +433,16 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0051` | crypto | crypto.random_hex: length must be non-negative (got %lld) |
 | `P0052` | crypto | crypto.random_hex: failed to read from /dev/urandom |
 | `P0053` | io | io.read_file: input exceeds maximum string length |
-| `P0054` | strconv | strconv.to_int: invalid base %d; must be between 2 and 36 |
-| `P0055` | strconv | strconv.to_int: cannot convert '%s' to int (base %d) |
-| `P0056` | strconv | strconv.to_uint: invalid base %d; must be between 2 and 36 |
-| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to uint (base %d) |
+| `P0054` | strconv | strconv.to_int: invalid base %lld; must be between 2 and 36 |
+| `P0055` | strconv | strconv.to_int: cannot convert '%s' to int (base %lld) |
+| `P0056` | strconv | strconv.to_uint: invalid base %lld; must be between 2 and 36 |
+| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to uint (base %lld) |
 | `P0058` | strconv | strconv.to_uint: cannot convert '%s' to uint; value is negative |
 | `P0059` | strconv | strconv.to_float: cannot convert '%s' to float |
 | `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
 | `P0061` | memory | mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB |
-| `P0062` | random | random.sample() count %d exceeds array length %d |
-| `P0063` | random | random.sample() count cannot be negative (%d) |
+| `P0062` | random | random.sample() count %lld exceeds array length %d |
+| `P0063` | random | random.sample() count cannot be negative (%lld) |
 | `P0064` | math | math.sqrt() requires a non-negative number, got %g |
 | `P0065` | math | math.log() requires a positive number, got %g |
 | `P0066` | math | math.log2() requires a positive number, got %g |
@@ -460,7 +461,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0079` | arithmetic | %s result is too large; value exceeds the range of this type |
 | `P0080` | runtime | nil pointer dereference |
 | `P0081` | runtime | key not found in map |
-| `P0082` | bounds | string index %d out of bounds (length %d) |
+| `P0082` | bounds | string index %lld out of bounds (length %d) |
 | `P0083` | runtime | sleep duration cannot be negative (%lld) |
 | `P0084` | runtime | cannot convert '%s' to int |
 | `P0085` | runtime | cannot convert '%s' to float |
@@ -508,6 +509,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0127` | time | time.parse_duration: cannot parse the duration string |
 | `P0128` | time | time.days_in_month: month must be between 1 and 12 |
 | `P0129` | runtime | cannot convert '%s' to enum %s |
+| `P0130` | runtime | array capacity overflow |
 
 ---
 
@@ -532,4 +534,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-19 22:24:53 UTC*
+*Generated on 2026-09-20 23:44:55 UTC*

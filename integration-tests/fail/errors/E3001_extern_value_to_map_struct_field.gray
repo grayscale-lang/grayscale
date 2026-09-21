@@ -1,0 +1,18 @@
+/*
+ * Error Test: E3001 - an extern C call result assigned to a field of a struct
+ * stored in a map.
+ */
+// expect-error: E3001
+// expect-error-count: 1
+
+extern import "stdlib.h"
+
+const Counter struct {
+    n int
+}
+
+do main() {
+    mut m map[string:Counter] = {"a": Counter{n: 1}}
+    m["a"].n = extern.abs(-3)
+    println(m["a"].n)
+}

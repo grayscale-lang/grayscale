@@ -39,18 +39,18 @@ GrayArray gray_array_from(GrayArena *arena, const void *data, int32_t elem_size,
     return arr;
 }
 
-void *gray_array_get_ptr(GrayArray *arr, int32_t index, const char *file, int line) {
+void *gray_array_get_ptr(GrayArray *arr, int64_t index, const char *file, int line) {
     if (index < 0 || index >= arr->len) {
-        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
+        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %lld but the length is %d", (long long)index, arr->len);
     }
     return (char *)arr->data + (size_t)index * (size_t)arr->elem_size;
 }
 
-void gray_array_set(GrayArray *arr, int32_t index, const void *value, const char *file, int line) {
+void gray_array_set(GrayArray *arr, int64_t index, const void *value, const char *file, int line) {
     if (gray_atomic_load32(&arr->iterating) > 0)
         gray_panic_code_at(file, line, "P0034", "cannot modify array during for_each iteration");
     if (index < 0 || index >= arr->len) {
-        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %d but the length is %d", index, arr->len);
+        gray_panic_code_at(file, line, "P0033", "index out of bounds; tried to access index %lld but the length is %d", (long long)index, arr->len);
     }
     memcpy((char *)arr->data + (size_t)index * (size_t)arr->elem_size,
            value, (size_t)arr->elem_size);
@@ -69,7 +69,7 @@ void gray_array_grow(GrayArena *arena, GrayArray *arr, const char *file, int lin
     if (arr->cap < GRAY_ARRAY_MIN_CAP) {
         new_cap = GRAY_ARRAY_MIN_CAP;
     } else if (arr->cap > INT32_MAX / 2) {
-        gray_panic_code_at(file, line, "P0035", "array capacity overflow");
+        gray_panic_code_at(file, line, "P0130", "array capacity overflow");
     } else {
         new_cap = arr->cap * 2;
     }

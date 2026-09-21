@@ -1,0 +1,75 @@
+/*
+ * Error Test: E3122 - a pointer to a const-declared variable carried in a
+ * tagged-enum payload stays read-only once the payload is bound
+ */
+
+// expect-error: E3122
+// expect-error-count: 5
+
+const Box struct {
+    v int
+}
+const K Box = Box{v: 1}
+
+const E enum {
+    P(^Box)
+    N
+}
+
+do poke(p ^Box) {
+    p^.v = 9
+}
+
+do mk() -> E {
+    return E.P(addr(K))
+}
+
+do write_bound() {
+    mut e E = E.P(addr(K))
+    when e {
+        is E.P(p) { p^.v = 9 }
+        default { }
+    }
+}
+
+do compound_write_bound() {
+    mut e E = E.P(addr(K))
+    when e {
+        is E.P(p) { p^.v += 1 }
+        default { }
+    }
+}
+
+do pass_bound_to_writer() {
+    mut e E = E.P(addr(K))
+    when e {
+        is E.P(p) { poke(p) }
+        default { }
+    }
+}
+
+do write_returned() {
+    mut e E = mk()
+    when e {
+        is E.P(p) { p^.v = 9 }
+        default { }
+    }
+}
+
+do write_iterated() {
+    mut es [E] = {E.P(addr(K))}
+    for_each e in es {
+        when e {
+            is E.P(p) { p^.v = 9 }
+            default { }
+        }
+    }
+}
+
+do main() {
+    write_bound()
+    compound_write_bound()
+    pass_bound_to_writer()
+    write_returned()
+    write_iterated()
+}
