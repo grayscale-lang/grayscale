@@ -304,28 +304,6 @@ GrayString gray_string_concat_n(GrayArena *arena, int count, ...) {
     return result;
 }
 
-/* --- Scope-based memory management --- */
-
-GrayScopeMark gray_scope_save(GrayArena *arena) {
-    GrayScopeMark mark;
-    mark.block = arena->current;
-    mark.used = arena->current ? arena->current->used : 0;
-    return mark;
-}
-
-void gray_scope_restore(GrayArena *arena, GrayScopeMark mark) {
-    /* Reset all blocks AFTER the marked block */
-    if (!mark.block) return;
-    GrayArenaBlock *block = mark.block->next;
-    while (block) {
-        block->used = 0;
-        block = block->next;
-    }
-    /* Reset the marked block to the saved position */
-    mark.block->used = mark.used;
-    arena->current = mark.block;
-}
-
 /* --- Stack depth guard --- */
 int gray_call_depth = 0;
 
