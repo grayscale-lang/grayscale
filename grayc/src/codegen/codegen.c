@@ -5236,7 +5236,41 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
     }
 }
 
+/* A builtin or stdlib call whose C form is `c_name(arg0, arg1, ...)` with every
+ * argument passed through in order. */
+typedef struct {
+    const char *func;
+    int argc;
+    const char *c_name;
+} PassthroughCall;
+
+static bool emit_passthrough_call(CodeGen *codegen, AstNode *node, const char *func,
+                                  const PassthroughCall *table) {
+    for (const PassthroughCall *e = table; e->func; e++) {
+        if (strcmp(func, e->func) != 0 || node->data.call.arg_count != e->argc) continue;
+        emit_formatted(codegen, "%s(", e->c_name);
+        for (int i = 0; i < e->argc; i++) {
+            if (i > 0) emit(codegen, ", ");
+            emit_expression(codegen, node->data.call.args[i]);
+        }
+        emit(codegen, ")");
+        return true;
+    }
+    return false;
+}
+
 /* --- Builtin call handler (no-module functions) --- */
+
+static const PassthroughCall builtin_passthrough[] = {
+    {"exit", 1, "gray_builtin_exit"},
+    {"system", 1, "gray_builtin_system"},
+    {"panic", 1, "gray_builtin_panic_msg"},
+    {"sleep_s", 1, "gray_builtin_sleep_s"},
+    {"sleep_ms", 1, "gray_builtin_sleep_ms"},
+    {"sleep_ns", 1, "gray_builtin_sleep_ns"},
+    {"char_count", 1, "gray_builtin_char_count"},
+    {NULL, 0, NULL},
+};
 
 static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "println") == 0) {
@@ -5496,19 +5530,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         return true;
     }
 
-    if (strcmp(func, "exit") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_exit(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-
-    if (strcmp(func, "system") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_system(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, builtin_passthrough)) return true;
 
     if (strcmp(func, "here") == 0 && node->data.call.arg_count == 0) {
         /* Compile-time substitution: emit a SourceLocation literal with the
@@ -5580,13 +5602,6 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         return true;
     }
 
-    if (strcmp(func, "panic") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_panic_msg(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-
     if (strcmp(func, "assert") == 0 && node->data.call.arg_count >= 1) {
         emit(codegen, "gray_builtin_assert(");
         emit_expression(codegen, node->data.call.args[0]);
@@ -5648,27 +5663,6 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
     if (strcmp(func, "eprint") == 0 && node->data.call.arg_count > 0) {
         if (emit_composite_print(codegen, node, "stderr", false)) return true;
         emit_print_variant(codegen, node, "eprint");
-        return true;
-    }
-
-    if (strcmp(func, "sleep_s") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_sleep_s(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-
-    if (strcmp(func, "sleep_ms") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_sleep_ms(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-
-    if (strcmp(func, "sleep_ns") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_sleep_ns(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
         return true;
     }
 
@@ -5800,13 +5794,6 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
     }
 
     /* char_count(str); return Unicode codepoint count */
-    if (strcmp(func, "char_count") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_builtin_char_count(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-
     /* c_string(ptr); convert C char* to Grayscale string. Copies onto the
      * arena so the result is safe to use even after the C-side buffer
      * is freed or overwritten. NULL maps to "" instead of crashing. */
@@ -5822,57 +5809,22 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
 
 /* --- @mem module --- */
 
+static const PassthroughCall mem_passthrough[] = {
+    {"arena", 1, "gray_mem_arena"},
+    {"reset", 1, "gray_mem_reset"},
+    {"usage", 1, "gray_mem_usage"},
+    {"raw_copy", 3, "gray_mem_copy"},
+    {"zero", 2, "gray_mem_zero"},
+    {"fill", 3, "gray_mem_set"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
-    if (strcmp(func, "arena") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_mem_arena(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, mem_passthrough)) return true;
     if (strcmp(func, "destroy") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_mem_destroy(");
         emit_expression(codegen, node->data.call.args[0]);
         emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-        return true;
-    }
-    if (strcmp(func, "reset") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_mem_reset(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "usage") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_mem_usage(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "raw_copy") == 0 && node->data.call.arg_count == 3) {
-        emit(codegen, "gray_mem_copy(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "zero") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_mem_zero(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "fill") == 0 && node->data.call.arg_count == 3) {
-        emit(codegen, "gray_mem_set(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ")");
         return true;
     }
     if (strcmp(func, "init") == 0 && node->data.call.arg_count == 2) {
@@ -6415,29 +6367,15 @@ static bool emit_uuid_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 /* --- @regex module --- */
 
+static const PassthroughCall regex_passthrough[] = {
+    {"is_valid", 1, "gray_regex_is_valid"},
+    {"is_match", 2, "gray_regex_match"},
+    {"count", 2, "gray_regex_count"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
-    if (strcmp(func, "is_valid") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_regex_is_valid(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "is_match") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_regex_match(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "count") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_regex_count(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, regex_passthrough)) return true;
     if (strcmp(func, "escape") == 0 && node->data.call.arg_count == 1) {
         emit(codegen, "gray_regex_escape(gray_default_arena, ");
         emit_expression(codegen, node->data.call.args[0]);
@@ -6505,6 +6443,14 @@ static bool emit_regex_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 /* --- @server module --- */
 
+static const PassthroughCall server_passthrough[] = {
+    {"text", 2, "gray_server_text"},
+    {"json", 2, "gray_server_json"},
+    {"html", 2, "gray_server_html"},
+    {"redirect", 2, "gray_server_redirect"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "add_router") == 0) {
         emit(codegen, "gray_server_router()");
@@ -6542,38 +6488,7 @@ static bool emit_server_call(CodeGen *codegen, AstNode *node, const char *func) 
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(func, "text") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_server_text(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "json") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_server_json(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "html") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_server_html(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "redirect") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_server_redirect(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, server_passthrough)) return true;
     if (strcmp(func, "cors") == 0 && node->data.call.arg_count == 2) {
         emit(codegen, "gray_server_cors(");
         emit_address_of(codegen, node->data.call.args[0]);
@@ -6657,6 +6572,12 @@ static bool emit_http_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 /* --- @net module --- */
 
+static const PassthroughCall net_passthrough[] = {
+    {"close", 1, "gray_net_close"},
+    {"set_timeout", 2, "gray_net_set_timeout"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool is_multi_var = current_var_is_result_temporary(codegen);
     if (strcmp(func, "connect") == 0 && node->data.call.arg_count == 2) {
@@ -6667,12 +6588,7 @@ static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(func, "close") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_net_close(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, net_passthrough)) return true;
     if (strcmp(func, "send") == 0 && node->data.call.arg_count == 2) {
         if (is_multi_var) {
             emit(codegen, "gray_net_send_result(gray_default_arena, ");
@@ -6711,14 +6627,6 @@ static bool emit_net_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "accept") == 0 && node->data.call.arg_count == 1) {
         emit_formatted(codegen, "gray_net_accept%s(gray_default_arena, ", is_multi_var ? "_result" : "");
         emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "set_timeout") == 0 && node->data.call.arg_count == 2) {
-        emit(codegen, "gray_net_set_timeout(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
         emit(codegen, ")");
         return true;
     }
@@ -6791,6 +6699,11 @@ static bool emit_binary_call(CodeGen *codegen, AstNode *node, const char *func) 
 
 /* --- @csv module --- */
 
+static const PassthroughCall csv_passthrough[] = {
+    {"detect_delimiter", 1, "gray_csv_detect_delimiter"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_csv_call(CodeGen *codegen, AstNode *node, const char *func) {
     bool is_multi_var = current_var_is_result_temporary(codegen);
     if (strcmp(func, "parse") == 0) {
@@ -6825,12 +6738,7 @@ static bool emit_csv_call(CodeGen *codegen, AstNode *node, const char *func) {
         emit(codegen, ")");
         return true;
     }
-    if (strcmp(func, "detect_delimiter") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_csv_detect_delimiter(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, csv_passthrough)) return true;
     /* Single-array-arg record views: to_maps / from_maps / to_json / to_markdown */
     if ((strcmp(func, "to_maps") == 0 || strcmp(func, "from_maps") == 0 ||
          strcmp(func, "to_json") == 0 || strcmp(func, "to_markdown") == 0) &&
@@ -7120,6 +7028,11 @@ static bool emit_sqlite_call(CodeGen *codegen, AstNode *node, const char *func) 
 
 /* --- @random module --- */
 
+static const PassthroughCall random_passthrough[] = {
+    {"seed", 1, "gray_random_seed"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "rand_float") == 0) {
         if (node->data.call.arg_count == 0) {
@@ -7214,12 +7127,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
         }
         return true;
     }
-    if (strcmp(func, "seed") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "gray_random_seed(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, random_passthrough)) return true;
     return false;
 }
 
@@ -8525,6 +8433,11 @@ static bool emit_sync_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 /* --- @atomic module --- */
 
+static const PassthroughCall atomic_passthrough[] = {
+    {"cas", 3, "gray_atomic_mod_cas"},
+    {NULL, 0, NULL},
+};
+
 static bool emit_atomic_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "spinlock") == 0) {
         emit(codegen, "gray_atomic_mod_spinlock()");
@@ -8566,16 +8479,7 @@ static bool emit_atomic_call(CodeGen *codegen, AstNode *node, const char *func) 
         }
     }
     /* Three-argument: cas */
-    if (strcmp(func, "cas") == 0 && node->data.call.arg_count == 3) {
-        emit(codegen, "gray_atomic_mod_cas(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[1]);
-        emit(codegen, ", ");
-        emit_expression(codegen, node->data.call.args[2]);
-        emit(codegen, ")");
-        return true;
-    }
+    if (emit_passthrough_call(codegen, node, func, atomic_passthrough)) return true;
     return false;
 }
 
