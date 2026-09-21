@@ -1,0 +1,37 @@
+/*
+ * Error Test: E5026 - each mismatched call argument is reported once. A
+ * struct, pointer, enum or array parameter has its own mismatch check, and
+ * that check must not repeat the report the general argument check made.
+ */
+// expect-error: E5026
+// expect-error-count: 4
+const A struct {
+    x int
+}
+
+const B struct {
+    x int
+}
+
+const Color enum {
+    RED
+}
+
+const Mode enum {
+    M
+}
+
+do fs(a A) { }
+do fp(a ^A) { }
+do fe(c Color) { }
+do fa(xs [int]) { }
+
+do main() {
+    b B = B{x: 1}
+    pb = new(B)
+    sa [string] = {"a"}
+    fs(b)
+    fp(pb)
+    fe(Mode.M)
+    fa(sa)
+}
