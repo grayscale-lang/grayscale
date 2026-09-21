@@ -1,0 +1,14 @@
+private const Hidden struct {
+    n int
+    do make(n int) -> Hidden { return Hidden{n: n} }
+}
+
+private const Mode enum {
+    FAST
+    SLOW
+}
+
+private const Tag enum {
+    A(int)
+    B
+}

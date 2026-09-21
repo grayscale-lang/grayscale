@@ -1,0 +1,18 @@
+// Error Test: E4015 - a private struct or enum is unreachable from another
+// file wherever its name is written in an expression, the same as in an
+// annotation: a struct literal, a struct function call, a tagged-enum
+// constructor, new(), size_of(), and a unit variant of either kind of enum.
+// expect-error: E4015
+// expect-error-count: 8
+import "./lib"
+
+do main() {
+    mut a = lib.Hidden{n: 1}
+    mut b = lib.Hidden.make(2)
+    mut c = lib.Tag.A(1)
+    mut d = new(lib.Hidden)
+    println(size_of(lib.Hidden))
+    println(lib.Mode.FAST)
+    mut e = lib.Tag.B
+    println(type_of(lib.Mode.FAST))
+}

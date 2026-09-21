@@ -4,7 +4,7 @@
  */
 
 // expect-error: E4015
-// expect-error-count: 1
+// expect-error-count: 2
 
 import "./lib.gray"
 

@@ -4751,6 +4751,16 @@ static void reject_private_type(TypeChecker *checker, AstNode *node, const char 
         NODE_FILE(checker, node), node->token.line, node->token.column, 0, entry->name);
 }
 
+/* `mod.Type` written inside an expression — a call, a member access — names
+ * the type as surely as an annotation does, and a private one is as
+ * unreachable from here. A local of the same name as the module is a value,
+ * not a qualifier. Returns whether it reported. */
+static bool reject_private_qualified_type(TypeChecker *checker, AstNode *at,
+                                          const char *mod, const char *type) {
+    if (scope_lookup(checker->current_scope, mod)) return false;
+    return reject_if_private(checker, at, mod, type);
+}
+
 /* True when a written type spells 'Error' as an array element or a map
  * key/value, at any nesting depth. A bare Error scalar (local, param,
  * struct field) is fine — codegen represents it as GrayError* — but no
@@ -8284,6 +8294,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
             AstNode *arg = node->data.call.args[0];
             const char *written = size_of_type_spelling(checker, arg);
             if (written && strcmp(written, "?") != 0) {
+                reject_private_type(checker, arg, written);
                 /* A container spelling types as TK_ARRAY or TK_MAP whatever
                  * its parts name, so the check has to look at every leaf. */
                 char leaf[MSG_BUF_SIZE];
@@ -9420,6 +9431,7 @@ static void normalize_qualified_enum_call(TypeChecker *checker, AstNode *node) {
     char prefixed[MSG_BUF_SIZE];
     module_member_key(checker, mod_raw, enum_written, prefixed, sizeof(prefixed));
     if (!is_enum_name(checker, prefixed)) return;
+    reject_private_qualified_type(checker, node, mod_raw, enum_written);
 
     mark_import_used(checker, mod_raw);
     mark_import_used(checker, typechecker_resolve_alias(checker, mod_raw));
@@ -9896,6 +9908,7 @@ static GrayType *resolve_call_expr(TypeChecker *checker, AstNode *node) {
         const char *mod_name = chain_mod;
         const char *struct_name = chain_type;
         const char *func_name = fn->data.member.member;
+        reject_private_qualified_type(checker, node, mod_name, struct_name);
         /* Mark module as used */
         mark_import_used(checker, mod_name);
         /* Look up mod_Struct_func */
@@ -10851,6 +10864,7 @@ static GrayType *resolve_member_expr(TypeChecker *checker, AstNode *node) {
     /* Handle mod.Enum.VALUE or mod.Struct.field triple chain */
     const char *mod_name = NULL, *chain_type = NULL;
     if (ast_member_chain(node, &mod_name, &chain_type)) {
+        reject_private_qualified_type(checker, node, mod_name, chain_type);
         char prefixed_type[MSG_BUF_SIZE];
         module_member_key(checker, mod_name, chain_type,
                           prefixed_type, sizeof(prefixed_type));
@@ -11215,6 +11229,7 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             return result;
         }
     }
+    reject_private_type(checker, node, struct_name);
     typechecker_mark_type_module_used(checker, struct_name);
     /* A stdlib opaque type (UUID, Mutex, ...) has no literal form. Most are
      * not struct-registered, so find_struct fails below and the !si branch
@@ -12380,6 +12395,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
          * cast to an unknown user type and rejected. The diagnostic below
          * still names the spelling the programmer used. */
         const char *written_target = node->data.cast.target_type;
+        reject_private_type(checker, node, written_target);
         const char *target = resolve_type_alias(checker,
             checker_resolve_type_name(checker, written_target));
         node->data.cast.target_type = target;
@@ -12506,6 +12522,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
             node->data.new_expr.type_name = "?";
             new_type = "?";
         }
+        reject_private_type(checker, node, new_type);
         /* Resolve the name as written, then aliases — the same order a type
          * annotation goes through, so `new(mod.T)` and `^mod.T` agree. */
         new_type = checker_resolve_type_name(checker, new_type);
