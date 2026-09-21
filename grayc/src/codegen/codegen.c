@@ -385,8 +385,7 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         aop != TOK_ASTERISK_ASSIGN)
         return false;
 
-    GrayType *tgt_t = codegen->type_table
-        ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+    GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
     if (!tgt_t) return false;
 
     /* String append: s += t → s = gray_string_concat(arena, s, t). */
@@ -496,7 +495,7 @@ static bool place_is_module_storage(CodeGen *codegen, AstNode *expr) {
     bool module_level = (root->kind == NODE_LABEL && root->data.label.refers_to_file_global) ||
         (root->resolved_decl && root->resolved_decl->kind == DECL_CONST);
     if (!module_level) return false;
-    GrayType *root_t = codegen->type_table ? typetable_get(codegen->type_table, root) : NULL;
+    GrayType *root_t = typetable_get(codegen->type_table, root);
     return root_t && (root_t->kind == TK_STRING || root_t->kind == TK_ARRAY ||
                       root_t->kind == TK_MAP || root_t->kind == TK_STRUCT);
 }
@@ -1475,15 +1474,13 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     }
     /* Struct field access a.val — check the resolved field type from the type table */
     if (node->kind == NODE_MEMBER_EXPR) {
-        GrayType *field_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *field_t = typetable_get(codegen->type_table, node);
         if (field_t && field_t->name && is_bigint_type(field_t->name))
             return field_t->name;
     }
     /* Pointer dereference p^ — check whether the pointee type is bigint */
     if (node->kind == NODE_POSTFIX_EXPR && node->data.postfix.op == TOK_CARET) {
-        GrayType *ptr_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.postfix.left) : NULL;
+        GrayType *ptr_t = typetable_get(codegen->type_table, node->data.postfix.left);
         if (ptr_t && ptr_t->kind == TK_POINTER && ptr_t->element_type &&
             is_bigint_type(ptr_t->element_type))
             return ptr_t->element_type;
@@ -1491,8 +1488,7 @@ static const char *resolve_bigint_type(CodeGen *codegen, AstNode *node) {
     /* Array indexing arr[i] and user-function calls: the typechecker records
      * the resolved element / return type, so trust that when it is bigint. */
     if (node->kind == NODE_INDEX_EXPR || node->kind == NODE_CALL_EXPR) {
-        GrayType *nt = codegen->type_table
-            ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *nt = typetable_get(codegen->type_table, node);
         if (nt && nt->name && is_bigint_type(nt->name))
             return nt->name;
     }
@@ -1921,7 +1917,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, part);
         } else {
             /* Expression — resolve type and emit as GrayString */
-            GrayType *part_type = codegen->type_table ? typetable_get(codegen->type_table, part) : NULL;
+            GrayType *part_type = typetable_get(codegen->type_table, part);
             TypeKind tk = part_type ? part_type->kind : TK_UNKNOWN;
             if (tk == TK_UNKNOWN) {
                 if (codegen->wildcard_binding) {
@@ -2057,7 +2053,7 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
     if (count == 0) {
         /* Empty array; check type table for element type, falling
          * back to the var-decl context type if the node has none. */
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node);
         if ((!arr_t || arr_t->kind == TK_UNKNOWN) && codegen->current_var_type && codegen->current_var_type[0]) {
             arr_t = type_from_name(codegen->current_var_type);
         }
@@ -2118,9 +2114,7 @@ static void emit_array_value(CodeGen *codegen, AstNode *node) {
 
     /* Determine element type; try bigint detection first, then type table */
     const char *bi_elem = resolve_bigint_type(codegen, node->data.array_value.elements[0]);
-    GrayType *elem_t = codegen->type_table
-        ? typetable_get(codegen->type_table, node->data.array_value.elements[0])
-        : NULL;
+    GrayType *elem_t = typetable_get(codegen->type_table, node->data.array_value.elements[0]);
     if (!bi_elem && elem_t && elem_t->name && is_bigint_type(elem_t->name))
         bi_elem = elem_t->name;
     /* Also check var decl context for bigint element type — either a bare
@@ -2308,8 +2302,8 @@ static void emit_map_value(CodeGen *codegen, AstNode *node) {
         gray_val_tn = decl_mt->value_type;
     }
     if (count > 0) {
-        GrayType *kt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.keys[0]) : NULL;
-        GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, node->data.map_value.values[0]) : NULL;
+        GrayType *kt = typetable_get(codegen->type_table, node->data.map_value.keys[0]);
+        GrayType *vt = typetable_get(codegen->type_table, node->data.map_value.values[0]);
         if (!decl_mt && kt) {
             c_key_type = gray_map_element_c_type(codegen, type_name(kt));
             gray_key_tn = type_name(kt);
@@ -2677,7 +2671,7 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
     /* Overflow-checked negation for signed integer types; STANDARD §3.1.1
      * promises arithmetic panics rather than silent wrap on overflow. */
     if (node->data.prefix.op == TOK_MINUS) {
-        GrayType *ot = codegen->type_table ? typetable_get(codegen->type_table, node->data.prefix.right) : NULL;
+        GrayType *ot = typetable_get(codegen->type_table, node->data.prefix.right);
         if (ot && ot->kind == TK_INT) {
             const char *sized_name = ot->name;
             const char *smin = NULL, *smax = NULL;
@@ -2699,7 +2693,7 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
      * masked back to their width because C promotes them to int before
      * applying ~, yielding a negative value that fails the runtime range check. */
     if (node->data.prefix.op == TOK_BIT_NOT) {
-        GrayType *bn_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.prefix.right) : NULL;
+        GrayType *bn_t = typetable_get(codegen->type_table, node->data.prefix.right);
         const char *bn_mask = NULL;
         if (bn_t && bn_t->kind == TK_BYTE) {
             bn_mask = "uint8_t";
@@ -2736,8 +2730,8 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
     TokenType op = node->data.infix.op;
 
     /* Check if either operand is a string; need special handling */
-    GrayType *left_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.infix.left) : NULL;
-    GrayType *right_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.infix.right) : NULL;
+    GrayType *left_type = typetable_get(codegen->type_table, node->data.infix.left);
+    GrayType *right_type = typetable_get(codegen->type_table, node->data.infix.right);
     /* Inside a generic instantiation, operands that were
      * typed TK_UNKNOWN in the main pass (because they traced back
      * to a '?' parameter) should be treated as the active wildcard
@@ -2849,7 +2843,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
 
         /* Map or array membership */
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.infix.right) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.infix.right);
         /* Map membership: key in map → gray_maps_has_key
          * Bind the map to a temp so &_im works even when the map
          * expression is an rvalue (e.g. pointer field access). */
@@ -2866,7 +2860,7 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         }
         /* String membership: char in string or string in string */
         if (arr_t && arr_t->kind == TK_STRING) {
-            GrayType *left_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.infix.left) : NULL;
+            GrayType *left_t = typetable_get(codegen->type_table, node->data.infix.left);
             if (left_t && left_t->kind == TK_CHAR) {
                 /* char in string → memchr scan */
                 if (negated) emit(codegen, "!");
@@ -3125,8 +3119,7 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
              * gray_ptr_check so `*p` stays an lvalue — a following `.field`
              * chain or `&` then lands on the real storage rather than a
              * by-value statement-expression copy. */
-            GrayType *deref_t = codegen->type_table
-                ? typetable_get(codegen->type_table, _dp_left) : NULL;
+            GrayType *deref_t = typetable_get(codegen->type_table, _dp_left);
             const char *deref_pointee = (deref_t && deref_t->kind == TK_POINTER)
                 ? deref_t->element_type : NULL;
             if (deref_pointee && deref_pointee[0] != '^' && !strchr(deref_pointee, '?')) {
@@ -3153,7 +3146,7 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         }
     } else if (node->data.postfix.op == TOK_INCREMENT) {
         /* Overflow-checked increment; sized types need bounds check */
-        GrayType *postfix_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.postfix.left) : NULL;
+        GrayType *postfix_type = typetable_get(codegen->type_table, node->data.postfix.left);
         const char *sized_name = (postfix_type && postfix_type->name) ? postfix_type->name : NULL;
         const char *smin = NULL, *smax = NULL;
         bool su = false;
@@ -3192,13 +3185,13 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         bool _inc_member_ptr = false;
         if (node->data.postfix.left->kind == NODE_MEMBER_EXPR) {
             AstNode *_mobj = node->data.postfix.left->data.member.object;
-            GrayType *_mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+            GrayType *_mot = typetable_get(codegen->type_table, _mobj);
             bool _is_ref = (_mobj->kind == NODE_LABEL && is_reference_variable(codegen, _mobj->data.label.value));
             /* Also handle explicit deref: c^.val++ where object is NODE_POSTFIX_EXPR with TOK_CARET */
             bool _is_explicit_deref = (_mobj->kind == NODE_POSTFIX_EXPR && _mobj->data.postfix.op == TOK_CARET);
             if (_is_explicit_deref) {
                 _mobj = _mobj->data.postfix.left; /* unwrap to the pointer itself */
-                _mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                _mot = typetable_get(codegen->type_table, _mobj);
             }
             if (!_is_ref && ((_mot && _mot->kind == TK_POINTER) || _is_explicit_deref)) {
                 _inc_member_ptr = true;
@@ -3254,7 +3247,7 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         }
     } else if (node->data.postfix.op == TOK_DECREMENT) {
         /* Overflow-checked decrement; sized types need bounds check */
-        GrayType *pt = codegen->type_table ? typetable_get(codegen->type_table, node->data.postfix.left) : NULL;
+        GrayType *pt = typetable_get(codegen->type_table, node->data.postfix.left);
         const char *sn = (pt && pt->name) ? pt->name : NULL;
         const char *smin = NULL, *smax = NULL;
         bool su = false;
@@ -3293,13 +3286,13 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         bool _dec_member_ptr = false;
         if (node->data.postfix.left->kind == NODE_MEMBER_EXPR) {
             AstNode *_mobj = node->data.postfix.left->data.member.object;
-            GrayType *_mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+            GrayType *_mot = typetable_get(codegen->type_table, _mobj);
             bool _is_ref = (_mobj->kind == NODE_LABEL && is_reference_variable(codegen, _mobj->data.label.value));
             /* Also handle explicit deref: c^.val-- where object is NODE_POSTFIX_EXPR with TOK_CARET */
             bool _is_explicit_deref = (_mobj->kind == NODE_POSTFIX_EXPR && _mobj->data.postfix.op == TOK_CARET);
             if (_is_explicit_deref) {
                 _mobj = _mobj->data.postfix.left;
-                _mot = codegen->type_table ? typetable_get(codegen->type_table, _mobj) : NULL;
+                _mot = typetable_get(codegen->type_table, _mobj);
             }
             if (!_is_ref && ((_mot && _mot->kind == TK_POINTER) || _is_explicit_deref)) {
                 _dec_member_ptr = true;
@@ -3409,9 +3402,7 @@ static void emit_func_ref(CodeGen *codegen, AstNode *node) {
  * file whose module is `b` reads the local's field — and the typechecker
  * already resolves it that way, so a typed object is what says so here. */
 static bool member_object_is_value(CodeGen *codegen, AstNode *node) {
-    GrayType *obj_type = codegen->type_table
-        ? typetable_get(codegen->type_table, node->data.member.object)
-        : NULL;
+    GrayType *obj_type = typetable_get(codegen->type_table, node->data.member.object);
     return obj_type && obj_type->kind != TK_UNKNOWN;
 }
 
@@ -3579,9 +3570,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
     }
     /* Check if object is a pointer type; use -> instead of . */
     {
-        GrayType *obj_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.member.object)
-            : NULL;
+        GrayType *obj_t = typetable_get(codegen->type_table, node->data.member.object);
 
         /* When accessing .v0 on a single-return value (not a multi-return struct),
          * just emit the value itself (e.g., from temp x, _ = single_return_func()) */
@@ -3663,9 +3652,7 @@ static void emit_member_expr(CodeGen *codegen, AstNode *node) {
  * an outer index on it cannot take its address and must bind it to a temp. */
 static bool index_left_is_map_lookup(CodeGen *codegen, AstNode *left) {
     if (!left || left->kind != NODE_INDEX_EXPR) return false;
-    GrayType *inner = codegen->type_table
-        ? typetable_get(codegen->type_table, left->data.index_expr.left)
-        : NULL;
+    GrayType *inner = typetable_get(codegen->type_table, left->data.index_expr.left);
     return inner && inner->kind == TK_MAP;
 }
 
@@ -3684,8 +3671,7 @@ static bool index_expr_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
         return true;
     if (left->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = left->data.member.object;
-        GrayType *obj_t = codegen->type_table
-            ? typetable_get(codegen->type_table, obj) : NULL;
+        GrayType *obj_t = typetable_get(codegen->type_table, obj);
         if (obj_t && obj_t->kind == TK_POINTER) return true;
         if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
             return true;
@@ -3697,9 +3683,7 @@ static bool index_expr_lowers_to_rvalue(CodeGen *codegen, AstNode *node) {
 
 static void emit_index_expr(CodeGen *codegen, AstNode *node) {
     /* Check if left side is an array (GrayArray) or string */
-    GrayType *left_t = codegen->type_table
-        ? typetable_get(codegen->type_table, node->data.index_expr.left)
-        : NULL;
+    GrayType *left_t = typetable_get(codegen->type_table, node->data.index_expr.left);
     if (left_t && left_t->kind == TK_ARRAY) {
         /* Determine element C type */
         const char *c_elem = "int64_t";
@@ -3749,7 +3733,7 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         if (node->data.index_expr.left->kind == NODE_MEMBER_EXPR) {
             AstNode *_mem = node->data.index_expr.left;
             AstNode *_obj = _mem->data.member.object;
-            GrayType *_obj_t = codegen->type_table ? typetable_get(codegen->type_table, _obj) : NULL;
+            GrayType *_obj_t = typetable_get(codegen->type_table, _obj);
             if (_obj_t && _obj_t->kind == TK_POINTER) {
                 arr_ptr_obj = _obj;
                 arr_ptr_field = _mem->data.member.member;
@@ -3826,8 +3810,7 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             node->data.index_expr.left->kind == NODE_CALL_EXPR);
         if (!map_is_rvalue && node->data.index_expr.left->kind == NODE_MEMBER_EXPR) {
             AstNode *obj = node->data.index_expr.left->data.member.object;
-            GrayType *obj_t = codegen->type_table
-                ? typetable_get(codegen->type_table, obj) : NULL;
+            GrayType *obj_t = typetable_get(codegen->type_table, obj);
             if (obj_t && obj_t->kind == TK_POINTER) map_is_rvalue = true;
             if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET)
                 map_is_rvalue = true;
@@ -3877,7 +3860,7 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
     /* cast(value, type); dispatch to conversion functions for non-trivial casts */
     const char *target = node->data.cast.target_type;
     AstNode *val = node->data.cast.value;
-    GrayType *val_t = codegen->type_table ? typetable_get(codegen->type_table, val) : NULL;
+    GrayType *val_t = typetable_get(codegen->type_table, val);
     TypeKind val_kind = val_t ? val_t->kind : TK_UNKNOWN;
 
     /* Infer kind from AST if type table has no info */
@@ -4467,7 +4450,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
             }
         }
     }
-    GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+    GrayType *type = typetable_get(codegen->type_table, arg);
     if (type && type->kind != TK_UNKNOWN) {
         switch (type->kind) {
         case TK_STRING:  return "_str";
@@ -4506,8 +4489,7 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
                     struct_name = obj;
                 } else {
                     /* Instance call: f.greet() — look up variable's struct type */
-                    GrayType *obj_t = codegen->type_table
-                        ? typetable_get(codegen->type_table, function_node->data.member.object) : NULL;
+                    GrayType *obj_t = typetable_get(codegen->type_table, function_node->data.member.object);
                     if (obj_t && (obj_t->kind == TK_STRUCT || obj_t->kind == TK_POINTER) && obj_t->name) {
                         struct_name = obj_t->name;
                     }
@@ -4567,7 +4549,7 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         emit(codegen, ")");
         return;
     }
-    GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+    GrayType *arg_type = typetable_get(codegen->type_table, arg);
     if (arg_type && arg_type->kind == TK_ERROR) {
         int tag = codegen_next_id(codegen);
         emit_formatted(codegen, "({ GrayError *_gray_str_err%d = (", tag);
@@ -4746,7 +4728,7 @@ static void emit_format_arguments(CodeGen *codegen, AstNode *node, int start_idx
     for (int i = start_idx; i < node->data.call.arg_count; i++) {
         emit(codegen, ", ");
         AstNode *arg = node->data.call.args[i];
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, arg);
         if (arg_type && arg_type->name && is_bigint_type(arg_type->name)) {
             /* Struct-backed big integers cannot ride in a printf vararg slot;
              * the directive was rewritten to %s, so pass a converted string. */
@@ -5155,7 +5137,7 @@ static bool emit_composite_print(CodeGen *codegen, AstNode *node,
     if (node->data.call.arg_count < 1) return false;
 
     AstNode *arg = unwrap_reference_argument(node->data.call.args[0]);
-    GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+    GrayType *type = typetable_get(codegen->type_table, arg);
     if (!type) return false;
     if (type->kind != TK_STRUCT && type->kind != TK_ARRAY &&
         type->kind != TK_MAP && type->kind != TK_POINTER) return false;
@@ -5205,7 +5187,7 @@ static bool emit_composite_print(CodeGen *codegen, AstNode *node,
  * `variant` is the C builtin name fragment (e.g. "println", "eprint"). */
 static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *variant) {
     AstNode *arg = unwrap_reference_argument(node->data.call.args[0]);
-    GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+    GrayType *arg_t = typetable_get(codegen->type_table, arg);
     if (arg_t && arg_t->kind == TK_ERROR) {
         emit_formatted(codegen, "gray_builtin_%s_str(", variant);
         emit_expression(codegen, arg);
@@ -5285,7 +5267,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
 
     if (strcmp(func, "len") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
-        GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *type = typetable_get(codegen->type_table, arg);
         if (type && type->kind == TK_MAP) {
             emit(codegen, "(int64_t)(");
             emit_expression(codegen, arg);
@@ -5306,7 +5288,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             emit_formatted(codegen, "gray_string_lit(\"%s\")", bi_type);
             return true;
         }
-        GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *type = typetable_get(codegen->type_table, arg);
         /* Range expression: type_of(range(0, 5)) → "Range<int>" */
         if (arg->kind == NODE_RANGE_EXPR ||
             (arg->kind == NODE_CALL_EXPR && arg->data.call.function->kind == NODE_LABEL &&
@@ -5348,7 +5330,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
 
     if (strcmp(func, "fields") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
-        GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *type = typetable_get(codegen->type_table, arg);
         const char *sname = NULL;
         if (type && type->kind == TK_STRUCT && type->name) {
             sname = type->name;
@@ -5394,7 +5376,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 c_type = "int32_t";
             } else {
                 /* Fallback: consult the type table */
-                GrayType *type = codegen->type_table ? typetable_get(codegen->type_table, type_arg) : NULL;
+                GrayType *type = typetable_get(codegen->type_table, type_arg);
                 if (type && type->name) c_type = gray_type_to_c_codegen(codegen, type->name);
             }
             if (c_type) {
@@ -5424,8 +5406,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 addr_field = arg->data.member.member;
             } else {
                 /* addr(p.field) where p is a pointer type (auto-deref) */
-                GrayType *obj_t = codegen->type_table
-                    ? typetable_get(codegen->type_table, obj) : NULL;
+                GrayType *obj_t = typetable_get(codegen->type_table, obj);
                 if (obj_t && obj_t->kind == TK_POINTER) {
                     addr_ptr_expr = obj;
                     addr_field = arg->data.member.member;
@@ -5468,8 +5449,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
          * const-qualified pointer in C, which __auto_type would propagate.
          * Look up the result type and emit an explicit cast to strip const. */
         const char *raw_cast = NULL;
-        GrayType *raw_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *raw_t = typetable_get(codegen->type_table, node);
         if (raw_t && raw_t->kind == TK_POINTER && raw_t->name) {
             char pname[MSG_BUF_SIZE];
             snprintf(pname, sizeof(pname), "^%s", raw_t->name);
@@ -5486,8 +5466,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 raw_ptr_expr = obj->data.postfix.left;
                 raw_field = arg->data.member.member;
             } else {
-                GrayType *obj_t = codegen->type_table
-                    ? typetable_get(codegen->type_table, obj) : NULL;
+                GrayType *obj_t = typetable_get(codegen->type_table, obj);
                 if (obj_t && obj_t->kind == TK_POINTER) {
                     raw_ptr_expr = obj;
                     raw_field = arg->data.member.member;
@@ -5619,7 +5598,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
         /* Forms: error(msg), error(code), error(code, msg). The first arg is a
          * code unless it is a plain string; slot 0 (Unknown) is the default. */
         AstNode *a0 = node->data.call.args[0];
-        GrayType *a0t = codegen->type_table ? typetable_get(codegen->type_table, a0) : NULL;
+        GrayType *a0t = typetable_get(codegen->type_table, a0);
         bool first_is_code = !(a0t && a0t->kind == TK_STRING);
         emit(codegen, "gray_error_new(gray_default_arena, ");
         if (first_is_code) {
@@ -5707,7 +5686,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
                 return true;
             }
             /* String→numeric conversion */
-            GrayType *carg_t = codegen->type_table ? typetable_get(codegen->type_table, carg) : NULL;
+            GrayType *carg_t = typetable_get(codegen->type_table, carg);
             bool is_string_src = (carg->kind == NODE_STRING_VALUE || carg->kind == NODE_INTERPOLATED_STRING ||
                                   (carg_t && carg_t->kind == TK_STRING));
             if (is_string_src && (strcmp(func, "int") == 0 || strcmp(func, "uint") == 0)) {
@@ -5740,7 +5719,7 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
 
     if (strcmp(func, "copy") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, arg);
         if (arg_type && (arg_type->kind == TK_ARRAY || arg_type->kind == TK_MAP || arg_type->kind == TK_STRUCT)) {
             /* Route every container kind through the unified deep-copy
              * emitter so nested collections, structs containing
@@ -5842,7 +5821,7 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "alloc") == 0 && node->data.call.arg_count == 2) {
         AstNode *arena_arg = node->data.call.args[0];
         AstNode *value_arg = node->data.call.args[1];
-        GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, value_arg) : NULL;
+        GrayType *vt = typetable_get(codegen->type_table, value_arg);
 
         /* alloc(a Arena, value T) -> ^T for every T. The string and array
          * branches below build their value in the target arena and used to
@@ -5900,7 +5879,7 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
 
 static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "abs") == 0 && node->data.call.arg_count == 1) {
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
                               (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
         emit_formatted(codegen, "gray_math_abs_%s(", suffix);
@@ -5915,7 +5894,7 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if ((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) {
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
                               (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
         emit_formatted(codegen, "gray_math_%s_%s(", func, suffix);
@@ -5926,7 +5905,7 @@ static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "clamp") == 0 && node->data.call.arg_count == 3) {
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "float" :
                               (arg_type && arg_type->kind == TK_UINT) ? "uint" : "int";
         emit_formatted(codegen, "gray_math_clamp_%s(", suffix);
@@ -5983,8 +5962,7 @@ static void emit_address_of(CodeGen *codegen, AstNode *expr) {
             field_path[field_depth++] = cur->data.member.member;
             bool obj_is_ref = (obj->kind == NODE_LABEL &&
                 is_reference_variable(codegen, obj->data.label.value));
-            GrayType *obj_t = codegen->type_table
-                ? typetable_get(codegen->type_table, obj) : NULL;
+            GrayType *obj_t = typetable_get(codegen->type_table, obj);
             if (!obj_is_ref && obj_t && obj_t->kind == TK_POINTER) {
                 ptr_expr = obj;
                 break;
@@ -6084,8 +6062,7 @@ static void emit_mutable_call_argument(CodeGen *codegen, AstNode *arg, bool mut_
          * whose result is a dereferenced value, not an lvalue — `&` on that
          * is invalid C. Build a statement-expression that resolves to the
          * pointer itself instead, mirroring gray_array_get_ptr/gray_map_get. */
-        GrayType *left_t = codegen->type_table
-            ? typetable_get(codegen->type_table, arg->data.index_expr.left) : NULL;
+        GrayType *left_t = typetable_get(codegen->type_table, arg->data.index_expr.left);
         if (left_t && left_t->kind == TK_MAP) {
             const char *c_key = "GrayString";
             if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
@@ -6129,8 +6106,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "get_values") == 0 && node->data.call.arg_count == 1) {
-        GrayType *gv_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *gv_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         bool gv_copy = gv_t && gv_t->kind == TK_MAP && gv_t->value_type &&
             type_shares_storage(codegen, gv_t->value_type);
         int tag = codegen_next_id(codegen);
@@ -6155,8 +6131,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
          * happens to have; otherwise the hash/memcmp compares the wrong
          * number of bytes. */
         const char *c_key = "int64_t";
-        GrayType *map_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *map_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _hk = ", c_key);
@@ -6169,8 +6144,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if (strcmp(func, "remove_key") == 0 && node->data.call.arg_count == 2) {
         const char *c_key = "int64_t";
-        GrayType *map_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *map_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         if (map_t && map_t->kind == TK_MAP && map_t->key_type)
             c_key = gray_map_element_c_type(codegen, map_t->key_type);
         emit_formatted(codegen, "({ %s _rk = ", c_key);
@@ -6202,7 +6176,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         return true;
     }
     if (strcmp(func, "is_equal") == 0 && node->data.call.arg_count == 2) {
-        GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *map_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         bool str_keys = map_t && map_t->key_type && strcmp(map_t->key_type, "string") == 0;
         bool str_values = map_t && map_t->value_type && strcmp(map_t->value_type, "string") == 0;
         emit(codegen, "gray_maps_is_equal(");
@@ -6214,7 +6188,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
     }
     if (strcmp(func, "contains_value") == 0 && node->data.call.arg_count == 2) {
         /* Determine value type from map to ensure correct size */
-        GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *map_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *c_val_type = "int64_t";
         const char *bi_val = NULL;
         if (map_t && map_t->value_type) {
@@ -6234,7 +6208,7 @@ static bool emit_maps_call(CodeGen *codegen, AstNode *node, const char *func) {
         /* get_or_default(m, key, default); lookup key, return default if missing.
          * A wide-integer key or value needs its explicit struct type instead of
          * __auto_type/__typeof__, which would infer a plain int from a literal. */
-        GrayType *map_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *map_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *bi_key = (map_t && map_t->kind == TK_MAP && map_t->key_type &&
             is_bigint_type(map_t->key_type)) ? map_t->key_type : NULL;
         const char *bi_val = (map_t && map_t->kind == TK_MAP && map_t->value_type &&
@@ -6822,7 +6796,7 @@ static char json_prim_class(const char *tn) {
 static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "encode") == 0) {
         AstNode *arg = node->data.call.args[0];
-        GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *arg_t = typetable_get(codegen->type_table, arg);
         if (arg_t && arg_t->kind == TK_MAP) {
             const char *fn = "gray_json_encode_map";
             switch (json_prim_class(arg_t->value_type)) {
@@ -6884,7 +6858,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
      * var_decl handler via ). Falls back to gray_json_decode for
      * the map-based path. */
     if (strcmp(func, "parse") == 0 && node->data.call.arg_count >= 1) {
-        GrayType *target_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *target_t = typetable_get(codegen->type_table, node);
         if (target_t && target_t->kind == TK_STRUCT && target_t->name) {
             AstNode *sdecl = find_struct_declaration(codegen, target_t->name);
             if (sdecl && sdecl->data.struct_decl.is_json) {
@@ -6914,7 +6888,7 @@ static bool emit_json_call(CodeGen *codegen, AstNode *node, const char *func) {
      * the argument is a #json struct. */
     if (strcmp(func, "stringify") == 0 && node->data.call.arg_count >= 1) {
         AstNode *arg = node->data.call.args[0];
-        GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, arg) : NULL;
+        GrayType *arg_t = typetable_get(codegen->type_table, arg);
         if (arg_t && arg_t->kind == TK_STRUCT && arg_t->name) {
             AstNode *sdecl = find_struct_declaration(codegen, arg_t->name);
             if (sdecl && sdecl->data.struct_decl.is_json) {
@@ -7099,8 +7073,7 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
     if (strcmp(func, "choice") == 0) {
         /* Determine element C type from the array's type info */
         const char *c_elem = "int64_t";
-        GrayType *arr_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
             GrayType *et = type_from_name(arr_t->element_type);
             if (et->kind == TK_FLOAT) c_elem = "double";
@@ -7132,6 +7105,13 @@ static bool emit_random_call(CodeGen *codegen, AstNode *node, const char *func) 
 }
 
 /* --- @arrays module --- */
+
+/* Element type name of the array-typed expression `node`, or NULL when its
+ * type is unknown or not an array. */
+static const char *codegen_array_elem_type(CodeGen *codegen, AstNode *node) {
+    GrayType *t = typetable_get(codegen->type_table, node);
+    return (t && t->kind == TK_ARRAY) ? t->element_type : NULL;
+}
 
 /* Emit &arr for arrays.append/prepend/insert_at. Identical to
  * emit_address_of — kept as a name that reads at the call sites. Keeping a
@@ -7179,9 +7159,8 @@ static const char *array_value_c_type(CodeGen *codegen, GrayType *val_t) {
 
 static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) {
     if (strcmp(func, "append") == 0 && node->data.call.arg_count == 2) {
-        GrayType *val_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[1]) : NULL;
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        GrayType *val_t = typetable_get(codegen->type_table, node->data.call.args[1]);
+        const char *elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         bool elem_is_string = (val_t && val_t->kind == TK_STRING) ||
             (elem_tn && strcmp(elem_tn, "string") == 0);
         const char *c_elem = "__auto_type";
@@ -7231,14 +7210,13 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "insert_at") == 0 && node->data.call.arg_count == 3) {
-        GrayType *val_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[2]) : NULL;
+        GrayType *val_t = typetable_get(codegen->type_table, node->data.call.args[2]);
         const char *c_elem = array_value_c_type(codegen, val_t);
         const char *ia_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
         emit_formatted(codegen, "{ %s _iv = ", c_elem);
         emit_expression(codegen, node->data.call.args[2]);
         emit(codegen, "; ");
-        GrayType *ia_arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *ia_elem_tn = (ia_arr_t && ia_arr_t->kind == TK_ARRAY) ? ia_arr_t->element_type : NULL;
+        const char *ia_elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         bool ia_str = (val_t && val_t->kind == TK_STRING) ||
             (ia_elem_tn && strcmp(ia_elem_tn, "string") == 0);
         if (codegen->loop_scope_depth > 0 ||
@@ -7267,8 +7245,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "remove") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        const char *elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_remove_str(");
             emit_array_argument_address(codegen, node->data.call.args[0]);
@@ -7319,8 +7296,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if ((strcmp(func, "sort_asc") == 0 || strcmp(func, "sort_desc") == 0) &&
         node->data.call.arg_count == 1) {
         bool desc = strcmp(func, "sort_desc") == 0;
-        GrayType *sa_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *sa_elem = (sa_t && sa_t->kind == TK_ARRAY) ? sa_t->element_type : NULL;
+        const char *sa_elem = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (sa_elem && is_bigint_type(sa_elem)) {
             /* Wide elements: the int64 comparators see only the low word. */
             emit(codegen, "gray_arrays_sort_wide(");
@@ -7364,8 +7340,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "contains") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        const char *elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_contains_str(");
             emit_array_argument_address(codegen, node->data.call.args[0]);
@@ -7410,7 +7385,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "is_equal") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
             strcmp(arr_t->element_type, "string") == 0) {
             emit(codegen, "gray_arrays_is_equal_str(");
@@ -7424,8 +7399,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "index_of") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        const char *elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit(codegen, "gray_arrays_index_of_str(");
             emit_array_argument_address(codegen, node->data.call.args[0]);
@@ -7464,8 +7438,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "count") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : NULL;
+        const char *elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         int tag = codegen_next_id(codegen);
         if (elem_tn && strcmp(elem_tn, "string") == 0) {
             emit_formatted(codegen, "({ GrayArray _cn%d = ", tag);
@@ -7508,8 +7481,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     /* prepend/fill need special value wrapping */
     if (strcmp(func, "prepend") == 0 && node->data.call.arg_count == 2) {
         const char *pp_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-        GrayType *pp_arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *pp_elem_tn = (pp_arr_t && pp_arr_t->kind == TK_ARRAY) ? pp_arr_t->element_type : NULL;
+        const char *pp_elem_tn = codegen_array_elem_type(codegen, node->data.call.args[0]);
         bool pp_str = pp_elem_tn && strcmp(pp_elem_tn, "string") == 0;
         const char *pp_c_elem = "int64_t";
         if (pp_elem_tn) {
@@ -7545,7 +7517,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "fill") == 0 && node->data.call.arg_count == 3) {
-        GrayType *fl_arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *fl_arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *fl_c_elem = "int64_t";
         if (fl_arr_t && fl_arr_t->kind == TK_ARRAY && fl_arr_t->element_type) {
             GrayType *fet = type_from_name(fl_arr_t->element_type);
@@ -7575,8 +7547,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if ((strcmp(func, "get_first") == 0 || strcmp(func, "get_last") == 0 ||
          strcmp(func, "remove_last") == 0 || strcmp(func, "remove_first") == 0) &&
         node->data.call.arg_count == 1) {
-        GrayType *af_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *af_elem = (af_t && af_t->kind == TK_ARRAY) ? af_t->element_type : NULL;
+        const char *af_elem = codegen_array_elem_type(codegen, node->data.call.args[0]);
         const char *af_ctype = af_elem ? gray_type_to_c_codegen(codegen, af_elem) : "int64_t";
         bool af_is_get = (strcmp(func, "get_first") == 0 || strcmp(func, "get_last") == 0);
         const char *af_ptr_fn = (strcmp(func, "get_first") == 0 || strcmp(func, "remove_first") == 0)
@@ -7608,7 +7579,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
 
     /* --- map / filter / reduce: inline loop emission --- */
     if (strcmp(func, "map") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _m_src = ");
@@ -7622,7 +7593,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "filter") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _f_src = ");
@@ -7636,7 +7607,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "any") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _a_src = ");
@@ -7649,7 +7620,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "all") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _l_src = ");
@@ -7662,7 +7633,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "reduce") == 0 && node->data.call.arg_count == 3) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _r_src = ");
@@ -7677,7 +7648,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "find_index") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _fi_src = ");
@@ -7690,7 +7661,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "find") == 0 && node->data.call.arg_count == 2) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _fd_src = ");
@@ -7705,7 +7676,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "average") == 0 && node->data.call.arg_count == 1) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         const char *c_elem = gray_type_to_c_codegen(codegen, elem_tn);
         emit(codegen, "({ GrayArray _av_src = ");
@@ -7718,7 +7689,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     }
     if ((strcmp(func, "get_sum") == 0 || strcmp(func, "get_min") == 0 ||
          strcmp(func, "get_max") == 0) && node->data.call.arg_count == 1) {
-        GrayType *arr_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
+        GrayType *arr_t = typetable_get(codegen->type_table, node->data.call.args[0]);
         const char *elem_tn = (arr_t && arr_t->kind == TK_ARRAY) ? arr_t->element_type : "int";
         if (is_bigint_type(elem_tn)) {
             /* Wide elements are struct-backed: fold / compare with the width's
@@ -7770,8 +7741,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "is_sorted") == 0 && node->data.call.arg_count == 1) {
-        GrayType *is_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *is_elem = (is_t && is_t->kind == TK_ARRAY) ? is_t->element_type : NULL;
+        const char *is_elem = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (is_elem && is_bigint_type(is_elem)) {
             /* gray_arrays_is_sorted compares low words only. */
             const char *bi = bigint_prefix(is_elem);
@@ -7808,8 +7778,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
         return true;
     }
     if (strcmp(func, "binary_search") == 0 && node->data.call.arg_count == 2) {
-        GrayType *bs_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *bs_elem = (bs_t && bs_t->kind == TK_ARRAY) ? bs_t->element_type : NULL;
+        const char *bs_elem = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (bs_elem && is_bigint_type(bs_elem)) {
             /* Wide elements: the int64/double reads only see the low word;
              * order with the width's gray_<w>_lt helper instead. */
@@ -7881,8 +7850,7 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
     if ((strcmp(func, "min_index") == 0 || strcmp(func, "max_index") == 0) &&
         node->data.call.arg_count == 1) {
         bool want_max = strcmp(func, "max_index") == 0;
-        GrayType *mi_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[0]) : NULL;
-        const char *mi_elem = (mi_t && mi_t->kind == TK_ARRAY) ? mi_t->element_type : NULL;
+        const char *mi_elem = codegen_array_elem_type(codegen, node->data.call.args[0]);
         if (mi_elem && is_bigint_type(mi_elem)) {
             /* Wide elements: gray_arrays_min_index/max_index read only the low
              * word; compare with the width's gray_<w>_lt/gt helper instead. */
@@ -8611,14 +8579,14 @@ static void emit_func_field_call(CodeGen *codegen, AstNode *node, AstNode *obj,
                                   const char *member, bool ptr_obj) {
     int nargs = node->data.call.arg_count;
     if (nargs > 0 && !node->data.call.args) nargs = 0;
-    GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+    GrayType *ret_t = typetable_get(codegen->type_table, node);
     const char *c_ret = (ret_t && ret_t->kind != TK_UNKNOWN && ret_t->kind != TK_VOID)
         ? gray_type_to_c_codegen(codegen, type_name(ret_t)) : "int64_t";
     if (ret_t && ret_t->kind == TK_VOID) c_ret = "void";
     emit_formatted(codegen, "((%s (*)(", c_ret);
     for (int ai = 0; ai < nargs; ai++) {
         if (ai > 0) emit(codegen, ", ");
-        GrayType *arg_type = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[ai]) : NULL;
+        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[ai]);
         emit(codegen, arg_type ? gray_type_to_c_codegen(codegen, type_name(arg_type)) : "int64_t");
     }
     emit(codegen, "))");
@@ -8673,7 +8641,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
             obj->data.postfix.left->kind == NODE_LABEL) {
             const char *vname = obj->data.postfix.left->data.label.value;
             const char *sn = NULL;
-            GrayType *ptr_t = codegen->type_table ? typetable_get(codegen->type_table, obj->data.postfix.left) : NULL;
+            GrayType *ptr_t = typetable_get(codegen->type_table, obj->data.postfix.left);
             if (ptr_t && ptr_t->kind == TK_POINTER && ptr_t->element_type) sn = ptr_t->element_type;
             if (!sn) {
                 for (int si = 0; si < codegen->func_count && !sn; si++) {
@@ -8760,9 +8728,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         continue;
                     }
                     /* Auto-convert GrayString to char* for C functions */
-                    GrayType *arg_t = codegen->type_table
-                        ? typetable_get(codegen->type_table, arg)
-                        : NULL;
+                    GrayType *arg_t = typetable_get(codegen->type_table, arg);
                     if (arg_t && arg_t->kind == TK_STRING) {
                         emit_expression(codegen, arg);
                         emit(codegen, ".data");
@@ -8808,7 +8774,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                  * through the field access. We get here when the variable
                  * has a struct type but neither <struct>_<member> nor
                  * bare <member> is a registered function. */
-                GrayType *inst_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
+                GrayType *inst_t = typetable_get(codegen->type_table, obj);
                 /* Save pointer flag before fallback may overwrite inst_t with TK_STRUCT */
                 obj_is_ptr = inst_t && inst_t->kind == TK_POINTER;
                 /* If type table missed, scan var decls for a new() initializer */
@@ -8938,8 +8904,7 @@ static bool emit_namespaced_call(CodeGen *codegen, AstNode *node) {
                         }
                         const char *ptn = ns_func->data.func_decl.params[pi].type_name;
                         if (!ptn || !strchr(ptn, '?')) continue;
-                        GrayType *arg_type = codegen->type_table
-                            ? typetable_get(codegen->type_table, node->data.call.args[pi]) : NULL;
+                        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[pi]);
                         if (!arg_type) continue;
                         if (strcmp(ptn, "?") == 0) {
                             const char *type_str = type_name(arg_type);
@@ -9195,8 +9160,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 }
                 const char *param_type_name = target_func->data.func_decl.params[param_index].type_name;
                 if (!param_type_name || !strchr(param_type_name, '?')) continue;
-                GrayType *arg_type = codegen->type_table
-                    ? typetable_get(codegen->type_table, node->data.call.args[param_index]) : NULL;
+                GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[param_index]);
                 if (!arg_type) continue;
                 if (strcmp(param_type_name, "?") == 0) {
                     /* Inside a generic body the arg's typetable entry is still
@@ -9246,8 +9210,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
          * when no signature is available (bare-func paths). */
         int nargs = node->data.call.arg_count;
         GrayFuncSig *typed_sig = NULL;
-        GrayType *callee_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.call.function) : NULL;
+        GrayType *callee_t = typetable_get(codegen->type_table, node->data.call.function);
         if (callee_t && callee_t->kind == TK_FUNCTION) {
             typed_sig = callee_t->func_sig;
         }
@@ -9309,7 +9272,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 c_ret = multi_ret_buf;
             }
         } else {
-            GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+            GrayType *ret_t = typetable_get(codegen->type_table, node);
             if (ret_t && ret_t->kind != TK_UNKNOWN) c_ret = gray_type_to_c_codegen(codegen, type_name(ret_t));
             if (ret_t && ret_t->kind == TK_VOID) c_ret = "void";
         }
@@ -9332,7 +9295,7 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
                 emit(codegen, gray_type_to_c_codegen(codegen, typed_sig->param_types[i]));
                 if (mut_p) emit(codegen, " *");
             } else if (i < nargs) {
-                GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[i]) : NULL;
+                GrayType *arg_t = typetable_get(codegen->type_table, node->data.call.args[i]);
                 if (arg_t && arg_t->kind != TK_UNKNOWN) {
                     emit(codegen, gray_type_to_c_codegen(codegen, type_name(arg_t)));
                     if (mut_p) emit(codegen, " *");
@@ -9393,13 +9356,13 @@ static void emit_call_expression_body(CodeGen *codegen, AstNode *node) {
          * directly callable; wrap with a function-pointer cast derived from
          * the call site's arg types and return type. */
         int nargs = node->data.call.arg_count;
-        GrayType *ret_t = codegen->type_table ? typetable_get(codegen->type_table, node) : NULL;
+        GrayType *ret_t = typetable_get(codegen->type_table, node);
         const char *c_ret = (ret_t && ret_t->kind != TK_UNKNOWN) ? gray_type_to_c_codegen(codegen, type_name(ret_t)) : "int64_t";
         if (ret_t && ret_t->kind == TK_VOID) c_ret = "void";
         emit_formatted(codegen, "((%s (*)(", c_ret);
         for (int i = 0; i < nargs; i++) {
             if (i > 0) emit(codegen, ", ");
-            GrayType *arg_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.call.args[i]) : NULL;
+            GrayType *arg_t = typetable_get(codegen->type_table, node->data.call.args[i]);
             if (arg_t && arg_t->kind != TK_UNKNOWN) {
                 emit(codegen, gray_type_to_c_codegen(codegen, type_name(arg_t)));
             } else {
@@ -9671,7 +9634,6 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
     else if (strcmp(target, "u16")  == 0) { is_unsigned = true; smax = "65535"; }
     else if (strcmp(target, "u32")  == 0) { is_unsigned = true; smax = "4294967295ULL"; }
     else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
-             codegen->type_table &&
              typetable_get(codegen->type_table, val) &&
              (typetable_get(codegen->type_table, val)->kind == TK_UNKNOWN ||
               typetable_get(codegen->type_table, val)->kind == TK_C_FUNC)) {
@@ -9788,8 +9750,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
         bool label_init = names_existing_storage(init);
         const char *label_elem_tn = NULL;
         if (label_init) {
-            GrayType *src_t = codegen->type_table
-                ? typetable_get(codegen->type_table, init) : NULL;
+            GrayType *src_t = typetable_get(codegen->type_table, init);
             if (src_t && src_t->kind == TK_ARRAY) {
                 label_elem_tn = src_t->element_type;
             }
@@ -9847,8 +9808,7 @@ static void emit_vardecl_array(CodeGen *codegen, AstNode *node,
          * a struct field, or a container element (e.g. `mut copy [int] = s.field`).
          * Without this, member-expr sources share backing storage with the
          * originating struct field (#1789). */
-        GrayType *src_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.var_decl.value) : NULL;
+        GrayType *src_t = typetable_get(codegen->type_table, node->data.var_decl.value);
         const char *elem_tn = (src_t && src_t->kind == TK_ARRAY)
             ? src_t->element_type : NULL;
         emit_deep_array_copy(codegen, node->data.var_decl.value, elem_tn);
@@ -10179,9 +10139,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
          * calls like `mut a = i128(42)` register correctly when the
          * typetable stores the base type name ("int") rather than the
          * width-specific name ("i128"). */
-        GrayType *vt = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.var_decl.value)
-            : NULL;
+        GrayType *vt = typetable_get(codegen->type_table, node->data.var_decl.value);
         /* An array/map type stores its element type name in ->name (e.g. an
          * inferred [i128] has name "i128"), so gate on the kind too — the var
          * itself is the container, not a wide integer. */
@@ -10234,7 +10192,7 @@ static void emit_variable_declaration(CodeGen *codegen, AstNode *node,
             }
         } else if (val->kind == NODE_INFIX_EXPR) {
             /* Check type table for infix result type */
-            GrayType *infix_t = codegen->type_table ? typetable_get(codegen->type_table, val) : NULL;
+            GrayType *infix_t = typetable_get(codegen->type_table, val);
             if (infix_t && infix_t->kind == TK_STRING) {
                 c_type = "GrayString";
             } else if (infix_t && infix_t->kind == TK_FLOAT) {
@@ -10415,9 +10373,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     if (node->data.assign.is_decl &&
         node->data.assign.target->kind == NODE_LABEL) {
         emit_indent(codegen);
-        GrayType *t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.assign.target)
-            : NULL;
+        GrayType *t = typetable_get(codegen->type_table, node->data.assign.target);
         const char *c_type = t ? gray_type_to_c_codegen(codegen, type_name(t)) : "__auto_type";
         const char *decl_name = node->data.assign.target->data.label.value;
         if (is_new_call(node->data.assign.value)) {
@@ -10494,7 +10450,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Check for array index assignment: arr[i] = value */
     if (node->data.assign.target->kind == NODE_INDEX_EXPR) {
         AstNode *left = node->data.assign.target->data.index_expr.left;
-        GrayType *left_t = codegen->type_table ? typetable_get(codegen->type_table, left) : NULL;
+        GrayType *left_t = typetable_get(codegen->type_table, left);
         if (left_t && left_t->kind == TK_ARRAY) {
             const char *c_elem = "int64_t";
             if (left_t->element_type) {
@@ -10571,7 +10527,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 const char *_set_ptr_field = NULL;
                 if (left->kind == NODE_MEMBER_EXPR) {
                     AstNode *_sobj = left->data.member.object;
-                    GrayType *_sobj_t = codegen->type_table ? typetable_get(codegen->type_table, _sobj) : NULL;
+                    GrayType *_sobj_t = typetable_get(codegen->type_table, _sobj);
                     if (_sobj_t && _sobj_t->kind == TK_POINTER) {
                         _set_ptr_obj = _sobj;
                         _set_ptr_field = left->data.member.member;
@@ -10773,7 +10729,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             AstNode *map_ptr_obj = NULL;
             if (left->kind == NODE_MEMBER_EXPR) {
                 AstNode *obj = left->data.member.object;
-                GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
+                GrayType *obj_t = typetable_get(codegen->type_table, obj);
                 if (obj_t && obj_t->kind == TK_POINTER) {
                     map_ptr_obj = obj;
                 } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
@@ -10947,7 +10903,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     if (node->data.assign.target->kind == NODE_POSTFIX_EXPR &&
         node->data.assign.target->data.postfix.op == TOK_CARET) {
         AstNode *ptr_node = node->data.assign.target->data.postfix.left;
-        GrayType *ptr_t = codegen->type_table ? typetable_get(codegen->type_table, ptr_node) : NULL;
+        GrayType *ptr_t = typetable_get(codegen->type_table, ptr_node);
         const char *bi_elem = (ptr_t && ptr_t->kind == TK_POINTER && ptr_t->element_type &&
                                is_bigint_type(ptr_t->element_type))
                               ? ptr_t->element_type : NULL;
@@ -10996,7 +10952,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         }
         if (node->data.assign.op == TOK_ASSIGN && ptr->kind == NODE_LABEL &&
             is_heap_variable(codegen, ptr->data.label.value)) {
-            GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+            GrayType *field_t = typetable_get(codegen->type_table, node->data.assign.target);
             if (field_type_needs_arena_escape(field_t)) {
                 emit_heap_escaped_field_assign(codegen, node, _ref2);
                 emit(codegen, "; }\n");
@@ -11019,7 +10975,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         while (cur->kind == NODE_MEMBER_EXPR && depth < MAX_MEMBER_CHAIN) {
             chain[depth++] = cur->data.member.member;
             AstNode *obj = cur->data.member.object;
-            GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
+            GrayType *obj_t = typetable_get(codegen->type_table, obj);
             if (obj_t && obj_t->kind == TK_POINTER &&
                 !(obj->kind == NODE_LABEL && is_reference_variable(codegen, obj->data.label.value))) {
                 ptr_root = obj;
@@ -11057,7 +11013,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Pointer field assignment: p.field = value (where p is ptr<T>) → nil check + p->field = value */
     if (node->data.assign.target->kind == NODE_MEMBER_EXPR) {
         AstNode *obj = node->data.assign.target->data.member.object;
-        GrayType *obj_t = codegen->type_table ? typetable_get(codegen->type_table, obj) : NULL;
+        GrayType *obj_t = typetable_get(codegen->type_table, obj);
         bool is_ref = (obj->kind == NODE_LABEL && is_reference_variable(codegen, obj->data.label.value));
         bool _pf_raw = (obj->kind == NODE_LABEL && is_raw_variable(codegen, obj->data.label.value));
         if (!is_ref && obj_t && obj_t->kind == TK_POINTER) {
@@ -11067,7 +11023,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
              * too, not in the current function's own scoped arena. */
             if (node->data.assign.op == TOK_ASSIGN && obj->kind == NODE_LABEL &&
                 is_heap_variable(codegen, obj->data.label.value)) {
-                GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+                GrayType *field_t = typetable_get(codegen->type_table, node->data.assign.target);
                 if (field_type_needs_arena_escape(field_t)) {
                     emit(codegen, "{ __auto_type _dp = ");
                     emit_expression(codegen, obj);
@@ -11087,7 +11043,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
              * scoped block (if/loop), deep-copy to the outer arena so the
              * data survives the block's arena destruction. */
             if (node->data.assign.op == TOK_ASSIGN && codegen->loop_scope_depth > 0) {
-                GrayType *field_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+                GrayType *field_t = typetable_get(codegen->type_table, node->data.assign.target);
                 if (field_t && field_t->kind == TK_ARRAY) {
                     char type_str[MSG_BUF_SIZE];
                     snprintf(type_str, sizeof(type_str), "[%s]", field_t->element_type ? field_t->element_type : "");
@@ -11148,7 +11104,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * result survives the iteration arena's destruction (mirrors the
      * plain '=' string escape below). */
     if (node->data.assign.op == TOK_PLUS_ASSIGN) {
-        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_t && tgt_t->kind == TK_STRING) {
             const char *arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
             emit(codegen, "{ GrayString *_tgt = &(");
@@ -11168,7 +11124,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         bool is_arith_compound = (aop == TOK_PLUS_ASSIGN || aop == TOK_MINUS_ASSIGN || aop == TOK_ASTERISK_ASSIGN);
         bool is_div_compound = (aop == TOK_SLASH_ASSIGN || aop == TOK_PERCENT_ASSIGN);
         if (is_arith_compound || is_div_compound) {
-            GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+            GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
             const char *sn = (tgt_t && tgt_t->name) ? tgt_t->name : NULL;
             /* Wide integer compound assignment: emit bigint op functions */
             const char *tgt_bi = sn && is_bigint_type(sn) ? sn
@@ -11279,7 +11235,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * the outer arena: the target variable outlives the block, so a copy
      * made in the block's arena dangles once that arena is destroyed. */
     if (node->data.assign.op == TOK_ASSIGN) {
-        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_t && tgt_t->kind == TK_ARRAY) {
             int tag = codegen_next_id(codegen);
             char src_var[VAR_NAME_BUF];
@@ -11365,8 +11321,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * the += path above). Pointer-object fields already returned earlier. */
     if (codegen->loop_scope_depth > 0 && node->data.assign.op == TOK_ASSIGN &&
         node->data.assign.target->kind == NODE_MEMBER_EXPR) {
-        GrayType *tgt_t = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_t && tgt_t->kind == TK_STRING) {
             emit(codegen, "{ GrayString *_tgt = &(");
             emit_expression(codegen, node->data.assign.target);
@@ -11382,7 +11337,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * arena so it survives the iteration arena's destruction. */
     if (codegen->loop_scope_depth > 0 && node->data.assign.op == TOK_ASSIGN &&
         node->data.assign.target->kind == NODE_LABEL) {
-        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_t && tgt_t->kind == TK_STRING) {
             emit(codegen, "{ GrayString _esc_v = ");
             emit_expression(codegen, node->data.assign.value);
@@ -11411,8 +11366,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * target must be wrapped with the matching constructor. */
     const char *assign_bi = NULL;
     if (node->data.assign.op == TOK_ASSIGN) {
-        GrayType *tgt_bt = codegen->type_table
-            ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_bt = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_bt && tgt_bt->name && is_bigint_type(tgt_bt->name))
             assign_bi = tgt_bt->name;
     }
@@ -11420,7 +11374,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
         /* emitted */
     } else if (node->data.assign.value->kind == NODE_LABEL &&
         is_reference_variable(codegen, node->data.assign.value->data.label.value)) {
-        GrayType *tgt_t = codegen->type_table ? typetable_get(codegen->type_table, node->data.assign.target) : NULL;
+        GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
         if (tgt_t && tgt_t->kind == TK_POINTER) {
             emit(codegen, node->data.assign.value->data.label.value);
         } else {
@@ -11923,7 +11877,7 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
 static bool cg_expr_is_string(CodeGen *codegen, AstNode *e) {
     if (!e) return false;
     if (e->kind == NODE_STRING_VALUE || e->kind == NODE_INTERPOLATED_STRING) return true;
-    GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+    GrayType *t = typetable_get(codegen->type_table, e);
     return t && t->kind == TK_STRING;
 }
 
@@ -11978,7 +11932,7 @@ static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
             AstNode *v = s->data.var_decl.value;
             if (!v) return true;
             if (!cg_expr_alloc_free(codegen, v)) return false;
-            GrayType *vt = codegen->type_table ? typetable_get(codegen->type_table, v) : NULL;
+            GrayType *vt = typetable_get(codegen->type_table, v);
             return cg_type_is_copy_free(vt);
         }
         case NODE_ASSIGN_STMT: {
@@ -11988,8 +11942,7 @@ static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
             if (s->data.assign.op == TOK_PLUS_ASSIGN
                 && cg_expr_is_string(codegen, s->data.assign.target))
                 return false;
-            GrayType *tt = codegen->type_table
-                ? typetable_get(codegen->type_table, s->data.assign.target) : NULL;
+            GrayType *tt = typetable_get(codegen->type_table, s->data.assign.target);
             return cg_type_is_copy_free(tt);
         }
         case NODE_EXPR_STMT:
@@ -12677,7 +12630,7 @@ static bool expr_needs_panic_location(CodeGen *codegen, AstNode *e) {
         return expr_needs_panic_location(codegen, e->data.postfix.left);
     case NODE_INFIX_EXPR: {
         /* String '+' lowers to gray_string_concat, which allocates. */
-        GrayType *t = codegen->type_table ? typetable_get(codegen->type_table, e) : NULL;
+        GrayType *t = typetable_get(codegen->type_table, e);
         if (t && t->kind == TK_STRING) return true;
         return expr_needs_panic_location(codegen, e->data.infix.left) ||
                expr_needs_panic_location(codegen, e->data.infix.right);
@@ -12851,7 +12804,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
         emit_loop_arena_prologue(codegen, false);
         emit_indent(codegen);
         AstNode *coll = node->data.for_each.collection;
-        GrayType *coll_t = codegen->type_table ? typetable_get(codegen->type_table, coll) : NULL;
+        GrayType *coll_t = typetable_get(codegen->type_table, coll);
 
         const char *idx_name = node->data.for_each.index_name;
         if (!idx_name) idx_name = "_gray_idx";
@@ -12932,7 +12885,7 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
     case NODE_WHEN_STMT: {
         /* Emit as if-else chain for now (switch requires constant values) */
         AstNode *val = node->data.when_stmt.value;
-        GrayType *when_val_t = codegen->type_table ? typetable_get(codegen->type_table, val) : NULL;
+        GrayType *when_val_t = typetable_get(codegen->type_table, val);
         bool when_is_string = (when_val_t && when_val_t->kind == TK_STRING);
         bool when_is_tagged = false;
         const char *when_tagged_ename = NULL;
