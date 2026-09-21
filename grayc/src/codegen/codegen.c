@@ -11521,8 +11521,11 @@ static void emit_scratch_arena_unwind(CodeGen *codegen) {
  * An if nested inside a loop only watermarks the iteration arena (no
  * scope_arenas entry of its own), so the innermost live entry here is
  * always that _iter_arena_N; the loop tolerates a stray _if_arena_N
- * (only produced by a top-level if, never inside a loop) for safety. */
+ * (only produced by a top-level if, never inside a loop) for safety.
+ * A loop that opens no iteration arena has nothing to restore, and the
+ * innermost entry then belongs to an enclosing scope that must stay live. */
 static void emit_loop_exit_unwind(CodeGen *codegen) {
+    if (codegen->in_no_arena_loop) return;
     for (int i = codegen->scope_arena_count - 1; i >= 0; i--) {
         ScopeArena *entry = &codegen->scope_arenas[i];
         emit_formatted(codegen, "gray_default_arena = %s; ", entry->saved_var);
@@ -11755,8 +11758,12 @@ static void emit_block(CodeGen *codegen, AstNode *node) {
     }
 }
 
+static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s);
+
 static void emit_if_statement(CodeGen *codegen, AstNode *node) {
-    /* if/otherwise branches free their temporaries on exit. When the if is
+    /* An if that allocates nothing has no temporaries to free and opens no
+     * scope at all. Otherwise, if/otherwise branches free their temporaries
+     * on exit. When the if is
      * nested inside a loop or another scope (loop_scope_depth > 0) there is
      * already a distinct enclosing scratch arena and a separate
      * _gray_outer_arena for escaping writes, so the branch just watermarks
@@ -11766,7 +11773,8 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
      * writes; it keeps the private per-entry arena. */
     int prev_raw_var_count = codegen->raw_var_count;
     int isc = codegen_next_id(codegen);
-    bool scoped = !current_function_uses_caller_arena(codegen);
+    bool scoped = !current_function_uses_caller_arena(codegen) &&
+                  !cg_stmt_alloc_free(codegen, node);
     bool watermark = scoped && codegen->loop_scope_depth > 0;
     emit_indent(codegen);
     emit_formatted(codegen, "{ ");
@@ -11865,11 +11873,12 @@ static void emit_if_statement(CodeGen *codegen, AstNode *node) {
  *
  * A loop body that allocates nothing needs no per-iteration scratch arena:
  * there is no short-lived memory to reclaim, so the reset + arena-pointer
- * swaps (a non-inlined call in the inner loop) are pure overhead. The
- * predicate below is deliberately narrow — straight-line scalar arithmetic
- * and assignment only. Anything it does not positively recognise as
- * allocation-free (a call, any literal, interpolation, a nested scope,
- * control flow) keeps the arena. A wrong "arena-free" answer could only
+ * swaps (a non-inlined call in the inner loop) are pure overhead, and an if
+ * that allocates nothing needs no scope mark. The predicate below is
+ * deliberately narrow — scalar arithmetic, assignment, control flow over
+ * those, and calls to functions on the watermark path. Anything it does not
+ * positively recognise as allocation-free (any other call, any literal,
+ * interpolation) keeps the arena. A wrong "arena-free" answer could only
  * strand a value in the enclosing arena until that scope ends, never
  * corrupt memory — but the conservative answer is always correct and the
  * only cost is a missed optimisation. */
@@ -11892,6 +11901,29 @@ static bool cg_type_is_copy_free(GrayType *t) {
         default:
             return false;
     }
+}
+
+static bool cg_expr_alloc_free(CodeGen *codegen, AstNode *e);
+
+/* A call to a function on the watermark path allocates nothing that outlives
+ * it. Arguments must be allocation-free and copy-free: an array, map or
+ * struct argument is deep-copied into the caller's arena. Not recognised
+ * while function_uses_watermark is scanning a body, so that scan keeps its
+ * no-call rule and cannot recurse through callers of each other. */
+static bool cg_call_alloc_free(CodeGen *codegen, AstNode *e) {
+    if (codegen->watermark_probe) return false;
+    AstNode *fn = e->data.call.function;
+    if (!fn || fn->kind != NODE_LABEL) return false;
+    AstNode *callee = find_function(codegen, fn->data.label.value);
+    if (!callee || callee->data.func_decl.instantiation_count > 0) return false;
+    if (e->data.call.arg_count != callee->data.func_decl.param_count) return false;
+    for (int i = 0; i < e->data.call.arg_count; i++) {
+        if (e->data.call.arg_names && e->data.call.arg_names[i]) return false;
+        AstNode *arg = e->data.call.args[i];
+        if (!cg_expr_alloc_free(codegen, arg)) return false;
+        if (!cg_type_is_copy_free(typetable_get(codegen->type_table, arg))) return false;
+    }
+    return function_uses_watermark(codegen, callee);
 }
 
 static bool cg_expr_alloc_free(CodeGen *codegen, AstNode *e) {
@@ -11918,12 +11950,16 @@ static bool cg_expr_alloc_free(CodeGen *codegen, AstNode *e) {
                 return false;
             return cg_expr_alloc_free(codegen, e->data.infix.left)
                 && cg_expr_alloc_free(codegen, e->data.infix.right);
+        case NODE_CALL_EXPR:
+            return cg_call_alloc_free(codegen, e);
         default:
-            /* calls, new(), array/map/struct literals, interpolation, casts,
+            /* new(), array/map/struct literals, interpolation, casts,
              * ranges, func refs, implicit enums — assume allocation */
             return false;
     }
 }
+
+static bool block_alloc_free(CodeGen *codegen, AstNode *body);
 
 static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
     if (!s) return true;
@@ -11947,9 +11983,30 @@ static bool cg_stmt_alloc_free(CodeGen *codegen, AstNode *s) {
         }
         case NODE_EXPR_STMT:
             return cg_expr_alloc_free(codegen, s->data.expr_stmt.expr);
+        case NODE_IF_STMT:
+            return cg_expr_alloc_free(codegen, s->data.if_stmt.condition)
+                && block_alloc_free(codegen, s->data.if_stmt.consequence)
+                && (!s->data.if_stmt.alternative
+                    || (s->data.if_stmt.alternative->kind == NODE_IF_STMT
+                            ? cg_stmt_alloc_free(codegen, s->data.if_stmt.alternative)
+                            : block_alloc_free(codegen, s->data.if_stmt.alternative)));
+        case NODE_FOR_STMT: {
+            AstNode *iter = s->data.for_stmt.iterable;
+            return iter && iter->kind == NODE_RANGE_EXPR
+                && cg_expr_alloc_free(codegen, iter->data.range_expr.start)
+                && cg_expr_alloc_free(codegen, iter->data.range_expr.end)
+                && cg_expr_alloc_free(codegen, iter->data.range_expr.step)
+                && block_alloc_free(codegen, s->data.for_stmt.body);
+        }
+        case NODE_WHILE_STMT:
+            return cg_expr_alloc_free(codegen, s->data.while_stmt.condition)
+                && block_alloc_free(codegen, s->data.while_stmt.body);
+        case NODE_LOOP_STMT:
+            return block_alloc_free(codegen, s->data.loop_stmt.body);
+        case NODE_BREAK_STMT: case NODE_CONTINUE_STMT:
+            return true;
         default:
-            /* if / when / nested loops / return / break / continue / ensure /
-             * bare block — keep the arena */
+            /* when / for_each / return / ensure / bare block — keep the arena */
             return false;
     }
 }
@@ -11986,22 +12043,24 @@ static bool function_uses_watermark(CodeGen *codegen, AstNode *node) {
 
     AstNode *body = node->data.func_decl.body;
     if (!body || body->kind != NODE_BLOCK_STMT) return false;
-    for (int i = 0; i < body->data.block.count; i++) {
+    codegen->watermark_probe++;
+    bool alloc_free = true;
+    for (int i = 0; i < body->data.block.count && alloc_free; i++) {
         AstNode *s = body->data.block.stmts[i];
         if (s && s->kind == NODE_RETURN_STMT) {
-            for (int j = 0; j < s->data.return_stmt.count; j++)
-                if (!cg_expr_alloc_free(codegen, s->data.return_stmt.values[j]))
-                    return false;
-            continue;
+            for (int j = 0; j < s->data.return_stmt.count && alloc_free; j++)
+                alloc_free = cg_expr_alloc_free(codegen, s->data.return_stmt.values[j]);
+        } else {
+            alloc_free = cg_stmt_alloc_free(codegen, s);
         }
-        if (!cg_stmt_alloc_free(codegen, s)) return false;
     }
-    return true;
+    codegen->watermark_probe--;
+    return alloc_free;
 }
 
-/* True when every statement in a loop body is provably allocation-free, so
+/* True when every statement in a block is provably allocation-free, so
  * codegen can omit all per-iteration and per-loop arena management. */
-static bool loop_body_alloc_free(CodeGen *codegen, AstNode *body) {
+static bool block_alloc_free(CodeGen *codegen, AstNode *body) {
     if (!body || body->kind != NODE_BLOCK_STMT) return false;
     for (int i = 0; i < body->data.block.count; i++) {
         if (!cg_stmt_alloc_free(codegen, body->data.block.stmts[i])) return false;
@@ -12055,7 +12114,10 @@ static void emit_loop_arena_epilogue(CodeGen *codegen, bool no_arena) {
 static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_arena) {
     int prev_raw_var_count = codegen->raw_var_count;
     if (no_arena || current_function_uses_caller_arena(codegen)) {
+        bool prev_no_arena_loop = codegen->in_no_arena_loop;
+        codegen->in_no_arena_loop = true;
         emit_block(codegen, body);
+        codegen->in_no_arena_loop = prev_no_arena_loop;
         codegen->raw_var_count = prev_raw_var_count;
         return;
     }
@@ -12078,7 +12140,7 @@ static void emit_loop_body_with_arena(CodeGen *codegen, AstNode *body, bool no_a
 }
 
 static void emit_for_statement(CodeGen *codegen, AstNode *node) {
-    bool no_arena = loop_body_alloc_free(codegen, node->data.for_stmt.body);
+    bool no_arena = block_alloc_free(codegen, node->data.for_stmt.body);
     emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
 
@@ -12170,7 +12232,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_while_statement(CodeGen *codegen, AstNode *node) {
-    bool no_arena = loop_body_alloc_free(codegen, node->data.while_stmt.body);
+    bool no_arena = block_alloc_free(codegen, node->data.while_stmt.body);
     emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "while (");
@@ -12186,7 +12248,7 @@ static void emit_while_statement(CodeGen *codegen, AstNode *node) {
 }
 
 static void emit_loop_statement(CodeGen *codegen, AstNode *node) {
-    bool no_arena = loop_body_alloc_free(codegen, node->data.loop_stmt.body);
+    bool no_arena = block_alloc_free(codegen, node->data.loop_stmt.body);
     emit_loop_arena_prologue(codegen, no_arena);
     emit_indent(codegen);
     emit(codegen, "for (;;) {\n");

@@ -56,6 +56,15 @@ typedef struct {
      * scoped loop and container mutations need escape-copy logic. */
     int loop_scope_depth;
 
+    /* True while emitting the body of a loop that opens no iteration arena,
+     * so break/continue have no arena pointer to restore. */
+    bool in_no_arena_loop;
+
+    /* Non-zero while function_uses_watermark scans a body: calls are not
+     * treated as allocation-free there, which stops mutually recursive
+     * functions from recursing through the analysis. */
+    int watermark_probe;
+
     /* All function declarations (for mutable param lookup at call sites) */
     AstNode **all_funcs;
     int func_count;
