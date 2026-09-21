@@ -8028,6 +8028,32 @@ static bool path_contains_string_index(TypeChecker *checker, AstNode *e) {
     }
 }
 
+/* Reject an argument to print/println/eprint/eprintln that is not a printable
+ * value. Does nothing for a call with no arguments; the arity check is the
+ * caller's. */
+static void check_print_arg(TypeChecker *checker, AstNode *node, const char *function_name) {
+    if (node->data.call.arg_count < 1) return;
+    GrayType *at = resolve_expression(checker, node->data.call.args[0]);
+    if (at->kind == TK_C_FUNC) {
+        diagnostic_error_code(checker->diag, "E3168",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    }
+    if (at->kind == TK_FUNCTION) {
+        char *msg = typechecker_format(checker,
+            "cannot pass a func reference to '%s()'; func references are not printable values",
+            function_name);
+        tc_err_at(checker, "E5028", node, msg);
+    }
+    if (at->kind == TK_ENUM && at->name && typechecker_enum_is_tagged(checker, at->name)) {
+        diagnostic_error_code_formatted(checker->diag, "E5038",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            enum_display_name(checker, at->name), function_name);
+    }
+    char context[TYPE_NAME_MAX];
+    snprintf(context, sizeof(context), "'%s()' argument", function_name);
+    reject_void_in_context(checker, node->data.call.args[0], at, context);
+}
+
 static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const char *function_name) {
     GrayType *result = &TYPE_UNKNOWN;
     if (typechecker_is_builtin(function_name)) {
@@ -8576,27 +8602,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 function_name, node->data.call.arg_count);
             tc_err_arity(checker, node, msg);
         }
-        if (node->data.call.arg_count >= 1) {
-            GrayType *at = resolve_expression(checker, node->data.call.args[0]);
-            if (at->kind == TK_C_FUNC) {
-                diagnostic_error_code(checker->diag, "E3168",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-            if (at->kind == TK_FUNCTION) {
-                char *msg = typechecker_format(checker,
-                    "cannot pass a func reference to '%s()'; func references are not printable values",
-                    function_name);
-                tc_err_at(checker, "E5028", node, msg);
-            }
-            if (at->kind == TK_ENUM && at->name && typechecker_enum_is_tagged(checker, at->name)) {
-                diagnostic_error_code_formatted(checker->diag, "E5038",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    enum_display_name(checker, at->name), function_name);
-            }
-            char context[TYPE_NAME_MAX];
-            snprintf(context, sizeof(context), "'%s()' argument", function_name);
-            reject_void_in_context(checker, node->data.call.args[0], at, context);
-        }
+        check_print_arg(checker, node, function_name);
         result = &TYPE_VOID;
     } else if (strcmp(function_name, "print") == 0 || strcmp(function_name, "eprint") == 0) {
         /* print/eprint accept exactly 1 argument */
@@ -8606,27 +8612,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
                 function_name, node->data.call.arg_count);
             tc_err_arity(checker, node, msg);
         }
-        if (node->data.call.arg_count >= 1) {
-            GrayType *at = resolve_expression(checker, node->data.call.args[0]);
-            if (at->kind == TK_C_FUNC) {
-                diagnostic_error_code(checker->diag, "E3168",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-            if (at->kind == TK_FUNCTION) {
-                char *msg = typechecker_format(checker,
-                    "cannot pass a func reference to '%s()'; func references are not printable values",
-                    function_name);
-                tc_err_at(checker, "E5028", node, msg);
-            }
-            if (at->kind == TK_ENUM && at->name && typechecker_enum_is_tagged(checker, at->name)) {
-                diagnostic_error_code_formatted(checker->diag, "E5038",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    enum_display_name(checker, at->name), function_name);
-            }
-            char context[TYPE_NAME_MAX];
-            snprintf(context, sizeof(context), "'%s()' argument", function_name);
-            reject_void_in_context(checker, node->data.call.args[0], at, context);
-        }
+        check_print_arg(checker, node, function_name);
         result = &TYPE_VOID;
     } else if (strcmp(function_name, "flush") == 0) {
         if (node->data.call.arg_count != 0) {
