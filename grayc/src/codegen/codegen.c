@@ -1820,6 +1820,9 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
     }
 }
 
+static bool interp_container_needs_value_print(CodeGen *codegen, const GrayType *type);
+static void emit_interpolated_container(CodeGen *codegen, AstNode *part, GrayType *type);
+
 static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
     /* Lower to a single gray_string_concat_n() over all parts: one allocation,
      * one copy per part. (gray_string_format is avoided throughout — its
@@ -1884,6 +1887,10 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ")");
                 break;
             case TK_ARRAY: {
+                if (interp_container_needs_value_print(codegen, part_type)) {
+                    emit_interpolated_container(codegen, part, part_type);
+                    break;
+                }
                 int elem_kind_tag = 0;
                 if (part_type && part_type->element_type) {
                     GrayType *et = type_from_name(part_type->element_type);
@@ -1903,6 +1910,10 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
                 break;
             }
             case TK_MAP: {
+                if (interp_container_needs_value_print(codegen, part_type)) {
+                    emit_interpolated_container(codegen, part, part_type);
+                    break;
+                }
                 int value_kind_tag = 0;
                 if (part_type && part_type->value_type) {
                     GrayType *vt = type_from_name(part_type->value_type);
@@ -4736,7 +4747,8 @@ static AstNode *find_struct_declaration(CodeGen *codegen, const char *name) {
 }
 
 /* Emit C statements that print the value of c_expr (of type t) to stream.
- * stream is "stdout" or "stderr". Handles all types recursively. */
+ * stream is "stdout", "stderr", or the address of a GrayFmtOut, which
+ * collects the text for string interpolation. Handles all types recursively. */
 /* Cycle guard for emit_value_print struct recursion. */
 static const char *emit_value_print_visiting[CYCLE_GUARD_DEPTH];
 static int emit_value_print_depth = 0;
@@ -4744,7 +4756,7 @@ static int emit_value_print_depth = 0;
 static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *type, const char *stream, bool in_container) {
     if (!type || type->kind == TK_UNKNOWN) {
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
         return;
     }
 
@@ -4754,7 +4766,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
     if (type->kind == TK_ENUM && type->name &&
         codegen_enum_is_string(codegen, type->name)) {
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
                stream, c_expr, c_expr);
         return;
     }
@@ -4763,7 +4775,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
      * slot number. */
     if (type->kind == TK_ENUM && codegen_enum_is_error_code(codegen, type->name)) {
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%s\", gray_error_code_name((int64_t)(%s)));\n",
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%s\", gray_error_code_name((int64_t)(%s)));\n",
                stream, c_expr);
         return;
     }
@@ -4773,54 +4785,54 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         if (type->name && is_bigint_type(type->name)) {
             const char *pfx = bigint_prefix(type->name);
             emit_indent(codegen);
-            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); gray_out_printf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
                    pfx, c_expr, stream);
         } else {
             emit_indent(codegen);
-            emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+            emit_formatted(codegen, "gray_out_printf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
         }
         break;
     case TK_UINT:
         if (type->name && is_bigint_type(type->name)) {
             const char *pfx = bigint_prefix(type->name);
             emit_indent(codegen);
-            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); fprintf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
+            emit_formatted(codegen, "{ GrayString _bs = %s_to_string(gray_default_arena, %s); gray_out_printf(%s, \"%%.*s\", (int)_bs.len, _bs.data); }\n",
                    pfx, c_expr, stream);
         } else {
             emit_indent(codegen);
-            emit_formatted(codegen, "fprintf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
+            emit_formatted(codegen, "gray_out_printf(%s, \"%%llu\", (unsigned long long)(%s));\n", stream, c_expr);
         }
         break;
     case TK_FLOAT:
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%g\", (double)(%s));\n", stream, c_expr);
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%g\", (double)(%s));\n", stream, c_expr);
         break;
     case TK_STRING:
         emit_indent(codegen);
         if (in_container) {
-            emit_formatted(codegen, "fprintf(%s, \"\\\"%%.*s\\\"\", (int)(%s).len, (%s).data);\n",
+            emit_formatted(codegen, "gray_out_printf(%s, \"\\\"%%.*s\\\"\", (int)(%s).len, (%s).data);\n",
                    stream, c_expr, c_expr);
         } else {
-            emit_formatted(codegen, "fprintf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
+            emit_formatted(codegen, "gray_out_printf(%s, \"%%.*s\", (int)(%s).len, (%s).data);\n",
                    stream, c_expr, c_expr);
         }
         break;
     case TK_BOOL:
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%s\", (%s) ? \"true\" : \"false\");\n",
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%s\", (%s) ? \"true\" : \"false\");\n",
                stream, c_expr);
         break;
     case TK_CHAR:
         emit_indent(codegen);
         if (in_container) {
-            emit_formatted(codegen, "{ GrayString _cs = gray_builtin_char_to_utf8(gray_default_arena, %s); fprintf(%s, \"'\"); fwrite(_cs.data, 1, (size_t)_cs.len, %s); fprintf(%s, \"'\"); }\n", c_expr, stream, stream, stream);
+            emit_formatted(codegen, "{ GrayString _cs = gray_builtin_char_to_utf8(gray_default_arena, %s); gray_out_printf(%s, \"'\"); gray_out_write(_cs.data, 1, (size_t)_cs.len, %s); gray_out_printf(%s, \"'\"); }\n", c_expr, stream, stream, stream);
         } else {
-            emit_formatted(codegen, "{ GrayString _cs = gray_builtin_char_to_utf8(gray_default_arena, %s); fwrite(_cs.data, 1, (size_t)_cs.len, %s); }\n", c_expr, stream);
+            emit_formatted(codegen, "{ GrayString _cs = gray_builtin_char_to_utf8(gray_default_arena, %s); gray_out_write(_cs.data, 1, (size_t)_cs.len, %s); }\n", c_expr, stream);
         }
         break;
     case TK_NIL:
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"nil\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"nil\");\n", stream);
         break;
     case TK_ARRAY: {
         int uid = _gray_print_uid++;
@@ -4831,13 +4843,13 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         c_elem[sizeof(c_elem) - 1] = '\0';
 
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"{\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"{\");\n", stream);
         emit_indent(codegen);
         emit_formatted(codegen, "for (int32_t _gray_pi%d = 0; _gray_pi%d < (%s).len; _gray_pi%d++) {\n",
                uid, uid, c_expr, uid);
         codegen->indent++;
         emit_indent(codegen);
-        emit_formatted(codegen, "if (_gray_pi%d > 0) fprintf(%s, \", \");\n", uid, stream);
+        emit_formatted(codegen, "if (_gray_pi%d > 0) gray_out_printf(%s, \", \");\n", uid, stream);
 
         /* For composite element types, capture in temp var */
         char elem_expr[MSG_BUF_SIZE];
@@ -4859,7 +4871,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_indent(codegen);
         emit(codegen, "}\n");
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"}\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"}\");\n", stream);
         break;
     }
     case TK_MAP: {
@@ -4880,9 +4892,9 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         snprintf(fst, sizeof(fst), "_gray_fst%d", uid);
 
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"{\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"{\");\n", stream);
         emit_indent(codegen);
-        emit_formatted(codegen, "if ((%s).count == 0) fprintf(%s, \":\");\n", c_expr, stream);
+        emit_formatted(codegen, "if ((%s).count == 0) gray_out_printf(%s, \":\");\n", c_expr, stream);
         emit_indent(codegen);
         emit_formatted(codegen, "bool %s = true;\n", fst);
         emit_indent(codegen);
@@ -4894,7 +4906,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_indent(codegen);
         emit_formatted(codegen, "if (%s < 0) continue;\n", sl);
         emit_indent(codegen);
-        emit_formatted(codegen, "if (!%s) fprintf(%s, \", \");\n", fst, stream);
+        emit_formatted(codegen, "if (!%s) gray_out_printf(%s, \", \");\n", fst, stream);
         emit_indent(codegen);
         emit_formatted(codegen, "%s = false;\n", fst);
 
@@ -4905,7 +4917,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_value_print(codegen, key_expr, key_t, stream, true);
 
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \": \");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \": \");\n", stream);
 
         /* Print value */
         char val_expr[MSG_BUF_SIZE];
@@ -4917,7 +4929,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_indent(codegen);
         emit(codegen, "}\n");
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"}\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"}\");\n", stream);
         break;
     }
     case TK_STRUCT: {
@@ -4941,7 +4953,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         for (int _j = 0; _j < emit_value_print_depth; _j++) {
             if (emit_value_print_visiting[_j] && strcmp(emit_value_print_visiting[_j], struct_name) == 0) {
                 emit_indent(codegen);
-                emit_formatted(codegen, "fprintf(%s, \"%s{...}\");\n", stream, display_name);
+                emit_formatted(codegen, "gray_out_printf(%s, \"%s{...}\");\n", stream, display_name);
                 break;
             }
         }
@@ -4956,17 +4968,17 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         if (emit_value_print_depth < CYCLE_GUARD_DEPTH) emit_value_print_visiting[emit_value_print_depth++] = struct_name;
 
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%s{\");\n", stream, display_name);
+        emit_formatted(codegen, "gray_out_printf(%s, \"%s{\");\n", stream, display_name);
 
         if (sdecl) {
             for (int i = 0; i < sdecl->data.struct_decl.field_count; i++) {
                 StructField *field = &sdecl->data.struct_decl.fields[i];
                 if (i > 0) {
                     emit_indent(codegen);
-                    emit_formatted(codegen, "fprintf(%s, \", \");\n", stream);
+                    emit_formatted(codegen, "gray_out_printf(%s, \", \");\n", stream);
                 }
                 emit_indent(codegen);
-                emit_formatted(codegen, "fprintf(%s, \"%s: \");\n", stream, field->name);
+                emit_formatted(codegen, "gray_out_printf(%s, \"%s: \");\n", stream, field->name);
 
                 char field_expr[MSG_BUF_SIZE];
                 snprintf(field_expr, sizeof(field_expr), "(%s).%s", c_expr, field->name);
@@ -4982,10 +4994,10 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
             for (int i = 0; i < 3; i++) {
                 if (i > 0) {
                     emit_indent(codegen);
-                    emit_formatted(codegen, "fprintf(%s, \", \");\n", stream);
+                    emit_formatted(codegen, "gray_out_printf(%s, \", \");\n", stream);
                 }
                 emit_indent(codegen);
-                emit_formatted(codegen, "fprintf(%s, \"%s: \");\n", stream, sl_names[i]);
+                emit_formatted(codegen, "gray_out_printf(%s, \"%s: \");\n", stream, sl_names[i]);
                 char field_expr[MSG_BUF_SIZE];
                 snprintf(field_expr, sizeof(field_expr), "(%s).%s", c_expr, sl_names[i]);
                 emit_value_print(codegen, field_expr, type_from_name(sl_types[i]), stream, true);
@@ -4994,7 +5006,7 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
 
         emit_value_print_depth--;
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"}\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"}\");\n", stream);
         break;
     }
     case TK_POINTER: {
@@ -5005,13 +5017,13 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         emit_formatted(codegen, "if ((%s) == NULL) {\n", c_expr);
         codegen->indent++;
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"nil\");\n", stream);
+        emit_formatted(codegen, "gray_out_printf(%s, \"nil\");\n", stream);
         codegen->indent--;
         emit_indent(codegen);
         emit(codegen, "} else {\n");
         codegen->indent++;
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"0x%%\" PRIxPTR, (uintptr_t)(%s));\n", stream, c_expr);
+        emit_formatted(codegen, "gray_out_printf(%s, \"0x%%\" PRIxPTR, (uintptr_t)(%s));\n", stream, c_expr);
         codegen->indent--;
         emit_indent(codegen);
         emit(codegen, "}\n");
@@ -5019,9 +5031,48 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
     }
     default:
         emit_indent(codegen);
-        emit_formatted(codegen, "fprintf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
+        emit_formatted(codegen, "gray_out_printf(%s, \"%%lld\", (long long)(%s));\n", stream, c_expr);
         break;
     }
+}
+
+/* Can gray_builtin_array_to_string / gray_builtin_map_to_string, which read one
+ * scalar per element, render this container? They cannot when an element or
+ * value is itself an array, map, struct or pointer, nor when a map key is not
+ * text: those go through emit_value_print, the formatter println uses. */
+static bool interp_container_needs_value_print(CodeGen *codegen, const GrayType *type) {
+    if (!type) return false;
+    const char *nested[2] = { NULL, NULL };
+    if (type->kind == TK_ARRAY) {
+        nested[0] = type->element_type;
+    } else if (type->kind == TK_MAP) {
+        nested[0] = type->value_type;
+        GrayType *key_t = type->key_type ? type_from_name(type->key_type) : NULL;
+        bool string_key = key_t && (key_t->kind == TK_STRING ||
+            (key_t->kind == TK_ENUM && codegen_enum_is_string(codegen, type->key_type)));
+        if (key_t && !string_key) return true;
+    } else {
+        return false;
+    }
+    if (!nested[0]) return false;
+    GrayType *inner = type_from_name(nested[0]);
+    if (inner->kind == TK_STRUCT) return !codegen_is_enum(codegen, nested[0]);
+    return inner->kind == TK_ARRAY || inner->kind == TK_MAP || inner->kind == TK_POINTER;
+}
+
+/* Interpolate an array or map with the code println prints it with, collected
+ * into a GrayString instead of written to a stream. */
+static void emit_interpolated_container(CodeGen *codegen, AstNode *part, GrayType *type) {
+    int uid = _gray_print_uid++;
+    emit_formatted(codegen, "({ GrayFmtOut _gray_fo%d = {0}; %s _gray_pv%d = ", uid,
+                   type->kind == TK_ARRAY ? "GrayArray" : "GrayMap", uid);
+    emit_expression(codegen, part);
+    emit(codegen, ";\n");
+    char var[SHORT_VAR_BUF], sink[SHORT_VAR_BUF];
+    snprintf(var, sizeof(var), "_gray_pv%d", uid);
+    snprintf(sink, sizeof(sink), "&_gray_fo%d", uid);
+    emit_value_print(codegen, var, type, sink, false);
+    emit_formatted(codegen, "gray_fmt_out_finish(gray_default_arena, &_gray_fo%d); })", uid);
 }
 
 /* Try to emit a composite type print. Returns true if handled. */

@@ -13,6 +13,7 @@
 #include "../runtime/platform_rt.h"
 #include "../util/constants.h"
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
@@ -395,6 +396,52 @@ GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int el
     buf[pos++] = '}';
     buf[pos] = '\0';
     return gray_string_new(arena, buf, (int32_t)pos);
+}
+
+/* --- GrayFmtOut: the in-memory stream generated print code can target --- */
+
+static void fmt_out_reserve(GrayFmtOut *out, size_t extra) {
+    if (out->len + extra + 1 <= out->cap) return;
+    size_t cap = out->cap ? out->cap * 2 : 128;
+    while (cap < out->len + extra + 1) cap *= 2;
+    out->data = realloc(out->data, cap);
+    if (!out->data) {
+        fprintf(stderr, "grayc: out of memory\n");
+        exit(1);
+    }
+    out->cap = cap;
+}
+
+int gray_fmt_out_printf(GrayFmtOut *out, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    int needed = vsnprintf(NULL, 0, format, args);
+    va_end(args);
+    if (needed < 0) return needed;
+
+    fmt_out_reserve(out, (size_t)needed);
+    va_start(args, format);
+    vsnprintf(out->data + out->len, (size_t)needed + 1, format, args);
+    va_end(args);
+    out->len += (size_t)needed;
+    return needed;
+}
+
+size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *out) {
+    size_t total = size * count;
+    fmt_out_reserve(out, total);
+    memcpy(out->data + out->len, data, total);
+    out->len += total;
+    out->data[out->len] = '\0';
+    return count;
+}
+
+GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *out) {
+    GrayString result = gray_string_new(arena, out->data ? out->data : "", (int32_t)out->len);
+    free(out->data);
+    out->data = NULL;
+    out->len = out->cap = 0;
+    return result;
 }
 
 /* --- to_char / char_count — Unicode codepoint access --- */
