@@ -5924,6 +5924,17 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             } else {
                 result = type_array("int");
             }
+        } else if (strcmp(mfn, "split_every") == 0 || strcmp(mfn, "pair") == 0) {
+            /* [[T]] for the element type T of the input array. */
+            result = type_array("[int]");
+            if (node->data.call.arg_count > 0) {
+                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+                if (arr_t && arr_t->element_type) {
+                    char chunk[MSG_BUF_SIZE];
+                    snprintf(chunk, sizeof(chunk), "[%s]", arr_t->element_type);
+                    result = type_array(arena_copy_string(checker->arena, chunk));
+                }
+            }
         } else if (strcmp(mfn, "get_first") == 0 || strcmp(mfn, "get_last") == 0 ||
                    strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "remove_first") == 0 ||
                    strcmp(mfn, "reduce") == 0) {

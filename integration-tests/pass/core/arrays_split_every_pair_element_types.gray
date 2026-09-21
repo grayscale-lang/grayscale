@@ -1,0 +1,48 @@
+// Test: arrays.split_every and arrays.pair return [[T]] for the element type of the input
+import @arrays
+
+const P struct {
+    n int
+}
+
+do main() {
+    mut s [string] = {"a", "b", "c"}
+    mut chunks [[string]] = arrays.split_every(s, 2)
+    if len(chunks) == 2 && chunks[0][1] == "b" && chunks[1][0] == "c" {
+        println("  [PASS] split_every on [string] gives [[string]]")
+    } else {
+        println("  [FAIL] split_every on [string] gives [[string]]")
+    }
+
+    mut pairs [[string]] = arrays.pair(s, s)
+    if len(pairs) == 3 && pairs[2][0] == "c" && pairs[2][1] == "c" {
+        println("  [PASS] pair on [string] gives [[string]]")
+    } else {
+        println("  [FAIL] pair on [string] gives [[string]]")
+    }
+
+    mut inferred = arrays.split_every(s, 2)
+    mut first string = inferred[0][0]
+    if first == "a" {
+        println("  [PASS] an unannotated split_every result keeps its element type")
+    } else {
+        println("  [FAIL] an unannotated split_every result keeps its element type")
+    }
+
+    mut f [float] = {1.5, 2.5, 3.5}
+    mut fchunks [[float]] = arrays.split_every(f, 2)
+    if fchunks[0][1] == 2.5 && fchunks[1][0] == 3.5 {
+        println("  [PASS] split_every on [float] gives [[float]]")
+    } else {
+        println("  [FAIL] split_every on [float] gives [[float]]")
+    }
+
+    mut ps [P] = {P{n: 1}, P{n: 2}, P{n: 3}}
+    mut pchunks [[P]] = arrays.split_every(ps, 2)
+    mut ppairs [[P]] = arrays.pair(ps, ps)
+    if pchunks[0][1].n == 2 && ppairs[1][0].n == 2 {
+        println("  [PASS] split_every and pair on [P] give [[P]]")
+    } else {
+        println("  [FAIL] split_every and pair on [P] give [[P]]")
+    }
+}
