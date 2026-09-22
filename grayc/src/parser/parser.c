@@ -1494,6 +1494,16 @@ static char *make_or_return_temp_name(Arena *arena) {
     return name;
 }
 
+/* `mut <temp_name> = value`, marked synthetic, with the type inferred. */
+static AstNode *make_synthetic_temp_decl(Parser *parser, char *temp_name, AstNode *value) {
+    AstNode *decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
+    decl->data.var_decl.mutable = true;
+    decl->data.var_decl.name = temp_name;
+    decl->data.var_decl.synthetic = true;
+    decl->data.var_decl.value = value;
+    return decl;
+}
+
 /* After the or_return token has been consumed (parser->cur_token IS
  * or_return), parse optional comma-separated fallback expressions written
  * on the same line — e.g. `... or_return -1, -2`. Returns the count and
@@ -1603,13 +1613,8 @@ static AstNode *maybe_apply_or_return(Parser *parser, AstNode *var_decl) {
     block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
     /* _tmp = expr */
-    AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
-    tmp_decl->data.var_decl.mutable = true;
-    tmp_decl->data.var_decl.name = tmp_name;
-    tmp_decl->data.var_decl.synthetic = true;
-    tmp_decl->data.var_decl.type_name = NULL;
-    tmp_decl->data.var_decl.value = var_decl->data.var_decl.value;
-    block->data.block.stmts[block->data.block.count++] = tmp_decl;
+    block->data.block.stmts[block->data.block.count++] =
+        make_synthetic_temp_decl(parser, tmp_name, var_decl->data.var_decl.value);
 
     block->data.block.stmts[block->data.block.count++] =
         build_or_return_guard(parser, tmp_name, fallback_buf, fallback_count);
@@ -1830,13 +1835,8 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
             block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
             /* temp _tmp = value */
-            AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
-            tmp_decl->data.var_decl.mutable = true;
-            tmp_decl->data.var_decl.name = tmp_name;
-            tmp_decl->data.var_decl.synthetic = true;
-            tmp_decl->data.var_decl.type_name = NULL;
-            tmp_decl->data.var_decl.value = value;
-            block->data.block.stmts[block->data.block.count++] = tmp_decl;
+            block->data.block.stmts[block->data.block.count++] =
+                make_synthetic_temp_decl(parser, tmp_name, value);
 
             if (has_or_return) {
                 block->data.block.stmts[block->data.block.count++] =
@@ -3884,13 +3884,8 @@ static AstNode *parse_statement(Parser *parser) {
             block->data.block.count = 0;
             block->data.block.stmts = arena_alloc(parser->arena, sizeof(AstNode *) * block->data.block.cap);
 
-            AstNode *tmp_decl = ast_alloc(parser->arena, NODE_VAR_DECL, parser->cur_token);
-            tmp_decl->data.var_decl.mutable = true;
-            tmp_decl->data.var_decl.name = tmp_name;
-            tmp_decl->data.var_decl.synthetic = true;
-            tmp_decl->data.var_decl.type_name = NULL;
-            tmp_decl->data.var_decl.value = expr;
-            block->data.block.stmts[block->data.block.count++] = tmp_decl;
+            block->data.block.stmts[block->data.block.count++] =
+                make_synthetic_temp_decl(parser, tmp_name, expr);
 
             block->data.block.stmts[block->data.block.count++] =
                 build_or_return_guard(parser, tmp_name, fallback_buf, fallback_count);
