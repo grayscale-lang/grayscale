@@ -1,0 +1,42 @@
+/*
+ * Regression test for #2821: a map index assignment or arrays.append
+ * through a module-qualified path mutates the existing container, it does
+ * not reassign the module variable itself, so it must not be rejected by
+ * E6008 the way a full reassignment (registry.keys = {:}) still is.
+ */
+import "./registry.gray"
+import @arrays
+
+do record(name string) {
+    registry.keys[name] = 1
+    arrays.append(registry.names, name)
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    record("a")
+    record("b")
+
+    if registry.keys["a"] == 1 && registry.keys["b"] == 1 {
+        passed += 1
+    } otherwise {
+        println("[FAIL] map index assignment through a module-qualified path")
+        failed += 1
+    }
+
+    if len(registry.names) == 2 && registry.names[0] == "a" && registry.names[1] == "b" {
+        passed += 1
+    } otherwise {
+        println("[FAIL] arrays.append through a module-qualified path")
+        failed += 1
+    }
+
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

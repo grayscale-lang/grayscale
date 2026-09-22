@@ -3903,13 +3903,22 @@ static const char *target_root_display(TypeChecker *checker, AstNode *target) {
                               ref->data.member.member);
 }
 
-/* E6008: a write that reaches a `mut` module variable through a qualified
- * path (`lib.X.f = v`, `lib.X[i] = v`, `arrays.append(lib.X, v)`); the
- * variable is read-only from outside its module. A constant is not reported
- * here: the caller reports it with the code its position calls for. */
+/* E6008: a write that rebinds a `mut` module variable itself through a
+ * qualified path — a full reassignment (`lib.X = v`) or a write to one of
+ * its own fields (`lib.X.f = v`); the variable is read-only from outside
+ * its module. A write through an index into a container the variable
+ * already holds (`lib.X[i] = v`) mutates existing storage, not `lib.X`
+ * itself, and is left alone: walking from `place` down to the module
+ * reference must cross only member accesses, never an index. A constant is
+ * not reported here: the caller reports it with the code its position
+ * calls for. */
 static bool report_write_to_module_variable(TypeChecker *checker, AstNode *at, AstNode *place) {
     AstNode *ref = target_root_module_ref(checker, place);
-    Symbol *sym = ref ? qualified_module_symbol(checker, ref) : NULL;
+    if (!ref) return false;
+    for (AstNode *n = place; n != ref; n = n->data.member.object) {
+        if (n->kind != NODE_MEMBER_EXPR) return false;
+    }
+    Symbol *sym = qualified_module_symbol(checker, ref);
     if (!sym || !sym->mutable) return false;
     diagnostic_error_code_formatted(checker->diag, "E6008",
         NODE_FILE(checker, at), at->token.line, at->token.column, 0,
@@ -6040,7 +6049,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "map", arg0->data.label.value);
                 }
-            } else if (!report_write_to_module_variable(checker, node, arg0)) {
+            } else {
                 report_write_to_module_constant(checker, node, arg0, "map");
             }
         }
@@ -6159,7 +6168,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                         NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                         "array", arg0->data.label.value);
                 }
-            } else if (!report_write_to_module_variable(checker, node, arg0)) {
+            } else {
                 report_write_to_module_constant(checker, node, arg0, "array");
             }
         }
