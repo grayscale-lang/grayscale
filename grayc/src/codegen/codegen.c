@@ -3808,12 +3808,12 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         } else if (node->data.index_expr.left->kind == NODE_POSTFIX_EXPR &&
                    node->data.index_expr.left->data.postfix.op == TOK_CARET) {
             /* p^[i]: direct dereference of container pointer */
-            AstNode *_dp_inner = node->data.index_expr.left->data.postfix.left;
-            bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
+            AstNode *array_pointer = node->data.index_expr.left->data.postfix.left;
+            bool array_pointer_is_raw = (array_pointer->kind == NODE_LABEL && is_raw_variable(codegen, array_pointer->data.label.value));
             int temp_id = codegen_next_id(codegen);
             emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, temp_id);
-            emit_expression(codegen, _dp_inner);
-            if (_dp_raw) {
+            emit_expression(codegen, array_pointer);
+            if (array_pointer_is_raw) {
                 emit_formatted(codegen, "; gray_array_get_ptr(_adp%d, ", temp_id);
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
@@ -10565,38 +10565,38 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
              * GCC statement expression (rvalue); GRAY_ARRAY_SET's &(arr) would fail.
              * Inline the nil check and use _dp->field directly as an assignable target. */
             {
-                AstNode *_set_ptr_obj = NULL;
-                const char *_set_ptr_field = NULL;
+                AstNode *struct_pointer = NULL;
+                const char *array_field_name = NULL;
                 if (left->kind == NODE_MEMBER_EXPR) {
-                    AstNode *_sobj = left->data.member.object;
-                    GrayType *_sobj_t = typetable_get(codegen->type_table, _sobj);
-                    if (_sobj_t && _sobj_t->kind == TK_POINTER) {
-                        _set_ptr_obj = _sobj;
-                        _set_ptr_field = left->data.member.member;
-                    } else if (_sobj->kind == NODE_POSTFIX_EXPR &&
-                               _sobj->data.postfix.op == TOK_CARET) {
-                        _set_ptr_obj = _sobj->data.postfix.left;
-                        _set_ptr_field = left->data.member.member;
+                    AstNode *member_object = left->data.member.object;
+                    GrayType *member_object_type = typetable_get(codegen->type_table, member_object);
+                    if (member_object_type && member_object_type->kind == TK_POINTER) {
+                        struct_pointer = member_object;
+                        array_field_name = left->data.member.member;
+                    } else if (member_object->kind == NODE_POSTFIX_EXPR &&
+                               member_object->data.postfix.op == TOK_CARET) {
+                        struct_pointer = member_object->data.postfix.left;
+                        array_field_name = left->data.member.member;
                     }
                 }
-                if (_set_ptr_obj) {
-                    bool _set_raw = (_set_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, _set_ptr_obj->data.label.value));
+                if (struct_pointer) {
+                    bool struct_pointer_is_raw = (struct_pointer->kind == NODE_LABEL && is_raw_variable(codegen, struct_pointer->data.label.value));
                     int temp_id = codegen_next_id(codegen);
                     emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
-                    emit_expression(codegen, _set_ptr_obj);
-                    if (_set_raw) {
+                    emit_expression(codegen, struct_pointer);
+                    if (struct_pointer_is_raw) {
                         emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              temp_id, sanitize_name(_set_ptr_field), c_elem);
+                              temp_id, sanitize_name(array_field_name), c_elem);
                     } else {
                         emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
                                   "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(_set_ptr_field), c_elem);
+                              temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(array_field_name), c_elem);
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
                     if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                         emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
-                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(_set_ptr_field));
+                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(array_field_name));
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
@@ -10605,7 +10605,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         const char *binop = "+";
                         if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
                         else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(_set_ptr_field), c_elem);
+                        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(array_field_name), c_elem);
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
                         emit_expression(codegen, node->data.assign.value);
@@ -10619,12 +10619,12 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             }
             /* p^[i] = v: direct dereference of array pointer */
             if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
-                AstNode *_dp_inner = left->data.postfix.left;
-                bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
+                AstNode *array_pointer = left->data.postfix.left;
+                bool array_pointer_is_raw = (array_pointer->kind == NODE_LABEL && is_raw_variable(codegen, array_pointer->data.label.value));
                 int temp_id = codegen_next_id(codegen);
                 emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
-                emit_expression(codegen, _dp_inner);
-                if (_dp_raw) {
+                emit_expression(codegen, array_pointer);
+                if (array_pointer_is_raw) {
                     emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
                           temp_id, c_elem);
                 } else {
