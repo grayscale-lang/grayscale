@@ -238,6 +238,19 @@ static void synchronize_parser(Parser *parser) {
     }
 }
 
+/* E4027: a reserved keyword written where `what` (e.g. "a variable name") is
+ * expected. Emits at `token` and synchronizes; returns true on a match. */
+static bool reject_keyword_as_name(Parser *parser, const Token *token, const char *what) {
+    if (!is_keyword_token(token->type)) return false;
+    char msg[MSG_BUF_SIZE];
+    snprintf(msg, sizeof(msg), "'%s' is a reserved keyword and cannot be used as %s",
+        token->literal, what);
+    diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
+        parser->file, token->line, token->column, 0);
+    synchronize_parser(parser);
+    return true;
+}
+
 /* --- Speculative-parse snapshots ---
  * Save the full lexer + token position, try a parse that may not pan out, and
  * restore on failure. Used wherever the grammar needs unbounded lookahead:
@@ -1681,17 +1694,10 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
 
         if (peek_token_is(parser, TOK_IDENT) || peek_token_is(parser, TOK_BLANK)) {
             next_token(parser);
-        } else if (is_keyword_token(parser->peek_token.type)) {
-            char msg[MSG_BUF_SIZE];
-            snprintf(msg, sizeof(msg),
-                "'%s' is a reserved keyword and cannot be used as a variable name",
-                parser->peek_token.literal);
-            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-                parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-            synchronize_parser(parser);
-            return NULL;
         } else {
-            expect_peek_token(parser, TOK_IDENT); /* will error */
+            if (!reject_keyword_as_name(parser, &parser->peek_token, "a variable name")) {
+                expect_peek_token(parser, TOK_IDENT); /* will error */
+            }
             return NULL;
         }
     }
@@ -1765,17 +1771,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
                  * this check a keyword is taken as the name and the token
                  * after it consumed as a type annotation. */
                 if (!peek_token_is(parser, TOK_IDENT) && !peek_token_is(parser, TOK_BLANK)) {
-                    if (is_keyword_token(parser->peek_token.type)) {
-                        char msg[MSG_BUF_SIZE];
-                        snprintf(msg, sizeof(msg),
-                            "'%s' is a reserved keyword and cannot be used as a variable name",
-                            parser->peek_token.literal);
-                        diagnostic_error_message(parser->diag, "E4027",
-                            arena_copy_string(parser->arena, msg),
-                            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-                        synchronize_parser(parser);
-                        return NULL;
-                    }
+                    if (reject_keyword_as_name(parser, &parser->peek_token, "a variable name")) return NULL;
                     expect_peek_token(parser, TOK_IDENT); /* will error */
                     return NULL;
                 }
@@ -1952,16 +1948,7 @@ static AstNode *parse_block_statement(Parser *parser) {
 static AstNode *parse_func_declaration(Parser *parser) {
     AstNode *node = ast_alloc(parser->arena, NODE_FUNC_DECL, parser->cur_token);
 
-    if (is_keyword_token(parser->peek_token.type)) {
-        char msg[MSG_BUF_SIZE];
-        snprintf(msg, sizeof(msg),
-            "'%s' is a reserved keyword and cannot be used as a function name",
-            parser->peek_token.literal);
-        diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-            parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-        synchronize_parser(parser);
-        return NULL;
-    }
+    if (reject_keyword_as_name(parser, &parser->peek_token, "a function name")) return NULL;
     if (!expect_peek_token(parser, TOK_IDENT)) return NULL;
     node->data.func_decl.name = parser->cur_token.literal;
 
@@ -2742,14 +2729,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
             ARENA_GROW(parser->arena, node->data.struct_decl.fields,
                 node->data.struct_decl.field_count, field_cap);
             /* Reject reserved keywords and type names as struct field names */
-            if (is_keyword_token(parser->cur_token.type)) {
-                char msg[MSG_BUF_SIZE];
-                snprintf(msg, sizeof(msg),
-                    "'%s' is a reserved keyword and cannot be used as a struct field name",
-                    parser->cur_token.literal);
-                diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-                    parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-                synchronize_parser(parser);
+            if (reject_keyword_as_name(parser, &parser->cur_token, "a struct field name")) {
                 node->data.struct_decl.field_count = group_start;
                 field_name_rejected = true;
                 break;
@@ -2940,16 +2920,7 @@ static AstNode *parse_enum_declaration(Parser *parser) {
         }
 
         /* Reject reserved names as enum variant names */
-        if (is_keyword_token(parser->cur_token.type)) {
-            char msg[MSG_BUF_SIZE];
-            snprintf(msg, sizeof(msg),
-                "'%s' is a reserved keyword and cannot be used as an enum variant name",
-                parser->cur_token.literal);
-            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-                parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-            synchronize_parser(parser);
-            continue;
-        }
+        if (reject_keyword_as_name(parser, &parser->cur_token, "an enum variant name")) continue;
         if (current_token_is(parser, TOK_IDENT) && is_reserved_name(parser->cur_token.literal)) {
             char msg[MSG_BUF_SIZE];
             snprintf(msg, sizeof(msg),
@@ -3077,20 +3048,6 @@ static AstNode *parse_ensure_statement(Parser *parser) {
     return node;
 }
 
-/* Reject a reserved keyword used as a loop variable name. Expects the
- * candidate name at cur_token; emits E4027 and synchronizes on a match. */
-static bool reject_keyword_as_loop_var(Parser *parser) {
-    if (!is_keyword_token(parser->cur_token.type)) return false;
-    char msg[MSG_BUF_SIZE];
-    snprintf(msg, sizeof(msg),
-        "'%s' is a reserved keyword and cannot be used as a loop variable name",
-        parser->cur_token.literal);
-    diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-        parser->file, parser->cur_token.line, parser->cur_token.column, 0);
-    synchronize_parser(parser);
-    return true;
-}
-
 static AstNode *parse_for_statement(Parser *parser) {
     Token for_tok = parser->cur_token;
 
@@ -3133,7 +3090,7 @@ static AstNode *parse_for_statement(Parser *parser) {
          * (A while-style condition may legitimately start with a keyword
          * such as `true`, so only a following `in` marks a binding.) */
         if (is_keyword_token(parser->cur_token.type) && peek_token_is(parser, TOK_IN)) {
-            reject_keyword_as_loop_var(parser);
+            reject_keyword_as_name(parser, &parser->cur_token, "a loop variable name");
             return NULL;
         }
     }
@@ -3156,7 +3113,7 @@ static AstNode *parse_for_each_statement(Parser *parser) {
     bool has_paren = current_token_is(parser, TOK_LPAREN);
     if (has_paren) next_token(parser);
 
-    if (reject_keyword_as_loop_var(parser)) return NULL;
+    if (reject_keyword_as_name(parser, &parser->cur_token, "a loop variable name")) return NULL;
     node->data.for_each.index_name = NULL;
     node->data.for_each.var_name = parser->cur_token.literal;
 
@@ -3165,7 +3122,7 @@ static AstNode *parse_for_each_statement(Parser *parser) {
         node->data.for_each.index_name = node->data.for_each.var_name;
         next_token(parser); /* skip comma */
         next_token(parser);
-        if (reject_keyword_as_loop_var(parser)) return NULL;
+        if (reject_keyword_as_name(parser, &parser->cur_token, "a loop variable name")) return NULL;
         node->data.for_each.var_name = parser->cur_token.literal;
     }
 
@@ -3482,16 +3439,7 @@ static AstNode *parse_statement(Parser *parser) {
     case TOK_MUT:
     case TOK_CONST:
         /* Check for keyword used as name: const for struct / mut for int */
-        if (is_keyword_token(parser->peek_token.type)) {
-            char msg[MSG_BUF_SIZE];
-            snprintf(msg, sizeof(msg),
-                "'%s' is a reserved keyword and cannot be used as a name",
-                parser->peek_token.literal);
-            diagnostic_error_message(parser->diag, "E4027", arena_copy_string(parser->arena, msg),
-                parser->file, parser->peek_token.line, parser->peek_token.column, 0);
-            synchronize_parser(parser);
-            return NULL;
-        }
+        if (reject_keyword_as_name(parser, &parser->peek_token, "a name")) return NULL;
         /* Check if this is a struct or enum declaration: const Name struct { */
         if (parser->cur_token.type == TOK_CONST && peek_token_is(parser, TOK_IDENT)) {
             ParserSnapshot snap;
