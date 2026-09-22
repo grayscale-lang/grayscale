@@ -5907,6 +5907,23 @@ static bool call_is_stdlib_fn(TypeChecker *checker, AstNode *node, const char *m
            strcmp(fnnode->data.member.member, fn) == 0;
 }
 
+/* E3174: json.parse()'s target must be a #json struct (or array of one) —
+ * codegen only generates gray_json_parse_<Name> for one; anything else falls
+ * back to the raw gray_json_decode(), which returns a GrayMap, not the
+ * declared struct, and leaks a raw C initialization-type error. json.parse()'s
+ * own return type is context-dependent on the var-decl or assignment target,
+ * so the typechecker never otherwise sees the mismatch. */
+static void reject_non_json_parse_target(TypeChecker *checker, AstNode *node,
+                                         AstNode *value, GrayType *target_type) {
+    if (call_is_stdlib_fn(checker, value, "json", "parse") &&
+        target_type && target_type->kind != TK_UNKNOWN &&
+        !type_is_json_struct_or_array(checker, target_type)) {
+        diagnostic_error_code_formatted(checker->diag, "E3174",
+            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+            type_display_name(checker, target_type), "parse");
+    }
+}
+
 static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn) {
     GrayType *result = &TYPE_UNKNOWN;
     /* E5034: named arguments are not supported for stdlib functions */
@@ -13361,20 +13378,7 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
         }
     }
 
-    /* E3174: json.parse()'s target must be a #json struct (or array of
-     * one) — codegen only generates gray_json_parse_<Name> for one;
-     * anything else falls back to the raw gray_json_decode(), which
-     * returns a GrayMap, not the declared struct, and leaks a raw C
-     * initialization-type error. json.parse()'s own return type is
-     * context-dependent on this declared type, so the typechecker never
-     * otherwise sees the mismatch. */
-    if (call_is_stdlib_fn(checker, node->data.var_decl.value, "json", "parse") &&
-        declared->kind != TK_UNKNOWN &&
-        !type_is_json_struct_or_array(checker, declared)) {
-        diagnostic_error_code_formatted(checker->diag, "E3174",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            type_display_name(checker, declared), "parse");
-    }
+    reject_non_json_parse_target(checker, node, node->data.var_decl.value, declared);
 
     if (node->data.var_decl.value) {
         /* Set expected_type for implicit enum resolution (.VARIANT) */
@@ -14610,19 +14614,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     GrayType *value_t = resolve_expression(checker, node->data.assign.value);
     checker->expected_type = saved_expected;
 
-    /* E3174: json.parse()'s target must be a #json struct (or array of
-     * one) reassigned here — codegen only generates gray_json_parse_<Name>
-     * for one; anything else falls back to the raw gray_json_decode(),
-     * which returns a GrayMap, not the declared struct. json.parse()'s own
-     * return type is context-dependent on the assignment target, so the
-     * typechecker never otherwise sees this mismatch. */
-    if (call_is_stdlib_fn(checker, node->data.assign.value, "json", "parse") &&
-        target_t && target_t->kind != TK_UNKNOWN &&
-        !type_is_json_struct_or_array(checker, target_t)) {
-        diagnostic_error_code_formatted(checker->diag, "E3174",
-            NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-            type_display_name(checker, target_t), "parse");
-    }
+    reject_non_json_parse_target(checker, node, node->data.assign.value, target_t);
 
     /* Pointer checker: `a = mem.arena(n)` re-binds a fresh, live arena handle
      * (a common idiom right after `mem.destroy(a)`); `p = mem.init(a, T)` /
