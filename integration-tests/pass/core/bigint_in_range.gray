@@ -1,0 +1,76 @@
+/*
+ * bigint_in_range.gray - `in`/`not_in` and `when ... is range(...)` against
+ * i128, u128, i256 and u256 bounds
+ *
+ * Covers: bigint subject with in/not_in range, bigint range bounds, a
+ * stepped bigint range, and a when statement with multiple bigint range arms.
+ */
+
+do main() {
+    println("=== Bigint In-Range Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut e i128 = 5
+    mut x i128 = 2
+    if x in range(0, e) {
+        println("  [PASS] i128 in range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 in range")
+        failed += 1
+    }
+
+    mut y i128 = 9
+    if y not_in range(0, e) {
+        println("  [PASS] i128 not_in range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 not_in range")
+        failed += 1
+    }
+
+    mut step i128 = 3
+    mut z i128 = 3
+    if z in range(0, 10, step) {
+        println("  [PASS] i128 stepped range")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 stepped range")
+        failed += 1
+    }
+
+    mut off i128 = 4
+    if off in range(0, 10, step) {
+        println("  [FAIL] i128 stepped range excludes off-step value")
+        failed += 1
+    } otherwise {
+        println("  [PASS] i128 stepped range excludes off-step value")
+        passed += 1
+    }
+
+    mut w u256 = 9
+    mut label string = ""
+    for i in range(0, w) {
+        when i {
+            is range(0, 3) { label = "${label}L" }
+            is range(3, 9) { label = "${label}H" }
+            default { label = "${label}?" }
+        }
+    }
+    if label == "LLLHHHHHH" {
+        println("  [PASS] when with u256 range arms")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] when with u256 range arms: ${label}")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

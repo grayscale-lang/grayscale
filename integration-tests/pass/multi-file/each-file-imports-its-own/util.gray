@@ -1,0 +1,11 @@
+import @strings
+
+const LIMIT int = 5
+
+do twice(n int) -> int {
+    return n * 2
+}
+
+do up(s string) -> string {
+    return strings.to_upper(s)
+}

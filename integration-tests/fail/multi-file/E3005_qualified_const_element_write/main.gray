@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3005 - writing an element of a module constant array through a qualified path
+ */
+// expect-error: E3005
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    lib.NUMS[0] = 9
+    lib.show()
+}

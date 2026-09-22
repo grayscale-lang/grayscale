@@ -1,0 +1,3 @@
+do shout(s string) -> string {
+    return strings.to_upper(s)
+}

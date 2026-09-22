@@ -494,6 +494,25 @@ GrayString gray_builtin_format_float(GrayArena *arena, double value);
 GrayString gray_builtin_array_to_string(GrayArena *arena, GrayArray *arr, int elem_kind);
 GrayString gray_builtin_map_to_string(GrayArena *arena, GrayMap *map, int val_kind);
 
+/* A growable text buffer that generated print code writes to in place of a
+ * FILE, so println and string interpolation format a nested container with the
+ * same code. gray_out_printf and gray_out_write take either kind of stream. */
+typedef struct {
+    char *data;
+    size_t len;
+    size_t cap;
+} GrayFmtOut;
+
+int gray_fmt_out_printf(GrayFmtOut *out, const char *format, ...)
+    __attribute__((format(printf, 2, 3)));
+size_t gray_fmt_out_write(const void *data, size_t size, size_t count, GrayFmtOut *out);
+GrayString gray_fmt_out_finish(GrayArena *arena, GrayFmtOut *out);
+
+#define gray_out_printf(stream, ...) \
+    _Generic((stream), FILE *: fprintf, GrayFmtOut *: gray_fmt_out_printf)((stream), __VA_ARGS__)
+#define gray_out_write(data, size, count, stream) \
+    _Generic((stream), FILE *: fwrite, GrayFmtOut *: gray_fmt_out_write)((data), (size), (count), (stream))
+
 /* to_char / char_count — Unicode codepoint access */
 int32_t gray_builtin_to_char(GrayString str, int64_t index, const char *file, int line);
 int64_t gray_builtin_char_count(GrayString str);

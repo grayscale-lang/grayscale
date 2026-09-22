@@ -1,0 +1,26 @@
+/*
+ * Error Test: E5026 - a mismatched argument to a struct function is reported
+ * once, whether the call is written through an instance or the type name.
+ */
+// expect-error: E5026
+// expect-error-count: 4
+const A struct {
+    x int
+    do sf(self A, other A) { }
+    do sp(self A, other ^A) { }
+    do st(other A) { }
+}
+
+const B struct {
+    x int
+}
+
+do main() {
+    b B = B{x: 1}
+    pb = new(B)
+    a A = A{x: 1}
+    a.sf(b)
+    a.sp(pb)
+    A.st(b)
+    A.sf(a, b)
+}

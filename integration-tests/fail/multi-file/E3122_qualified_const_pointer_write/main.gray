@@ -1,0 +1,13 @@
+/*
+ * Error Test: E3122 - writing through a pointer to a module constant reached by a qualified path
+ */
+// expect-error: E3122
+// expect-error-count: 1
+
+import "./lib"
+
+do main() {
+    mut p ^lib.Config = addr(lib.FROZEN)
+    p^.port = 5
+    lib.show()
+}

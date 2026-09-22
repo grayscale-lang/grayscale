@@ -20,6 +20,7 @@
 #include <ctype.h>
 
 #include "util/arena.h"
+#include "util/buf.h"
 #include "util/colors.h"
 #include "util/error.h"
 #include "util/platform.h"
@@ -802,6 +803,22 @@ static bool find_c_function_signature(const char *dump, const char *name, CFuncS
     return true;
 }
 
+/* gcc quotes symbols with curly quotes in a UTF-8 locale ("\xe2\x80\x98name\xe2\x80\x99");
+ * clang, and gcc in the C locale, use ASCII ones. Folds the curly form to ASCII
+ * in place so message matching sees one spelling whatever locale the user has. */
+static void normalize_c_quotes(char *text) {
+    char *out = text;
+    for (const unsigned char *in = (const unsigned char *)text; *in;) {
+        if (in[0] == 0xE2 && in[1] == 0x80 && (in[2] == 0x98 || in[2] == 0x99)) {
+            *out++ = '\'';
+            in += 3;
+        } else {
+            *out++ = (char)*in++;
+        }
+    }
+    *out = '\0';
+}
+
 /* True if `text` (a captured C compiler stderr) flags `name` as unknown.
  * A bare reference (a constant/macro site) produces clang's "use of
  * undeclared identifier 'name'" or gcc's "'name' undeclared"; a call
@@ -895,6 +912,7 @@ static bool c_headers_fail_to_compile(AstNode *program, Arena *arena, const char
         rewind(capture);
         size_t got = fread(err, 1, err_size - 1 < (size_t)len ? err_size - 1 : (size_t)len, capture);
         err[got] = '\0';
+        normalize_c_quotes(err);
     }
     fclose(capture);
     return failed;
@@ -969,6 +987,227 @@ static bool report_c_header_conflicts(AstNode *program, DiagnosticList *diag, Ar
     return false;
 }
 
+/* Asks a clang-compatible compiler for its AST dump of a stub that only
+ * includes the headers. Returns the dump as a malloc'd string, or NULL when
+ * the compiler rejects the flags (gcc) or produces nothing. */
+static char *capture_clang_ast_dump(AstNode *program, Arena *arena, const char *cc_cmd,
+                                    bool cc_is_command, const char *entry_file,
+                                    const char *includes) {
+    char stub[PATH_BUF_SIZE];
+    int sn = gray_temp_path(stub, sizeof(stub), "gray_sigprobe_", ".c");
+    if (sn < 0 || (size_t)sn >= sizeof(stub)) return NULL;
+    if (!write_file(stub, includes)) { gray_remove_file(stub); return NULL; }
+
+    FILE *capture = gray_tmpfile();
+    if (!capture) { gray_remove_file(stub); return NULL; }
+
+    ArgV a = {0};
+    if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
+    else argv_push(&a, cc_cmd);
+    argv_push(&a, "-Xclang");
+    argv_push(&a, "-ast-dump");
+    argv_push(&a, "-fsyntax-only");
+    add_local_c_header_dirs(&a, arena, program, entry_file);
+    argv_push(&a, "-x");
+    argv_push(&a, "c");
+    argv_push(&a, stub);
+    argv_end(&a);
+
+    bool spawned = !a.overflow && gray_spawn_capture_stdout(a.v, capture) == 0;
+    gray_remove_file(stub);
+    if (!spawned) { fclose(capture); return NULL; }
+
+    long dump_len = ftell(capture);
+    if (dump_len <= 0) { fclose(capture); return NULL; }
+    rewind(capture);
+    char *dump = malloc((size_t)dump_len + 1);
+    if (!dump) { fclose(capture); return NULL; }
+    size_t got = fread(dump, 1, (size_t)dump_len, capture);
+    dump[got] = '\0';
+    fclose(capture);
+    return dump;
+}
+
+/* Compiles `src` as C with -fsyntax-only, the program's local header dirs and
+ * `flags` (NULL-terminated). Returns the compiler's exit code, or -1 when it
+ * could not be run. `err_out`, when non-NULL, receives the compiler's stderr as
+ * a malloc'd string, or NULL when there is none. */
+static int run_c_probe(AstNode *program, Arena *arena, const char *cc_cmd, bool cc_is_command,
+                       const char *entry_file, const char *src, const char *const *flags,
+                       char **err_out) {
+    if (err_out) *err_out = NULL;
+    char stub[PATH_BUF_SIZE];
+    int sn = gray_temp_path(stub, sizeof(stub), "gray_sigprobe_", ".c");
+    if (sn < 0 || (size_t)sn >= sizeof(stub)) return -1;
+    if (!write_file(stub, src)) { gray_remove_file(stub); return -1; }
+
+    FILE *capture = gray_tmpfile();
+    if (!capture) { gray_remove_file(stub); return -1; }
+
+    ArgV a = {0};
+    if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
+    else argv_push(&a, cc_cmd);
+    argv_push(&a, "-fsyntax-only");
+    for (int i = 0; flags[i]; i++) argv_push(&a, flags[i]);
+    add_local_c_header_dirs(&a, arena, program, entry_file);
+    argv_push(&a, "-x");
+    argv_push(&a, "c");
+    argv_push(&a, stub);
+    argv_end(&a);
+
+    int status = a.overflow ? -1 : gray_spawn_capture_stderr(a.v, capture);
+    gray_remove_file(stub);
+
+    long len = ftell(capture);
+    if (err_out && len > 0) {
+        rewind(capture);
+        char *text = malloc((size_t)len + 1);
+        if (text) {
+            size_t got = fread(text, 1, (size_t)len, capture);
+            text[got] = '\0';
+            normalize_c_quotes(text);
+            *err_out = text;
+        }
+    }
+    fclose(capture);
+    return status;
+}
+
+/* Copies `name`'s prototype out of a gcc `-aux-info` listing (one line per
+ * declaration: a file:line comment, then "extern int putc (int, FILE *);") into
+ * `out`, spelled as clang's AST dump spells the function's type: the function
+ * name dropped, leaving "int (int, FILE *)", "void *(size_t)" or
+ * "void (*(int, void (*)(int)))(int)". The last declaration wins, as in
+ * find_c_function_signature. */
+static bool find_aux_info_signature(const char *aux, const char *name, char *out, size_t out_size) {
+    size_t name_len = strlen(name);
+    bool found = false;
+    const char *p = aux;
+    const char *match;
+    while ((match = strstr(p, name)) != NULL) {
+        p = match + name_len;
+        if (match > aux && (isalnum((unsigned char)match[-1]) || match[-1] == '_')) continue;
+        if (p[0] != ' ' || p[1] != '(') continue;
+
+        const char *line_start = match;
+        while (line_start > aux && line_start[-1] != '\n') line_start--;
+        const char *decl = strstr(line_start, "*/ ");
+        if (!decl || decl >= match) continue;
+        decl += 3;
+        for (bool more = true; more;) {
+            more = false;
+            static const char *const storage[] = { "extern ", "static ", "inline " };
+            for (size_t k = 0; k < sizeof(storage) / sizeof(storage[0]); k++) {
+                size_t sl = strlen(storage[k]);
+                if (strncmp(decl, storage[k], sl) == 0) { decl += sl; more = true; }
+            }
+        }
+
+        const char *end = strchr(p, '\n');
+        if (!end) end = p + strlen(p);
+        if (end[-1] != ';') continue;
+        end--;
+
+        size_t head = (size_t)(match - decl);
+        size_t tail = (size_t)(end - (p + 1));
+        if (head + tail >= out_size) continue;
+        memcpy(out, decl, head);
+        memcpy(out + head, p + 1, tail);
+        out[head + tail] = '\0';
+        found = true;
+    }
+    return found;
+}
+
+/* The `__builtin_classify_type` result for each kind of C type a typedef name
+ * can stand for, paired with a spelling classify_c_return recognises. */
+static const struct { int type_class; const char *spelling; } C_TYPE_CLASSES[] = {
+    { 0, "void" }, { 1, "long" }, { 3, "int" }, { 4, "_Bool" },
+    { 5, "void *" }, { 8, "double" }, { 12, "struct probed" }, { 13, "union probed" },
+};
+#define C_TYPE_CLASS_COUNT ((int)(sizeof(C_TYPE_CLASSES) / sizeof(C_TYPE_CLASSES[0])))
+#define C_TYPEDEF_PROBE_MAX 64
+
+/* Records `text` in `names` when it is a bare identifier classify_c_return could
+ * not place — a typedef name still to be resolved. */
+static void note_unresolved_typedef(char (*names)[64], int *count, CReturnClass cls, const char *text) {
+    if (cls != C_RET_UNKNOWN || !text[0] || *count >= C_TYPEDEF_PROBE_MAX) return;
+    for (const char *c = text; *c; c++)
+        if (!isalnum((unsigned char)*c) && *c != '_') return;
+    for (int i = 0; i < *count; i++)
+        if (strcmp(names[i], text) == 0) return;
+    snprintf(names[(*count)++], 64, "%s", text);
+}
+
+/* gcc has no AST dump, so this builds a stand-in that find_c_function_signature
+ * reads unchanged: a "FunctionDecl name 'type'" line per called function, from
+ * gcc's `-aux-info` prototypes, and a "TypedefDecl name 'type'" line per
+ * typedef name those types mention. aux-info leaves typedefs unresolved, so
+ * each is classified by asking the compiler which `__builtin_classify_type`
+ * value it has: the one _Static_assert that fails names it. Returns a malloc'd
+ * string, or NULL when the compiler has no -aux-info. */
+static char *synthesize_gcc_ast_dump(AstNode *program, Arena *arena, const char *cc_cmd,
+                                     bool cc_is_command, const char *entry_file,
+                                     const char *includes, const ExternCallSite *calls,
+                                     int call_count) {
+    char aux_path[PATH_BUF_SIZE];
+    int an = gray_temp_path(aux_path, sizeof(aux_path), "gray_auxinfo_", ".txt");
+    if (an < 0 || (size_t)an >= sizeof(aux_path)) return NULL;
+    const char *aux_flags[] = { "-aux-info", aux_path, NULL };
+    int status = run_c_probe(program, arena, cc_cmd, cc_is_command, entry_file, includes,
+                             aux_flags, NULL);
+    char *aux = status == 0 ? gray_read_file(aux_path, false) : NULL;
+    gray_remove_file(aux_path);
+    if (!aux) return NULL;
+
+    Buf dump = buffer_create(4096);
+    char typedef_names[C_TYPEDEF_PROBE_MAX][64];
+    int typedef_count = 0;
+    for (int i = 0; i < call_count; i++) {
+        bool seen = false;
+        for (int j = 0; j < i && !seen; j++)
+            seen = strcmp(calls[j].func_name, calls[i].func_name) == 0;
+        char sig[512];
+        if (seen || !find_aux_info_signature(aux, calls[i].func_name, sig, sizeof(sig))) continue;
+        append_format_to_buffer(&dump, "FunctionDecl %s '%s'\n", calls[i].func_name, sig);
+
+        CFuncSig parsed;
+        if (!count_c_params(sig, &parsed)) continue;
+        note_unresolved_typedef(typedef_names, &typedef_count, parsed.ret_class, parsed.ret_text);
+        for (int k = 0; k < parsed.param_count; k++)
+            note_unresolved_typedef(typedef_names, &typedef_count, parsed.param_class[k],
+                                    parsed.param_text[k]);
+    }
+    free(aux);
+
+    if (typedef_count > 0) {
+        Buf probe = buffer_create(4096);
+        append_string_to_buffer(&probe, includes);
+        for (int k = 0; k < typedef_count; k++)
+            for (int c = 0; c < C_TYPE_CLASS_COUNT; c++)
+                append_format_to_buffer(&probe,
+                    "_Static_assert(__builtin_classify_type(*(%s *)0) != %d, \"gray_td_%d_%d_\");\n",
+                    typedef_names[k], C_TYPE_CLASSES[c].type_class, k, c);
+
+        const char *no_flags[] = { NULL };
+        char *err = NULL;
+        run_c_probe(program, arena, cc_cmd, cc_is_command, entry_file, probe.data, no_flags, &err);
+        buffer_destroy(&probe);
+        for (int k = 0; err && k < typedef_count; k++) {
+            for (int c = 0; c < C_TYPE_CLASS_COUNT; c++) {
+                char marker[32];
+                snprintf(marker, sizeof(marker), "gray_td_%d_%d_", k, c);
+                if (!strstr(err, marker)) continue;
+                append_format_to_buffer(&dump, "TypedefDecl %s '%s'\n", typedef_names[k],
+                                        C_TYPE_CLASSES[c].spelling);
+                break;
+            }
+        }
+        free(err);
+    }
+    return dump.data;
+}
+
 /* First reports any two imported C headers that declare the same symbol
  * differently (E6016). Then validates every extern.func(...) call and
  * extern.CONST access the type
@@ -1039,6 +1278,7 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
                     if (errtext) {
                         size_t got = fread(errtext, 1, (size_t)elen, perr);
                         errtext[got] = '\0';
+                        normalize_c_quotes(errtext);
                         for (int i = 0; i < call_count; i++) {
                             if (c_symbol_flagged_undeclared(errtext, calls[i].func_name)) {
                                 diagnostic_error_code_formatted(diag, "E5052",
@@ -1056,38 +1296,11 @@ static void validate_c_extern_signatures(AstNode *program, TypeChecker *checker,
         if (probe_stub[0]) gray_remove_file(probe_stub);
     }
 
-    char stub[PATH_BUF_SIZE];
-    int sn = gray_temp_path(stub, sizeof(stub), "gray_sigprobe_", ".c");
-    if (sn < 0 || (size_t)sn >= sizeof(stub)) return;
-    if (!write_file(stub, includes)) { gray_remove_file(stub); return; }
-
-    FILE *capture = gray_tmpfile();
-    if (!capture) { gray_remove_file(stub); return; }
-
-    ArgV a = {0};
-    if (cc_is_command) argv_push_command(&a, arena, cc_cmd);
-    else argv_push(&a, cc_cmd);
-    argv_push(&a, "-Xclang");
-    argv_push(&a, "-ast-dump");
-    argv_push(&a, "-fsyntax-only");
-    add_local_c_header_dirs(&a, arena, program, entry_file);
-    argv_push(&a, "-x");
-    argv_push(&a, "c");
-    argv_push(&a, stub);
-    argv_end(&a);
-
-    bool spawned = !a.overflow && gray_spawn_capture_stdout(a.v, capture) == 0;
-    gray_remove_file(stub);
-    if (!spawned) { fclose(capture); return; }
-
-    long dump_len = ftell(capture);
-    if (dump_len <= 0) { fclose(capture); return; }
-    rewind(capture);
-    char *dump = malloc((size_t)dump_len + 1);
-    if (!dump) { fclose(capture); return; }
-    size_t got = fread(dump, 1, (size_t)dump_len, capture);
-    dump[got] = '\0';
-    fclose(capture);
+    char *dump = capture_clang_ast_dump(program, arena, cc_cmd, cc_is_command, entry_file, includes);
+    if (!dump)
+        dump = synthesize_gcc_ast_dump(program, arena, cc_cmd, cc_is_command, entry_file, includes,
+                                       calls, call_count);
+    if (!dump) return;
 
     for (int i = 0; i < call_count; i++) {
         CFuncSig sig;

@@ -1,0 +1,13 @@
+/*
+ * Error Test: E5007 - appending to a module constant array through a qualified path
+ */
+// expect-error: E5007
+// expect-error-count: 1
+
+import "./lib"
+import @arrays
+
+do main() {
+    arrays.append(lib.NUMS, 4)
+    lib.show()
+}

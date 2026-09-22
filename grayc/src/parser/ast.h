@@ -158,6 +158,12 @@ struct AstNode {
              * cannot collide with a libc identifier from the runtime
              * headers. */
             bool refers_to_file_global;
+            /* Set by the type checker when this name resolves to a local,
+             * parameter, loop variable, or pattern binding. Such a binding
+             * hides a same-named member a `using` brings in, so codegen
+             * must emit it as written rather than resolve it as a module
+             * member. */
+            bool refers_to_local;
         } label;
 
         /* NODE_INT_VALUE

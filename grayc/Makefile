@@ -206,11 +206,16 @@ TEST_DEPS = src/util/arena.o src/util/buf.o src/util/error.o src/util/error_code
             src/lexer/token.o src/lexer/lexer.o \
             src/parser/ast.o src/parser/parser.o \
             src/typechecker/types.o src/typechecker/scope.o \
-            src/typechecker/module_table.o src/typechecker/typechecker.o
+            src/typechecker/module_table.o src/typechecker/typechecker.o \
+            src/fmt/fmt.o
 
-# Runtime sources needed by the runtime test binary. The sanitizer targets
-# compile these directly rather than linking objects, so both forms are
-# derived from one list — a source added here reaches every target.
+# Compiler sources needed by the lexer, parser, typechecker and util tests. The
+# sanitizer targets compile these directly rather than linking objects, so both
+# forms are derived from one list — a source added to TEST_DEPS reaches every
+# target.
+TEST_SRC_FILES = $(TEST_DEPS:.o=.c)
+
+# Runtime sources needed by the runtime test binary, derived the same way.
 RT_TEST_SRC = src/runtime/runtime.c src/runtime/array.c src/runtime/map.c src/runtime/test.c
 RT_TEST_DEPS = $(RT_TEST_SRC:.c=.o) $(ATOMIC_OBJ)
 
@@ -235,7 +240,7 @@ tests/test_module_table$(EXE): tests/test_module_table.c src/util/arena.o \
                               src/typechecker/types.o src/util/platform.o
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
-tests/test_util$(EXE): tests/test_util.c src/util/arena.o src/util/buf.o src/typechecker/scope.o src/typechecker/types.o src/util/error.o src/util/error_codes.o src/util/platform.o src/lexer/token.o src/lexer/lexer.o src/fmt/fmt.o
+tests/test_util$(EXE): tests/test_util.c $(TEST_DEPS)
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LDFLAGS)
 
 tests/test_codegen$(EXE): tests/test_codegen.c
@@ -294,14 +299,7 @@ test-integration: build
 endif
 
 # Sanitizer builds — catch undefined behavior (and memory bugs on Linux)
-# Must compile ALL source files with sanitizer flags
-TEST_SRC_FILES = src/util/arena.c src/util/buf.c src/util/error.c src/util/error_codes.c \
-                 src/util/platform.c \
-                 src/lexer/token.c src/lexer/lexer.c \
-                 src/parser/ast.c src/parser/parser.c \
-                 src/typechecker/types.c src/typechecker/scope.c src/typechecker/module_table.c \
-                 src/typechecker/typechecker.c
-
+# Must compile ALL source files with sanitizer flags (TEST_SRC_FILES, above)
 # UBSan works everywhere; ASan needs Linux for reliable CI
 UBSAN_FLAGS = -fsanitize=undefined -fno-omit-frame-pointer -g -O1
 ASAN_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1

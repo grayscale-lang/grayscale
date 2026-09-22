@@ -1,0 +1,12 @@
+// Error Test: E5043 - fields() takes an instance, so a type name is rejected
+// when it is written through a module the same as when it is written bare:
+// a struct, an enum and an alias of a struct.
+// expect-error: E5043
+// expect-error-count: 3
+import "./lib"
+
+do main() {
+    println(fields(lib.Point))
+    println(fields(lib.Mode))
+    println(fields(lib.Spot))
+}

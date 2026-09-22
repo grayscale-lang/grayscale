@@ -1,0 +1,11 @@
+private do helper() -> int {
+    return 4
+}
+
+do used() -> int {
+    return helper()
+}
+
+do unused_api() -> int {
+    return 2
+}

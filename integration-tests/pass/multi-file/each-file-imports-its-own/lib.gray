@@ -1,0 +1,10 @@
+import "./util"
+import @strings
+
+do go(n int) -> int {
+    return util.twice(n) + util.LIMIT
+}
+
+do shout(s string) -> string {
+    return strings.to_upper(util.up(s))
+}

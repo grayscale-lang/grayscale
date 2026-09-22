@@ -1,0 +1,10 @@
+const Point struct {
+    x int
+}
+
+const Mode enum {
+    FAST
+    SLOW
+}
+
+alias Spot = Point

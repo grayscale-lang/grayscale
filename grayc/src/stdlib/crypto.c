@@ -21,6 +21,16 @@
 #include <stdlib.h>
 #include <math.h>
 
+/* ARMv8 SHA2 instructions for SHA-256 compression. Apple Silicon always has
+ * them; on Linux they are detected at runtime. Other targets stay scalar. */
+#if defined(__aarch64__) && (defined(__APPLE__) || defined(__linux__))
+#define SHA256_HW_ARM 1
+#include <arm_neon.h>
+#if defined(__linux__)
+#include <sys/auxv.h>
+#endif
+#endif
+
 /* arc4random_buf is hidden by _POSIX_C_SOURCE on Apple/BSD — declare explicitly */
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 void arc4random_buf(void *buf, size_t nbytes);
@@ -41,7 +51,7 @@ void arc4random_buf(void *buf, size_t nbytes);
 
 /* ===== SHA-256 ===== */
 
-static uint32_t sha256_k[SHA256_ROUNDS] = {
+static const uint32_t sha256_k[SHA256_ROUNDS] = {
     0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
     0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
     0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
@@ -72,6 +82,63 @@ static GrayString crypto_hex(GrayArena *arena, const uint8_t *digest, int n) {
     return (GrayString){ hex, n * 2 };
 }
 
+/* Compress `nblocks` consecutive 64-byte blocks into the hash state h. */
+static void sha256_compress_scalar(uint32_t h[8], const uint8_t *msg, size_t nblocks) {
+    for (size_t i = 0; i < nblocks * HASH_BLOCK_SIZE; i += HASH_BLOCK_SIZE) {
+        uint32_t w[SHA256_ROUNDS];
+        for (int j = 0; j < 16; j++)
+            w[j] = ((uint32_t)msg[i+j*4]<<24)|((uint32_t)msg[i+j*4+1]<<16)|
+                   ((uint32_t)msg[i+j*4+2]<<8)|msg[i+j*4+3];
+        for (int j = 16; j < SHA256_ROUNDS; j++)
+            w[j] = SIG1(w[j-2]) + w[j-7] + SIG0(w[j-15]) + w[j-16];
+
+        uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
+        for (int j = 0; j < SHA256_ROUNDS; j++) {
+            uint32_t t1 = hh + EP1(e) + CH(e,f,g) + sha256_k[j] + w[j];
+            uint32_t t2 = EP0(a) + MAJ(a,b,c);
+            hh=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
+        }
+        h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
+    }
+}
+
+#ifdef SHA256_HW_ARM
+static int sha256_hw_available(void) {
+#if defined(__linux__)
+    return (getauxval(AT_HWCAP) & HWCAP_SHA2) != 0;
+#else
+    return 1;
+#endif
+}
+
+__attribute__((target("+sha2")))
+static void sha256_compress_arm(uint32_t h[8], const uint8_t *msg, size_t nblocks) {
+    uint32x4_t s0 = vld1q_u32(h), s1 = vld1q_u32(h + 4);
+    for (; nblocks > 0; nblocks--, msg += HASH_BLOCK_SIZE) {
+        uint32x4_t abcd = s0, efgh = s1;
+        uint32x4_t w[4];
+        for (int i = 0; i < 4; i++)
+            w[i] = vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(msg + 16 * i)));
+        /* 16 groups of 4 rounds; w[i & 3] is rewritten with the schedule
+         * words for four rounds ahead as it is consumed. */
+#pragma GCC unroll 16
+        for (int i = 0; i < 16; i++) {
+            uint32x4_t wk = vaddq_u32(w[i & 3], vld1q_u32(&sha256_k[i * 4]));
+            if (i < 12)
+                w[i & 3] = vsha256su1q_u32(vsha256su0q_u32(w[i & 3], w[(i + 1) & 3]),
+                                           w[(i + 2) & 3], w[(i + 3) & 3]);
+            uint32x4_t prev = abcd;
+            abcd = vsha256hq_u32(abcd, efgh, wk);
+            efgh = vsha256h2q_u32(efgh, prev, wk);
+        }
+        s0 = vaddq_u32(s0, abcd);
+        s1 = vaddq_u32(s1, efgh);
+    }
+    vst1q_u32(h, s0);
+    vst1q_u32(h + 4, s1);
+}
+#endif
+
 /* SHA-256 core: writes the 32-byte digest to out. Allocates a padded message
  * buffer from the arena (the arena has no free; callers are short-lived). */
 static void sha256_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_t out[SHA256_DIGEST_LEN]) {
@@ -89,22 +156,13 @@ static void sha256_raw(GrayArena *arena, const uint8_t *data, size_t len, uint8_
     for (int i = 0; i < 8; i++)
         msg[padded - 1 - i] = (uint8_t)(bits >> (i * 8));
 
-    for (size_t i = 0; i < padded; i += HASH_BLOCK_SIZE) {
-        uint32_t w[SHA256_ROUNDS];
-        for (int j = 0; j < 16; j++)
-            w[j] = ((uint32_t)msg[i+j*4]<<24)|((uint32_t)msg[i+j*4+1]<<16)|
-                   ((uint32_t)msg[i+j*4+2]<<8)|msg[i+j*4+3];
-        for (int j = 16; j < SHA256_ROUNDS; j++)
-            w[j] = SIG1(w[j-2]) + w[j-7] + SIG0(w[j-15]) + w[j-16];
-
-        uint32_t a=h[0],b=h[1],c=h[2],d=h[3],e=h[4],f=h[5],g=h[6],hh=h[7];
-        for (int j = 0; j < SHA256_ROUNDS; j++) {
-            uint32_t t1 = hh + EP1(e) + CH(e,f,g) + sha256_k[j] + w[j];
-            uint32_t t2 = EP0(a) + MAJ(a,b,c);
-            hh=g; g=f; f=e; e=d+t1; d=c; c=b; b=a; a=t1+t2;
-        }
-        h[0]+=a;h[1]+=b;h[2]+=c;h[3]+=d;h[4]+=e;h[5]+=f;h[6]+=g;h[7]+=hh;
-    }
+    size_t nblocks = padded / HASH_BLOCK_SIZE;
+#ifdef SHA256_HW_ARM
+    if (sha256_hw_available())
+        sha256_compress_arm(h, msg, nblocks);
+    else
+#endif
+        sha256_compress_scalar(h, msg, nblocks);
 
     for (int i = 0; i < 8; i++) {
         out[i*4]   = (uint8_t)(h[i] >> 24);

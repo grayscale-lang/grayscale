@@ -1,0 +1,101 @@
+/*
+ * A parameter, local, loop variable, or pattern binding named like a member
+ * `using` brings in hides that member.
+ */
+
+import @math
+import "./members.gray"
+using math
+using members
+
+mut passed int = 0
+mut failed int = 0
+
+do check(name string, ok bool) {
+    if ok {
+        println("  [PASS] ${name}")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] ${name}")
+        failed += 1
+    }
+}
+
+do param_hides_stdlib_const(PI float) -> float {
+    return PI
+}
+
+do param_hides_variable(counter int) -> int {
+    return counter
+}
+
+do param_hides_function(who int) -> int {
+    return who
+}
+
+do bump(&counter int) {
+    counter += 1
+}
+
+const Holder struct {
+    n int
+
+    do pick(self Holder, who int) -> int {
+        return who
+    }
+}
+
+do main() {
+    println("=== using: local bindings hide imported members ===")
+
+    check("param hides stdlib constant", param_hides_stdlib_const(3.0) == 3.0)
+    check("param hides module variable", param_hides_variable(3) == 3)
+    check("param hides module function", param_hides_function(3) == 3)
+
+    mut h Holder = Holder{n: 1}
+    check("struct function param hides module function", h.pick(4) == 4)
+
+    mut counter int = 50
+    counter = counter + 1
+    check("local hides module variable", counter == 51)
+    check("module variable untouched", members.counter == 0)
+
+    bump(counter)
+    check("local passed to mutable parameter", counter == 52 && members.counter == 0)
+
+    mut seen int = 0
+    for counter in range(0, 3) {
+        seen += counter
+    }
+    check("for variable hides module variable", seen == 3)
+
+    for who in range(0, 2) {
+        seen += who
+    }
+    check("for variable hides module function", seen == 4)
+
+    mut xs [int] = {5, 6}
+    mut total int = 0
+    for_each who in xs {
+        total += who
+    }
+    check("for_each variable hides module function", total == 11)
+
+    mut shape Shape = Shape.Square(9)
+    mut got int = 0
+    when shape {
+        is Shape.Square(who) {
+            got = who
+        }
+        default { }
+    }
+    check("pattern binding hides module function", got == 9)
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

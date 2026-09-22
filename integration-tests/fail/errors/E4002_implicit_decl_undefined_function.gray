@@ -1,0 +1,10 @@
+/*
+ * Error Test: E4002 - a bare `x = expr` declaration whose initializer calls an
+ * undefined function reports only the undefined function, not an undefined
+ * variable on the declared name.
+ */
+// expect-error: E4002
+// expect-error-count: 1
+do main() {
+    a = nope(1)
+}

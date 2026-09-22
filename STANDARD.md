@@ -463,6 +463,8 @@ mut s string = string(c)     // convert to string
 
 Wide integers use the same overflow-checked arithmetic as `int` and `uint`; overflow produces a runtime panic.
 
+A negative literal assigned to `u128` or `u256` is rejected with `E3036`, the same as for `uint`.
+
 #### 3.1.11 Pointer Type (`^Type`)
 
 The pointer type `^Type` represents a memory address pointing to a value of `Type`.
@@ -1424,6 +1426,11 @@ range(10, 0, -2)   // 10, 8, 6, 4, 2   (decrement)
 ```
 
 Ranges are inclusive of the start value and exclusive of the end value.
+
+A `for` loop over a range gives its variable the type `int`. When any bound is a wide
+integer (`i128`, `u128`, `i256`, `u256`), the range runs in that type, the other bounds
+widen into it, and the loop variable has that type. Bounds of two different wide types are
+rejected with `E5026`.
 
 **Step validation rules:**
 - Positive step (or omitted) expects start ≤ end; negative step expects start ≥ end.
@@ -4766,7 +4773,7 @@ for_each line in lines {
 
 ### 11.2 Reference Semantics
 
-Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, or into an existing struct field, copies it:
+Composite types (arrays, maps) have value semantics for plain assignment and for function parameters (unless the parameter is declared mutable) — assigning one to a variable, into an existing struct field, or into a container element (`grid[0] = row`, `m["k"] = arr`, `arrays.append(outer, row)`), or reading one out of a container (`mut e [int] = grid[0]`), copies it:
 
 ```gray
 mut a [int] = {1, 2, 3}

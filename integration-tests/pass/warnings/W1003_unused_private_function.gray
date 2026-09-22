@@ -1,0 +1,12 @@
+/*
+ * Warning Test: W1003 - unused-function
+ * Expected: warning about a private function that nothing calls
+ */
+
+private do unused_helper() -> int {
+    return 42
+}
+
+do main() {
+    println("hello")
+}

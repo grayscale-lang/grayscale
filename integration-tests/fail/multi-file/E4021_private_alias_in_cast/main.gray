@@ -1,0 +1,9 @@
+// Error Test: E4021 - a private type alias is unreachable from another file
+// as a cast() target, the same as in an annotation.
+// expect-error: E4021
+// expect-error-count: 1
+import "./lib"
+
+do main() {
+    println(cast(3, lib.Id))
+}

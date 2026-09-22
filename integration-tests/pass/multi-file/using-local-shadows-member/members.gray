@@ -1,0 +1,10 @@
+mut counter int = 0
+
+do who() -> int {
+    return 7
+}
+
+const Shape enum {
+    Circle
+    Square(int)
+}

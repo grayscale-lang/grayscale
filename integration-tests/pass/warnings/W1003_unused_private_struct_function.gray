@@ -1,0 +1,21 @@
+/*
+ * Warning Test: W1003 - unused-function
+ * Expected: warning about a private struct function that nothing calls
+ */
+
+const Counter struct {
+    n int
+
+    private do unused_helper(self Counter) -> int {
+        return 42
+    }
+
+    do get(self Counter) -> int {
+        return self.n
+    }
+}
+
+do main() {
+    mut c Counter = Counter{n: 1}
+    println(c.get())
+}

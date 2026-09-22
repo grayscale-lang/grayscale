@@ -1,0 +1,12 @@
+// Error Test: E4001 - a local module is in scope only in the file that
+// imports it. lib.gray calls util.twice without importing util; the import in
+// this file does not cover it.
+// expect-error: E4001
+// expect-error-count: 1
+import "./lib"
+import "./util"
+
+do main() {
+    println(lib.go(2))
+    println(util.twice(1))
+}
