@@ -1425,6 +1425,11 @@ range(10, 0, -2)   // 10, 8, 6, 4, 2   (decrement)
 
 Ranges are inclusive of the start value and exclusive of the end value.
 
+A `for` loop over a range gives its variable the type `int`. When any bound is a wide
+integer (`i128`, `u128`, `i256`, `u256`), the range runs in that type, the other bounds
+widen into it, and the loop variable has that type. Bounds of two different wide types are
+rejected with `E5026`.
+
 **Step validation rules:**
 - Positive step (or omitted) expects start ≤ end; negative step expects start ≥ end.
   A range that violates this (its step points away from end, e.g. `range(0, 10, -1)`)

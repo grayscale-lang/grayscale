@@ -12145,6 +12145,7 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
     emit_indent(codegen);
 
     AstNode *iter = node->data.for_stmt.iterable;
+    const char *wide = NULL;
     if (iter && iter->kind == NODE_RANGE_EXPR) {
         /* for i in range(start, end) or range(start, end, step) */
         char blank_for_buf[VAR_NAME_BUF];
@@ -12156,7 +12157,58 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
             var = sanitize_name(node->data.for_stmt.var_name);
         }
 
-        if (iter->data.range_expr.start) {
+        /* A wide (i128/u128/i256/u256) range: bounds are held and stepped in
+         * the wide type, and the loop variable is one. */
+        {
+            AstNode *bounds[] = { iter->data.range_expr.start, iter->data.range_expr.end,
+                                  iter->data.range_expr.step };
+            for (int b = 0; b < 3 && !wide; b++)
+                wide = bounds[b] ? resolve_bigint_type(codegen, bounds[b]) : NULL;
+        }
+
+        if (wide) {
+            const char *pfx = bigint_prefix(wide);
+            AstNode *start = iter->data.range_expr.start;
+            AstNode *step = iter->data.range_expr.step;
+            int wc = codegen_next_id(codegen);
+            emit_formatted(codegen, "%s _gray_end_%d = ", pfx, wc);
+            if (!emit_bigint_coerced(codegen, wide, iter->data.range_expr.end))
+                emit_expression(codegen, iter->data.range_expr.end);
+            emit(codegen, ";\n");
+            if (step) {
+                emit_indent(codegen);
+                emit_formatted(codegen, "%s _gray_step_%d = ", pfx, wc);
+                if (!emit_bigint_coerced(codegen, wide, step))
+                    emit_expression(codegen, step);
+                emit(codegen, ";\n");
+                emit_indent(codegen);
+                emit_formatted(codegen, "if (%s_eq(_gray_step_%d, %s_from_u64(0))) { %s; }\n",
+                    pfx, wc, pfx, panic_call(codegen, node, "P0090", ""));
+            }
+            emit_indent(codegen);
+            emit_formatted(codegen, "for (%s %s = ", pfx, var);
+            if (!start) {
+                emit_formatted(codegen, "%s_from_u64(0)", pfx);
+            } else if (!emit_bigint_coerced(codegen, wide, start)) {
+                emit_expression(codegen, start);
+            }
+            /* An unsigned step is never negative, so only a signed one needs
+             * its direction read at run time. */
+            if (step && wide[0] == 'i') {
+                emit_formatted(codegen,
+                    "; %s_gt(_gray_step_%d, %s_from_u64(0)) ? %s_lt(%s, _gray_end_%d) : %s_gt(%s, _gray_end_%d)",
+                    pfx, wc, pfx, pfx, var, wc, pfx, var, wc);
+            } else {
+                emit_formatted(codegen, "; %s_lt(%s, _gray_end_%d)", pfx, var, wc);
+            }
+            emit_formatted(codegen, "; %s = %s_add_checked(%s, ", var, pfx, var);
+            if (step) {
+                emit_formatted(codegen, "_gray_step_%d", wc);
+            } else {
+                emit_formatted(codegen, "%s_from_u64(1)", pfx);
+            }
+            emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+        } else if (iter->data.range_expr.start) {
             /* range(start, end) or range(start, end, step) */
             /* Determine comparison direction: static for literal step, runtime ternary for variable. */
             bool neg_step = false;
@@ -12243,9 +12295,13 @@ static void emit_for_statement(CodeGen *codegen, AstNode *node) {
                                codegen->file, node->token.line);
     }
 
+    int prev_bigint_var_count = codegen->bigint_var_count;
+    if (wide)
+        register_bigint_variable(codegen, node->data.for_stmt.var_name, bigint_type_name(wide));
     codegen->indent++;
     emit_loop_body_with_arena(codegen, node->data.for_stmt.body, no_arena);
     codegen->indent--;
+    codegen->bigint_var_count = prev_bigint_var_count;
     emit_indent(codegen);
     emit(codegen, "}\n");
     emit_loop_arena_epilogue(codegen, no_arena);

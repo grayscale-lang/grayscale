@@ -1,0 +1,105 @@
+/*
+ * range_bigint_bounds.gray - range() with i128, u128, i256 and u256 bounds
+ *
+ * Covers: wide start, end and step; the loop variable takes the wide type;
+ * int bounds widen; a negative wide step; a start above the int64 range.
+ */
+
+do main() {
+    println("=== Range Bigint Bounds Test ===")
+    mut passed int = 0
+    mut failed int = 0
+
+    mut e i128 = 3
+    mut n int = 0
+    for i in range(0, e) { n += 1 }
+    if n == 3 {
+        println("  [PASS] i128 end")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 end: ${n}")
+        failed += 1
+    }
+
+    mut sum i128 = 0
+    for i in range(e, 6) { sum = sum + i }
+    if sum == i128(12) {
+        println("  [PASS] i128 start, loop variable is i128")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 start: ${sum}")
+        failed += 1
+    }
+
+    n = 0
+    for i in range(0, 10, e) { n += 1 }
+    if n == 4 {
+        println("  [PASS] i128 step")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i128 step: ${n}")
+        failed += 1
+    }
+
+    mut neg i128 = -2
+    n = 0
+    for i in range(6, 0, neg) { n += 1 }
+    if n == 3 {
+        println("  [PASS] negative i128 step")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] negative i128 step: ${n}")
+        failed += 1
+    }
+
+    mut w u128 = 2
+    n = 0
+    for i in range(w, 5) { n += 1 }
+    if n == 3 {
+        println("  [PASS] u128 start")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u128 start: ${n}")
+        failed += 1
+    }
+
+    mut big i256 = 4
+    n = 0
+    for i in range(big) { n += 1 }
+    if n == 4 {
+        println("  [PASS] i256 single bound")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i256 single bound: ${n}")
+        failed += 1
+    }
+
+    mut top u256 = 5
+    n = 0
+    for i in range(0, top, 2) { n += 1 }
+    if n == 3 {
+        println("  [PASS] u256 end")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u256 end: ${n}")
+        failed += 1
+    }
+
+    mut last i128 = 0
+    for i in range(i128(9223372036854775807) + 1, i128(9223372036854775807) + 3) { last = i }
+    if last == i128(9223372036854775809) {
+        println("  [PASS] bounds above int64")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] bounds above int64")
+        failed += 1
+    }
+
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

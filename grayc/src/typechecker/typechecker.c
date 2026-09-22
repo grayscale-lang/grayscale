@@ -12211,6 +12211,7 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                              node->data.range_expr.end,
                              node->data.range_expr.step };
         const char *labels[] = { "start", "end", "step" };
+        const char *wide_type = NULL;
         for (int return_index = 0; return_index < 3; return_index++) {
             if (!parts[return_index]) continue;
             GrayType *pt = resolve_expression(checker, parts[return_index]);
@@ -12219,6 +12220,16 @@ static GrayType *resolve_expression(TypeChecker *checker, AstNode *node) {
                     "'range()' %s argument must be an integer type, got '%s'",
                     labels[return_index], type_name(pt));
                 tc_err_arg_type(checker, parts[return_index], msg);
+            } else if (pt->name && is_bigint_type(pt->name)) {
+                /* The range runs in one wide type; the others widen into it. */
+                if (!wide_type) {
+                    wide_type = pt->name;
+                } else if (strcmp(wide_type, pt->name) != 0) {
+                    char *msg = typechecker_format(checker,
+                        "'range()' bounds must share one wide integer type, got '%s' and '%s'",
+                        wide_type, pt->name);
+                    tc_err_arg_type(checker, parts[return_index], msg);
+                }
             }
         }
         GrayType *rt = type_alloc();
@@ -16461,12 +16472,32 @@ static void check_if_stmt(TypeChecker *checker, AstNode *node) {
     pointer_checker_snap_free(pointer_checker_pre);
 }
 
+/* The wide integer type a resolved range() runs in (the type of its first
+ * i128/u128/i256/u256 bound), or NULL for an int range. */
+static const char *range_wide_type(TypeChecker *checker, AstNode *range) {
+    AstNode *parts[] = { range->data.range_expr.start,
+                         range->data.range_expr.end,
+                         range->data.range_expr.step };
+    for (int i = 0; i < 3; i++) {
+        GrayType *pt = parts[i] ? typetable_get(checker->type_table, parts[i]) : NULL;
+        if (pt && pt->name && is_bigint_type(pt->name)) return pt->name;
+    }
+    return NULL;
+}
+
 static void check_for_stmt(TypeChecker *checker, AstNode *node) {
     Scope *loop_scope = scope_create(checker->current_scope);
     Scope *outer = checker->current_scope;
     checker->current_scope = loop_scope;
-    scope_define(loop_scope, node->data.for_stmt.var_name, &TYPE_INT, false);
     resolve_expression(checker, node->data.for_stmt.iterable);
+    /* The loop variable has the wide type of a wide range, int otherwise. */
+    GrayType *loop_var_type = &TYPE_INT;
+    if (node->data.for_stmt.iterable &&
+        node->data.for_stmt.iterable->kind == NODE_RANGE_EXPR) {
+        const char *wide = range_wide_type(checker, node->data.for_stmt.iterable);
+        if (wide) loop_var_type = type_from_name(wide);
+    }
+    scope_define(loop_scope, node->data.for_stmt.var_name, loop_var_type, false);
     /* E9005: check range bounds when both bounds and step direction are compile-time known */
     if (node->data.for_stmt.iterable &&
         node->data.for_stmt.iterable->kind == NODE_RANGE_EXPR) {
