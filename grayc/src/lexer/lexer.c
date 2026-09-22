@@ -107,6 +107,23 @@ static void scan_identifier_span(Lexer *lexer, int *out_start, int *out_len) {
     *out_len = len;
 }
 
+/* Consume a 0x/0o/0b prefix and the base-`base` digits (and '_' separators)
+ * after it; E1010 when no digit follows the prefix. */
+static const char *read_prefixed_digits(Lexer *lexer, int start, int base, const char *error_msg) {
+    read_char(lexer); read_char(lexer);
+    int digit_start = lexer->position;
+    while (lexer->ch == '_' ||
+           (base == 16 ? isxdigit((unsigned char)lexer->ch)
+                       : lexer->ch >= '0' && lexer->ch < '0' + base)) {
+        read_char(lexer);
+    }
+    if (lexer->position == digit_start) {
+        lexer->error_code = "E1010";
+        lexer->error_msg = error_msg;
+    }
+    return arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+}
+
 static const char *read_number(Lexer *lexer, TokenType *type) {
     int start = lexer->position;
     *type = TOK_INT;
@@ -115,34 +132,16 @@ static const char *read_number(Lexer *lexer, TokenType *type) {
     if (lexer->ch == '0') {
         char next = peek_char(lexer);
         if (next == 'x' || next == 'X') {
-            read_char(lexer); read_char(lexer);
-            int digit_start = lexer->position;
-            while (isxdigit((unsigned char)lexer->ch) || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == digit_start) {
-                lexer->error_code = "E1010";
-                lexer->error_msg = "invalid number format: '0x' must be followed by hex digits (0-9, a-f)";
-            }
-            return arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+            return read_prefixed_digits(lexer, start, 16,
+                "invalid number format: '0x' must be followed by hex digits (0-9, a-f)");
         }
         if (next == 'o' || next == 'O') {
-            read_char(lexer); read_char(lexer);
-            int digit_start = lexer->position;
-            while ((lexer->ch >= '0' && lexer->ch <= '7') || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == digit_start) {
-                lexer->error_code = "E1010";
-                lexer->error_msg = "invalid number format: '0o' must be followed by octal digits (0-7)";
-            }
-            return arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+            return read_prefixed_digits(lexer, start, 8,
+                "invalid number format: '0o' must be followed by octal digits (0-7)");
         }
         if (next == 'b' || next == 'B') {
-            read_char(lexer); read_char(lexer);
-            int digit_start = lexer->position;
-            while (lexer->ch == '0' || lexer->ch == '1' || lexer->ch == '_') read_char(lexer);
-            if (lexer->position == digit_start) {
-                lexer->error_code = "E1010";
-                lexer->error_msg = "invalid number format: '0b' must be followed by binary digits (0-1)";
-            }
-            return arena_copy_string_with_length(lexer->arena, lexer->input + start, lexer->position - start);
+            return read_prefixed_digits(lexer, start, 2,
+                "invalid number format: '0b' must be followed by binary digits (0-1)");
         }
     }
 
