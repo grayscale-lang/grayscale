@@ -13554,24 +13554,35 @@ static const char *resolve_local_c_header(CodeGen *codegen, ImportItem *item) {
     return strdup(resolved);
 }
 
-void codegen_generate(CodeGen *codegen, AstNode *program) {
-    if (program->kind != NODE_PROGRAM) return;
-
-    /* Collect imported stdlib module names (used for conditional header inclusion) */
-    #define MAX_STDLIB_IMPORTS 64
+/* Top-level statements sorted by kind in one pass, plus the stdlib modules
+ * imported (used for conditional header inclusion). */
+#define MAX_STDLIB_IMPORTS 64
+typedef struct {
     const char *stdlib_imports[MAX_STDLIB_IMPORTS];
-    int stdlib_import_count = 0;
+    int stdlib_import_count;
+    AstNode **enum_bucket;
+    int enum_bucket_count, enum_bucket_cap;
+    AstNode **func_bucket;
+    int func_bucket_count, func_bucket_cap;
+    AstNode **var_bucket;
+    int var_bucket_count, var_bucket_cap;
+    AstNode **other_bucket;
+    int other_bucket_count, other_bucket_cap;
+} TopLevelStatements;
 
-    /* Statement buckets — single categorization pass to avoid repeated full scans. */
-    int total = program->data.program.stmt_count;
-    int enum_bucket_count = 0, enum_bucket_cap = 16;
-    AstNode **enum_bucket = xmalloc(sizeof(AstNode *) * (size_t)enum_bucket_cap);
-    int func_bucket_count = 0, func_bucket_cap = 16;
-    AstNode **func_bucket = xmalloc(sizeof(AstNode *) * (size_t)func_bucket_cap);
-    int var_bucket_count = 0, var_bucket_cap = 16;
-    AstNode **var_bucket = xmalloc(sizeof(AstNode *) * (size_t)var_bucket_cap);
-    int other_bucket_count = 0, other_bucket_cap = 16;
-    AstNode **other_bucket = xmalloc(sizeof(AstNode *) * (size_t)other_bucket_cap);
+/* Single categorization pass over the program: records imports, C headers,
+ * `using` modules, type aliases and structs on the codegen, and sorts every
+ * other statement into its bucket. */
+static void codegen_collect_top_level(CodeGen *codegen, AstNode *program, TopLevelStatements *top) {
+    top->stdlib_import_count = 0;
+    top->enum_bucket_count = 0; top->enum_bucket_cap = 16;
+    top->enum_bucket = xmalloc(sizeof(AstNode *) * (size_t)top->enum_bucket_cap);
+    top->func_bucket_count = 0; top->func_bucket_cap = 16;
+    top->func_bucket = xmalloc(sizeof(AstNode *) * (size_t)top->func_bucket_cap);
+    top->var_bucket_count = 0; top->var_bucket_cap = 16;
+    top->var_bucket = xmalloc(sizeof(AstNode *) * (size_t)top->var_bucket_cap);
+    top->other_bucket_count = 0; top->other_bucket_cap = 16;
+    top->other_bucket = xmalloc(sizeof(AstNode *) * (size_t)top->other_bucket_cap);
 
     #define BUCKET_PUSH(arr, cnt, cap, val) do { \
         if ((cnt) >= (cap)) { \
@@ -13581,7 +13592,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         (arr)[(cnt)++] = (val); \
     } while (0)
 
-    for (int i = 0; i < total; i++) {
+    for (int i = 0; i < program->data.program.stmt_count; i++) {
         AstNode *stmt = program->data.program.stmts[i];
         if (stmt->kind == NODE_IMPORT_STMT) {
             for (int j = 0; j < stmt->data.import_stmt.count; j++) {
@@ -13589,8 +13600,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 if (item->is_stdlib && item->module) {
                     if (strcmp(item->module, "mem") == 0) codegen->has_mem = true;
                     if (strcmp(item->module, "fmt") == 0) codegen->has_fmt = true;
-                    if (stdlib_import_count < MAX_STDLIB_IMPORTS)
-                        stdlib_imports[stdlib_import_count++] = item->module;
+                    if (top->stdlib_import_count < MAX_STDLIB_IMPORTS)
+                        top->stdlib_imports[top->stdlib_import_count++] = item->module;
                 }
                 /* Collect C interop headers */
                 if (item->is_c_import && item->path) {
@@ -13673,7 +13684,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 codegen->struct_decl_cap);
             codegen->struct_decls[codegen->struct_decl_count++] = stmt;
         } else if (stmt->kind == NODE_ENUM_DECL) {
-            BUCKET_PUSH(enum_bucket, enum_bucket_count, enum_bucket_cap, stmt);
+            BUCKET_PUSH(top->enum_bucket, top->enum_bucket_count, top->enum_bucket_cap, stmt);
         } else if (stmt->kind == NODE_FUNC_DECL) {
             if (stmt->data.func_decl.is_test) {
                 /* #test functions exist only for `gray test`; a normal build
@@ -13689,14 +13700,19 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
                 }
                 if (!keep) continue;
             }
-            BUCKET_PUSH(func_bucket, func_bucket_count, func_bucket_cap, stmt);
+            BUCKET_PUSH(top->func_bucket, top->func_bucket_count, top->func_bucket_cap, stmt);
         } else if (stmt->kind == NODE_VAR_DECL) {
-            BUCKET_PUSH(var_bucket, var_bucket_count, var_bucket_cap, stmt);
+            BUCKET_PUSH(top->var_bucket, top->var_bucket_count, top->var_bucket_cap, stmt);
         } else if (stmt->kind != NODE_USING_STMT) {
-            BUCKET_PUSH(other_bucket, other_bucket_count, other_bucket_cap, stmt);
+            BUCKET_PUSH(top->other_bucket, top->other_bucket_count, top->other_bucket_cap, stmt);
         }
     }
+    #undef BUCKET_PUSH
+}
 
+/* Emit the #include preamble. Returns the output offset where arrays.h /
+ * maps.h / strings.h are spliced in once body emission knows which are used. */
+static size_t codegen_emit_preamble(CodeGen *codegen, const TopLevelStatements *top) {
     /* Emit preamble — core headers always included, stdlib headers only when imported */
     emit(codegen, "/* Generated by grayc */\n");
     emit(codegen, "#include \"runtime.h\"\n");
@@ -13719,11 +13735,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     emit(codegen, "#include \"bigint.h\"\n");
 
     /* An explicit import of one of these modules also needs its header. */
-    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "arrays"))
+    if (has_stdlib_module(top->stdlib_imports, top->stdlib_import_count, "arrays"))
         codegen->needs_arrays_h = true;
-    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "maps"))
+    if (has_stdlib_module(top->stdlib_imports, top->stdlib_import_count, "maps"))
         codegen->needs_maps_h = true;
-    if (has_stdlib_module(stdlib_imports, stdlib_import_count, "strings"))
+    if (has_stdlib_module(top->stdlib_imports, top->stdlib_import_count, "strings"))
         codegen->needs_strings_h = true;
 
     /* Remaining stdlib module headers: included only when imported. */
@@ -13754,7 +13770,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         {"runtime",  "runtime_mod.h"},
     };
     for (int i = 0; i < (int)(sizeof(stdlib_headers) / sizeof(stdlib_headers[0])); i++) {
-        if (has_stdlib_module(stdlib_imports, stdlib_import_count, stdlib_headers[i].module))
+        if (has_stdlib_module(top->stdlib_imports, top->stdlib_import_count, stdlib_headers[i].module))
             emit_formatted(codegen, "#include \"%s\"\n", stdlib_headers[i].header);
     }
 
@@ -13790,7 +13806,13 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         }
     }
     emit(codegen, "\n");
+    return collection_include_anchor;
+}
 
+/* Struct and enum type definitions: forward declarations, the ErrorCode
+ * enum, stdlib and user enums, struct/tagged-enum bodies in dependency order,
+ * and per-instantiation generic structs. */
+static void codegen_emit_type_definitions(CodeGen *codegen, const TopLevelStatements *top) {
     /* Emit struct forward declarations before enums so tagged union
      * payloads can reference struct types by name. */
     {
@@ -13817,8 +13839,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
 #define GRAY_ERR_EMIT(n) emit_formatted(codegen, "#define GrayErrorCode_%s %d\n", #n, slot++);
         GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_EMIT)
 #undef GRAY_ERR_EMIT
-        for (int i = 0; i < enum_bucket_count; i++) {
-            AstNode *es = enum_bucket[i];
+        for (int i = 0; i < top->enum_bucket_count; i++) {
+            AstNode *es = top->enum_bucket[i];
             if (!es->data.enum_decl.is_error_code) continue;
             for (int j = 0; j < es->data.enum_decl.value_count; j++) {
                 emit_formatted(codegen, "#define GrayErrorCode_%s %d\n",
@@ -13831,8 +13853,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
 #define GRAY_ERR_CASE(n) emit_formatted(codegen, "        case %d: return \"%s\";\n", slot++, #n);
         GRAY_ERROR_CODE_BUILTINS(GRAY_ERR_CASE)
 #undef GRAY_ERR_CASE
-        for (int i = 0; i < enum_bucket_count; i++) {
-            AstNode *es = enum_bucket[i];
+        for (int i = 0; i < top->enum_bucket_count; i++) {
+            AstNode *es = top->enum_bucket[i];
             if (!es->data.enum_decl.is_error_code) continue;
             for (int j = 0; j < es->data.enum_decl.value_count; j++) {
                 emit_formatted(codegen, "        case %d: return \"%s\";\n",
@@ -13855,7 +13877,7 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             {NULL, NULL, {NULL}, 0}
         };
         for (int i = 0; cg_stdlib_enums[i].name; i++) {
-            if (!has_stdlib_module(stdlib_imports, stdlib_import_count, cg_stdlib_enums[i].mod))
+            if (!has_stdlib_module(top->stdlib_imports, top->stdlib_import_count, cg_stdlib_enums[i].mod))
                 continue;
             emit(codegen, "typedef enum {\n");
             for (int j = 0; j < cg_stdlib_enums[i].count; j++) {
@@ -13869,8 +13891,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
     /* Register all enums and emit non-tagged enum typedefs.
      * Tagged enum typedefs are deferred until after struct body
      * definitions because their payloads may contain struct values. */
-    for (int i = 0; i < enum_bucket_count; i++) {
-        AstNode *stmt = enum_bucket[i];
+    for (int i = 0; i < top->enum_bucket_count; i++) {
+        AstNode *stmt = top->enum_bucket[i];
         /* Emit and register this enum under the name its module gives it.
          * The typedef, the variant constants, and the registry all read this
          * field, and they have to agree with what a reference resolves to.
@@ -13979,8 +14001,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
      * regardless of where the topological sort below places its definition. */
     {
         bool any_tagged = false;
-        for (int i = 0; i < enum_bucket_count; i++) {
-            AstNode *stmt = enum_bucket[i];
+        for (int i = 0; i < top->enum_bucket_count; i++) {
+            AstNode *stmt = top->enum_bucket[i];
             if (!stmt->data.enum_decl.is_tagged) continue;
             const char *ename = codegen_decl_name(codegen, stmt, stmt->data.enum_decl.name);
             emit_formatted(codegen, "typedef struct GrayEnum_%s GrayEnum_%s;\n", ename, ename);
@@ -13999,10 +14021,10 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         AstNode **structs = codegen->struct_decls;
 
         int tagged_count = 0;
-        AstNode **tagged_enums = enum_bucket_count > 0
-            ? xmalloc(sizeof(AstNode *) * (size_t)enum_bucket_count) : NULL;
-        for (int i = 0; i < enum_bucket_count; i++) {
-            if (enum_bucket[i]->data.enum_decl.is_tagged) tagged_enums[tagged_count++] = enum_bucket[i];
+        AstNode **tagged_enums = top->enum_bucket_count > 0
+            ? xmalloc(sizeof(AstNode *) * (size_t)top->enum_bucket_count) : NULL;
+        for (int i = 0; i < top->enum_bucket_count; i++) {
+            if (top->enum_bucket[i]->data.enum_decl.is_tagged) tagged_enums[tagged_count++] = top->enum_bucket[i];
         }
         int total = struct_count + tagged_count;
 
@@ -14124,7 +14146,9 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             emit(codegen, "};\n\n");
         }
     }
+}
 
+static void codegen_emit_json_helpers(CodeGen *codegen) {
     /* emit JSON parse/stringify helpers for #json structs. Each
      * #json struct gets two static functions:
      *   - gray_json_parse_<Name>(arena, json_string) → GrayStruct_<Name>
@@ -14321,12 +14345,14 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit_formatted(codegen, "    return (GrayString){_buf, (int32_t)_pos};\n");
         emit_formatted(codegen, "}\n\n");
     }
+}
 
-    /* (Enum typedefs already emitted above, before struct definitions) */
-
+/* Register every function (struct functions under their prefixed names),
+ * then emit multi-return typedefs and forward declarations for all of them. */
+static void codegen_emit_forward_decls(CodeGen *codegen, const TopLevelStatements *top) {
     /* Collect all function declarations (including struct-namespaced) */
-    for (int i = 0; i < func_bucket_count; i++) {
-        AstNode *stmt = func_bucket[i];
+    for (int i = 0; i < top->func_bucket_count; i++) {
+        AstNode *stmt = top->func_bucket[i];
         stmt->data.func_decl.name =
             codegen_decl_name(codegen, stmt, stmt->data.func_decl.name);
         GROW_ARRAY(codegen->all_funcs, codegen->func_count, codegen->func_cap);
@@ -14465,20 +14491,22 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         }
     }
     emit(codegen, "\n");
+}
 
+static void codegen_emit_bodies(CodeGen *codegen, const TopLevelStatements *top) {
     /* Emit global constants/variables first so they're visible to all functions
      * (e.g. when used as default parameter values at a call site). */
-    for (int i = 0; i < var_bucket_count; i++) {
-        emit_statement(codegen, var_bucket[i]);
+    for (int i = 0; i < top->var_bucket_count; i++) {
+        emit_statement(codegen, top->var_bucket[i]);
     }
 
     /* Emit remaining top-level statements (functions, enums, structs, etc.).
      * enum/struct/import/using/module are no-ops in emit_statement. */
-    for (int i = 0; i < func_bucket_count; i++) {
-        emit_statement(codegen, func_bucket[i]);
+    for (int i = 0; i < top->func_bucket_count; i++) {
+        emit_statement(codegen, top->func_bucket[i]);
     }
-    for (int i = 0; i < other_bucket_count; i++) {
-        emit_statement(codegen, other_bucket[i]);
+    for (int i = 0; i < top->other_bucket_count; i++) {
+        emit_statement(codegen, top->other_bucket[i]);
     }
 
     /* Emit struct-namespaced function definitions */
@@ -14491,8 +14519,11 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
             }
         }
     }
+}
 
-    /* Emit C main() */
+/* The C main(): runtime init, file-scope initializers, then gray_fn_main()
+ * or, under --test, the #test runner. */
+static void codegen_emit_main(CodeGen *codegen, const TopLevelStatements *top) {
     emit(codegen, "int main(int argc, char **argv) {\n");
     emit(codegen, "    (void)argc; (void)argv;\n");
     {
@@ -14515,8 +14546,8 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         /* Test runner: call each #test function under the runner's recovery
          * point so a failed assert/panic is recorded, not fatal. */
         emit(codegen, "    gray_test_begin();\n");
-        for (int i = 0; i < func_bucket_count; i++) {
-            AstNode *fn = func_bucket[i];
+        for (int i = 0; i < top->func_bucket_count; i++) {
+            AstNode *fn = top->func_bucket[i];
             if (fn->kind != NODE_FUNC_DECL || !fn->data.func_decl.is_test) continue;
             const char *name = fn->data.func_decl.original_name
                 ? fn->data.func_decl.original_name : fn->data.func_decl.name;
@@ -14532,6 +14563,19 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         emit(codegen, "    return 0;\n");
         emit(codegen, "}\n");
     }
+}
+
+void codegen_generate(CodeGen *codegen, AstNode *program) {
+    if (program->kind != NODE_PROGRAM) return;
+
+    TopLevelStatements top;
+    codegen_collect_top_level(codegen, program, &top);
+    size_t collection_include_anchor = codegen_emit_preamble(codegen, &top);
+    codegen_emit_type_definitions(codegen, &top);
+    codegen_emit_json_helpers(codegen);
+    codegen_emit_forward_decls(codegen, &top);
+    codegen_emit_bodies(codegen, &top);
+    codegen_emit_main(codegen, &top);
 
     /* Splice the collection headers into the preamble now that body emission
      * has settled which ones are actually used. */
@@ -14556,11 +14600,10 @@ void codegen_generate(CodeGen *codegen, AstNode *program) {
         buffer_destroy(&includes);
     }
 
-    free(enum_bucket);
-    free(func_bucket);
-    free(var_bucket);
-    free(other_bucket);
-    #undef BUCKET_PUSH
+    free(top.enum_bucket);
+    free(top.func_bucket);
+    free(top.var_bucket);
+    free(top.other_bucket);
 }
 
 const char *codegen_result(CodeGen *codegen) {
