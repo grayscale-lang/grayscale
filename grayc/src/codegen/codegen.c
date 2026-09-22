@@ -380,16 +380,16 @@ static const char *sized_check_func(TokenType op, bool is_unsigned) {
  * Returns true if a checked form was emitted, false otherwise. */
 static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
                                       const char *ref_str) {
-    TokenType aop = node->data.assign.op;
-    if (aop != TOK_PLUS_ASSIGN && aop != TOK_MINUS_ASSIGN &&
-        aop != TOK_ASTERISK_ASSIGN)
+    TokenType assign_op = node->data.assign.op;
+    if (assign_op != TOK_PLUS_ASSIGN && assign_op != TOK_MINUS_ASSIGN &&
+        assign_op != TOK_ASTERISK_ASSIGN)
         return false;
 
     GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
     if (!tgt_t) return false;
 
     /* String append: s += t → s = gray_string_concat(arena, s, t). */
-    if (aop == TOK_PLUS_ASSIGN && tgt_t->kind == TK_STRING) {
+    if (assign_op == TOK_PLUS_ASSIGN && tgt_t->kind == TK_STRING) {
         emit_formatted(codegen, "%s = gray_string_concat(gray_default_arena, %s, ", ref_str, ref_str);
         emit_expression(codegen, node->data.assign.value);
         emit(codegen, ")");
@@ -403,7 +403,7 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
     bool is_unsigned = false;
     if (type_name_str) sized_int_bounds(type_name_str, &smin, &smax, &is_unsigned);
     if (smax) {
-        const char *check_func_name = sized_check_func(aop, is_unsigned);
+        const char *check_func_name = sized_check_func(assign_op, is_unsigned);
         if (!check_func_name) return false;
         emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
         emit_expression(codegen, node->data.assign.value);
@@ -424,13 +424,13 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
     bool unsigned_op = (tgt_t->kind == TK_UINT || tgt_t->kind == TK_BYTE);
     const char *check_func_name = NULL;
     if (unsigned_op) {
-        if (aop == TOK_PLUS_ASSIGN) check_func_name = "gray_uadd_check";
-        else if (aop == TOK_MINUS_ASSIGN) check_func_name = "gray_usub_check";
-        else if (aop == TOK_ASTERISK_ASSIGN) check_func_name = "gray_umul_check";
+        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_uadd_check";
+        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_usub_check";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_umul_check";
     } else {
-        if (aop == TOK_PLUS_ASSIGN) check_func_name = "gray_add_check";
-        else if (aop == TOK_MINUS_ASSIGN) check_func_name = "gray_sub_check";
-        else if (aop == TOK_ASTERISK_ASSIGN) check_func_name = "gray_mul_check";
+        if (assign_op == TOK_PLUS_ASSIGN) check_func_name = "gray_add_check";
+        else if (assign_op == TOK_MINUS_ASSIGN) check_func_name = "gray_sub_check";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) check_func_name = "gray_mul_check";
     }
     if (!check_func_name) return false;
 
@@ -10502,19 +10502,19 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     c_elem = gray_type_to_c_codegen(codegen, left_t->element_type);
                 }
             }
+            TokenType assign_op = node->data.assign.op;
+            bool is_compound = (assign_op == TOK_PLUS_ASSIGN || assign_op == TOK_MINUS_ASSIGN || assign_op == TOK_ASTERISK_ASSIGN);
             /* m[key][i] = v: the map lookup lowers to a statement-expression
              * that yields the stored GrayArray by rvalue, so GRAY_ARRAY_SET_AT's
              * &(arr) is invalid. Bind it to a temp — the GrayArray header is a
              * view over the stored buffer, so element writes still land there. */
             if (index_left_is_map_lookup(codegen, left)) {
                 AstNode *idx = node->data.assign.target->data.index_expr.index;
-                TokenType aop_m = node->data.assign.op;
-                bool is_compound_m = (aop_m == TOK_PLUS_ASSIGN || aop_m == TOK_MINUS_ASSIGN || aop_m == TOK_ASTERISK_ASSIGN);
                 const char *sn = left_t->element_type;
                 const char *smin = NULL, *smax = NULL;
                 bool su = false;
                 if (sn) sized_int_bounds(sn, &smin, &smax, &su);
-                const char *sized_fn = (is_compound_m && smax) ? sized_check_func(aop_m, su) : NULL;
+                const char *sized_fn = (is_compound && smax) ? sized_check_func(assign_op, su) : NULL;
                 emit_formatted(codegen, "{ GrayArray _ea = ");
                 emit_expression(codegen, left);
                 emit(codegen, "; ");
@@ -10535,7 +10535,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
                 emit_expression(codegen, idx);
                 emit(codegen, ", ");
-                if (is_compound_m && strcmp(c_elem, "GrayString") == 0 && aop_m == TOK_PLUS_ASSIGN) {
+                if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                     /* The concat result must outlive the loop iteration that
                      * produced it — inside a nested loop that means the outer
                      * arena, not the per-iteration gray_default_arena. */
@@ -10545,10 +10545,10 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, ")");
-                } else if (is_compound_m) {
+                } else if (is_compound) {
                     const char *binop = "+";
-                    if (aop_m == TOK_MINUS_ASSIGN) binop = "-";
-                    else if (aop_m == TOK_ASTERISK_ASSIGN) binop = "*";
+                    if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+                    else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
                     emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
                     emit_expression(codegen, idx);
                     emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
@@ -10582,8 +10582,6 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 if (_set_ptr_obj) {
                     bool _set_raw = (_set_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, _set_ptr_obj->data.label.value));
                     int my_dp = codegen_next_id(codegen);
-                    TokenType aop2 = node->data.assign.op;
-                    bool is_compound2 = (aop2 == TOK_PLUS_ASSIGN || aop2 == TOK_MINUS_ASSIGN || aop2 == TOK_ASTERISK_ASSIGN);
                     emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
                     emit_expression(codegen, _set_ptr_obj);
                     if (_set_raw) {
@@ -10596,17 +10594,17 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
-                    if (is_compound2 && strcmp(c_elem, "GrayString") == 0 && aop2 == TOK_PLUS_ASSIGN) {
+                    if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                         emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
                             codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp, sanitize_name(_set_ptr_field));
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
                         emit(codegen, ")");
-                    } else if (is_compound2) {
+                    } else if (is_compound) {
                         const char *binop = "+";
-                        if (aop2 == TOK_MINUS_ASSIGN) binop = "-";
-                        else if (aop2 == TOK_ASTERISK_ASSIGN) binop = "*";
+                        if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+                        else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
                         emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", my_dp, sanitize_name(_set_ptr_field), c_elem);
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
@@ -10624,8 +10622,6 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 AstNode *_dp_inner = left->data.postfix.left;
                 bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
                 int my_dp = codegen_next_id(codegen);
-                TokenType aop3 = node->data.assign.op;
-                bool is_compound3 = (aop3 == TOK_PLUS_ASSIGN || aop3 == TOK_MINUS_ASSIGN || aop3 == TOK_ASTERISK_ASSIGN);
                 emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
                 emit_expression(codegen, _dp_inner);
                 if (_dp_raw) {
@@ -10638,17 +10634,17 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
-                if (is_compound3 && strcmp(c_elem, "GrayString") == 0 && aop3 == TOK_PLUS_ASSIGN) {
+                if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                     emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
                         codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp);
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                     emit_expression(codegen, node->data.assign.value);
                     emit(codegen, ")");
-                } else if (is_compound3) {
+                } else if (is_compound) {
                     const char *binop = "+";
-                    if (aop3 == TOK_MINUS_ASSIGN) binop = "-";
-                    else if (aop3 == TOK_ASTERISK_ASSIGN) binop = "*";
+                    if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+                    else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
                     emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", my_dp, c_elem);
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
@@ -10661,15 +10657,13 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 return;
             }
             /* Compound assignment on array element with sized-type overflow check */
-            TokenType aop = node->data.assign.op;
-            bool is_compound = (aop == TOK_PLUS_ASSIGN || aop == TOK_MINUS_ASSIGN || aop == TOK_ASTERISK_ASSIGN);
             if (is_compound && left_t->element_type) {
                 const char *sn = left_t->element_type;
                 const char *smin = NULL, *smax = NULL;
                 bool su = false;
                 sized_int_bounds(sn, &smin, &smax, &su);
                 if (smax) {
-                    const char *function_name = sized_check_func(aop, su);
+                    const char *function_name = sized_check_func(assign_op, su);
                     if (function_name) {
                         /* GET reads sizeof(type) bytes, so it must use the real
                          * element width — an int64_t read over-runs a packed
@@ -10718,7 +10712,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             emit_expression(codegen, node->data.assign.target->data.index_expr.index);
             emit(codegen, ", ");
             /* Non-sized compound assignment on array element: read-modify-write */
-            if (is_compound && strcmp(c_elem, "GrayString") == 0 && aop == TOK_PLUS_ASSIGN) {
+            if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                 emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(",
                     codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
                 emit_expression(codegen, left);
@@ -10729,8 +10723,8 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 emit(codegen, ")");
             } else if (is_compound) {
                 const char *binop = "+";
-                if (aop == TOK_MINUS_ASSIGN) binop = "-";
-                else if (aop == TOK_ASTERISK_ASSIGN) binop = "*";
+                if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+                else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
                 emit_formatted(codegen, "GRAY_ARRAY_GET_AT(");
                 emit_expression(codegen, left);
                 emit_formatted(codegen, ", %s, ", c_elem);
@@ -11162,9 +11156,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
      * routes through the checked helpers; the compound form must do the
      * same so a OP= b never wraps where a = a OP b would panic. */
     {
-        TokenType aop = node->data.assign.op;
-        bool is_arith_compound = (aop == TOK_PLUS_ASSIGN || aop == TOK_MINUS_ASSIGN || aop == TOK_ASTERISK_ASSIGN);
-        bool is_div_compound = (aop == TOK_SLASH_ASSIGN || aop == TOK_PERCENT_ASSIGN);
+        TokenType assign_op = node->data.assign.op;
+        bool is_arith_compound = (assign_op == TOK_PLUS_ASSIGN || assign_op == TOK_MINUS_ASSIGN || assign_op == TOK_ASTERISK_ASSIGN);
+        bool is_div_compound = (assign_op == TOK_SLASH_ASSIGN || assign_op == TOK_PERCENT_ASSIGN);
         if (is_arith_compound || is_div_compound) {
             GrayType *tgt_t = typetable_get(codegen->type_table, node->data.assign.target);
             const char *sn = (tgt_t && tgt_t->name) ? tgt_t->name : NULL;
@@ -11175,9 +11169,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 const char *pfx = bigint_prefix(tgt_bi);
                 if (is_arith_compound) {
                     const char *fn_op = NULL;
-                    if (aop == TOK_PLUS_ASSIGN) fn_op = "add";
-                    else if (aop == TOK_MINUS_ASSIGN) fn_op = "sub";
-                    else if (aop == TOK_ASTERISK_ASSIGN) fn_op = "mul";
+                    if (assign_op == TOK_PLUS_ASSIGN) fn_op = "add";
+                    else if (assign_op == TOK_MINUS_ASSIGN) fn_op = "sub";
+                    else if (assign_op == TOK_ASTERISK_ASSIGN) fn_op = "mul";
                     if (fn_op) {
                         emit_expression(codegen, node->data.assign.target);
                         emit_formatted(codegen, " = %s_%s_checked(", pfx, fn_op);
@@ -11189,7 +11183,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     }
                 }
                 if (is_div_compound) {
-                    const char *fn_op = (aop == TOK_SLASH_ASSIGN) ? "div" : "mod";
+                    const char *fn_op = (assign_op == TOK_SLASH_ASSIGN) ? "div" : "mod";
                     emit_expression(codegen, node->data.assign.target);
                     emit_formatted(codegen, " = %s_%s(", pfx, fn_op);
                     emit_expression(codegen, node->data.assign.target);
@@ -11205,7 +11199,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             if (sn) sized_int_bounds(sn, &smin, &smax, &su);
             /* Sized arith: gray_(u)sized_*_check */
             if (is_arith_compound && smax) {
-                const char *function_name = sized_check_func(aop, su);
+                const char *function_name = sized_check_func(assign_op, su);
                 if (function_name) {
                     emit_formatted(codegen, "{ %s *_tgt = &(", gray_type_to_c_codegen(codegen, sn));
                     emit_expression(codegen, node->data.assign.target);
@@ -11224,13 +11218,13 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 bool unsigned_op = (tgt_t->kind == TK_UINT || tgt_t->kind == TK_BYTE);
                 const char *function_name = NULL;
                 if (unsigned_op) {
-                    if (aop == TOK_PLUS_ASSIGN) function_name = "gray_uadd_check";
-                    else if (aop == TOK_MINUS_ASSIGN) function_name = "gray_usub_check";
-                    else if (aop == TOK_ASTERISK_ASSIGN) function_name = "gray_umul_check";
+                    if (assign_op == TOK_PLUS_ASSIGN) function_name = "gray_uadd_check";
+                    else if (assign_op == TOK_MINUS_ASSIGN) function_name = "gray_usub_check";
+                    else if (assign_op == TOK_ASTERISK_ASSIGN) function_name = "gray_umul_check";
                 } else {
-                    if (aop == TOK_PLUS_ASSIGN) function_name = "gray_add_check";
-                    else if (aop == TOK_MINUS_ASSIGN) function_name = "gray_sub_check";
-                    else if (aop == TOK_ASTERISK_ASSIGN) function_name = "gray_mul_check";
+                    if (assign_op == TOK_PLUS_ASSIGN) function_name = "gray_add_check";
+                    else if (assign_op == TOK_MINUS_ASSIGN) function_name = "gray_sub_check";
+                    else if (assign_op == TOK_ASTERISK_ASSIGN) function_name = "gray_mul_check";
                 }
                 if (function_name) {
                     const char *c_ty = unsigned_op ? "uint64_t" : "int64_t";
@@ -11251,7 +11245,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     if (!sn || !sized_int_bounds(sn, &signed_min, NULL, NULL))
                         signed_min = "(-9223372036854775807LL - 1)";
                 }
-                const char *binop = (aop == TOK_SLASH_ASSIGN) ? "/" : "%";
+                const char *binop = (assign_op == TOK_SLASH_ASSIGN) ? "/" : "%";
                 emit(codegen, "{ __auto_type _tgt_ref = &(");
                 emit_expression(codegen, node->data.assign.target);
                 emit(codegen, "); __auto_type _dv = ");
@@ -11261,7 +11255,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_formatted(codegen, "if ((int64_t)*_tgt_ref == %s && _dv == -1) { %s; } ",
                         signed_min,
                         panic_call(codegen, node, "P0079",
-                                   (aop == TOK_SLASH_ASSIGN) ? ", \"division\"" : ", \"modulo\""));
+                                   (assign_op == TOK_SLASH_ASSIGN) ? ", \"division\"" : ", \"modulo\""));
                 }
                 emit_formatted(codegen, "*_tgt_ref %s= _dv; }\n", binop);
                 return;

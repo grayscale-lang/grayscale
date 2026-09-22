@@ -14656,10 +14656,10 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
     /* Compound assignment type validation: x op= y must be valid
      * when x op y would be valid. Mirrors the checks in
      * resolve_infix_expr() for the corresponding binary operator. */
-    TokenType aop = node->data.assign.op;
-    if (aop == TOK_PLUS_ASSIGN || aop == TOK_MINUS_ASSIGN ||
-        aop == TOK_ASTERISK_ASSIGN || aop == TOK_SLASH_ASSIGN ||
-        aop == TOK_PERCENT_ASSIGN) {
+    TokenType assign_op = node->data.assign.op;
+    if (assign_op == TOK_PLUS_ASSIGN || assign_op == TOK_MINUS_ASSIGN ||
+        assign_op == TOK_ASTERISK_ASSIGN || assign_op == TOK_SLASH_ASSIGN ||
+        assign_op == TOK_PERCENT_ASSIGN) {
 
         /* E3078: pointer arithmetic */
         if (target_t && target_t->kind == TK_POINTER) {
@@ -14674,7 +14674,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             if (target_t->kind == TK_BOOL || value_t->kind == TK_BOOL) {
                 char *msg = typechecker_format(checker,
                     "invalid operands: cannot use '%s' with %s and %s",
-                    operator_display_name(aop), type_name(target_t), type_name(value_t));
+                    operator_display_name(assign_op), type_name(target_t), type_name(value_t));
                 tc_err_at(checker, "E3002", node, msg);
             }
 
@@ -14684,7 +14684,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
              * checks below and the assignment type check, so E3048 does
              * not pile onto E3093 / E3001. */
             if (target_t->kind == TK_STRING && value_t->kind != TK_STRING &&
-                aop == TOK_PLUS_ASSIGN) {
+                assign_op == TOK_PLUS_ASSIGN) {
                 diagnostic_error_code_formatted(checker->diag, "E3048",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
                     type_display_name(checker, target_t), type_display_name(checker, value_t));
@@ -14692,14 +14692,14 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
 
             /* E3002: string in non-plus arithmetic */
             if ((target_t->kind == TK_STRING || value_t->kind == TK_STRING) &&
-                aop != TOK_PLUS_ASSIGN) {
+                assign_op != TOK_PLUS_ASSIGN) {
                 char *msg = typechecker_format(checker,
-                    "cannot use '%s' on string type", operator_display_name(aop));
+                    "cannot use '%s' on string type", operator_display_name(assign_op));
                 tc_err_at(checker, "E3002", node, msg);
             }
 
             /* E3002: modulo on float */
-            if (aop == TOK_PERCENT_ASSIGN &&
+            if (assign_op == TOK_PERCENT_ASSIGN &&
                 (target_t->kind == TK_FLOAT || value_t->kind == TK_FLOAT)) {
                 tc_err_at(checker, "E3002", node, "modulo (%) only works on integers, not floats");
             }
@@ -14713,7 +14713,7 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
                                  target_t->kind == TK_STRUCT) ? target_t : value_t;
                 diagnostic_error_code_formatted(checker->diag, "E3093",
                     NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    operator_display_name(aop), type_display_name(checker, bad));
+                    operator_display_name(assign_op), type_display_name(checker, bad));
             }
         }
     }
