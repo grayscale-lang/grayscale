@@ -8047,6 +8047,29 @@ static bool path_contains_string_index(TypeChecker *checker, AstNode *e) {
     }
 }
 
+/* E3161: addr()/raw()/ref() of a map, dynamic array, or string index has no
+ * stable address to point at. */
+static void reject_unstable_address_target(TypeChecker *checker, AstNode *node,
+                                           AstNode *arg, const char *builtin_name) {
+    const char *action = strcmp(builtin_name, "ref") == 0
+        ? "take a reference to" : "take the address of";
+    if (path_contains_map_index(checker, arg)) {
+        tc_err_at(checker, "E3161", node, typechecker_format(checker,
+            "'%s()' cannot %s a map index expression; map values may relocate on rehash",
+            builtin_name, action));
+    }
+    if (path_contains_dynamic_array_index(checker, arg)) {
+        tc_err_at(checker, "E3161", node, typechecker_format(checker,
+            "'%s()' cannot %s a dynamic array index expression; the backing store may relocate when the array grows",
+            builtin_name, action));
+    }
+    if (path_contains_string_index(checker, arg)) {
+        tc_err_at(checker, "E3161", node, typechecker_format(checker,
+            "'%s()' cannot %s a string index expression; string bytes are immutable",
+            builtin_name, action));
+    }
+}
+
 /* Reject an argument to print/println/eprint/eprintln that is not a printable
  * value. Does nothing for a call with no arguments; the arity check is the
  * caller's. */
@@ -8091,21 +8114,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
          * member/index chains so 'addr(some_call().field)' is
          * rejected at typecheck instead of leaking an
          * '&(rvalue)' to clang. */
-        if (path_contains_map_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'addr()' cannot take the address of a map index expression; map values may relocate on rehash",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        if (path_contains_dynamic_array_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'addr()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        if (path_contains_string_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'addr()' cannot take the address of a string index expression; string bytes are immutable",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
+        reject_unstable_address_target(checker, node, arg, "addr");
         if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "'addr()' requires a variable, field, or index expression; cannot take address of a literal or expression",
@@ -8115,21 +8124,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
         result = type_pointer(type_name(arg_t));
     } else if (strcmp(function_name, "raw") == 0 && node->data.call.arg_count == 1) {
         AstNode *arg = node->data.call.args[0];
-        if (path_contains_map_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'raw()' cannot take the address of a map index expression; map values may relocate on rehash",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        if (path_contains_dynamic_array_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'raw()' cannot take the address of a dynamic array index expression; the backing store may relocate when the array grows",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
-        if (path_contains_string_index(checker, arg)) {
-            diagnostic_error_message(checker->diag, "E3161",
-                "'raw()' cannot take the address of a string index expression; string bytes are immutable",
-                NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-        }
+        reject_unstable_address_target(checker, node, arg, "raw");
         if (!is_assignment_target(checker, arg)) {
             diagnostic_error_message(checker->diag, "E3012",
                 "'raw()' requires a variable, field, or index expression; cannot take address of a literal or expression",
@@ -8178,21 +8173,7 @@ static GrayType *resolve_builtin_call(TypeChecker *checker, AstNode *node, const
              * without a stable address. Without this, ref(42) and
              * ref(some_call()) leaked '&42' / '&(rvalue)' to clang
              * and produced opaque generated-C errors. */
-            if (path_contains_map_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3161",
-                    "'ref()' cannot take a reference to a map index expression; map values may relocate on rehash",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-            if (path_contains_dynamic_array_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3161",
-                    "'ref()' cannot take a reference to a dynamic array index expression; the backing store may relocate when the array grows",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
-            if (path_contains_string_index(checker, arg)) {
-                diagnostic_error_message(checker->diag, "E3161",
-                    "'ref()' cannot take a reference to a string index expression; string bytes are immutable",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-            }
+            reject_unstable_address_target(checker, node, arg, "ref");
             if (!is_assignment_target(checker, arg)) {
                 diagnostic_error_message(checker->diag, "E3012",
                     "'ref()' requires a variable, field, or index expression; cannot take a reference to a literal, call result, or expression",
