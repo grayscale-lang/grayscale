@@ -11647,6 +11647,17 @@ static void emit_multi_function_return_escape(CodeGen *codegen) {
 }
 
 static bool function_uses_watermark(CodeGen *codegen, AstNode *node);
+static bool block_alloc_free(CodeGen *codegen, AstNode *body);
+
+/* True when the current function's watermark path took a real _scope_mark
+ * to restore. A void function may allocate temporaries it must free, so it
+ * takes one unless its own body is provably alloc-free. The non-void
+ * watermark path (see function_uses_watermark) is only reached when the
+ * whole body is provably alloc-free, so it never takes one. */
+static bool function_needs_scope_mark(CodeGen *codegen, AstNode *node) {
+    if (!node || node->data.func_decl.return_type_count != 0) return false;
+    return !block_alloc_free(codegen, node->data.func_decl.body);
+}
 
 static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     /* Caller-arena functions have no _scope_mark to restore. */
@@ -11657,6 +11668,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
     bool watermark = codegen->current_func &&
                      codegen->current_func->data.func_decl.return_type_count > 0 &&
                      function_uses_watermark(codegen, codegen->current_func);
+    bool has_mark = function_needs_scope_mark(codegen, codegen->current_func);
 
     /* Guard against malformed AST: count > 0 but NULL values array */
     if (node->data.return_stmt.count > 0 && !node->data.return_stmt.values) {
@@ -11664,7 +11676,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "{ ");
         emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
-        if (caller_arena) {
+        if (caller_arena || !has_mark) {
             emit(codegen, "gray_exit_func(); return; }\n");
         } else {
             emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); gray_exit_func(); return; }\n");
@@ -11725,7 +11737,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "{ ");
         emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
-        if (caller_arena) {
+        if (caller_arena || !has_mark) {
             emit(codegen, "gray_exit_func(); return; }\n");
         } else {
             emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); gray_exit_func(); return; }\n");
@@ -11744,7 +11756,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         if (codegen->current_func && codegen->current_func->data.func_decl.return_type_count > 0) {
             if (watermark) {
                 emit_scratch_arena_unwind(codegen);
-                emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); ");
+                if (has_mark) emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); ");
             } else {
                 const char *ret_tn = codegen->current_func->data.func_decl.return_types[0];
                 emit_function_return_escape(codegen, ret_tn);
@@ -11786,7 +11798,7 @@ static void emit_return_statement(CodeGen *codegen, AstNode *node) {
         emit(codegen, "{ ");
         emit_ensure_cleanup(codegen);
         emit_scratch_arena_unwind(codegen);
-        if (caller_arena) {
+        if (caller_arena || !has_mark) {
             emit(codegen, "gray_exit_func(); return; }\n");
         } else {
             emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark); gray_exit_func(); return; }\n");
@@ -12501,12 +12513,20 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
     bool caller_arena = function_uses_caller_arena(codegen, node);
     /* A non-void function that provably allocates nothing and returns a
      * copy-free scalar needs no private arena — the watermark is enough,
-     * exactly as for a void function. */
+     * exactly as for a void function. See function_needs_scope_mark: that
+     * non-void watermark path never actually takes a mark, since it is only
+     * reached when the whole body is alloc-free — skipping the save/restore
+     * pair there (and the void case when its own body is alloc-free too)
+     * avoids emitting it, and the C compiler work of optimizing it away, at
+     * every call site of a function that never allocates. */
     bool watermark_fn = is_void_fn || function_uses_watermark(codegen, node);
+    bool needs_scope_mark = function_needs_scope_mark(codegen, node);
     if (!is_main && !caller_arena) {
         if (watermark_fn) {
-            emit_indent(codegen);
-            emit(codegen, "GrayScopeMark _scope_mark = gray_scope_save(gray_default_arena);\n");
+            if (needs_scope_mark) {
+                emit_indent(codegen);
+                emit(codegen, "GrayScopeMark _scope_mark = gray_scope_save(gray_default_arena);\n");
+            }
         } else {
             emit_indent(codegen);
             emit_formatted(codegen, "GrayArena *_func_arena = gray_arena_create(%d);\n", FUNC_ARENA_SIZE);
@@ -12556,8 +12576,10 @@ static void emit_function_declaration(CodeGen *codegen, AstNode *node, bool is_m
         /* cleanup function-scoped memory */
         if (!is_main && !caller_arena) {
             if (watermark_fn) {
-                emit_indent(codegen);
-                emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark);\n");
+                if (needs_scope_mark) {
+                    emit_indent(codegen);
+                    emit(codegen, "gray_scope_restore(gray_default_arena, _scope_mark);\n");
+                }
             } else {
                 emit_indent(codegen);
                 emit(codegen, "gray_default_arena = _func_saved;\n");
