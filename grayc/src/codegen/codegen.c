@@ -2810,6 +2810,48 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         /* Check if right side is a range expression: x in range(a, b) */
         if (node->data.infix.right->kind == NODE_RANGE_EXPR) {
             AstNode *range = node->data.infix.right;
+            const char *wide = resolve_bigint_type(codegen, node->data.infix.left);
+            if (!wide && range->data.range_expr.start)
+                wide = resolve_bigint_type(codegen, range->data.range_expr.start);
+            if (!wide) wide = resolve_bigint_type(codegen, range->data.range_expr.end);
+            if (!wide && range->data.range_expr.step)
+                wide = resolve_bigint_type(codegen, range->data.range_expr.step);
+            if (wide) {
+                const char *pfx = bigint_prefix(wide);
+                GrayType *left_t = typetable_get(codegen->type_table, node->data.infix.left);
+                if (negated) emit(codegen, "!(");
+                emit_formatted(codegen, "(%s_ge(", pfx);
+                emit_bigint_operand(codegen, node->data.infix.left, pfx, wide, left_t);
+                emit(codegen, ", ");
+                if (range->data.range_expr.start) {
+                    emit_bigint_operand(codegen, range->data.range_expr.start, pfx, wide, NULL);
+                } else {
+                    emit_formatted(codegen, "%s_from_u64(0)", pfx);
+                }
+                emit_formatted(codegen, ") && %s_lt(", pfx);
+                emit_bigint_operand(codegen, node->data.infix.left, pfx, wide, left_t);
+                emit(codegen, ", ");
+                emit_bigint_operand(codegen, range->data.range_expr.end, pfx, wide, NULL);
+                emit(codegen, ")");
+                /* Step check: value must be at a step interval from start */
+                if (range->data.range_expr.step) {
+                    emit_formatted(codegen, " && %s_eq(%s_mod(%s_sub(", pfx, pfx, pfx);
+                    emit_bigint_operand(codegen, node->data.infix.left, pfx, wide, left_t);
+                    emit(codegen, ", ");
+                    if (range->data.range_expr.start) {
+                        emit_bigint_operand(codegen, range->data.range_expr.start, pfx, wide, NULL);
+                    } else {
+                        emit_formatted(codegen, "%s_from_u64(0)", pfx);
+                    }
+                    emit(codegen, "), ");
+                    emit_bigint_operand(codegen, range->data.range_expr.step, pfx, wide, NULL);
+                    emit_formatted(codegen, ", \"%s\", %d), %s_from_u64(0))",
+                        codegen->file, node->token.line, pfx);
+                }
+                emit(codegen, ")");
+                if (negated) emit(codegen, ")");
+                return;
+            }
             if (negated) emit(codegen, "!(");
             emit(codegen, "(");
             emit_expression(codegen, node->data.infix.left);
@@ -13091,24 +13133,52 @@ static void emit_statement(CodeGen *codegen, AstNode *node) {
                     bool neg_step = (range->data.range_expr.step &&
                         range->data.range_expr.step->kind == NODE_PREFIX_EXPR &&
                         range->data.range_expr.step->data.prefix.op == TOK_MINUS);
-                    emit(codegen, "(");
-                    emit(codegen, when_tmp);
-                    emit(codegen, neg_step ? " <= " : " >= ");
-                    emit_expression(codegen, range->data.range_expr.start);
-                    emit(codegen, " && ");
-                    emit(codegen, when_tmp);
-                    emit(codegen, neg_step ? " > " : " < ");
-                    emit_expression(codegen, range->data.range_expr.end);
-                    if (range->data.range_expr.step) {
-                        emit(codegen, " && (");
+                    if (when_bigint) {
+                        const char *pfx = bigint_prefix(when_bigint);
+                        emit_formatted(codegen, "(%s_%s(", pfx, neg_step ? "le" : "ge");
                         emit(codegen, when_tmp);
-                        emit(codegen, " - ");
+                        emit(codegen, ", ");
+                        if (!emit_bigint_coerced(codegen, when_bigint, range->data.range_expr.start))
+                            emit_expression(codegen, range->data.range_expr.start);
+                        emit_formatted(codegen, ") && %s_%s(", pfx, neg_step ? "gt" : "lt");
+                        emit(codegen, when_tmp);
+                        emit(codegen, ", ");
+                        if (!emit_bigint_coerced(codegen, when_bigint, range->data.range_expr.end))
+                            emit_expression(codegen, range->data.range_expr.end);
+                        emit(codegen, ")");
+                        if (range->data.range_expr.step) {
+                            emit_formatted(codegen, " && %s_eq(%s_mod(%s_sub(", pfx, pfx, pfx);
+                            emit(codegen, when_tmp);
+                            emit(codegen, ", ");
+                            if (!emit_bigint_coerced(codegen, when_bigint, range->data.range_expr.start))
+                                emit_expression(codegen, range->data.range_expr.start);
+                            emit(codegen, "), ");
+                            if (!emit_bigint_coerced(codegen, when_bigint, range->data.range_expr.step))
+                                emit_expression(codegen, range->data.range_expr.step);
+                            emit_formatted(codegen, ", \"%s\", %d), %s_from_u64(0))",
+                                codegen->file, node->token.line, pfx);
+                        }
+                        emit(codegen, ")");
+                    } else {
+                        emit(codegen, "(");
+                        emit(codegen, when_tmp);
+                        emit(codegen, neg_step ? " <= " : " >= ");
                         emit_expression(codegen, range->data.range_expr.start);
-                        emit(codegen, ") % ");
-                        emit_expression(codegen, range->data.range_expr.step);
-                        emit(codegen, " == 0");
+                        emit(codegen, " && ");
+                        emit(codegen, when_tmp);
+                        emit(codegen, neg_step ? " > " : " < ");
+                        emit_expression(codegen, range->data.range_expr.end);
+                        if (range->data.range_expr.step) {
+                            emit(codegen, " && (");
+                            emit(codegen, when_tmp);
+                            emit(codegen, " - ");
+                            emit_expression(codegen, range->data.range_expr.start);
+                            emit(codegen, ") % ");
+                            emit_expression(codegen, range->data.range_expr.step);
+                            emit(codegen, " == 0");
+                        }
+                        emit(codegen, ")");
                     }
-                    emit(codegen, ")");
                 } else if (when_is_string) {
                     emit(codegen, "gray_string_eq(");
                     emit(codegen, when_tmp);
