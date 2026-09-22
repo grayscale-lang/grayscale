@@ -10410,6 +10410,448 @@ static void emit_heap_escaped_field_assign(CodeGen *codegen, AstNode *node, cons
     emit(codegen, "; gray_default_arena = _esc_h; }");
 }
 
+/* arr[i] = v and compound forms; `left` is the indexed array expression. */
+static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *left, GrayType *left_t) {
+    const char *c_elem = "int64_t";
+    if (left_t->element_type) {
+        if (strcmp(left_t->element_type, "func") == 0 || strncmp(left_t->element_type, "func(", 5) == 0) {
+            c_elem = "void *";
+        } else {
+            c_elem = gray_type_to_c_codegen(codegen, left_t->element_type);
+        }
+    }
+    TokenType assign_op = node->data.assign.op;
+    bool is_compound = (assign_op == TOK_PLUS_ASSIGN || assign_op == TOK_MINUS_ASSIGN || assign_op == TOK_ASTERISK_ASSIGN);
+    /* m[key][i] = v: the map lookup lowers to a statement-expression
+     * that yields the stored GrayArray by rvalue, so GRAY_ARRAY_SET_AT's
+     * &(arr) is invalid. Bind it to a temp — the GrayArray header is a
+     * view over the stored buffer, so element writes still land there. */
+    if (index_left_is_map_lookup(codegen, left)) {
+        AstNode *idx = node->data.assign.target->data.index_expr.index;
+        const char *sn = left_t->element_type;
+        const char *smin = NULL, *smax = NULL;
+        bool su = false;
+        if (sn) sized_int_bounds(sn, &smin, &smax, &su);
+        const char *sized_fn = (is_compound && smax) ? sized_check_func(assign_op, su) : NULL;
+        emit_formatted(codegen, "{ GrayArray _ea = ");
+        emit_expression(codegen, left);
+        emit(codegen, "; ");
+        if (sized_fn) {
+            emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+            emit_expression(codegen, idx);
+            emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(_ea, %s, ", sized_fn, c_elem);
+            emit_expression(codegen, idx);
+            emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+            emit_expression(codegen, node->data.assign.value);
+            if (su) {
+                emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+            } else {
+                emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+            }
+            return;
+        }
+        emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
+        emit_expression(codegen, idx);
+        emit(codegen, ", ");
+        if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
+            /* The concat result must outlive the loop iteration that
+             * produced it — inside a nested loop that means the outer
+             * arena, not the per-iteration gray_default_arena. */
+            emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_ea, GrayString, ",
+                codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
+            emit_expression(codegen, idx);
+            emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, ")");
+        } else if (is_compound) {
+            const char *binop = "+";
+            if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+            else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
+            emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
+            emit_expression(codegen, idx);
+            emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, ")");
+        } else {
+            emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
+        }
+        emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+        return;
+    }
+    /* Check for array field through struct pointer (rvalue assignability issue).
+     * b.items[i] = val where b: ^Bag — the normal member emit produces a
+     * GCC statement expression (rvalue); GRAY_ARRAY_SET's &(arr) would fail.
+     * Inline the nil check and use _dp->field directly as an assignable target. */
+    {
+        AstNode *struct_pointer = NULL;
+        const char *array_field_name = NULL;
+        if (left->kind == NODE_MEMBER_EXPR) {
+            AstNode *member_object = left->data.member.object;
+            GrayType *member_object_type = typetable_get(codegen->type_table, member_object);
+            if (member_object_type && member_object_type->kind == TK_POINTER) {
+                struct_pointer = member_object;
+                array_field_name = left->data.member.member;
+            } else if (member_object->kind == NODE_POSTFIX_EXPR &&
+                       member_object->data.postfix.op == TOK_CARET) {
+                struct_pointer = member_object->data.postfix.left;
+                array_field_name = left->data.member.member;
+            }
+        }
+        if (struct_pointer) {
+            bool struct_pointer_is_raw = (struct_pointer->kind == NODE_LABEL && is_raw_variable(codegen, struct_pointer->data.label.value));
+            int temp_id = codegen_next_id(codegen);
+            emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
+            emit_expression(codegen, struct_pointer);
+            if (struct_pointer_is_raw) {
+                emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
+                      temp_id, sanitize_name(array_field_name), c_elem);
+            } else {
+                emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
+                          "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
+                      temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(array_field_name), c_elem);
+            }
+            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+            emit(codegen, ", ");
+            if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
+                emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
+                    codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(array_field_name));
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
+            } else if (is_compound) {
+                const char *binop = "+";
+                if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+                else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
+                emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(array_field_name), c_elem);
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+                emit_expression(codegen, node->data.assign.value);
+                emit(codegen, ")");
+            } else {
+                emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
+            }
+            emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+            return;
+        }
+    }
+    /* p^[i] = v: direct dereference of array pointer */
+    if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
+        AstNode *array_pointer = left->data.postfix.left;
+        bool array_pointer_is_raw = (array_pointer->kind == NODE_LABEL && is_raw_variable(codegen, array_pointer->data.label.value));
+        int temp_id = codegen_next_id(codegen);
+        emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
+        emit_expression(codegen, array_pointer);
+        if (array_pointer_is_raw) {
+            emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
+                  temp_id, c_elem);
+        } else {
+            emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
+                      "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
+                  temp_id, panic_call(codegen, node, "P0080", ""), temp_id, c_elem);
+        }
+        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+        emit(codegen, ", ");
+        if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
+            emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
+                codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id);
+            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+            emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, ")");
+        } else if (is_compound) {
+            const char *binop = "+";
+            if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+            else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
+            emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", temp_id, c_elem);
+            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+            emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+            emit_expression(codegen, node->data.assign.value);
+            emit(codegen, ")");
+        } else {
+            emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
+        }
+        emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+        return;
+    }
+    /* Compound assignment on array element with sized-type overflow check */
+    if (is_compound && left_t->element_type) {
+        const char *sn = left_t->element_type;
+        const char *smin = NULL, *smax = NULL;
+        bool su = false;
+        sized_int_bounds(sn, &smin, &smax, &su);
+        if (smax) {
+            const char *function_name = sized_check_func(assign_op, su);
+            if (function_name) {
+                /* GET reads sizeof(type) bytes, so it must use the real
+                 * element width — an int64_t read over-runs a packed
+                 * sub-8-byte array (from cast). SET's memcpy length is
+                 * the runtime elem_size, so the wider temp is harmless
+                 * and keeps literal arrays (8-byte slots) safe. */
+                emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
+                emit_expression(codegen, left);
+                emit(codegen, ", int64_t, ");
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(", function_name);
+                emit_expression(codegen, left);
+                emit_formatted(codegen, ", %s, ", c_elem);
+                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                emit_expression(codegen, node->data.assign.value);
+                if (su) {
+                    emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                } else {
+                    emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
+                }
+                return;
+            }
+        }
+    }
+    /* Plain assignment of a string to a string array element inside a
+     * loop: the RHS (a concat, a call return, ...) may live in the
+     * per-iteration arena, which is torn down before the array is read
+     * again. Deep-copy into the outer arena — the same escape the
+     * plain-variable and += paths use. */
+    if (!is_compound && strcmp(c_elem, "GrayString") == 0 &&
+        codegen->loop_scope_depth > 0) {
+        emit(codegen, "{ GrayString _esc_v = ");
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, "; GRAY_ARRAY_SET_AT(");
+        emit_expression(codegen, left);
+        emit(codegen, ", GrayString, ");
+        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+        emit_formatted(codegen, ", gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len), \"%s\", %d); }\n",
+            codegen->file, node->token.line);
+        return;
+    }
+    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
+    emit_expression(codegen, left);
+    emit_formatted(codegen, ", %s, ", c_elem);
+    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+    emit(codegen, ", ");
+    /* Non-sized compound assignment on array element: read-modify-write */
+    if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
+        emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(",
+            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
+        emit_expression(codegen, left);
+        emit(codegen, ", GrayString, ");
+        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else if (is_compound) {
+        const char *binop = "+";
+        if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
+        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(");
+        emit_expression(codegen, left);
+        emit_formatted(codegen, ", %s, ", c_elem);
+        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
+        emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else {
+        emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
+    }
+    emit_formatted(codegen, ", \"%s\", %d);\n", codegen->file, node->token.line);
+}
+
+/* m[key] = v and compound forms; `left` is the indexed map expression. */
+static void emit_map_index_assign(CodeGen *codegen, AstNode *node, AstNode *left, GrayType *left_t) {
+    /* Map key assignment: gray_map_set(arena, &m, &key, &value)
+     * We need &m (address of the map), but the map expression may
+     * be an rvalue (e.g. pointer-deref field access via GCC statement
+     * expression). Check whether the map lives behind a pointer and
+     * use arrow syntax to get an assignable target if so, otherwise emit
+     * directly. */
+    const char *c_val = "int64_t";
+    if (left_t->value_type) c_val = gray_map_element_c_type(codegen, left_t->value_type);
+    const char *c_key = "GrayString";
+    if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
+    const char *ms_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
+    bool ms_str_key = left_t->key_type && strcmp(left_t->key_type, "string") == 0;
+    bool ms_str_val = left_t->value_type && strcmp(left_t->value_type, "string") == 0;
+
+    /* Detect pointer-to-struct field access: left is a MEMBER_EXPR
+     * whose object is a pointer type (`p.field`) or an explicit
+     * dereference of one (`p^.field`). In that case the GCC statement
+     * expression for nil-checked deref yields an rvalue and &(rvalue)
+     * is illegal. Instead, nil-check then use -> to get an assignable
+     * target. map_ptr_obj is the pointer to check and arrow through,
+     * which for the `p^.field` spelling is the operand of the `^`. */
+    bool map_via_ptr = false;
+    bool map_raw = false;
+    AstNode *map_ptr_obj = NULL;
+    if (left->kind == NODE_MEMBER_EXPR) {
+        AstNode *obj = left->data.member.object;
+        GrayType *obj_t = typetable_get(codegen->type_table, obj);
+        if (obj_t && obj_t->kind == TK_POINTER) {
+            map_ptr_obj = obj;
+        } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
+            map_ptr_obj = obj->data.postfix.left;
+        }
+        if (map_ptr_obj) {
+            map_via_ptr = true;
+            map_raw = (map_ptr_obj->kind == NODE_LABEL &&
+                is_raw_variable(codegen, map_ptr_obj->data.label.value));
+        }
+    }
+    /* p^["key"] = v: direct dereference of map pointer. The pointer
+     * is already a GrayMap*, so nil-check and pass it directly. */
+    bool map_direct_deref = false;
+    bool map_deref_raw = false;
+    if (!map_via_ptr && left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
+        map_direct_deref = true;
+        map_deref_raw = (left->data.postfix.left->kind == NODE_LABEL &&
+            is_raw_variable(codegen, left->data.postfix.left->data.label.value));
+    }
+
+    bool ms_compound = (node->data.assign.op != TOK_ASSIGN);
+    const char *ms_base_op = NULL;
+    if (ms_compound) {
+        switch (node->data.assign.op) {
+            case TOK_PLUS_ASSIGN:     ms_base_op = "+"; break;
+            case TOK_MINUS_ASSIGN:    ms_base_op = "-"; break;
+            case TOK_ASTERISK_ASSIGN: ms_base_op = "*"; break;
+            case TOK_SLASH_ASSIGN:    ms_base_op = "/"; break;
+            case TOK_PERCENT_ASSIGN:  ms_base_op = "%"; break;
+            default: ms_compound = false; break;
+        }
+    }
+    emit_formatted(codegen, "{ %s _mk = ", c_key);
+    emit_map_slot_value(codegen, left_t->key_type, node->data.assign.target->data.index_expr.index);
+    emit(codegen, "; ");
+    if (codegen->loop_scope_depth > 0) {
+        if (ms_str_key) {
+            emit_formatted(codegen, "_mk = gray_string_new(%s, _mk.data, _mk.len); ", ms_arena);
+        } else if (left_t->key_type && type_needs_deep_copy(codegen, left_t->key_type)) {
+            emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _mk = ", ms_arena);
+            emit_value_deep_copy(codegen, left_t->key_type, "_mk");
+            emit(codegen, "; gray_default_arena = _esc; } ");
+        }
+    }
+    /* For compound assignments, read the existing value first so the
+     * operation is applied on top of the current entry rather than
+     * against a zero/uninitialized base. */
+    if (ms_compound) {
+        if (map_via_ptr) {
+            /* Capture _mp early so _cur can reference the map field. */
+            emit_formatted(codegen, "__auto_type _mp = ");
+            emit_expression(codegen, map_ptr_obj);
+            if (map_raw) {
+                emit_formatted(codegen, "; void *_cur = gray_map_get(&_mp->%s, &_mk); "
+                      "if (!_cur) { %s; } ",
+                      sanitize_name(left->data.member.member),
+                      panic_call(codegen, node, "P0081", ""));
+            } else {
+                emit_formatted(codegen, "; if (!_mp) { %s; } "
+                      "void *_cur = gray_map_get(&_mp->%s, &_mk); "
+                      "if (!_cur) { %s; } ",
+                      panic_call(codegen, node, "P0080", ""),
+                      sanitize_name(left->data.member.member),
+                      panic_call(codegen, node, "P0081", ""));
+            }
+        } else if (map_direct_deref) {
+            emit_formatted(codegen, "__auto_type _mp = ");
+            emit_expression(codegen, left->data.postfix.left);
+            if (map_deref_raw) {
+                emit_formatted(codegen, "; void *_cur = gray_map_get(_mp, &_mk); "
+                      "if (!_cur) { %s; } ",
+                      panic_call(codegen, node, "P0081", ""));
+            } else {
+                emit_formatted(codegen, "; if (!_mp) { %s; } "
+                      "void *_cur = gray_map_get(_mp, &_mk); "
+                      "if (!_cur) { %s; } ",
+                      panic_call(codegen, node, "P0080", ""),
+                      panic_call(codegen, node, "P0081", ""));
+            }
+        } else {
+            emit_formatted(codegen, "void *_cur = gray_map_get(&");
+            emit_expression(codegen, left);
+            emit_formatted(codegen, ", &_mk); if (!_cur) { %s; } ", panic_call(codegen, node, "P0081", ""));
+        }
+    }
+    const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
+        ? left_t->value_type : NULL;
+    emit_formatted(codegen, "%s _mv = ", c_val);
+    if (ms_compound && ms_bi_val) {
+        /* Wide-integer entries have no C arithmetic operators; route the
+         * read-modify-write through the same helpers the infix path uses. */
+        const char *pfx = bigint_prefix(ms_bi_val);
+        const char *fn = ms_base_op[0] == '+' ? "add_checked"
+                      : ms_base_op[0] == '-' ? "sub_checked"
+                      : ms_base_op[0] == '*' ? "mul_checked"
+                      : ms_base_op[0] == '/' ? "div" : "mod";
+        emit_formatted(codegen, "%s_%s(*(%s*)_cur, ", pfx, fn, c_val);
+        emit_map_slot_value(codegen, ms_bi_val, node->data.assign.value);
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
+    } else if (ms_compound && ms_str_val && node->data.assign.op == TOK_PLUS_ASSIGN) {
+        emit(codegen, "gray_string_concat(gray_default_arena, *(GrayString*)_cur, ");
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else if (ms_compound) {
+        emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else if (codegen->loop_scope_depth == 0 &&
+               composite_value_aliases(codegen, left_t->value_type, node->data.assign.value)) {
+        /* Inside a loop the escape copy below already covers this. */
+        emit_composite_operand(codegen, left_t->value_type, node->data.assign.value);
+    } else {
+        emit_map_slot_value(codegen, left_t->value_type, node->data.assign.value);
+    }
+    emit(codegen, "; ");
+    if (codegen->loop_scope_depth > 0) {
+        if (ms_str_val) {
+            emit_formatted(codegen, "_mv = gray_string_new(%s, _mv.data, _mv.len); ", ms_arena);
+        } else if (left_t->value_type && type_needs_deep_copy(codegen, left_t->value_type)) {
+            emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _mv = ", ms_arena);
+            emit_value_deep_copy(codegen, left_t->value_type, "_mv");
+            emit(codegen, "; gray_default_arena = _esc; } ");
+        }
+    }
+    if (map_via_ptr) {
+        if (ms_compound) {
+            /* _mp was captured above; just set and close the outer block. */
+            emit_formatted(codegen, "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); }\n",
+                ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+        } else {
+            /* Nil-check the pointer, then use -> to yield an assignable target. */
+            emit_formatted(codegen, "{ __auto_type _mp = ");
+            emit_expression(codegen, map_ptr_obj);
+            if (map_raw) {
+                emit_formatted(codegen, "; gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
+                    ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+            } else {
+                emit_formatted(codegen, "; if (!_mp) { %s; } "
+                    "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
+                    panic_call(codegen, node, "P0080", ""), ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
+            }
+        }
+    } else if (map_direct_deref) {
+        if (ms_compound) {
+            /* _mp was captured above; pass it directly as GrayMap*. */
+            emit_formatted(codegen, "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); }\n",
+                ms_arena, codegen->file, node->token.line);
+        } else {
+            emit_formatted(codegen, "{ __auto_type _mp = ");
+            emit_expression(codegen, left->data.postfix.left);
+            if (map_deref_raw) {
+                emit_formatted(codegen, "; gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
+                    ms_arena, codegen->file, node->token.line);
+            } else {
+                emit_formatted(codegen, "; if (!_mp) { %s; } "
+                    "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
+                    panic_call(codegen, node, "P0080", ""), ms_arena, codegen->file, node->token.line);
+            }
+        }
+    } else {
+        emit_formatted(codegen, "gray_map_set(%s, &", ms_arena);
+        emit_expression(codegen, left);
+        emit_formatted(codegen, ", &_mk, &_mv, \"%s\", %d); }\n", codegen->file, node->token.line);
+    }
+}
+
 static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
     /* Implicit declaration: emit as C variable declaration */
     if (node->data.assign.is_decl &&
@@ -10489,448 +10931,16 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
 
     emit_indent(codegen);
 
-    /* Check for array index assignment: arr[i] = value */
+    /* Index assignment: arr[i] = v, m[key] = v */
     if (node->data.assign.target->kind == NODE_INDEX_EXPR) {
         AstNode *left = node->data.assign.target->data.index_expr.left;
         GrayType *left_t = typetable_get(codegen->type_table, left);
         if (left_t && left_t->kind == TK_ARRAY) {
-            const char *c_elem = "int64_t";
-            if (left_t->element_type) {
-                if (strcmp(left_t->element_type, "func") == 0 || strncmp(left_t->element_type, "func(", 5) == 0) {
-                    c_elem = "void *";
-                } else {
-                    c_elem = gray_type_to_c_codegen(codegen, left_t->element_type);
-                }
-            }
-            TokenType assign_op = node->data.assign.op;
-            bool is_compound = (assign_op == TOK_PLUS_ASSIGN || assign_op == TOK_MINUS_ASSIGN || assign_op == TOK_ASTERISK_ASSIGN);
-            /* m[key][i] = v: the map lookup lowers to a statement-expression
-             * that yields the stored GrayArray by rvalue, so GRAY_ARRAY_SET_AT's
-             * &(arr) is invalid. Bind it to a temp — the GrayArray header is a
-             * view over the stored buffer, so element writes still land there. */
-            if (index_left_is_map_lookup(codegen, left)) {
-                AstNode *idx = node->data.assign.target->data.index_expr.index;
-                const char *sn = left_t->element_type;
-                const char *smin = NULL, *smax = NULL;
-                bool su = false;
-                if (sn) sized_int_bounds(sn, &smin, &smax, &su);
-                const char *sized_fn = (is_compound && smax) ? sized_check_func(assign_op, su) : NULL;
-                emit_formatted(codegen, "{ GrayArray _ea = ");
-                emit_expression(codegen, left);
-                emit(codegen, "; ");
-                if (sized_fn) {
-                    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
-                    emit_expression(codegen, idx);
-                    emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(_ea, %s, ", sized_fn, c_elem);
-                    emit_expression(codegen, idx);
-                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                    emit_expression(codegen, node->data.assign.value);
-                    if (su) {
-                        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                    }
-                    return;
-                }
-                emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
-                emit_expression(codegen, idx);
-                emit(codegen, ", ");
-                if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-                    /* The concat result must outlive the loop iteration that
-                     * produced it — inside a nested loop that means the outer
-                     * arena, not the per-iteration gray_default_arena. */
-                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_ea, GrayString, ",
-                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
-                    emit_expression(codegen, idx);
-                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                    emit_expression(codegen, node->data.assign.value);
-                    emit(codegen, ")");
-                } else if (is_compound) {
-                    const char *binop = "+";
-                    if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-                    else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
-                    emit_expression(codegen, idx);
-                    emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-                    emit_expression(codegen, node->data.assign.value);
-                    emit(codegen, ")");
-                } else {
-                    emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-                }
-                emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
-                return;
-            }
-            /* Check for array field through struct pointer (rvalue assignability issue).
-             * b.items[i] = val where b: ^Bag — the normal member emit produces a
-             * GCC statement expression (rvalue); GRAY_ARRAY_SET's &(arr) would fail.
-             * Inline the nil check and use _dp->field directly as an assignable target. */
-            {
-                AstNode *struct_pointer = NULL;
-                const char *array_field_name = NULL;
-                if (left->kind == NODE_MEMBER_EXPR) {
-                    AstNode *member_object = left->data.member.object;
-                    GrayType *member_object_type = typetable_get(codegen->type_table, member_object);
-                    if (member_object_type && member_object_type->kind == TK_POINTER) {
-                        struct_pointer = member_object;
-                        array_field_name = left->data.member.member;
-                    } else if (member_object->kind == NODE_POSTFIX_EXPR &&
-                               member_object->data.postfix.op == TOK_CARET) {
-                        struct_pointer = member_object->data.postfix.left;
-                        array_field_name = left->data.member.member;
-                    }
-                }
-                if (struct_pointer) {
-                    bool struct_pointer_is_raw = (struct_pointer->kind == NODE_LABEL && is_raw_variable(codegen, struct_pointer->data.label.value));
-                    int temp_id = codegen_next_id(codegen);
-                    emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
-                    emit_expression(codegen, struct_pointer);
-                    if (struct_pointer_is_raw) {
-                        emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              temp_id, sanitize_name(array_field_name), c_elem);
-                    } else {
-                        emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
-                                  "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(array_field_name), c_elem);
-                    }
-                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                    emit(codegen, ", ");
-                    if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-                        emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
-                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(array_field_name));
-                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                        emit_expression(codegen, node->data.assign.value);
-                        emit(codegen, ")");
-                    } else if (is_compound) {
-                        const char *binop = "+";
-                        if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-                        else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(array_field_name), c_elem);
-                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                        emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-                        emit_expression(codegen, node->data.assign.value);
-                        emit(codegen, ")");
-                    } else {
-                        emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-                    }
-                    emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
-                    return;
-                }
-            }
-            /* p^[i] = v: direct dereference of array pointer */
-            if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
-                AstNode *array_pointer = left->data.postfix.left;
-                bool array_pointer_is_raw = (array_pointer->kind == NODE_LABEL && is_raw_variable(codegen, array_pointer->data.label.value));
-                int temp_id = codegen_next_id(codegen);
-                emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
-                emit_expression(codegen, array_pointer);
-                if (array_pointer_is_raw) {
-                    emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                          temp_id, c_elem);
-                } else {
-                    emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
-                              "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                          temp_id, panic_call(codegen, node, "P0080", ""), temp_id, c_elem);
-                }
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit(codegen, ", ");
-                if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-                    emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
-                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id);
-                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                    emit_expression(codegen, node->data.assign.value);
-                    emit(codegen, ")");
-                } else if (is_compound) {
-                    const char *binop = "+";
-                    if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-                    else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", temp_id, c_elem);
-                    emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                    emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-                    emit_expression(codegen, node->data.assign.value);
-                    emit(codegen, ")");
-                } else {
-                    emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-                }
-                emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
-                return;
-            }
-            /* Compound assignment on array element with sized-type overflow check */
-            if (is_compound && left_t->element_type) {
-                const char *sn = left_t->element_type;
-                const char *smin = NULL, *smax = NULL;
-                bool su = false;
-                sized_int_bounds(sn, &smin, &smax, &su);
-                if (smax) {
-                    const char *function_name = sized_check_func(assign_op, su);
-                    if (function_name) {
-                        /* GET reads sizeof(type) bytes, so it must use the real
-                         * element width — an int64_t read over-runs a packed
-                         * sub-8-byte array (from cast). SET's memcpy length is
-                         * the runtime elem_size, so the wider temp is harmless
-                         * and keeps literal arrays (8-byte slots) safe. */
-                        emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
-                        emit_expression(codegen, left);
-                        emit(codegen, ", int64_t, ");
-                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                        emit_formatted(codegen, ", %s(GRAY_ARRAY_GET_AT(", function_name);
-                        emit_expression(codegen, left);
-                        emit_formatted(codegen, ", %s, ", c_elem);
-                        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                        emit_expression(codegen, node->data.assign.value);
-                        if (su) {
-                            emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                        } else {
-                            emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                        }
-                        return;
-                    }
-                }
-            }
-            /* Plain assignment of a string to a string array element inside a
-             * loop: the RHS (a concat, a call return, ...) may live in the
-             * per-iteration arena, which is torn down before the array is read
-             * again. Deep-copy into the outer arena — the same escape the
-             * plain-variable and += paths use. */
-            if (!is_compound && strcmp(c_elem, "GrayString") == 0 &&
-                codegen->loop_scope_depth > 0) {
-                emit(codegen, "{ GrayString _esc_v = ");
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, "; GRAY_ARRAY_SET_AT(");
-                emit_expression(codegen, left);
-                emit(codegen, ", GrayString, ");
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit_formatted(codegen, ", gray_string_new(_gray_outer_arena, _esc_v.data, _esc_v.len), \"%s\", %d); }\n",
-                    codegen->file, node->token.line);
-                return;
-            }
-            emit_formatted(codegen, "GRAY_ARRAY_SET_AT(");
-            emit_expression(codegen, left);
-            emit_formatted(codegen, ", %s, ", c_elem);
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-            emit(codegen, ", ");
-            /* Non-sized compound assignment on array element: read-modify-write */
-            if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-                emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(",
-                    codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
-                emit_expression(codegen, left);
-                emit(codegen, ", GrayString, ");
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else if (is_compound) {
-                const char *binop = "+";
-                if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-                else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                emit_formatted(codegen, "GRAY_ARRAY_GET_AT(");
-                emit_expression(codegen, left);
-                emit_formatted(codegen, ", %s, ", c_elem);
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else {
-                emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-            }
-            emit_formatted(codegen, ", \"%s\", %d);\n", codegen->file, node->token.line);
+            emit_array_index_assign(codegen, node, left, left_t);
             return;
         }
         if (left_t && left_t->kind == TK_MAP) {
-            /* Map key assignment: gray_map_set(arena, &m, &key, &value)
-             * We need &m (address of the map), but the map expression may
-             * be an rvalue (e.g. pointer-deref field access via GCC statement
-             * expression). Check whether the map lives behind a pointer and
-             * use arrow syntax to get an assignable target if so, otherwise emit
-             * directly. */
-            const char *c_val = "int64_t";
-            if (left_t->value_type) c_val = gray_map_element_c_type(codegen, left_t->value_type);
-            const char *c_key = "GrayString";
-            if (left_t->key_type) c_key = gray_map_element_c_type(codegen, left_t->key_type);
-            const char *ms_arena = codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena";
-            bool ms_str_key = left_t->key_type && strcmp(left_t->key_type, "string") == 0;
-            bool ms_str_val = left_t->value_type && strcmp(left_t->value_type, "string") == 0;
-
-            /* Detect pointer-to-struct field access: left is a MEMBER_EXPR
-             * whose object is a pointer type (`p.field`) or an explicit
-             * dereference of one (`p^.field`). In that case the GCC statement
-             * expression for nil-checked deref yields an rvalue and &(rvalue)
-             * is illegal. Instead, nil-check then use -> to get an assignable
-             * target. map_ptr_obj is the pointer to check and arrow through,
-             * which for the `p^.field` spelling is the operand of the `^`. */
-            bool map_via_ptr = false;
-            bool map_raw = false;
-            AstNode *map_ptr_obj = NULL;
-            if (left->kind == NODE_MEMBER_EXPR) {
-                AstNode *obj = left->data.member.object;
-                GrayType *obj_t = typetable_get(codegen->type_table, obj);
-                if (obj_t && obj_t->kind == TK_POINTER) {
-                    map_ptr_obj = obj;
-                } else if (obj->kind == NODE_POSTFIX_EXPR && obj->data.postfix.op == TOK_CARET) {
-                    map_ptr_obj = obj->data.postfix.left;
-                }
-                if (map_ptr_obj) {
-                    map_via_ptr = true;
-                    map_raw = (map_ptr_obj->kind == NODE_LABEL &&
-                        is_raw_variable(codegen, map_ptr_obj->data.label.value));
-                }
-            }
-            /* p^["key"] = v: direct dereference of map pointer. The pointer
-             * is already a GrayMap*, so nil-check and pass it directly. */
-            bool map_direct_deref = false;
-            bool map_deref_raw = false;
-            if (!map_via_ptr && left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
-                map_direct_deref = true;
-                map_deref_raw = (left->data.postfix.left->kind == NODE_LABEL &&
-                    is_raw_variable(codegen, left->data.postfix.left->data.label.value));
-            }
-
-            bool ms_compound = (node->data.assign.op != TOK_ASSIGN);
-            const char *ms_base_op = NULL;
-            if (ms_compound) {
-                switch (node->data.assign.op) {
-                    case TOK_PLUS_ASSIGN:     ms_base_op = "+"; break;
-                    case TOK_MINUS_ASSIGN:    ms_base_op = "-"; break;
-                    case TOK_ASTERISK_ASSIGN: ms_base_op = "*"; break;
-                    case TOK_SLASH_ASSIGN:    ms_base_op = "/"; break;
-                    case TOK_PERCENT_ASSIGN:  ms_base_op = "%"; break;
-                    default: ms_compound = false; break;
-                }
-            }
-            emit_formatted(codegen, "{ %s _mk = ", c_key);
-            emit_map_slot_value(codegen, left_t->key_type, node->data.assign.target->data.index_expr.index);
-            emit(codegen, "; ");
-            if (codegen->loop_scope_depth > 0) {
-                if (ms_str_key) {
-                    emit_formatted(codegen, "_mk = gray_string_new(%s, _mk.data, _mk.len); ", ms_arena);
-                } else if (left_t->key_type && type_needs_deep_copy(codegen, left_t->key_type)) {
-                    emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _mk = ", ms_arena);
-                    emit_value_deep_copy(codegen, left_t->key_type, "_mk");
-                    emit(codegen, "; gray_default_arena = _esc; } ");
-                }
-            }
-            /* For compound assignments, read the existing value first so the
-             * operation is applied on top of the current entry rather than
-             * against a zero/uninitialized base. */
-            if (ms_compound) {
-                if (map_via_ptr) {
-                    /* Capture _mp early so _cur can reference the map field. */
-                    emit_formatted(codegen, "__auto_type _mp = ");
-                    emit_expression(codegen, map_ptr_obj);
-                    if (map_raw) {
-                        emit_formatted(codegen, "; void *_cur = gray_map_get(&_mp->%s, &_mk); "
-                              "if (!_cur) { %s; } ",
-                              sanitize_name(left->data.member.member),
-                              panic_call(codegen, node, "P0081", ""));
-                    } else {
-                        emit_formatted(codegen, "; if (!_mp) { %s; } "
-                              "void *_cur = gray_map_get(&_mp->%s, &_mk); "
-                              "if (!_cur) { %s; } ",
-                              panic_call(codegen, node, "P0080", ""),
-                              sanitize_name(left->data.member.member),
-                              panic_call(codegen, node, "P0081", ""));
-                    }
-                } else if (map_direct_deref) {
-                    emit_formatted(codegen, "__auto_type _mp = ");
-                    emit_expression(codegen, left->data.postfix.left);
-                    if (map_deref_raw) {
-                        emit_formatted(codegen, "; void *_cur = gray_map_get(_mp, &_mk); "
-                              "if (!_cur) { %s; } ",
-                              panic_call(codegen, node, "P0081", ""));
-                    } else {
-                        emit_formatted(codegen, "; if (!_mp) { %s; } "
-                              "void *_cur = gray_map_get(_mp, &_mk); "
-                              "if (!_cur) { %s; } ",
-                              panic_call(codegen, node, "P0080", ""),
-                              panic_call(codegen, node, "P0081", ""));
-                    }
-                } else {
-                    emit_formatted(codegen, "void *_cur = gray_map_get(&");
-                    emit_expression(codegen, left);
-                    emit_formatted(codegen, ", &_mk); if (!_cur) { %s; } ", panic_call(codegen, node, "P0081", ""));
-                }
-            }
-            const char *ms_bi_val = (left_t->value_type && is_bigint_type(left_t->value_type))
-                ? left_t->value_type : NULL;
-            emit_formatted(codegen, "%s _mv = ", c_val);
-            if (ms_compound && ms_bi_val) {
-                /* Wide-integer entries have no C arithmetic operators; route the
-                 * read-modify-write through the same helpers the infix path uses. */
-                const char *pfx = bigint_prefix(ms_bi_val);
-                const char *fn = ms_base_op[0] == '+' ? "add_checked"
-                              : ms_base_op[0] == '-' ? "sub_checked"
-                              : ms_base_op[0] == '*' ? "mul_checked"
-                              : ms_base_op[0] == '/' ? "div" : "mod";
-                emit_formatted(codegen, "%s_%s(*(%s*)_cur, ", pfx, fn, c_val);
-                emit_map_slot_value(codegen, ms_bi_val, node->data.assign.value);
-                emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-            } else if (ms_compound && ms_str_val && node->data.assign.op == TOK_PLUS_ASSIGN) {
-                emit(codegen, "gray_string_concat(gray_default_arena, *(GrayString*)_cur, ");
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else if (ms_compound) {
-                emit_formatted(codegen, "*(%s*)_cur %s (", c_val, ms_base_op);
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else if (codegen->loop_scope_depth == 0 &&
-                       composite_value_aliases(codegen, left_t->value_type, node->data.assign.value)) {
-                /* Inside a loop the escape copy below already covers this. */
-                emit_composite_operand(codegen, left_t->value_type, node->data.assign.value);
-            } else {
-                emit_map_slot_value(codegen, left_t->value_type, node->data.assign.value);
-            }
-            emit(codegen, "; ");
-            if (codegen->loop_scope_depth > 0) {
-                if (ms_str_val) {
-                    emit_formatted(codegen, "_mv = gray_string_new(%s, _mv.data, _mv.len); ", ms_arena);
-                } else if (left_t->value_type && type_needs_deep_copy(codegen, left_t->value_type)) {
-                    emit_formatted(codegen, "{ GrayArena *_esc = gray_default_arena; gray_default_arena = %s; _mv = ", ms_arena);
-                    emit_value_deep_copy(codegen, left_t->value_type, "_mv");
-                    emit(codegen, "; gray_default_arena = _esc; } ");
-                }
-            }
-            if (map_via_ptr) {
-                if (ms_compound) {
-                    /* _mp was captured above; just set and close the outer block. */
-                    emit_formatted(codegen, "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); }\n",
-                        ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
-                } else {
-                    /* Nil-check the pointer, then use -> to yield an assignable target. */
-                    emit_formatted(codegen, "{ __auto_type _mp = ");
-                    emit_expression(codegen, map_ptr_obj);
-                    if (map_raw) {
-                        emit_formatted(codegen, "; gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
-                            ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, "; if (!_mp) { %s; } "
-                            "gray_map_set(%s, &_mp->%s, &_mk, &_mv, \"%s\", %d); } }\n",
-                            panic_call(codegen, node, "P0080", ""), ms_arena, sanitize_name(left->data.member.member), codegen->file, node->token.line);
-                    }
-                }
-            } else if (map_direct_deref) {
-                if (ms_compound) {
-                    /* _mp was captured above; pass it directly as GrayMap*. */
-                    emit_formatted(codegen, "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); }\n",
-                        ms_arena, codegen->file, node->token.line);
-                } else {
-                    emit_formatted(codegen, "{ __auto_type _mp = ");
-                    emit_expression(codegen, left->data.postfix.left);
-                    if (map_deref_raw) {
-                        emit_formatted(codegen, "; gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
-                            ms_arena, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, "; if (!_mp) { %s; } "
-                            "gray_map_set(%s, _mp, &_mk, &_mv, \"%s\", %d); } }\n",
-                            panic_call(codegen, node, "P0080", ""), ms_arena, codegen->file, node->token.line);
-                    }
-                }
-            } else {
-                emit_formatted(codegen, "gray_map_set(%s, &", ms_arena);
-                emit_expression(codegen, left);
-                emit_formatted(codegen, ", &_mk, &_mv, \"%s\", %d); }\n", codegen->file, node->token.line);
-            }
+            emit_map_index_assign(codegen, node, left, left_t);
             return;
         }
     }
