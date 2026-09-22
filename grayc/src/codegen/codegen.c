@@ -3788,20 +3788,20 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
         }
         if (arr_ptr_obj) {
             bool _arr_raw = (arr_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, arr_ptr_obj->data.label.value));
-            int my_dp = codegen_next_id(codegen);
+            int temp_id = codegen_next_id(codegen);
             /* The element pointer is dereferenced outside the statement
              * expression so the result is an lvalue: `b.items[i].n = v`,
              * `b.items[i].n += v` and `b.items[i].n++` all assign through it
              * or take its address. */
-            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, temp_id);
             emit_expression(codegen, arr_ptr_obj);
             if (_arr_raw) {
                 emit_formatted(codegen, "; gray_array_get_ptr(&_adp%d->%s, ",
-                      my_dp, sanitize_name(arr_ptr_field));
+                      temp_id, sanitize_name(arr_ptr_field));
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
                           "gray_array_get_ptr(&_adp%d->%s, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(arr_ptr_field));
+                      temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(arr_ptr_field));
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
@@ -3810,15 +3810,15 @@ static void emit_index_expr(CodeGen *codegen, AstNode *node) {
             /* p^[i]: direct dereference of container pointer */
             AstNode *_dp_inner = node->data.index_expr.left->data.postfix.left;
             bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
-            int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, my_dp);
+            int temp_id = codegen_next_id(codegen);
+            emit_formatted(codegen, "(*(%s *)({ __auto_type _adp%d = ", c_elem, temp_id);
             emit_expression(codegen, _dp_inner);
             if (_dp_raw) {
-                emit_formatted(codegen, "; gray_array_get_ptr(_adp%d, ", my_dp);
+                emit_formatted(codegen, "; gray_array_get_ptr(_adp%d, ", temp_id);
             } else {
                 emit_formatted(codegen, "; if (!_adp%d) { %s; } "
                           "gray_array_get_ptr(_adp%d, ",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp);
+                      temp_id, panic_call(codegen, node, "P0080", ""), temp_id);
             }
             emit_expression(codegen, node->data.index_expr.index);
             emit_formatted(codegen, ", \"%s\", %d); }))", codegen->file, node->token.line);
@@ -5456,12 +5456,12 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             }
         }
         if (addr_ptr_expr && addr_field) {
-            int my_dp = codegen_next_id(codegen);
-            emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
+            int temp_id = codegen_next_id(codegen);
+            emit_formatted(codegen, "({ __auto_type _aadp%d = ", temp_id);
             emit_expression(codegen, addr_ptr_expr);
             emit_formatted(codegen, "; if (!_aadp%d) { %s; } "
                       "&_aadp%d->%s; })",
-                  my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(addr_field));
+                  temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(addr_field));
         } else if (arg->kind == NODE_POSTFIX_EXPR && arg->data.postfix.op == TOK_CARET) {
             /* addr(p^): &(*p) simplifies to p; nil-check p first */
             AstNode *inner = arg->data.postfix.left;
@@ -5470,11 +5470,11 @@ static bool emit_builtin_call(CodeGen *codegen, AstNode *node, const char *func)
             if (inner_raw) {
                 emit_expression(codegen, inner);
             } else {
-                int my_dp = codegen_next_id(codegen);
-                emit_formatted(codegen, "({ __auto_type _aadp%d = ", my_dp);
+                int temp_id = codegen_next_id(codegen);
+                emit_formatted(codegen, "({ __auto_type _aadp%d = ", temp_id);
                 emit_expression(codegen, inner);
                 emit_formatted(codegen, "; if (!_aadp%d) { %s; } _aadp%d; })",
-                      my_dp, panic_call(codegen, node, "P0080", ""), my_dp);
+                      temp_id, panic_call(codegen, node, "P0080", ""), temp_id);
             }
         } else {
             /* addr() returns a pointer to the argument */
@@ -10581,22 +10581,22 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                 }
                 if (_set_ptr_obj) {
                     bool _set_raw = (_set_ptr_obj->kind == NODE_LABEL && is_raw_variable(codegen, _set_ptr_obj->data.label.value));
-                    int my_dp = codegen_next_id(codegen);
-                    emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
+                    int temp_id = codegen_next_id(codegen);
+                    emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
                     emit_expression(codegen, _set_ptr_obj);
                     if (_set_raw) {
                         emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              my_dp, sanitize_name(_set_ptr_field), c_elem);
+                              temp_id, sanitize_name(_set_ptr_field), c_elem);
                     } else {
                         emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
                                   "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                              my_dp, panic_call(codegen, node, "P0080", ""), my_dp, sanitize_name(_set_ptr_field), c_elem);
+                              temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(_set_ptr_field), c_elem);
                     }
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit(codegen, ", ");
                     if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                         emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
-                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp, sanitize_name(_set_ptr_field));
+                            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(_set_ptr_field));
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                         emit_expression(codegen, node->data.assign.value);
@@ -10605,7 +10605,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                         const char *binop = "+";
                         if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
                         else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", my_dp, sanitize_name(_set_ptr_field), c_elem);
+                        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(_set_ptr_field), c_elem);
                         emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                         emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
                         emit_expression(codegen, node->data.assign.value);
@@ -10621,22 +10621,22 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
             if (left->kind == NODE_POSTFIX_EXPR && left->data.postfix.op == TOK_CARET) {
                 AstNode *_dp_inner = left->data.postfix.left;
                 bool _dp_raw = (_dp_inner->kind == NODE_LABEL && is_raw_variable(codegen, _dp_inner->data.label.value));
-                int my_dp = codegen_next_id(codegen);
-                emit_formatted(codegen, "{ __auto_type _asdp%d = ", my_dp);
+                int temp_id = codegen_next_id(codegen);
+                emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
                 emit_expression(codegen, _dp_inner);
                 if (_dp_raw) {
                     emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                          my_dp, c_elem);
+                          temp_id, c_elem);
                 } else {
                     emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
                               "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                          my_dp, panic_call(codegen, node, "P0080", ""), my_dp, c_elem);
+                          temp_id, panic_call(codegen, node, "P0080", ""), temp_id, c_elem);
                 }
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit(codegen, ", ");
                 if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
                     emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
-                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", my_dp);
+                        codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id);
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                     emit_expression(codegen, node->data.assign.value);
@@ -10645,7 +10645,7 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     const char *binop = "+";
                     if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
                     else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", my_dp, c_elem);
+                    emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", temp_id, c_elem);
                     emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                     emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
                     emit_expression(codegen, node->data.assign.value);
