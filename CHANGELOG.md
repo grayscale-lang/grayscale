@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.10.0](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.9.1...grayscale-v0.10.0) (2026-09-22)
+
+
+### Features
+
+* **range:** support i128, u128, i256 and u256 bounds ([#2819](https://github.com/grayscale-lang/grayscale/issues/2819)) ([098acc6](https://github.com/grayscale-lang/grayscale/commit/098acc66b9bac4802a0afc8299f6f0db1bfba906))
+
+
+### Bug Fixes
+
+* **build:** link fmt.c into sanitizer test builds ([#2803](https://github.com/grayscale-lang/grayscale/issues/2803)) ([d76a07b](https://github.com/grayscale-lang/grayscale/commit/d76a07b0709aaf7fdafccde7c68a0f50674619d4))
+* **codegen:** copy a composite stored into or read out of a container element ([#2799](https://github.com/grayscale-lang/grayscale/issues/2799)) ([a3a7956](https://github.com/grayscale-lang/grayscale/commit/a3a7956c610b2d87d794bf8b02f1e449e9e9fc54))
+* **codegen:** evaluate the range end and step once before the loop ([#2816](https://github.com/grayscale-lang/grayscale/issues/2816)) ([9631122](https://github.com/grayscale-lang/grayscale/commit/963112218cf4b226a5e0e348e96db29e7feee4d4))
+* **codegen:** interpolate nested arrays, maps, and structs with the formatter println uses ([#2793](https://github.com/grayscale-lang/grayscale/issues/2793)) ([fe98fb9](https://github.com/grayscale-lang/grayscale/commit/fe98fb977e1269153c64ec1688230ea23b6d97ed))
+* **codegen:** let a local binding hide a same-named member brought in by using ([#2797](https://github.com/grayscale-lang/grayscale/issues/2797)) ([20d0f38](https://github.com/grayscale-lang/grayscale/commit/20d0f384fd5c4144e904af52a356b43dae21d2b4))
+* **codegen:** stop in/not_in and when-is range() leaking C errors on bigint bounds ([#2819](https://github.com/grayscale-lang/grayscale/issues/2819)) ([0fbac8b](https://github.com/grayscale-lang/grayscale/commit/0fbac8be4743b0f17b5e8cebea75e4df7057a1ac))
+* **extern:** probe extern signatures and match C errors under gcc as well as clang ([#2805](https://github.com/grayscale-lang/grayscale/issues/2805)) ([c8d5374](https://github.com/grayscale-lang/grayscale/commit/c8d53746ca7e8343fdd7c83b51495a9783555aea))
+* **stdlib:** omit zero components from time.format_duration ([#2800](https://github.com/grayscale-lang/grayscale/issues/2800)) ([c72e74e](https://github.com/grayscale-lang/grayscale/commit/c72e74e8390dd41b708f85ee7bb5312958d3d99f))
+* **typechecker:** don't implicitly-declare an assignment target that names a global declared later ([#2820](https://github.com/grayscale-lang/grayscale/issues/2820)) ([968fc46](https://github.com/grayscale-lang/grayscale/commit/968fc46b1e963ee186d86d3f92189f64d36e73a1))
+* **typechecker:** enforce const and read-only module variables on writes through a module-qualified path ([#2773](https://github.com/grayscale-lang/grayscale/issues/2773)) ([3403e43](https://github.com/grayscale-lang/grayscale/commit/3403e43fb7f6d93c1803802617fd7f03712343cb))
+* **typechecker:** reject a module-qualified type name passed to fields() ([b34211c](https://github.com/grayscale-lang/grayscale/commit/b34211c5eb4f86528893f83a406b2de2892f4b7a))
+* **typechecker:** reject a negative literal assigned to u128 or u256 ([#2819](https://github.com/grayscale-lang/grayscale/issues/2819)) ([34fe751](https://github.com/grayscale-lang/grayscale/commit/34fe751ee5dbb1778c624afc5313b1f65a6d5d93))
+* **typechecker:** reject private struct, enum and alias names written in expressions ([#2787](https://github.com/grayscale-lang/grayscale/issues/2787)) ([ba21450](https://github.com/grayscale-lang/grayscale/commit/ba214503b232eb3769fa72afdc60303d7e324f04))
+* **typechecker:** report a mismatched call argument once instead of twice ([#2771](https://github.com/grayscale-lang/grayscale/issues/2771)) ([9abf4d6](https://github.com/grayscale-lang/grayscale/commit/9abf4d6beb5ed548fbc0389dccaca20403f1d786))
+* **typechecker:** report the initializer's error, not an undefined variable, for a bare declaration with a void or unknown initializer ([#2772](https://github.com/grayscale-lang/grayscale/issues/2772)) ([e8504f5](https://github.com/grayscale-lang/grayscale/commit/e8504f54db9887049587d572886233d192be4d30))
+* **typechecker:** report unused private functions and skip public functions of imported modules in W1003 ([#2796](https://github.com/grayscale-lang/grayscale/issues/2796)) ([bc66149](https://github.com/grayscale-lang/grayscale/commit/bc66149d1789514fa67c5c3db8837e5dfe5ea649))
+* **typechecker:** scope module imports to the file that declares them ([#2769](https://github.com/grayscale-lang/grayscale/issues/2769)) ([901c2f4](https://github.com/grayscale-lang/grayscale/commit/901c2f4e585a6dd1326e4ee47a3781e3dde1f445))
+* **typechecker:** stop E6008 from rejecting writes into a module container's existing elements ([#2821](https://github.com/grayscale-lang/grayscale/issues/2821)) ([887f5f4](https://github.com/grayscale-lang/grayscale/commit/887f5f4e81b75359ee2cfb5c37e8c2a82ac4ef33))
+
+
+### Performance Improvements
+
+* **codegen:** emit no arenas or scope marks for allocation-free loops and ifs ([#2813](https://github.com/grayscale-lang/grayscale/issues/2813)) ([3453dfc](https://github.com/grayscale-lang/grayscale/commit/3453dfc52db72a8e8a16473c55c5f830e1d152ef))
+* **codegen:** skip the scope mark for functions that never allocate ([ba6150f](https://github.com/grayscale-lang/grayscale/commit/ba6150feb2a21833670ab33f4cd9379ad95d07c9))
+* **crypto:** use ARMv8 SHA2 instructions for SHA-256 compression ([#2818](https://github.com/grayscale-lang/grayscale/issues/2818)) ([019cf66](https://github.com/grayscale-lang/grayscale/commit/019cf667cc5bb9e53558be8f304c17a3c52e0b3e))
+* **runtime:** inline gray_scope_save and gray_scope_restore ([#2814](https://github.com/grayscale-lang/grayscale/issues/2814)) ([6618d18](https://github.com/grayscale-lang/grayscale/commit/6618d185f57521b2fbd1240deefab3842e4879b8))
+* **runtime:** inline the array index bounds check with an out-of-line panic path ([#2815](https://github.com/grayscale-lang/grayscale/issues/2815)) ([34b925d](https://github.com/grayscale-lang/grayscale/commit/34b925da4948236a3f670decf3cf51639f6185db))
+* **runtime:** un-inline gray_scope_save and gray_scope_restore ([f48028e](https://github.com/grayscale-lang/grayscale/commit/f48028e002bb7771d910d5841696aa68f9c73364))
+
 ## [0.9.1](https://github.com/grayscale-lang/grayscale/compare/grayscale-v0.9.0...grayscale-v0.9.1) (2026-09-21)
 
 
