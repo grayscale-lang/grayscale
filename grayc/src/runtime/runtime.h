@@ -184,27 +184,11 @@ typedef struct {
 } GrayScopeMark;
 
 /* Save current arena state */
-static inline GrayScopeMark gray_scope_save(GrayArena *arena) {
-    GrayScopeMark mark;
-    mark.block = arena->current;
-    mark.used = arena->current ? arena->current->used : 0;
-    return mark;
-}
+GrayScopeMark gray_scope_save(GrayArena *arena);
 
 /* Restore arena to a saved state — frees everything allocated after
  * the mark. Only called for void scopes (no return value to preserve). */
-static inline void gray_scope_restore(GrayArena *arena, GrayScopeMark mark) {
-    /* Reset all blocks AFTER the marked block */
-    if (!mark.block) return;
-    GrayArenaBlock *block = mark.block->next;
-    while (block) {
-        block->used = 0;
-        block = block->next;
-    }
-    /* Reset the marked block to the saved position */
-    mark.block->used = mark.used;
-    arena->current = mark.block;
-}
+void gray_scope_restore(GrayArena *arena, GrayScopeMark mark);
 
 /* --- Panic --- */
 
