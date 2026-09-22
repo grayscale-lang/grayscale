@@ -14573,9 +14573,16 @@ static void check_assign_stmt(TypeChecker *checker, AstNode *node) {
             strcmp(target->data.label.value, "_") != 0) {
             const char *name = target->data.label.value;
             Symbol *sym = checker_lookup_symbol(checker, name);
+            /* A module-level var/const declared later in the file has a
+             * DeclEntry already (register_decl_symbols runs before any body
+             * is checked) even though its Scope Symbol does not exist yet —
+             * checker_lookup_symbol only checks the latter. Without this,
+             * an assignment reached before the global's declaration line
+             * looks like a brand-new name and gets implicitly declared as a
+             * function-local shadow instead of targeting the global. */
             if (!sym && !typechecker_is_builtin(name) &&
                 !is_struct_name(checker, name) && !is_enum_name(checker, name) &&
-                !find_func(checker, name)) {
+                !find_func(checker, name) && !module_declares_const(checker, name)) {
                 /* Resolve RHS to infer type */
                 GrayType *val_t = resolve_expression(checker, node->data.assign.value);
                 if (val_t && val_t->kind == TK_VOID) {
