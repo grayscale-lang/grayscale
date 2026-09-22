@@ -374,6 +374,17 @@ static const char *sized_check_func(TokenType op, bool is_unsigned) {
     return NULL;
 }
 
+/* The bounds arguments of a gray_(u)sized_*_check / gray_(u)cast_check call:
+ * `max, "T", "file", line` when unsigned, `min, max, "T", "file", line` when
+ * signed. The caller emits the surrounding punctuation. */
+static void emit_sized_bounds_args(CodeGen *codegen, const char *min, const char *max,
+                                   bool is_unsigned, const char *type_name, int line) {
+    if (is_unsigned)
+        emit_formatted(codegen, "%s, \"%s\", \"%s\", %d", max, type_name, codegen->file, line);
+    else
+        emit_formatted(codegen, "%s, %s, \"%s\", \"%s\", %d", min, max, type_name, codegen->file, line);
+}
+
 /* Emit an overflow-checked compound assignment for a pointer-based target
  * whose C reference string is ref_str (e.g. "*_dp", "_dp->field").
  * Handles +=, -=, *= on sized and plain integer types.
@@ -407,12 +418,9 @@ static bool emit_checked_ptr_compound(CodeGen *codegen, AstNode *node,
         if (!check_func_name) return false;
         emit_formatted(codegen, "%s = %s(%s, ", ref_str, check_func_name, ref_str);
         emit_expression(codegen, node->data.assign.value);
-        if (is_unsigned)
-            emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d)",
-                           smax, type_name_str, codegen->file, node->token.line);
-        else
-            emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)",
-                           smin, smax, type_name_str, codegen->file, node->token.line);
+        emit(codegen, ", ");
+        emit_sized_bounds_args(codegen, smin, smax, is_unsigned, type_name_str, node->token.line);
+        emit(codegen, ")");
         return true;
     }
 
@@ -3091,11 +3099,9 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, node->data.infix.left);
                     emit(codegen, ", ");
                     emit_expression(codegen, node->data.infix.right);
-                    if (sized_unsigned) {
-                        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d)", sized_max, sized_name, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", sized_min, sized_max, sized_name, codegen->file, node->token.line);
-                    }
+                    emit(codegen, ", ");
+                    emit_sized_bounds_args(codegen, sized_min, sized_max, sized_unsigned, sized_name, node->token.line);
+                    emit(codegen, ")");
                     return;
                 }
             }
@@ -3208,13 +3214,9 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                     panic_call(codegen, node, "P0080", ""));
             }
             if (smax) {
-                if (su) {
-                    emit(codegen, "*_dp = gray_usized_add_check(*_dp");
-                    emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sized_name, codegen->file, node->token.line);
-                } else {
-                    emit(codegen, "*_dp = gray_sized_add_check(*_dp");
-                    emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sized_name, codegen->file, node->token.line);
-                }
+                emit_formatted(codegen, "*_dp = %s(*_dp, 1, ", su ? "gray_usized_add_check" : "gray_sized_add_check");
+                emit_sized_bounds_args(codegen, smin, smax, su, sized_name, node->token.line);
+                emit(codegen, "); })");
             } else if (is_uint) {
                 emit(codegen, "*_dp = gray_uadd_check(*_dp");
                 emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
@@ -3247,13 +3249,10 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                         panic_call(codegen, node, "P0080", ""));
                 }
                 if (smax) {
-                    if (su) {
-                        emit_formatted(codegen, "_dp->%s = gray_usized_add_check(_dp->%s", _fld, _fld);
-                        emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sized_name, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, "_dp->%s = gray_sized_add_check(_dp->%s", _fld, _fld);
-                        emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sized_name, codegen->file, node->token.line);
-                    }
+                    emit_formatted(codegen, "_dp->%s = %s(_dp->%s, 1, ", _fld,
+                        su ? "gray_usized_add_check" : "gray_sized_add_check", _fld);
+                    emit_sized_bounds_args(codegen, smin, smax, su, sized_name, node->token.line);
+                    emit(codegen, "); })");
                 } else if (is_uint) {
                     emit_formatted(codegen, "_dp->%s = gray_uadd_check(_dp->%s", _fld, _fld);
                     emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
@@ -3267,15 +3266,11 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         emit(codegen, "(");
         emit_expression(codegen, node->data.postfix.left);
         if (smax) {
-            if (su) {
-                emit(codegen, " = gray_usized_add_check(");
-                emit_expression(codegen, node->data.postfix.left);
-                emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d))", smax, sized_name, codegen->file, node->token.line);
-            } else {
-                emit(codegen, " = gray_sized_add_check(");
-                emit_expression(codegen, node->data.postfix.left);
-                emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d))", smin, smax, sized_name, codegen->file, node->token.line);
-            }
+            emit_formatted(codegen, " = %s(", su ? "gray_usized_add_check" : "gray_sized_add_check");
+            emit_expression(codegen, node->data.postfix.left);
+            emit(codegen, ", 1, ");
+            emit_sized_bounds_args(codegen, smin, smax, su, sized_name, node->token.line);
+            emit(codegen, "))");
         } else if (is_uint) {
             emit(codegen, " = gray_uadd_check(");
             emit_expression(codegen, node->data.postfix.left);
@@ -3309,13 +3304,9 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                     panic_call(codegen, node, "P0080", ""));
             }
             if (smax) {
-                if (su) {
-                    emit(codegen, "*_dp = gray_usized_sub_check(*_dp");
-                    emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sn, codegen->file, node->token.line);
-                } else {
-                    emit(codegen, "*_dp = gray_sized_sub_check(*_dp");
-                    emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sn, codegen->file, node->token.line);
-                }
+                emit_formatted(codegen, "*_dp = %s(*_dp, 1, ", su ? "gray_usized_sub_check" : "gray_sized_sub_check");
+                emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+                emit(codegen, "); })");
             } else if (is_uint) {
                 emit(codegen, "*_dp = gray_usub_check(*_dp");
                 emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
@@ -3348,13 +3339,10 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
                         panic_call(codegen, node, "P0080", ""));
                 }
                 if (smax) {
-                    if (su) {
-                        emit_formatted(codegen, "_dp->%s = gray_usized_sub_check(_dp->%s", _fld, _fld);
-                        emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d); })", smax, sn, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, "_dp->%s = gray_sized_sub_check(_dp->%s", _fld, _fld);
-                        emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d); })", smin, smax, sn, codegen->file, node->token.line);
-                    }
+                    emit_formatted(codegen, "_dp->%s = %s(_dp->%s, 1, ", _fld,
+                        su ? "gray_usized_sub_check" : "gray_sized_sub_check", _fld);
+                    emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+                    emit(codegen, "); })");
                 } else if (is_uint) {
                     emit_formatted(codegen, "_dp->%s = gray_usub_check(_dp->%s", _fld, _fld);
                     emit_formatted(codegen, ", 1, \"%s\", %d); })", codegen->file, node->token.line);
@@ -3368,15 +3356,11 @@ static void emit_postfix_expr(CodeGen *codegen, AstNode *node) {
         emit(codegen, "(");
         emit_expression(codegen, node->data.postfix.left);
         if (smax) {
-            if (su) {
-                emit(codegen, " = gray_usized_sub_check(");
-                emit_expression(codegen, node->data.postfix.left);
-                emit_formatted(codegen, ", 1, %s, \"%s\", \"%s\", %d))", smax, sn, codegen->file, node->token.line);
-            } else {
-                emit(codegen, " = gray_sized_sub_check(");
-                emit_expression(codegen, node->data.postfix.left);
-                emit_formatted(codegen, ", 1, %s, %s, \"%s\", \"%s\", %d))", smin, smax, sn, codegen->file, node->token.line);
-            }
+            emit_formatted(codegen, " = %s(", su ? "gray_usized_sub_check" : "gray_sized_sub_check");
+            emit_expression(codegen, node->data.postfix.left);
+            emit(codegen, ", 1, ");
+            emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+            emit(codegen, "))");
         } else if (is_uint) {
             emit(codegen, " = gray_usub_check(");
             emit_expression(codegen, node->data.postfix.left);
@@ -3946,12 +3930,10 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             const char *smin = NULL, *smax = NULL;
             bool is_unsigned = false;
             sized_int_bounds(dst_elem, &smin, &smax, &is_unsigned);
-            if (smax && is_unsigned) {
-                emit_formatted(codegen, "gray_ucast_check(_cv%d, %s, \"%s\", \"%s\", %d); ",
-                    id, smax, dst_elem, codegen->file, node->token.line);
-            } else if (smax) {
-                emit_formatted(codegen, "gray_cast_check(_cv%d, %s, %s, \"%s\", \"%s\", %d); ",
-                    id, smin, smax, dst_elem, codegen->file, node->token.line);
+            if (smax) {
+                emit_formatted(codegen, "%s(_cv%d, ", is_unsigned ? "gray_ucast_check" : "gray_cast_check", id);
+                emit_sized_bounds_args(codegen, smin, smax, is_unsigned, dst_elem, node->token.line);
+                emit(codegen, "); ");
             }
             emit_formatted(codegen, "((%s*)_cr%d.data)[_ci%d] = (%s)_cv%d; ", dst_c, id, id, dst_c, id);
         }
@@ -4016,14 +3998,13 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
             bool is_unsigned = false;
             sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
-            if (smax && is_unsigned) {
-                emit_formatted(codegen, "(%s)gray_ucast_check(gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target));
+            if (smax) {
+                emit_formatted(codegen, "(%s)%s(gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target),
+                    is_unsigned ? "gray_ucast_check" : "gray_cast_check");
                 emit_expression(codegen, val);
-                emit_formatted(codegen, "), %s, \"%s\", \"%s\", %d)", smax, target, codegen->file, node->token.line);
-            } else if (smax) {
-                emit_formatted(codegen, "(%s)gray_cast_check(gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target));
-                emit_expression(codegen, val);
-                emit_formatted(codegen, "), %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, node->token.line);
+                emit(codegen, "), ");
+                emit_sized_bounds_args(codegen, smin, smax, is_unsigned, target, node->token.line);
+                emit(codegen, ")");
             } else {
                 /* Fallback: parse to int and cast */
                 emit_formatted(codegen, "((%s)gray_builtin_string_to_int(", gray_type_to_c_codegen(codegen, target));
@@ -4053,14 +4034,15 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
                 bool narrow_unsigned = false;
                 sized_int_bounds(target, &nmin, &nmax, &narrow_unsigned);
 
-                if (nmax && narrow_unsigned) {
-                    emit_formatted(codegen, "(%s)gray_ucast_check((int64_t)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
+                if (nmax) {
+                    if (narrow_unsigned)
+                        emit_formatted(codegen, "(%s)gray_ucast_check((int64_t)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
+                    else
+                        emit_formatted(codegen, "(%s)gray_cast_check(%s_to_i64(", gray_type_to_c_codegen(codegen, target), bp);
                     emit_expression(codegen, val);
-                    emit_formatted(codegen, ", \"%s\", %d), %s, \"%s\", \"%s\", %d)", codegen->file, node->token.line, nmax, target, codegen->file, node->token.line);
-                } else if (nmax) {
-                    emit_formatted(codegen, "(%s)gray_cast_check(%s_to_i64(", gray_type_to_c_codegen(codegen, target), bp);
-                    emit_expression(codegen, val);
-                    emit_formatted(codegen, ", \"%s\", %d), %s, %s, \"%s\", \"%s\", %d)", codegen->file, node->token.line, nmin, nmax, target, codegen->file, node->token.line);
+                    emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+                    emit_sized_bounds_args(codegen, nmin, nmax, narrow_unsigned, target, node->token.line);
+                    emit(codegen, ")");
                 } else if (dst_unsigned) {
                     emit_formatted(codegen, "(%s)%s_to_u64(", gray_type_to_c_codegen(codegen, target), bp);
                     emit_expression(codegen, val);
@@ -4095,14 +4077,13 @@ static void emit_cast_expr(CodeGen *codegen, AstNode *node) {
         bool is_unsigned = false;
         sized_int_bounds(target, &smin, &smax, &is_unsigned);
 
-        if (smax && is_unsigned) {
-            emit_formatted(codegen, "(%s)gray_ucast_check(", gray_type_to_c_codegen(codegen, target));
+        if (smax) {
+            emit_formatted(codegen, "(%s)%s(", gray_type_to_c_codegen(codegen, target),
+                is_unsigned ? "gray_ucast_check" : "gray_cast_check");
             emit_expression(codegen, val);
-            emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d)", smax, target, codegen->file, node->token.line);
-        } else if (smax) {
-            emit_formatted(codegen, "(%s)gray_cast_check(", gray_type_to_c_codegen(codegen, target));
-            emit_expression(codegen, val);
-            emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, node->token.line);
+            emit(codegen, ", ");
+            emit_sized_bounds_args(codegen, smin, smax, is_unsigned, target, node->token.line);
+            emit(codegen, ")");
         } else if ((strcmp(target, "uint") == 0 || strcmp(target, "u64") == 0) &&
                    (val_kind == TK_INT || val_kind == TK_UNKNOWN || val_kind == TK_C_FUNC)) {
             /* signed int → uint/u64: panic if value is negative. TK_C_FUNC
@@ -9699,14 +9680,12 @@ static bool emit_narrowing_cast(CodeGen *codegen, const char *target,
         emit_formatted(codegen, "(%s)(", c_target);
         emit_expression(codegen, val);
         emit(codegen, ")");
-    } else if (is_unsigned) {
-        emit_formatted(codegen, "(%s)gray_ucast_check(", c_target);
-        emit_expression(codegen, val);
-        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d)", smax, target, codegen->file, line);
     } else {
-        emit_formatted(codegen, "(%s)gray_cast_check(", c_target);
+        emit_formatted(codegen, "(%s)%s(", c_target, is_unsigned ? "gray_ucast_check" : "gray_cast_check");
         emit_expression(codegen, val);
-        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, target, codegen->file, line);
+        emit(codegen, ", ");
+        emit_sized_bounds_args(codegen, smin, smax, is_unsigned, target, line);
+        emit(codegen, ")");
     }
     return true;
 }
@@ -10443,11 +10422,9 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
             emit_expression(codegen, idx);
             emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
             emit_expression(codegen, node->data.assign.value);
-            if (su) {
-                emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-            } else {
-                emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-            }
+            emit(codegen, ", ");
+            emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+            emit_formatted(codegen, "), \"%s\", %d); }\n", codegen->file, node->token.line);
             return;
         }
         emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
@@ -10598,11 +10575,9 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
                 emit_expression(codegen, node->data.assign.target->data.index_expr.index);
                 emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
                 emit_expression(codegen, node->data.assign.value);
-                if (su) {
-                    emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                } else {
-                    emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d), \"%s\", %d);\n", smin, smax, sn, codegen->file, node->token.line, codegen->file, node->token.line);
-                }
+                emit(codegen, ", ");
+                emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+                emit_formatted(codegen, "), \"%s\", %d);\n", codegen->file, node->token.line);
                 return;
             }
         }
@@ -11215,11 +11190,9 @@ static void emit_assign_statement(CodeGen *codegen, AstNode *node) {
                     emit_expression(codegen, node->data.assign.target);
                     emit_formatted(codegen, "); *_tgt = %s(*_tgt, ", function_name);
                     emit_expression(codegen, node->data.assign.value);
-                    if (su) {
-                        emit_formatted(codegen, ", %s, \"%s\", \"%s\", %d); }\n", smax, sn, codegen->file, node->token.line);
-                    } else {
-                        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d); }\n", smin, smax, sn, codegen->file, node->token.line);
-                    }
+                    emit(codegen, ", ");
+                    emit_sized_bounds_args(codegen, smin, smax, su, sn, node->token.line);
+                    emit(codegen, "); }\n");
                     return;
                 }
             }
