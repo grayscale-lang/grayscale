@@ -463,6 +463,8 @@ mut s string = string(c)     // convert to string
 
 Wide integers use the same overflow-checked arithmetic as `int` and `uint`; overflow produces a runtime panic.
 
+A negative literal assigned to `u128` or `u256` is rejected with `E3036`, the same as for `uint`.
+
 #### 3.1.11 Pointer Type (`^Type`)
 
 The pointer type `^Type` represents a memory address pointing to a value of `Type`.

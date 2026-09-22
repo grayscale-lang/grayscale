@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3036 - negative literal assigned to u128
+ */
+
+// expect-error: E3036
+
+do main() {
+    mut a u128 = -1
+    println(a)
+}

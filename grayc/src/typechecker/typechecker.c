@@ -5528,6 +5528,7 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     int64_t min_val = 0, max_val = 0;
     bool is_unsigned = false;
     bool is_u64 = false;
+    const char *wide_max = NULL;
 
     if (strcmp(type_name_str, "i8") == 0)        { min_val = -128; max_val = 127; }
     else if (strcmp(type_name_str, "i16") == 0)   { min_val = -32768; max_val = 32767; }
@@ -5538,11 +5539,18 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     else if (strcmp(type_name_str, "u64") == 0)   { is_unsigned = true; is_u64 = true; }
     else if (strcmp(type_name_str, "uint") == 0)  { is_unsigned = true; is_u64 = true; }
     else if (strcmp(type_name_str, "byte") == 0)  { min_val = 0; max_val = 255; is_unsigned = true; }
+    /* u128/u256: every non-negative int64 literal fits; only a negative one
+     * is out of range (the >64-bit-magnitude case is handled separately by
+     * the E3046 overflow check, which already excludes bigint types). */
+    else if (strcmp(type_name_str, "u128") == 0)  { is_unsigned = true; is_u64 = true;
+        wide_max = "340282366920938463463374607431768211455"; }
+    else if (strcmp(type_name_str, "u256") == 0)  { is_unsigned = true; is_u64 = true;
+        wide_max = "115792089237316195423570985008687907853269984665640564039457584007913129639935"; }
     else return false; /* not a range-checked type */
 
     bool out_of_range;
     if (is_u64) {
-        out_of_range = value_is_negative; /* 0..UINT64_MAX all fit */
+        out_of_range = value_is_negative; /* 0..max all fit */
     } else if (value_is_negative) {
         out_of_range = is_unsigned || value < min_val;
     } else {
@@ -5556,8 +5564,10 @@ static bool check_integer_range(DiagnosticList *diag, const char *file,
     else
         snprintf(valbuf, sizeof(valbuf), "%llu", (unsigned long long)value);
 
-    char range_hi[24];
-    if (is_u64)
+    char range_hi[80];
+    if (wide_max)
+        snprintf(range_hi, sizeof(range_hi), "%s", wide_max);
+    else if (is_u64)
         snprintf(range_hi, sizeof(range_hi), "%llu", (unsigned long long)UINT64_MAX);
     else
         snprintf(range_hi, sizeof(range_hi), "%lld", (long long)max_val);
