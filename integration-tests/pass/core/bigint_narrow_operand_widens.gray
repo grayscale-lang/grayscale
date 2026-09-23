@@ -1,0 +1,37 @@
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // a narrow left operand is widened to the wide right operand
+    mut a i64 = 6
+    mut k i128 = 12
+    mut sum i128 = a + k
+    if sum == 18 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    mut bits i128 = a bit_xor k
+    if bits == 10 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    // a shift keeps the left operand's type
+    mut shifted i64 = a bit_shift_left k
+    if shifted == 24576 {
+        passed = passed + 1
+    } otherwise {
+        failed = failed + 1
+    }
+
+    println("passed: ${passed}")
+    println("failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

@@ -1,0 +1,8 @@
+/* Error Test: E3155 - an i64 combined with an i128 is an i128, which cannot narrow to i64 */
+
+do main() {
+    mut a i64 = 6
+    mut k i128 = 12
+    mut z i64 = a + k
+    println(z)
+}

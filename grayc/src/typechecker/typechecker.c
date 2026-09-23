@@ -10585,7 +10585,8 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
          op == TOK_ASTERISK || op == TOK_SLASH || op == TOK_PERCENT ||
          op == TOK_EQ || op == TOK_NOT_EQ ||
          op == TOK_LT || op == TOK_GT ||
-         op == TOK_LT_EQ || op == TOK_GT_EQ) &&
+         op == TOK_LT_EQ || op == TOK_GT_EQ ||
+         op == TOK_BIT_AND || op == TOK_BIT_OR || op == TOK_BIT_XOR) &&
         left->kind != TK_UNKNOWN && right->kind != TK_UNKNOWN &&
         left->name && right->name &&
         is_bigint_type(left->name) && is_bigint_type(right->name) &&
@@ -10906,6 +10907,12 @@ static GrayType *resolve_infix_expr(TypeChecker *checker, AstNode *node) {
         /* #flags enum bitwise ops produce i64 (combined values
          * don't correspond to a single variant). */
         result = &TYPE_I64;
+    } else if (op != TOK_BIT_SHIFT_LEFT && op != TOK_BIT_SHIFT_RIGHT &&
+               right->name && is_bigint_type(right->name) &&
+               !(left->name && is_bigint_type(left->name))) {
+        /* A narrow operand is widened to the wide one, so the result is
+         * wide. A shift keeps its left operand's type. */
+        result = right;
     } else {
         result = left;
     }
