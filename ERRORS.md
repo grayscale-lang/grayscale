@@ -471,7 +471,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0089` | io | io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually |
 | `P0090` | runtime | range step cannot be zero |
 | `P0091` | arithmetic | cannot convert f64 to u64; the value is negative, too large, or NaN |
-| `P0092` | arithmetic | shift amount %lld is out of range; must be in [0, 63] |
+| `P0092` | arithmetic | shift amount %lld is out of range; must be in [0, %d] for this operand type |
 | `P0093` | arithmetic | cast from i128 failed; value is outside the representable range of i64 |
 | `P0094` | arithmetic | cast from i128 failed; value is negative or outside the representable range of u64 |
 | `P0095` | arithmetic | cast from u128 failed; value exceeds the representable range of i64 |
@@ -535,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-23 06:35:34 UTC*
+*Generated on 2026-09-23 16:25:11 UTC*

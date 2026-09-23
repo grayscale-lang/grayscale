@@ -2805,17 +2805,36 @@ static void emit_infix_expr(CodeGen *codegen, AstNode *node) {
         return;
     }
     /* Bit shift operators with runtime bounds check.
-     * A shift amount that is negative or >= 64 is undefined behavior
-     * in C. Capture the amount once, validate it, then shift. */
+     * The result is the left operand's type, so the shift happens at that
+     * width: C would otherwise promote an 8/16-bit operand to int and keep
+     * the bits shifted past its top. A shift amount that is negative or not
+     * below the operand's bit width is undefined behavior in C. A left
+     * shift goes through the unsigned type so shifting into or past the
+     * sign bit is defined. Capture the amount once, validate it, then shift. */
     if (op == TOK_BIT_SHIFT_LEFT || op == TOK_BIT_SHIFT_RIGHT) {
-        const char *c_op = operator_to_c_string(op);
-        bool left_is_literal = node->data.infix.left->kind == NODE_INT_VALUE;
+        GrayType *shift_t = typetable_get(codegen->type_table, node->data.infix.left);
+        const char *shift_name = (shift_t && shift_t->kind == TK_CHAR) ? "i32"
+            : (shift_t && (shift_t->kind == TK_INT || shift_t->kind == TK_UINT)) ? shift_t->name : NULL;
+        int bits = 64;
+        const char *c_type = (shift_t && shift_t->kind == TK_UINT) ? "uint64_t" : "int64_t";
+        const char *unsigned_c_type = "uint64_t";
+        if (shift_name) {
+            if (strcmp(shift_name, "i8") == 0)       { bits = 8;  c_type = "int8_t";   unsigned_c_type = "uint8_t"; }
+            else if (strcmp(shift_name, "u8") == 0)  { bits = 8;  c_type = "uint8_t";  unsigned_c_type = "uint8_t"; }
+            else if (strcmp(shift_name, "i16") == 0) { bits = 16; c_type = "int16_t";  unsigned_c_type = "uint16_t"; }
+            else if (strcmp(shift_name, "u16") == 0) { bits = 16; c_type = "uint16_t"; unsigned_c_type = "uint16_t"; }
+            else if (strcmp(shift_name, "i32") == 0) { bits = 32; c_type = "int32_t";  unsigned_c_type = "uint32_t"; }
+            else if (strcmp(shift_name, "u32") == 0) { bits = 32; c_type = "uint32_t"; unsigned_c_type = "uint32_t"; }
+        }
+        char panic_args[32];
+        snprintf(panic_args, sizeof(panic_args), ", (long long)_sa, %d", bits - 1);
         emit(codegen, "({ int64_t _sa = (int64_t)(");
         emit_expression(codegen, node->data.infix.right);
-        emit_formatted(codegen, "); if (_sa < 0 || _sa >= 64) { %s; } (", panic_call(codegen, node, "P0092", ", (long long)_sa"));
-        if (left_is_literal) emit(codegen, "(int64_t)");
+        emit_formatted(codegen, "); if (_sa < 0 || _sa >= %d) { %s; } (%s)((%s)(",
+            bits, panic_call(codegen, node, "P0092", panic_args), c_type,
+            op == TOK_BIT_SHIFT_LEFT ? unsigned_c_type : c_type);
         emit_expression(codegen, node->data.infix.left);
-        emit_formatted(codegen, ") %s (int)_sa; })", c_op);
+        emit_formatted(codegen, ") %s (int)_sa); })", operator_to_c_string(op));
         return;
     }
 

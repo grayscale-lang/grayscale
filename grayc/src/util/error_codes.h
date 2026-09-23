@@ -472,7 +472,7 @@
     GRAY_PANIC("P0089", "io",         "io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually") \
     GRAY_PANIC("P0090", "runtime",    "range step cannot be zero") \
     GRAY_PANIC("P0091", "arithmetic", "cannot convert f64 to u64; the value is negative, too large, or NaN") \
-    GRAY_PANIC("P0092", "arithmetic", "shift amount %lld is out of range; must be in [0, 63]") \
+    GRAY_PANIC("P0092", "arithmetic", "shift amount %lld is out of range; must be in [0, %d] for this operand type") \
     GRAY_PANIC("P0093", "arithmetic", "cast from i128 failed; value is outside the representable range of i64") \
     GRAY_PANIC("P0094", "arithmetic", "cast from i128 failed; value is negative or outside the representable range of u64") \
     GRAY_PANIC("P0095", "arithmetic", "cast from u128 failed; value exceeds the representable range of i64") \

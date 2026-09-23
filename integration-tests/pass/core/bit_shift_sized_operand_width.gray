@@ -1,0 +1,64 @@
+/*
+ * bit_shift_sized_operand_width.gray - a shift on a sized integer has the
+ * operand's type in every position: bits shifted past the top are dropped,
+ * whether the result is used inline, declared, stored, or returned.
+ */
+
+do shl8(x u8, n i64) -> u8 {
+    return x bit_shift_left n
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut a u8 = 128
+    mut declared u8 = a bit_shift_left 1
+    mut arr [u8] = {128}
+    arr[0] = arr[0] bit_shift_left 1
+    if (a bit_shift_left 1) == 0 && declared == 0 && arr[0] == 0 && shl8(128, 1) == 0 {
+        passed++
+    } otherwise {
+        println("FAIL: u8 shift left")
+        failed++
+    }
+
+    mut w u16 = 40000
+    if (w bit_shift_left 1) == 14464 {
+        passed++
+    } otherwise {
+        println("FAIL: u16 shift left")
+        failed++
+    }
+
+    mut i i8 = 64
+    mut n i8 = -128
+    if (i bit_shift_left 1) == -128 && (n bit_shift_right 1) == -64 {
+        passed++
+    } otherwise {
+        println("FAIL: i8 shifts")
+        failed++
+    }
+
+    mut u u32 = 1
+    mut s i32 = 1
+    if (u bit_shift_left 31) == 2147483648 && (s bit_shift_left 31) == -2147483648 {
+        passed++
+    } otherwise {
+        println("FAIL: 32-bit shifts")
+        failed++
+    }
+
+    mut q u64 = 18446744073709551615
+    if (q bit_shift_right 60) == 15 && (1 bit_shift_left 40) == 1099511627776 {
+        passed++
+    } otherwise {
+        println("FAIL: 64-bit shifts")
+        failed++
+    }
+
+    println("bit_shift_sized_operand_width: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}
