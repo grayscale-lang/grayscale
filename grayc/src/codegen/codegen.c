@@ -4286,12 +4286,34 @@ static void emit_runtime_fixed_length_check(CodeGen *codegen, AstNode *node) {
         expected_length, panic_call(codegen, node, "P0131", panic_args));
 }
 
+/* A value with fewer than N elements stored into a [T,N] struct field: copy
+ * it into a fresh N-element array whose remaining slots are zeroed. */
+static void emit_zero_filled_fixed_array(CodeGen *codegen, AstNode *node) {
+    int fixed_length = node->zero_fill_length;
+    node->zero_fill_length = 0;
+    emit(codegen, "({ GrayArray _short_arr = ");
+    emit_expression(codegen, node);
+    node->zero_fill_length = fixed_length;
+    emit_formatted(codegen, "; GrayArray _padded_arr = gray_array_new(gray_default_arena, "
+        "_short_arr.elem_size, %d); "
+        "size_t _short_bytes = (size_t)_short_arr.len * (size_t)_short_arr.elem_size; "
+        "if (_short_bytes) memcpy(_padded_arr.data, _short_arr.data, _short_bytes); "
+        "memset((char *)_padded_arr.data + _short_bytes, 0, "
+        "(size_t)%d * (size_t)_short_arr.elem_size - _short_bytes); "
+        "_padded_arr.len = %d; _padded_arr; })",
+        fixed_length, fixed_length, fixed_length);
+}
+
 /* --- emit_expression --- */
 
 static void emit_expression(CodeGen *codegen, AstNode *node) {
     if (!node) return;
     if (node->runtime_fixed_length > 0) {
         emit_runtime_fixed_length_check(codegen, node);
+        return;
+    }
+    if (node->zero_fill_length > 0) {
+        emit_zero_filled_fixed_array(codegen, node);
         return;
     }
 

@@ -152,6 +152,11 @@ struct AstNode {
      * holds N, and codegen checks the length at runtime. 0 otherwise. */
     int runtime_fixed_length;
 
+    /* Set by the type checker on a value with fewer than N elements stored
+     * into a fixed-size [T,N] struct field: holds N, and codegen zero-fills
+     * the stored array up to N. 0 otherwise. */
+    int zero_fill_length;
+
     union {
         /* NODE_LABEL */
         struct {

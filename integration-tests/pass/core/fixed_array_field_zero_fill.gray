@@ -1,0 +1,61 @@
+/*
+ * fixed_array_field_zero_fill.gray
+ * A [T,N] struct field given fewer than N elements (W3003) keeps length N
+ * with the remaining slots zero-valued, whether set in a struct literal or
+ * reassigned, from an array literal or a shorter fixed-size array.
+ */
+
+const Widget struct {
+    items [int, 3]
+    names [string, 2]
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    const small [int, 2] = {1, 2}
+    mut w Widget = Widget{items: small, names: {"a"}}
+    if len(w.items) == 3 && w.items[0] == 1 && w.items[1] == 2 && w.items[2] == 0 {
+        println("  [PASS] struct literal from shorter fixed array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal from shorter fixed array: ${w.items}")
+        failed += 1
+    }
+
+    w.items = {4}
+    if len(w.items) == 3 && w.items[0] == 4 && w.items[1] == 0 && w.items[2] == 0 {
+        println("  [PASS] reassign from shorter literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign from shorter literal: ${w.items}")
+        failed += 1
+    }
+
+    w.items = {7, 8, 9}
+    w.items = small
+    if len(w.items) == 3 && w.items[0] == 1 && w.items[1] == 2 && w.items[2] == 0 {
+        println("  [PASS] reassign from shorter fixed array")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign from shorter fixed array: ${w.items}")
+        failed += 1
+    }
+
+    w.names = {"b"}
+    if len(w.names) == 2 && w.names[0] == "b" && w.names[1] == "" {
+        println("  [PASS] reassign string field from shorter literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign string field from shorter literal: ${w.names}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

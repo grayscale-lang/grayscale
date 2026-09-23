@@ -7938,6 +7938,7 @@ static void check_fixed_array_field_size(TypeChecker *checker, const char *field
             NODE_FILE(checker, value), value->token.line, value->token.column, 0,
             fixed_size, actual_len);
     } else if (actual_len < fixed_size) {
+        value->zero_fill_length = fixed_size;
         char *msg = typechecker_format(checker,
             "fixed-size array field '%s' initialized with only %d of %d elements; remaining will be zero-valued",
             field_name, actual_len, fixed_size);
