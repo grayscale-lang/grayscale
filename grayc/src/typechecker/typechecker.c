@@ -5924,6 +5924,759 @@ static void reject_non_json_parse_target(TypeChecker *checker, AstNode *node,
     }
 }
 
+/* maps module calls whose return type depends on the arguments. Returns
+ * `result` (the table-driven type) unless the arguments refine it. */
+static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
+    if (strcmp(mfn, "get_keys") == 0) {
+        if (node->data.call.arg_count > 0) {
+            GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
+            result = type_array(map_t && map_t->key_type ? map_t->key_type : "string");
+        } else result = type_array("string");
+    } else if (strcmp(mfn, "get_values") == 0) {
+        if (node->data.call.arg_count > 0) {
+            GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
+            result = type_array(map_t && map_t->value_type ? map_t->value_type : "string");
+        } else result = type_array("string");
+    } else if (strcmp(mfn, "merge") == 0) {
+        if (node->data.call.arg_count > 0) {
+            result = resolve_expression(checker, node->data.call.args[0]);
+        } else result = &TYPE_UNKNOWN;
+    } else if (strcmp(mfn, "get_or_default") == 0) {
+        /* get_or_default(m, key, default) -> V. Take V from the map's
+         * declared value type; the default argument's type can be a looser
+         * literal (e.g. a bare int where V is i128 or float). */
+        GrayType *map_t = node->data.call.arg_count >= 1
+            ? resolve_expression(checker, node->data.call.args[0]) : NULL;
+        if (map_t && map_t->kind == TK_MAP && map_t->value_type) {
+            result = typechecker_type_from_name(checker, map_t->value_type);
+        } else if (node->data.call.arg_count >= 3) {
+            result = resolve_expression(checker, node->data.call.args[2]);
+        } else result = &TYPE_UNKNOWN;
+    }
+    /* E12001: maps functions require map argument */
+    if (node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        GrayType *arg0_t = resolve_expression(checker, arg0);
+        if (arg0_t && arg0_t->kind == TK_ARRAY) {
+            diagnostic_error_code_formatted(checker->diag, "E12001", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn);
+        }
+    }
+    if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
+        AstNode *a0 = node->data.call.args[0];
+        AstNode *a1 = node->data.call.args[1];
+        GrayType *t0 = typetable_get(checker->type_table, a0);
+        GrayType *t1 = typetable_get(checker->type_table, a1);
+        if (t0 && t1 && t0->kind == TK_MAP && t1->kind == TK_MAP) {
+            bool key_match = t0->key_type && t1->key_type &&
+                strcmp(t0->key_type, t1->key_type) == 0;
+            bool val_match = t0->value_type && t1->value_type &&
+                strcmp(t0->value_type, t1->value_type) == 0;
+            if (!key_match || !val_match) {
+                char *msg = typechecker_format(checker,
+                    "type mismatch: cannot compare map[%s:%s] with map[%s:%s]",
+                    t0->key_type ? t0->key_type : "?",
+                    t0->value_type ? t0->value_type : "?",
+                    t1->key_type ? t1->key_type : "?",
+                    t1->value_type ? t1->value_type : "?");
+                tc_err_at(checker, "E3156", a1, msg);
+            }
+            const char *bad_member = NULL;
+            if (t0->value_type) {
+                GrayType *vt = type_from_name(t0->value_type);
+                if (vt->kind == TK_ARRAY || vt->kind == TK_MAP || vt->kind == TK_STRUCT)
+                    bad_member = t0->value_type;
+            }
+            if (bad_member) {
+                char *msg = typechecker_format(checker,
+                    "maps.is_equal does not support maps with %s values; only primitive and string element types are supported",
+                    bad_member);
+                tc_err_arg_type(checker, a0, msg);
+            }
+        }
+    }
+    if (strcmp(mfn, "contains_value") == 0 && node->data.call.arg_count >= 1) {
+        AstNode *a0 = node->data.call.args[0];
+        GrayType *t0 = typetable_get(checker->type_table, a0);
+        if (t0 && t0->kind == TK_MAP && t0->value_type) {
+            GrayType *vt = type_from_name(t0->value_type);
+            if (vt->kind == TK_ARRAY || vt->kind == TK_MAP || vt->kind == TK_STRUCT) {
+                diagnostic_error_code_formatted(checker->diag, "E12007",
+                    NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
+                    t0->value_type);
+            }
+        }
+    }
+    /* E5007: mutating map functions on const map */
+    if ((strcmp(mfn, "clear") == 0 || strcmp(mfn, "remove_key") == 0) &&
+        node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        if (arg0->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope, arg0->data.label.value);
+            if (sym && !sym->mutable) {
+                diagnostic_error_code_formatted(checker->diag, "E5007",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    "map", arg0->data.label.value);
+            }
+        } else {
+            report_write_to_module_constant(checker, node, arg0, "map");
+        }
+    }
+    return result;
+}
+
+/* arrays module calls whose return type depends on the arguments, plus
+ * callback checks for map/filter/reduce and friends. Returns `result` (the
+ * table-driven type) unless the arguments refine it. */
+static GrayType *resolve_arrays_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
+    /* Context-dependent array return types */
+    if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
+        strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
+        strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
+        strcmp(mfn, "rotate") == 0) {
+        if (node->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+            result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("int");
+        } else {
+            result = type_array("int");
+        }
+    } else if (strcmp(mfn, "flatten") == 0) {
+        if (node->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+            if (arr_t && arr_t->element_type) {
+                GrayType *inner = type_from_name(arr_t->element_type);
+                if (inner && inner->kind == TK_ARRAY && inner->element_type)
+                    result = type_array(inner->element_type);
+                else
+                    result = type_array(arr_t->element_type);
+            } else {
+                result = type_array("int");
+            }
+        } else {
+            result = type_array("int");
+        }
+    } else if (strcmp(mfn, "split_every") == 0 || strcmp(mfn, "pair") == 0) {
+        /* [[T]] for the element type T of the input array. */
+        result = type_array("[int]");
+        if (node->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+            if (arr_t && arr_t->element_type) {
+                char chunk[MSG_BUF_SIZE];
+                snprintf(chunk, sizeof(chunk), "[%s]", arr_t->element_type);
+                result = type_array(arena_copy_string(checker->arena, chunk));
+            }
+        }
+    } else if (strcmp(mfn, "get_first") == 0 || strcmp(mfn, "get_last") == 0 ||
+               strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "remove_first") == 0 ||
+               strcmp(mfn, "reduce") == 0) {
+        if (node->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+            result = (arr_t && arr_t->element_type) ? type_from_name(arr_t->element_type) : &TYPE_INT;
+        } else {
+            result = &TYPE_INT;
+        }
+    } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
+               strcmp(mfn, "get_max") == 0) {
+        /* A float array yields a float; a wide-integer array yields that
+         * same wide type (the value does not fit int64); every other
+         * integer element width folds back to int (matches math.min/max). */
+        result = &TYPE_INT;
+        if (node->data.call.arg_count > 0) {
+            GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
+            if (arr_t && arr_t->element_type) {
+                if (type_from_name(arr_t->element_type)->kind == TK_FLOAT)
+                    result = &TYPE_FLOAT;
+                else if (is_bigint_type(arr_t->element_type))
+                    result = type_from_name(arr_t->element_type);
+            }
+        }
+    }
+    /* E5007: mutating array functions on const array */
+    if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "insert_at") == 0 ||
+         strcmp(mfn, "remove") == 0 || strcmp(mfn, "remove_at") == 0 ||
+         strcmp(mfn, "remove_last") == 0 ||
+         strcmp(mfn, "remove_first") == 0 || strcmp(mfn, "prepend") == 0 ||
+         strcmp(mfn, "fill") == 0 || strcmp(mfn, "swap") == 0 ||
+         strcmp(mfn, "sort_asc") == 0 || strcmp(mfn, "sort_desc") == 0 ||
+         strcmp(mfn, "clear") == 0) &&
+        node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        if (arg0->kind == NODE_LABEL) {
+            Symbol *sym = scope_lookup(checker->current_scope, arg0->data.label.value);
+            if (sym && !sym->mutable) {
+                diagnostic_error_code_formatted(checker->diag, "E5007",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    "array", arg0->data.label.value);
+            }
+        } else {
+            report_write_to_module_constant(checker, node, arg0, "array");
+        }
+    }
+    /* E5051: length-changing array functions on a fixed-size struct
+     * field, resolved through member-expression chains (o.field,
+     * o.inner.field) — a field written `[T,N]` never changes length,
+     * regardless of whether the containing instance is mut. */
+    if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
+         strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
+         strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
+         strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
+         strcmp(mfn, "deduplicate") == 0) &&
+        node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
+            diagnostic_error_code_formatted(checker->diag, "E5051",
+                NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                mfn, arg0->data.member.member);
+        }
+    }
+    /* E5051: 'fill' is length-changing too — gray_arrays_fill clears the
+     * array and pushes exactly 'count' new elements, independent of its
+     * prior length — but count == the field's declared size is a
+     * legitimate in-place refill, unlike append/insert_at/etc above, so
+     * it isn't blanket-rejected. Only a call whose 'count' isn't
+     * provably that exact size (a literal mismatch, or a non-literal
+     * count the typechecker can't verify) is rejected. */
+    if (strcmp(mfn, "fill") == 0 && node->data.call.arg_count >= 3) {
+        AstNode *arg0 = node->data.call.args[0];
+        int fixed_size = (arg0->kind == NODE_MEMBER_EXPR)
+            ? member_expr_fixed_array_field_size(checker, arg0) : 0;
+        if (fixed_size > 0) {
+            int64_t count_lit;
+            bool count_neg;
+            bool count_matches = try_get_signed_literal_int(node->data.call.args[2], &count_lit, &count_neg) &&
+                !count_neg && count_lit == fixed_size;
+            if (!count_matches) {
+                diagnostic_error_code_formatted(checker->diag, "E5051",
+                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
+                    mfn, arg0->data.member.member);
+            }
+        }
+    }
+    /* E5026: arrays.append/prepend/insert_at element type mismatch */
+    {
+        AstNode *val_node = NULL;
+        const char *op_name = NULL;
+        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0) &&
+            node->data.call.arg_count >= 2) {
+            val_node = node->data.call.args[1];
+            op_name = mfn;
+        } else if (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 3) {
+            val_node = node->data.call.args[2];
+            op_name = "insert_at";
+        }
+        if (val_node && op_name) {
+            AstNode *arr_arg = node->data.call.args[0];
+            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
+            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
+            GrayType *val_t = resolve_expression(checker, val_node);
+            if (arr_t && arr_t->kind != TK_ARRAY && arr_t->kind != TK_UNKNOWN) {
+                char *msg = typechecker_format(checker,
+                    "'arrays.%s()' expects an array as the first argument, got '%s'",
+                    op_name, type_name(arr_t));
+                tc_err_arg_type(checker, arr_arg, msg);
+            } else if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
+                val_t && val_t->kind != TK_UNKNOWN) {
+                GrayType *elem_t = type_from_name(arr_t->element_type);
+                if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
+                    !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
+                    char *msg = typechecker_format(checker,
+                        "type mismatch in 'arrays.%s()'; cannot add '%s' to array of '%s'",
+                        op_name, type_name(val_t), arr_t->element_type);
+                    tc_err_arg_type(checker, val_node, msg);
+                } else if (is_int_kind(elem_t->kind) && is_int_kind(val_t->kind)) {
+                    /* A narrow element slot must reject an oversized value the
+                     * same way `xs[i] = value` does: E3036 for an out-of-range
+                     * literal, E3019 for a signedness crossing. */
+                    int64_t lit_val;
+                    bool lit_neg;
+                    if (try_get_signed_literal_int(val_node, &lit_val, &lit_neg)) {
+                        check_integer_range(checker->diag, NODE_FILE(checker, val_node),
+                            val_node->token.line, val_node->token.column,
+                            arr_t->element_type, lit_val, lit_neg);
+                    }
+                    check_signedness_crossing(checker, arr_t->element_type,
+                        val_node, val_t, val_node);
+                }
+            }
+        }
+    }
+    /* E5026: arrays.binary_search value type must match element type */
+    if (strcmp(mfn, "binary_search") == 0 && node->data.call.arg_count >= 2) {
+        AstNode *arr_arg = node->data.call.args[0];
+        AstNode *val_node = node->data.call.args[1];
+        GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
+        if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
+        GrayType *val_t = resolve_expression(checker, val_node);
+        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
+            val_t && val_t->kind != TK_UNKNOWN) {
+            GrayType *elem_t = type_from_name(arr_t->element_type);
+            if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
+                !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
+                char *msg = typechecker_format(checker,
+                    "type mismatch in 'arrays.binary_search()'; cannot search for '%s' in array of '%s'",
+                    type_name(val_t), arr_t->element_type);
+                tc_err_arg_type(checker, val_node, msg);
+            }
+        }
+    }
+    /* E5026: arrays.remove_at/insert_at index must be int */
+    if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
+        (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
+        AstNode *idx_node = node->data.call.args[1];
+        GrayType *idx_t = resolve_expression(checker, idx_node);
+        if (idx_t && idx_t->kind != TK_UNKNOWN && !is_int_kind(idx_t->kind)) {
+            char *msg = typechecker_format(checker,
+                "'arrays.%s()' expects an int index, got '%s'",
+                mfn, type_name(idx_t));
+            tc_err_arg_type(checker, idx_node, msg);
+        }
+    }
+    /* E9002: arrays.sum/min/max require numeric array. Same stricter
+     * !type_is_numeric() check as average below — a struct element is
+     * just as non-numeric as a string/bool one, and the codegen for
+     * these (a value cast to int64_t) leaks a raw C error on a struct
+     * array exactly like it used to for string/bool before this
+     * matched average's check. An int-backed enum element is exempted:
+     * it's read through gray_type_to_c_codegen at its own real C enum
+     * type, and a C enum-to-int64_t cast is always legal, so this was
+     * already correct for int-backed enum arrays before this check
+     * existed at all. A string-backed enum is a GrayString at the C
+     * level, not int-castable, so it stays rejected like any other
+     * non-numeric element. */
+    if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
+         strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
+         strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
+         strcmp(mfn, "min_index") == 0 || strcmp(mfn, "max_index") == 0) &&
+        node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        GrayType *arr_t = resolve_expression(checker, arg0);
+        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+            GrayType *elem_t = type_from_name(arr_t->element_type);
+            bool is_int_enum = elem_t->kind == TK_ENUM && elem_t->name &&
+                !typechecker_enum_is_string(checker, elem_t->name);
+            if (!type_is_numeric(elem_t) && !is_int_enum) {
+                diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
+            }
+        }
+    }
+    /* E9002: arrays.binary_search/sort_asc/sort_desc/is_sorted require
+     * an orderable element type. Unlike sum/min/max above, these four
+     * do support string and bool (dedicated string codegen paths; bool
+     * casts cleanly to int64_t) and enum (a plain C enum, comparable as
+     * an int) — only a struct/array/map element has no ordering and no
+     * safe scalar cast, which otherwise either leaks a raw C error
+     * (binary_search, a value cast) or silently reinterprets the
+     * struct's raw leading bytes as the sort/comparison key
+     * (sort_asc/sort_desc/is_sorted, a pointer-reinterpret read). */
+    if ((strcmp(mfn, "binary_search") == 0 || strcmp(mfn, "sort_asc") == 0 ||
+         strcmp(mfn, "sort_desc") == 0 || strcmp(mfn, "is_sorted") == 0) &&
+        node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        GrayType *arr_t = resolve_expression(checker, arg0);
+        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+            GrayType *elem_t = type_from_name(arr_t->element_type);
+            bool orderable = type_is_numeric(elem_t) || elem_t->kind == TK_STRING ||
+                              elem_t->kind == TK_BOOL || elem_t->kind == TK_ENUM;
+            if (!orderable) {
+                char *msg = typechecker_format(checker,
+                    "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s'",
+                    mfn, arr_t->element_type);
+                tc_err_at(checker, "E9002", arg0, msg);
+            }
+        }
+    }
+    /* E9002: arrays.average requires a numeric array. Stricter than the
+     * sum/min/max check above (bad codegen on a struct array leaks a C
+     * error), so it rejects every non-numeric element type. */
+    if (strcmp(mfn, "average") == 0 && node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        GrayType *arr_t = resolve_expression(checker, arg0);
+        if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
+            GrayType *elem_t = type_from_name(arr_t->element_type);
+            if (!type_is_numeric(elem_t)) {
+                diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
+            }
+        }
+    }
+    /* E5026: arrays.concat element type mismatch */
+    if (strcmp(mfn, "concat") == 0 && node->data.call.arg_count >= 2) {
+        AstNode *a0 = node->data.call.args[0];
+        AstNode *a1 = node->data.call.args[1];
+        GrayType *t0 = typetable_get(checker->type_table, a0);
+        GrayType *t1 = typetable_get(checker->type_table, a1);
+        if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
+            t0->element_type && t1->element_type &&
+            strcmp(t0->element_type, t1->element_type) != 0) {
+            char *msg = typechecker_format(checker,
+                "type mismatch: cannot concat array of %s with array of %s",
+                t0->element_type, t1->element_type);
+            tc_err_arg_type(checker, a1, msg);
+        }
+    }
+    if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
+        AstNode *a0 = node->data.call.args[0];
+        AstNode *a1 = node->data.call.args[1];
+        GrayType *t0 = typetable_get(checker->type_table, a0);
+        GrayType *t1 = typetable_get(checker->type_table, a1);
+        if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
+            t0->element_type && t1->element_type &&
+            strcmp(t0->element_type, t1->element_type) != 0) {
+            char *msg = typechecker_format(checker,
+                "type mismatch: cannot compare array of %s with array of %s",
+                t0->element_type, t1->element_type);
+            tc_err_at(checker, "E3156", a1, msg);
+        }
+        if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
+            GrayType *et = type_from_name(t0->element_type);
+            if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
+                char *msg = typechecker_format(checker,
+                    "arrays.is_equal does not support arrays of %s; only primitive and string element types are supported",
+                    t0->element_type);
+                tc_err_arg_type(checker, a0, msg);
+            }
+        }
+    }
+    if (strcmp(mfn, "contains") == 0 && node->data.call.arg_count >= 1) {
+        AstNode *a0 = node->data.call.args[0];
+        GrayType *t0 = typetable_get(checker->type_table, a0);
+        if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
+            GrayType *et = type_from_name(t0->element_type);
+            if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
+                diagnostic_error_code_formatted(checker->diag, "E9006",
+                    NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
+                    t0->element_type);
+            }
+        }
+    }
+    /* E9003/E9004: map/filter/reduce callback validation */
+    if ((strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
+         strcmp(mfn, "reduce") == 0 ||
+         strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0 ||
+         strcmp(mfn, "find") == 0 || strcmp(mfn, "find_index") == 0) && node->data.call.arg_count >= 2) {
+        int cb_idx = (strcmp(mfn, "reduce") == 0) ? 2 : 1;
+        if (cb_idx < node->data.call.arg_count) {
+            AstNode *cb_arg = node->data.call.args[cb_idx];
+            if (cb_arg->kind != NODE_FUNC_REF &&
+                !(cb_arg->kind == NODE_CALL_EXPR &&
+                  cb_arg->data.call.function->kind == NODE_LABEL &&
+                  strcmp(cb_arg->data.call.function->data.label.value, "ref") == 0)) {
+                diagnostic_error_code_formatted(checker->diag, "E9003",
+                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                    mfn);
+            } else {
+                const char *ref_name = NULL;
+                if (cb_arg->kind == NODE_FUNC_REF &&
+                    cb_arg->data.func_ref.function->kind == NODE_LABEL) {
+                    ref_name = cb_arg->data.func_ref.function->data.label.value;
+                }
+                if (ref_name) {
+                    FuncSig *cb_fs = find_func(checker, ref_name);
+                    if (cb_fs) {
+                        AstNode *arr_arg = node->data.call.args[0];
+                        GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
+                        if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
+                        const char *elem_tn = (arr_t && arr_t->element_type) ? arr_t->element_type : NULL;
+
+                        if (strcmp(mfn, "map") == 0) {
+                            if (cb_fs->param_count != 1) {
+                                char *msg = typechecker_format(checker,
+                                    "map callback must take 1 parameter, got %d",
+                                    cb_fs->param_count);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (cb_fs->return_count < 1) {
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, "map callback must return a value");
+                            } else if (elem_tn && cb_fs->param_types[0] &&
+                                       strcmp(type_name(cb_fs->param_types[0]), elem_tn) != 0) {
+                                char *msg = typechecker_format(checker,
+                                    "map callback takes '%s' but array element type is '%s'",
+                                    type_name(cb_fs->param_types[0]), elem_tn);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (elem_tn && cb_fs->return_count >= 1 &&
+                                       cb_fs->return_types[0] &&
+                                       strcmp(type_name(cb_fs->return_types[0]), elem_tn) != 0) {
+                                char *msg = typechecker_format(checker,
+                                    "map callback must return the same type as the array element type (%s), got '%s'",
+                                    elem_tn, type_name(cb_fs->return_types[0]));
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            }
+                        } else if (strcmp(mfn, "filter") == 0 ||
+                                   strcmp(mfn, "any") == 0 ||
+                                   strcmp(mfn, "all") == 0 ||
+                                   strcmp(mfn, "find") == 0 ||
+                                   strcmp(mfn, "find_index") == 0) {
+                            if (cb_fs->param_count != 1) {
+                                char *msg = typechecker_format(checker,
+                                    "%s callback must take 1 parameter, got %d",
+                                    mfn, cb_fs->param_count);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (cb_fs->return_count < 1 ||
+                                       cb_fs->return_types[0]->kind != TK_BOOL) {
+                                char *msg = typechecker_format(checker,
+                                    "%s callback must return bool", mfn);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (elem_tn && cb_fs->param_types[0] &&
+                                       strcmp(type_name(cb_fs->param_types[0]), elem_tn) != 0) {
+                                char *msg = typechecker_format(checker,
+                                    "%s callback takes '%s' but array element type is '%s'",
+                                    mfn, type_name(cb_fs->param_types[0]), elem_tn);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            }
+                        } else { /* reduce */
+                            if (cb_fs->param_count != 2) {
+                                char *msg = typechecker_format(checker,
+                                    "reduce callback must take 2 parameters, got %d",
+                                    cb_fs->param_count);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (cb_fs->return_count < 1) {
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, "reduce callback must return a value");
+                            } else if (elem_tn && cb_fs->param_types[1] &&
+                                       strcmp(type_name(cb_fs->param_types[1]), elem_tn) != 0) {
+                                char *msg = typechecker_format(checker,
+                                    "reduce callback's element parameter takes '%s' but array element type is '%s'",
+                                    type_name(cb_fs->param_types[1]), elem_tn);
+                                diagnostic_error_code_formatted(checker->diag, "E9004",
+                                    NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                    mfn, msg);
+                            } else if (cb_fs->return_count >= 1 && cb_fs->return_types[0] &&
+                                       node->data.call.arg_count > 1) {
+                                AstNode *init_arg = node->data.call.args[1];
+                                GrayType *init_t = typetable_get(checker->type_table, init_arg);
+                                if (!init_t) init_t = resolve_expression(checker, init_arg);
+                                if (init_t) {
+                                    const char *init_tn = type_name(init_t);
+                                    const char *ret_tn = type_name(cb_fs->return_types[0]);
+                                    TypeKind ret_kind = cb_fs->return_types[0]->kind;
+                                    /* A bare literal always resolves to plain int/float
+                                     * (resolve_expression has no expected-type hint for
+                                     * literals), so it never matches a sized/unsigned
+                                     * return type by name. Loosen the check the same way
+                                     * maps.get_or_default does for its default argument:
+                                     * a literal of the right broad numeric family (int vs
+                                     * float) is coercible to any return type in that
+                                     * family, matching what codegen actually emits (a
+                                     * plain C literal assigned to the accumulator's C
+                                     * type). */
+                                    bool loose_literal_ok =
+                                        (init_arg->kind == NODE_INT_VALUE &&
+                                         (ret_kind == TK_INT || ret_kind == TK_UINT || ret_kind == TK_BYTE)) ||
+                                        (init_arg->kind == NODE_FLOAT_VALUE && ret_kind == TK_FLOAT);
+                                    if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0 &&
+                                        !loose_literal_ok) {
+                                        char *msg = typechecker_format(checker,
+                                            "reduce callback must return the same type as the accumulator (%s)",
+                                            init_tn);
+                                        diagnostic_error_code_formatted(checker->diag, "E9004",
+                                            NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
+                                            mfn, msg);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /* All arrays.* functions expect an array as the first argument */
+    if (node->data.call.arg_count > 0) {
+        AstNode *arg0 = node->data.call.args[0];
+        GrayType *arg0_t = resolve_expression(checker, arg0);
+        if (arg0_t && arg0_t->kind != TK_ARRAY && arg0_t->kind != TK_UNKNOWN) {
+            char *msg = typechecker_format(checker,
+                "'arrays.%s()' expects an array as the first argument, got '%s'",
+                mfn, type_name(arg0_t));
+            tc_err_arg_type(checker, arg0, msg);
+        }
+    }
+    return result;
+}
+
+/* fmt module calls whose return type depends on the arguments. Returns
+ * `result` (the table-driven type) unless the arguments refine it. */
+static GrayType *resolve_fmt_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
+    /* Validate printf/sprintf/format: literal format string + directive types */
+    {
+        bool is_fmt_fn = strcmp(mfn, "printf") == 0 ||
+                         strcmp(mfn, "printfln") == 0 ||
+                         strcmp(mfn, "eprintf") == 0 ||
+                         strcmp(mfn, "eprintfln") == 0 ||
+                         strcmp(mfn, "sprintf") == 0 ||
+                         strcmp(mfn, "sprintfln") == 0;
+        if (is_fmt_fn && node->data.call.arg_count >= 1) {
+            AstNode *fmt_arg = node->data.call.args[0];
+            if (fmt_arg->kind != NODE_STRING_VALUE) {
+                diagnostic_error_code_formatted(checker->diag, "E3086",
+                    NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                    fmt_arg->token.column, 0, mfn);
+            } else {
+                /* Walk format string, validate each directive against arg type */
+                const char *fstr = fmt_arg->data.string_value.value;
+                const char *p = fstr;
+                int di = 1;
+                int num_directives = 0;
+                while (*p) {
+                    if (*p != '%') { p++; continue; }
+                    p++;
+                    if (!*p) {
+                        /* Dangling % at end of format string */
+                        diagnostic_error_code_formatted(checker->diag, "E3106",
+                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                            fmt_arg->token.column, 0, mfn);
+                        break;
+                    }
+                    if (*p == '%') { p++; continue; }
+                    if (*p == 'n') {
+                        diagnostic_error_code_formatted(checker->diag, "E3087",
+                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                            fmt_arg->token.column, 0);
+                        break;
+                    }
+                    /* Skip flags, width, precision, length modifier */
+                    while (*p == '-' || *p == '+' || *p == ' ' || *p == '0' || *p == '#') p++;
+                    while (*p >= '0' && *p <= '9') p++;
+                    if (*p == '.') { p++; while (*p >= '0' && *p <= '9') p++; }
+                    if (*p == 'h') { p++; if (*p == 'h') p++; }
+                    else if (*p == 'l') { p++; if (*p == 'l') p++; }
+                    else if (*p == 'L') p++;
+                    char spec = *p ? *p++ : 0;
+                    if (!spec) {
+                        diagnostic_error_code_formatted(checker->diag, "E3106",
+                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                            fmt_arg->token.column, 0, mfn);
+                        break;
+                    }
+                    num_directives++;
+                    /* Reject unknown format directives */
+                    bool known = false;
+                    switch (spec) {
+                    case 'd': case 'i': case 'u':
+                    case 'x': case 'X': case 'o':
+                    case 'f': case 'g': case 'e': case 'G': case 'E':
+                    case 's': case 'c': case 'b':
+                        known = true;
+                        break;
+                    default:
+                        known = false;
+                        break;
+                    }
+                    if (!known) {
+                        diagnostic_error_code_formatted(checker->diag, "E3105",
+                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                            fmt_arg->token.column, 0, mfn, spec);
+                        di++;
+                        continue;
+                    }
+                    if (di >= node->data.call.arg_count) { di++; continue; }
+                    AstNode *darg = node->data.call.args[di];
+                    GrayType *dt = resolve_expression(checker, darg);
+                    di++;
+                    if (!dt) continue;
+                    const char *expected = NULL;
+                    bool ok = false;
+                    switch (spec) {
+                    case 'd': case 'i':
+                        expected = "int or char";
+                        ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE ||
+                             (dt->name && is_bigint_type(dt->name));
+                        break;
+                    case 'u':
+                        expected = "uint";
+                        ok = dt->kind == TK_UINT || dt->kind == TK_BYTE ||
+                             (dt->name && is_bigint_type(dt->name));
+                        break;
+                    case 'x': case 'X': case 'o':
+                        expected = "int or uint";
+                        ok = dt->kind == TK_INT || dt->kind == TK_UINT || dt->kind == TK_BYTE;
+                        break;
+                    case 'f': case 'g': case 'e': case 'G': case 'E':
+                        expected = "float";
+                        ok = dt->kind == TK_FLOAT;
+                        break;
+                    case 's':
+                        expected = "string";
+                        ok = dt->kind == TK_STRING;
+                        break;
+                    case 'c':
+                        expected = "char";
+                        ok = dt->kind == TK_CHAR ||
+                             (dt->kind == TK_INT && !(dt->name && is_bigint_type(dt->name)));
+                        break;
+                    case 'b':
+                        expected = "bool";
+                        ok = dt->kind == TK_BOOL;
+                        break;
+                    default:
+                        ok = true;
+                        break;
+                    }
+                    if (!ok && expected) {
+                        char spec_str[2] = { spec, '\0' };
+                        diagnostic_error_code_formatted(checker->diag, "E3088",
+                            NODE_FILE(checker, darg), darg->token.line,
+                            darg->token.column, 0,
+                            mfn, spec_str, expected, di - 1,
+                            type_name(dt));
+                    }
+                }
+                /* Check argument count vs directive count */
+                int num_args = node->data.call.arg_count - 1;
+                if (num_args < num_directives) {
+                    diagnostic_error_code_formatted(checker->diag, "E3107",
+                        NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                        fmt_arg->token.column, 0,
+                        mfn, num_directives, num_args);
+                } else if (num_args > num_directives) {
+                    diagnostic_error_code_formatted(checker->diag, "E3108",
+                        NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
+                        fmt_arg->token.column, 0,
+                        mfn, num_directives, num_args);
+                }
+            }
+        }
+    }
+    /* Validate that non-format args are primitive types */
+    for (int argument_index = 1; argument_index < node->data.call.arg_count; argument_index++) {
+        GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
+        if (arg_t && (arg_t->kind == TK_STRUCT || arg_t->kind == TK_ARRAY ||
+                      arg_t->kind == TK_MAP || arg_t->kind == TK_POINTER)) {
+            /* Build a readable type name */
+            char tn[TYPE_NAME_MAX];
+            if (arg_t->kind == TK_ARRAY && arg_t->element_type)
+                snprintf(tn, sizeof(tn), "[%s]", arg_t->element_type);
+            else if (arg_t->kind == TK_MAP)
+                snprintf(tn, sizeof(tn), "map[%s:%s]",
+                    arg_t->key_type ? arg_t->key_type : "?",
+                    arg_t->value_type ? arg_t->value_type : "?");
+            else if (arg_t->kind == TK_POINTER && arg_t->element_type)
+                snprintf(tn, sizeof(tn), "^%s", arg_t->element_type);
+            else {
+                strncpy(tn, type_name(arg_t), sizeof(tn) - 1);
+                tn[sizeof(tn) - 1] = '\0';
+            }
+            diagnostic_error_code_formatted(checker->diag, "E3017", NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
+                node->data.call.args[argument_index]->token.column, 0, mfn, tn);
+        }
+    }
+    return result;
+}
+
 static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const char *mod, const char *mfn) {
     GrayType *result = &TYPE_UNKNOWN;
     /* E5034: named arguments are not supported for stdlib functions */
@@ -5976,100 +6729,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
                 ? type_pointer(value_tn) : &TYPE_UNKNOWN;
         }
     } else if (strcmp(mod, "maps") == 0) {
-        if (strcmp(mfn, "get_keys") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
-                result = type_array(map_t && map_t->key_type ? map_t->key_type : "string");
-            } else result = type_array("string");
-        } else if (strcmp(mfn, "get_values") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *map_t = resolve_expression(checker, node->data.call.args[0]);
-                result = type_array(map_t && map_t->value_type ? map_t->value_type : "string");
-            } else result = type_array("string");
-        } else if (strcmp(mfn, "merge") == 0) {
-            if (node->data.call.arg_count > 0) {
-                result = resolve_expression(checker, node->data.call.args[0]);
-            } else result = &TYPE_UNKNOWN;
-        } else if (strcmp(mfn, "get_or_default") == 0) {
-            /* get_or_default(m, key, default) -> V. Take V from the map's
-             * declared value type; the default argument's type can be a looser
-             * literal (e.g. a bare int where V is i128 or float). */
-            GrayType *map_t = node->data.call.arg_count >= 1
-                ? resolve_expression(checker, node->data.call.args[0]) : NULL;
-            if (map_t && map_t->kind == TK_MAP && map_t->value_type) {
-                result = typechecker_type_from_name(checker, map_t->value_type);
-            } else if (node->data.call.arg_count >= 3) {
-                result = resolve_expression(checker, node->data.call.args[2]);
-            } else result = &TYPE_UNKNOWN;
-        }
-        /* E12001: maps functions require map argument */
-        if (node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            GrayType *arg0_t = resolve_expression(checker, arg0);
-            if (arg0_t && arg0_t->kind == TK_ARRAY) {
-                diagnostic_error_code_formatted(checker->diag, "E12001", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn);
-            }
-        }
-        if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
-            AstNode *a0 = node->data.call.args[0];
-            AstNode *a1 = node->data.call.args[1];
-            GrayType *t0 = typetable_get(checker->type_table, a0);
-            GrayType *t1 = typetable_get(checker->type_table, a1);
-            if (t0 && t1 && t0->kind == TK_MAP && t1->kind == TK_MAP) {
-                bool key_match = t0->key_type && t1->key_type &&
-                    strcmp(t0->key_type, t1->key_type) == 0;
-                bool val_match = t0->value_type && t1->value_type &&
-                    strcmp(t0->value_type, t1->value_type) == 0;
-                if (!key_match || !val_match) {
-                    char *msg = typechecker_format(checker,
-                        "type mismatch: cannot compare map[%s:%s] with map[%s:%s]",
-                        t0->key_type ? t0->key_type : "?",
-                        t0->value_type ? t0->value_type : "?",
-                        t1->key_type ? t1->key_type : "?",
-                        t1->value_type ? t1->value_type : "?");
-                    tc_err_at(checker, "E3156", a1, msg);
-                }
-                const char *bad_member = NULL;
-                if (t0->value_type) {
-                    GrayType *vt = type_from_name(t0->value_type);
-                    if (vt->kind == TK_ARRAY || vt->kind == TK_MAP || vt->kind == TK_STRUCT)
-                        bad_member = t0->value_type;
-                }
-                if (bad_member) {
-                    char *msg = typechecker_format(checker,
-                        "maps.is_equal does not support maps with %s values; only primitive and string element types are supported",
-                        bad_member);
-                    tc_err_arg_type(checker, a0, msg);
-                }
-            }
-        }
-        if (strcmp(mfn, "contains_value") == 0 && node->data.call.arg_count >= 1) {
-            AstNode *a0 = node->data.call.args[0];
-            GrayType *t0 = typetable_get(checker->type_table, a0);
-            if (t0 && t0->kind == TK_MAP && t0->value_type) {
-                GrayType *vt = type_from_name(t0->value_type);
-                if (vt->kind == TK_ARRAY || vt->kind == TK_MAP || vt->kind == TK_STRUCT) {
-                    diagnostic_error_code_formatted(checker->diag, "E12007",
-                        NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
-                        t0->value_type);
-                }
-            }
-        }
-        /* E5007: mutating map functions on const map */
-        if ((strcmp(mfn, "clear") == 0 || strcmp(mfn, "remove_key") == 0) &&
-            node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            if (arg0->kind == NODE_LABEL) {
-                Symbol *sym = scope_lookup(checker->current_scope, arg0->data.label.value);
-                if (sym && !sym->mutable) {
-                    diagnostic_error_code_formatted(checker->diag, "E5007",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        "map", arg0->data.label.value);
-                }
-            } else {
-                report_write_to_module_constant(checker, node, arg0, "map");
-            }
-        }
+        result = resolve_maps_call(checker, node, mfn, result);
     } else if (strcmp(mod, "math") == 0) {
         /* abs/neg/min/max/clamp: return type matches argument type */
         if (strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0 ||
@@ -6106,483 +6766,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         }
     } else if (strcmp(mod, "arrays") == 0) {
-        /* Context-dependent array return types */
-        if (strcmp(mfn, "reverse") == 0 || strcmp(mfn, "slice") == 0 ||
-            strcmp(mfn, "concat") == 0 || strcmp(mfn, "deduplicate") == 0 ||
-            strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
-            strcmp(mfn, "rotate") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arr_t && arr_t->element_type) ? type_array(arr_t->element_type) : type_array("int");
-            } else {
-                result = type_array("int");
-            }
-        } else if (strcmp(mfn, "flatten") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->element_type) {
-                    GrayType *inner = type_from_name(arr_t->element_type);
-                    if (inner && inner->kind == TK_ARRAY && inner->element_type)
-                        result = type_array(inner->element_type);
-                    else
-                        result = type_array(arr_t->element_type);
-                } else {
-                    result = type_array("int");
-                }
-            } else {
-                result = type_array("int");
-            }
-        } else if (strcmp(mfn, "split_every") == 0 || strcmp(mfn, "pair") == 0) {
-            /* [[T]] for the element type T of the input array. */
-            result = type_array("[int]");
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->element_type) {
-                    char chunk[MSG_BUF_SIZE];
-                    snprintf(chunk, sizeof(chunk), "[%s]", arr_t->element_type);
-                    result = type_array(arena_copy_string(checker->arena, chunk));
-                }
-            }
-        } else if (strcmp(mfn, "get_first") == 0 || strcmp(mfn, "get_last") == 0 ||
-                   strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "remove_first") == 0 ||
-                   strcmp(mfn, "reduce") == 0) {
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                result = (arr_t && arr_t->element_type) ? type_from_name(arr_t->element_type) : &TYPE_INT;
-            } else {
-                result = &TYPE_INT;
-            }
-        } else if (strcmp(mfn, "get_sum") == 0 || strcmp(mfn, "get_min") == 0 ||
-                   strcmp(mfn, "get_max") == 0) {
-            /* A float array yields a float; a wide-integer array yields that
-             * same wide type (the value does not fit int64); every other
-             * integer element width folds back to int (matches math.min/max). */
-            result = &TYPE_INT;
-            if (node->data.call.arg_count > 0) {
-                GrayType *arr_t = resolve_expression(checker, node->data.call.args[0]);
-                if (arr_t && arr_t->element_type) {
-                    if (type_from_name(arr_t->element_type)->kind == TK_FLOAT)
-                        result = &TYPE_FLOAT;
-                    else if (is_bigint_type(arr_t->element_type))
-                        result = type_from_name(arr_t->element_type);
-                }
-            }
-        }
-        /* E5007: mutating array functions on const array */
-        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "insert_at") == 0 ||
-             strcmp(mfn, "remove") == 0 || strcmp(mfn, "remove_at") == 0 ||
-             strcmp(mfn, "remove_last") == 0 ||
-             strcmp(mfn, "remove_first") == 0 || strcmp(mfn, "prepend") == 0 ||
-             strcmp(mfn, "fill") == 0 || strcmp(mfn, "swap") == 0 ||
-             strcmp(mfn, "sort_asc") == 0 || strcmp(mfn, "sort_desc") == 0 ||
-             strcmp(mfn, "clear") == 0) &&
-            node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            if (arg0->kind == NODE_LABEL) {
-                Symbol *sym = scope_lookup(checker->current_scope, arg0->data.label.value);
-                if (sym && !sym->mutable) {
-                    diagnostic_error_code_formatted(checker->diag, "E5007",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        "array", arg0->data.label.value);
-                }
-            } else {
-                report_write_to_module_constant(checker, node, arg0, "array");
-            }
-        }
-        /* E5051: length-changing array functions on a fixed-size struct
-         * field, resolved through member-expression chains (o.field,
-         * o.inner.field) — a field written `[T,N]` never changes length,
-         * regardless of whether the containing instance is mut. */
-        if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0 ||
-             strcmp(mfn, "insert_at") == 0 || strcmp(mfn, "remove") == 0 ||
-             strcmp(mfn, "remove_at") == 0 || strcmp(mfn, "remove_first") == 0 ||
-             strcmp(mfn, "remove_last") == 0 || strcmp(mfn, "clear") == 0 ||
-             strcmp(mfn, "deduplicate") == 0) &&
-            node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            if (arg0->kind == NODE_MEMBER_EXPR && member_expr_is_fixed_array_field(checker, arg0)) {
-                diagnostic_error_code_formatted(checker->diag, "E5051",
-                    NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                    mfn, arg0->data.member.member);
-            }
-        }
-        /* E5051: 'fill' is length-changing too — gray_arrays_fill clears the
-         * array and pushes exactly 'count' new elements, independent of its
-         * prior length — but count == the field's declared size is a
-         * legitimate in-place refill, unlike append/insert_at/etc above, so
-         * it isn't blanket-rejected. Only a call whose 'count' isn't
-         * provably that exact size (a literal mismatch, or a non-literal
-         * count the typechecker can't verify) is rejected. */
-        if (strcmp(mfn, "fill") == 0 && node->data.call.arg_count >= 3) {
-            AstNode *arg0 = node->data.call.args[0];
-            int fixed_size = (arg0->kind == NODE_MEMBER_EXPR)
-                ? member_expr_fixed_array_field_size(checker, arg0) : 0;
-            if (fixed_size > 0) {
-                int64_t count_lit;
-                bool count_neg;
-                bool count_matches = try_get_signed_literal_int(node->data.call.args[2], &count_lit, &count_neg) &&
-                    !count_neg && count_lit == fixed_size;
-                if (!count_matches) {
-                    diagnostic_error_code_formatted(checker->diag, "E5051",
-                        NODE_FILE(checker, node), node->token.line, node->token.column, 0,
-                        mfn, arg0->data.member.member);
-                }
-            }
-        }
-        /* E5026: arrays.append/prepend/insert_at element type mismatch */
-        {
-            AstNode *val_node = NULL;
-            const char *op_name = NULL;
-            if ((strcmp(mfn, "append") == 0 || strcmp(mfn, "prepend") == 0) &&
-                node->data.call.arg_count >= 2) {
-                val_node = node->data.call.args[1];
-                op_name = mfn;
-            } else if (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 3) {
-                val_node = node->data.call.args[2];
-                op_name = "insert_at";
-            }
-            if (val_node && op_name) {
-                AstNode *arr_arg = node->data.call.args[0];
-                GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
-                if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
-                GrayType *val_t = resolve_expression(checker, val_node);
-                if (arr_t && arr_t->kind != TK_ARRAY && arr_t->kind != TK_UNKNOWN) {
-                    char *msg = typechecker_format(checker,
-                        "'arrays.%s()' expects an array as the first argument, got '%s'",
-                        op_name, type_name(arr_t));
-                    tc_err_arg_type(checker, arr_arg, msg);
-                } else if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-                    val_t && val_t->kind != TK_UNKNOWN) {
-                    GrayType *elem_t = type_from_name(arr_t->element_type);
-                    if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
-                        !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
-                        char *msg = typechecker_format(checker,
-                            "type mismatch in 'arrays.%s()'; cannot add '%s' to array of '%s'",
-                            op_name, type_name(val_t), arr_t->element_type);
-                        tc_err_arg_type(checker, val_node, msg);
-                    } else if (is_int_kind(elem_t->kind) && is_int_kind(val_t->kind)) {
-                        /* A narrow element slot must reject an oversized value the
-                         * same way `xs[i] = value` does: E3036 for an out-of-range
-                         * literal, E3019 for a signedness crossing. */
-                        int64_t lit_val;
-                        bool lit_neg;
-                        if (try_get_signed_literal_int(val_node, &lit_val, &lit_neg)) {
-                            check_integer_range(checker->diag, NODE_FILE(checker, val_node),
-                                val_node->token.line, val_node->token.column,
-                                arr_t->element_type, lit_val, lit_neg);
-                        }
-                        check_signedness_crossing(checker, arr_t->element_type,
-                            val_node, val_t, val_node);
-                    }
-                }
-            }
-        }
-        /* E5026: arrays.binary_search value type must match element type */
-        if (strcmp(mfn, "binary_search") == 0 && node->data.call.arg_count >= 2) {
-            AstNode *arr_arg = node->data.call.args[0];
-            AstNode *val_node = node->data.call.args[1];
-            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
-            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
-            GrayType *val_t = resolve_expression(checker, val_node);
-            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type &&
-                val_t && val_t->kind != TK_UNKNOWN) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (elem_t->kind != TK_UNKNOWN && elem_t->kind != val_t->kind &&
-                    !(is_int_kind(elem_t->kind) && is_int_kind(val_t->kind))) {
-                    char *msg = typechecker_format(checker,
-                        "type mismatch in 'arrays.binary_search()'; cannot search for '%s' in array of '%s'",
-                        type_name(val_t), arr_t->element_type);
-                    tc_err_arg_type(checker, val_node, msg);
-                }
-            }
-        }
-        /* E5026: arrays.remove_at/insert_at index must be int */
-        if ((strcmp(mfn, "remove_at") == 0 && node->data.call.arg_count >= 2) ||
-            (strcmp(mfn, "insert_at") == 0 && node->data.call.arg_count >= 2)) {
-            AstNode *idx_node = node->data.call.args[1];
-            GrayType *idx_t = resolve_expression(checker, idx_node);
-            if (idx_t && idx_t->kind != TK_UNKNOWN && !is_int_kind(idx_t->kind)) {
-                char *msg = typechecker_format(checker,
-                    "'arrays.%s()' expects an int index, got '%s'",
-                    mfn, type_name(idx_t));
-                tc_err_arg_type(checker, idx_node, msg);
-            }
-        }
-        /* E9002: arrays.sum/min/max require numeric array. Same stricter
-         * !type_is_numeric() check as average below — a struct element is
-         * just as non-numeric as a string/bool one, and the codegen for
-         * these (a value cast to int64_t) leaks a raw C error on a struct
-         * array exactly like it used to for string/bool before this
-         * matched average's check. An int-backed enum element is exempted:
-         * it's read through gray_type_to_c_codegen at its own real C enum
-         * type, and a C enum-to-int64_t cast is always legal, so this was
-         * already correct for int-backed enum arrays before this check
-         * existed at all. A string-backed enum is a GrayString at the C
-         * level, not int-castable, so it stays rejected like any other
-         * non-numeric element. */
-        if ((strcmp(mfn, "sum") == 0 || strcmp(mfn, "min") == 0 ||
-             strcmp(mfn, "max") == 0 || strcmp(mfn, "get_sum") == 0 ||
-             strcmp(mfn, "get_min") == 0 || strcmp(mfn, "get_max") == 0 ||
-             strcmp(mfn, "min_index") == 0 || strcmp(mfn, "max_index") == 0) &&
-            node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            GrayType *arr_t = resolve_expression(checker, arg0);
-            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                bool is_int_enum = elem_t->kind == TK_ENUM && elem_t->name &&
-                    !typechecker_enum_is_string(checker, elem_t->name);
-                if (!type_is_numeric(elem_t) && !is_int_enum) {
-                    diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
-                }
-            }
-        }
-        /* E9002: arrays.binary_search/sort_asc/sort_desc/is_sorted require
-         * an orderable element type. Unlike sum/min/max above, these four
-         * do support string and bool (dedicated string codegen paths; bool
-         * casts cleanly to int64_t) and enum (a plain C enum, comparable as
-         * an int) — only a struct/array/map element has no ordering and no
-         * safe scalar cast, which otherwise either leaks a raw C error
-         * (binary_search, a value cast) or silently reinterprets the
-         * struct's raw leading bytes as the sort/comparison key
-         * (sort_asc/sort_desc/is_sorted, a pointer-reinterpret read). */
-        if ((strcmp(mfn, "binary_search") == 0 || strcmp(mfn, "sort_asc") == 0 ||
-             strcmp(mfn, "sort_desc") == 0 || strcmp(mfn, "is_sorted") == 0) &&
-            node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            GrayType *arr_t = resolve_expression(checker, arg0);
-            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                bool orderable = type_is_numeric(elem_t) || elem_t->kind == TK_STRING ||
-                                  elem_t->kind == TK_BOOL || elem_t->kind == TK_ENUM;
-                if (!orderable) {
-                    char *msg = typechecker_format(checker,
-                        "'arrays.%s()' requires a comparable array (numeric, string, bool, or enum), got array of '%s'",
-                        mfn, arr_t->element_type);
-                    tc_err_at(checker, "E9002", arg0, msg);
-                }
-            }
-        }
-        /* E9002: arrays.average requires a numeric array. Stricter than the
-         * sum/min/max check above (bad codegen on a struct array leaks a C
-         * error), so it rejects every non-numeric element type. */
-        if (strcmp(mfn, "average") == 0 && node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            GrayType *arr_t = resolve_expression(checker, arg0);
-            if (arr_t && arr_t->kind == TK_ARRAY && arr_t->element_type) {
-                GrayType *elem_t = type_from_name(arr_t->element_type);
-                if (!type_is_numeric(elem_t)) {
-                    diagnostic_error_code_formatted(checker->diag, "E9002", NODE_FILE(checker, arg0), arg0->token.line, arg0->token.column, 0, mfn, arr_t->element_type);
-                }
-            }
-        }
-        /* E5026: arrays.concat element type mismatch */
-        if (strcmp(mfn, "concat") == 0 && node->data.call.arg_count >= 2) {
-            AstNode *a0 = node->data.call.args[0];
-            AstNode *a1 = node->data.call.args[1];
-            GrayType *t0 = typetable_get(checker->type_table, a0);
-            GrayType *t1 = typetable_get(checker->type_table, a1);
-            if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
-                t0->element_type && t1->element_type &&
-                strcmp(t0->element_type, t1->element_type) != 0) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot concat array of %s with array of %s",
-                    t0->element_type, t1->element_type);
-                tc_err_arg_type(checker, a1, msg);
-            }
-        }
-        if (strcmp(mfn, "is_equal") == 0 && node->data.call.arg_count >= 2) {
-            AstNode *a0 = node->data.call.args[0];
-            AstNode *a1 = node->data.call.args[1];
-            GrayType *t0 = typetable_get(checker->type_table, a0);
-            GrayType *t1 = typetable_get(checker->type_table, a1);
-            if (t0 && t1 && t0->kind == TK_ARRAY && t1->kind == TK_ARRAY &&
-                t0->element_type && t1->element_type &&
-                strcmp(t0->element_type, t1->element_type) != 0) {
-                char *msg = typechecker_format(checker,
-                    "type mismatch: cannot compare array of %s with array of %s",
-                    t0->element_type, t1->element_type);
-                tc_err_at(checker, "E3156", a1, msg);
-            }
-            if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
-                GrayType *et = type_from_name(t0->element_type);
-                if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
-                    char *msg = typechecker_format(checker,
-                        "arrays.is_equal does not support arrays of %s; only primitive and string element types are supported",
-                        t0->element_type);
-                    tc_err_arg_type(checker, a0, msg);
-                }
-            }
-        }
-        if (strcmp(mfn, "contains") == 0 && node->data.call.arg_count >= 1) {
-            AstNode *a0 = node->data.call.args[0];
-            GrayType *t0 = typetable_get(checker->type_table, a0);
-            if (t0 && t0->kind == TK_ARRAY && t0->element_type) {
-                GrayType *et = type_from_name(t0->element_type);
-                if (et->kind == TK_ARRAY || et->kind == TK_MAP || et->kind == TK_STRUCT) {
-                    diagnostic_error_code_formatted(checker->diag, "E9006",
-                        NODE_FILE(checker, a0), a0->token.line, a0->token.column, 0,
-                        t0->element_type);
-                }
-            }
-        }
-        /* E9003/E9004: map/filter/reduce callback validation */
-        if ((strcmp(mfn, "map") == 0 || strcmp(mfn, "filter") == 0 ||
-             strcmp(mfn, "reduce") == 0 ||
-             strcmp(mfn, "any") == 0 || strcmp(mfn, "all") == 0 ||
-             strcmp(mfn, "find") == 0 || strcmp(mfn, "find_index") == 0) && node->data.call.arg_count >= 2) {
-            int cb_idx = (strcmp(mfn, "reduce") == 0) ? 2 : 1;
-            if (cb_idx < node->data.call.arg_count) {
-                AstNode *cb_arg = node->data.call.args[cb_idx];
-                if (cb_arg->kind != NODE_FUNC_REF &&
-                    !(cb_arg->kind == NODE_CALL_EXPR &&
-                      cb_arg->data.call.function->kind == NODE_LABEL &&
-                      strcmp(cb_arg->data.call.function->data.label.value, "ref") == 0)) {
-                    diagnostic_error_code_formatted(checker->diag, "E9003",
-                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                        mfn);
-                } else {
-                    const char *ref_name = NULL;
-                    if (cb_arg->kind == NODE_FUNC_REF &&
-                        cb_arg->data.func_ref.function->kind == NODE_LABEL) {
-                        ref_name = cb_arg->data.func_ref.function->data.label.value;
-                    }
-                    if (ref_name) {
-                        FuncSig *cb_fs = find_func(checker, ref_name);
-                        if (cb_fs) {
-                            AstNode *arr_arg = node->data.call.args[0];
-                            GrayType *arr_t = typetable_get(checker->type_table, arr_arg);
-                            if (!arr_t) arr_t = resolve_expression(checker, arr_arg);
-                            const char *elem_tn = (arr_t && arr_t->element_type) ? arr_t->element_type : NULL;
-
-                            if (strcmp(mfn, "map") == 0) {
-                                if (cb_fs->param_count != 1) {
-                                    char *msg = typechecker_format(checker,
-                                        "map callback must take 1 parameter, got %d",
-                                        cb_fs->param_count);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (cb_fs->return_count < 1) {
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, "map callback must return a value");
-                                } else if (elem_tn && cb_fs->param_types[0] &&
-                                           strcmp(type_name(cb_fs->param_types[0]), elem_tn) != 0) {
-                                    char *msg = typechecker_format(checker,
-                                        "map callback takes '%s' but array element type is '%s'",
-                                        type_name(cb_fs->param_types[0]), elem_tn);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (elem_tn && cb_fs->return_count >= 1 &&
-                                           cb_fs->return_types[0] &&
-                                           strcmp(type_name(cb_fs->return_types[0]), elem_tn) != 0) {
-                                    char *msg = typechecker_format(checker,
-                                        "map callback must return the same type as the array element type (%s), got '%s'",
-                                        elem_tn, type_name(cb_fs->return_types[0]));
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                }
-                            } else if (strcmp(mfn, "filter") == 0 ||
-                                       strcmp(mfn, "any") == 0 ||
-                                       strcmp(mfn, "all") == 0 ||
-                                       strcmp(mfn, "find") == 0 ||
-                                       strcmp(mfn, "find_index") == 0) {
-                                if (cb_fs->param_count != 1) {
-                                    char *msg = typechecker_format(checker,
-                                        "%s callback must take 1 parameter, got %d",
-                                        mfn, cb_fs->param_count);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (cb_fs->return_count < 1 ||
-                                           cb_fs->return_types[0]->kind != TK_BOOL) {
-                                    char *msg = typechecker_format(checker,
-                                        "%s callback must return bool", mfn);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (elem_tn && cb_fs->param_types[0] &&
-                                           strcmp(type_name(cb_fs->param_types[0]), elem_tn) != 0) {
-                                    char *msg = typechecker_format(checker,
-                                        "%s callback takes '%s' but array element type is '%s'",
-                                        mfn, type_name(cb_fs->param_types[0]), elem_tn);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                }
-                            } else { /* reduce */
-                                if (cb_fs->param_count != 2) {
-                                    char *msg = typechecker_format(checker,
-                                        "reduce callback must take 2 parameters, got %d",
-                                        cb_fs->param_count);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (cb_fs->return_count < 1) {
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, "reduce callback must return a value");
-                                } else if (elem_tn && cb_fs->param_types[1] &&
-                                           strcmp(type_name(cb_fs->param_types[1]), elem_tn) != 0) {
-                                    char *msg = typechecker_format(checker,
-                                        "reduce callback's element parameter takes '%s' but array element type is '%s'",
-                                        type_name(cb_fs->param_types[1]), elem_tn);
-                                    diagnostic_error_code_formatted(checker->diag, "E9004",
-                                        NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                        mfn, msg);
-                                } else if (cb_fs->return_count >= 1 && cb_fs->return_types[0] &&
-                                           node->data.call.arg_count > 1) {
-                                    AstNode *init_arg = node->data.call.args[1];
-                                    GrayType *init_t = typetable_get(checker->type_table, init_arg);
-                                    if (!init_t) init_t = resolve_expression(checker, init_arg);
-                                    if (init_t) {
-                                        const char *init_tn = type_name(init_t);
-                                        const char *ret_tn = type_name(cb_fs->return_types[0]);
-                                        TypeKind ret_kind = cb_fs->return_types[0]->kind;
-                                        /* A bare literal always resolves to plain int/float
-                                         * (resolve_expression has no expected-type hint for
-                                         * literals), so it never matches a sized/unsigned
-                                         * return type by name. Loosen the check the same way
-                                         * maps.get_or_default does for its default argument:
-                                         * a literal of the right broad numeric family (int vs
-                                         * float) is coercible to any return type in that
-                                         * family, matching what codegen actually emits (a
-                                         * plain C literal assigned to the accumulator's C
-                                         * type). */
-                                        bool loose_literal_ok =
-                                            (init_arg->kind == NODE_INT_VALUE &&
-                                             (ret_kind == TK_INT || ret_kind == TK_UINT || ret_kind == TK_BYTE)) ||
-                                            (init_arg->kind == NODE_FLOAT_VALUE && ret_kind == TK_FLOAT);
-                                        if (init_tn && ret_tn && strcmp(ret_tn, init_tn) != 0 &&
-                                            !loose_literal_ok) {
-                                            char *msg = typechecker_format(checker,
-                                                "reduce callback must return the same type as the accumulator (%s)",
-                                                init_tn);
-                                            diagnostic_error_code_formatted(checker->diag, "E9004",
-                                                NODE_FILE(checker, cb_arg), cb_arg->token.line, cb_arg->token.column, 0,
-                                                mfn, msg);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        /* All arrays.* functions expect an array as the first argument */
-        if (node->data.call.arg_count > 0) {
-            AstNode *arg0 = node->data.call.args[0];
-            GrayType *arg0_t = resolve_expression(checker, arg0);
-            if (arg0_t && arg0_t->kind != TK_ARRAY && arg0_t->kind != TK_UNKNOWN) {
-                char *msg = typechecker_format(checker,
-                    "'arrays.%s()' expects an array as the first argument, got '%s'",
-                    mfn, type_name(arg0_t));
-                tc_err_arg_type(checker, arg0, msg);
-            }
-        }
+        result = resolve_arrays_call(checker, node, mfn, result);
     } else if (strcmp(mod, "strings") == 0) {
         /* E5007: mutating a string builder reached through an immutable binding.
          * The builder's buffer grows into the arena that owns the binding, so a
@@ -6717,169 +6901,7 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
             }
         }
     } else if (strcmp(mod, "fmt") == 0) {
-        /* Validate printf/sprintf/format: literal format string + directive types */
-        {
-            bool is_fmt_fn = strcmp(mfn, "printf") == 0 ||
-                             strcmp(mfn, "printfln") == 0 ||
-                             strcmp(mfn, "eprintf") == 0 ||
-                             strcmp(mfn, "eprintfln") == 0 ||
-                             strcmp(mfn, "sprintf") == 0 ||
-                             strcmp(mfn, "sprintfln") == 0;
-            if (is_fmt_fn && node->data.call.arg_count >= 1) {
-                AstNode *fmt_arg = node->data.call.args[0];
-                if (fmt_arg->kind != NODE_STRING_VALUE) {
-                    diagnostic_error_code_formatted(checker->diag, "E3086",
-                        NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                        fmt_arg->token.column, 0, mfn);
-                } else {
-                    /* Walk format string, validate each directive against arg type */
-                    const char *fstr = fmt_arg->data.string_value.value;
-                    const char *p = fstr;
-                    int di = 1;
-                    int num_directives = 0;
-                    while (*p) {
-                        if (*p != '%') { p++; continue; }
-                        p++;
-                        if (!*p) {
-                            /* Dangling % at end of format string */
-                            diagnostic_error_code_formatted(checker->diag, "E3106",
-                                NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                                fmt_arg->token.column, 0, mfn);
-                            break;
-                        }
-                        if (*p == '%') { p++; continue; }
-                        if (*p == 'n') {
-                            diagnostic_error_code_formatted(checker->diag, "E3087",
-                                NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                                fmt_arg->token.column, 0);
-                            break;
-                        }
-                        /* Skip flags, width, precision, length modifier */
-                        while (*p == '-' || *p == '+' || *p == ' ' || *p == '0' || *p == '#') p++;
-                        while (*p >= '0' && *p <= '9') p++;
-                        if (*p == '.') { p++; while (*p >= '0' && *p <= '9') p++; }
-                        if (*p == 'h') { p++; if (*p == 'h') p++; }
-                        else if (*p == 'l') { p++; if (*p == 'l') p++; }
-                        else if (*p == 'L') p++;
-                        char spec = *p ? *p++ : 0;
-                        if (!spec) {
-                            diagnostic_error_code_formatted(checker->diag, "E3106",
-                                NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                                fmt_arg->token.column, 0, mfn);
-                            break;
-                        }
-                        num_directives++;
-                        /* Reject unknown format directives */
-                        bool known = false;
-                        switch (spec) {
-                        case 'd': case 'i': case 'u':
-                        case 'x': case 'X': case 'o':
-                        case 'f': case 'g': case 'e': case 'G': case 'E':
-                        case 's': case 'c': case 'b':
-                            known = true;
-                            break;
-                        default:
-                            known = false;
-                            break;
-                        }
-                        if (!known) {
-                            diagnostic_error_code_formatted(checker->diag, "E3105",
-                                NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                                fmt_arg->token.column, 0, mfn, spec);
-                            di++;
-                            continue;
-                        }
-                        if (di >= node->data.call.arg_count) { di++; continue; }
-                        AstNode *darg = node->data.call.args[di];
-                        GrayType *dt = resolve_expression(checker, darg);
-                        di++;
-                        if (!dt) continue;
-                        const char *expected = NULL;
-                        bool ok = false;
-                        switch (spec) {
-                        case 'd': case 'i':
-                            expected = "int or char";
-                            ok = dt->kind == TK_INT || dt->kind == TK_CHAR || dt->kind == TK_BYTE ||
-                                 (dt->name && is_bigint_type(dt->name));
-                            break;
-                        case 'u':
-                            expected = "uint";
-                            ok = dt->kind == TK_UINT || dt->kind == TK_BYTE ||
-                                 (dt->name && is_bigint_type(dt->name));
-                            break;
-                        case 'x': case 'X': case 'o':
-                            expected = "int or uint";
-                            ok = dt->kind == TK_INT || dt->kind == TK_UINT || dt->kind == TK_BYTE;
-                            break;
-                        case 'f': case 'g': case 'e': case 'G': case 'E':
-                            expected = "float";
-                            ok = dt->kind == TK_FLOAT;
-                            break;
-                        case 's':
-                            expected = "string";
-                            ok = dt->kind == TK_STRING;
-                            break;
-                        case 'c':
-                            expected = "char";
-                            ok = dt->kind == TK_CHAR ||
-                                 (dt->kind == TK_INT && !(dt->name && is_bigint_type(dt->name)));
-                            break;
-                        case 'b':
-                            expected = "bool";
-                            ok = dt->kind == TK_BOOL;
-                            break;
-                        default:
-                            ok = true;
-                            break;
-                        }
-                        if (!ok && expected) {
-                            char spec_str[2] = { spec, '\0' };
-                            diagnostic_error_code_formatted(checker->diag, "E3088",
-                                NODE_FILE(checker, darg), darg->token.line,
-                                darg->token.column, 0,
-                                mfn, spec_str, expected, di - 1,
-                                type_name(dt));
-                        }
-                    }
-                    /* Check argument count vs directive count */
-                    int num_args = node->data.call.arg_count - 1;
-                    if (num_args < num_directives) {
-                        diagnostic_error_code_formatted(checker->diag, "E3107",
-                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                            fmt_arg->token.column, 0,
-                            mfn, num_directives, num_args);
-                    } else if (num_args > num_directives) {
-                        diagnostic_error_code_formatted(checker->diag, "E3108",
-                            NODE_FILE(checker, fmt_arg), fmt_arg->token.line,
-                            fmt_arg->token.column, 0,
-                            mfn, num_directives, num_args);
-                    }
-                }
-            }
-        }
-        /* Validate that non-format args are primitive types */
-        for (int argument_index = 1; argument_index < node->data.call.arg_count; argument_index++) {
-            GrayType *arg_t = resolve_expression(checker, node->data.call.args[argument_index]);
-            if (arg_t && (arg_t->kind == TK_STRUCT || arg_t->kind == TK_ARRAY ||
-                          arg_t->kind == TK_MAP || arg_t->kind == TK_POINTER)) {
-                /* Build a readable type name */
-                char tn[TYPE_NAME_MAX];
-                if (arg_t->kind == TK_ARRAY && arg_t->element_type)
-                    snprintf(tn, sizeof(tn), "[%s]", arg_t->element_type);
-                else if (arg_t->kind == TK_MAP)
-                    snprintf(tn, sizeof(tn), "map[%s:%s]",
-                        arg_t->key_type ? arg_t->key_type : "?",
-                        arg_t->value_type ? arg_t->value_type : "?");
-                else if (arg_t->kind == TK_POINTER && arg_t->element_type)
-                    snprintf(tn, sizeof(tn), "^%s", arg_t->element_type);
-                else {
-                    strncpy(tn, type_name(arg_t), sizeof(tn) - 1);
-                    tn[sizeof(tn) - 1] = '\0';
-                }
-                diagnostic_error_code_formatted(checker->diag, "E3017", NODE_FILE(checker, node->data.call.args[argument_index]), node->data.call.args[argument_index]->token.line,
-                    node->data.call.args[argument_index]->token.column, 0, mfn, tn);
-            }
-        }
+        result = resolve_fmt_call(checker, node, mfn, result);
     }
 
     if (!meta) {
