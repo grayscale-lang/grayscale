@@ -2330,7 +2330,8 @@ Running tests:
 ```
 gray test                Run every #test function in .gray files under the current directory (recursive)
 gray test file.gray      Run the #test functions in one file
-gray test ./src          Run the #test functions under a directory
+gray test ./src          Run the #test functions in the .gray files directly inside a directory
+gray test ./src/...      Run the #test functions in every .gray file under a directory (recursive)
 ```
 
 A failed `assert` — or any runtime panic — inside a `#test` function is
@@ -5117,9 +5118,10 @@ gray test [path...] [flags]
 ```
 
 With no path, `gray test` scans the current directory recursively for `.gray`
-files containing a `#test` function. A path may be a single file or a
-directory (scanned recursively). Each source file is compiled to its own
-temporary test binary and run.
+files containing a `#test` function (the same as `gray test ./...`). Paths
+follow the same patterns as `gray fmt` (see §13.6): a single file, a directory
+(non-recursive), or `dir/...` (recursive). Each source file is compiled to its
+own temporary test binary and run.
 
 | Flag | Description |
 |------|-------------|
@@ -5132,7 +5134,7 @@ or any file fails to compile.
 ```bash
 gray test
 gray test math_test.gray
-gray test ./src
+gray test ./src/...
 ```
 
 ### 13.5 `gray watch`
@@ -5173,7 +5175,12 @@ Supported path patterns:
 |---------|-------|
 | `file.gray` | Single file |
 | `dir` | All `.gray` files in directory (non-recursive) |
-| `./...` or `dir/...` | Recursive walk for all `.gray` files |
+| `...`, `./...`, or `dir/...` | Recursive walk for all `.gray` files |
+
+A file named more than once is processed once. A path that does not exist, or
+is neither a `.gray` file nor a directory, is reported and skipped; the command
+still processes the remaining paths and then exits non-zero. `gray doc` and
+`gray test` accept the same patterns.
 
 ```bash
 gray fmt main.gray

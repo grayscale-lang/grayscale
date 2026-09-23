@@ -94,7 +94,7 @@ it does not need to be on `PATH`.
 | `gray build <file> --emit-c` | Emit generated C source to a file (no binary) | `gray build main.gray --emit-c` |
 | `gray build <file> --arena-limit=<size>` | Cap arena memory (KB/MB/GB; default: 1GB) | `gray build main.gray --arena-limit=256MB` |
 | `gray check <file>` | Type check without compiling | `gray check main.gray` |
-| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src` |
+| `gray test [path...]` | Compile and run `#test` functions | `gray test ./src/...` |
 | `gray watch <file>` | Watch for changes, re-run on save | `gray watch main.gray` |
 | `gray fmt <path>` | Format `.gray` source files in place | `gray fmt .` or `gray fmt ./...` |
 | `gray fmt --check <path>` | Check formatting without modifying files (CI gate) | `gray fmt --check ./...` |
