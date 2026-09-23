@@ -1,0 +1,56 @@
+/*
+ * math_abs_neg_checked.gray - math.abs / math.neg return their argument's
+ * type, and math.gcd / lcm / factorial give exact results in range.
+ */
+
+import @math
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut small i8 = -127
+    mut small_abs i8 = math.abs(small)
+    mut small_neg i8 = math.neg(small)
+    if small_abs == 127 && small_neg == 127 {
+        passed++
+    } otherwise {
+        println("FAIL: i8 abs/neg")
+        failed++
+    }
+
+    mut mid i32 = 2147483647
+    mut mid_neg i32 = math.neg(mid)
+    if mid_neg == -2147483647 && math.abs(mid_neg) == mid {
+        passed++
+    } otherwise {
+        println("FAIL: i32 abs/neg")
+        failed++
+    }
+
+    if math.abs(-5) == 5 && math.neg(5) == -5 && math.abs(-2.5) == 2.5 {
+        passed++
+    } otherwise {
+        println("FAIL: i64/f64 abs/neg")
+        failed++
+    }
+
+    if math.gcd(math.MIN_INT, 6) == 2 && math.gcd(-12, 18) == 6 {
+        passed++
+    } otherwise {
+        println("FAIL: gcd")
+        failed++
+    }
+
+    if math.factorial(20) == 2432902008176640000 && math.lcm(4, 6) == 12 {
+        passed++
+    } otherwise {
+        println("FAIL: factorial/lcm")
+        failed++
+    }
+
+    println("math_abs_neg_checked: ${passed} passed, ${failed} failed")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    }
+}

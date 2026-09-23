@@ -384,6 +384,23 @@ static void emit_sized_bounds_args(CodeGen *codegen, const char *min, const char
         emit_formatted(codegen, "%s, %s, \"%s\", \"%s\", %d", min, max, type_name, codegen->file, line);
 }
 
+/* Emit the overflow-checked negation of a signed (non-wide) integer of type
+ * int_type: the operand is the expression `operand`, or the C expression
+ * `operand_c` when that is non-NULL. */
+static void emit_checked_negation(CodeGen *codegen, GrayType *int_type, AstNode *operand,
+                                  const char *operand_c, int line) {
+    const char *smin = NULL, *smax = NULL;
+    bool is_unsigned = false;
+    bool sized = int_type->name && sized_int_bounds(int_type->name, &smin, &smax, &is_unsigned);
+    emit(codegen, sized ? "gray_sized_neg_check(" : "gray_neg_check(");
+    if (operand_c) emit(codegen, operand_c);
+    else emit_expression(codegen, operand);
+    if (sized)
+        emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, int_type->name, codegen->file, line);
+    else
+        emit_formatted(codegen, ", \"%s\", %d)", codegen->file, line);
+}
+
 /* Emit an overflow-checked compound assignment for a pointer-based target
  * whose C reference string is ref_str (e.g. "*_dp", "_dp->field").
  * Handles +=, -=, *= on sized and plain integer types.
@@ -2686,19 +2703,7 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
     if (node->data.prefix.op == TOK_MINUS) {
         GrayType *ot = typetable_get(codegen->type_table, node->data.prefix.right);
         if (ot && ot->kind == TK_INT) {
-            const char *sized_name = ot->name;
-            const char *smin = NULL, *smax = NULL;
-            bool _su = false;
-            if (sized_name) sized_int_bounds(sized_name, &smin, &smax, &_su);
-            if (smax && !_su) {
-                emit(codegen, "gray_sized_neg_check(");
-                emit_expression(codegen, node->data.prefix.right);
-                emit_formatted(codegen, ", %s, %s, \"%s\", \"%s\", %d)", smin, smax, sized_name, codegen->file, node->token.line);
-            } else {
-                emit(codegen, "gray_neg_check(");
-                emit_expression(codegen, node->data.prefix.right);
-                emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
-            }
+            emit_checked_negation(codegen, ot, node->data.prefix.right, NULL, node->token.line);
             return;
         }
     }
@@ -5935,19 +5940,35 @@ static bool emit_mem_call(CodeGen *codegen, AstNode *node, const char *func) {
 /* --- @math module --- */
 
 static bool emit_math_call(CodeGen *codegen, AstNode *node, const char *func) {
-    if (strcmp(func, "abs") == 0 && node->data.call.arg_count == 1) {
-        GrayType *arg_type = typetable_get(codegen->type_table, node->data.call.args[0]);
+    if ((strcmp(func, "abs") == 0 || strcmp(func, "neg") == 0) && node->data.call.arg_count == 1) {
+        AstNode *arg = node->data.call.args[0];
+        GrayType *arg_type = typetable_get(codegen->type_table, arg);
+        if (arg_type && arg_type->kind == TK_INT) {
+            /* Negating the most negative value overflows, as `-n` does. */
+            if (strcmp(func, "neg") == 0) {
+                emit_checked_negation(codegen, arg_type, arg, NULL, node->token.line);
+                return true;
+            }
+            char temp_name[32];
+            snprintf(temp_name, sizeof(temp_name), "_abs%d", codegen_next_id(codegen));
+            emit_formatted(codegen, "({ %s %s = ", gray_type_to_c_codegen(codegen, arg_type->name), temp_name);
+            emit_expression(codegen, arg);
+            emit_formatted(codegen, "; %s < 0 ? ", temp_name);
+            emit_checked_negation(codegen, arg_type, NULL, temp_name, node->token.line);
+            emit_formatted(codegen, " : %s; })", temp_name);
+            return true;
+        }
+        if (strcmp(func, "neg") == 0) {
+            emit(codegen, "(-(");
+            emit_expression(codegen, arg);
+            emit(codegen, "))");
+            return true;
+        }
         const char *suffix = (arg_type && arg_type->kind == TK_FLOAT) ? "f64" :
                               (arg_type && arg_type->kind == TK_UINT) ? "u64" : "i64";
         emit_formatted(codegen, "gray_math_abs_%s(", suffix);
-        emit_expression(codegen, node->data.call.args[0]);
+        emit_expression(codegen, arg);
         emit(codegen, ")");
-        return true;
-    }
-    if (strcmp(func, "neg") == 0 && node->data.call.arg_count == 1) {
-        emit(codegen, "(-(");
-        emit_expression(codegen, node->data.call.args[0]);
-        emit(codegen, "))");
         return true;
     }
     if ((strcmp(func, "min") == 0 || strcmp(func, "max") == 0) && node->data.call.arg_count == 2) {

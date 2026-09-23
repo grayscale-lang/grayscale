@@ -50,21 +50,30 @@ int64_t gray_math_factorial(int64_t n) {
     if (n < 0) gray_panic_code("P0070", "math.factorial() requires a non-negative integer, got %lld", (long long)n);
     if (n <= 1) return 1;
     int64_t result = 1;
-    for (int64_t i = 2; i <= n; i++) result *= i;
+    for (int64_t i = 2; i <= n; i++)
+        if (__builtin_mul_overflow(result, i, &result))
+            gray_panic_code("P0006", "multiplication result is too large; value exceeds the range of i64");
     return result;
 }
 
+/* Works on the magnitudes as uint64_t so the most negative i64 has one; only
+ * a result that is itself 2^63 does not fit back in i64. */
 int64_t gray_math_gcd(int64_t left, int64_t right) {
-    if (left < 0) left = -left;
-    if (right < 0) right = -right;
-    while (right != 0) { int64_t temp = right; right = left % right; left = temp; }
-    return left;
+    uint64_t a = left < 0 ? 0 - (uint64_t)left : (uint64_t)left;
+    uint64_t b = right < 0 ? 0 - (uint64_t)right : (uint64_t)right;
+    while (b != 0) { uint64_t temp = b; b = a % b; a = temp; }
+    if (a > (uint64_t)INT64_MAX)
+        gray_panic_code("P0007", "negation result is too large; value exceeds the range of i64");
+    return (int64_t)a;
 }
 
 int64_t gray_math_lcm(int64_t left, int64_t right) {
     if (left == 0 || right == 0) return 0;
     int64_t divisor = gray_math_gcd(left, right);
-    return (left / divisor) * right;
+    int64_t result;
+    if (__builtin_mul_overflow(left / divisor, right, &result))
+        gray_panic_code("P0006", "multiplication result is too large; value exceeds the range of i64");
+    return result;
 }
 
 GrayMathModf gray_math_modf(double value) {

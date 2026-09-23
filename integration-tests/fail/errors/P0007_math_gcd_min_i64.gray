@@ -1,0 +1,6 @@
+/* Panic Test: P0007 - math.gcd whose result is 2^63 */
+import @math
+
+do main() {
+    println(math.gcd(math.MIN_INT, 0))
+}

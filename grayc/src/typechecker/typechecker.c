@@ -5953,6 +5953,20 @@ static void reject_non_json_parse_target(TypeChecker *checker, AstNode *node,
 
 /* maps module calls whose return type depends on the arguments. Returns
  * `result` (the table-driven type) unless the arguments refine it. */
+/* math.abs / math.neg: (n T) -> T, so the result stays in the argument's
+ * range and negating it overflow-checks at that width, like `-n`. neg of an
+ * unsigned value is rejected the same way `-n` is. */
+static GrayType *resolve_math_abs_neg(TypeChecker *checker, AstNode *node, const char *mfn) {
+    AstNode *arg0 = node->data.call.args[0];
+    GrayType *arg_t = resolve_expression(checker, arg0);
+    if (strcmp(mfn, "neg") == 0 && arg_t && arg_t->name && is_unsigned_type(arg_t->name))
+        diagnostic_error_code_formatted(checker->diag, "E3096", NODE_FILE(checker, arg0),
+            arg0->token.line, arg0->token.column, 0, arg_t->name);
+    if (arg_t && (arg_t->kind == TK_INT || arg_t->kind == TK_UINT || arg_t->kind == TK_FLOAT))
+        return arg_t;
+    return &TYPE_I64;
+}
+
 static GrayType *resolve_maps_call(TypeChecker *checker, AstNode *node, const char *mfn, GrayType *result) {
     if (strcmp(mfn, "get_keys") == 0) {
         if (node->data.call.arg_count > 0) {
@@ -6756,10 +6770,11 @@ static GrayType *resolve_stdlib_call(TypeChecker *checker, AstNode *node, const 
     } else if (strcmp(mod, "maps") == 0) {
         result = resolve_maps_call(checker, node, mfn, result);
     } else if (strcmp(mod, "math") == 0) {
-        /* abs/neg/min/max/clamp: return type matches argument type */
-        if (strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0 ||
-            strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
-            strcmp(mfn, "clamp") == 0) {
+        if ((strcmp(mfn, "abs") == 0 || strcmp(mfn, "neg") == 0) && node->data.call.arg_count > 0) {
+            result = resolve_math_abs_neg(checker, node, mfn);
+        } else if (strcmp(mfn, "min") == 0 || strcmp(mfn, "max") == 0 ||
+                   strcmp(mfn, "clamp") == 0) {
+            /* min/max/clamp: return type matches argument type */
             if (node->data.call.arg_count > 0) {
                 GrayType *arg_t = resolve_expression(checker, node->data.call.args[0]);
                 result = (arg_t && arg_t->kind == TK_FLOAT) ? &TYPE_F64 :
@@ -9335,6 +9350,19 @@ static GrayType *resolve_direct_call(TypeChecker *checker, AstNode *node, const 
                 }
             }
             /* Check for math functions whose return type depends on argument */
+            if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0) &&
+                node->data.call.arg_count > 0) {
+                for (int using_index = 0; using_index < checker->using_module_count; using_index++) {
+                    if (!using_module_accessible(checker, using_index)) continue;
+                    const char *real_mod = typechecker_resolve_alias(checker, checker->using_modules[using_index]);
+                    if (strcmp(real_mod, "math") == 0) {
+                        found_in_using = true;
+                        using_stdlib_mod = real_mod;
+                        result = resolve_math_abs_neg(checker, node, function_name);
+                        break;
+                    }
+                }
+            }
             if (!found_in_using && (strcmp(function_name, "abs") == 0 || strcmp(function_name, "neg") == 0 ||
                 strcmp(function_name, "min") == 0 || strcmp(function_name, "max") == 0 ||
                 strcmp(function_name, "clamp") == 0)) {

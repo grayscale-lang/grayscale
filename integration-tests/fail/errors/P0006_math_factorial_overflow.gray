@@ -1,0 +1,6 @@
+/* Panic Test: P0006 - math.factorial overflows i64 */
+import @math
+
+do main() {
+    println(math.factorial(21))
+}

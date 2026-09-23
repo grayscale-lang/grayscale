@@ -1,0 +1,6 @@
+/* Panic Test: P0007 - math.abs of the most negative i64 */
+import @math
+
+do main() {
+    println(math.abs(math.MIN_INT))
+}

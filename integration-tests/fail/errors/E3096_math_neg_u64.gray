@@ -1,0 +1,6 @@
+import @math
+
+do main() {
+    mut a u64 = 5
+    println(math.neg(a))
+}
