@@ -13079,7 +13079,10 @@ static bool typechecker_literal_type_inferable(TypeChecker *checker, AstNode *li
     return false;
 }
 
-static void check_var_decl(TypeChecker *checker, AstNode *node) {
+/* Checks on a var decl that need no resolved type: the annotation itself
+ * (aliases, void, any, array sizing), the name (reserved, builtin, module),
+ * and const/mut/private rules. */
+static void check_var_decl_annotation(TypeChecker *checker, AstNode *node) {
     /* Resolve type aliases in the declared type name so downstream
      * checks and codegen see the underlying type. */
     if (node->data.var_decl.type_name) {
@@ -13338,48 +13341,11 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             "'private' cannot be used inside a function; it only applies to top-level declarations",
             NODE_FILE(checker, node), node->token.line, node->token.column, 0);
     }
+}
 
-    GrayType *declared = node->data.var_decl.type_name
-        ? typechecker_type_from_name(checker, node->data.var_decl.type_name)
-        : &TYPE_UNKNOWN;
-    /* E4016: explicitly annotated type name that doesn't exist, at any depth
-     * — the element of an array, either half of a map, a pointee. */
-    {
-        char leaf[MSG_BUF_SIZE];
-        const char *undefined = undefined_type_leaf(checker,
-            node->data.var_decl.type_name, leaf, sizeof(leaf));
-        if (undefined) {
-            char *msg = typechecker_format(checker,
-                "undefined type '%s'; check the spelling or import the module that defines it",
-                unqualified_display_name(undefined));
-            tc_err_at(checker, "E4016", node, msg);
-        }
-    }
-    /* E4021/E4015: annotated type is private to another file */
-    reject_private_type(checker, node, node->data.var_decl.type_name);
-    reject_error_in_container(checker, node, node->data.var_decl.type_name);
-    typechecker_mark_type_module_used(checker, node->data.var_decl.type_name);
-
-    /* E3057: reject composite types as map keys before downstream checks
-     * produce misleading cascades (e.g. struct-literal-in-index-position
-     * tripping "no field 'y'"). Enums are allowed; they're int-backed
-     * and hash fine. */
-    if (declared->kind == TK_MAP && declared->key_type) {
-        const char *key_type_name = resolve_type_alias(checker, declared->key_type);
-        GrayType *key_resolved = type_from_name(key_type_name);
-        const char *bad = NULL;
-        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, key_type_name))
-            bad = "struct";
-        else if (key_resolved->kind == TK_ARRAY) bad = "array";
-        else if (key_resolved->kind == TK_MAP) bad = "map";
-        else if (key_resolved->kind == TK_POINTER) bad = "pointer";
-        if (bad) {
-            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, key_type_name);
-        }
-    }
-
-    reject_non_json_parse_target(checker, node, node->data.var_decl.value, declared);
-
+/* Check a var decl's initializer against `declared`. Returns the variable's
+ * type: `declared`, or the initializer's type when there is no annotation. */
+static GrayType *check_var_decl_initializer(TypeChecker *checker, AstNode *node, GrayType *declared) {
     if (node->data.var_decl.value) {
         /* Set expected_type for implicit enum resolution (.VARIANT) */
         GrayType *saved_expected = checker->expected_type;
@@ -14040,28 +14006,12 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
                 node->data.var_decl.value, value_type, node->data.var_decl.value);
         }
     }
+    return declared;
+}
 
-    /* E3062 (): handle types (channels, mutexes, threads)
-     * cannot be declared const; every meaningful operation on
-     * them mutates internal state, so const is a semantic lie.
-     * Same class as the E3059 map check above. */
-    if (!node->data.var_decl.mutable && declared->kind == TK_STRUCT && declared->name) {
-        const char *declared_name = declared->name;
-        const char *handle_label = NULL;
-        if (strcmp(declared_name, "Channel") == 0) handle_label = "channel";
-        else if (strcmp(declared_name, "Mutex") == 0) handle_label = "mutex";
-        else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
-        else if (strcmp(declared_name, "Builder") == 0) handle_label = "string builder";
-        if (handle_label) {
-            diagnostic_error_code_formatted(checker->diag, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
-        }
-    }
-
-    /* W1005: typed blank identifier; _ with explicit type annotation */
-    if (strcmp(node->data.var_decl.name, "_") == 0 && node->data.var_decl.type_name) {
-        diagnostic_warning_code(checker->diag, "W1005", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
-    }
-
+/* Name-conflict checks for a named (non-`_`) var decl, then bind its symbol
+ * and record the origin/reference tracking later checks read. */
+static void declare_var_symbol(TypeChecker *checker, AstNode *node, GrayType *declared) {
     if (strcmp(node->data.var_decl.name, "_") != 0) {
         /* Check for reserved prefix (the parser's own temps are exempt) */
         if (!node->data.var_decl.synthetic) {
@@ -14502,6 +14452,76 @@ static void check_var_decl(TypeChecker *checker, AstNode *node) {
             }
         }
     }
+}
+
+static void check_var_decl(TypeChecker *checker, AstNode *node) {
+    check_var_decl_annotation(checker, node);
+
+    GrayType *declared = node->data.var_decl.type_name
+        ? typechecker_type_from_name(checker, node->data.var_decl.type_name)
+        : &TYPE_UNKNOWN;
+    /* E4016: explicitly annotated type name that doesn't exist, at any depth
+     * — the element of an array, either half of a map, a pointee. */
+    {
+        char leaf[MSG_BUF_SIZE];
+        const char *undefined = undefined_type_leaf(checker,
+            node->data.var_decl.type_name, leaf, sizeof(leaf));
+        if (undefined) {
+            char *msg = typechecker_format(checker,
+                "undefined type '%s'; check the spelling or import the module that defines it",
+                unqualified_display_name(undefined));
+            tc_err_at(checker, "E4016", node, msg);
+        }
+    }
+    /* E4021/E4015: annotated type is private to another file */
+    reject_private_type(checker, node, node->data.var_decl.type_name);
+    reject_error_in_container(checker, node, node->data.var_decl.type_name);
+    typechecker_mark_type_module_used(checker, node->data.var_decl.type_name);
+
+    /* E3057: reject composite types as map keys before downstream checks
+     * produce misleading cascades (e.g. struct-literal-in-index-position
+     * tripping "no field 'y'"). Enums are allowed; they're int-backed
+     * and hash fine. */
+    if (declared->kind == TK_MAP && declared->key_type) {
+        const char *key_type_name = resolve_type_alias(checker, declared->key_type);
+        GrayType *key_resolved = type_from_name(key_type_name);
+        const char *bad = NULL;
+        if (key_resolved->kind == TK_STRUCT && !is_enum_name(checker, key_type_name))
+            bad = "struct";
+        else if (key_resolved->kind == TK_ARRAY) bad = "array";
+        else if (key_resolved->kind == TK_MAP) bad = "map";
+        else if (key_resolved->kind == TK_POINTER) bad = "pointer";
+        if (bad) {
+            diagnostic_error_code_formatted(checker->diag, "E3057", NODE_FILE(checker, node), node->token.line, node->token.column, 0, key_type_name);
+        }
+    }
+
+    reject_non_json_parse_target(checker, node, node->data.var_decl.value, declared);
+
+    declared = check_var_decl_initializer(checker, node, declared);
+
+    /* E3062 (): handle types (channels, mutexes, threads)
+     * cannot be declared const; every meaningful operation on
+     * them mutates internal state, so const is a semantic lie.
+     * Same class as the E3059 map check above. */
+    if (!node->data.var_decl.mutable && declared->kind == TK_STRUCT && declared->name) {
+        const char *declared_name = declared->name;
+        const char *handle_label = NULL;
+        if (strcmp(declared_name, "Channel") == 0) handle_label = "channel";
+        else if (strcmp(declared_name, "Mutex") == 0) handle_label = "mutex";
+        else if (strcmp(declared_name, "Thread") == 0) handle_label = "thread handle";
+        else if (strcmp(declared_name, "Builder") == 0) handle_label = "string builder";
+        if (handle_label) {
+            diagnostic_error_code_formatted(checker->diag, "E3062", NODE_FILE(checker, node), node->token.line, node->token.column, 0, handle_label, handle_label);
+        }
+    }
+
+    /* W1005: typed blank identifier; _ with explicit type annotation */
+    if (strcmp(node->data.var_decl.name, "_") == 0 && node->data.var_decl.type_name) {
+        diagnostic_warning_code(checker->diag, "W1005", NODE_FILE(checker, node), node->token.line, node->token.column, 0);
+    }
+
+    declare_var_symbol(checker, node, declared);
 }
 
 /* The symbol a bare name binds to. A module-level declaration is bound in
