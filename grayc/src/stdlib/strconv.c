@@ -17,14 +17,19 @@
 
 #define STRCONV_BUF_SIZE 64
 
-/* Format a double using the shortest representation that round-trips.
- * Shared by builtins (to_string) and strconv (from_float). */
-int gray_fmt_shortest_float(char *buf, size_t buffer_size, double value) {
+/* Format a float using the shortest representation that round-trips at
+ * `bit_size` (32 or 64): 6-9 significant digits for a 32-bit float, 15-17
+ * for a 64-bit double. Shared by builtins (print, to_string) and strconv
+ * (from_float). */
+int gray_fmt_shortest_float(char *buf, size_t buffer_size, double value, int bit_size) {
+    int min_precision = bit_size == 32 ? 6 : 15;
+    int max_precision = bit_size == 32 ? 9 : 17;
     int n = 0;
-    for (int prec = 15; prec <= 17; prec++) {
+    for (int prec = min_precision; prec <= max_precision; prec++) {
         n = snprintf(buf, buffer_size, "%.*g", prec, value);
         double round_tripped;
-        if (sscanf(buf, "%lf", &round_tripped) == 1 && round_tripped == value) break;
+        if (sscanf(buf, "%lf", &round_tripped) != 1) continue;
+        if (bit_size == 32 ? (float)round_tripped == (float)value : round_tripped == value) break;
     }
     bool has_special = false;
     for (int i = 0; buf[i]; i++) {
@@ -219,7 +224,7 @@ GrayString gray_strconv_from_uint(GrayArena *arena, uint64_t value) {
 
 GrayString gray_strconv_from_float(GrayArena *arena, double value) {
     char buf[STRCONV_BUF_SIZE];
-    int len = gray_fmt_shortest_float(buf, sizeof(buf), value);
+    int len = gray_fmt_shortest_float(buf, sizeof(buf), value, 64);
     char *data = (char *)gray_arena_alloc_uninitialized(arena, (size_t)len + 1);
     memcpy(data, buf, (size_t)len + 1);
     return (GrayString){data, (int32_t)len};

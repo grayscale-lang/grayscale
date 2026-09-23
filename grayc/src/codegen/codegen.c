@@ -1901,6 +1901,11 @@ static void emit_string_value(CodeGen *codegen, AstNode *node) {
 static bool interp_container_needs_value_print(CodeGen *codegen, const GrayType *type);
 static void emit_interpolated_container(CodeGen *codegen, AstNode *part, GrayType *type);
 
+/* The bit size a float type prints at: 32 for f32, 64 for float and f64. */
+static int float_bit_size(const char *float_type_name) {
+    return float_type_name && strcmp(float_type_name, "f32") == 0 ? 32 : 64;
+}
+
 static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
     /* Lower to a single gray_string_concat_n() over all parts: one allocation,
      * one copy per part. (gray_string_format is avoided throughout — its
@@ -1957,7 +1962,7 @@ static void emit_interpolated_string(CodeGen *codegen, AstNode *node) {
             case TK_FLOAT:
                 emit(codegen, "gray_builtin_format_float(gray_default_arena, ");
                 emit_expression(codegen, part);
-                emit(codegen, ")");
+                emit_formatted(codegen, ", %d)", float_bit_size(part_type ? part_type->name : NULL));
                 break;
             case TK_CHAR:
                 emit(codegen, "gray_builtin_char_to_utf8(gray_default_arena, ");
@@ -4486,7 +4491,10 @@ static AstNode *unwrap_reference_argument(AstNode *arg) {
     return arg;
 }
 
-static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
+/* The print builtin suffix for `arg`; for "_float", `*float_bits` is set to
+ * the bit size the value prints at. */
+static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg, int *float_bits) {
+    *float_bits = 64;
     /* addr() calls always print in hex format */
     if (arg->kind == NODE_CALL_EXPR && arg->data.call.function->kind == NODE_LABEL &&
         strcmp(arg->data.call.function->data.label.value, "addr") == 0) return "_addr";
@@ -4504,7 +4512,9 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
                 if (wildcard_type) {
                     switch (wildcard_type->kind) {
                     case TK_STRING:  return "_str";
-                    case TK_FLOAT:   return "_float";
+                    case TK_FLOAT:
+                        *float_bits = float_bit_size(wildcard_type->name);
+                        return "_float";
                     case TK_BOOL:    return "_bool";
                     case TK_CHAR:    return "_char";
                     case TK_UINT:    return "_uint";
@@ -4519,7 +4529,9 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
     if (type && type->kind != TK_UNKNOWN) {
         switch (type->kind) {
         case TK_STRING:  return "_str";
-        case TK_FLOAT:   return "_float";
+        case TK_FLOAT:
+            *float_bits = float_bit_size(type->name);
+            return "_float";
         case TK_BOOL:    return "_bool";
         case TK_CHAR:    return "_char";
         case TK_UINT:    return "_uint";
@@ -4583,7 +4595,10 @@ static const char *resolve_print_suffix(CodeGen *codegen, AstNode *arg) {
                             if (match && sf->data.func_decl.return_type_count > 0) {
                                 const char *return_type_str = sf->data.func_decl.return_types[0];
                                 if (strcmp(return_type_str, "string") == 0) return "_str";
-                                if (strcmp(return_type_str, "float") == 0 || strcmp(return_type_str, "f32") == 0 || strcmp(return_type_str, "f64") == 0) return "_float";
+                                if (strcmp(return_type_str, "float") == 0 || strcmp(return_type_str, "f32") == 0 || strcmp(return_type_str, "f64") == 0) {
+                                    *float_bits = float_bit_size(return_type_str);
+                                    return "_float";
+                                }
                                 if (strcmp(return_type_str, "bool") == 0) return "_bool";
                                 if (strcmp(return_type_str, "char") == 0) return "_char";
                                 if (strcmp(return_type_str, "uint") == 0 || strcmp(return_type_str, "u8") == 0 ||
@@ -4643,6 +4658,8 @@ static void emit_to_string(CodeGen *codegen, AstNode *arg) {
         else
             emit(codegen, "gray_builtin_to_string_int(gray_default_arena, ");
         emit_expression(codegen, arg);
+        if (arg_type && arg_type->kind == TK_FLOAT)
+            emit_formatted(codegen, ", %d", float_bit_size(arg_type->name));
         emit(codegen, ")");
     }
 }
@@ -4926,7 +4943,9 @@ static void emit_value_print(CodeGen *codegen, const char *c_expr, GrayType *typ
         break;
     case TK_FLOAT:
         emit_indent(codegen);
-        emit_formatted(codegen, "gray_out_printf(%s, \"%%g\", (double)(%s));\n", stream, c_expr);
+        emit_formatted(codegen, "{ GrayString _fs = gray_builtin_format_float(gray_default_arena, %s, %d); "
+            "gray_out_printf(%s, \"%%.*s\", (int)_fs.len, _fs.data); }\n",
+            c_expr, float_bit_size(type->name), stream);
         break;
     case TK_STRING:
         emit_indent(codegen);
@@ -5276,8 +5295,11 @@ static void emit_print_variant(CodeGen *codegen, AstNode *node, const char *vari
             emit_expression(codegen, arg);
             emit(codegen, "))");
         } else {
-            emit_formatted(codegen, "gray_builtin_%s%s(", variant, resolve_print_suffix(codegen, arg));
+            int float_bits;
+            const char *suffix = resolve_print_suffix(codegen, arg, &float_bits);
+            emit_formatted(codegen, "gray_builtin_%s%s(", variant, suffix);
             emit_expression(codegen, arg);
+            if (strcmp(suffix, "_float") == 0) emit_formatted(codegen, ", %d", float_bits);
             emit(codegen, ")");
         }
     }
