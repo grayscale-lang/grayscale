@@ -510,7 +510,8 @@
     GRAY_PANIC("P0127", "time",       "time.parse_duration: cannot parse the duration string") \
     GRAY_PANIC("P0128", "time",       "time.days_in_month: month must be between 1 and 12") \
     GRAY_PANIC("P0129", "runtime",    "cannot convert '%s' to enum %s") \
-    GRAY_PANIC("P0130", "runtime",    "array capacity overflow")
+    GRAY_PANIC("P0130", "runtime",    "array capacity overflow") \
+    GRAY_PANIC("P0131", "bounds",     "fixed-size array field needs exactly %d elements, but the assigned array has %d")
 
 /* --- Warnings --- */
 #define GRAY_WARNINGS \

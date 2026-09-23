@@ -1,0 +1,13 @@
+// expect-contains: .gray:
+/* Panic Test: P0131 - [T,N] field reassigned to an array of another length */
+import @arrays
+
+const Widget struct {
+    items [int, 3]
+}
+
+do main() {
+    mut w Widget = Widget{items: {1, 2, 3}}
+    w.items = arrays.concat(w.items, w.items)
+    println(len(w.items))
+}

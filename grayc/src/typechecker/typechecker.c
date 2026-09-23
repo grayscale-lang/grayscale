@@ -7921,7 +7921,7 @@ static bool try_get_static_array_length(TypeChecker *checker, AstNode *expr, int
  * receiving `value`, whether at struct-literal construction or plain
  * reassignment: too many elements is an error, too few is a warning (the
  * rest zero-value), and anything whose length isn't statically known (per
- * try_get_static_array_length) is left unchecked rather than guessed at. */
+ * try_get_static_array_length) is marked for a runtime length check. */
 static void check_fixed_array_field_size(TypeChecker *checker, const char *field_name,
                                           const char *field_type_name, AstNode *value) {
     if (!array_spelling_is_fixed(field_type_name)) return;
@@ -7929,7 +7929,10 @@ static void check_fixed_array_field_size(TypeChecker *checker, const char *field
     int fixed_size = comma ? atoi(comma + 1) : 0;
     if (fixed_size <= 0) return;
     int actual_len;
-    if (!try_get_static_array_length(checker, value, &actual_len)) return;
+    if (!try_get_static_array_length(checker, value, &actual_len)) {
+        value->runtime_fixed_length = fixed_size;
+        return;
+    }
     if (actual_len > fixed_size) {
         diagnostic_error_code_formatted(checker->diag, "E3052",
             NODE_FILE(checker, value), value->token.line, value->token.column, 0,
@@ -11304,10 +11307,9 @@ static GrayType *resolve_struct_value(TypeChecker *checker, AstNode *node) {
             /* W3003/E3052: fixed-size array field ([T,N]) set in a struct
              * literal with too many/too few elements. Runs for any RHS whose
              * length is statically known (an array literal, or a reference
-             * to another fixed-size array/field) — not just a literal node
-             * — so `Widget{items: arrays.slice(base, 0, 5)}` no longer
-             * skips the check just because the initializer isn't itself an
-             * array-literal node. */
+             * to another fixed-size array/field) — not just a literal node;
+             * any other RHS, like `arrays.slice(base, 0, 5)`, is checked at
+             * runtime instead. */
             if (found) {
                 AstNode *sdecl_f = find_struct_in_program(checker, struct_name);
                 for (int fi = 0; sdecl_f && fi < sdecl_f->data.struct_decl.field_count; fi++) {

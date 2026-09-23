@@ -3,7 +3,7 @@
 > Auto-generated from `grayc/src/util/error_codes.h`. Do not edit manually.
 > Run `./scripts/generate_errors.sh` to regenerate.
 
-**Total: 483 codes** (336 errors, 17 warnings, 130 panics)
+**Total: 484 codes** (336 errors, 17 warnings, 131 panics)
 
 ---
 
@@ -510,6 +510,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0128` | time | time.days_in_month: month must be between 1 and 12 |
 | `P0129` | runtime | cannot convert '%s' to enum %s |
 | `P0130` | runtime | array capacity overflow |
+| `P0131` | bounds | fixed-size array field needs exactly %d elements, but the assigned array has %d |
 
 ---
 
@@ -534,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-20 23:44:55 UTC*
+*Generated on 2026-09-23 02:35:41 UTC*

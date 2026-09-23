@@ -1,0 +1,57 @@
+/*
+ * fixed_array_field_runtime_length.gray
+ * A [T,N] struct field set from a value whose length isn't known at compile
+ * time is length-checked at runtime; a value with exactly N elements is
+ * stored as given.
+ */
+
+import @arrays
+
+const Widget struct {
+    items [int, 3]
+}
+
+do three() -> [int] {
+    return {7, 8, 9}
+}
+
+do main() {
+    mut passed int = 0
+    mut failed int = 0
+
+    mut base [int] = {1, 2, 3, 4, 5}
+    mut w Widget = Widget{items: arrays.slice(base, 0, 3)}
+    if len(w.items) == 3 && w.items[0] == 1 && w.items[2] == 3 {
+        println("  [PASS] struct literal from slice")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] struct literal from slice: ${w.items}")
+        failed += 1
+    }
+
+    w.items = three()
+    if len(w.items) == 3 && w.items[0] == 7 && w.items[2] == 9 {
+        println("  [PASS] reassign from function result")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign from function result: ${w.items}")
+        failed += 1
+    }
+
+    mut p ^Widget = addr(w)
+    p^.items = arrays.slice(base, 2, 5)
+    if len(w.items) == 3 && w.items[0] == 3 && w.items[2] == 5 {
+        println("  [PASS] reassign through pointer")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign through pointer: ${w.items}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

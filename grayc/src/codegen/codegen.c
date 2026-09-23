@@ -4271,10 +4271,29 @@ static void emit_new_expr(CodeGen *codegen, AstNode *node) {
     }
 }
 
+/* A value stored into a [T,N] struct field whose length the type checker
+ * couldn't prove: evaluate it once and panic unless it has exactly N
+ * elements. */
+static void emit_runtime_fixed_length_check(CodeGen *codegen, AstNode *node) {
+    int expected_length = node->runtime_fixed_length;
+    node->runtime_fixed_length = 0;
+    emit(codegen, "({ GrayArray _fixed_arr = ");
+    emit_expression(codegen, node);
+    node->runtime_fixed_length = expected_length;
+    char panic_args[48];
+    snprintf(panic_args, sizeof(panic_args), ", %d, (int)_fixed_arr.len", expected_length);
+    emit_formatted(codegen, "; if (_fixed_arr.len != %d) { %s; } _fixed_arr; })",
+        expected_length, panic_call(codegen, node, "P0131", panic_args));
+}
+
 /* --- emit_expression --- */
 
 static void emit_expression(CodeGen *codegen, AstNode *node) {
     if (!node) return;
+    if (node->runtime_fixed_length > 0) {
+        emit_runtime_fixed_length_check(codegen, node);
+        return;
+    }
 
     switch (node->kind) {
     case NODE_LABEL:

@@ -147,6 +147,11 @@ struct AstNode {
      * by the parser, which has no symbol table. */
     struct DeclEntry_ *resolved_decl;
 
+    /* Set by the type checker on a value stored into a fixed-size [T,N]
+     * struct field when the value's length can't be proven at compile time:
+     * holds N, and codegen checks the length at runtime. 0 otherwise. */
+    int runtime_fixed_length;
+
     union {
         /* NODE_LABEL */
         struct {

@@ -1,0 +1,13 @@
+// expect-contains: .gray:
+/* Panic Test: P0131 - struct literal sets a [T,N] field to an array of another length */
+import @arrays
+
+const Widget struct {
+    items [int, 3]
+}
+
+do main() {
+    mut base [int] = {1, 2, 3, 4, 5}
+    mut w Widget = Widget{items: arrays.slice(base, 0, 5)}
+    println(len(w.items))
+}
