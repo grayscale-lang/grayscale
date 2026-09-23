@@ -2739,9 +2739,9 @@ static void emit_prefix_expr(CodeGen *codegen, AstNode *node) {
     if (node->data.prefix.op == TOK_MINUS) {
         const char *bi_type = resolve_bigint_type(codegen, node->data.prefix.right);
         if (bi_type && (strcmp(bi_type, "i128") == 0 || strcmp(bi_type, "i256") == 0)) {
-            emit_formatted(codegen, "%s_neg(", bigint_prefix(bi_type));
+            emit_formatted(codegen, "%s_neg_checked(", bigint_prefix(bi_type));
             emit_expression(codegen, node->data.prefix.right);
-            emit(codegen, ")");
+            emit_formatted(codegen, ", \"%s\", %d)", codegen->file, node->token.line);
             return;
         }
     }
