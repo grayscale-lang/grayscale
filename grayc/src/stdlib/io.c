@@ -169,9 +169,9 @@ static bool remove_dir_recursive(const char *path); /* forward decl */
 
 static void gray_io_temp_cleanup(void) {
     for (int i = 0; i < temp_path_count; i++) {
-        struct stat st;
-        if (stat(temp_paths[i], &st) == 0) {
-            if (S_ISDIR(st.st_mode))
+        struct stat file_info;
+        if (stat(temp_paths[i], &file_info) == 0) {
+            if (S_ISDIR(file_info.st_mode))
                 remove_dir_recursive(temp_paths[i]);
             else
                 unlink(temp_paths[i]);
@@ -200,6 +200,12 @@ static void temp_registry_add(const char *path) {
 static void validate_path(GrayString path) {
     if (strlen(path.data) != (size_t)path.len)
         gray_panic_code("P0103", "file path contains an embedded null byte");
+}
+
+/* True when `path` exists and is a directory. No path validation. */
+static bool io_path_is_dir(const char *path) {
+    struct stat file_info;
+    return stat(path, &file_info) == 0 && S_ISDIR(file_info.st_mode);
 }
 
 /* ---- Path manipulation (pure, no I/O) ---- */
@@ -394,8 +400,7 @@ GrayString gray_io_read_file_impl(GrayArena *arena, FILE *file) {
 
 GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0086", "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents");
     FILE *file = fopen(path.data, "rb");
     if (!file) return gray_string_lit("");
@@ -408,8 +413,7 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path) {
 
 GrayArray gray_io_read_bytes(GrayArena *arena, GrayString path) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0086", "io.read_bytes() cannot read a directory");
     FILE *file = fopen(path.data, "rb");
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
@@ -468,8 +472,7 @@ static void io_stream_lines(GrayArena *arena, FILE *file, int64_t limit, GrayArr
 GrayArray gray_io_read_lines(GrayArena *arena, GrayString path, int64_t limit) {
     validate_path(path);
     GrayArray arr = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0086", "io.read_lines() cannot read a directory");
     FILE *file = fopen(path.data, "rb");
     if (!file) return arr;
@@ -485,38 +488,35 @@ bool gray_io_file_exists(GrayString path) {
 
 bool gray_io_is_file(GrayString path) {
     validate_path(path);
-    struct stat st;
-    if (stat(path.data, &st) != 0) return false;
-    return S_ISREG(st.st_mode);
+    struct stat file_info;
+    if (stat(path.data, &file_info) != 0) return false;
+    return S_ISREG(file_info.st_mode);
 }
 
 bool gray_io_is_directory(GrayString path) {
     validate_path(path);
-    struct stat st;
-    if (stat(path.data, &st) != 0) return false;
-    return S_ISDIR(st.st_mode);
+    return io_path_is_dir(path.data);
 }
 
 int64_t gray_io_file_size(GrayString path) {
     validate_path(path);
-    struct stat st;
-    if (stat(path.data, &st) != 0) return -1;
-    return (int64_t)st.st_size;
+    struct stat file_info;
+    if (stat(path.data, &file_info) != 0) return -1;
+    return (int64_t)file_info.st_size;
 }
 
 GrayResult_int gray_io_file_size_result(GrayArena *arena, GrayString path) {
     validate_path(path);
-    struct stat st;
-    if (stat(path.data, &st) != 0)
+    struct stat file_info;
+    if (stat(path.data, &file_info) != 0)
         return (GrayResult_int){-1, gray_error_new(arena, gray_errno_code(errno),
             gray_string_format(arena, "cannot stat '%s'", path.data))};
-    return (GrayResult_int){(int64_t)st.st_size, NULL};
+    return (GrayResult_int){(int64_t)file_info.st_size, NULL};
 }
 
 bool gray_io_write_file(GrayString path, GrayString content) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0087", "io.write_file() cannot write to a directory");
     FILE *file = fopen(path.data, "wb");
     if (!file) return false;
@@ -527,8 +527,7 @@ bool gray_io_write_file(GrayString path, GrayString content) {
 
 bool gray_io_append_file(GrayString path, GrayString content) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0088", "io.append_file() cannot append to a directory");
     FILE *file = fopen(path.data, "ab");
     if (!file) return false;
@@ -539,8 +538,7 @@ bool gray_io_append_file(GrayString path, GrayString content) {
 
 bool gray_io_write_bytes(GrayString path, GrayArray data) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0087", "io.write_bytes() cannot write to a directory");
     FILE *file = fopen(path.data, "wb");
     if (!file) return false;
@@ -551,8 +549,7 @@ bool gray_io_write_bytes(GrayString path, GrayArray data) {
 
 bool gray_io_append_bytes(GrayString path, GrayArray data) {
     validate_path(path);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0088", "io.append_bytes() cannot append to a directory");
     FILE *file = fopen(path.data, "ab");
     if (!file) return false;
@@ -600,8 +597,7 @@ GrayString gray_io_temp_dir(GrayArena *arena) {
 
 bool gray_io_delete_file(GrayString path) {
     validate_path(path);
-    struct stat st;
-    if (stat(path.data, &st) == 0 && S_ISDIR(st.st_mode))
+    if (io_path_is_dir(path.data))
         gray_panic_code("P0077", "io.delete_file() cannot delete a directory; use io.remove_dir() for directories");
     return unlink(path.data) == 0;
 }
@@ -617,8 +613,7 @@ bool gray_io_rename_file(GrayString old_path, GrayString new_path) {
 bool gray_io_copy_file(GrayString src, GrayString dst) {
     validate_path(src);
     validate_path(dst);
-    struct stat _st;
-    if (stat(src.data, &_st) == 0 && S_ISDIR(_st.st_mode))
+    if (io_path_is_dir(src.data))
         gray_panic_code("P0089", "io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually");
     FILE *in = fopen(src.data, "rb");
     if (!in) return false;
@@ -706,9 +701,9 @@ static bool remove_dir_recursive(const char *path) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
         char child[GRAY_IO_PATH_BUF];
         snprintf(child, sizeof(child), "%s/%s", path, ent->d_name);
-        struct stat st;
-        if (stat(child, &st) != 0) { ok = false; continue; }
-        if (S_ISDIR(st.st_mode)) {
+        struct stat file_info;
+        if (stat(child, &file_info) != 0) { ok = false; continue; }
+        if (S_ISDIR(file_info.st_mode)) {
             if (!remove_dir_recursive(child)) ok = false;
         } else {
             if (unlink(child) != 0) ok = false;
@@ -745,8 +740,7 @@ static void walk_recursive(GrayArena *arena, const char *base, const char *rel, 
         GRAY_ARRAY_PUSH(arena, out, &child_rel);
         char child_full[GRAY_IO_PATH_BUF];
         snprintf(child_full, sizeof(child_full), "%s/%s", full, ent->d_name);
-        struct stat st;
-        if (stat(child_full, &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (io_path_is_dir(child_full)) {
             walk_recursive(arena, base, child_rel.data, out);
         }
     }
@@ -779,8 +773,7 @@ GrayArray gray_io_glob(GrayArena *arena, GrayString pattern) {
 GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_string result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = gray_string_lit("");
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
@@ -808,8 +801,7 @@ GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path) {
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content) {
     validate_path(path);
     GrayResult_bool result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot write '%s': is a directory", path.data));
@@ -831,8 +823,7 @@ GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, Gra
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_bool result;
-    struct stat st;
-    if (stat(path.data, &st) == 0 && S_ISDIR(st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot delete '%s': is a directory; use io.remove_dir() for directories", path.data));
@@ -844,8 +835,7 @@ GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path) {
 
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content) {
     GrayResult_bool result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot append to '%s': is a directory", path.data));
@@ -862,8 +852,7 @@ GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path
 
 GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayString dst) {
     GrayResult_bool result;
-    struct stat _st;
-    if (stat(src.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(src.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot copy '%s': is a directory", src.data));
@@ -916,8 +905,7 @@ GrayResult_bool gray_io_remove_dir_all_result(GrayArena *arena, GrayString path)
 GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array result;
-    struct stat st;
-    if (stat(path.data, &st) != 0 || !S_ISDIR(st.st_mode)) {
+    if (!io_path_is_dir(path.data)) {
         result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 0);
         result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot walk directory '%s'", path.data));
         return result;
@@ -930,8 +918,7 @@ GrayResult_array gray_io_walk_result(GrayArena *arena, GrayString path) {
 GrayResult_array gray_io_read_bytes_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     GrayResult_array result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = gray_array_new(arena, (int32_t)sizeof(uint8_t), 0);
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
@@ -959,8 +946,7 @@ GrayResult_array gray_io_read_lines_result(GrayArena *arena, GrayString path, in
     validate_path(path);
     GrayResult_array result;
     result.v0 = gray_array_new(arena, (int32_t)sizeof(GrayString), 16);
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot read '%s': is a directory", path.data));
         return result;
@@ -1001,8 +987,7 @@ GrayResult_array gray_io_glob_result(GrayArena *arena, GrayString pattern) {
 GrayResult_bool gray_io_write_bytes_result(GrayArena *arena, GrayString path, GrayArray data) {
     validate_path(path);
     GrayResult_bool result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot write '%s': is a directory", path.data));
@@ -1024,8 +1009,7 @@ GrayResult_bool gray_io_write_bytes_result(GrayArena *arena, GrayString path, Gr
 GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, GrayArray data) {
     validate_path(path);
     GrayResult_bool result;
-    struct stat _st;
-    if (stat(path.data, &_st) == 0 && S_ISDIR(_st.st_mode)) {
+    if (io_path_is_dir(path.data)) {
         result.v0 = false;
         result.v1 = gray_error_new(arena, GRAY_ERR_InvalidInput, gray_string_format(arena,
             "cannot append to '%s': is a directory", path.data));
