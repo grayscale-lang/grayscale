@@ -80,14 +80,7 @@ var checkCmd = &cobra.Command{
 		if !isDir && !strings.HasSuffix(args[0], ".gray") {
 			return fmt.Errorf("error: '%s' is not a valid Grayscale source file — expected a .gray file", args[0])
 		}
-		var extraArgs []string
-		quiet, _ := cmd.Flags().GetString("quiet")
-		if quiet == "all" {
-			extraArgs = append(extraArgs, "--quiet")
-		} else if quiet != "" {
-			extraArgs = append(extraArgs, "--quiet", quiet)
-		}
-		code, err := driver.Check(args[0], extraArgs)
+		code, err := driver.Check(args[0], quietArgs(cmd))
 		if err != nil {
 			return fmt.Errorf("error: %v", err)
 		}
@@ -96,6 +89,18 @@ var checkCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+// quietArgs turns the --quiet flag into compiler arguments: "all" suppresses
+// every warning, anything else is a comma-separated list of codes.
+func quietArgs(cmd *cobra.Command) []string {
+	quiet, _ := cmd.Flags().GetString("quiet")
+	if quiet == "all" {
+		return []string{"--quiet"}
+	} else if quiet != "" {
+		return []string{"--quiet", quiet}
+	}
+	return nil
 }
 
 // commonBuildOpts reads the flags shared by build and cross into BuildOpts.
@@ -705,12 +710,7 @@ var rootCmd = &cobra.Command{
 
 		// Prepend compiler flags (before program args)
 		var compilerArgs []string
-		quiet, _ := cmd.Flags().GetString("quiet")
-		if quiet == "all" {
-			compilerArgs = append(compilerArgs, "--quiet")
-		} else if quiet != "" {
-			compilerArgs = append(compilerArgs, "--quiet", quiet)
-		}
+		compilerArgs = append(compilerArgs, quietArgs(cmd)...)
 		if noColor, _ := cmd.Flags().GetBool("no-color"); noColor {
 			compilerArgs = append(compilerArgs, "--no-color")
 		}
