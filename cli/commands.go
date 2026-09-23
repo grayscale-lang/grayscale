@@ -213,9 +213,12 @@ Examples:
 Output is written to DOCS.md by default. Use -o/--output to write
 to a different path (parent directories are created as needed).`,
 	Args: cobra.MinimumNArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		output, _ := cmd.Flags().GetString("output")
-		generateDocs(args, output)
+		if !generateDocs(args, output) {
+			return &ExitError{1}
+		}
+		return nil
 	},
 }
 

@@ -37,33 +37,20 @@ const defaultDocOutputPath = "DOCS.md"
 // the destination markdown file; an empty string falls back to
 // defaultDocOutputPath so the `DOCS.md`-in-cwd behavior is
 // unchanged for callers that do not pass --output.
-func generateDocs(args []string, outputPath string) {
+func generateDocs(args []string, outputPath string) bool {
 	if outputPath == "" {
 		outputPath = defaultDocOutputPath
 	}
 
+	files, argsOK := expandGraySourceArgs("doc", args)
 	var entries []DocEntry
-
-	for _, arg := range args {
-		// Accept both src/... and src\... — Windows tab completion produces
-		// backslashes, and the recursive suffix should work either way.
-		slashed := filepath.ToSlash(arg)
-		if strings.HasSuffix(slashed, "/...") {
-			baseDir := filepath.FromSlash(strings.TrimSuffix(slashed, "/..."))
-			if baseDir == "." || baseDir == "" {
-				baseDir = "."
-			}
-			entries = append(entries, collectDocsRecursive(baseDir)...)
-		} else if strings.HasSuffix(arg, ".gray") {
-			entries = append(entries, collectDocsFromFile(arg)...)
-		} else {
-			entries = append(entries, collectDocsFromDir(arg)...)
-		}
+	for _, file := range files {
+		entries = append(entries, collectDocsFromFile(file)...)
 	}
 
 	if len(entries) == 0 {
 		fmt.Println("No documented items found.")
-		return
+		return argsOK
 	}
 
 	// Rewrite each entry's absolute source path to one relative to the
@@ -88,16 +75,17 @@ func generateDocs(args []string, outputPath string) {
 	if dir := filepath.Dir(outputPath); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			fmt.Printf("Error creating output directory %s: %v\n", dir, err)
-			return
+			return argsOK
 		}
 	}
 
 	if err := os.WriteFile(outputPath, []byte(output), 0644); err != nil {
 		fmt.Printf("Error writing %s: %v\n", outputPath, err)
-		return
+		return argsOK
 	}
 
 	fmt.Printf("Generated %s with %d documented item(s)\n", outputPath, len(entries))
+	return argsOK
 }
 
 // normalizeDocPaths rewrites each DocEntry.File from an absolute path to a
@@ -343,45 +331,6 @@ func extractVarName(line string) string {
 		return fields[0]
 	}
 	return ""
-}
-
-func collectDocsFromDir(dir string) []DocEntry {
-	var entries []DocEntry
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		fmt.Printf("Error resolving path %s: %v\n", dir, err)
-		return entries
-	}
-	files, err := os.ReadDir(absDir)
-	if err != nil {
-		fmt.Printf("Error reading directory %s: %v\n", dir, err)
-		return entries
-	}
-	for _, file := range files {
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".gray") {
-			entries = append(entries, collectDocsFromFile(filepath.Join(absDir, file.Name()))...)
-		}
-	}
-	return entries
-}
-
-func collectDocsRecursive(dir string) []DocEntry {
-	var entries []DocEntry
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		fmt.Printf("Error resolving path %s: %v\n", dir, err)
-		return entries
-	}
-	filepath.Walk(absDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".gray") {
-			entries = append(entries, collectDocsFromFile(path)...)
-		}
-		return nil
-	})
-	return entries
 }
 
 func generateMarkdown(entries []DocEntry) string {
