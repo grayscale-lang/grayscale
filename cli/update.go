@@ -810,14 +810,7 @@ func runUpdate(confirm bool, url string, pre bool) error {
 		return nil
 	}
 
-	assetName := getAssetName()
-	var downloadURL string
-	for _, asset := range target.Assets {
-		if asset.Name == assetName {
-			downloadURL = asset.BrowserDownloadURL
-			break
-		}
-	}
+	assetName, downloadURL := platformAssetURL(target)
 	if downloadURL == "" {
 		return fmt.Errorf("error: no binary available for %s/%s\nYou may need to build from source: go install github.com/grayscale-lang/grayscale/cli@latest",
 			runtime.GOOS, runtime.GOARCH)
@@ -930,15 +923,7 @@ func runInstall(version string) error {
 			target.TagName)
 	}
 
-	// Platform asset lookup — same logic as runUpdate.
-	assetName := getAssetName()
-	var downloadURL string
-	for _, asset := range target.Assets {
-		if asset.Name == assetName {
-			downloadURL = asset.BrowserDownloadURL
-			break
-		}
-	}
+	assetName, downloadURL := platformAssetURL(target)
 	if downloadURL == "" {
 		return fmt.Errorf("error: no binary available for %s/%s at %s\nYou may need to build from source: go install github.com/grayscale-lang/grayscale/cli@latest",
 			runtime.GOOS, runtime.GOARCH, target.TagName)
@@ -978,6 +963,18 @@ func promptAndVerify() {
 			os.Exit(code)
 		}
 	}
+}
+
+// platformAssetURL returns this platform's archive name and its download URL
+// in release, or an empty URL when the release has no build for it.
+func platformAssetURL(release *GitHubRelease) (name, url string) {
+	name = getAssetName()
+	for _, asset := range release.Assets {
+		if asset.Name == name {
+			return name, asset.BrowserDownloadURL
+		}
+	}
+	return name, ""
 }
 
 // getAssetName returns the expected archive name for this OS/arch
