@@ -7552,7 +7552,8 @@ static bool emit_arrays_call(CodeGen *codegen, AstNode *node, const char *func) 
             emit_formatted(codegen, "gray_arrays_sort_%s_f64(", desc ? "desc" : "asc");
         else if ((sa_elem && strcmp(sa_elem, "string") == 0) || sa_elem_is_str_enum)
             emit_formatted(codegen, "gray_arrays_sort_%s_str(", desc ? "desc" : "asc");
-        else if (sa_elem && strcmp(sa_elem, "u8") == 0)
+        /* bool is 1 byte, the same width the '_u8' variants sort by. */
+        else if (sa_elem && (strcmp(sa_elem, "u8") == 0 || strcmp(sa_elem, "bool") == 0))
             emit_formatted(codegen, "gray_arrays_sort_%s_u8(", desc ? "desc" : "asc");
         else if ((sa_elem && (strcmp(sa_elem, "char") == 0 || strcmp(sa_elem, "i32") == 0)) ||
                  sa_elem_is_int_enum)
