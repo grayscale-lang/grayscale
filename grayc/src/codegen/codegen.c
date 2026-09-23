@@ -10389,6 +10389,42 @@ static void emit_heap_escaped_field_assign(CodeGen *codegen, AstNode *node, cons
     emit(codegen, "; gray_default_arena = _esc_h; }");
 }
 
+/* The element store shared by every arr[i] = v target once the caller has
+ * bound the array: `GRAY_ARRAY_SET_AT(<array_ref>, ...)` with the value for
+ * '=', a string '+=' concat, or a '+=' / '-=' / '*=' read-modify-write,
+ * closing the caller's `{` block. array_ref is the C lvalue of the array. */
+static void emit_array_element_store(CodeGen *codegen, AstNode *node, GrayType *left_t,
+                                     const char *c_elem, bool is_compound, const char *array_ref) {
+    AstNode *idx = node->data.assign.target->data.index_expr.index;
+    TokenType assign_op = node->data.assign.op;
+    emit_formatted(codegen, "GRAY_ARRAY_SET_AT(%s, %s, ", array_ref, c_elem);
+    emit_expression(codegen, idx);
+    emit(codegen, ", ");
+    if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
+        /* The concat result must outlive the loop iteration that
+         * produced it — inside a nested loop that means the outer
+         * arena, not the per-iteration gray_default_arena. */
+        emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(%s, GrayString, ",
+            codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", array_ref);
+        emit_expression(codegen, idx);
+        emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else if (is_compound) {
+        const char *binop = "+";
+        if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
+        else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
+        emit_formatted(codegen, "GRAY_ARRAY_GET_AT(%s, %s, ", array_ref, c_elem);
+        emit_expression(codegen, idx);
+        emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
+        emit_expression(codegen, node->data.assign.value);
+        emit(codegen, ")");
+    } else {
+        emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
+    }
+    emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+}
+
 /* arr[i] = v and compound forms; `left` is the indexed array expression. */
 static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *left, GrayType *left_t) {
     const char *c_elem = "int64_t";
@@ -10427,32 +10463,7 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
             emit_formatted(codegen, "), \"%s\", %d); }\n", codegen->file, node->token.line);
             return;
         }
-        emit_formatted(codegen, "GRAY_ARRAY_SET_AT(_ea, %s, ", c_elem);
-        emit_expression(codegen, idx);
-        emit(codegen, ", ");
-        if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-            /* The concat result must outlive the loop iteration that
-             * produced it — inside a nested loop that means the outer
-             * arena, not the per-iteration gray_default_arena. */
-            emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_ea, GrayString, ",
-                codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena");
-            emit_expression(codegen, idx);
-            emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-            emit_expression(codegen, node->data.assign.value);
-            emit(codegen, ")");
-        } else if (is_compound) {
-            const char *binop = "+";
-            if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-            else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-            emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_ea, %s, ", c_elem);
-            emit_expression(codegen, idx);
-            emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-            emit_expression(codegen, node->data.assign.value);
-            emit(codegen, ")");
-        } else {
-            emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-        }
-        emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+        emit_array_element_store(codegen, node, left_t, c_elem, is_compound, "_ea");
         return;
     }
     /* Check for array field through struct pointer (rvalue assignability issue).
@@ -10479,36 +10490,14 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
             int temp_id = codegen_next_id(codegen);
             emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
             emit_expression(codegen, struct_pointer);
-            if (struct_pointer_is_raw) {
-                emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                      temp_id, sanitize_name(array_field_name), c_elem);
-            } else {
-                emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
-                          "GRAY_ARRAY_SET_AT(_asdp%d->%s, %s, ",
-                      temp_id, panic_call(codegen, node, "P0080", ""), temp_id, sanitize_name(array_field_name), c_elem);
+            emit(codegen, "; ");
+            if (!struct_pointer_is_raw) {
+                emit_formatted(codegen, "if (!_asdp%d) { %s; } ",
+                      temp_id, panic_call(codegen, node, "P0080", ""));
             }
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-            emit(codegen, ", ");
-            if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-                emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(_asdp%d->%s, GrayString, ",
-                    codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id, sanitize_name(array_field_name));
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else if (is_compound) {
-                const char *binop = "+";
-                if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-                else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-                emit_formatted(codegen, "GRAY_ARRAY_GET_AT(_asdp%d->%s, %s, ", temp_id, sanitize_name(array_field_name), c_elem);
-                emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-                emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-                emit_expression(codegen, node->data.assign.value);
-                emit(codegen, ")");
-            } else {
-                emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-            }
-            emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+            char array_ref[MSG_BUF_SIZE];
+            snprintf(array_ref, sizeof(array_ref), "_asdp%d->%s", temp_id, sanitize_name(array_field_name));
+            emit_array_element_store(codegen, node, left_t, c_elem, is_compound, array_ref);
             return;
         }
     }
@@ -10519,36 +10508,14 @@ static void emit_array_index_assign(CodeGen *codegen, AstNode *node, AstNode *le
         int temp_id = codegen_next_id(codegen);
         emit_formatted(codegen, "{ __auto_type _asdp%d = ", temp_id);
         emit_expression(codegen, array_pointer);
-        if (array_pointer_is_raw) {
-            emit_formatted(codegen, "; GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                  temp_id, c_elem);
-        } else {
-            emit_formatted(codegen, "; if (!_asdp%d) { %s; } "
-                      "GRAY_ARRAY_SET_AT(*_asdp%d, %s, ",
-                  temp_id, panic_call(codegen, node, "P0080", ""), temp_id, c_elem);
+        emit(codegen, "; ");
+        if (!array_pointer_is_raw) {
+            emit_formatted(codegen, "if (!_asdp%d) { %s; } ",
+                  temp_id, panic_call(codegen, node, "P0080", ""));
         }
-        emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-        emit(codegen, ", ");
-        if (is_compound && strcmp(c_elem, "GrayString") == 0 && assign_op == TOK_PLUS_ASSIGN) {
-            emit_formatted(codegen, "gray_string_concat(%s, GRAY_ARRAY_GET_AT(*_asdp%d, GrayString, ",
-                codegen->loop_scope_depth > 0 ? "_gray_outer_arena" : "gray_default_arena", temp_id);
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d), ", codegen->file, node->token.line);
-            emit_expression(codegen, node->data.assign.value);
-            emit(codegen, ")");
-        } else if (is_compound) {
-            const char *binop = "+";
-            if (assign_op == TOK_MINUS_ASSIGN) binop = "-";
-            else if (assign_op == TOK_ASTERISK_ASSIGN) binop = "*";
-            emit_formatted(codegen, "GRAY_ARRAY_GET_AT(*_asdp%d, %s, ", temp_id, c_elem);
-            emit_expression(codegen, node->data.assign.target->data.index_expr.index);
-            emit_formatted(codegen, ", \"%s\", %d) %s (", codegen->file, node->token.line, binop);
-            emit_expression(codegen, node->data.assign.value);
-            emit(codegen, ")");
-        } else {
-            emit_composite_operand(codegen, left_t->element_type, node->data.assign.value);
-        }
-        emit_formatted(codegen, ", \"%s\", %d); }\n", codegen->file, node->token.line);
+        char array_ref[MSG_BUF_SIZE];
+        snprintf(array_ref, sizeof(array_ref), "*_asdp%d", temp_id);
+        emit_array_element_store(codegen, node, left_t, c_elem, is_compound, array_ref);
         return;
     }
     /* Compound assignment on array element with sized-type overflow check */
