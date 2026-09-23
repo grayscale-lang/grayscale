@@ -635,10 +635,6 @@ func CheckForUpdateAsync() {
 	}
 }
 
-// runUpdate runs the interactive update command. `pre` opts into the
-// latest pre-release (alpha/beta/rc) rather than the latest stable.
-// The --confirm/url pair is used by the sudo re-exec path and bypasses
-// all discovery.
 // pickLatestStable scans a release list and returns the non-pre-release
 // with the highest semver ordering, or nil if no stable releases exist.
 func pickLatestStable(releases []GitHubRelease) *GitHubRelease {
@@ -691,6 +687,10 @@ func printUpdateStatus(vi VersionInfo, latestStable, latestPre string) {
 	}
 }
 
+// runUpdate runs the interactive update command. `pre` opts into the
+// latest pre-release (alpha/beta/rc) rather than the latest stable.
+// The --confirm/url pair is used by the sudo re-exec path and bypasses
+// all discovery.
 func runUpdate(confirm bool, url string, pre bool) error {
 	// Check for --confirm flag (used by sudo re-exec)
 	if confirm {
