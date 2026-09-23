@@ -13,14 +13,14 @@
 
 import and use @arrays
 
-do make() -> ^int {
-    mut x int = 66
-    mut arr [^int] = {addr(x)}
-    mut p ^int = arrays.get_first(arr)
+do make() -> ^i64 {
+    mut x i64 = 66
+    mut arr [^i64] = {addr(x)}
+    mut p ^i64 = arrays.get_first(arr)
     return p
 }
 
 do main() {
-    mut r ^int = make()
+    mut r ^i64 = make()
     println(r^)
 }

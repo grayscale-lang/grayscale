@@ -11,34 +11,34 @@ extern import "math.h"
 extern import "ctype.h"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     extern.printf("  [ran] extern.printf\n")
     passed += 1
 
-    mut e int = extern.EXIT_SUCCESS
+    mut e i64 = extern.EXIT_SUCCESS
     if e == 0 {
         passed += 1
     } otherwise {
         failed += 1
     }
 
-    mut r float = extern.sqrt(4.0)
+    mut r f64 = extern.sqrt(4.0)
     if r == 2.0 {
         passed += 1
     } otherwise {
         failed += 1
     }
 
-    mut c int = extern.toupper(97)
+    mut c i64 = extern.toupper(97)
     if c == 65 {
         passed += 1
     } otherwise {
         failed += 1
     }
 
-    mut ok int = extern.isdigit(53)
+    mut ok i64 = extern.isdigit(53)
     if ok != 0 {
         passed += 1
     } otherwise {

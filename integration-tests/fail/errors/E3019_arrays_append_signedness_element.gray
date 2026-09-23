@@ -6,7 +6,7 @@
 import @arrays
 
 do main() {
-    mut a [byte] = {}
-    mut n int = 42
+    mut a [u8] = {}
+    mut n i64 = 42
     arrays.append(a, n)
 }

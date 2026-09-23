@@ -1,17 +1,17 @@
 import @arrays
 import @maps
 
-do get_nums() -> [int] {
-    mut result [int] = {5, 10, 15}
+do get_nums() -> [i64] {
+    mut result [i64] = {5, 10, 15}
     return result
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: interpolate array-returning stdlib call
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut s1 string = "${arrays.reverse(nums)}"
     if s1 == "{3, 2, 1}" {
         println("  [PASS] interpolate arrays.reverse()")
@@ -32,7 +32,7 @@ do main() {
     }
 
     // Test 3: interpolate map-returning stdlib call
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     mut s3 string = "${maps.get_keys(m)}"
     if s3 == "{\"a\", \"b\"}" {
         println("  [PASS] interpolate maps.get_keys()")
@@ -53,7 +53,7 @@ do main() {
     }
 
     // Test 5: lvalue array still works
-    mut arr [int] = {7, 8, 9}
+    mut arr [i64] = {7, 8, 9}
     mut s5 string = "${arr}"
     if s5 == "{7, 8, 9}" {
         println("  [PASS] interpolate lvalue array")
@@ -64,7 +64,7 @@ do main() {
     }
 
     // Test 6: lvalue map still works
-    mut m2 map[string:int] = {"x": 100}
+    mut m2 map[string:i64] = {"x": 100}
     mut s6 string = "${m2}"
     if s6 == "{\"x\": 100}" {
         println("  [PASS] interpolate lvalue map")

@@ -8,27 +8,27 @@
 
 import @mem
 
-do make_value(a Arena) -> int {
+do make_value(a Arena) -> i64 {
     ensure mem.destroy(a)
-    mut p ^int = mem.init(a, int)
+    mut p ^i64 = mem.init(a, i64)
     p^ = 5
     return p^
 }
 
-do reset_twice(a Arena) -> int {
+do reset_twice(a Arena) -> i64 {
     ensure mem.reset(a)
     mem.reset(a)
-    mut p ^int = mem.init(a, int)
+    mut p ^i64 = mem.init(a, i64)
     p^ = 8
     return p^
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a1 = mem.arena(1024)
-    mut v1 int = make_value(a1)
+    mut v1 i64 = make_value(a1)
     if v1 == 5 {
         println("  [PASS] ensure mem.destroy(a) then use a")
         passed += 1
@@ -38,7 +38,7 @@ do main() {
     }
 
     mut a2 = mem.arena(1024)
-    mut v2 int = reset_twice(a2)
+    mut v2 i64 = reset_twice(a2)
     if v2 == 8 {
         println("  [PASS] ensure mem.reset(a) then explicit reset then use a")
         passed += 1

@@ -8,8 +8,8 @@
 
 do main() {
     println("=== Interpolation Null Bytes Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: single string with embedded null byte
     mut a string = "ab\x00cd"
@@ -44,13 +44,13 @@ do main() {
     }
 
     // Test 4: null-bearing string mixed with integer
-    mut n int = 42
+    mut n i64 = 42
     mut s4 string = "${a}=${n}"
     if len(s4) == 8 {
         println("  [PASS] null string mixed with integer")
         passed += 1
     } otherwise {
-        println("  [FAIL] mixed int: expected len 8, got ${len(s4)}")
+        println("  [FAIL] mixed i64: expected len 8, got ${len(s4)}")
         failed += 1
     }
 

@@ -1,16 +1,16 @@
 /*
  * size_of_literals.gray - Test size_of on literal expressions
  *
- * Covers: size_of applied to int, float, bool, string, char literals.
+ * Covers: size_of applied to i64, f64, bool, string, char literals.
  * size_of should return the C sizeof of the underlying type.
  */
 
 do main() {
     println("=== size_of Literals Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: size_of on int literal → 8 (int64_t)
+    // Test 1: size_of on i64 literal → 8 (int64_t)
     if size_of(42) == 8 {
         println("  [PASS] size_of(42) == 8")
         passed += 1
@@ -46,7 +46,7 @@ do main() {
         failed += 1
     }
 
-    // Test 5: size_of on negative int literal → 8
+    // Test 5: size_of on negative i64 literal → 8
     if size_of(-100) == 8 {
         println("  [PASS] size_of(-100) == 8")
         passed += 1
@@ -65,7 +65,7 @@ do main() {
     }
 
     // Test 7: size_of on type names still works
-    if size_of(int) == 8 && size_of(float) == 8 && size_of(bool) == 1 {
+    if size_of(i64) == 8 && size_of(f64) == 8 && size_of(bool) == 1 {
         println("  [PASS] size_of(type) still works")
         passed += 1
     } otherwise {

@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut arr [int, "ten"] = {1, 2, 3}  // String instead of int size
+    mut arr [i64, "ten"] = {1, 2, 3}  // String instead of i64 size
 }

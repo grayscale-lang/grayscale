@@ -5,11 +5,11 @@
 
 do main() {
     println("=== Stress: Indexing & Ranges ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Array indexing: first, middle, last
-    mut arr [int] = {10, 20, 30, 40, 50}
+    mut arr [i64] = {10, 20, 30, 40, 50}
     if arr[0] == 10 && arr[2] == 30 && arr[4] == 50 {
         println("  [PASS] array indexing first/middle/last")
         passed += 1
@@ -40,7 +40,7 @@ do main() {
     }
 
     // Nested array indexing
-    mut matrix [[int]] = {{1, 2}, {3, 4}, {5, 6}}
+    mut matrix [[i64]] = {{1, 2}, {3, 4}, {5, 6}}
     if matrix[0][0] == 1 && matrix[1][1] == 4 && matrix[2][0] == 5 {
         println("  [PASS] nested array indexing (2D)")
         passed += 1
@@ -50,7 +50,7 @@ do main() {
     }
 
     // Range: standard
-    mut sum1 int = 0
+    mut sum1 i64 = 0
     for i in range(0, 5) {
         sum1 += i
     }
@@ -63,7 +63,7 @@ do main() {
     }
 
     // Range with step
-    mut sum2 int = 0
+    mut sum2 i64 = 0
     for i in range(0, 10, 2) {
         sum2 += i
     }
@@ -76,7 +76,7 @@ do main() {
     }
 
     // Range: single element
-    mut count int = 0
+    mut count i64 = 0
     for i in range(5, 6) {
         count += 1
     }

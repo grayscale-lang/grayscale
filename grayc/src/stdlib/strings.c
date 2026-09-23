@@ -558,8 +558,8 @@ void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray da
     if (data.elem_size == 1) {
         memcpy(builder->data + builder->len, data.data, (size_t)data.len);
     } else {
-        /* A [byte] built from an array literal is stored one element per
-           machine word; take the low byte of each (little-endian). */
+        /* An integer array wider than [u8] (e.g. an [i64] literal); take
+           the low byte of each element (little-endian). */
         const unsigned char *src = (const unsigned char *)data.data;
         for (int32_t i = 0; i < data.len; i++) {
             builder->data[builder->len + i] = (char)src[(size_t)i * (size_t)data.elem_size];

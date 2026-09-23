@@ -23,8 +23,8 @@ do name_of(d Direction) -> string {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if name_of(Direction.NORTH) == "north" {
         passed += 1
@@ -38,7 +38,7 @@ do main() {
         failed += 1
     }
 
-    mut n int = 2
+    mut n i64 = 2
     mut label string = ""
     switch n {
         case 1 { label = "one" }

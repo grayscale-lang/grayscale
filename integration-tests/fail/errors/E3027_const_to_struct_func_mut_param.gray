@@ -4,15 +4,15 @@
  */
 
 const Counter struct {
-    value int
+    value i64
 
-    do add(&self Counter, &amount int) {
+    do add(&self Counter, &amount i64) {
         self.value = self.value + amount
     }
 }
 
 do main() {
     mut c Counter = Counter{value: 0}
-    const step int = 5
+    const step i64 = 5
     c.add(step)
 }

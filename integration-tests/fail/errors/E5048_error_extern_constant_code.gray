@@ -6,7 +6,7 @@
 
 extern import "stdlib.h"
 
-do do_thing() -> (int, Error) {
+do do_thing() -> (i64, Error) {
     return 0, error(extern.EXIT_FAILURE, "C call failed")
 }
 

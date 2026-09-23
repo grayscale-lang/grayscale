@@ -8,8 +8,8 @@ import @math
 
 do main() {
     println("=== Math New Functions Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- mod: remainder carries the sign of the dividend --
     if math.mod(7.5, 2.0) == 1.5 && math.mod(-7.5, 2.0) == -1.5 {
@@ -104,13 +104,13 @@ do main() {
         failed += 1
     }
 
-    // -- MAX_INT is an int, not a float: usable where an int is required --
-    mut bound int = math.MAX_INT
+    // -- MAX_INT is an i64, not a f64: usable where an i64 is required --
+    mut bound i64 = math.MAX_INT
     if bound == math.MAX_INT {
-        println("  [PASS] MAX_INT is int-typed")
+        println("  [PASS] MAX_INT is i64-typed")
         passed += 1
     } otherwise {
-        println("  [FAIL] MAX_INT is int-typed")
+        println("  [FAIL] MAX_INT is i64-typed")
         failed += 1
     }
 

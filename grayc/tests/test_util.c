@@ -188,7 +188,7 @@ static void test_scope_empty_lookup(void) {
 
 static void test_scope_define_update(void) {
     Scope *scope = scope_create(NULL);
-    GrayType *int_type = type_from_name("int");
+    GrayType *int_type = type_from_name("i64");
     GrayType *string_type = type_from_name("string");
     scope_define(scope, "x", int_type, true);
     scope_define(scope, "x", string_type, false);
@@ -202,7 +202,7 @@ static void test_scope_define_update(void) {
 
 static void test_scope_hash_rebuild(void) {
     Scope *scope = scope_create(NULL);
-    GrayType *type = type_from_name("int");
+    GrayType *type = type_from_name("i64");
     char names[12][16];
     for (int i = 0; i < 12; i++) {
         snprintf(names[i], sizeof(names[i]), "var_%d", i);
@@ -220,7 +220,7 @@ static void test_scope_hash_rebuild(void) {
 
 static void test_scope_many_symbols(void) {
     Scope *scope = scope_create(NULL);
-    GrayType *type = type_from_name("int");
+    GrayType *type = type_from_name("i64");
     char names[60][16];
     for (int i = 0; i < 60; i++) {
         snprintf(names[i], sizeof(names[i]), "sym_%d", i);
@@ -237,7 +237,7 @@ static void test_scope_many_symbols(void) {
 
 static void test_scope_destroy(void) {
     Scope *scope = scope_create(NULL);
-    GrayType *type = type_from_name("int");
+    GrayType *type = type_from_name("i64");
     scope_define(scope, "a", type, true);
     scope_define(scope, "b", type, false);
     scope_define(scope, "c", type, true);
@@ -248,7 +248,7 @@ static void test_scope_destroy(void) {
 
 static void test_scope_immutable(void) {
     Scope *scope = scope_create(NULL);
-    GrayType *type = type_from_name("int");
+    GrayType *type = type_from_name("i64");
     scope_define(scope, "constant", type, false);
     Symbol *symbol = scope_lookup(scope, "constant");
     ASSERT_NOT_NULL(symbol);

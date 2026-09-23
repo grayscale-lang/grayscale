@@ -4,20 +4,20 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Color struct {
-    r int
-    g int
+    r i64
+    g i64
 }
 
-do process(p Point) -> int {
+do process(p Point) -> i64 {
     return p.x
 }
 
 do main() {
     mut c = Color{r: 255, g: 0}
-    mut n int = process(c)
+    mut n i64 = process(c)
 }

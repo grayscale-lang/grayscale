@@ -9,7 +9,7 @@
 import @arrays
 
 const Item struct {
-    value int
+    value i64
     label string
 }
 
@@ -18,17 +18,17 @@ const Bag struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut b = new(Bag)
     arrays.append(b.items, Item{value: 10, label: "first"})
     arrays.append(b.items, Item{value: 20, label: "second"})
     arrays.append(b.items, Item{value: 30, label: "third"})
 
-    // Test 1: read int field via auto-deref pointer
+    // Test 1: read i64 field via auto-deref pointer
     if b.items[0].value == 10 {
-        println("  [PASS] read int field [0] via auto-deref pointer")
+        println("  [PASS] read i64 field [0] via auto-deref pointer")
         passed += 1
     } otherwise {
         println("  [FAIL] [0].value: ${b.items[0].value}")
@@ -46,7 +46,7 @@ do main() {
 
     // Test 3: read last element via auto-deref pointer
     if b.items[2].value == 30 {
-        println("  [PASS] read int field [2] via auto-deref pointer")
+        println("  [PASS] read i64 field [2] via auto-deref pointer")
         passed += 1
     } otherwise {
         println("  [FAIL] [2].value: ${b.items[2].value}")
@@ -55,7 +55,7 @@ do main() {
 
     // Test 4: read via explicit deref (b^.items[i])
     if b^.items[0].value == 10 {
-        println("  [PASS] read int field [0] via explicit deref")
+        println("  [PASS] read i64 field [0] via explicit deref")
         passed += 1
     } otherwise {
         println("  [FAIL] explicit deref [0].value: ${b^.items[0].value}")

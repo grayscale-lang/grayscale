@@ -2,6 +2,6 @@
 import @math
 
 do main() {
-    mut x int = math.factorial(-1)
+    mut x i64 = math.factorial(-1)
     println(x)
 }

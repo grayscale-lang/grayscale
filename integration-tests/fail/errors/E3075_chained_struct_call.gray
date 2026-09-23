@@ -4,14 +4,14 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(x int, y int) -> Point {
+    do create(x i64, y i64) -> Point {
         return Point{x: x, y: y}
     }
 
-    do translate(p Point, dx int, dy int) -> Point {
+    do translate(p Point, dx i64, dy i64) -> Point {
         return Point{x: p.x + dx, y: p.y + dy}
     }
 }

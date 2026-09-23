@@ -6,5 +6,5 @@
 import @math
 
 do main() {
-    mut x float = math.asin(2.0)  // asin only accepts -1 to 1
+    mut x f64 = math.asin(2.0)  // asin only accepts -1 to 1
 }

@@ -17,8 +17,8 @@ import @maps
 import @arrays
 
 const Pool struct {
-    cache map[string:int]
-    items [int]
+    cache map[string:i64]
+    items [i64]
 }
 
 do has_caret(p ^Pool, k string) -> bool { return maps.has_key(p^.cache, k) }
@@ -26,22 +26,22 @@ do has_auto(p ^Pool, k string) -> bool { return maps.has_key(p.cache, k) }
 do keys_caret(p ^Pool) -> [string] { return maps.get_keys(p^.cache) }
 do drop_caret(p ^Pool, k string) { maps.remove_key(p^.cache, k) }
 do wipe_caret(p ^Pool) { maps.clear(p^.cache) }
-do push_caret(p ^Pool, v int) { arrays.append(p^.items, v) }
-do push_auto(p ^Pool, v int) { arrays.append(p.items, v) }
+do push_caret(p ^Pool, v i64) { arrays.append(p^.items, v) }
+do push_auto(p ^Pool, v i64) { arrays.append(p.items, v) }
 
-do has_deref(m ^map[string:int], k string) -> bool { return maps.has_key(m^, k) }
-do push_deref(a ^[int], v int) { arrays.append(a^, v) }
+do has_deref(m ^map[string:i64], k string) -> bool { return maps.has_key(m^, k) }
+do push_deref(a ^[i64], v i64) { arrays.append(a^, v) }
 
 do main() {
     println("=== Pointer Deref Field Stdlib Args Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     p = new(Pool)
     p^.cache = {:}
     p^.items = {}
 
-    mut c map[string:int] = p^.cache
+    mut c map[string:i64] = p^.cache
     c["a"] = 1
     c["b"] = 2
     p^.cache = c
@@ -92,12 +92,12 @@ do main() {
     }
 
     /* A bare p^ where the pointer is already the container. */
-    mut m ^map[string:int] = new(map[string:int])
-    mut mc map[string:int] = m^
+    mut m ^map[string:i64] = new(map[string:i64])
+    mut mc map[string:i64] = m^
     mc["x"] = 1
     m^ = mc
 
-    mut arr ^[int] = new([int])
+    mut arr ^[i64] = new([i64])
     push_deref(arr, 7)
     push_deref(arr, 8)
 

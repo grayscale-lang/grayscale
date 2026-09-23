@@ -10,8 +10,8 @@ import @io
 
 do main() {
     println("=== read_lines limit test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut five string = "/tmp/gray_rl_five.txt"
     mut _, _ = io.write_file(five, "a\nb\nc\nd\ne\n")

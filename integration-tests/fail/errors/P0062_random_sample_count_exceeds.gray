@@ -3,7 +3,7 @@
 import @random
 
 do main() {
-    mut arr [int] = {1, 2, 3}
-    mut result [int] = random.sample(arr, 10)
+    mut arr [i64] = {1, 2, 3}
+    mut result [i64] = random.sample(arr, 10)
     println(result)
 }

@@ -2,15 +2,15 @@
 import @arrays
 
 const W struct {
-    v [int]
+    v [i64]
 }
 
-do mk() -> [int] {
+do mk() -> [i64] {
     return {1, 2}
 }
 
 do main() {
-    mut a [int] = {1, 2}
+    mut a [i64] = {1, 2}
     mut names [string] = {"a"}
     mut w W = W{v: {1, 2}}
 
@@ -44,7 +44,7 @@ do main() {
         println("  [FAIL] struct field as the second argument")
     }
 
-    mut c [int] = {1, 3}
+    mut c [i64] = {1, 3}
     if !arrays.is_equal(a, arrays.slice(c, 0, 1)) && !arrays.is_equal(a, arrays.concat(a, c)) {
         println("  [PASS] arrays function results as the second argument")
     } else {

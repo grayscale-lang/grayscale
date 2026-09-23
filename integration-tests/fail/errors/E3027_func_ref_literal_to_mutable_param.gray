@@ -3,11 +3,11 @@
  * Expected: "cannot pass a literal or expression to mutable parameter" error
  */
 
-do modify(&x int) {
+do modify(&x i64) {
     x = 99
 }
 
 do main() {
-    mut fn_ref func(&int) = ()modify
+    mut fn_ref func(&i64) = ()modify
     fn_ref(42)
 }

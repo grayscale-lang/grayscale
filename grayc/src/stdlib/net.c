@@ -247,8 +247,8 @@ GrayResult_socket gray_net_accept_result(GrayArena *arena, GraySocket listener) 
     return r;
 }
 
-GrayResult_int gray_net_send_result(GrayArena *arena, GraySocket sock, GrayString data) {
-    GrayResult_int r;
+GrayResult_i64 gray_net_send_result(GrayArena *arena, GraySocket sock, GrayString data) {
+    GrayResult_i64 r;
     r.v0 = gray_net_send(sock, data);
     if (r.v0 < 0) {
         r.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "send failed on fd %d", sock.fd));

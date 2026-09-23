@@ -4,9 +4,9 @@
  * A typed-func return position must not spell 'void'; omit the '-> R' clause.
  */
 
-do work() -> (int, int) { return 1, 2 }
+do work() -> (i64, i64) { return 1, 2 }
 
 do main() {
-    mut f func() -> (void, int) = ()work
+    mut f func() -> (void, i64) = ()work
     f
 }

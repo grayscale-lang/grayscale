@@ -1,7 +1,7 @@
 /* Error Test: E3123 - for_each with both index and value as _ */
 do main() {
-    mut items [int] = {1, 2, 3}
-    mut count int = 0
+    mut items [i64] = {1, 2, 3}
+    mut count i64 = 0
     for_each _, _ in items {
         count++
     }

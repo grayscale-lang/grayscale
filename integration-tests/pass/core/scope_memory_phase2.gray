@@ -24,8 +24,8 @@ do get_first(csv_input string) -> string {
 
 do main() {
     println("=== Scope Memory Phase 2 Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- loop escape to outer array --
     mut results [string] = {}
@@ -81,7 +81,7 @@ do main() {
 
     // -- nested loops with escape --
     mut nested_results [string] = {}
-    mut rows [[int]] = {{1, 2}, {3, 4}, {5, 6}}
+    mut rows [[i64]] = {{1, 2}, {3, 4}, {5, 6}}
     for_each row in rows {
         for_each val in row {
             mut s string = strings.repeat("x", val)

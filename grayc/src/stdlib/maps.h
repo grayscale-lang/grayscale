@@ -22,7 +22,7 @@
  *@desc Returns all keys in m as an array. Order reflects insertion order.
  *@example
  *   import @maps
- *   mut ages map[string:int] = {"alice": 30, "bob": 25}
+ *   mut ages map[string:i64] = {"alice": 30, "bob": 25}
  *   println(maps.get_keys(ages))
  *@end
  */
@@ -36,7 +36,7 @@ GrayArray gray_maps_get_keys(GrayArena *arena, GrayMap *map);
  *@desc Returns all values in m as an array. Order reflects insertion order.
  *@example
  *   import @maps
- *   mut ages map[string:int] = {"alice": 30, "bob": 25}
+ *   mut ages map[string:i64] = {"alice": 30, "bob": 25}
  *   println(maps.get_values(ages))
  *@end
  */
@@ -50,7 +50,7 @@ GrayArray gray_maps_get_values(GrayArena *arena, GrayMap *map);
  *@desc Returns true if m contains an entry with the given key.
  *@example
  *   import @maps
- *   mut ages map[string:int] = {"alice": 30}
+ *   mut ages map[string:i64] = {"alice": 30}
  *   println(maps.has_key(ages, "alice"))
  *   println(maps.has_key(ages, "bob"))
  *@end
@@ -65,7 +65,7 @@ bool gray_maps_has_key(GrayMap *map, const void *key);
  *@desc Returns true if m has no entries.
  *@example
  *   import @maps
- *   mut m map[string:int] = {:}
+ *   mut m map[string:i64] = {:}
  *   println(maps.is_empty(m))
  *@end
  */
@@ -79,7 +79,7 @@ bool gray_maps_is_empty(GrayMap *map);
  *@desc Returns true if any entry in m has the given value.
  *@example
  *   import @maps
- *   mut scores map[string:int] = {"alice": 100, "bob": 85}
+ *   mut scores map[string:i64] = {"alice": 100, "bob": 85}
  *   println(maps.contains_value(scores, 100))
  *@end
  */
@@ -93,8 +93,8 @@ bool gray_maps_contains_value(GrayMap *map, const void *value);
  *@desc Returns true if a and b have the same keys and values. K and V must be primitives or string. Use this instead of == which is not allowed on maps.
  *@example
  *   import @maps
- *   mut a map[string:int] = {"x": 1}
- *   mut b map[string:int] = {"x": 1}
+ *   mut a map[string:i64] = {"x": 1}
+ *   mut b map[string:i64] = {"x": 1}
  *   println(maps.is_equal(a, b))
  *@end
  */
@@ -112,8 +112,8 @@ bool gray_maps_is_equal(GrayMap *left, GrayMap *right, bool str_keys, bool str_v
  *@desc Returns a new map containing all entries from m1 and m2. When both maps share a key, m2's value wins.
  *@example
  *   import @maps
- *   mut a map[string:int] = {"x": 1, "y": 2}
- *   mut b map[string:int] = {"y": 99, "z": 3}
+ *   mut a map[string:i64] = {"x": 1, "y": 2}
+ *   mut b map[string:i64] = {"y": 99, "z": 3}
  *   println(maps.merge(a, b))
  *@end
  */
@@ -127,7 +127,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right);
  *@desc Returns the value for key if it exists, otherwise returns default.
  *@example
  *   import @maps
- *   mut scores map[string:int] = {"alice": 42}
+ *   mut scores map[string:i64] = {"alice": 42}
  *   println(maps.get_or_default(scores, "alice", 0))
  *   println(maps.get_or_default(scores, "bob", 0))
  *@end
@@ -142,7 +142,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right);
  *@desc Removes the entry with the given key from m. Does nothing if the key is not present. Modifies the map in place.
  *@example
  *   import @maps
- *   mut ages map[string:int] = {"alice": 30, "bob": 25}
+ *   mut ages map[string:i64] = {"alice": 30, "bob": 25}
  *   maps.remove_key(ages, "bob")
  *   println(ages)
  *@end
@@ -156,7 +156,7 @@ GrayMap gray_maps_merge(GrayArena *arena, GrayMap *left, GrayMap *right);
  *@desc Removes all entries from m, leaving it empty. Modifies the map in place.
  *@example
  *   import @maps
- *   mut ages map[string:int] = {"alice": 30, "bob": 25}
+ *   mut ages map[string:i64] = {"alice": 30, "bob": 25}
  *   maps.clear(ages)
  *   println(ages)
  *@end

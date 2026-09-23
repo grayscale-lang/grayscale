@@ -124,14 +124,14 @@
 | `E3047` | types | enum '%s' has no member '%s' |
 | `E3048` | types | operator '+' on strings requires both operands to be strings; got '%s' and '%s' |
 | `E3049` | types | cannot use '%s' on enum values; enums only support == and != comparisons |
-| `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3}) |
-| `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1}) |
+| `E3050` | types | array needs a type annotation; declare as [T] (e.g., mut x [i64] = {1, 2, 3}) |
+| `E3051` | types | map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:i64] = {\"a\": 1}) |
 | `E3052` | types | too many elements in array initializer; declared size is %d, got %d |
 | `E3053` | types | type mismatch in a collection or struct literal; expected '%s', got '%s' |
 | `E3054` | types | mutable arrays cannot have a fixed size; remove the size or use 'const' (e.g., mut %s %.*s] = ...) |
 | `E3055` | types | const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...) |
 | `E3056` | types | #strict when is not exhaustive; missing variant '%s.%s' |
-| `E3057` | types | type '%s' cannot be used as a map key; only primitive types (int, string, bool, char, byte, float) and enums are hashable |
+| `E3057` | types | type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable |
 | `E3058` | types | in instantiation of generic function '%s' with '?' = %s |
 | `E3059` | types | maps cannot be declared const; use 'mut' for maps or a struct for fixed data |
 | `E3060` | types | wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type |
@@ -141,7 +141,7 @@
 | `E3068` | types | 'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value |
 | `E3069` | types | '&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable |
 | `E3070` | types | 'ensure' may only appear at the top level of a function body; lift it out of the enclosing block |
-| `E3071` | types | cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. int, string) |
+| `E3071` | types | cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. i64, string) |
 | `E3072` | types | cannot return 'nil' from a function that returns '%s'; nil is only valid for pointer and error types |
 | `E3073` | types | 'return' is not allowed in 'main()'; 'main()' exits when control reaches the closing brace |
 | `E3074` | types | arrays cannot be compared with comparison operators; use 'arrays.is_equal(a, b)' for equality, or compare elements individually for ordering |
@@ -186,18 +186,18 @@
 | `E3114` | types | variant '%s' of enum '%s' has no payload; remove the arguments |
 | `E3115` | types | enum '%s' is not a tagged enum; variant '%s' cannot be called |
 | `E3116` | types | wrong number of bindings for variant '%s'; expected %d, got %d |
-| `E3117` | types | cannot compare enum '%s' with '%s'; use an enum variant like '%s.VARIANT', or cast to int with 'cast(value, int)' |
+| `E3117` | types | cannot compare enum '%s' with '%s'; use an enum variant like '%s.VARIANT', or cast to an integer with 'cast(value, i64)' |
 | `E3118` | types | cannot assign '%s' to enum '%s'; use an enum variant like '%s.VARIANT' |
 | `E3119` | types | fixed-size arrays are not allowed in function parameters; use '[%s]' instead of '%s' for parameter '%s' |
 | `E3120` | types | pointer ordering comparisons are not supported; only == and != are allowed on pointers |
-| `E3121` | types | cannot use '%s' as a condition in a when statement; allowed types are int, uint, string, char, byte, bool, float, and enum |
+| `E3121` | types | cannot use '%s' as a condition in a when statement; allowed types are integers, floats, string, char, bool, and enum |
 | `E3122` | safety | cannot modify value through pointer '%s'; the pointee is a const-declared variable |
 | `E3123` | iteration | 'for_each' with both positions discarded accesses nothing; use 'for _ in range(0, len(collection))' to iterate by count |
 | `E3124` | types | operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or != |
-| `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const int/uint value |
+| `E3125` | types | '%s' is not a compile-time integer constant; array size must be a const integer value |
 | `E3126` | types | array size must be greater than zero; '%s' resolves to %d |
 | `E3127` | types | type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct |
-| `E3128` | types | type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'int' |
+| `E3128` | types | type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64' |
 | `E3129` | safety | empty loop body; this will loop forever at runtime |
 | `E3130` | types | bare 'func' is not allowed as a struct field type |
 | `E3131` | types | file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead |
@@ -207,14 +207,14 @@
 | `E3135` | types | alias '%s' cannot target the wildcard type '?' |
 | `E3136` | types | empty array literal has no elements to infer a type from; add at least one element or use a typed declaration |
 | `E3137` | types | constant division overflows; %lld / %lld cannot be represented in type '%s' |
-| `E3138` | types | float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308 |
+| `E3138` | types | float literal overflows f64; max magnitude is 1.7976931348623157e308 |
 | `E3139` | types | returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s' |
-| `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool |
+| `E3140` | types | #json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be i64, u64, f64, string, or bool |
 | `E3141` | types | '%s' is a struct, not an enum; it has no variant or member '%s' |
 | `E3142` | types | function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored |
 | `E3143` | types | #flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64 |
 | `E3144` | types | #error_code attribute can only be applied to enum declarations |
-| `E3145` | types | #error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set |
+| `E3145` | types | #error_code enum '%s' must be plain integer-backed; string-backed enums cannot contribute to the ErrorCode set |
 | `E3146` | types | #error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering |
 | `E3147` | types | #error_code enum '%s' cannot have payload variants |
 | `E3148` | types | ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique |
@@ -383,13 +383,13 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0001` | memory | cannot allocate from a destroyed arena; mem.destroy() was already called on this arena |
 | `P0002` | memory | mem.destroy() called on an arena that was already destroyed; each arena can only be destroyed once |
 | `P0003` | runtime | maximum recursion depth exceeded (%d calls deep); your function is calling itself too many times |
-| `P0004` | arithmetic | addition result is too large; value exceeds the range of int |
-| `P0005` | arithmetic | subtraction result is too large; value exceeds the range of int |
-| `P0006` | arithmetic | multiplication result is too large; value exceeds the range of int |
-| `P0007` | arithmetic | negation result is too large; value exceeds the range of int |
-| `P0008` | arithmetic | addition result is too large; value exceeds the range of uint |
-| `P0009` | arithmetic | subtraction result is negative, but uint cannot hold negative values |
-| `P0010` | arithmetic | multiplication result is too large; value exceeds the range of uint |
+| `P0004` | arithmetic | addition result is too large; value exceeds the range of i64 |
+| `P0005` | arithmetic | subtraction result is too large; value exceeds the range of i64 |
+| `P0006` | arithmetic | multiplication result is too large; value exceeds the range of i64 |
+| `P0007` | arithmetic | negation result is too large; value exceeds the range of i64 |
+| `P0008` | arithmetic | addition result is too large; value exceeds the range of u64 |
+| `P0009` | arithmetic | subtraction result is negative, but u64 cannot hold negative values |
+| `P0010` | arithmetic | multiplication result is too large; value exceeds the range of u64 |
 | `P0011` | arithmetic | %s addition result is too large; value exceeds the range of this type |
 | `P0012` | arithmetic | %s subtraction result is too large; value exceeds the range of this type |
 | `P0013` | arithmetic | %s multiplication result is too large; value exceeds the range of this type |
@@ -399,7 +399,7 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0017` | arithmetic | %s multiplication result is too large; value exceeds the range of this unsigned type |
 | `P0018` | arithmetic | cast to %s failed; value %lld is outside the valid range (%lld to %lld) |
 | `P0019` | arithmetic | cast to %s failed; value %lld is outside the valid range (0 to %llu) |
-| `P0020` | arithmetic | cannot convert float to int; the value is too large, too small, or NaN |
+| `P0020` | arithmetic | cannot convert f64 to i64; the value is too large, too small, or NaN |
 | `P0021` | arithmetic | i128 addition result is too large; value exceeds the range of i128 |
 | `P0022` | arithmetic | i128 subtraction result is too large; value exceeds the range of i128 |
 | `P0023` | arithmetic | i128 multiplication result is too large; value exceeds the range of i128 |
@@ -434,11 +434,11 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0052` | crypto | crypto.random_hex: failed to read from /dev/urandom |
 | `P0053` | io | io.read_file: input exceeds maximum string length |
 | `P0054` | strconv | strconv.to_int: invalid base %lld; must be between 2 and 36 |
-| `P0055` | strconv | strconv.to_int: cannot convert '%s' to int (base %lld) |
+| `P0055` | strconv | strconv.to_int: cannot convert '%s' to i64 (base %lld) |
 | `P0056` | strconv | strconv.to_uint: invalid base %lld; must be between 2 and 36 |
-| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to uint (base %lld) |
-| `P0058` | strconv | strconv.to_uint: cannot convert '%s' to uint; value is negative |
-| `P0059` | strconv | strconv.to_float: cannot convert '%s' to float |
+| `P0057` | strconv | strconv.to_uint: cannot convert '%s' to u64 (base %lld) |
+| `P0058` | strconv | strconv.to_uint: cannot convert '%s' to u64; value is negative |
+| `P0059` | strconv | strconv.to_float: cannot convert '%s' to f64 |
 | `P0060` | strconv | strconv.to_bool: cannot convert '%s' to bool |
 | `P0061` | memory | mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB |
 | `P0062` | random | random.sample() count %lld exceeds array length %d |
@@ -463,29 +463,29 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 | `P0081` | runtime | key not found in map |
 | `P0082` | bounds | string index %lld out of bounds (length %d) |
 | `P0083` | runtime | sleep duration cannot be negative (%lld) |
-| `P0084` | runtime | cannot convert '%s' to int |
-| `P0085` | runtime | cannot convert '%s' to float |
+| `P0084` | runtime | cannot convert '%s' to i64 |
+| `P0085` | runtime | cannot convert '%s' to f64 |
 | `P0086` | io | io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents |
 | `P0087` | io | io.write_file() cannot write to a directory |
 | `P0088` | io | io.append_file() cannot append to a directory |
 | `P0089` | io | io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually |
 | `P0090` | runtime | range step cannot be zero |
-| `P0091` | arithmetic | cannot convert float to uint; the value is negative, too large, or NaN |
+| `P0091` | arithmetic | cannot convert f64 to u64; the value is negative, too large, or NaN |
 | `P0092` | arithmetic | shift amount %lld is out of range; must be in [0, 63] |
-| `P0093` | arithmetic | cast from i128 failed; value is outside the representable range of int64 |
-| `P0094` | arithmetic | cast from i128 failed; value is negative or outside the representable range of uint64 |
-| `P0095` | arithmetic | cast from u128 failed; value exceeds the representable range of int64 |
-| `P0096` | arithmetic | cast from u128 failed; value exceeds the representable range of uint64 |
-| `P0097` | arithmetic | cast from i256 failed; value is outside the representable range of int64 |
-| `P0098` | arithmetic | cast from i256 failed; value is negative or outside the representable range of uint64 |
-| `P0099` | arithmetic | cast from u256 failed; value exceeds the representable range of int64 |
-| `P0100` | arithmetic | cast from u256 failed; value exceeds the representable range of uint64 |
+| `P0093` | arithmetic | cast from i128 failed; value is outside the representable range of i64 |
+| `P0094` | arithmetic | cast from i128 failed; value is negative or outside the representable range of u64 |
+| `P0095` | arithmetic | cast from u128 failed; value exceeds the representable range of i64 |
+| `P0096` | arithmetic | cast from u128 failed; value exceeds the representable range of u64 |
+| `P0097` | arithmetic | cast from i256 failed; value is outside the representable range of i64 |
+| `P0098` | arithmetic | cast from i256 failed; value is negative or outside the representable range of u64 |
+| `P0099` | arithmetic | cast from u256 failed; value exceeds the representable range of i64 |
+| `P0100` | arithmetic | cast from u256 failed; value exceeds the representable range of u64 |
 | `P0101` | server | server.cors: origin contains CR or LF — HTTP header injection is not allowed |
 | `P0102` | arithmetic | invalid digit in integer literal |
 | `P0103` | io | file path contains an embedded null byte |
 | `P0104` | memory | arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes |
 | `P0105` | time | time.parse: cannot parse '%s' with layout '%s' |
-| `P0106` | math | math.next_power_of_two() result is too large for int, got %lld |
+| `P0106` | math | math.next_power_of_two() result is too large for i64, got %lld |
 | `P0107` | arithmetic | cast to %s failed; value %lld does not match any variant of %s |
 | `P0108` | threads | threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached |
 | `P0109` | threads | threads.spawn: out of memory allocating thread state |
@@ -535,4 +535,4 @@ Runtime panics are fatal errors that terminate the program immediately. They are
 
 ---
 
-*Generated on 2026-09-23 02:35:41 UTC*
+*Generated on 2026-09-23 06:35:34 UTC*

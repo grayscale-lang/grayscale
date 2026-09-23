@@ -5,7 +5,7 @@
  */
 
 const Counter struct {
-    n int
+    n i64
 }
 
 do bump(c ^Counter) {

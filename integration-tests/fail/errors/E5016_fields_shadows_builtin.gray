@@ -7,5 +7,5 @@
  */
 
 do main() {
-    mut fields int = 1
+    mut fields i64 = 1
 }

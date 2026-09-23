@@ -2,18 +2,18 @@
  * map_mutation.gray - Test map mutation operations
  *
  * Covers: add key, update key, delete key, overwrite,
- * check after mutation, string and int keys.
+ * check after mutation, string and i64 keys.
  */
 
 import @maps
 
 do main() {
     println("=== Map Mutation Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: add key
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     m["b"] = 2
     if len(m) == 2 && m["b"] == 2 {
         println("  [PASS] add key")
@@ -52,20 +52,20 @@ do main() {
         failed += 1
     }
 
-    // Test 5: int keys
-    mut nums map[int:string] = {1: "one"}
+    // Test 5: i64 keys
+    mut nums map[i64:string] = {1: "one"}
     nums[2] = "two"
     nums[3] = "three"
     if len(nums) == 3 && nums[2] == "two" {
-        println("  [PASS] int key mutation")
+        println("  [PASS] i64 key mutation")
         passed += 1
     } otherwise {
-        println("  [FAIL] int keys")
+        println("  [FAIL] i64 keys")
         failed += 1
     }
 
     // Test 6: overwrite many times
-    mut counter map[string:int] = {"x": 0}
+    mut counter map[string:i64] = {"x": 0}
     for i in range(0, 100) {
         counter["x"] = i
     }

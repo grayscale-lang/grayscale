@@ -7,9 +7,9 @@
 
 import @arrays
 
-mut hits [int] = {}
+mut hits [i64] = {}
 
-do note(n int) {
+do note(n i64) {
     arrays.append(hits, n)
 }
 
@@ -47,7 +47,7 @@ do return_in_loop() {
     }
 }
 
-do return_in_when(val int) {
+do return_in_when(val i64) {
     when val {
         is 1 { note(20) return }
         is 2 { note(21) return }
@@ -66,7 +66,7 @@ do outer_v() {
 }
 
 do return_in_while() {
-    mut count int = 0
+    mut count i64 = 0
     as_long_as count < 10 {
         if count == 2 {
             note(40)
@@ -77,8 +77,8 @@ do return_in_while() {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     basic_void()
     early_return(true)
@@ -95,7 +95,7 @@ do main() {
 
     // basic:1  early(t):2  early(f):3  ensure:5,4  ewer(t):6  ewer(f):7,6
     // loop:10,11  when:20 21 22  outer:30,31  while:40
-    mut want [int] = {1, 2, 3, 5, 4, 6, 7, 6, 10, 11, 20, 21, 22, 30, 31, 40}
+    mut want [i64] = {1, 2, 3, 5, 4, 6, 7, 6, 10, 11, 20, 21, 22, 30, 31, 40}
 
     if len(hits) == len(want) {
         passed += 1

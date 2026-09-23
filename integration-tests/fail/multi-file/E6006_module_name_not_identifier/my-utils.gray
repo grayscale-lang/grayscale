@@ -2,6 +2,6 @@
  * my-utils.gray - file name is not a valid Grayscale identifier
  */
 
-do hello() -> int {
+do hello() -> i64 {
     return 1
 }

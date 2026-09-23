@@ -1,8 +1,8 @@
 /* Test: a named return variable can be reassigned and conditionally
  * updated in the function body before it is returned. */
 
-do calculate() -> (result int) {
-    mut result int = 10
+do calculate() -> (result i64) {
+    mut result i64 = 10
     result = result * 2      // 20
     if result > 15 {
         result = result + 5  // 25
@@ -11,8 +11,8 @@ do calculate() -> (result int) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if calculate() == 25 {
         passed += 1

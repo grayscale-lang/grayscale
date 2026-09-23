@@ -10,6 +10,6 @@
 import @math
 
 do main() {
-    mut x float = math.NOT_A_CONSTANT
+    mut x f64 = math.NOT_A_CONSTANT
     println("${x}")
 }

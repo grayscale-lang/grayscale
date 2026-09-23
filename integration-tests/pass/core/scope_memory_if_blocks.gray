@@ -11,8 +11,8 @@ import @strings
 
 do main() {
     println("=== Scope Memory If Blocks Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- if block: escape to outer variable --
     mut result string = ""
@@ -46,7 +46,7 @@ do main() {
     }
 
     // -- or block: escape --
-    mut x int = 5
+    mut x i64 = 5
     mut label string = ""
     if x > 10 {
         label = "big"

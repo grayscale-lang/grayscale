@@ -3,14 +3,14 @@
  * const or a file-scope const.
  */
 
-const G int = 3
+const G i64 = 3
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    const N int = 5
-    const arr [int, N] = {1, 2, 3, 4, 5}
+    const N i64 = 5
+    const arr [i64, N] = {1, 2, 3, 4, 5}
     if arr[0] == 1 && arr[4] == 5 && len(arr) == 5 {
         passed += 1
     } otherwise {
@@ -18,7 +18,7 @@ do main() {
         failed += 1
     }
 
-    const global_arr [int, G] = {10, 20, 30}
+    const global_arr [i64, G] = {10, 20, 30}
     if global_arr[2] == 30 && len(global_arr) == 3 {
         passed += 1
     } otherwise {

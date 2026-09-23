@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut a = int()
+    mut a = char()
     mut b = string()
     mut c = size_of()
     mut d = error()

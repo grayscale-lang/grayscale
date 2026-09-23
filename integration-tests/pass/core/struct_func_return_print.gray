@@ -3,7 +3,7 @@
  *
  * Verifies that resolve_print_suffix() correctly determines the return type
  * of struct functions so println() dispatches to the right print function.
- * Covers all return type variants (string, float, bool, char, uint, int).
+ * Covers all return type variants (string, f64, bool, char, u64, i64).
  */
 
 const Helper struct {
@@ -13,7 +13,7 @@ const Helper struct {
         return "Hello"
     }
 
-    do get_score() -> float {
+    do get_score() -> f64 {
         return 99.5
     }
 
@@ -25,19 +25,19 @@ const Helper struct {
         return 'G'
     }
 
-    do get_count() -> uint {
+    do get_count() -> u64 {
         return 42
     }
 
-    do get_id() -> int {
+    do get_id() -> i64 {
         return -7
     }
 }
 
 do main() {
     println("=== Struct Function Return Print Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: struct function returning string
     mut s string = Helper.greet()
@@ -49,10 +49,10 @@ do main() {
         failed += 1
     }
 
-    // Test 2: struct function returning float
-    mut f float = Helper.get_score()
+    // Test 2: struct function returning f64
+    mut f f64 = Helper.get_score()
     if f > 99.4 && f < 99.6 {
-        println("  [PASS] Helper.get_score() returns float")
+        println("  [PASS] Helper.get_score() returns f64")
         passed += 1
     } otherwise {
         println("  [FAIL] Helper.get_score() unexpected value")
@@ -79,20 +79,20 @@ do main() {
         failed += 1
     }
 
-    // Test 5: struct function returning uint
-    mut u uint = Helper.get_count()
+    // Test 5: struct function returning u64
+    mut u u64 = Helper.get_count()
     if u == 42 {
-        println("  [PASS] Helper.get_count() returns uint")
+        println("  [PASS] Helper.get_count() returns u64")
         passed += 1
     } otherwise {
         println("  [FAIL] Helper.get_count() expected 42")
         failed += 1
     }
 
-    // Test 6: struct function returning int
-    mut i int = Helper.get_id()
+    // Test 6: struct function returning i64
+    mut i i64 = Helper.get_id()
     if i == -7 {
-        println("  [PASS] Helper.get_id() returns int")
+        println("  [PASS] Helper.get_id() returns i64")
         passed += 1
     } otherwise {
         println("  [FAIL] Helper.get_id() expected -7")

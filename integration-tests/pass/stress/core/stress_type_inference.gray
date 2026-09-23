@@ -4,36 +4,36 @@
 
 
 const Color struct {
-    r int
-    g int
-    b int
+    r i64
+    g i64
+    b i64
 }
 
-do get_int() -> int { return 42 }
-do get_pair() -> (int, string) { return 1, "hello" }
+do get_int() -> i64 { return 42 }
+do get_pair() -> (i64, string) { return 1, "hello" }
 
 do main() {
     println("=== Stress: Type Inference ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Inferred from literal
     mut a = 42
-    if type_of(a) == "int" {
-        println("  [PASS] inferred int from literal")
+    if type_of(a) == "i64" {
+        println("  [PASS] inferred i64 from literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] inferred int")
+        println("  [FAIL] inferred i64")
         failed += 1
     }
 
     // Inferred from float literal
     mut b = 3.14
-    if type_of(b) == "float" {
-        println("  [PASS] inferred float from literal")
+    if type_of(b) == "f64" {
+        println("  [PASS] inferred f64 from literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] inferred float")
+        println("  [FAIL] inferred f64")
         failed += 1
     }
 
@@ -59,7 +59,7 @@ do main() {
 
     // Inferred from function return
     mut e = get_int()
-    if type_of(e) == "int" && e == 42 {
+    if type_of(e) == "i64" && e == 42 {
         println("  [PASS] inferred from function return")
         passed += 1
     } otherwise {
@@ -78,7 +78,7 @@ do main() {
     }
 
     // Inferred from array literal
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     if len(arr) == 3 {
         println("  [PASS] inferred array from literal")
         passed += 1

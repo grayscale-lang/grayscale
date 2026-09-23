@@ -10,8 +10,8 @@ import and use @math, @strconv, @channels
 
 do main() {
     println("=== Using Multi-Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- non-fallible pair: math.modf --
     mut whole, frac = modf(2.5)

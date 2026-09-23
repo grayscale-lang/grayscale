@@ -3,8 +3,8 @@
  */
 
 
-do loop_return() -> int {
-    mut i int = 0
+do loop_return() -> i64 {
+    mut i i64 = 0
     loop {
         i += 1
         if i == 10 { return i }
@@ -14,11 +14,11 @@ do loop_return() -> int {
 
 do main() {
     println("=== Stress: While & Loop ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // while basic
-    mut count int = 0
+    mut count i64 = 0
     while count < 5 {
         count += 1
     }
@@ -28,7 +28,7 @@ do main() {
     } otherwise { println("  [FAIL] while basic — got ${count}") failed += 1 }
 
     // while (second usage)
-    mut count2 int = 0
+    mut count2 i64 = 0
     while count2 < 3 {
         count2 += 1
     }
@@ -38,7 +38,7 @@ do main() {
     } otherwise { println("  [FAIL] while second usage") failed += 1 }
 
     // while runs 0 times
-    mut zero_runs int = 0
+    mut zero_runs i64 = 0
     while false {
         zero_runs += 1
     }
@@ -48,7 +48,7 @@ do main() {
     } otherwise { println("  [FAIL] while 0 times") failed += 1 }
 
     // while exactly once
-    mut once int = 0
+    mut once i64 = 0
     mut flag bool = true
     while flag {
         once += 1
@@ -60,7 +60,7 @@ do main() {
     } otherwise { println("  [FAIL] while once") failed += 1 }
 
     // break in while
-    mut break_count int = 0
+    mut break_count i64 = 0
     while true {
         break_count += 1
         if break_count == 7 { break }
@@ -71,8 +71,8 @@ do main() {
     } otherwise { println("  [FAIL] break in while") failed += 1 }
 
     // continue in while
-    mut skip int = 0
-    mut wi int = 0
+    mut skip i64 = 0
+    mut wi i64 = 0
     while wi < 10 {
         wi += 1
         if wi % 2 == 0 { continue }
@@ -95,7 +95,7 @@ do main() {
     } otherwise { println("  [FAIL] loop break") failed += 1 }
 
     // loop with counter
-    mut lc int = 0
+    mut lc i64 = 0
     loop {
         lc += 1
         if lc >= 100 { break }
@@ -106,7 +106,7 @@ do main() {
     } otherwise { println("  [FAIL] loop counter — got ${lc}") failed += 1 }
 
     // loop with return
-    mut lr int = loop_return()
+    mut lr i64 = loop_return()
     if lr == 10 {
         println("  [PASS] loop with return")
         passed += 1

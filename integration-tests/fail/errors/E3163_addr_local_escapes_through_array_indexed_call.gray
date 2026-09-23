@@ -11,14 +11,14 @@
  * repeat the pointee's own name in both slots (#2755).
  */
 
-mut GLOBAL ^int = nil
+mut GLOBAL ^i64 = nil
 
-do stash(p ^int) { GLOBAL = p }
+do stash(p ^i64) { GLOBAL = p }
 
 mut handlers [func] = {ref(stash)}
 
 do leak() {
-    mut x int = 42
+    mut x i64 = 42
     handlers[0](addr(x))
 }
 

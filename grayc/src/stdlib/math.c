@@ -84,7 +84,7 @@ int64_t gray_math_next_power_of_two(int64_t n) {
      * would round up past MAX_INT. */
     if (n > (int64_t)1 << 62) {
         gray_panic_code("P0106",
-            "math.next_power_of_two() result is too large for int, got %lld", (long long)n);
+            "math.next_power_of_two() result is too large for i64, got %lld", (long long)n);
     }
     int64_t power = 1;
     while (power < n) power <<= 1;

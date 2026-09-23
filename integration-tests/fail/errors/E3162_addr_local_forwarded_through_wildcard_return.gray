@@ -11,12 +11,12 @@ do forward(x ?) -> ? {
     return x
 }
 
-do make() -> ^int {
-    mut y int = 5
+do make() -> ^i64 {
+    mut y i64 = 5
     return forward(addr(y))
 }
 
 do main() {
-    mut p ^int = make()
+    mut p ^i64 = make()
     println(p^)
 }

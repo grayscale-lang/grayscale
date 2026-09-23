@@ -2,7 +2,7 @@
 // expect-error-count: 1
 // A function parameter cannot be named 'main'.
 
-do scale(main int) -> int {
+do scale(main i64) -> i64 {
     return main * 2
 }
 

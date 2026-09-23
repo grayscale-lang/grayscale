@@ -14,29 +14,29 @@ do main() {
     assert(len("hello") == 5, "len works")
 
     // type_of
-    mut x int = 42
-    assert(type_of(x) == "int", "type_of works")
+    mut x i64 = 42
+    assert(type_of(x) == "i64", "type_of works")
 
     // size_of
-    assert(size_of(int) == 8, "size_of works")
+    assert(size_of(i64) == 8, "size_of works")
 
     // range in for loop
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 5) {
         sum += i
     }
     assert(sum == 10, "range works")
 
     // cast
-    mut f float = cast(42, float)
+    mut f f64 = cast(42, f64)
     assert(f > 41.0, "cast works")
 
     // ref and addr
-    mut val int = 99
+    mut val i64 = 99
     mut r = ref(val)
     assert(r == 99, "ref works")
 
-    mut p ^int = addr(val)
+    mut p ^i64 = addr(val)
     assert(p^ == 99, "addr works")
 
     // exit last — confirms everything above ran

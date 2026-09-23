@@ -5,7 +5,7 @@
 
 import @json
 
-do check(label string, got string, want string) -> int {
+do check(label string, got string, want string) -> i64 {
     if got == want {
         return 1
     }
@@ -14,13 +14,13 @@ do check(label string, got string, want string) -> int {
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // scalars
-    mut b byte = 200
-    passed += check("byte", json.encode(b), "200")
-    mut u uint = 42
-    passed += check("uint", json.encode(u), "42")
+    mut b u8 = 200
+    passed += check("u8", json.encode(b), "200")
+    mut u u64 = 42
+    passed += check("u64", json.encode(u), "42")
     mut s16 i16 = -30000
     passed += check("i16", json.encode(s16), "-30000")
     mut u32v u32 = 4000000000
@@ -31,8 +31,8 @@ do main() {
     passed += check("char", json.encode(c), "65")
 
     // arrays, width-sensitive
-    mut ab [byte] = {1, 200, 255}
-    passed += check("[byte]", json.encode(ab), "[1,200,255]")
+    mut ab [u8] = {1, 200, 255}
+    passed += check("[u8]", json.encode(ab), "[1,200,255]")
     mut as16 [i16] = {-1, 30000, -30000}
     passed += check("[i16]", json.encode(as16), "[-1,30000,-30000]")
     mut au [u32] = {1, 4000000000}
@@ -41,16 +41,16 @@ do main() {
     passed += check("[char]", json.encode(ac), "[97,98,99]")
 
     // maps
-    mut mb map[string:byte] = {:}
+    mut mb map[string:u8] = {:}
     mb["x"] = 200
-    passed += check("map[string:byte]", json.encode(mb), "{\"x\":200}")
-    mut mu map[string:uint] = {:}
+    passed += check("map[string:u8]", json.encode(mb), "{\"x\":200}")
+    mut mu map[string:u64] = {:}
     mu["z"] = 42
-    passed += check("map[string:uint]", json.encode(mu), "{\"z\":42}")
+    passed += check("map[string:u64]", json.encode(mu), "{\"z\":42}")
 
     // the previously-supported types still work
-    passed += check("int", json.encode(7), "7")
-    passed += check("float", json.encode(2.5), "2.5")
+    passed += check("i64", json.encode(7), "7")
+    passed += check("f64", json.encode(2.5), "2.5")
     passed += check("bool", json.encode(true), "true")
     passed += check("string", json.encode("hi"), "\"hi\"")
 

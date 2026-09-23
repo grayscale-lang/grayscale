@@ -5,23 +5,23 @@
 import @random
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // random.rand_int(min, max) bounds check
-    mut i1 int = random.rand_int(1, 10)
+    mut i1 i64 = random.rand_int(1, 10)
     if i1 >= 1 && i1 < 10 { pass += 1 } otherwise { fail += 1 }
 
     // random.rand_int(max) bounds check
-    mut i2 int = random.rand_int(100)
+    mut i2 i64 = random.rand_int(100)
     if i2 >= 0 && i2 < 100 { pass += 1 } otherwise { fail += 1 }
 
     // random.rand_float() in [0, 1)
-    mut f1 float = random.rand_float()
+    mut f1 f64 = random.rand_float()
     if f1 >= 0.0 && f1 < 1.0 { pass += 1 } otherwise { fail += 1 }
 
     // random.rand_float(min, max) in range
-    mut f2 float = random.rand_float(5.0, 10.0)
+    mut f2 f64 = random.rand_float(5.0, 10.0)
     if f2 >= 5.0 && f2 < 10.0 { pass += 1 } otherwise { fail += 1 }
 
     // random.rand_bool() returns a boolean
@@ -29,12 +29,12 @@ do main() {
     if b == true || b == false { pass += 1 } otherwise { fail += 1 }
 
     // random.shuffle preserves length and elements
-    mut arr [int] = {1, 2, 3, 4, 5}
-    mut shuffled [int] = random.shuffle(arr)
+    mut arr [i64] = {1, 2, 3, 4, 5}
+    mut shuffled [i64] = random.shuffle(arr)
     if len(shuffled) == 5 { pass += 1 } otherwise { fail += 1 }
 
-    mut orig_sum int = 0
-    mut shuf_sum int = 0
+    mut orig_sum i64 = 0
+    mut shuf_sum i64 = 0
     for i in range(5) {
         orig_sum += arr[i]
         shuf_sum += shuffled[i]
@@ -42,7 +42,7 @@ do main() {
     if orig_sum == shuf_sum { pass += 1 } otherwise { fail += 1 }
 
     // random.sample returns correct count
-    mut pool [int] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
+    mut pool [i64] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100}
     mut sampled = random.sample(pool, 3)
     if len(sampled) == 3 { pass += 1 } otherwise { fail += 1 }
 

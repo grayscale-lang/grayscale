@@ -6,6 +6,6 @@
  */
 
 do main() {
-    mut x int = 42
+    mut x i64 = 42
     println("${x y z nonsense}")
 }

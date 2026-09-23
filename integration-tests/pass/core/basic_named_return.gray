@@ -6,8 +6,8 @@ do get_user_name() -> (name string) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if get_user_name() == "Alice" {
         passed += 1

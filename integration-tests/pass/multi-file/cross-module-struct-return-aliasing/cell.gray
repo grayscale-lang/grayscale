@@ -1,8 +1,8 @@
 const Cell struct {
-    id  int
-    box [int]
+    id  i64
+    box [i64]
 
-    do create(id int) -> Cell {
+    do create(id i64) -> Cell {
         return Cell{id: id}
     }
 }

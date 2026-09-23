@@ -4,8 +4,8 @@
  */
 
 const Shape enum {
-    Circle(int)
-    Square(int)
+    Circle(i64)
+    Square(i64)
 }
 
 do main() {

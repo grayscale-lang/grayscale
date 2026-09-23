@@ -5,38 +5,38 @@
 
 do void_func() { }
 
-do return_int() -> int { return 42 }
+do return_int() -> i64 { return 42 }
 do return_str() -> string { return "hello" }
 do return_bool() -> bool { return true }
 
-do no_params() -> int { return 1 }
-do one_param(x int) -> int { return x * 2 }
-do five_params(a int, b int, c int, d int, e int) -> int { return a + b + c + d + e }
+do no_params() -> i64 { return 1 }
+do one_param(x i64) -> i64 { return x * 2 }
+do five_params(a i64, b i64, c i64, d i64, e i64) -> i64 { return a + b + c + d + e }
 
-do factorial(n int) -> int {
+do factorial(n i64) -> i64 {
     if n <= 1 { return 1 }
     return n * factorial(n - 1)
 }
 
-do fib(n int) -> int {
+do fib(n i64) -> i64 {
     if n <= 1 { return n }
     return fib(n - 1) + fib(n - 2)
 }
 
-do is_even(n int) -> bool {
+do is_even(n i64) -> bool {
     if n == 0 { return true }
     return is_odd(n - 1)
 }
 
-do is_odd(n int) -> bool {
+do is_odd(n i64) -> bool {
     if n == 0 { return false }
     return is_even(n - 1)
 }
 
 do main() {
     println("=== Stress: Functions ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Void function
     void_func()

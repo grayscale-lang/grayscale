@@ -13,11 +13,11 @@ import @math
 
 do main() {
     println("=== Arrays Introsort Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- small explicit ascending --
-    mut a [int] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
+    mut a [i64] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
     arrays.sort_asc(a)
     if a[0] == 0 && a[9] == 9 && arrays.is_sorted(a) {
         println("  [PASS] small ascending")
@@ -28,7 +28,7 @@ do main() {
     }
 
     // -- small explicit descending --
-    mut b [int] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
+    mut b [i64] = {5, 2, 9, 1, 5, 6, 2, 8, 0, 3}
     arrays.sort_desc(b)
     if b[0] == 9 && b[9] == 0 && b[1] == 8 {
         println("  [PASS] small descending")
@@ -39,7 +39,7 @@ do main() {
     }
 
     // -- already sorted --
-    mut s [int] = {}
+    mut s [i64] = {}
     for i in range(0, 3000) { arrays.append(s, i) }
     arrays.sort_asc(s)
     if s[0] == 0 && s[2999] == 2999 && arrays.is_sorted(s) {
@@ -51,7 +51,7 @@ do main() {
     }
 
     // -- reverse sorted --
-    mut r [int] = {}
+    mut r [i64] = {}
     for i in range(0, 3000) { arrays.append(r, 2999 - i) }
     arrays.sort_asc(r)
     if r[0] == 0 && r[2999] == 2999 && arrays.is_sorted(r) {
@@ -63,7 +63,7 @@ do main() {
     }
 
     // -- all equal --
-    mut eq [int] = {}
+    mut eq [i64] = {}
     for i in range(0, 3000) { arrays.append(eq, 42) }
     arrays.sort_asc(eq)
     if eq[0] == 42 && eq[2999] == 42 && arrays.is_sorted(eq) {
@@ -75,8 +75,8 @@ do main() {
     }
 
     // -- heavy duplicates (5 distinct values, well mixed) --
-    mut dup [int] = {}
-    mut d int = 7
+    mut dup [i64] = {}
+    mut d i64 = 7
     for i in range(0, 5000) {
         d = (d * 1103515245 + 12345) % 2147483648
         arrays.append(dup, d % 5)
@@ -91,7 +91,7 @@ do main() {
     }
 
     // -- negatives --
-    mut neg [int] = {-3, 100, -50, 0, 7, -1, -100, 50}
+    mut neg [i64] = {-3, 100, -50, 0, 7, -1, -100, 50}
     arrays.sort_asc(neg)
     if neg[0] == -100 && neg[7] == 100 && arrays.is_sorted(neg) {
         println("  [PASS] negatives")
@@ -102,8 +102,8 @@ do main() {
     }
 
     // -- large pseudo-random, verified with is_sorted, asc then desc --
-    mut big [int] = {}
-    mut seed int = 999983
+    mut big [i64] = {}
+    mut seed i64 = 999983
     for i in range(0, 100000) {
         seed = (seed * 1103515245 + 12345) % 2147483648
         arrays.append(big, seed)
@@ -121,7 +121,7 @@ do main() {
     }
 
     // -- floats ascending --
-    mut fa [float] = {3.5, 1.25, 2.0, 1.25, 0.0, -4.5, 100.0}
+    mut fa [f64] = {3.5, 1.25, 2.0, 1.25, 0.0, -4.5, 100.0}
     arrays.sort_asc(fa)
     if fa[0] == -4.5 && fa[6] == 100.0 && arrays.is_sorted(fa) {
         println("  [PASS] floats ascending")
@@ -132,7 +132,7 @@ do main() {
     }
 
     // -- floats descending --
-    mut fd [float] = {3.5, 1.25, 2.0, 0.0, -4.5}
+    mut fd [f64] = {3.5, 1.25, 2.0, 0.0, -4.5}
     arrays.sort_desc(fd)
     if fd[0] == 3.5 && fd[4] == -4.5 {
         println("  [PASS] floats descending")
@@ -144,11 +144,11 @@ do main() {
 
     // -- NaN: order is undefined (as with libc qsort), but the sort must
     //    terminate and neither lose nor duplicate an element --
-    mut nan_val float = math.INF - math.INF
-    mut fnan [float] = {5.0, nan_val, 1.0, 3.0, nan_val, 2.0, 4.0}
+    mut nan_val f64 = math.INF - math.INF
+    mut fnan [f64] = {5.0, nan_val, 1.0, 3.0, nan_val, 2.0, 4.0}
     arrays.sort_asc(fnan)
-    mut finite_sum float = 0.0
-    mut nan_count int = 0
+    mut finite_sum f64 = 0.0
+    mut nan_count i64 = 0
     for_each v in fnan {
         if math.is_nan(v) { nan_count += 1 } otherwise { finite_sum = finite_sum + v }
     }
@@ -194,11 +194,11 @@ do main() {
     }
 
     // -- 1 and 2 element arrays --
-    mut one [int] = {7}
+    mut one [i64] = {7}
     arrays.sort_asc(one)
-    mut two [int] = {9, 2}
+    mut two [i64] = {9, 2}
     arrays.sort_asc(two)
-    mut two_d [int] = {2, 9}
+    mut two_d [i64] = {2, 9}
     arrays.sort_desc(two_d)
     if one[0] == 7 && two[0] == 2 && two[1] == 9 && two_d[0] == 9 && two_d[1] == 2 {
         println("  [PASS] 1 and 2 element arrays")

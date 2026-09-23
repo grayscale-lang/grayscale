@@ -439,7 +439,7 @@ static void test_type_name_leaf(void) {
 static void test_type_name_primitives_untouched(void) {
     ModuleTable *table = typed_table();
     ResolveScope sc = scope_of("lib", module_file("lib"), NULL, 0);
-    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "int"), "int");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "i64"), "i64");
     ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "string"), "string");
     ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "Unknown"), "Unknown");
 }
@@ -479,8 +479,8 @@ static void test_type_name_unresolvable_unchanged(void) {
     ModuleTable *table = typed_table();
     ResolveScope sc = scope_of(MODULE_ENTRY_NAME, module_file(MODULE_ENTRY_NAME), NULL, 0);
     ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "[Nope]"), "[Nope]");
-    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "map[string:int]"),
-                  "map[string:int]");
+    ASSERT_STR_EQ(module_resolve_type_name(table, &sc, "map[string:i64]"),
+                  "map[string:i64]");
 }
 
 /* --- Mangling and splitting --- */

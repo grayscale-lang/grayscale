@@ -8,7 +8,7 @@
 import "./lib"
 
 do main() {
-    const c int = 5
+    const c i64 = 5
     lib.inc(c)
     println(c)
 }

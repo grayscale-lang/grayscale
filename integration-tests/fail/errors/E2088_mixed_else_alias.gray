@@ -1,6 +1,6 @@
 /* Error Test: E2088 - mixed else/otherwise aliases in same file */
 do main() {
-    mut x int = 10
+    mut x i64 = 10
     if x > 5 {
         println("big")
     } otherwise {

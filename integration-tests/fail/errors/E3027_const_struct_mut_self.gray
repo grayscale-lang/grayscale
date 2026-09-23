@@ -4,7 +4,7 @@
  */
 
 const Counter struct {
-    value int
+    value i64
 
     do increment(&self Counter) {
         self.value = self.value + 1

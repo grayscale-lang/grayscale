@@ -1,0 +1,12 @@
+/*
+ * Panic Test: P0019 - cast i64 to u64 where value is negative
+ *
+ * cast(int_val, u64) must panic at runtime when the i64 value is negative
+ * rather than silently wrapping to a large u64.
+ */
+
+do main() {
+    mut n i64 = -1
+    mut u u64 = cast(n, u64)
+    println(u)
+}

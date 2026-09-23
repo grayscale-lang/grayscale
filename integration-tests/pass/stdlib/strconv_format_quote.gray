@@ -6,8 +6,8 @@
 import @strconv
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: format_int base 16
     mut h string = strconv.format_int(255, 16)
@@ -50,7 +50,7 @@ do main() {
     }
 
     // Test 5: format_uint base 16
-    mut u uint = 255
+    mut u u64 = 255
     mut uh string = strconv.format_uint(u, 16)
     if uh == "ff" {
         println("  [PASS] format_uint(255, 16) = ff")

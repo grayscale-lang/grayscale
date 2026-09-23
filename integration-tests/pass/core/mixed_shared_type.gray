@@ -1,20 +1,20 @@
 /*
- * Test: a named-return signature `(name, city string, age int)` shares
+ * Test: a named-return signature `(name, city string, age i64)` shares
  * `string` across the first two names and returns all three by value.
  */
 
-do get_full_info() -> (name, city string, age int) {
+do get_full_info() -> (name, city string, age i64) {
     mut name string = "Alice"
     mut city string = "NYC"
-    mut age int = 30
+    mut age i64 = 30
     return name, city, age
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut n string, c string, a int = get_full_info()
+    mut n string, c string, a i64 = get_full_info()
     if n == "Alice" {
         passed += 1
     } otherwise {

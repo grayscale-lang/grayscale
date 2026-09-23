@@ -14,8 +14,8 @@ import "./utils.gray"
 
 /* Test result tracking */
 const TestResult struct {
-    passed int
-    failed int
+    passed i64
+    failed i64
 }
 
 do main() {
@@ -24,8 +24,8 @@ do main() {
     println("========================================")
     println("")
 
-    mut total_passed int = 0
-    mut total_failed int = 0
+    mut total_passed i64 = 0
+    mut total_failed i64 = 0
     mut result TestResult = TestResult{passed: 0, failed: 0}
 
     result = test_models_module()
@@ -40,7 +40,7 @@ do main() {
     total_passed += result.passed
     total_failed += result.failed
 
-    mut total int = total_passed + total_failed
+    mut total i64 = total_passed + total_failed
 
     println("")
     println("========================================")
@@ -63,8 +63,8 @@ do test_models_module() -> TestResult {
     println("------------------------------------------")
     println("  Test: models module")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Create a Task using models.Task
     println("  Creating Task struct...")
@@ -104,8 +104,8 @@ do test_utils_module() -> TestResult {
     println("------------------------------------------")
     println("  Test: utils module")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: String utilities
     println("  Testing string utilities...")
@@ -119,19 +119,19 @@ do test_utils_module() -> TestResult {
 
     // Test 2: Number utilities
     println("  Testing number utilities...")
-    mut clamped int = utils.clamp(150, 0, 100)
+    mut clamped i64 = utils.clamp(150, 0, 100)
     println("  clamp(150, 0, 100) = ${clamped}")
 
-    mut percentage float = utils.calculate_percentage(75, 100)
+    mut percentage f64 = utils.calculate_percentage(75, 100)
     println("  calculate_percentage(75, 100) = ${percentage}%")
     passed += 1
     println("")
 
     // Test 3: Array utilities
     println("  Testing array utilities...")
-    mut nums [int] = {10, 20, 30, 40, 50}
-    mut sum int = utils.sum_array(nums)
-    mut avg float = utils.average_array(nums)
+    mut nums [i64] = {10, 20, 30, 40, 50}
+    mut sum i64 = utils.sum_array(nums)
+    mut avg f64 = utils.average_array(nums)
     println("  sum({10,20,30,40,50}) = ${sum}")
     println("  average({10,20,30,40,50}) = ${avg}")
     passed += 1
@@ -145,8 +145,8 @@ do test_cross_module() -> TestResult {
     println("------------------------------------------")
     println("  Test: Cross-module interaction")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Create tasks and use utils to process them
     println("  Creating multiple tasks...")

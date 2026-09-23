@@ -4,7 +4,7 @@
 
 // expect-error: E4028
 
-do f(here int) {
+do f(here i64) {
     println("${here}")
 }
 

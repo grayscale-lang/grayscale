@@ -21,10 +21,10 @@
 /* Key-kind discriminator. Multiple Grayscale key types share a key_size
  * (e.g. int64/uint64/double/pointer all 8), so size alone cannot pick
  * the right hash/equality. Codegen tags each map with its kind. */
-#define GRAY_MAP_KEY_BYTES    0   /* int, bool, pointer, struct: bytewise */
+#define GRAY_MAP_KEY_BYTES    0   /* integer, bool, pointer, struct: bytewise */
 #define GRAY_MAP_KEY_STRING   1   /* GrayString: hash content, not struct bytes */
 #define GRAY_MAP_KEY_F32      2   /* f32: normalize -0.0 and NaN */
-#define GRAY_MAP_KEY_F64      3   /* f64/float: normalize -0.0 and NaN */
+#define GRAY_MAP_KEY_F64      3   /* f32/f64: normalize -0.0 and NaN */
 
 typedef struct {
     void *keys;

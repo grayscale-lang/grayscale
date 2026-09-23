@@ -6,7 +6,7 @@
 // expect-error-count: 1
 
 do main() {
-    mut scores map[string:int] = {"a": 1}
-    mut p ^int = addr(scores["a"])
+    mut scores map[string:i64] = {"a": 1}
+    mut p ^i64 = addr(scores["a"])
     println("${p^}")
 }

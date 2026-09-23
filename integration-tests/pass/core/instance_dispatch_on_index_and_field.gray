@@ -6,9 +6,9 @@
  */
 
 const Inner struct {
-    x int
+    x i64
 
-    do sq(i Inner) -> int {
+    do sq(i Inner) -> i64 {
         return i.x * i.x
     }
 
@@ -22,8 +22,8 @@ const Outer struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // array element receiver, value self
     mut arr [Inner] = {Inner{x: 3}, Inner{x: 4}}

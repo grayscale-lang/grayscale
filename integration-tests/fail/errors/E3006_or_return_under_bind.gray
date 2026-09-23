@@ -3,9 +3,9 @@
  * call's non-error return slots. The trailing value was silently dropped.
  */
 
-do three() -> (int, int, int, Error) { return 10, 20, 30, nil }
+do three() -> (i64, i64, i64, Error) { return 10, 20, 30, nil }
 
-do consume() -> (int, Error) {
+do consume() -> (i64, Error) {
     mut a, b = three() or_return
     return a + b, nil
 }

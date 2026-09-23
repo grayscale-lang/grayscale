@@ -6,7 +6,7 @@
  * multiple mutually exclusive branches.
  */
 
-do classify(x int) -> (result string) {
+do classify(x i64) -> (result string) {
     mut result string = ""
     when x {
         is 1 {
@@ -31,8 +31,8 @@ do classify(x int) -> (result string) {
 
 do main() {
     println("=== When/Is Branch Scope Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: first branch
     if classify(1) == "one" {
@@ -71,10 +71,10 @@ do main() {
     }
 
     // Test 5: variable from is branch doesn't leak to outer scope
-    mut x int = 5
+    mut x i64 = 5
     when x {
         is 5 {
-            mut inner int = 100
+            mut inner i64 = 100
         }
     }
     // 'inner' should not be accessible here — verified by the fact

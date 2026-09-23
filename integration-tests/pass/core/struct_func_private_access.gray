@@ -6,38 +6,38 @@
  */
 
 const Calculator struct {
-    value int
+    value i64
 
-    private do internal_add(a int, b int) -> int {
+    private do internal_add(a i64, b i64) -> i64 {
         return a + b
     }
 
-    private do internal_mul(a int, b int) -> int {
+    private do internal_mul(a i64, b i64) -> i64 {
         return a * b
     }
 
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return Calculator.internal_add(a, b)
     }
 
-    do mul(a int, b int) -> int {
+    do mul(a i64, b i64) -> i64 {
         return Calculator.internal_mul(a, b)
     }
 
-    do combined(a int, b int) -> int {
-        mut sum int = Calculator.internal_add(a, b)
-        mut product int = Calculator.internal_mul(a, b)
+    do combined(a i64, b i64) -> i64 {
+        mut sum i64 = Calculator.internal_add(a, b)
+        mut product i64 = Calculator.internal_mul(a, b)
         return Calculator.internal_add(sum, product)
     }
 }
 
 do main() {
     println("=== Private Struct Function Access Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: public function calls private internally
-    mut r1 int = Calculator.add(3, 4)
+    mut r1 i64 = Calculator.add(3, 4)
     if r1 == 7 {
         println("  [PASS] Calculator.add(3, 4) = 7")
         passed += 1
@@ -47,7 +47,7 @@ do main() {
     }
 
     // Test 2: public function calls different private internally
-    mut r2 int = Calculator.mul(5, 6)
+    mut r2 i64 = Calculator.mul(5, 6)
     if r2 == 30 {
         println("  [PASS] Calculator.mul(5, 6) = 30")
         passed += 1
@@ -57,7 +57,7 @@ do main() {
     }
 
     // Test 3: public function chains multiple private calls
-    mut r3 int = Calculator.combined(2, 3)
+    mut r3 i64 = Calculator.combined(2, 3)
     if r3 == 11 {
         println("  [PASS] Calculator.combined(2, 3) = 11")
         passed += 1

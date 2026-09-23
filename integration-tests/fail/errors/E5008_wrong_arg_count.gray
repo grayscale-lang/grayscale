@@ -3,10 +3,10 @@
  * Expected: "wrong number of arguments"
  */
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 do main() {
-    mut x int = add(1)  // Missing second argument
+    mut x i64 = add(1)  // Missing second argument
 }

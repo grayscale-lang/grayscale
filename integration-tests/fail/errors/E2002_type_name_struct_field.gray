@@ -1,13 +1,13 @@
 /*
  * Error Test: E2002 - reserved type name as struct field name
- * Expected: "'int' is a reserved type name" error
+ * Expected: "'i64' is a reserved type name" error
  */
 
 const Bad struct {
-    int int
+    i64 i64
 }
 
 do main() {
-    mut b = Bad{int: 5}
-    println("${b.int}")
+    mut b = Bad{i64: 5}
+    println("${b.i64}")
 }

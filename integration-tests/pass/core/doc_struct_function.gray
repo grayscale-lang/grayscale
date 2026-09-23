@@ -7,23 +7,23 @@
  */
 
 const Math struct {
-    _pad int
+    _pad i64
 
     #doc("Adds two numbers")
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return a + b
     }
 
     #doc
-    do sub(a int, b int) -> int {
+    do sub(a i64, b i64) -> i64 {
         return a - b
     }
 }
 
 do main() {
     println("=== #doc Struct Function Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if Math.add(3, 4) == 7 {
         println("  [PASS] #doc with args on struct fn")

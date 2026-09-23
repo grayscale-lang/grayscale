@@ -3,7 +3,7 @@
  * Expected: "'i32' is a built-in name and cannot be used as a parameter name"
  */
 
-do test(i32 int) {
+do test(i32 i64) {
     return
 }
 

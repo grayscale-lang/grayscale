@@ -28,11 +28,9 @@ static const char *const gray_reserved_type_names[] = {
     "ErrorCode",
     "SourceLocation",
     "bool",
-    "byte",
     "char",
     "f32",
     "f64",
-    "float",
     "func",
     "i128",
     "i16",
@@ -40,7 +38,6 @@ static const char *const gray_reserved_type_names[] = {
     "i32",
     "i64",
     "i8",
-    "int",
     "map",
     "nil",
     "string",
@@ -50,7 +47,6 @@ static const char *const gray_reserved_type_names[] = {
     "u32",
     "u64",
     "u8",
-    "uint",
     "void",
 };
 

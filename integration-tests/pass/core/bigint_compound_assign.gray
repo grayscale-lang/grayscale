@@ -6,8 +6,8 @@
 
 do main() {
     println("=== Wide Integer Compound Assignment Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: i128 +=
     mut a i128 = i128(10)

@@ -6,7 +6,7 @@
 // expect-error: E5016
 // expect-error-count: 1
 
-alias println = int
+alias println = i64
 
 do main() {
     println("Should not run!")

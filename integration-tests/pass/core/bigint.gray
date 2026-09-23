@@ -5,8 +5,8 @@
 
 do main() {
     println("=== Big Integer Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- i128 Tests ---
 
@@ -92,13 +92,13 @@ do main() {
     // Test 8: i128 println
     println(i128(12345))
 
-    // Test 9: i128 to int cast
-    mut h int = int(i128(99))
+    // Test 9: i128 to i64 cast
+    mut h i64 = cast(i128(99), i64)
     if h == 99 {
-        println("  [PASS] i128 to int cast")
+        println("  [PASS] i128 to i64 cast")
         passed += 1
     } otherwise {
-        println("  [FAIL] i128 to int cast")
+        println("  [FAIL] i128 to i64 cast")
         failed += 1
     }
 

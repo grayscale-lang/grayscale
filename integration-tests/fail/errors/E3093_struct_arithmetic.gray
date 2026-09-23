@@ -1,7 +1,7 @@
 /* Error Test: E3093 - arithmetic operator on struct */
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 do main() {
     mut a = Point{x: 1, y: 2}

@@ -1,6 +1,6 @@
 /* Error Test: E3094 - wrong type assigned to array element by index */
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     arr[0] = "hello"
     println(arr[0])
 }

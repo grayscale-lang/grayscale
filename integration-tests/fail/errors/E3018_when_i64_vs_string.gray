@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3018 - when/is type mismatch i64 vs string
+ * Expected: "type mismatch in 'when'"
+ */
+
+do main() {
+    mut x i64 = 5
+    when x {
+        is "hello" { }
+        default { }
+    }
+}

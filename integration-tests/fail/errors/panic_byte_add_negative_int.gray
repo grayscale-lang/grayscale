@@ -1,6 +1,0 @@
-do main() {
-    mut a byte = 3
-    mut b int = -5
-    mut c byte = a + b
-    println(c)
-}

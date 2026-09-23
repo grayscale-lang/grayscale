@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3001 - default param type mismatch (f64 for string)
+ * Expected: type mismatch error
+ */
+
+do test(msg string = 3.14) {
+    println(msg)
+}
+
+do main() {
+    test()
+}

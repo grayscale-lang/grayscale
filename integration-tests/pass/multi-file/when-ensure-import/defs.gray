@@ -1,10 +1,10 @@
-mut cleanup_count int = 0
+mut cleanup_count i64 = 0
 
 do do_cleanup() {
     cleanup_count += 1
 }
 
-do classify(n int) -> string {
+do classify(n i64) -> string {
     when n {
         is 1 { return "one" }
         is 2 { return "two" }

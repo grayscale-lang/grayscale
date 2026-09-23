@@ -15,14 +15,14 @@ import @math
 
 /* truncate - Truncates string to max length with "..." */
 /* NOTE: strings.slice not yet available - using manual loop */
-do truncate(s string, max_len int) -> string {
+do truncate(s string, max_len i64) -> string {
     if len(s) <= max_len {
         return s
     }
     if max_len <= 3 {
         return "..."
     }
-    mut cut int = max_len - 3
+    mut cut i64 = max_len - 3
     mut result string = ""
     for i in range(0, cut) {
         result = "${result}${s[i]}"
@@ -32,13 +32,13 @@ do truncate(s string, max_len int) -> string {
 
 /* pad_right - Pads string on the right to target length */
 /* NOTE: strings.repeat not yet available - using manual loop */
-do pad_right(s string, target_len int) -> string {
-    mut current_len int = len(s)
+do pad_right(s string, target_len i64) -> string {
+    mut current_len i64 = len(s)
     if current_len >= target_len {
         return s
     }
     mut result string = s
-    mut padding int = target_len - current_len
+    mut padding i64 = target_len - current_len
     for i in range(0, padding) {
         result = "${result} "
     }
@@ -47,13 +47,13 @@ do pad_right(s string, target_len int) -> string {
 
 /* pad_left - Pads string on the left to target length */
 /* NOTE: strings.repeat not yet available - using manual loop */
-do pad_left(s string, target_len int) -> string {
-    mut current_len int = len(s)
+do pad_left(s string, target_len i64) -> string {
+    mut current_len i64 = len(s)
     if current_len >= target_len {
         return s
     }
     mut result string = ""
-    mut padding int = target_len - current_len
+    mut padding i64 = target_len - current_len
     for i in range(0, padding) {
         result = "${result} "
     }
@@ -71,7 +71,7 @@ do is_empty(s string) -> bool {
 // ==================================================
 
 /* clamp - Constrains value to range [min_val, max_val] */
-do clamp(value int, min_val int, max_val int) -> int {
+do clamp(value i64, min_val i64, max_val i64) -> i64 {
     if value < min_val {
         return min_val
     }
@@ -82,7 +82,7 @@ do clamp(value int, min_val int, max_val int) -> int {
 }
 
 /* clamp_float - Float version of clamp */
-do clamp_float(value float, min_val float, max_val float) -> float {
+do clamp_float(value f64, min_val f64, max_val f64) -> f64 {
     if value < min_val {
         return min_val
     }
@@ -93,15 +93,15 @@ do clamp_float(value float, min_val float, max_val float) -> float {
 }
 
 /* calculate_percentage - Calculates percentage with safety check */
-do calculate_percentage(part int, total int) -> float {
+do calculate_percentage(part i64, total i64) -> f64 {
     if total == 0 {
         return 0.0
     }
-    return float(part) / float(total) * 100.0
+    return cast(part, f64) / cast(total, f64) * 100.0
 }
 
 /* min_int - Returns minimum of two integers */
-do min_int(a int, b int) -> int {
+do min_int(a i64, b i64) -> i64 {
     if a < b {
         return a
     }
@@ -109,7 +109,7 @@ do min_int(a int, b int) -> int {
 }
 
 /* max_int - Returns maximum of two integers */
-do max_int(a int, b int) -> int {
+do max_int(a i64, b i64) -> i64 {
     if a > b {
         return a
     }
@@ -121,8 +121,8 @@ do max_int(a int, b int) -> int {
 // ==================================================
 
 /* sum_array - Sums an array of integers */
-do sum_array(arr [int]) -> int {
-    mut total int = 0
+do sum_array(arr [i64]) -> i64 {
+    mut total i64 = 0
     for_each n in arr {
         total += n
     }
@@ -130,16 +130,16 @@ do sum_array(arr [int]) -> int {
 }
 
 /* average_array - Calculates average of integer array */
-do average_array(arr [int]) -> float {
+do average_array(arr [i64]) -> f64 {
     if len(arr) == 0 {
         return 0.0
     }
-    mut total int = sum_array(arr)
-    return float(total) / float(len(arr))
+    mut total i64 = sum_array(arr)
+    return cast(total, f64) / cast(len(arr), f64)
 }
 
 /* contains_int - Checks if array contains value */
-do contains_int(arr [int], target int) -> bool {
+do contains_int(arr [i64], target i64) -> bool {
     for_each n in arr {
         if n == target {
             return true

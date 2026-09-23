@@ -2,6 +2,6 @@
 // expect-error-count: 1
 // A file-scope const cannot be named 'main'.
 
-const main int = 5
+const main i64 = 5
 
 do main() {}

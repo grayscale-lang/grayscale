@@ -3,4 +3,4 @@ const Color enum {
     GREEN
 }
 
-const FALLBACK int = 7
+const FALLBACK i64 = 7

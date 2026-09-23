@@ -9,29 +9,29 @@ do greet(name string = "World") -> string {
 }
 
 // Test multiple parameters with some having defaults
-do create_player(name string, health int = 100, mana int = 50) -> string {
+do create_player(name string, health i64 = 100, mana i64 = 50) -> string {
     return "${name}: HP=${health}, MP=${mana}"
 }
 
 // Test all parameters with defaults
-do config(debug bool = false, verbose bool = true, level int = 1) -> string {
+do config(debug bool = false, verbose bool = true, level i64 = 1) -> string {
     return "debug=${debug}, verbose=${verbose}, level=${level}"
 }
 
 // Test expression as default value
-do calculate(multiplier float = 3.14 * 2.0) -> float {
+do calculate(multiplier f64 = 3.14 * 2.0) -> f64 {
     return multiplier
 }
 
 // Test grouped params where only last gets default: x is required, y defaults to 0
-do point(x, y int = 0) -> string {
+do point(x, y i64 = 0) -> string {
     return "(${x}, ${y})"
 }
 
 do main() {
     println("=== Default Parameters Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: greet with default
     mut result1 = greet()

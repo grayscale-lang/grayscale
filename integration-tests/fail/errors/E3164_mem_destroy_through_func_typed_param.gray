@@ -13,7 +13,7 @@ do run(f func(mem.Arena), a mem.Arena) { f(a) }
 
 do main() {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 5)
+    mut p ^i64 = mem.alloc(a, 5)
     const g func(mem.Arena) = ()kill
     run(g, a)
     println(p^)

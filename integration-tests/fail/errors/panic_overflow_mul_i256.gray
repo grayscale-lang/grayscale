@@ -7,7 +7,7 @@
 do main() {
     // Build a large i256 close to max via repeated doubling
     mut big i256 = i256(1)
-    mut i int = 0
+    mut i i64 = 0
     as_long_as i < 254 {
         big = big * i256(2)
         i += 1

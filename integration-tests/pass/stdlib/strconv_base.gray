@@ -1,15 +1,15 @@
 /*
  * Test: strconv module base parameter for to_int/to_uint
- * Verifies base conversion with constants and raw int values.
+ * Verifies base conversion with constants and raw i64 values.
  */
 
 import @strconv
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: base 16 with raw int
+    // Test 1: base 16 with raw i64
     mut hex, _ = strconv.to_int("FF", 16)
     if hex == 255 {
         println("  [PASS] to_int(\"FF\", 16) = 255")
@@ -19,7 +19,7 @@ do main() {
         failed += 1
     }
 
-    // Test 2: base 2 with raw int
+    // Test 2: base 2 with raw i64
     mut bin, _ = strconv.to_int("1010", 2)
     if bin == 10 {
         println("  [PASS] to_int(\"1010\", 2) = 10")
@@ -29,7 +29,7 @@ do main() {
         failed += 1
     }
 
-    // Test 3: base 8 with raw int
+    // Test 3: base 8 with raw i64
     mut oct, _ = strconv.to_int("77", 8)
     if oct == 63 {
         println("  [PASS] to_int(\"77\", 8) = 63")

@@ -1,8 +1,8 @@
 import @net
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // Bind to localhost only using the host parameter
     mut listener, err = net.listen("127.0.0.1", 0)

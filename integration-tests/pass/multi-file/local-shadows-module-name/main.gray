@@ -7,11 +7,11 @@
 import "./b", "./lib"
 
 const Local struct {
-    n int
+    n i64
 }
 
 /* A parameter named after a module this very file imports. */
-do read(b Local) -> int {
+do read(b Local) -> i64 {
     return b.n
 }
 

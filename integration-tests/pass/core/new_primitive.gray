@@ -5,26 +5,26 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: new(int) → 0
-    mut pi = new(int)
+    // Test 1: new(i64) → 0
+    mut pi = new(i64)
     if pi^ == 0 {
-        println("  [PASS] new(int) zero value is 0")
+        println("  [PASS] new(i64) zero value is 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(int): expected 0, got ${pi^}")
+        println("  [FAIL] new(i64): expected 0, got ${pi^}")
         failed += 1
     }
 
-    // Test 2: new(float) → 0.0
-    mut pf = new(float)
+    // Test 2: new(f64) → 0.0
+    mut pf = new(f64)
     if pf^ == 0.0 {
-        println("  [PASS] new(float) zero value is 0.0")
+        println("  [PASS] new(f64) zero value is 0.0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(float): expected 0.0")
+        println("  [FAIL] new(f64): expected 0.0")
         failed += 1
     }
 
@@ -48,33 +48,33 @@ do main() {
         failed += 1
     }
 
-    // Test 5: new(byte) → 0
-    mut pby = new(byte)
-    if cast(pby^, int) == 0 {
-        println("  [PASS] new(byte) zero value is 0")
+    // Test 5: new(u8) → 0
+    mut pby = new(u8)
+    if cast(pby^, i64) == 0 {
+        println("  [PASS] new(u8) zero value is 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(byte): expected 0")
+        println("  [FAIL] new(u8): expected 0")
         failed += 1
     }
 
-    // Test 6: new(uint) → 0
-    mut pu = new(uint)
-    if pu^ == cast(0, uint) {
-        println("  [PASS] new(uint) zero value is 0")
+    // Test 6: new(u64) → 0
+    mut pu = new(u64)
+    if pu^ == cast(0, u64) {
+        println("  [PASS] new(u64) zero value is 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(uint): expected 0")
+        println("  [FAIL] new(u64): expected 0")
         failed += 1
     }
 
     // Test 7: mutation through pointer
     pi^ = 42
     if pi^ == 42 {
-        println("  [PASS] new(int) mutation works")
+        println("  [PASS] new(i64) mutation works")
         passed += 1
     } otherwise {
-        println("  [FAIL] new(int) mutation: expected 42, got ${pi^}")
+        println("  [FAIL] new(i64) mutation: expected 42, got ${pi^}")
         failed += 1
     }
 

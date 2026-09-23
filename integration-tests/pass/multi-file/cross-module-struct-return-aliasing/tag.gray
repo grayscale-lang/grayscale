@@ -1,8 +1,8 @@
 const Tag struct {
-    id    int
+    id    i64
     label string
 
-    do create(id int) -> Tag {
+    do create(id i64) -> Tag {
         return Tag{id: id, label: "node-${id}"}
     }
 }

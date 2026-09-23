@@ -10,19 +10,19 @@
 
 import @arrays
 
-mut log [int] = {}
-const index int = 3
+mut log [i64] = {}
+const index i64 = 3
 mut getline string = "start"
 
 do overwrite(&s string) { s = "done" }
 
 do bump() { index_sum = index_sum + index }
 
-mut index_sum int = 0
+mut index_sum i64 = 0
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     arrays.append(log, 10)
     arrays.append(log, 20)
@@ -61,7 +61,7 @@ do main() {
         failed += 1
     }
 
-    mut total int = 0
+    mut total i64 = 0
     for_each n in log {
         total += n
     }
@@ -73,7 +73,7 @@ do main() {
         failed += 1
     }
 
-    mut index int = 99
+    mut index i64 = 99
     if index == 99 {
         println("  [PASS] local shadows the global")
         passed += 1

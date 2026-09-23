@@ -1,8 +1,8 @@
 do main() {
-    mut p ^int = nil
-    mut x int = 99
+    mut p ^i64 = nil
+    mut x i64 = 99
     if x > 0 {
-        mut y int = 42
+        mut y i64 = 42
         p = addr(y)
     }
     println(p^)

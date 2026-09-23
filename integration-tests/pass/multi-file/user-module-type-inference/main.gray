@@ -13,8 +13,8 @@ do needs_string(s string) {
     println("Got string: ${s}")
 }
 
-do needs_float(f float) {
-    println("Got float: ${f}")
+do needs_float(f f64) {
+    println("Got f64: ${f}")
 }
 
 do main() {
@@ -33,10 +33,10 @@ do main() {
     needs_string(str)
     println("Test 2 PASSED: string type inference")
 
-    // Test 3: Type inference from user module function returning float
-    mut flt = lib.get_float()  // Type should be inferred as float
+    // Test 3: Type inference from user module function returning f64
+    mut flt = lib.get_float()  // Type should be inferred as f64
     needs_float(flt)
-    println("Test 3 PASSED: float type inference")
+    println("Test 3 PASSED: f64 type inference")
 
     println("")
     println("========================================")

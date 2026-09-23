@@ -3,8 +3,8 @@
  * Expected: "function must return named variable 'result'"
  */
 
-do add(a int, b int) -> (result int) {
-    mut result int = a + b
+do add(a i64, b i64) -> (result i64) {
+    mut result i64 = a + b
     return 99
 }
 

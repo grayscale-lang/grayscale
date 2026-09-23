@@ -364,8 +364,8 @@ static inline int64_t gray_sized_neg_check(int64_t value, int64_t min_val, int64
     return result;
 }
 
-/* Sized unsigned integer overflow checks (u8, u16, u32, byte).
- * Operands are int64_t so that signed operands (e.g. byte + int) are
+/* Sized unsigned integer overflow checks (u8, u16, u32).
+ * Operands are int64_t so that signed operands (e.g. u8 + i64) are
  * handled correctly: a negative right-hand side must fire P0016, not
  * silently wrap to a large uint64 and trigger the wrong P0015 path. */
 static inline uint64_t gray_usized_add_check(int64_t left, int64_t right, uint64_t max_val,
@@ -435,26 +435,26 @@ static inline int64_t gray_enum_cast_check(int64_t value, const int64_t *variant
 }
 
 /* Safe uint64 → int64 conversion: panics if value exceeds INT64_MAX */
-static inline int64_t gray_uint_to_int_check(uint64_t value, const char *file, int line) {
+static inline int64_t gray_u64_to_i64_check(uint64_t value, const char *file, int line) {
     if (value > (uint64_t)9223372036854775807LL)
-        gray_panic_code_at(file, line, "P0018", "cast to int failed; value %llu is outside the valid range (-9223372036854775808 to 9223372036854775807)",
+        gray_panic_code_at(file, line, "P0018", "cast to i64 failed; value %llu is outside the valid range (-9223372036854775808 to 9223372036854775807)",
             (unsigned long long)value);
     return (int64_t)value;
 }
 
-/* Safe float-to-int conversion with overflow check */
-static inline int64_t gray_float_to_int(double value, const char *file, int line) {
+/* Safe f64-to-i64 conversion with overflow check */
+static inline int64_t gray_f64_to_i64(double value, const char *file, int line) {
     if (value > 9.223372036854775e+18 || value < -9.223372036854775e+18 ||
         value != value /* NaN */)
-        gray_panic_code_at(file, line, "P0020", "cannot convert float to int; the value is too large, too small, or NaN");
+        gray_panic_code_at(file, line, "P0020", "cannot convert f64 to i64; the value is too large, too small, or NaN");
     return (int64_t)value;
 }
 
-/* Safe float-to-uint conversion with range check */
-static inline uint64_t gray_float_to_uint(double value, const char *file, int line) {
+/* Safe f64-to-u64 conversion with range check */
+static inline uint64_t gray_f64_to_u64(double value, const char *file, int line) {
     /* 1.8446744073709552e+19 == 2^64 exactly as a double; any value >= it overflows uint64 */
     if (value < 0.0 || value >= 1.8446744073709552e+19 || value != value /* NaN */)
-        gray_panic_code_at(file, line, "P0091", "cannot convert float to uint; the value is negative, too large, or NaN");
+        gray_panic_code_at(file, line, "P0091", "cannot convert f64 to u64; the value is negative, too large, or NaN");
     return (uint64_t)value;
 }
 
@@ -464,7 +464,7 @@ static inline uint64_t gray_float_to_uint(double value, const char *file, int li
 struct GrayArray_tag;
 struct GrayMap_tag;
 
-typedef struct { int64_t v0; GrayError *v1; } GrayResult_int;
+typedef struct { int64_t v0; GrayError *v1; } GrayResult_i64;
 typedef struct { void *v0; GrayError *v1; } GrayResult_ptr;
 
 /* Wrap a bool-returning call into a GrayResult_bool.

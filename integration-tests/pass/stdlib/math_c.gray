@@ -7,8 +7,8 @@ import @math
 
 do main() {
     println("=== Math Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- Basic Arithmetic ---
 
@@ -22,8 +22,8 @@ do main() {
     }
 
     // neg
-    mut neg_val int = math.neg(5)
-    mut neg_val2 int = math.neg(-3)
+    mut neg_val i64 = math.neg(5)
+    mut neg_val2 i64 = math.neg(-3)
     if neg_val == -5 && neg_val2 == 3 {
         println("  [PASS] neg")
         passed += 1
@@ -33,9 +33,9 @@ do main() {
     }
 
     // sign
-    mut sign_pos int = math.sign(42)
-    mut sign_neg int = math.sign(-7)
-    mut sign_zero int = math.sign(0)
+    mut sign_pos i64 = math.sign(42)
+    mut sign_neg i64 = math.sign(-7)
+    mut sign_zero i64 = math.sign(0)
     if sign_pos == 1 && sign_neg == -1 && sign_zero == 0 {
         println("  [PASS] sign")
         passed += 1
@@ -65,9 +65,9 @@ do main() {
     }
 
     // clamp
-    mut clamp_above int = math.clamp(15, 0, 10)
-    mut clamp_below int = math.clamp(-5, 0, 10)
-    mut clamp_in int = math.clamp(5, 0, 10)
+    mut clamp_above i64 = math.clamp(15, 0, 10)
+    mut clamp_below i64 = math.clamp(-5, 0, 10)
+    mut clamp_in i64 = math.clamp(5, 0, 10)
     if clamp_above == 10 && clamp_below == 0 && clamp_in == 5 {
         println("  [PASS] clamp")
         passed += 1
@@ -76,24 +76,24 @@ do main() {
         failed += 1
     }
 
-    // abs/min/max/clamp on uint/u64 values >= 2^63, which have the same
+    // abs/min/max/clamp on u64/u64 values >= 2^63, which have the same
     // bit pattern as a negative int64 and must not be compared as signed.
     mut u_big u64 = 18446744073709551615
     mut u_small u64 = 5
     if math.max(u_big, u_small) == u_big && math.min(u_big, u_small) == u_small &&
        math.abs(u_big) == u_big && math.clamp(u_big, u_small, u_big) == u_big {
-        println("  [PASS] abs/min/max/clamp on uint")
+        println("  [PASS] abs/min/max/clamp on u64")
         passed += 1
     } otherwise {
-        println("  [FAIL] abs/min/max/clamp on uint: got max=${math.max(u_big, u_small)}, min=${math.min(u_big, u_small)}, abs=${math.abs(u_big)}, clamp=${math.clamp(u_big, u_small, u_big)}")
+        println("  [FAIL] abs/min/max/clamp on u64: got max=${math.max(u_big, u_small)}, min=${math.min(u_big, u_small)}, abs=${math.abs(u_big)}, clamp=${math.clamp(u_big, u_small, u_big)}")
         failed += 1
     }
 
     // --- Rounding ---
 
     // floor
-    mut floor_val float = math.floor(3.7)
-    mut floor_neg float = math.floor(-2.3)
+    mut floor_val f64 = math.floor(3.7)
+    mut floor_neg f64 = math.floor(-2.3)
     if floor_val == 3.0 && floor_neg == -3.0 {
         println("  [PASS] floor")
         passed += 1
@@ -103,8 +103,8 @@ do main() {
     }
 
     // ceil
-    mut ceil_val float = math.ceil(3.2)
-    mut ceil_neg float = math.ceil(-2.7)
+    mut ceil_val f64 = math.ceil(3.2)
+    mut ceil_neg f64 = math.ceil(-2.7)
     if ceil_val == 4.0 && ceil_neg == -2.0 {
         println("  [PASS] ceil")
         passed += 1
@@ -114,8 +114,8 @@ do main() {
     }
 
     // round
-    mut round_up float = math.round(3.5)
-    mut round_down float = math.round(3.4)
+    mut round_up f64 = math.round(3.5)
+    mut round_down f64 = math.round(3.4)
     if round_up == 4.0 && round_down == 3.0 {
         println("  [PASS] round")
         passed += 1
@@ -125,8 +125,8 @@ do main() {
     }
 
     // trunc
-    mut trunc_pos float = math.trunc(3.9)
-    mut trunc_neg float = math.trunc(-3.9)
+    mut trunc_pos f64 = math.trunc(3.9)
+    mut trunc_neg f64 = math.trunc(-3.9)
     if trunc_pos == 3.0 && trunc_neg == -3.0 {
         println("  [PASS] trunc")
         passed += 1
@@ -138,7 +138,7 @@ do main() {
     // --- Powers and Roots ---
 
     // pow
-    mut pow_val float = math.pow(2.0, 8.0)
+    mut pow_val f64 = math.pow(2.0, 8.0)
     if pow_val == 256.0 {
         println("  [PASS] pow")
         passed += 1
@@ -148,8 +148,8 @@ do main() {
     }
 
     // sqrt
-    mut sqrt_val float = math.sqrt(16.0)
-    mut sqrt_val2 float = math.sqrt(2.0)
+    mut sqrt_val f64 = math.sqrt(16.0)
+    mut sqrt_val2 f64 = math.sqrt(2.0)
     if sqrt_val == 4.0 && sqrt_val2 > 1.414 && sqrt_val2 < 1.415 {
         println("  [PASS] sqrt")
         passed += 1
@@ -159,7 +159,7 @@ do main() {
     }
 
     // cbrt
-    mut cbrt_val float = math.cbrt(27.0)
+    mut cbrt_val f64 = math.cbrt(27.0)
     if cbrt_val > 2.999 && cbrt_val < 3.001 {
         println("  [PASS] cbrt")
         passed += 1
@@ -169,7 +169,7 @@ do main() {
     }
 
     // hypot
-    mut hypot_val float = math.hypot(3.0, 4.0)
+    mut hypot_val f64 = math.hypot(3.0, 4.0)
     if hypot_val == 5.0 {
         println("  [PASS] hypot")
         passed += 1
@@ -179,7 +179,7 @@ do main() {
     }
 
     // exp
-    mut exp_val float = math.exp(1.0)
+    mut exp_val f64 = math.exp(1.0)
     if exp_val > 2.718 && exp_val < 2.719 {
         println("  [PASS] exp")
         passed += 1
@@ -189,7 +189,7 @@ do main() {
     }
 
     // exp2
-    mut exp2_val float = math.exp2(3.0)
+    mut exp2_val f64 = math.exp2(3.0)
     if exp2_val == 8.0 {
         println("  [PASS] exp2")
         passed += 1
@@ -201,7 +201,7 @@ do main() {
     // --- Logarithms ---
 
     // log (natural)
-    mut log_val float = math.log(math.E)
+    mut log_val f64 = math.log(math.E)
     if log_val > 0.999 && log_val < 1.001 {
         println("  [PASS] log")
         passed += 1
@@ -211,7 +211,7 @@ do main() {
     }
 
     // log2
-    mut log2_val float = math.log2(8.0)
+    mut log2_val f64 = math.log2(8.0)
     if log2_val > 2.999 && log2_val < 3.001 {
         println("  [PASS] log2")
         passed += 1
@@ -221,7 +221,7 @@ do main() {
     }
 
     // log10
-    mut log10_val float = math.log10(1000.0)
+    mut log10_val f64 = math.log10(1000.0)
     if log10_val > 2.999 && log10_val < 3.001 {
         println("  [PASS] log10")
         passed += 1
@@ -231,7 +231,7 @@ do main() {
     }
 
     // log_base
-    mut logb_val float = math.log_base(81.0, 3.0)
+    mut logb_val f64 = math.log_base(81.0, 3.0)
     if logb_val > 3.999 && logb_val < 4.001 {
         println("  [PASS] log_base")
         passed += 1
@@ -243,7 +243,7 @@ do main() {
     // --- Trigonometry ---
 
     // sin
-    mut sin_val float = math.sin(0.0)
+    mut sin_val f64 = math.sin(0.0)
     if sin_val > -0.001 && sin_val < 0.001 {
         println("  [PASS] sin")
         passed += 1
@@ -253,7 +253,7 @@ do main() {
     }
 
     // cos
-    mut cos_val float = math.cos(0.0)
+    mut cos_val f64 = math.cos(0.0)
     if cos_val > 0.999 && cos_val < 1.001 {
         println("  [PASS] cos")
         passed += 1
@@ -263,7 +263,7 @@ do main() {
     }
 
     // tan
-    mut tan_val float = math.tan(0.0)
+    mut tan_val f64 = math.tan(0.0)
     if tan_val > -0.001 && tan_val < 0.001 {
         println("  [PASS] tan")
         passed += 1
@@ -273,8 +273,8 @@ do main() {
     }
 
     // asin
-    mut asin_val float = math.asin(1.0)
-    mut half_pi float = math.PI / 2.0
+    mut asin_val f64 = math.asin(1.0)
+    mut half_pi f64 = math.PI / 2.0
     if asin_val > half_pi - 0.001 && asin_val < half_pi + 0.001 {
         println("  [PASS] asin")
         passed += 1
@@ -284,7 +284,7 @@ do main() {
     }
 
     // acos
-    mut acos_val float = math.acos(1.0)
+    mut acos_val f64 = math.acos(1.0)
     if acos_val > -0.001 && acos_val < 0.001 {
         println("  [PASS] acos")
         passed += 1
@@ -294,7 +294,7 @@ do main() {
     }
 
     // atan
-    mut atan_val float = math.atan(0.0)
+    mut atan_val f64 = math.atan(0.0)
     if atan_val > -0.001 && atan_val < 0.001 {
         println("  [PASS] atan")
         passed += 1
@@ -304,8 +304,8 @@ do main() {
     }
 
     // atan2
-    mut atan2_val float = math.atan2(1.0, 1.0)
-    mut quarter_pi float = math.PI / 4.0
+    mut atan2_val f64 = math.atan2(1.0, 1.0)
+    mut quarter_pi f64 = math.PI / 4.0
     if atan2_val > quarter_pi - 0.001 && atan2_val < quarter_pi + 0.001 {
         println("  [PASS] atan2")
         passed += 1
@@ -315,7 +315,7 @@ do main() {
     }
 
     // sinh
-    mut sinh_val float = math.sinh(0.0)
+    mut sinh_val f64 = math.sinh(0.0)
     if sinh_val > -0.001 && sinh_val < 0.001 {
         println("  [PASS] sinh")
         passed += 1
@@ -325,7 +325,7 @@ do main() {
     }
 
     // cosh
-    mut cosh_val float = math.cosh(0.0)
+    mut cosh_val f64 = math.cosh(0.0)
     if cosh_val > 0.999 && cosh_val < 1.001 {
         println("  [PASS] cosh")
         passed += 1
@@ -335,7 +335,7 @@ do main() {
     }
 
     // tanh
-    mut tanh_val float = math.tanh(0.0)
+    mut tanh_val f64 = math.tanh(0.0)
     if tanh_val > -0.001 && tanh_val < 0.001 {
         println("  [PASS] tanh")
         passed += 1
@@ -347,8 +347,8 @@ do main() {
     // --- Statistical ---
 
     // factorial
-    mut fact_val int = math.factorial(5)
-    mut fact_zero int = math.factorial(0)
+    mut fact_val i64 = math.factorial(5)
+    mut fact_zero i64 = math.factorial(0)
     if fact_val == 120 && fact_zero == 1 {
         println("  [PASS] factorial")
         passed += 1
@@ -358,7 +358,7 @@ do main() {
     }
 
     // gcd
-    mut gcd_val int = math.gcd(12, 8)
+    mut gcd_val i64 = math.gcd(12, 8)
     if gcd_val == 4 {
         println("  [PASS] gcd")
         passed += 1
@@ -368,7 +368,7 @@ do main() {
     }
 
     // lcm
-    mut lcm_val int = math.lcm(4, 6)
+    mut lcm_val i64 = math.lcm(4, 6)
     if lcm_val == 12 {
         println("  [PASS] lcm")
         passed += 1
@@ -436,7 +436,7 @@ do main() {
     }
 
     // deg_to_rad
-    mut rad_val float = math.deg_to_rad(180.0)
+    mut rad_val f64 = math.deg_to_rad(180.0)
     if rad_val > math.PI - 0.001 && rad_val < math.PI + 0.001 {
         println("  [PASS] deg_to_rad")
         passed += 1
@@ -446,7 +446,7 @@ do main() {
     }
 
     // rad_to_deg
-    mut deg_val float = math.rad_to_deg(math.PI)
+    mut deg_val f64 = math.rad_to_deg(math.PI)
     if deg_val > 179.999 && deg_val < 180.001 {
         println("  [PASS] rad_to_deg")
         passed += 1
@@ -458,7 +458,7 @@ do main() {
     // --- Utility ---
 
     // lerp
-    mut lerp_val float = math.lerp(0.0, 10.0, 0.5)
+    mut lerp_val f64 = math.lerp(0.0, 10.0, 0.5)
     if lerp_val > 4.999 && lerp_val < 5.001 {
         println("  [PASS] lerp")
         passed += 1
@@ -468,7 +468,7 @@ do main() {
     }
 
     // distance
-    mut dist_val float = math.distance(0.0, 0.0, 3.0, 4.0)
+    mut dist_val f64 = math.distance(0.0, 0.0, 3.0, 4.0)
     if dist_val > 4.999 && dist_val < 5.001 {
         println("  [PASS] distance")
         passed += 1

@@ -10,11 +10,11 @@
 
 do main() {
     println("=== Loop Non-Allocating Body Fast Path Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- for/range, pure accumulation (the fast path) --
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 1000) {
         sum = sum + i
     }
@@ -27,7 +27,7 @@ do main() {
     }
 
     // -- fast path filling an array element by element (index-target assign) --
-    mut squares [int] = {0, 0, 0, 0, 0, 0, 0, 0}
+    mut squares [i64] = {0, 0, 0, 0, 0, 0, 0, 0}
     for i in range(0, 8) {
         squares[i] = i * i
     }
@@ -40,10 +40,10 @@ do main() {
     }
 
     // -- while loop, scalar var-decl in body --
-    mut i int = 0
-    mut product int = 1
+    mut i i64 = 0
+    mut product i64 = 1
     while i < 6 {
-        mut factor int = i + 1
+        mut factor i64 = i + 1
         product = product * factor
         i = i + 1
     }
@@ -72,7 +72,7 @@ do main() {
     // -- non-allocating loop nested inside an allocating loop --
     mut report string = ""
     for outer in range(0, 3) {
-        mut rowsum int = 0
+        mut rowsum i64 = 0
         for inner in range(0, 10) {
             rowsum = rowsum + inner * (outer + 1)
         }
@@ -88,7 +88,7 @@ do main() {
 
     // -- allocating loop nested inside a non-allocating-looking outer --
     // outer body contains a nested for, so outer keeps its arena
-    mut total int = 0
+    mut total i64 = 0
     for a in range(0, 5) {
         for b in range(0, 5) {
             total = total + 1

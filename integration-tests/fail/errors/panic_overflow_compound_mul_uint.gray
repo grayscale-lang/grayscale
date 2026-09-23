@@ -1,9 +1,0 @@
-/*
- * Error Test: integer-overflow (uint *= overflow)
- * Expected: "unsigned multiplication result is too large"
- */
-
-do main() {
-    mut x uint = 9223372036854775808  // > UINT64_MAX / 3
-    x *= 3
-}

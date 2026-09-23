@@ -9,12 +9,12 @@ import lib "./testlib/lib.gray"
 
 do main() {
     println("=== For_each Namespaced Collection Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: for_each over namespaced string array
     println("Items from lib.Items:")
-    mut item_count int = 0
+    mut item_count i64 = 0
     for_each item in lib.Items {
         println("  ${item}")
         item_count += 1
@@ -27,16 +27,16 @@ do main() {
         failed += 1
     }
 
-    // Test 2: for_each over namespaced int array with accumulation
-    mut sum int = 0
+    // Test 2: for_each over namespaced i64 array with accumulation
+    mut sum i64 = 0
     for_each n in lib.Numbers {
         sum += n
     }
     if sum == 100 {
-        println("  [PASS] for_each over namespaced int array (sum=${sum})")
+        println("  [PASS] for_each over namespaced i64 array (sum=${sum})")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each over namespaced int array: expected 100, got ${sum}")
+        println("  [FAIL] for_each over namespaced i64 array: expected 100, got ${sum}")
         failed += 1
     }
 

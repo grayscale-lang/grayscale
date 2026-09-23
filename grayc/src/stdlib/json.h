@@ -31,22 +31,22 @@ GrayString gray_json_enum_from_str(GrayString raw,
  *@module json
  *@group Encoding
  *@sig encode(value T) -> string
- *@desc Encodes a value as a JSON string. Accepts any primitive (int, uint, sized ints, byte, float, f32/f64, char, bool, string), a flat array of primitives, or a string-keyed map of primitives. char is encoded as its codepoint number. For #json structs use stringify() instead.
+ *@desc Encodes a value as a JSON string. Accepts any primitive (integers, f32/f64, char, bool, string), a flat array of primitives, or a string-keyed map of primitives. char is encoded as its codepoint number. For #json structs use stringify() instead.
  *@example
  *   import @json
  *   mut m map[string:string] = {"name": "Alice"}
  *   println(json.encode(m))
  *   println(json.encode(42))
  *   println(json.encode(true))
- *   mut arr [int] = {1, 2, 3}
+ *   mut arr [i64] = {1, 2, 3}
  *   println(json.encode(arr))
  *@end
  */
 /* json.encode(value) — convert map to JSON string */
 GrayString gray_json_encode_map(GrayArena *arena, GrayMap *map);
 
-/* json.encode(array) — convert typed arrays to JSON. The int/uint/float
- * encoders read each slot at its real width (byte, i16, f32, ...). */
+/* json.encode(array) — convert typed arrays to JSON. The signed/unsigned/float
+ * encoders read each slot at its real width (u8, i16, f32, ...). */
 GrayString gray_json_encode_array_int(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_uint(GrayArena *arena, GrayArray *arr);
 GrayString gray_json_encode_array_float(GrayArena *arena, GrayArray *arr);
@@ -70,7 +70,7 @@ GrayString gray_json_encode_map_bool(GrayArena *arena, GrayMap *map);
  *   #json
  *   const User struct {
  *       name string
- *       age int
+ *       age i64
  *   }
  *   do main() {
  *       mut u User = json.parse("{\"name\": \"Alice\", \"age\": 25}")
@@ -104,7 +104,7 @@ GrayMap gray_json_decode(GrayArena *arena, GrayString text);
  *   #json
  *   const User struct {
  *       name string
- *       age int
+ *       age i64
  *   }
  *   do main() {
  *       mut u User = json.parse("{\"name\": \"Alice\", \"age\": 25}")
@@ -131,7 +131,7 @@ bool gray_json_is_valid(GrayString text);
 /*@man pretty_print
  *@module json
  *@group Formatting
- *@sig pretty_print(m map[K:V], indent int) -> string
+ *@sig pretty_print(m map[K:V], indent i64) -> string
  *@desc Returns a pretty-printed JSON string from a map, indented by indent spaces per level.
  *@example
  *   import @json

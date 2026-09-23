@@ -1,4 +1,4 @@
-const MAX_SIZE int = 100
+const MAX_SIZE i64 = 100
 
 do greet(name string) -> string {
     return "Hello, ${name}!"

@@ -3,10 +3,10 @@
  */
 
 const Pair struct {
-    left int
-    right int
+    left i64
+    right i64
 }
 
-do sum(b Pair) -> int {
+do sum(b Pair) -> i64 {
     return b.left + b.right
 }

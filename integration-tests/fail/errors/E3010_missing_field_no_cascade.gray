@@ -9,7 +9,7 @@
 // expect-error-count: 1
 
 const P struct {
-    a int
+    a i64
 }
 
 do main() {

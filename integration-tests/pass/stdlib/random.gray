@@ -6,14 +6,14 @@ import @random
 
 do main() {
     println("=== @random Standard Library Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== random.rand_float ====================
     println("  -- random.rand_float --")
 
     // Test 1: random.rand_float() returns value in [0, 1)
-    mut f1 float = random.rand_float()
+    mut f1 f64 = random.rand_float()
     if f1 >= 0.0 && f1 < 1.0 {
         println("  [PASS] random.rand_float() in range [0, 1)")
         passed += 1
@@ -23,7 +23,7 @@ do main() {
     }
 
     // Test 2: random.rand_float(min, max) returns value in [min, max)
-    mut f2 float = random.rand_float(10.0, 20.0)
+    mut f2 f64 = random.rand_float(10.0, 20.0)
     if f2 >= 10.0 && f2 < 20.0 {
         println("  [PASS] random.rand_float(10, 20) in range")
         passed += 1
@@ -36,7 +36,7 @@ do main() {
     println("  -- random.rand_int --")
 
     // Test 3: random.rand_int(max) returns value in [0, max)
-    mut i1 int = random.rand_int(100)
+    mut i1 i64 = random.rand_int(100)
     if i1 >= 0 && i1 < 100 {
         println("  [PASS] random.rand_int(100) in range [0, 100)")
         passed += 1
@@ -46,7 +46,7 @@ do main() {
     }
 
     // Test 4: random.rand_int(min, max) returns value in [min, max)
-    mut i2 int = random.rand_int(50, 60)
+    mut i2 i64 = random.rand_int(50, 60)
     if i2 >= 50 && i2 < 60 {
         println("  [PASS] random.rand_int(50, 60) in range")
         passed += 1
@@ -69,8 +69,8 @@ do main() {
     }
 
     // Test 6: random.rand_bool() produces both values (statistical test)
-    mut true_count int = 0
-    mut false_count int = 0
+    mut true_count i64 = 0
+    mut false_count i64 = 0
     for i in range(100) {
         if random.rand_bool() {
             true_count += 1
@@ -90,7 +90,7 @@ do main() {
     println("  -- random.rand_byte --")
 
     // Test 7: random.rand_byte() returns value in [0, 255]
-    mut by byte = random.rand_byte()
+    mut by u8 = random.rand_byte()
     if by >= 0 && by <= 255 {
         println("  [PASS] random.rand_byte() in range [0, 255]")
         passed += 1
@@ -104,7 +104,7 @@ do main() {
 
     // Test 8: random.rand_char() returns printable ASCII
     mut c1 char = random.rand_char()
-    mut c1_int int = int(c1)
+    mut c1_int i64 = cast(c1, i64)
     if c1_int >= 32 && c1_int <= 126 {
         println("  [PASS] random.rand_char() in printable ASCII range")
         passed += 1
@@ -137,14 +137,14 @@ do main() {
         failed += 1
     }
 
-    // Test 11: random.choice with int array
-    mut nums [int] = {10, 20, 30, 40, 50}
-    mut num_choice int = random.choice(nums)
+    // Test 11: random.choice with i64 array
+    mut nums [i64] = {10, 20, 30, 40, 50}
+    mut num_choice i64 = random.choice(nums)
     if num_choice == 10 || num_choice == 20 || num_choice == 30 || num_choice == 40 || num_choice == 50 {
-        println("  [PASS] random.choice() with int array")
+        println("  [PASS] random.choice() with i64 array")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.choice() int: got ${num_choice}")
+        println("  [FAIL] random.choice() i64: got ${num_choice}")
         failed += 1
     }
 
@@ -152,8 +152,8 @@ do main() {
     println("  -- random.shuffle --")
 
     // Test 12: random.shuffle returns array of same length
-    mut original [int] = {1, 2, 3, 4, 5}
-    mut shuffled [int] = random.shuffle(original)
+    mut original [i64] = {1, 2, 3, 4, 5}
+    mut shuffled [i64] = random.shuffle(original)
     if len(shuffled) == 5 {
         println("  [PASS] random.shuffle() preserves length")
         passed += 1
@@ -163,8 +163,8 @@ do main() {
     }
 
     // Test 13: random.shuffle contains same elements (sum check)
-    mut original_sum int = 0
-    mut shuffled_sum int = 0
+    mut original_sum i64 = 0
+    mut shuffled_sum i64 = 0
     for i in range(5) {
         original_sum += original[i]
         shuffled_sum += shuffled[i]
@@ -190,7 +190,7 @@ do main() {
     println("  -- random.sample --")
 
     // Test 15: random.sample returns correct count
-    mut pool [int] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    mut pool [i64] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
     mut sampled = random.sample(pool, 3)
     if len(sampled) == 3 {
         println("  [PASS] random.sample(arr, 3) returns 3 elements")

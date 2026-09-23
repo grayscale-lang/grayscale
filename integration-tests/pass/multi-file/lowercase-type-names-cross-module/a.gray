@@ -1,5 +1,5 @@
 const b_Point struct {
-    x int
+    x i64
 }
 
 const b_Color enum {

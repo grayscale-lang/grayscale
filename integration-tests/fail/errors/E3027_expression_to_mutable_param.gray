@@ -3,7 +3,7 @@
  * Expected: "cannot pass a literal or expression to mutable parameter" error
  */
 
-do modify(&x int) {
+do modify(&x i64) {
     x = 99
 }
 

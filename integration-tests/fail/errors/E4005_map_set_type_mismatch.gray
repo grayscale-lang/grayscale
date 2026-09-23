@@ -6,6 +6,6 @@
 import @maps
 
 do main() {
-    mut m map[string:int] = {"a": 1, "b": 2}
-    maps.set(m, "c", "wrong")  // Should fail: string value into int map
+    mut m map[string:i64] = {"a": 1, "b": 2}
+    maps.set(m, "c", "wrong")  // Should fail: string value into i64 map
 }

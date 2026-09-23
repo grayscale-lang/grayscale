@@ -6,38 +6,38 @@
  */
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
-do bump(&n int) {
+do bump(&n i64) {
     n = n + 1
 }
 
-do write_through(out ^int, v int) {
+do write_through(out ^i64, v i64) {
     out^ = v
 }
 
-do set_field(&b Box, target ^int) {
+do set_field(&b Box, target ^i64) {
     b.p = target
 }
 
-do rebind_local_copy(p ^int) {
+do rebind_local_copy(p ^i64) {
     // p is a local copy; rebinding it escapes nothing
-    mut local int = 7
+    mut local i64 = 7
     p = addr(local)
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut x int = 5
+    mut x i64 = 5
     bump(x)
 
-    mut y int = 10
+    mut y i64 = 10
     write_through(addr(y), 99)
 
-    mut z int = 1
+    mut z i64 = 1
     mut box Box = Box{ p: nil }
     set_field(box, addr(z))
 
@@ -45,7 +45,7 @@ do main() {
 
     // A heap object's pointer field set to a same-scope local's address, with
     // the object never escaping this function, is safe.
-    mut w int = 77
+    mut w i64 = 77
     mut n ^Box = new(Box)
     n^.p = addr(w)
 

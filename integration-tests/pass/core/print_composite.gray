@@ -4,35 +4,35 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Person struct {
     name string
-    age int
+    age i64
 }
 
 const Team struct {
     name string
-    scores [int]
+    scores [i64]
 }
 
 do main() {
     println("=== Print Composite Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: println on [int] array
-    mut nums [int] = {1, 2, 3}
+    // Test 1: println on [i64] array
+    mut nums [i64] = {1, 2, 3}
     println(nums)
-    println("  [PASS] println array [int]")
+    println("  [PASS] println array [i64]")
     passed += 1
 
-    // Test 2: println on map[string:int]
-    mut ages map[string:int] = {"alice": 30, "bob": 25}
+    // Test 2: println on map[string:i64]
+    mut ages map[string:i64] = {"alice": 30, "bob": 25}
     println(ages)
-    println("  [PASS] println map[string:int]")
+    println("  [PASS] println map[string:i64]")
     passed += 1
 
     // Test 3: println on struct
@@ -49,8 +49,8 @@ do main() {
     println("  [PASS] println pointer")
     passed += 1
 
-    // Test 5: println on nested [[int]]
-    mut matrix [[int]] = {{1, 2}, {3, 4}}
+    // Test 5: println on nested [[i64]]
+    mut matrix [[i64]] = {{1, 2}, {3, 4}}
     println(matrix)
     println("  [PASS] println nested array")
     passed += 1
@@ -68,14 +68,14 @@ do main() {
     passed += 1
 
     // Test 8: print (no newline) with array
-    mut arr [int] = {10, 20}
+    mut arr [i64] = {10, 20}
     print(arr)
     println("")
     println("  [PASS] print array (no newline)")
     passed += 1
 
     // Test 9: empty array prints {}
-    mut empty [int] = {}
+    mut empty [i64] = {}
     mut empty_str string = "${empty}"
     if empty_str == "{}" {
         println("  [PASS] empty array prints {}")
@@ -86,7 +86,7 @@ do main() {
     }
 
     // Test 10: empty map prints {:}
-    mut empty_map map[string:int] = {:}
+    mut empty_map map[string:i64] = {:}
     mut map_str string = "${empty_map}"
     if map_str == "{:}" {
         println("  [PASS] empty map prints {:}")
@@ -97,7 +97,7 @@ do main() {
     }
 
     // Test 11: zero-initialized empty map prints {:}
-    mut zero_map map[int:string]
+    mut zero_map map[i64:string]
     mut zero_str string = "${zero_map}"
     if zero_str == "{:}" {
         println("  [PASS] zero-init map prints {:}")

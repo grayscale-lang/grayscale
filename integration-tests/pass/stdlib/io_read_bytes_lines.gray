@@ -6,8 +6,8 @@
 import @io
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut test_file string = "/tmp/gray_io_readtest.txt"
     mut _, _ = io.write_file(test_file, "line1\nline2\nline3")
@@ -179,7 +179,7 @@ do main() {
     mut bin_file string = "${tdir}/gray_io_bytes.bin"
     mut w_ok bool, werr = io.write_bytes(bin_file, {72, 105})
     mut a_ok bool, aerr = io.append_bytes(bin_file, {33})
-    mut round [byte], rerr = io.read_bytes(bin_file)
+    mut round [u8], rerr = io.read_bytes(bin_file)
     if werr == nil && aerr == nil && rerr == nil &&
        w_ok && a_ok && len(round) == 3 && round[0] == 72 && round[2] == 33 {
         println("  [PASS] write_bytes / append_bytes")

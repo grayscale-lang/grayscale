@@ -2,7 +2,7 @@
 import @arrays
 
 do main() {
-    mut arr [int] = {}
+    mut arr [i64] = {}
     arrays.remove_first(&arr)
     println(arr)
 }

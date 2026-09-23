@@ -11,10 +11,10 @@ import @arrays
 
 const Person struct {
     name string
-    age int
+    age i64
 }
 
-do get_array() -> [int] {
+do get_array() -> [i64] {
     return {1, 2, 3}
 }
 
@@ -24,11 +24,11 @@ do get_person() -> Person {
 
 do main() {
     println("=== Mutability Sync Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: mut array from function is mutable
-    mut arr1 [int] = get_array()
+    mut arr1 [i64] = get_array()
     arrays.append(arr1, 4)
     if len(arr1) == 4 && arr1[3] == 4 {
         println("  [PASS] mut array from function is mutable")
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 2: mut array literal is mutable
-    mut arr2 [int] = {10, 20, 30}
+    mut arr2 [i64] = {10, 20, 30}
     arrays.append(arr2, 40)
     if len(arr2) == 4 {
         println("  [PASS] mut array literal is mutable")
@@ -61,7 +61,7 @@ do main() {
     }
 
     // Test 4: mut map is mutable
-    mut m1 map[string:int] = {"a": 1}
+    mut m1 map[string:i64] = {"a": 1}
     m1["b"] = 2
     if m1["b"] == 2 {
         println("  [PASS] mut map is mutable")
@@ -72,8 +72,8 @@ do main() {
     }
 
     // Test 5: copy() creates mutable copy
-    mut arr3 [int] = {1, 2, 3}
-    mut arr4 [int] = copy(arr3)
+    mut arr3 [i64] = {1, 2, 3}
+    mut arr4 [i64] = copy(arr3)
     arrays.append(arr4, 4)
     if len(arr4) == 4 && len(arr3) == 3 {
         println("  [PASS] copy() creates independent mutable copy")

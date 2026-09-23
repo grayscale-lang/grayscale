@@ -79,12 +79,12 @@ static void print_core_str(GrayString str, FILE *stream, bool newline) {
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_int(int64_t value, FILE *stream, bool newline) {
+static void print_core_i64(int64_t value, FILE *stream, bool newline) {
     fprintf(stream, "%" PRId64, value);
     if (newline) fputc('\n', stream);
 }
 
-static void print_core_uint(uint64_t value, FILE *stream, bool newline) {
+static void print_core_u64(uint64_t value, FILE *stream, bool newline) {
     fprintf(stream, "%" PRIu64, value);
     if (newline) fputc('\n', stream);
 }
@@ -120,8 +120,8 @@ static void print_core_addr(uintptr_t value, FILE *stream, bool newline) {
     void gray_builtin_eprint_##SUFFIX(CTYPE value)   { print_core_##SUFFIX(value, stderr, false); }
 
 PRINT_FAMILY(str,   GrayString)
-PRINT_FAMILY(int,   int64_t)
-PRINT_FAMILY(uint,  uint64_t)
+PRINT_FAMILY(i64,   int64_t)
+PRINT_FAMILY(u64,   uint64_t)
 PRINT_FAMILY(bool,  bool)
 PRINT_FAMILY(char,  int32_t)
 PRINT_FAMILY(addr,  uintptr_t)
@@ -269,11 +269,11 @@ int64_t gray_builtin_system(GrayString cmd) {
 
 /* --- to_string --- */
 
-GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t value) {
+GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value) {
     return gray_strconv_from_int(arena, value);
 }
 
-GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t value) {
+GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value) {
     return gray_strconv_from_uint(arena, value);
 }
 
@@ -293,7 +293,7 @@ GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value) {
 
 /* --- from_string --- */
 
-int64_t gray_builtin_string_to_int(GrayString str) {
+int64_t gray_builtin_string_to_i64(GrayString str) {
     char buf[GRAY_FLOAT_STR_BUF];
     int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
     memcpy(buf, str.data, (size_t)len);
@@ -301,12 +301,12 @@ int64_t gray_builtin_string_to_int(GrayString str) {
     char *end = NULL;
     int64_t result = strtoll(buf, &end, 10);
     if (end == buf || (*end != '\0' && *end != ' ')) {
-        gray_panic_code("P0084", "cannot convert '%s' to int", buf);
+        gray_panic_code("P0084", "cannot convert '%s' to i64", buf);
     }
     return result;
 }
 
-double gray_builtin_string_to_float(GrayString str) {
+double gray_builtin_string_to_f64(GrayString str) {
     char buf[GRAY_FLOAT_STR_BUF];
     int len = str.len < (int32_t)sizeof(buf) - 1 ? str.len : (int32_t)sizeof(buf) - 1;
     memcpy(buf, str.data, (size_t)len);
@@ -314,7 +314,7 @@ double gray_builtin_string_to_float(GrayString str) {
     char *end = NULL;
     double result = strtod(buf, &end);
     if (end == buf || (*end != '\0' && *end != ' ')) {
-        gray_panic_code("P0085", "cannot convert '%s' to float", buf);
+        gray_panic_code("P0085", "cannot convert '%s' to f64", buf);
     }
     return result;
 }
@@ -374,9 +374,6 @@ static int format_value_into(char *buf, size_t buf_size, int pos, int kind,
         break;
     case 4:
         pos += snprintf(buf + pos, buf_size - pos, "%" PRIu64, element_as_unsigned(value_ptr, value_size));
-        break;
-    case 5:
-        pos += snprintf(buf + pos, buf_size - pos, "%u", (unsigned)*(const uint8_t *)value_ptr);
         break;
     case 6: {
         int32_t cp = *(const int32_t *)value_ptr;

@@ -4,7 +4,7 @@
  */
 
 do main() {
-    for (i int in range(0, 3) {
-        mut x int = i
+    for (i i64 in range(0, 3) {
+        mut x i64 = i
     }
 }

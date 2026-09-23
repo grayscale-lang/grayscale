@@ -3,11 +3,11 @@
  * Expected: "missing return" or "must return"
  */
 
-do getValue() -> int {
-    mut x int = 5
+do getValue() -> i64 {
+    mut x i64 = 5
     // missing return statement
 }
 
 do main() {
-    mut v int = getValue()
+    mut v i64 = getValue()
 }

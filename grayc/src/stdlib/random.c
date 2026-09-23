@@ -57,13 +57,13 @@ void gray_random_seed(int64_t value) {
     _user_seeded = true;
 }
 
-double gray_random_float_unit(void) {
+double gray_random_f64_unit(void) {
     ensure_seed();
     return (double)rand() / RAND_MAX;
 }
 
 double gray_random_float_range(double min, double max) {
-    return min + gray_random_float_unit() * (max - min);
+    return min + gray_random_f64_unit() * (max - min);
 }
 
 /* Generate a uniform random uint64_t across the full 64-bit range.

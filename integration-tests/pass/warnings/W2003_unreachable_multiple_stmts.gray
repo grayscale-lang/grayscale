@@ -4,10 +4,10 @@
  */
 
 
-do example() -> int {
+do example() -> i64 {
     return 1
-    mut a int = 2  // unreachable — should warn here
-    mut b int = 3  // also unreachable but only one warning per block
+    mut a i64 = 2  // unreachable — should warn here
+    mut b i64 = 3  // also unreachable but only one warning per block
     println(a + b)
 }
 

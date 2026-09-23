@@ -1,7 +1,7 @@
 /* Error Test: E3121 - pointer used as when condition */
 do main() {
-    mut x int = 10
-    mut p ^int = addr(x)
+    mut x i64 = 10
+    mut p ^i64 = addr(x)
     when p {
         default { println("default") }
     }

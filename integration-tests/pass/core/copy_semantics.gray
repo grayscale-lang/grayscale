@@ -9,19 +9,19 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Nested struct {
     inner Point
-    value int
+    value i64
 }
 
 do main() {
     println("=== Copy Semantics Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== COPY-BY-DEFAULT ====================
     println("  -- Copy-by-Default --")
@@ -39,8 +39,8 @@ do main() {
     }
 
     // Test 2: array copy-by-default
-    mut arr1 [int] = {1, 2, 3}
-    mut arr2 [int] = arr1
+    mut arr1 [i64] = {1, 2, 3}
+    mut arr2 [i64] = arr1
     arr2[0] = 999
     if arr1[0] == 1 && arr2[0] == 999 {
         println("  [PASS] array assignment creates copy")
@@ -92,7 +92,7 @@ do main() {
     }
 
     // Test 6: ref() for primitive sharing (use type inference)
-    mut x int = 10
+    mut x i64 = 10
     mut y = ref(x)
     y = 99
     if x == 99 && y == 99 {
@@ -104,7 +104,7 @@ do main() {
     }
 
     // Test 7: ref() for array sharing (use type inference)
-    mut arr3 [int] = {10, 20, 30}
+    mut arr3 [i64] = {10, 20, 30}
     mut arr4 = ref(arr3)
     arr4[0] = 999
     if arr3[0] == 999 && arr4[0] == 999 {
@@ -116,7 +116,7 @@ do main() {
     }
 
     // Test 8: multiple refs to same variable (use type inference)
-    mut val int = 42
+    mut val i64 = 42
     mut ref1 = ref(val)
     mut ref2 = ref(val)
     ref1 = 100

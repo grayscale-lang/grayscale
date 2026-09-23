@@ -17,7 +17,7 @@ const Priority enum {
 }
 
 // Type omitted — inferred as Direction from default
-do move(dir = Direction.NORTH) -> int {
+do move(dir = Direction.NORTH) -> i64 {
     when dir {
         is Direction.NORTH { return 1 }
         is Direction.SOUTH { return 2 }
@@ -28,7 +28,7 @@ do move(dir = Direction.NORTH) -> int {
 }
 
 // Mixed: explicit type for first param, inferred for second
-do task(name string, p = Priority.MEDIUM) -> int {
+do task(name string, p = Priority.MEDIUM) -> i64 {
     when p {
         is Priority.LOW    { return 1 }
         is Priority.MEDIUM { return 2 }
@@ -38,8 +38,8 @@ do task(name string, p = Priority.MEDIUM) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: call with no args, uses default Direction.NORTH
     mut r1 = move()

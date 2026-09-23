@@ -6,8 +6,8 @@
 
 do main() {
     println("=== Bigint Arrays Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a [i128] = {i128(10), i128(20), i128(30)}
     if a[1] == i128(20) {

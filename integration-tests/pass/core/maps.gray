@@ -5,19 +5,19 @@
 import @maps
 
 const Entry struct {
-    items [int]
+    items [i64]
 }
 
 do main() {
     println("=== Maps Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== MAP LITERALS ====================
     println("  -- Map Literals --")
 
-    // Test 1: string:int map
-    mut ages map[string:int] = {
+    // Test 1: string:i64 map
+    mut ages map[string:i64] = {
         "alice": 30,
         "bob": 25,
         "charlie": 35
@@ -31,7 +31,7 @@ do main() {
     }
 
     // Test 2: map access
-    mut alice_age int = ages["alice"]
+    mut alice_age i64 = ages["alice"]
     if alice_age == 30 {
         println("  [PASS] ages[\"alice\"] = 30")
         passed += 1
@@ -63,8 +63,8 @@ do main() {
     // ==================== INT KEY MAPS ====================
     println("  -- Int Key Maps --")
 
-    // Test 5: int:string map
-    mut lookup map[int:string] = {
+    // Test 5: i64:string map
+    mut lookup map[i64:string] = {
         1: "one",
         2: "two",
         3: "three"
@@ -80,7 +80,7 @@ do main() {
     // ==================== MAP FUNCTIONS ====================
     println("  -- Map Functions --")
 
-    mut m map[string:int] = {"a": 1, "b": 2, "c": 3}
+    mut m map[string:i64] = {"a": 1, "b": 2, "c": 3}
 
     // Test 6: maps.get_keys
     mut keys [string] = maps.get_keys(m)
@@ -93,7 +93,7 @@ do main() {
     }
 
     // Test 7: maps.get_values
-    mut values [int] = maps.get_values(m)
+    mut values [i64] = maps.get_values(m)
     if len(values) == 3 {
         println("  [PASS] maps.get_values() returns 3 values")
         passed += 1
@@ -123,7 +123,7 @@ do main() {
     }
 
     // Test 10: maps.remove_key
-    mut del_map map[string:int] = {"x": 10, "y": 20}
+    mut del_map map[string:i64] = {"x": 10, "y": 20}
     maps.remove_key(del_map, "x")
     if len(del_map) == 1 && !maps.has_key(del_map, "x") {
         println("  [PASS] maps.remove_key() removed key")
@@ -134,7 +134,7 @@ do main() {
     }
 
     // Test 11: maps.clear
-    mut clear_map map[string:int] = {"a": 1, "b": 2}
+    mut clear_map map[string:i64] = {"a": 1, "b": 2}
     maps.clear(clear_map)
     if len(clear_map) == 0 {
         println("  [PASS] maps.clear() empties map")
@@ -147,7 +147,7 @@ do main() {
     // ==================== IN/NOT_IN OPERATORS ====================
     println("  -- in/not_in Operators --")
 
-    mut test_map map[string:int] = {"foo": 1, "bar": 2, "baz": 3}
+    mut test_map map[string:i64] = {"foo": 1, "bar": 2, "baz": 3}
 
     // Test 12: 'in' with key that exists
     if "foo" in test_map {
@@ -185,8 +185,8 @@ do main() {
         passed += 1
     }
 
-    // Test 16: 'in' with int keys
-    mut int_map map[int:string] = {1: "one", 2: "two", 3: "three"}
+    // Test 16: 'in' with i64 keys
+    mut int_map map[i64:string] = {1: "one", 2: "two", 3: "three"}
     if 2 in int_map {
         println("  [PASS] 2 in int_map = true")
         passed += 1
@@ -195,7 +195,7 @@ do main() {
         failed += 1
     }
 
-    // Test 17: 'not_in' with int keys
+    // Test 17: 'not_in' with i64 keys
     if 99 not_in int_map {
         println("  [PASS] 99 not_in int_map = true")
         passed += 1

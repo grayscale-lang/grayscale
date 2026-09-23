@@ -15,10 +15,10 @@
 import "./helper.gray"
 
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(x int) -> Vec {
+    do create(x i64) -> Vec {
         return Vec{x: x, y: x * 2}
     }
 }

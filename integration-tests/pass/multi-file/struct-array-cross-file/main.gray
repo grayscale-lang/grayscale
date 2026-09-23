@@ -1,8 +1,8 @@
 import and use "./types.gray"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut items [Item] = {
         Item{name: "Sword", weight: 5},

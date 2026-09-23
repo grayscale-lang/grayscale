@@ -3,9 +3,9 @@
  * Expected: E4001 with hint — variable exists inside if block but not at function scope
  */
 
-do getValue(x int) -> (result int) {
+do getValue(x i64) -> (result i64) {
     if x > 0 {
-        mut result int = 42
+        mut result i64 = 42
     }
     return result
 }

@@ -8,11 +8,11 @@ import @atomic
 
 do main() {
     println("=== Atomic Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut val int = 0
-    mut ptr ^int = addr(val)
+    mut val i64 = 0
+    mut ptr ^i64 = addr(val)
 
     // store and load
     atomic.store(ptr, 100)
@@ -25,7 +25,7 @@ do main() {
     }
 
     // add returns previous value
-    mut prev int = atomic.add(ptr, 25)
+    mut prev i64 = atomic.add(ptr, 25)
     if prev == 100 && atomic.load(ptr) == 125 {
         println("  [PASS] add")
         passed += 1
@@ -35,7 +35,7 @@ do main() {
     }
 
     // sub returns previous value
-    mut prev2 int = atomic.sub(ptr, 50)
+    mut prev2 i64 = atomic.sub(ptr, 50)
     if prev2 == 125 && atomic.load(ptr) == 75 {
         println("  [PASS] sub")
         passed += 1
@@ -45,7 +45,7 @@ do main() {
     }
 
     // exchange returns old value
-    mut old int = atomic.exchange(ptr, 999)
+    mut old i64 = atomic.exchange(ptr, 999)
     if old == 75 && atomic.load(ptr) == 999 {
         println("  [PASS] exchange")
         passed += 1
@@ -99,10 +99,10 @@ do main() {
     passed += 1
 
     // bitwise atomics: each returns the previous value and applies the op
-    mut bits int = 0b1100
-    mut bptr ^int = addr(bits)
+    mut bits i64 = 0b1100
+    mut bptr ^i64 = addr(bits)
 
-    mut and_prev int = atomic.and(bptr, 0b1010)
+    mut and_prev i64 = atomic.and(bptr, 0b1010)
     if and_prev == 0b1100 && atomic.load(bptr) == 0b1000 {
         println("  [PASS] and")
         passed += 1
@@ -112,7 +112,7 @@ do main() {
     }
 
     bits = 0b1100
-    mut or_prev int = atomic.or(bptr, 0b0011)
+    mut or_prev i64 = atomic.or(bptr, 0b0011)
     if or_prev == 0b1100 && atomic.load(bptr) == 0b1111 {
         println("  [PASS] or")
         passed += 1
@@ -122,7 +122,7 @@ do main() {
     }
 
     bits = 0b1100
-    mut xor_prev int = atomic.xor(bptr, 0b1010)
+    mut xor_prev i64 = atomic.xor(bptr, 0b1010)
     if xor_prev == 0b1100 && atomic.load(bptr) == 0b0110 {
         println("  [PASS] xor")
         passed += 1

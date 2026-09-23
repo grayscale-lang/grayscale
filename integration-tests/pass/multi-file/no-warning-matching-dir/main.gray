@@ -6,8 +6,8 @@ import "./mymod.gray"
 
 do main() {
     println("=== No Warning Matching Dir Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test that module works correctly (no warnings should be shown)
     mut val = mymod.get_value()

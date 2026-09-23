@@ -104,9 +104,7 @@ GrayUUID gray_uuid_from_bytes(GrayArena *arena, GrayArray *bytes) {
     }
     uint8_t raw[16];
     for (int i = 0; i < 16; i++) {
-        raw[i] = (bytes->elem_size == 1)
-            ? ((const uint8_t *)bytes->data)[i]
-            : (uint8_t)((const int64_t *)bytes->data)[i];
+        raw[i] = ((const uint8_t *)bytes->data)[i];
     }
     char buf[GRAY_UUID_LEN + 1];
     gray_uuid_format_hyphenated(raw, buf);

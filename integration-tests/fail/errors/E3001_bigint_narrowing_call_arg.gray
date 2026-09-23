@@ -1,4 +1,4 @@
-do wants_int(v int) {
+do wants_int(v i64) {
     println(v)
 }
 

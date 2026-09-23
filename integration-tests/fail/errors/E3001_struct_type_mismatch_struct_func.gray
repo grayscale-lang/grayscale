@@ -4,21 +4,21 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do distance(a Point, b Point) -> int {
+    do distance(a Point, b Point) -> i64 {
         return a.x - b.x
     }
 }
 
 const Color struct {
-    r int
-    g int
+    r i64
+    g i64
 }
 
 do main() {
     mut c = Color{r: 255, g: 0}
     mut p = Point{x: 1, y: 2}
-    mut d int = Point.distance(c, p)
+    mut d i64 = Point.distance(c, p)
 }

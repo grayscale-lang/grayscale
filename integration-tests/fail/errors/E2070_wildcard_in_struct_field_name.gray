@@ -8,7 +8,7 @@
  */
 
 const S struct {
-    ? int
+    ? i64
 }
 
 do main() {}

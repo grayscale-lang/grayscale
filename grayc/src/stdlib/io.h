@@ -46,8 +46,8 @@ GrayString gray_io_read_file(GrayArena *arena, GrayString path);
 /*@man read_bytes
  *@module io
  *@group File Reading
- *@sig read_bytes(path string) -> ([byte], Error)
- *@desc Reads the entire file at path and returns its contents as a byte array. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@sig read_bytes(path string) -> ([u8], Error)
+ *@desc Reads the entire file at path and returns its contents as a u8 array. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
  *   mut data, err = io.read_bytes("image.png")
@@ -58,7 +58,7 @@ GrayArray  gray_io_read_bytes(GrayArena *arena, GrayString path);
 /*@man read_lines
  *@module io
  *@group File Reading
- *@sig read_lines(path string, limit int = 0) -> ([string], Error)
+ *@sig read_lines(path string, limit i64 = 0) -> ([string], Error)
  *@desc Reads the file at path line by line and returns the lines. CR/LF and LF line endings are stripped. `limit` caps how many lines are read: a count, not an index, so `limit` of N returns at most N lines; `limit` of 0 (the default) reads to end of file. A negative literal `limit` is a compile error (E3150). Streaming means a small `limit` stays cheap on a large file. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
@@ -87,11 +87,11 @@ GrayString gray_io_read_stdin_all(GrayArena *arena);
 /*@man read_stdin_bytes
  *@module io
  *@group Standard Input
- *@sig read_stdin_bytes() -> [byte]
- *@desc Reads all of standard input to end of file and returns it as a packed byte array.
+ *@sig read_stdin_bytes() -> [u8]
+ *@desc Reads all of standard input to end of file and returns it as a packed u8 array.
  *@example
  *   import @io
- *   mut data [byte] = io.read_stdin_bytes()
+ *   mut data [u8] = io.read_stdin_bytes()
  *   println(len(data))
  *@end
  */
@@ -138,7 +138,7 @@ bool gray_io_is_directory(GrayString path);
 /*@man file_size
  *@module io
  *@group File Operations
- *@sig file_size(path string) -> (int, Error)
+ *@sig file_size(path string) -> (i64, Error)
  *@desc Returns the size of the file at path in bytes. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
@@ -183,11 +183,11 @@ bool gray_io_append_file(GrayString path, GrayString content);
 /*@man write_bytes
  *@module io
  *@group File Writing
- *@sig write_bytes(path string, data [byte]) -> (bool, Error)
- *@desc Writes a byte array to the file at path, creating it if it does not exist or overwriting it if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@sig write_bytes(path string, data [u8]) -> (bool, Error)
+ *@desc Writes a u8 array to the file at path, creating it if it does not exist or overwriting it if it does. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut data [byte] = {1, 2, 3}
+ *   mut data [u8] = {1, 2, 3}
  *   mut ok, _ = io.write_bytes("out.bin", data)
  *@end
  */
@@ -196,11 +196,11 @@ bool gray_io_write_bytes(GrayString path, GrayArray data);
 /*@man append_bytes
  *@module io
  *@group File Writing
- *@sig append_bytes(path string, data [byte]) -> (bool, Error)
- *@desc Appends a byte array to the end of the file at path. Creates the file if it does not exist. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
+ *@sig append_bytes(path string, data [u8]) -> (bool, Error)
+ *@desc Appends a u8 array to the end of the file at path. Creates the file if it does not exist. Always use destructuring — single-variable assignment is a compile error. Relative paths resolve from the working directory where the binary is executed, not the source file location.
  *@example
  *   import @io
- *   mut data [byte] = {1, 2, 3}
+ *   mut data [u8] = {1, 2, 3}
  *   mut ok, _ = io.append_bytes("log.bin", data)
  *@end
  */
@@ -462,7 +462,7 @@ typedef struct { GrayArray v0; GrayError *v1; } GrayResult_array;
 GrayResult_string gray_io_read_file_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_bytes_result(GrayArena *arena, GrayString path);
 GrayResult_array  gray_io_read_lines_result(GrayArena *arena, GrayString path, int64_t limit);
-GrayResult_int    gray_io_file_size_result(GrayArena *arena, GrayString path);
+GrayResult_i64    gray_io_file_size_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_write_file_result(GrayArena *arena, GrayString path, GrayString content);
 GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path);
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content);

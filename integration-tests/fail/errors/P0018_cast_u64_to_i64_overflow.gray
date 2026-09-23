@@ -1,0 +1,12 @@
+/*
+ * Panic Test: P0018 - cast u64 to i64 where value exceeds INT64_MAX
+ *
+ * cast(uint_val, i64) must panic at runtime when the u64 value is larger
+ * than INT64_MAX rather than silently wrapping to a negative i64.
+ */
+
+do main() {
+    mut u u64 = 9223372036854775808
+    mut n i64 = cast(u, i64)
+    println(n)
+}

@@ -2,7 +2,7 @@ import @arrays
 
 const Fruit struct {
     name string
-    price int
+    price i64
 }
 
 do get_fruits() -> [Fruit] {
@@ -12,8 +12,8 @@ do get_fruits() -> [Fruit] {
     return fruits
 }
 
-do total_price(fruits [Fruit]) -> int {
-    mut sum int = 0
+do total_price(fruits [Fruit]) -> i64 {
+    mut sum i64 = 0
     for_each f in fruits {
         sum += f.price
     }

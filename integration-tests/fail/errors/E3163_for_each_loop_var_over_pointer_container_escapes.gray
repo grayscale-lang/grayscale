@@ -7,21 +7,21 @@
  * helper whose escape summary is PARAM_ESCAPE_GLOBAL.
  */
 
-mut leaked ^int = nil
+mut leaked ^i64 = nil
 
-do take(p ^int) { leaked = p }
+do take(p ^i64) { leaked = p }
 
 do direct() {
-    mut x int = 7
-    mut pts [^int] = {addr(x)}
+    mut x i64 = 7
+    mut pts [^i64] = {addr(x)}
     for_each pp in pts {
         leaked = pp
     }
 }
 
 do via_helper() {
-    mut y int = 9
-    mut pts [^int] = {addr(y)}
+    mut y i64 = 9
+    mut pts [^i64] = {addr(y)}
     for_each pp in pts {
         take(pp)
     }

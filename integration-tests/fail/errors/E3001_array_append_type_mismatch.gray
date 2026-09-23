@@ -6,6 +6,6 @@
 import @arrays
 
 do main() {
-    mut nums [int] = {1, 2, 3}
-    arrays.append(nums, "hello")  // Should fail: string into int array
+    mut nums [i64] = {1, 2, 3}
+    arrays.append(nums, "hello")  // Should fail: string into i64 array
 }

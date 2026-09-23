@@ -6,7 +6,7 @@ import @json
 
 #json
 const Pair struct {
-    x, y int `json:"V"`
+    x, y i64 `json:"V"`
 }
 
 do main() {}

@@ -1,10 +1,10 @@
 import and use "./models.gray"
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // Test 1: unqualified enum access
-    mut p int = Priority.HIGH
+    mut p i64 = Priority.HIGH
     if p == 2 {
         passed += 1
     }

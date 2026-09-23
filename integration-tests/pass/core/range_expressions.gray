@@ -5,14 +5,14 @@
 
 do main() {
     println("=== Range Expressions Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== RANGE IN FOR LOOPS ====================
     println("  -- range in for loops --")
 
     // Test 1: Basic range
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 5) {
         sum += i
     }
@@ -25,7 +25,7 @@ do main() {
     }
 
     // Test 2: Range with step
-    mut step_sum int = 0
+    mut step_sum i64 = 0
     for i in range(0, 10, 2) {
         step_sum += i
     }
@@ -44,7 +44,7 @@ do main() {
     println("  -- range in 'in' operator --")
 
     // Test 4: Value in range - true
-    mut x int = 5
+    mut x i64 = 5
     if x in range(0, 10) {
         println("  [PASS] 5 in range(0, 10)")
         passed += 1
@@ -111,8 +111,8 @@ do main() {
     println("  -- range in when/is --")
 
     // Test 12: when with range - match first case
-    mut val1 int = 3
-    mut result1 int = 0
+    mut val1 i64 = 3
+    mut result1 i64 = 0
     when val1 {
         is range(0, 5) {
             result1 = 1
@@ -133,8 +133,8 @@ do main() {
     }
 
     // Test 13: when with range - match second case
-    mut val2 int = 7
-    mut result2 int = 0
+    mut val2 i64 = 7
+    mut result2 i64 = 0
     when val2 {
         is range(0, 5) {
             result2 = 1
@@ -155,8 +155,8 @@ do main() {
     }
 
     // Test 14: when with range - match default
-    mut val3 int = 15
-    mut result3 int = 0
+    mut val3 i64 = 15
+    mut result3 i64 = 0
     when val3 {
         is range(0, 5) {
             result3 = 1
@@ -177,8 +177,8 @@ do main() {
     }
 
     // Test 15: when with range and step - on step
-    mut val4 int = 6
-    mut result4 int = 0
+    mut val4 i64 = 6
+    mut result4 i64 = 0
     when val4 {
         is range(0, 10, 2) {
             result4 = 1
@@ -196,8 +196,8 @@ do main() {
     }
 
     // Test 16: when with range and step - off step
-    mut val5 int = 5
-    mut result5 int = 0
+    mut val5 i64 = 5
+    mut result5 i64 = 0
     when val5 {
         is range(0, 10, 2) {
             result5 = 1
@@ -215,8 +215,8 @@ do main() {
     }
 
     // Test 17: when with range - boundary at start (inclusive)
-    mut val6 int = 0
-    mut result6 int = 0
+    mut val6 i64 = 0
+    mut result6 i64 = 0
     when val6 {
         is range(0, 5) {
             result6 = 1
@@ -234,8 +234,8 @@ do main() {
     }
 
     // Test 18: when with range - boundary at end (exclusive)
-    mut val7 int = 5
-    mut result7 int = 0
+    mut val7 i64 = 5
+    mut result7 i64 = 0
     when val7 {
         is range(0, 5) {
             result7 = 1

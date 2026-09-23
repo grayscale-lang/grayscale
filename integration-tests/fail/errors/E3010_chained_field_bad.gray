@@ -1,12 +1,12 @@
 /* Error Test: E3010 - invalid field on chained struct access */
 const Inner struct {
-    val int
+    val i64
 }
 const Outer struct {
     inner Inner
 }
 do main() {
     mut o = Outer{inner: Inner{val: 42}}
-    mut x int = o.inner.nonexistent
+    mut x i64 = o.inner.nonexistent
     println(x)
 }

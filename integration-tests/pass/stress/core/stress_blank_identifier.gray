@@ -3,13 +3,13 @@
  */
 
 
-do two() -> (int, string) { return 42, "hello" }
-do three() -> (int, string, bool) { return 1, "two", true }
+do two() -> (i64, string) { return 42, "hello" }
+do three() -> (i64, string, bool) { return 1, "two", true }
 
 do main() {
     println("=== Stress: Blank Identifier ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Discard second value
     mut val, _ = two()

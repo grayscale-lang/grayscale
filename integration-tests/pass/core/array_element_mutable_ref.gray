@@ -4,7 +4,7 @@
  */
 
 const Item struct {
-    n int
+    n i64
 
     do bump(&i Item) {
         i.n = i.n + 1
@@ -15,13 +15,13 @@ do shout(&s string) {
     s = "${s}!"
 }
 
-do half(&f float) {
+do half(&f f64) {
     f = f / 2.0
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut items [Item] = {Item{n: 1}}
     Item.bump(items[0])
@@ -31,7 +31,7 @@ do main() {
     shout(words[0])
     if words[0] == "hi!" { passed = passed + 1 } otherwise { failed = failed + 1 }
 
-    mut nums [float] = {4.0}
+    mut nums [f64] = {4.0}
     half(nums[0])
     if nums[0] == 2.0 { passed = passed + 1 } otherwise { failed = failed + 1 }
 

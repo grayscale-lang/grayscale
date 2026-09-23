@@ -1,9 +1,9 @@
 /*
  * Error Test: E3043 - cannot-convert-array
- * Expected: "cannot convert [int] to int; only numeric types, strings, and bools can be converted"
+ * Expected: "cannot convert [i64] to i64; only numeric types, strings, and bools can be converted"
  */
 
 do main() {
-    mut arr [int] = {1, 2, 3}
-    mut x int = int(arr)  // cannot convert array to int
+    mut arr [i64] = {1, 2, 3}
+    mut x i64 = cast(arr, i64)  // cannot convert array to i64
 }

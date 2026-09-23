@@ -1,0 +1,75 @@
+/*
+ * float_array_int_literal_promotion.gray
+ * Integer literals in [f64], [f32], and [f64] array literals must be
+ * promoted to double, not stored as raw int64_t bit patterns.
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // [f64] with integer literals
+    mut a [f64] = {1, 2, 3}
+    if a[0] == 1.0 {
+        println("  [PASS] [f64]{1,2,3}[0] == 1.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64]{1,2,3}[0]: expected 1.0")
+        failed += 1
+    }
+    if a[1] == 2.0 {
+        println("  [PASS] [f64]{1,2,3}[1] == 2.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64]{1,2,3}[1]: expected 2.0")
+        failed += 1
+    }
+    if a[2] == 3.0 {
+        println("  [PASS] [f64]{1,2,3}[2] == 3.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64]{1,2,3}[2]: expected 3.0")
+        failed += 1
+    }
+
+    // [f32] with integer literals
+    mut b [f32] = {10, 20, 30}
+    if b[0] == 10.0 {
+        println("  [PASS] [f32]{10,20,30}[0] == 10.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32]{10,20,30}[0]: expected 10.0")
+        failed += 1
+    }
+    if b[2] == 30.0 {
+        println("  [PASS] [f32]{10,20,30}[2] == 30.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f32]{10,20,30}[2]: expected 30.0")
+        failed += 1
+    }
+
+    // [f64] with integer literals
+    mut c [f64] = {4, 5, 6}
+    if c[0] == 4.0 {
+        println("  [PASS] [f64]{4,5,6}[0] == 4.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64]{4,5,6}[0]: expected 4.0")
+        failed += 1
+    }
+    if c[2] == 6.0 {
+        println("  [PASS] [f64]{4,5,6}[2] == 6.0")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [f64]{4,5,6}[2]: expected 6.0")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

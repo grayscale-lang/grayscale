@@ -3,10 +3,10 @@
  * Expected: warning about variable shadowing a global
  */
 
-const LIMIT int = 50
+const LIMIT i64 = 50
 
 do helper() {
-    mut LIMIT int = 25  // shadows global const in a non-main function
+    mut LIMIT i64 = 25  // shadows global const in a non-main function
     println(LIMIT)
 }
 

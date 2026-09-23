@@ -1,6 +1,6 @@
 /*
  * map_non_standard_keys_ops.gray - 'in' operator and function params for
- * bool/char/byte/float key maps.
+ * bool/char/u8/f64 key maps.
  *
  * Complements map_non_standard_keys.gray. The original fix patched
  * five map codegen sites to use gray_map_elem_c_type for the key; this test
@@ -9,36 +9,36 @@
  * calls (which re-emits key types at the call boundary).
  */
 
-do count_true(m map[bool:string]) -> int {
-    mut n int = 0
+do count_true(m map[bool:string]) -> i64 {
+    mut n i64 = 0
     if true in m { n += 1 }
     if false in m { n += 1 }
     return n
 }
 
-do lookup_char(m map[char:int], k char) -> int {
+do lookup_char(m map[char:i64], k char) -> i64 {
     if k in m {
         return m[k]
     }
     return -1
 }
 
-do sum_byte_values(m map[byte:int]) -> int {
-    mut total int = 0
+do sum_byte_values(m map[u8:i64]) -> i64 {
+    mut total i64 = 0
     if 0b1 in m { total += m[0b1] }
     if 0b10 in m { total += m[0b10] }
     if 0b100 in m { total += m[0b100] }
     return total
 }
 
-do has_float_key(m map[float:string], k float) -> bool {
+do has_float_key(m map[f64:string], k f64) -> bool {
     return k in m
 }
 
 do main() {
     println("=== Non-Standard Map Key Ops Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- bool: in / !in --
     mut bmap map[bool:string] = {true: "yes", false: "no"}
@@ -51,7 +51,7 @@ do main() {
     }
 
     // -- char: in / !in --
-    mut cmap map[char:int] = {'a': 1, 'b': 2}
+    mut cmap map[char:i64] = {'a': 1, 'b': 2}
     if 'a' in cmap && 'z' !in cmap {
         println("  [PASS] char key 'in' / '!in'")
         passed += 1
@@ -60,23 +60,23 @@ do main() {
         failed += 1
     }
 
-    // -- byte: in / !in --
-    mut ymap map[byte:int] = {0b1: 10, 0b10: 20, 0b100: 40}
+    // -- u8: in / !in --
+    mut ymap map[u8:i64] = {0b1: 10, 0b10: 20, 0b100: 40}
     if 0b10 in ymap && 0b1000 !in ymap {
-        println("  [PASS] byte key 'in' / '!in'")
+        println("  [PASS] u8 key 'in' / '!in'")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte key 'in' / '!in'")
+        println("  [FAIL] u8 key 'in' / '!in'")
         failed += 1
     }
 
-    // -- float: in / !in --
-    mut fmap map[float:string] = {1.5: "a", 2.5: "b"}
+    // -- f64: in / !in --
+    mut fmap map[f64:string] = {1.5: "a", 2.5: "b"}
     if 1.5 in fmap && 9.9 !in fmap {
-        println("  [PASS] float key 'in' / '!in'")
+        println("  [PASS] f64 key 'in' / '!in'")
         passed += 1
     } otherwise {
-        println("  [FAIL] float key 'in' / '!in'")
+        println("  [FAIL] f64 key 'in' / '!in'")
         failed += 1
     }
 
@@ -98,21 +98,21 @@ do main() {
         failed += 1
     }
 
-    // -- byte map through function call --
+    // -- u8 map through function call --
     if sum_byte_values(ymap) == 70 {
-        println("  [PASS] byte key map passed to function")
+        println("  [PASS] u8 key map passed to function")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte key map passed to function: got ${sum_byte_values(ymap)}")
+        println("  [FAIL] u8 key map passed to function: got ${sum_byte_values(ymap)}")
         failed += 1
     }
 
-    // -- float map through function call --
+    // -- f64 map through function call --
     if has_float_key(fmap, 2.5) && !has_float_key(fmap, 0.0) {
-        println("  [PASS] float key map passed to function")
+        println("  [PASS] f64 key map passed to function")
         passed += 1
     } otherwise {
-        println("  [FAIL] float key map passed to function")
+        println("  [FAIL] f64 key map passed to function")
         failed += 1
     }
 

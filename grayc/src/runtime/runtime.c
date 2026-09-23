@@ -417,11 +417,11 @@ void gray_panic_code_at(const char *file, int line, const char *code, const char
     _Noreturn void name(const char *file, int line) {        \
         gray_panic_code_at(file, line, code, "%s", msg);     \
     }
-GRAY_ARITH_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of int")
-GRAY_ARITH_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of int")
-GRAY_ARITH_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of int")
-GRAY_ARITH_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of int")
-GRAY_ARITH_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of uint")
-GRAY_ARITH_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but uint cannot hold negative values")
-GRAY_ARITH_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of uint")
+GRAY_ARITH_TAIL(gray_arith_panic_add,  "P0004", "addition result is too large; value exceeds the range of i64")
+GRAY_ARITH_TAIL(gray_arith_panic_sub,  "P0005", "subtraction result is too large; value exceeds the range of i64")
+GRAY_ARITH_TAIL(gray_arith_panic_mul,  "P0006", "multiplication result is too large; value exceeds the range of i64")
+GRAY_ARITH_TAIL(gray_arith_panic_neg,  "P0007", "negation result is too large; value exceeds the range of i64")
+GRAY_ARITH_TAIL(gray_arith_panic_uadd, "P0008", "addition result is too large; value exceeds the range of u64")
+GRAY_ARITH_TAIL(gray_arith_panic_usub, "P0009", "subtraction result is negative, but u64 cannot hold negative values")
+GRAY_ARITH_TAIL(gray_arith_panic_umul, "P0010", "multiplication result is too large; value exceeds the range of u64")
 #undef GRAY_ARITH_TAIL

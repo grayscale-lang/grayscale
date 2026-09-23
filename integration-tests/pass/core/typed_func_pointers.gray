@@ -4,44 +4,44 @@
  */
 
 
-do double_it(n int) -> int {
+do double_it(n i64) -> i64 {
     return n * 2
 }
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 do main() {
     println("=== Typed Function Pointers ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: Function pointer with int arg and int return
+    // Test 1: Function pointer with i64 arg and i64 return
     const fn_dbl = ()double_it
-    mut result int = fn_dbl(21)
+    mut result i64 = fn_dbl(21)
     if result == 42 {
-        println("  [PASS] func ptr with int arg and return")
+        println("  [PASS] func ptr with i64 arg and return")
         passed += 1
     } otherwise {
-        println("  [FAIL] func ptr with int arg and return")
+        println("  [FAIL] func ptr with i64 arg and return")
         failed += 1
     }
 
     // Test 2: Function pointer with multiple args
     const fn_add = ()add
-    mut sum int = fn_add(17, 25)
+    mut sum i64 = fn_add(17, 25)
     if sum == 42 {
-        println("  [PASS] func ptr with multiple int args")
+        println("  [PASS] func ptr with multiple i64 args")
         passed += 1
     } otherwise {
-        println("  [FAIL] func ptr with multiple int args")
+        println("  [FAIL] func ptr with multiple i64 args")
         failed += 1
     }
 
     // Test 3: Call function pointer stored in variable
     const fn_ref = ()add
-    mut val int = fn_ref(3, 7)
+    mut val i64 = fn_ref(3, 7)
     if val == 10 {
         println("  [PASS] func ptr call from variable")
         passed += 1

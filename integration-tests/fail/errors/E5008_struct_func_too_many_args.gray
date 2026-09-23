@@ -5,14 +5,14 @@
  */
 
 const Math struct {
-    _pad int
+    _pad i64
 
-    do zero() -> int {
+    do zero() -> i64 {
         return 0
     }
 }
 
 do main() {
-    mut r int = Math.zero(10, 20)
+    mut r i64 = Math.zero(10, 20)
     println("${r}")
 }

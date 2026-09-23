@@ -6,26 +6,26 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
     do add(a Point, b Point) -> Point {
         return Point{x: a.x + b.x, y: a.y + b.y}
     }
 
-    do sum_x(a Point, b Point) -> int {
+    do sum_x(a Point, b Point) -> i64 {
         return a.x + b.x
     }
 }
 
-do move_point(p Point, dx int, dy int) -> Point {
+do move_point(p Point, dx i64, dy i64) -> Point {
     return Point{x: p.x + dx, y: p.y + dy}
 }
 
 do main() {
     println("=== Struct Function Type Safety Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: correct struct types in struct function
     mut a = Point{x: 1, y: 2}
@@ -50,7 +50,7 @@ do main() {
     }
 
     // Test 3: struct function via instance dispatch with correct types
-    mut r int = a.sum_x(b)
+    mut r i64 = a.sum_x(b)
     if r == 4 {
         println("  [PASS] a.sum_x(b) = 4")
         passed += 1

@@ -1,0 +1,9 @@
+/*
+ * Error Test: integer-overflow (u64 *= overflow)
+ * Expected: "unsigned multiplication result is too large"
+ */
+
+do main() {
+    mut x u64 = 9223372036854775808  // > UINT64_MAX / 3
+    x *= 3
+}

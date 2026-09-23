@@ -1,6 +1,6 @@
 // Test: pointers to mutable variables carried in enum payloads, returned aggregates, tuples and pointer-to-pointer stay writable
 const Box struct {
-    v int
+    v i64
 }
 const K Box = Box{v: 1}
 
@@ -21,7 +21,7 @@ do mkw(b ^Box) -> W {
     return W{p: b}
 }
 
-do pair(b ^Box) -> (^Box, int) {
+do pair(b ^Box) -> (^Box, i64) {
     return b, 1
 }
 

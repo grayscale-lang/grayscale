@@ -3,7 +3,7 @@
 import @arrays
 
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     arrays.insert_at(arr, 10, 99)
     println(arr)
 }

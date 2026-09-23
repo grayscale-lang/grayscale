@@ -7,16 +7,16 @@
 
 #deprecated("Point is old, use Point3D")
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do sum(self Point) -> int {
+    do sum(self Point) -> i64 {
         return self.x + self.y
     }
 }
 
 do main() {
     mut p Point = Point{x: 1, y: 2} // warning: Point is deprecated (both the annotation and the literal)
-    mut total int = p.sum()         // no warning: struct deprecation does not cascade to struct-functions
+    mut total i64 = p.sum()         // no warning: struct deprecation does not cascade to struct-functions
     println("${total}")
 }

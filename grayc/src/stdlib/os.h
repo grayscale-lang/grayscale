@@ -187,7 +187,7 @@ GrayString gray_os_arch(void);
 /*@man pid
  *@module os
  *@group System
- *@sig pid() -> int
+ *@sig pid() -> i64
  *@desc Returns the process ID of the current process.
  *@example
  *   import @os
@@ -200,7 +200,7 @@ int64_t gray_os_pid(void);
 /*@man cpu_count
  *@module os
  *@group System
- *@sig cpu_count() -> int
+ *@sig cpu_count() -> i64
  *@desc Returns the number of logical CPUs available to the process. Falls back to 1 if the count cannot be determined.
  *@example
  *   import @os
@@ -227,7 +227,7 @@ void gray_os_init(int argc, char **argv);
 /*@man exec
  *@module os
  *@group System
- *@sig exec(cmd string, args [string]) -> (int, string, string, bool)
+ *@sig exec(cmd string, args [string]) -> (i64, string, string, bool)
  *@desc Executes the command cmd with the given args. Returns (exit_code, stdout, stderr, ok). ok is false if the process could not be launched.
  *@example
  *   import @os

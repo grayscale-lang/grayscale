@@ -1,0 +1,16 @@
+/*
+ * Error Test: E3117 - enum compared with integer type
+ * Expected: cannot compare enum with i64
+ */
+
+const Color enum {
+    RED
+    GREEN
+    BLUE
+}
+
+do main() {
+    mut c Color = .RED
+    mut x i64 = 0
+    if c == x { println("bad") }
+}

@@ -7,19 +7,19 @@
  * the suffix so all instantiations share the one-time typedef.
  */
 
-do pair(a ?, b ?) -> (first int, second int) {
-    mut first int = a
-    mut second int = b
+do pair(a ?, b ?) -> (first i64, second i64) {
+    mut first i64 = a
+    mut second i64 = b
     return first, second
 }
 
 do main() {
     println("=== Wildcard Multi-Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- same-type wildcard, both int --
-    mut x int, y int = pair(42, 100)
+    // -- same-type wildcard, both i64 --
+    mut x i64, y i64 = pair(42, 100)
     if x == 42 && y == 100 {
         println("  [PASS] pair(42, 100) = (42, 100)")
         passed += 1
@@ -29,7 +29,7 @@ do main() {
     }
 
     // -- reuse with different values, same binding --
-    mut a int, b int = pair(1, 2)
+    mut a i64, b i64 = pair(1, 2)
     if a == 1 && b == 2 {
         println("  [PASS] pair(1, 2) = (1, 2)")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // -- non-regression: plain multi-return still works --
-    mut q int, r int = divmod(17, 5)
+    mut q i64, r i64 = divmod(17, 5)
     if q == 3 && r == 2 {
         println("  [PASS] divmod(17, 5) = (3, 2)")
         passed += 1
@@ -57,8 +57,8 @@ do main() {
     }
 }
 
-do divmod(a int, b int) -> (q int, r int) {
-    mut q int = a / b
-    mut r int = a % b
+do divmod(a i64, b i64) -> (q i64, r i64) {
+    mut q i64 = a / b
+    mut r i64 = a % b
     return q, r
 }

@@ -11,11 +11,11 @@
 
 extern import "stdlib.h"
 
-do do_free(p ^int) {
+do do_free(p ^i64) {
     extern.free(p)
 }
 
 do main() {
-    mut local int = 5
+    mut local i64 = 5
     do_free(addr(local))
 }

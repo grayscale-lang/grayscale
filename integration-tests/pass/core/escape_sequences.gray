@@ -5,8 +5,8 @@
 
 do main() {
     println("=== Escape Sequences Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Newline \n
     mut nl string = "a\nb"
@@ -70,21 +70,21 @@ do main() {
 
     // Test 7: Char escape - newline
     mut nl_char char = '\n'
-    if int(nl_char) == 10 {
+    if cast(nl_char, i64) == 10 {
         println("  [PASS] char '\\n' has code point 10")
         passed += 1
     } otherwise {
-        println("  [FAIL] char '\\n': expected code point 10, got ${int(nl_char)}")
+        println("  [FAIL] char '\\n': expected code point 10, got ${cast(nl_char, i64)}")
         failed += 1
     }
 
     // Test 8: Char escape - tab
     mut tab_char char = '\t'
-    if int(tab_char) == 9 {
+    if cast(tab_char, i64) == 9 {
         println("  [PASS] char '\\t' has code point 9")
         passed += 1
     } otherwise {
-        println("  [FAIL] char '\\t': expected code point 9, got ${int(tab_char)}")
+        println("  [FAIL] char '\\t': expected code point 9, got ${cast(tab_char, i64)}")
         failed += 1
     }
 

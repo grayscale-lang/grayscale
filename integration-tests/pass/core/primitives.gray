@@ -1,45 +1,45 @@
 /*
- * primitives.gray - Test primitive types (int, float, string, bool, char, byte)
+ * primitives.gray - Test primitive types (i64, f64, string, bool, char, u8)
  */
 
 
 do main() {
     println("=== Primitives Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: int
-    mut i int = 42
+    // Test 1: i64
+    mut i i64 = 42
     if i == 42 {
-        println("  [PASS] int literal")
+        println("  [PASS] i64 literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal: expected 42, got ${i}")
+        println("  [FAIL] i64 literal: expected 42, got ${i}")
         failed += 1
     }
 
-    // Test 2: negative int
-    mut negative_i int = -10
+    // Test 2: negative i64
+    mut negative_i i64 = -10
     if negative_i == -10 {
-        println("  [PASS] negative int")
+        println("  [PASS] negative i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] negative int: expected -10, got ${negative_i}")
+        println("  [FAIL] negative i64: expected -10, got ${negative_i}")
         failed += 1
     }
 
     // Test 3: underscore in numbers
-    mut underscore_num int = 1_000_000
+    mut underscore_num i64 = 1_000_000
     if underscore_num == 1000000 {
-        println("  [PASS] underscore in int literal")
+        println("  [PASS] underscore in i64 literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] underscore in int literal: expected 1000000, got ${underscore_num}")
+        println("  [FAIL] underscore in i64 literal: expected 1000000, got ${underscore_num}")
         failed += 1
     }
 
-    // Test 4: float
-    mut f float = 3.14159
+    // Test 4: f64
+    mut f f64 = 3.14159
     if f > 3.14 && f < 3.15 {
         println("  [PASS] float literal")
         passed += 1
@@ -48,13 +48,13 @@ do main() {
         failed += 1
     }
 
-    // Test 5: negative float
-    mut negative_f float = -2.5
+    // Test 5: negative f64
+    mut negative_f f64 = -2.5
     if negative_f == -2.5 {
-        println("  [PASS] negative float")
+        println("  [PASS] negative f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] negative float: expected -2.5, got ${negative_f}")
+        println("  [FAIL] negative f64: expected -2.5, got ${negative_f}")
         failed += 1
     }
 
@@ -110,31 +110,31 @@ do main() {
 
     // Test 11: char escape
     mut newline char = '\n'
-    if int(newline) == 10 {
+    if cast(newline, i64) == 10 {
         println("  [PASS] char newline escape")
         passed += 1
     } otherwise {
-        println("  [FAIL] char newline escape: expected code 10, got ${int(newline)}")
+        println("  [FAIL] char newline escape: expected code 10, got ${cast(newline, i64)}")
         failed += 1
     }
 
-    // Test 12: byte
-    mut b byte = 0xFF
-    if int(b) == 255 {
-        println("  [PASS] byte hex literal")
+    // Test 12: u8
+    mut b u8 = 0xFF
+    if cast(b, i64) == 255 {
+        println("  [PASS] u8 hex literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte hex literal: expected 255, got ${int(b)}")
+        println("  [FAIL] u8 hex literal: expected 255, got ${cast(b, i64)}")
         failed += 1
     }
 
-    // Test 13: byte from decimal
-    mut b2 byte = byte(128)
-    if int(b2) == 128 {
-        println("  [PASS] byte from decimal")
+    // Test 13: u8 from decimal
+    mut b2 u8 = cast(128, u8)
+    if cast(b2, i64) == 128 {
+        println("  [PASS] u8 from decimal")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte from decimal: expected 128, got ${int(b2)}")
+        println("  [FAIL] u8 from decimal: expected 128, got ${cast(b2, i64)}")
         failed += 1
     }
 

@@ -6,13 +6,13 @@ import @random
 
 do main() {
     println("=== Stress: @random ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // rand_int in range over 100 calls
     mut all_in_range bool = true
     for i in range(0, 100) {
-        mut r int = random.rand_int(0, 100)
+        mut r i64 = random.rand_int(0, 100)
         if r < 0 || r > 100 {
             all_in_range = false
             break
@@ -26,7 +26,7 @@ do main() {
     // rand_float in range
     mut float_ok bool = true
     for i in range(0, 100) {
-        mut r float = random.rand_float(0.0, 1.0)
+        mut r f64 = random.rand_float(0.0, 1.0)
         if r < 0.0 || r > 1.0 {
             float_ok = false
             break

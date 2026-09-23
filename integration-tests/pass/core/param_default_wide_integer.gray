@@ -5,7 +5,7 @@
  */
 
 const Holder struct {
-    n int
+    n i64
 
     do widen(x u256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935) -> u256 {
         return x
@@ -18,8 +18,8 @@ do local(x i128 = 99999999999999999999999999999999999999) -> i128 {
 
 do main() {
     println("=== Param default: wide integers ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if "${local()}" == "99999999999999999999999999999999999999" {
         passed += 1

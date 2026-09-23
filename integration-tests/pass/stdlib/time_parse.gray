@@ -7,7 +7,7 @@ import @time
 /* strptime range-checks each field on its own and mktime normalizes an
  * impossible day-in-month rather than failing, so a date like 2023-02-29 used
  * to come back as a clean 2023-03-01. */
-do check_rejected(label string, date string, &passed int, &failed int) {
+do check_rejected(label string, date string, &passed i64, &failed i64) {
     mut ts, err = time.parse(date, "%Y-%m-%d")
     if err != nil {
         println("  [PASS] ${label}")
@@ -18,7 +18,7 @@ do check_rejected(label string, date string, &passed int, &failed int) {
     }
 }
 
-do check_accepted(label string, date string, &passed int, &failed int) {
+do check_accepted(label string, date string, &passed i64, &failed i64) {
     mut ts, err = time.parse(date, "%Y-%m-%d")
     if err == nil && time.date(ts) == date {
         println("  [PASS] ${label}")
@@ -31,8 +31,8 @@ do check_accepted(label string, date string, &passed int, &failed int) {
 
 do main() {
     println("=== Time Parse/Calendar/Since Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // time.parse (error discarded) round-trips a formatted date
     mut ts, _ = time.parse("2025-06-01", "%Y-%m-%d")
@@ -58,7 +58,7 @@ do main() {
     // as UTC, not the host's local timezone -- and time.parse must be its
     // exact inverse. 1704067200 is 2024-01-01T00:00:00Z, a Monday; the
     // Unix epoch (0) is 1970-01-01, a Thursday.
-    mut epoch_utc int = 1704067200
+    mut epoch_utc i64 = 1704067200
     if time.hour(time.start_of_day(epoch_utc)) == 0 &&
        time.to_iso(epoch_utc) == "2024-01-01T00:00:00Z" &&
        time.date(epoch_utc) == "2024-01-01" &&
@@ -159,9 +159,9 @@ do main() {
     }
 
     // time.since matches diff(t, now())
-    mut past int = time.now() - 100
-    mut elapsed int = time.since(past)
-    mut expected int = time.diff(past, time.now())
+    mut past i64 = time.now() - 100
+    mut elapsed i64 = time.since(past)
+    mut expected i64 = time.diff(past, time.now())
     if elapsed >= 100 && elapsed - expected >= -1 && elapsed - expected <= 1 {
         println("  [PASS] since (${elapsed})")
         passed += 1

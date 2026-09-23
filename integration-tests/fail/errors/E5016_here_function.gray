@@ -6,7 +6,7 @@
  * the user's function flagged as unused.
  */
 
-do here() -> int {
+do here() -> i64 {
     return 1
 }
 

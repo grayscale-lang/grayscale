@@ -3,14 +3,14 @@
  */
 
 
-do factorial(n int) -> int {
+do factorial(n i64) -> i64 {
     if n <= 1 {
         return 1
     }
     return n * factorial(n - 1)
 }
 
-do fibonacci(n int) -> int {
+do fibonacci(n i64) -> i64 {
     if n <= 0 {
         return 0
     }
@@ -22,11 +22,11 @@ do fibonacci(n int) -> int {
 
 do main() {
     println("=== Recursive Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: factorial via return recursion
-    mut f int = factorial(10)
+    mut f i64 = factorial(10)
     if f == 3628800 {
         println("  [PASS] factorial(10) == 3628800")
         passed += 1
@@ -36,7 +36,7 @@ do main() {
     }
 
     // Test 2: fibonacci via return recursion
-    mut fib int = fibonacci(10)
+    mut fib i64 = fibonacci(10)
     if fib == 55 {
         println("  [PASS] fibonacci(10) == 55")
         passed += 1

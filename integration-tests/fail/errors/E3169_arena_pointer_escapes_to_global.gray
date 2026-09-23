@@ -10,20 +10,20 @@
 
 import @mem
 
-mut g ^int = nil
+mut g ^i64 = nil
 
-do stash_g(p ^int) { g = p }
+do stash_g(p ^i64) { g = p }
 
 do store_direct() {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     g = p
     mem.destroy(a)
 }
 
 do store_via_helper() {
     mut a = mem.arena(1024)
-    mut p ^int = mem.alloc(a, 42)
+    mut p ^i64 = mem.alloc(a, 42)
     stash_g(p)
     mem.destroy(a)
 }

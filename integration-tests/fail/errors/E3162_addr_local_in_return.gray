@@ -5,12 +5,12 @@
  * returns, so the pointer would dangle.
  */
 
-do bad() -> ^int {
-    mut x int = 42
+do bad() -> ^i64 {
+    mut x i64 = 42
     return addr(x)
 }
 
 do main() {
-    mut p ^int = bad()
+    mut p ^i64 = bad()
     println(p^)
 }

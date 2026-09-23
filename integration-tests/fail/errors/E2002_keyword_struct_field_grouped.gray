@@ -4,7 +4,7 @@
  */
 
 const Bad struct {
-    x, for int
+    x, for i64
 }
 
 do main() {

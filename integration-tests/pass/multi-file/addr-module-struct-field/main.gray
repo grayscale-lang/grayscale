@@ -1,14 +1,14 @@
 import "./lib"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if lib.field_ptr_annotated() == 3 {
-        println("  [PASS] addr(MODVAR.field) with a ^int annotation")
+        println("  [PASS] addr(MODVAR.field) with a ^i64 annotation")
         passed += 1
     } otherwise {
-        println("  [FAIL] addr(MODVAR.field) with a ^int annotation")
+        println("  [FAIL] addr(MODVAR.field) with a ^i64 annotation")
         failed += 1
     }
 

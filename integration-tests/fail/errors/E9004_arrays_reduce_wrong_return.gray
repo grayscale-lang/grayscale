@@ -5,9 +5,9 @@
 
 import @arrays
 
-do bad_reducer(acc int, x int) -> string { return "nope" }
+do bad_reducer(acc i64, x i64) -> string { return "nope" }
 
 do main() {
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut result = arrays.reduce(nums, 0, ()bad_reducer)
 }

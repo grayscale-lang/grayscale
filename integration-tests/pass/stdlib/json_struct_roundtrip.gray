@@ -1,6 +1,6 @@
 /*
  * json_struct_roundtrip.gray - #json struct serialization covers every
- * supported primitive field type (int, uint, float, string, bool) through
+ * supported primitive field type (i64, u64, f64, string, bool) through
  * both json.stringify and json.parse.
  */
 
@@ -8,17 +8,17 @@ import @json
 
 #json
 const Record struct {
-    id int
-    count uint
-    ratio float
+    id i64
+    count u64
+    ratio f64
     label string
     active bool
 }
 
 do main() {
     println("=== #json Struct Roundtrip Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut r Record = Record{id: -7, count: 42, ratio: 1.5, label: "hello", active: true}
     mut js string = json.stringify(r)
@@ -33,24 +33,24 @@ do main() {
 
     mut back Record = json.parse(js)
     if back.id == -7 {
-        println("  [PASS] parse int field")
+        println("  [PASS] parse i64 field")
         passed += 1
     } otherwise {
-        println("  [FAIL] parse int field: ${back.id}")
+        println("  [FAIL] parse i64 field: ${back.id}")
         failed += 1
     }
     if back.count == 42 {
-        println("  [PASS] parse uint field")
+        println("  [PASS] parse u64 field")
         passed += 1
     } otherwise {
-        println("  [FAIL] parse uint field: ${back.count}")
+        println("  [FAIL] parse u64 field: ${back.count}")
         failed += 1
     }
     if back.ratio == 1.5 {
-        println("  [PASS] parse float field")
+        println("  [PASS] parse f64 field")
         passed += 1
     } otherwise {
-        println("  [FAIL] parse float field: ${back.ratio}")
+        println("  [FAIL] parse f64 field: ${back.ratio}")
         failed += 1
     }
     if back.label == "hello" {

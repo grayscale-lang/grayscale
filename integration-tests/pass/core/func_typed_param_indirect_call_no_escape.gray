@@ -7,16 +7,16 @@
  * still resolves to a concrete callee.
  */
 
-mut global_slot int = 0
+mut global_slot i64 = 0
 
-do bump(p ^int) { p^ += 1 }
+do bump(p ^i64) { p^ += 1 }
 
-do add(n int) { global_slot += n }
+do add(n i64) { global_slot += n }
 
-do apply_val(f func(int), n int) { f(n) }
+do apply_val(f func(i64), n i64) { f(n) }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // 1. by-value argument through an indirect call
     apply_val(()add, 42)
@@ -29,8 +29,8 @@ do main() {
 
     // 2. direct call through a body-local func-ref resolves concretely,
     //    and bump() does not stash its argument
-    mut n int = 10
-    const g func(^int) = ()bump
+    mut n i64 = 10
+    const g func(^i64) = ()bump
     g(addr(n))
     if n == 11 {
         println("  [PASS] body-local func-ref resolves to concrete callee")

@@ -10,10 +10,10 @@
 import @arrays
 
 const Widget struct {
-    items [int, 3]
+    items [i64, 3]
 }
 
-do mutate(&arr [int]) {
+do mutate(&arr [i64]) {
     arrays.append(arr, 99)
 }
 

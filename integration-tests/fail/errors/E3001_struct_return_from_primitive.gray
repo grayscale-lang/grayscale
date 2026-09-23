@@ -1,9 +1,9 @@
 /* Error Test: E3001 - returning a struct from a primitive-typed function */
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
-do get_int() -> int {
+do get_int() -> i64 {
     mut p = Point{x: 1, y: 2}
     return p
 }

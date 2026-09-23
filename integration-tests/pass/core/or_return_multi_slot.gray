@@ -4,22 +4,22 @@
  * trailing Error is propagated. Previously only (T, Error) parsed.
  */
 
-do two(fail bool) -> (int, int, Error) {
+do two(fail bool) -> (i64, i64, Error) {
     if fail { return 0, 0, error("boom") }
     return 3, 4, nil
 }
 
-do three(fail bool) -> (int, string, bool, Error) {
+do three(fail bool) -> (i64, string, bool, Error) {
     if fail { return 0, "", false, error("nope") }
     return 7, "ok", true, nil
 }
 
-do sum(fail bool) -> (int, Error) {
+do sum(fail bool) -> (i64, Error) {
     mut a, b = two(fail) or_return
     return a + b, nil
 }
 
-do sum_fallback(fail bool) -> (int, Error) {
+do sum_fallback(fail bool) -> (i64, Error) {
     mut a, b = two(fail) or_return -1
     return a + b, nil
 }
@@ -42,10 +42,10 @@ do discard_form(fail bool) -> Error {
 
 do main() {
     println("=== or_return multi-slot ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut r1 int, e1 Error = sum(false)
+    mut r1 i64, e1 Error = sum(false)
     if r1 == 7 && e1 == nil {
         println("  [PASS] destructure binds both non-error slots on success")
         passed += 1
@@ -54,7 +54,7 @@ do main() {
         failed += 1
     }
 
-    mut r2 int, e2 Error = sum(true)
+    mut r2 i64, e2 Error = sum(true)
     if e2 != nil && r2 == 0 {
         println("  [PASS] destructure propagates the trailing error")
         passed += 1
@@ -63,7 +63,7 @@ do main() {
         failed += 1
     }
 
-    mut r3 int, e3 Error = sum_fallback(true)
+    mut r3 i64, e3 Error = sum_fallback(true)
     if r3 == -1 && e3 != nil {
         println("  [PASS] fallback value returned alongside propagated error")
         passed += 1

@@ -1,0 +1,73 @@
+/*
+ * u8_array_literal_positions.gray
+ * A [u8] array literal is stored packed, one byte per element, wherever it is
+ * written: returned, passed as an argument, stored as a map value, appended to.
+ */
+
+import @arrays
+import @encoding
+
+do make() -> [u8] { return {1, 2, 255} }
+do hex(data [u8]) -> string { return encoding.to_hex(data) }
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    if encoding.to_hex(make()) == "0102ff" {
+        println("  [PASS] returned [u8] literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] returned [u8] literal: ${encoding.to_hex(make())}")
+        failed += 1
+    }
+
+    if hex({10, 11}) == "0a0b" {
+        println("  [PASS] [u8] literal argument")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [u8] literal argument: ${hex({10, 11})}")
+        failed += 1
+    }
+
+    mut slots map[string:[u8]] = {"k": {3, 4}}
+    if encoding.to_hex(slots["k"]) == "0304" {
+        println("  [PASS] [u8] literal map value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] [u8] literal map value: ${encoding.to_hex(slots["k"])}")
+        failed += 1
+    }
+
+    mut grown [u8] = {}
+    arrays.append(grown, 9)
+    arrays.append(grown, 200)
+    if encoding.to_hex(grown) == "09c8" {
+        println("  [PASS] append to empty [u8]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] append to empty [u8]: ${encoding.to_hex(grown)}")
+        failed += 1
+    }
+
+    mut rows [[u8]] = {{1, 2}, {3}}
+    if encoding.to_hex(arrays.flatten(rows)) == "010203" {
+        println("  [PASS] nested [u8] literal")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] nested [u8] literal: ${encoding.to_hex(arrays.flatten(rows))}")
+        failed += 1
+    }
+
+    mut unsorted [u8] = {3, 1, 2}
+    arrays.sort_asc(unsorted)
+    if encoding.to_hex(unsorted) == "010203" && 2 in unsorted {
+        println("  [PASS] sort and 'in' on [u8]")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] sort and 'in' on [u8]: ${unsorted}")
+        failed += 1
+    }
+
+    if failed > 0 { println("SOME TESTS FAILED") }
+}

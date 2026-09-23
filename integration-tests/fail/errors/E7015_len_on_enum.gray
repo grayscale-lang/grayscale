@@ -2,8 +2,8 @@
  * Error Test: E7015 - len() on an enum value
  *
  * enum values used to leak to clang as
- * "member reference base type 'int' is not a structure or union"
- * because enums compile to int. Now rejected at typecheck time.
+ * "member reference base type 'i64' is not a structure or union"
+ * because enums compile to i64. Now rejected at typecheck time.
  */
 
 const Color enum {

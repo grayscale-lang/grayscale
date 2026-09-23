@@ -4,11 +4,11 @@
  */
 
 
-do getValues() -> (name string, name int) {
+do getValues() -> (name string, name i64) {
     return "test", 42
 }
 
 do main() {
-    mut n string, i int = getValues()
+    mut n string, i i64 = getValues()
     println(n)
 }

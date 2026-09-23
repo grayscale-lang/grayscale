@@ -1,2 +1,2 @@
 
-const VALUE int = 42
+const VALUE i64 = 42

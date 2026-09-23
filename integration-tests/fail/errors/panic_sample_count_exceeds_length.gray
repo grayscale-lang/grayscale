@@ -6,6 +6,6 @@
 import @random
 
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     mut sampled = random.sample(arr, 10)  // ERROR: sample count exceeds array length
 }

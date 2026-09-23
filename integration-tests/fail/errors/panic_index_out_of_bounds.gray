@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut arr [int] = {1, 2, 3}
-    mut x int = arr[100]  // Index way out of bounds
+    mut arr [i64] = {1, 2, 3}
+    mut x i64 = arr[100]  // Index way out of bounds
 }

@@ -10,31 +10,31 @@
  */
 
 do pair(x ?) -> (?, ?) { return x, x }
-do mixed(x ?) -> (?, int) { return x, 100 }
-do triple(x ?) -> (?, ?, int) { return x, x, 7 }
+do mixed(x ?) -> (?, i64) { return x, 100 }
+do triple(x ?) -> (?, ?, i64) { return x, x, 7 }
 
 do main() {
     println("=== wildcard multi-return destructure ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // both slots wildcard, bound to int
+    // both slots wildcard, bound to i64
     mut a1, b1 = pair(42)
     if a1 == 42 && b1 == 42 {
-        println("  [PASS] (?, ?) -> int")
+        println("  [PASS] (?, ?) -> i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] (?, ?) -> int")
+        println("  [FAIL] (?, ?) -> i64")
         failed += 1
     }
 
-    // wildcard + concrete int
+    // wildcard + concrete i64
     mut a2, b2 = mixed("hi")
     if a2 == "hi" && b2 == 100 {
-        println("  [PASS] (?, int) -> string/int")
+        println("  [PASS] (?, i64) -> string/i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] (?, int) -> string/int")
+        println("  [FAIL] (?, i64) -> string/i64")
         failed += 1
     }
 
@@ -51,10 +51,10 @@ do main() {
     // three slots — two wildcards, one concrete
     mut a4, b4, c4 = triple(5)
     if a4 == 5 && b4 == 5 && c4 == 7 {
-        println("  [PASS] (?, ?, int) three-slot")
+        println("  [PASS] (?, ?, i64) three-slot")
         passed += 1
     } otherwise {
-        println("  [FAIL] (?, ?, int) three-slot")
+        println("  [FAIL] (?, ?, i64) three-slot")
         failed += 1
     }
 

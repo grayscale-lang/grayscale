@@ -6,7 +6,7 @@
 
 const Database struct {
     host string
-    port int
+    port i64
 }
 
 const Thread enum {
@@ -16,8 +16,8 @@ const Thread enum {
 
 do main() {
     println("=== Shadow Stdlib Opaque Type Name Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut d Database = Database{host: "localhost", port: 5432}
     if d.host == "localhost" && d.port == 5432 {

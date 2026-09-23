@@ -1,6 +1,6 @@
 
 const ITEMS [string, 3] = {"apple", "banana", "cherry"}
-const NUMBERS [int, 4] = {10, 20, 30, 40}
+const NUMBERS [i64, 4] = {10, 20, 30, 40}
 
 do print_items() {
     for_each item in ITEMS {
@@ -8,8 +8,8 @@ do print_items() {
     }
 }
 
-do sum_numbers() -> int {
-    mut total int = 0
+do sum_numbers() -> i64 {
+    mut total i64 = 0
     for_each n in NUMBERS {
         total += n
     }

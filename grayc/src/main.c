@@ -584,7 +584,7 @@ static CReturnClass classify_c_typedef(const char *dump, const char *name) {
 
 /* True when a C result of class `rc` may be declared as, or cast to,
  * `asserted`. A declaration only accepts the matching family — integer kinds
- * (int, uint, byte, char, bool) among themselves, float, pointer — because C
+ * (i64, u64, u8, char, bool) among themselves, f64, pointer — because C
  * would otherwise truncate silently or reject the initializer. cast() is the
  * explicit conversion, so it also crosses families where C allows it. A void
  * or aggregate result fits nothing. */
@@ -605,7 +605,7 @@ static bool c_return_fits(CReturnClass rc, const GrayType *asserted, bool via_ca
  * this does not recognise, is left to the C compiler. */
 static bool c_argument_kind_mismatch(CReturnClass param, const GrayType *arg) {
     bool arg_is_number = arg->kind == TK_INT || arg->kind == TK_UINT || arg->kind == TK_FLOAT ||
-                         arg->kind == TK_BOOL || arg->kind == TK_CHAR || arg->kind == TK_BYTE;
+                         arg->kind == TK_BOOL || arg->kind == TK_CHAR;
     bool arg_is_pointer = arg->kind == TK_STRING || arg->kind == TK_POINTER || arg->kind == TK_NIL;
     if (param == C_RET_INTEGER || param == C_RET_FLOAT) return arg_is_pointer;
     if (param == C_RET_POINTER) return arg_is_number;
@@ -1930,7 +1930,7 @@ int main(int argc, char **argv) {
     /* An `extern.` call is emitted with its arguments passed through verbatim —
      * grayc cannot see the C signature to insert a cast. An opaque C handle
      * (FILE*, DIR*, ...) has no Grayscale type to name, so it round-trips as
-     * `^byte` (uint8_t*), and a byte buffer passed to a `char*` parameter
+     * `^u8` (uint8_t*), and a byte buffer passed to a `char*` parameter
      * differs only in signedness. Neither mismatch is expressible away in
      * source. Silence both so C interop compiles clean; on GCC >= 14
      * -Wincompatible-pointer-types is an error by default, so this also keeps

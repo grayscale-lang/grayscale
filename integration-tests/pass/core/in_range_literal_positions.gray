@@ -7,37 +7,37 @@
  */
 
 const S struct {
-    b byte
+    b u8
     n i16
 }
 
 const V struct {
-    n int
+    n i64
 
     do take(v V, x i8) -> i8 {
         return x
     }
 }
 
-do ret_ok() -> byte {
+do ret_ok() -> u8 {
     return 255
 }
 
-do with_default(b byte = 200) -> byte {
+do with_default(b u8 = 200) -> u8 {
     return b
 }
 
-do sink(a int, x i8) -> i8 {
+do sink(a i64, x i8) -> i8 {
     return x
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut s S = S{ b: 250, n: -32000 }
-    mut m map[string:byte] = {"a": 100}
-    mut xs [byte] = {1, 2}
+    mut m map[string:u8] = {"a": 100}
+    mut xs [u8] = {1, 2}
     xs[0] = 254
     mut mm map[string:u8] = {:}
     mm["k"] = 255

@@ -1,1 +1,1 @@
-private alias Id = int
+private alias Id = i64

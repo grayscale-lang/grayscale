@@ -1,8 +1,0 @@
-/*
- * Error Test: E3036 - byte-value-out-of-range
- * Expected: "byte" or "0 and 255"
- */
-
-do main() {
-    mut b byte = 256  // byte must be 0-255
-}

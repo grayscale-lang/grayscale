@@ -5,13 +5,13 @@
 
 do main() {
     println("=== Variable Shadowing Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Inner block shadows outer variable
-    mut x int = 10
+    mut x i64 = 10
     if true {
-        mut x int = 20
+        mut x i64 = 20
         if x == 20 {
             println("  [PASS] inner x shadows outer: inner x = 20")
             passed += 1
@@ -31,9 +31,9 @@ do main() {
     // Test 2: Shadowing with different type
     mut val string = "hello"
     if true {
-        mut val int = 42
+        mut val i64 = 42
         if val == 42 {
-            println("  [PASS] shadow with different type: val = 42 (int)")
+            println("  [PASS] shadow with different type: val = 42 (i64)")
             passed += 1
         } otherwise {
             println("  [FAIL] shadow with different type: expected 42, got ${val}")
@@ -49,11 +49,11 @@ do main() {
     }
 
     // Test 3: Multiple levels of shadowing
-    mut depth int = 1
+    mut depth i64 = 1
     if true {
-        mut depth int = 2
+        mut depth i64 = 2
         if true {
-            mut depth int = 3
+            mut depth i64 = 3
             if depth == 3 {
                 println("  [PASS] depth 3: innermost shadow = 3")
                 passed += 1
@@ -79,9 +79,9 @@ do main() {
     }
 
     // Test 4: Shadow in loop body
-    mut counter int = 100
+    mut counter i64 = 100
     for i in range(0, 3) {
-        mut counter int = i
+        mut counter i64 = i
         if i == 2 {
             if counter == 2 {
                 println("  [PASS] loop shadow: counter = 2 inside loop")

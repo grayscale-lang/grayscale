@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3001 - default param type mismatch (bool for i64)
+ * Expected: type mismatch error
+ */
+
+do check(flag i64 = true) {
+    println(flag)
+}
+
+do main() {
+    check()
+}

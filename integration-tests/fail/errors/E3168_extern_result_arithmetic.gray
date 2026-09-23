@@ -8,6 +8,6 @@
 extern import "stdlib.h"
 
 do main() {
-    mut y int = extern.getenv("HOME") + 5
+    mut y i64 = extern.getenv("HOME") + 5
     println(y)
 }

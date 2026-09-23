@@ -4,7 +4,7 @@
  */
 // expect-error: E4027
 const P struct {
-    extern int
+    extern i64
 }
 
 do main() {

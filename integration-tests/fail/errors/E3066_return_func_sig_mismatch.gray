@@ -3,9 +3,9 @@
  * Expected: compile-time error on the return statement
  */
 
-do takes_float(n float) -> int { return 0 }
+do takes_float(n f64) -> i64 { return 0 }
 
-do get_fn() -> func(int) -> int {
+do get_fn() -> func(i64) -> i64 {
     return ()takes_float
 }
 

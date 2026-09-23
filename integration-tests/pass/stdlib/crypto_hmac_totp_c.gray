@@ -6,7 +6,7 @@
 
 import @crypto
 
-do check(label string, got string, want string, &passed int, &failed int) {
+do check(label string, got string, want string, &passed i64, &failed i64) {
     if got == want {
         println("  [PASS] ${label}")
         passed += 1
@@ -18,8 +18,8 @@ do check(label string, got string, want string, &passed int, &failed int) {
 
 do main() {
     println("=== crypto HMAC / TOTP Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- sha1 / sha512 (known vectors) --
     check("sha1 empty", crypto.sha1(""), "da39a3ee5e6b4b0d3255bfef95601890afd80709", passed, failed)
@@ -70,7 +70,7 @@ do main() {
         println("  [FAIL] entropy zero cases")
         failed += 1
     }
-    mut e float = crypto.entropy("ab")
+    mut e f64 = crypto.entropy("ab")
     if e > 0.99 && e < 1.01 {
         println("  [PASS] entropy of two equal symbols is ~1 bit")
         passed += 1

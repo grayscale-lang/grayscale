@@ -14,16 +14,16 @@ import and use "./models.gray"
 using vutils
 
 const Actor struct {
-    id int
+    id i64
 }
 
 do main() {
     println("=== Cross-Module Generics Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Value wildcard, qualified
-    mut a int = vutils.identity(42)
+    mut a i64 = vutils.identity(42)
     if a == 42 {
         println("  [PASS] vutils.identity(42) == 42")
         passed += 1
@@ -33,7 +33,7 @@ do main() {
     }
 
     // Value wildcard, bare through 'using'
-    mut b int = identity(42)
+    mut b i64 = identity(42)
     if b == 42 {
         println("  [PASS] identity(42) == 42")
         passed += 1

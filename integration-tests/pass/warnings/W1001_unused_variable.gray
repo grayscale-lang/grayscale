@@ -5,6 +5,6 @@
 
 
 do main() {
-    mut x int = 42  // This variable is never used
+    mut x i64 = 42  // This variable is never used
     println("hello")
 }

@@ -7,25 +7,25 @@
 
 import @arrays
 
-mut trace [int] = {}
+mut trace [i64] = {}
 
-do rec(n int) {
+do rec(n i64) {
     arrays.append(trace, n)
 }
 
 /* defer references `resource`, declared after the early return. This must
  * compile: the early-exit path does not run the defer. */
-do guarded(early bool) -> int {
+do guarded(early bool) -> i64 {
     if early {
         return 1
     }
-    mut resource int = 7
+    mut resource i64 = 7
     defer rec(resource)
     return 2
 }
 
 /* defer with no scope dependency still must not fire on the pre-defer path. */
-do no_capture(early bool) -> int {
+do no_capture(early bool) -> i64 {
     if early {
         return 1
     }
@@ -34,11 +34,11 @@ do no_capture(early bool) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     trace = {}
-    mut a int = guarded(true)
+    mut a i64 = guarded(true)
     if a == 1 && len(trace) == 0 {
         passed += 1
     } otherwise {
@@ -47,7 +47,7 @@ do main() {
     }
 
     trace = {}
-    mut b int = guarded(false)
+    mut b i64 = guarded(false)
     if b == 2 && len(trace) == 1 && trace[0] == 7 {
         passed += 1
     } otherwise {
@@ -56,7 +56,7 @@ do main() {
     }
 
     trace = {}
-    mut c int = no_capture(true)
+    mut c i64 = no_capture(true)
     if c == 1 && len(trace) == 0 {
         passed += 1
     } otherwise {
@@ -65,7 +65,7 @@ do main() {
     }
 
     trace = {}
-    mut d int = no_capture(false)
+    mut d i64 = no_capture(false)
     if d == 2 && len(trace) == 1 && trace[0] == 50 {
         passed += 1
     } otherwise {

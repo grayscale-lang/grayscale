@@ -9,8 +9,8 @@
 
 do main() {
     println("=== Interpolation N-ary Join Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- part order is preserved across many segments --
     mut a string = "A"
@@ -26,9 +26,9 @@ do main() {
     }
 
     // -- adjacent expressions with no literal between them --
-    mut x int = 10
-    mut y int = 20
-    mut z int = 30
+    mut x i64 = 10
+    mut y i64 = 20
+    mut z i64 = 30
     mut nums string = "${x}${y}${z}"
     if nums == "102030" {
         println("  [PASS] adjacent expression parts")
@@ -51,7 +51,7 @@ do main() {
 
     // -- mixed value types in one interpolation --
     mut flag bool = false
-    mut pi float = 3.5
+    mut pi f64 = 3.5
     mut ch char = 'Q'
     mut mixed string = "s=${a} i=${x} b=${flag} f=${pi} c=${ch}"
     if mixed == "s=A i=10 b=false f=3.5 c=Q" {

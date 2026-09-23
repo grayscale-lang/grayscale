@@ -12,7 +12,7 @@ import "./lib.gray"
 
 do main() {
     println("=== Private Visibility Test ===")
-    mut passed int = 0
+    mut passed i64 = 0
 
     // Test 1: Access public function
     mut greeting string = lib.get_greeting("World")

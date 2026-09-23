@@ -13,8 +13,8 @@ const Kind enum {
 
 do main() {
     println("=== #error_code enum string form ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut k Kind = Kind.FATAL
     mut c ErrorCode = Kind.FATAL

@@ -6,8 +6,8 @@
 import @strconv
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: to_int (discard the error)
     mut n, _ = strconv.to_int("42")

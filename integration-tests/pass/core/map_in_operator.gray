@@ -4,11 +4,11 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: string key lookup
-    mut colors map[string:int] = {"red": 1, "green": 2, "blue": 3}
+    mut colors map[string:i64] = {"red": 1, "green": 2, "blue": 3}
     if "red" in colors {
         println("  [PASS] string key 'red' found in map")
         passed += 1
@@ -26,22 +26,22 @@ do main() {
         failed += 1
     }
 
-    // Test 3: int key lookup
-    mut ids map[int:string] = {1: "alice", 2: "bob", 3: "charlie"}
+    // Test 3: i64 key lookup
+    mut ids map[i64:string] = {1: "alice", 2: "bob", 3: "charlie"}
     if 2 in ids {
-        println("  [PASS] int key 2 found in map")
+        println("  [PASS] i64 key 2 found in map")
         passed += 1
     } otherwise {
-        println("  [FAIL] int key 2 not found in map")
+        println("  [FAIL] i64 key 2 not found in map")
         failed += 1
     }
 
-    // Test 4: int key not present
+    // Test 4: i64 key not present
     if 99 !in ids {
-        println("  [PASS] int key 99 not in map")
+        println("  [PASS] i64 key 99 not in map")
         passed += 1
     } otherwise {
-        println("  [FAIL] int key 99 unexpectedly in map")
+        println("  [FAIL] i64 key 99 unexpectedly in map")
         failed += 1
     }
 

@@ -1,5 +1,5 @@
 // Multi-return function cannot appear in string interpolation
-do two() -> (int, int) { return 5, 10 }
+do two() -> (i64, i64) { return 5, 10 }
 do main() {
     println("value: ${two()}")
 }

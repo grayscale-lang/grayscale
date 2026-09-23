@@ -1,5 +1,5 @@
 const P struct {
-    n int
-    do mk(n int) -> P { return P{n: n} }
-    do inc(a int) -> int { return a + 1 }
+    n i64
+    do mk(n i64) -> P { return P{n: n} }
+    do inc(a i64) -> i64 { return a + 1 }
 }

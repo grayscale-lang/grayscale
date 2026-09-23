@@ -1,7 +1,7 @@
 import @http
 
 do main() {
-    mut methods int = 0
+    mut methods i64 = 0
     mut headers map[string:string] = {:}
 
     mut _, get_err = http.get("https://example.com", headers)

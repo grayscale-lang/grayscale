@@ -9,19 +9,19 @@
  *   field syntax.
  */
 
-do add(a int, b int) -> int { return a + b }
-do sub(a int, b int) -> int { return a - b }
-do mul(a int, b int) -> int { return a * b }
+do add(a i64, b i64) -> i64 { return a + b }
+do sub(a i64, b i64) -> i64 { return a - b }
+do mul(a i64, b i64) -> i64 { return a * b }
 
 const Op struct {
     name string
-    callback func(int, int) -> int
+    callback func(i64, i64) -> i64
 }
 
 do main() {
     println("=== Struct func Field Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- call through func field --
     mut op Op = Op{name: "add", callback: ()add}
@@ -45,7 +45,7 @@ do main() {
     }
 
     // -- read func field into a local, then call --
-    const f func(int, int) -> int = op.callback
+    const f func(i64, i64) -> i64 = op.callback
     if f(20, 5) == 15 {
         println("  [PASS] mut f = op.callback; f(20, 5) = 15")
         passed += 1

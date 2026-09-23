@@ -1,0 +1,113 @@
+/*
+ * i64-u64-implicit-conv.gray - Test implicit i64-to-u64 conversion
+ * for literals, comparisons, variable assignments, and struct fields.
+ */
+
+
+const Pair struct {
+    x u64
+    y i64
+}
+
+do main() {
+    println("=== Int/Uint Implicit Conversion ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // Test 1: Assign i64 literal to u64 variable
+    mut a u64 = 42
+    if a == 42 {
+        println("  [PASS] assign i64 literal to u64 var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] assign i64 literal to u64 var")
+        failed += 1
+    }
+
+    // Test 2: Assign u64 value to i64 variable via explicit cast
+    mut b i64 = cast(a, i64)
+    if b == 42 {
+        println("  [PASS] assign u64 value to i64 var via cast")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] assign u64 value to i64 var via cast")
+        failed += 1
+    }
+
+    // Test 3: Equality comparison between i64 and u64
+    mut c i64 = 10
+    mut d u64 = 10
+    if c == d {
+        println("  [PASS] i64 == u64 comparison")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 == u64 comparison")
+        failed += 1
+    }
+
+    // Test 4: Inequality comparison between i64 and u64
+    mut e i64 = 5
+    mut f u64 = 10
+    if e != f {
+        println("  [PASS] i64 != u64 comparison")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i64 != u64 comparison")
+        failed += 1
+    }
+
+    // Test 5: Reassign struct u64 field with i64 value via explicit cast
+    mut g u64 = 99
+    mut p Pair = Pair { x: g, y: 7 }
+    mut val i64 = 200
+    p.x = cast(val, u64)
+    if p.x == 200 {
+        println("  [PASS] reassign struct u64 field with i64 value via cast")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] reassign struct u64 field with i64 value via cast")
+        failed += 1
+    }
+
+    // Test 6: Assign i64 literal to u8 variable
+    mut h u8 = 65
+    if h == 65 {
+        println("  [PASS] assign i64 literal to u8 var")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] assign i64 literal to u8 var")
+        failed += 1
+    }
+
+    // Test 7: Equality comparison between u8 and i64
+    mut i i64 = 65
+    if h == i {
+        println("  [PASS] u8 == i64 comparison")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u8 == i64 comparison")
+        failed += 1
+    }
+
+    // Test 8: Assign i64 value to u8 variable via explicit cast
+    mut j u8 = 0
+    mut k i64 = 100
+    j = cast(k, u8)
+    if j == 100 {
+        println("  [PASS] assign i64 value to u8 var via cast")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] assign i64 value to u8 var via cast")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

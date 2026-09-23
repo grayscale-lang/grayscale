@@ -6,31 +6,31 @@
 import @arrays
 
 // --- map callbacks ---
-do double_it(x int) -> int { return x * 2 }
-do square(x float) -> float { return x * x }
+do double_it(x i64) -> i64 { return x * 2 }
+do square(x f64) -> f64 { return x * x }
 
 // --- filter callbacks ---
-do is_even(x int) -> bool { return x % 2 == 0 }
+do is_even(x i64) -> bool { return x % 2 == 0 }
 
 // --- reduce callbacks ---
-do add(a int, b int) -> int { return a + b }
-do multiply(a int, b int) -> int { return a * b }
-do add_byte(a byte, b byte) -> byte { return a + b }
+do add(a i64, b i64) -> i64 { return a + b }
+do multiply(a i64, b i64) -> i64 { return a * b }
+do add_byte(a u8, b u8) -> u8 { return a + b }
 do add_i128(a i128, b i128) -> i128 { return a + b }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: map with int array (double each element)
-    mut nums [int] = {1, 2, 3, 4}
-    mut doubled [int] = arrays.map(nums, ()double_it)
+    // Test 1: map with i64 array (double each element)
+    mut nums [i64] = {1, 2, 3, 4}
+    mut doubled [i64] = arrays.map(nums, ()double_it)
     if len(doubled) == 4 {
         if doubled[0] == 2 {
             if doubled[1] == 4 {
                 if doubled[2] == 6 {
                     if doubled[3] == 8 {
-                        println("  [PASS] map: double int array")
+                        println("  [PASS] map: double i64 array")
                         passed += 1
                     } otherwise {
                         println("  [FAIL] map: doubled[3] expected 8")
@@ -53,14 +53,14 @@ do main() {
         failed += 1
     }
 
-    // Test 2: map with float array
-    mut floats [float] = {1.0, 2.0, 3.0}
-    mut squared [float] = arrays.map(floats, ()square)
+    // Test 2: map with f64 array
+    mut floats [f64] = {1.0, 2.0, 3.0}
+    mut squared [f64] = arrays.map(floats, ()square)
     if len(squared) == 3 {
         if squared[0] == 1.0 {
             if squared[1] == 4.0 {
                 if squared[2] == 9.0 {
-                    println("  [PASS] map: square float array")
+                    println("  [PASS] map: square f64 array")
                     passed += 1
                 } otherwise {
                     println("  [FAIL] map: squared[2] expected 9.0")
@@ -75,13 +75,13 @@ do main() {
             failed += 1
         }
     } otherwise {
-        println("  [FAIL] map: float expected length 3")
+        println("  [FAIL] map: f64 expected length 3")
         failed += 1
     }
 
     // Test 3: map on empty array
-    mut empty [int] = {}
-    mut mapped_empty [int] = arrays.map(empty, ()double_it)
+    mut empty [i64] = {}
+    mut mapped_empty [i64] = arrays.map(empty, ()double_it)
     if len(mapped_empty) == 0 {
         println("  [PASS] map: empty array -> empty")
         passed += 1
@@ -90,9 +90,9 @@ do main() {
         failed += 1
     }
 
-    // Test 4: filter with int array (even numbers)
-    mut all_nums [int] = {1, 2, 3, 4, 5, 6}
-    mut evens [int] = arrays.filter(all_nums, ()is_even)
+    // Test 4: filter with i64 array (even numbers)
+    mut all_nums [i64] = {1, 2, 3, 4, 5, 6}
+    mut evens [i64] = arrays.filter(all_nums, ()is_even)
     if len(evens) == 3 {
         if evens[0] == 2 {
             if evens[1] == 4 {
@@ -117,8 +117,8 @@ do main() {
     }
 
     // Test 5: filter where nothing matches
-    mut odds_only [int] = {1, 3, 5}
-    mut no_evens [int] = arrays.filter(odds_only, ()is_even)
+    mut odds_only [i64] = {1, 3, 5}
+    mut no_evens [i64] = arrays.filter(odds_only, ()is_even)
     if len(no_evens) == 0 {
         println("  [PASS] filter: nothing matches -> empty")
         passed += 1
@@ -128,8 +128,8 @@ do main() {
     }
 
     // Test 6: filter where all match
-    mut all_even [int] = {2, 4, 6}
-    mut all_match [int] = arrays.filter(all_even, ()is_even)
+    mut all_even [i64] = {2, 4, 6}
+    mut all_match [i64] = arrays.filter(all_even, ()is_even)
     if len(all_match) == 3 {
         println("  [PASS] filter: all match -> full copy")
         passed += 1
@@ -139,7 +139,7 @@ do main() {
     }
 
     // Test 7: filter on empty array
-    mut filter_empty [int] = arrays.filter(empty, ()is_even)
+    mut filter_empty [i64] = arrays.filter(empty, ()is_even)
     if len(filter_empty) == 0 {
         println("  [PASS] filter: empty -> empty")
         passed += 1
@@ -149,8 +149,8 @@ do main() {
     }
 
     // Test 8: reduce sum of ints
-    mut to_sum [int] = {1, 2, 3, 4, 5}
-    mut total int = arrays.reduce(to_sum, 0, ()add)
+    mut to_sum [i64] = {1, 2, 3, 4, 5}
+    mut total i64 = arrays.reduce(to_sum, 0, ()add)
     if total == 15 {
         println("  [PASS] reduce: sum = 15")
         passed += 1
@@ -160,8 +160,8 @@ do main() {
     }
 
     // Test 9: reduce product of ints
-    mut to_prod [int] = {1, 2, 3, 4}
-    mut product int = arrays.reduce(to_prod, 1, ()multiply)
+    mut to_prod [i64] = {1, 2, 3, 4}
+    mut product i64 = arrays.reduce(to_prod, 1, ()multiply)
     if product == 24 {
         println("  [PASS] reduce: product = 24")
         passed += 1
@@ -171,7 +171,7 @@ do main() {
     }
 
     // Test 10: reduce on empty array returns initial
-    mut reduce_empty int = arrays.reduce(empty, 42, ()add)
+    mut reduce_empty i64 = arrays.reduce(empty, 42, ()add)
     if reduce_empty == 42 {
         println("  [PASS] reduce: empty -> initial value")
         passed += 1
@@ -181,8 +181,8 @@ do main() {
     }
 
     // Test 11: reduce on single element
-    mut single [int] = {10}
-    mut reduce_single int = arrays.reduce(single, 0, ()add)
+    mut single [i64] = {10}
+    mut reduce_single i64 = arrays.reduce(single, 0, ()add)
     if reduce_single == 10 {
         println("  [PASS] reduce: single element")
         passed += 1
@@ -191,16 +191,16 @@ do main() {
         failed += 1
     }
 
-    // Test 12: reduce with a bare-literal initial value on a non-int
+    // Test 12: reduce with a bare-literal initial value on a non-i64
     // element type — the literal must coerce to the element type instead
-    // of being checked against the callback's return type as plain int.
-    mut bytes [byte] = {5, 10}
-    mut reduce_byte byte = arrays.reduce(bytes, 0, ()add_byte)
+    // of being checked against the callback's return type as plain i64.
+    mut bytes [u8] = {5, 10}
+    mut reduce_byte u8 = arrays.reduce(bytes, 0, ()add_byte)
     if reduce_byte == 15 {
-        println("  [PASS] reduce: bare literal initial value on byte array")
+        println("  [PASS] reduce: bare literal initial value on u8 array")
         passed += 1
     } otherwise {
-        println("  [FAIL] reduce: byte expected 15, got ${reduce_byte}")
+        println("  [FAIL] reduce: u8 expected 15, got ${reduce_byte}")
         failed += 1
     }
 

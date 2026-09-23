@@ -5,7 +5,7 @@
 import @uuid
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     mut dns UUID = uuid.parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 

@@ -6,7 +6,7 @@
 
 const Animal struct {
     name string
-    legs int
+    legs i64
 }
 
 const Priority enum {
@@ -15,7 +15,7 @@ const Priority enum {
     HIGH
 }
 
-do classify(n int) -> (string, int) {
+do classify(n i64) -> (string, i64) {
     if n > 100 {
         return "big", n
     } or n > 10 {
@@ -25,8 +25,8 @@ do classify(n int) -> (string, int) {
     }
 }
 
-do sum_array(&arr [int]) -> int {
-    mut total int = 0
+do sum_array(&arr [i64]) -> i64 {
+    mut total i64 = 0
     for_each item in arr {
         total += item
     }
@@ -35,8 +35,8 @@ do sum_array(&arr [int]) -> int {
 
 do main() {
     println("=== Stress: Feature Interactions ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // when matching on function return value
     mut label string, _ = classify(50)
@@ -58,7 +58,7 @@ do main() {
         Animal{name: "spider", legs: 8},
         Animal{name: "fish", legs: 0}
     }
-    mut total_legs int = 0
+    mut total_legs i64 = 0
     for_each a in animals {
         total_legs += a.legs
     }
@@ -78,16 +78,16 @@ do main() {
 
     // cast() result used as array index
     mut idx_arr [string] = {"zero", "one", "two", "three"}
-    mut f float = 2.7
-    mut idx int = cast(f, int)
+    mut f f64 = 2.7
+    mut idx i64 = cast(f, i64)
     if idx_arr[idx] == "two" {
         println("  [PASS] cast() result as array index")
         passed += 1
     } otherwise { println("  [FAIL] cast as index") failed += 1 }
 
-    // Nested for_each over [[int]] is affected by Bug #5 (codegen types
+    // Nested for_each over [[i64]] is affected by Bug #5 (codegen types
     // inner row as int64_t). Skipping until fixed. Testing nested for loop instead.
-    mut nested_sum int = 0
+    mut nested_sum i64 = 0
     for i in range(0, 3) {
         for j in range(0, 3) {
             nested_sum += i + j
@@ -100,23 +100,23 @@ do main() {
 
     // Recursive function with multiple return values
     // (classify is already tested above, test the values)
-    mut l1 string, v1 int = classify(5)
-    mut l2 string, v2 int = classify(200)
+    mut l1 string, v1 i64 = classify(5)
+    mut l2 string, v2 i64 = classify(200)
     if l1 == "small" && v1 == 5 && l2 == "big" && v2 == 200 {
         println("  [PASS] multi-return function with branching")
         passed += 1
     } otherwise { println("  [FAIL] multi-return branching") failed += 1 }
 
     // Mutable param modifying array, verify original changed
-    mut data [int] = {1, 2, 3}
-    mut s int = sum_array(data)
+    mut data [i64] = {1, 2, 3}
+    mut s i64 = sum_array(data)
     if s == 6 {
         println("  [PASS] mutable param array access")
         passed += 1
     } otherwise { println("  [FAIL] mutable param array — got ${s}") failed += 1 }
 
     // String interpolation with multi-return
-    mut tag string, num int = classify(42)
+    mut tag string, num i64 = classify(42)
     mut msg string = "${tag}: ${num}"
     if msg == "medium: 42" {
         println("  [PASS] interpolation with multi-return values")

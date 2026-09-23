@@ -1,19 +1,19 @@
 /*
- * Error Test: E3001 - returning ^^int from a -> ^int function
+ * Error Test: E3001 - returning ^^i64 from a -> ^i64 function
  *
  * both sides are TK_POINTER so the kind
  * check passed, but the pointer depths differ. Typechecker now
  * compares element_type strings to catch the mismatch.
  */
 
-do bad() -> ^int {
-    mut x int = 42
-    mut p ^int = addr(x)
-    mut pp ^^int = addr(p)
+do bad() -> ^i64 {
+    mut x i64 = 42
+    mut p ^i64 = addr(x)
+    mut pp ^^i64 = addr(p)
     return pp
 }
 
 do main() {
-    mut r ^int = bad()
+    mut r ^i64 = bad()
     println(r^)
 }

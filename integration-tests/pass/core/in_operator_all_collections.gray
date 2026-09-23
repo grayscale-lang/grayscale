@@ -10,11 +10,11 @@
 
 do main() {
     println("=== in operator on all collection kinds ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Array membership -> gray_arrays_contains_* (arrays.h)
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     if 2 in nums {
         println("  [PASS] 2 in nums")
         passed += 1
@@ -24,7 +24,7 @@ do main() {
     }
 
     // Map membership -> gray_maps_has_key (maps.h)
-    mut ages map[string:int] = {"ada": 36}
+    mut ages map[string:i64] = {"ada": 36}
     if "ada" in ages {
         println("  [PASS] \"ada\" in ages")
         passed += 1

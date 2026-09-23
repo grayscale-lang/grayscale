@@ -3,7 +3,7 @@
  * Expected: "'for' is a keyword and cannot be used as a parameter name"
  */
 
-do test(for int) {
+do test(for i64) {
     return
 }
 

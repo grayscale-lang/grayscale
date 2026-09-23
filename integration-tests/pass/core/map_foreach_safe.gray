@@ -4,13 +4,13 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut m map[string:int] = {"a": 1, "b": 2, "c": 3}
+    mut m map[string:i64] = {"a": 1, "b": 2, "c": 3}
 
     // Test 1: for_each iterates all keys
-    mut key_count int = 0
+    mut key_count i64 = 0
     for_each k in m {
         key_count += 1
     }
@@ -23,7 +23,7 @@ do main() {
     }
 
     // Test 2: for_each with key and value
-    mut total int = 0
+    mut total i64 = 0
     for_each k, v in m {
         total += v
     }
@@ -36,8 +36,8 @@ do main() {
     }
 
     // Test 3: separate map for_each
-    mut m2 map[string:int] = {"x": 10, "y": 20}
-    mut sum2 int = 0
+    mut m2 map[string:i64] = {"x": 10, "y": 20}
+    mut sum2 i64 = 0
     for_each k, v in m2 {
         sum2 += v
     }

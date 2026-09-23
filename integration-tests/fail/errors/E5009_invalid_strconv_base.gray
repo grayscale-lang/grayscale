@@ -6,5 +6,5 @@
 import @strconv
 
 do main() {
-    mut x int = strconv.to_int("42", 1)
+    mut x i64 = strconv.to_int("42", 1)
 }

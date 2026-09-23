@@ -9,6 +9,6 @@
 do main() {
     mut s string = "hi"
     mut p ^char = addr(s[0])
-    mut i int = 1
+    mut i i64 = 1
     mut q ^char = addr(s[i])
 }

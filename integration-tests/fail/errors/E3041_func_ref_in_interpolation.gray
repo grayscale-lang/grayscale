@@ -8,11 +8,11 @@
  * off the name rather than the kind.
  */
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 do main() {
-    mut f func(int, int) -> int = ()add
+    mut f func(i64, i64) -> i64 = ()add
     println("fn: ${f}")
 }

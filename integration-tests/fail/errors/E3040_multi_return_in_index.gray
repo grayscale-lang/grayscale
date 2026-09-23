@@ -6,11 +6,11 @@
 // expect-error: E3040
 // expect-error-count: 1
 
-do pair() -> ([int], Error) {
+do pair() -> ([i64], Error) {
     return {1, 2, 3}, nil
 }
 
 do main() {
-    mut x int = pair()[0]
+    mut x i64 = pair()[0]
     println("${x}")
 }

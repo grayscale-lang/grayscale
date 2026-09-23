@@ -3,8 +3,8 @@
  * Expected: "struct name is reserved"
  */
 
-const int struct {
-    x int
+const i64 struct {
+    x i64
 }
 
 do main() {

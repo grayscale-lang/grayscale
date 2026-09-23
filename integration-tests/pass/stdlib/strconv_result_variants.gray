@@ -6,8 +6,8 @@
 import @strconv
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: to_int success path
     mut val1, err1 = strconv.to_int("123")
@@ -135,7 +135,7 @@ do main() {
     }
 
     // Test 11: to_int invalid runtime base returns an error, not a panic
-    mut bad_base int = 99
+    mut bad_base i64 = 99
     mut val11, err11 = strconv.to_int("42", bad_base)
     if err11 != nil {
         println("  [PASS] to_int(\"42\", 99) returned error (invalid base)")
@@ -146,7 +146,7 @@ do main() {
     }
 
     // Test 12: to_uint invalid runtime base returns an error, not a panic
-    mut zero_base int = 0
+    mut zero_base i64 = 0
     mut val12, err12 = strconv.to_uint("42", zero_base)
     if err12 != nil {
         println("  [PASS] to_uint(\"42\", 0) returned error (invalid base)")

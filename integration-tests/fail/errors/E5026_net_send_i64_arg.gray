@@ -1,0 +1,10 @@
+/*
+ * Error Test: E5026 - net.send passed i64 instead of Socket
+ * Expected: E5026 type mismatch error
+ */
+
+import @net
+
+do main() {
+    mut sent i64 = net.send(-1, "data")
+}

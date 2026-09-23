@@ -7,7 +7,7 @@
 
 import @arrays
 
-do first_item(&arr [int]) -> int {
+do first_item(&arr [i64]) -> i64 {
     for_each x in arr {
         return x
     }
@@ -15,10 +15,10 @@ do first_item(&arr [int]) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut arr [int] = {10, 20, 30}
+    mut arr [i64] = {10, 20, 30}
     mut r = first_item(arr)
 
     // Test 1: early return produces correct value

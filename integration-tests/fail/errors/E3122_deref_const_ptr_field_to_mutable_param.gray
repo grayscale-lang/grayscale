@@ -6,17 +6,17 @@
 // expect-error-count: 2
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 const Inner struct {
-    v int
+    v i64
 }
 const Outer struct {
     inner Inner
 }
 
-do inc(&n int) {
+do inc(&n i64) {
     n = n + 1
 }
 

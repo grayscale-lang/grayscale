@@ -8,15 +8,15 @@
  * outlives the if-block where 'inner' is declared.
  */
 
-mut g ^int = nil
+mut g ^i64 = nil
 
-do capture(p ^int) {
+do capture(p ^i64) {
     g = p
 }
 
 do main() {
     if true {
-        mut inner int = 99
+        mut inner i64 = 99
         capture(addr(inner))
     }
     println(g^)

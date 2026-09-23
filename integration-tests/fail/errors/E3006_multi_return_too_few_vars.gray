@@ -3,7 +3,7 @@
  * Expected: error about missing variables in destructuring
  */
 
-do get_three() -> (int, int, int) {
+do get_three() -> (i64, i64, i64) {
     return 1, 2, 3
 }
 

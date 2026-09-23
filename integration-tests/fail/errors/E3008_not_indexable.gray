@@ -1,9 +1,9 @@
 /*
  * Error Test: E3008 - not-indexable
- * Expected: "type 'int' does not support indexing; only arrays, maps, and strings can be indexed"
+ * Expected: "type 'i64' does not support indexing; only arrays, maps, and strings can be indexed"
  */
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     x[0] = 10  // Trying to index an integer
 }

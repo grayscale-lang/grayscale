@@ -8,7 +8,7 @@
 // expect-error-count: 1
 
 const Point struct {
-    x int
+    x i64
 }
 
 alias Vec2 = Point

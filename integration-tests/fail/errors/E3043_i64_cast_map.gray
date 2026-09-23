@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3043 - cannot convert map to i64
+ * Expected: type cannot be converted error
+ */
+
+do main() {
+    mut m map[string:i64] = {"a": 1}
+    mut x i64 = cast(m, i64)
+    println(x)
+}

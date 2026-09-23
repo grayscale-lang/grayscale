@@ -2,8 +2,8 @@
  * map_wide_numeric_keys.gray - 'in', has_key, remove_key for f32/f64 and
  * bigint (i128/u128/i256/u256) map keys.
  *
- *   - 'in'/'!in' used gray_type_to_c_cg → emitted 'float _ik' (4-byte) against
- *     a double-sized (8-byte) storage slot for f32, and 'gray_i128 _ik = 1'
+ *   - 'in'/'!in' used gray_type_to_c_cg → emitted 'f64 _ik' (4-u8) against
+ *     a double-sized (8-u8) storage slot for f32, and 'gray_i128 _ik = 1'
  *     (C compile error) for bigint keys.
  *   - has_key / remove_key used __auto_type, which picks the C type of the
  *     argument expression rather than the map's declared key storage width.
@@ -16,8 +16,8 @@ import @maps
 
 do main() {
     println("=== Wide Numeric Map Keys Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- f32: in / has_key / remove_key --
     mut f32m map[f32:string] = {1.5: "a", 2.5: "b", 3.5: "c"}

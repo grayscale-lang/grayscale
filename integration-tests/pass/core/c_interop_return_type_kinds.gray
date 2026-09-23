@@ -9,19 +9,19 @@ extern import "stdlib.h"
 
 do main() {
     println("=== C interop result: return type kinds ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut root float = extern.sqrt(2.0)
+    mut root f64 = extern.sqrt(2.0)
     if root > 1.41 && root < 1.42 { passed += 1 } otherwise { failed += 1 }
 
-    mut truncated int = cast(extern.sqrt(9.5), int)
+    mut truncated i64 = cast(extern.sqrt(9.5), i64)
     if truncated == 3 { passed += 1 } otherwise { failed += 1 }
 
-    mut absolute int = extern.abs(-7)
+    mut absolute i64 = extern.abs(-7)
     if absolute == 7 { passed += 1 } otherwise { failed += 1 }
 
-    mut p ^byte = extern.malloc(16)
+    mut p ^u8 = extern.malloc(16)
     extern.free(p)
     passed += 1
 

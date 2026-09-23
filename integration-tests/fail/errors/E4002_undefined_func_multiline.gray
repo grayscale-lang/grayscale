@@ -4,12 +4,12 @@
  * caret should be on the function name
  */
 
-do helper() -> int {
+do helper() -> i64 {
     return 42
 }
 
 do main() {
-    mut x int = helper()
-    mut y int = does_not_exist()
+    mut x i64 = helper()
+    mut y i64 = does_not_exist()
     println(x + y)
 }

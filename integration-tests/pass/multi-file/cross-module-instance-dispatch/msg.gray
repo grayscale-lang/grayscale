@@ -3,7 +3,7 @@
  */
 
 const Msg struct {
-    id int
+    id i64
 
     do describe(m Msg) -> string {
         return "msg-${m.id}"
@@ -13,7 +13,7 @@ const Msg struct {
         m.id = m.id + 1
     }
 
-    do peek(m ^Msg) -> int {
+    do peek(m ^Msg) -> i64 {
         return m^.id
     }
 }

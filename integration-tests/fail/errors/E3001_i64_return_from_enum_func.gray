@@ -1,0 +1,21 @@
+/*
+ * Error Test: E3001 - i64 literal returned from function with enum return type
+ *
+ * the return-statement type-mismatch check used
+ * to allow i64 literals through a function whose declared return type
+ * was an enum. Now rejected so callers can trust the enum contract.
+ */
+
+const Color enum {
+    RED,
+    GREEN,
+    BLUE
+}
+
+do bad() -> Color {
+    return 42
+}
+
+do main() {
+    mut c Color = bad()
+}

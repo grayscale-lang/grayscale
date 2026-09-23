@@ -8,13 +8,13 @@
 import @mem
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     mut a = mem.arena(1024)
     mut b mem.Arena = a
 
     // allocate through the alias, read it back — arena still alive
-    mut p ^int = mem.alloc(b, 0)
+    mut p ^i64 = mem.alloc(b, 0)
     p^ = 7
     if p^ == 7 {
         println("  [PASS] alloc + deref through aliased handle")
@@ -25,7 +25,7 @@ do main() {
 
     // a second alias, still before any destroy
     mut c mem.Arena = b
-    mut q ^int = mem.alloc(c, 0)
+    mut q ^i64 = mem.alloc(c, 0)
     q^ = 35
     if p^ + q^ == 42 {
         println("  [PASS] second-hop alias still valid")

@@ -3,11 +3,11 @@
  * Expected: "wildcard type '?' cannot be used in named return positions"
  */
 
-do first_and_len(arr [?]) -> (first ?, count int) {
+do first_and_len(arr [?]) -> (first ?, count i64) {
     return arr[0], len(arr)
 }
 
 do main() {
-    mut v int, n int = first_and_len({10, 20, 30})
+    mut v i64, n i64 = first_and_len({10, 20, 30})
     println(v)
 }

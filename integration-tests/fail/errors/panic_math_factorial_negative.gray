@@ -6,5 +6,5 @@
 import @math
 
 do main() {
-    mut x int = math.factorial(-5)  // factorial requires non-negative
+    mut x i64 = math.factorial(-5)  // factorial requires non-negative
 }

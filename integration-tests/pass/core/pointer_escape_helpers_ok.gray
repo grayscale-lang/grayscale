@@ -12,35 +12,35 @@
 import @arrays
 
 const Box struct {
-    p ^int
+    p ^i64
 }
 
-do add_ptr(&c [^int], p ^int) {
+do add_ptr(&c [^i64], p ^i64) {
     arrays.append(c, p)
 }
 
-do set_box(&b Box, q ^int) {
+do set_box(&b Box, q ^i64) {
     b.p = q
 }
 
-do deref_sum(a ^int, b ^int) -> int {
+do deref_sum(a ^i64, b ^i64) -> i64 {
     return a^ + b^
 }
 
 do make_box() -> Box {
-    mut n ^int = new(int)
+    mut n ^i64 = new(i64)
     n^ = 7
     return Box{p: n}
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut outer_val int = 100
-    mut op ^int = addr(outer_val)
+    mut outer_val i64 = 100
+    mut op ^i64 = addr(outer_val)
 
-    mut ptrs [^int] = {}
+    mut ptrs [^i64] = {}
     add_ptr(ptrs, op)
     if len(ptrs) == 1 && ptrs[0]^ == 100 {
         passed += 1

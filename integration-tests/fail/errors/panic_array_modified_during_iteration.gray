@@ -11,7 +11,7 @@
 import and use @arrays
 
 do main() {
-    mut arr [int] = {1, 2, 3, 4, 5}
+    mut arr [i64] = {1, 2, 3, 4, 5}
     for_each item in arr {
         println("item: ${item}")
         if item == 2 {

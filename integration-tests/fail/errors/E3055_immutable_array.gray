@@ -4,6 +4,6 @@
  */
 
 do main() {
-    const arr [int] = {1, 2, 3}
+    const arr [i64] = {1, 2, 3}
     arr[0] = 10  // Trying to modify const array
 }

@@ -3,7 +3,7 @@
 import @random
 
 do main() {
-    mut a [int] = {1, 2, 3, 4}
-    mut count int = 4294967298
+    mut a [i64] = {1, 2, 3, 4}
+    mut count i64 = 4294967298
     println(len(random.sample(a, count)))
 }

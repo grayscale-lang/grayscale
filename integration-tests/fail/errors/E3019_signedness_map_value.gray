@@ -3,8 +3,8 @@
 // expect-error-count: 2
 
 do main() {
-    mut neg int = -1
-    mut m map[string:uint] = {"a": neg}
+    mut neg i64 = -1
+    mut m map[string:u64] = {"a": neg}
     m["b"] = neg
     println("${m}")
 }

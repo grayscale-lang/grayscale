@@ -5,11 +5,11 @@
 
 do main() {
     println("=== Stress: @std Core ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // len() on empty collections
-    mut empty_arr [int] = {}
+    mut empty_arr [i64] = {}
     mut empty_str string = ""
     if len(empty_arr) == 0 && len(empty_str) == 0 {
         println("  [PASS] len() on empty collections")
@@ -17,7 +17,7 @@ do main() {
     } otherwise { println("  [FAIL] len() empty") failed += 1 }
 
     // type_of() exhaustive
-    if type_of(42) == "int" && type_of(3.14) == "float" && type_of("hi") == "string" && type_of(true) == "bool" && type_of('A') == "char" {
+    if type_of(42) == "i64" && type_of(3.14) == "f64" && type_of("hi") == "string" && type_of(true) == "bool" && type_of('A') == "char" {
         println("  [PASS] type_of() on primitives")
         passed += 1
     } otherwise { println("  [FAIL] type_of()") failed += 1 }
@@ -33,8 +33,8 @@ do main() {
     } otherwise { println("  [FAIL] type_of() sized") failed += 1 }
 
     // copy() deep independence — array
-    mut orig [int] = {1, 2, 3}
-    mut dup [int] = copy(orig)
+    mut orig [i64] = {1, 2, 3}
+    mut dup [i64] = copy(orig)
     dup[0] = 99
     if orig[0] == 1 && dup[0] == 99 {
         println("  [PASS] copy() array deep independence")
@@ -54,16 +54,16 @@ do main() {
     passed += 1
 
     // cast() between types
-    mut f float = 3.7
-    mut i int = cast(f, int)
+    mut f f64 = 3.7
+    mut i i64 = cast(f, i64)
     if i == 3 {
-        println("  [PASS] cast(float, int) truncates")
+        println("  [PASS] cast(f64, i64) truncates")
         passed += 1
-    } otherwise { println("  [FAIL] cast float->int — got ${i}") failed += 1 }
+    } otherwise { println("  [FAIL] cast f64->i64 — got ${i}") failed += 1 }
 
     // println with all types (just verify no crash)
-    println("  int: ${42}")
-    println("  float: ${3.14}")
+    println("  i64: ${42}")
+    println("  f64: ${3.14}")
     println("  bool: ${true}")
     println("  char: ${'A'}")
     println("  [PASS] println with all types in interpolation")

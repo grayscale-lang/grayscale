@@ -1,1 +1,1 @@
-do bumpi(&n int) { n = n + 100 }
+do bumpi(&n i64) { n = n + 100 }

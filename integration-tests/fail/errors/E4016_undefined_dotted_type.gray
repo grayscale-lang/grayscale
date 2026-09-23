@@ -6,7 +6,7 @@
 // expect-error: E4016
 
 const Foo struct {
-    a int
+    a i64
 }
 
 do main() {

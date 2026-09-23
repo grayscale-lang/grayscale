@@ -3,5 +3,5 @@
  * Expected: E2001 — unexpected symbol
  */
 do main() {
-    mut bit_and int = 5
+    mut bit_and i64 = 5
 }

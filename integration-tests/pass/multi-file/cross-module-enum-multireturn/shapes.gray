@@ -1,5 +1,5 @@
 const Tag enum {
-    Leaf(int)
+    Leaf(i64)
     Nil
 }
 
@@ -8,12 +8,12 @@ const Plain enum {
     HIGH
 }
 
-do tagged(n int) -> (Tag, Error) {
+do tagged(n i64) -> (Tag, Error) {
     if n < 0 { return Tag.Nil, error("neg") }
     return Tag.Leaf(n), nil
 }
 
-do plain(n int) -> (Plain, int) {
+do plain(n i64) -> (Plain, i64) {
     if n > 10 { return Plain.HIGH, n }
     return Plain.LOW, n
 }

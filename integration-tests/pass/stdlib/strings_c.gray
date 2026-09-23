@@ -6,8 +6,8 @@ import @strings
 
 do main() {
     println("=== Strings Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // upper
     if strings.to_upper("hello") == "HELLO" {
@@ -100,7 +100,7 @@ do main() {
     }
 
     // index
-    mut idx int = strings.index_of("hello", "l")
+    mut idx i64 = strings.index_of("hello", "l")
     if idx == 2 {
         println("  [PASS] index")
         passed += 1
@@ -110,7 +110,7 @@ do main() {
     }
 
     // count
-    mut cnt int = strings.count("banana", "a")
+    mut cnt i64 = strings.count("banana", "a")
     if cnt == 3 {
         println("  [PASS] count")
         passed += 1
@@ -200,7 +200,7 @@ do main() {
     }
 
     // last_index_of
-    mut lidx int = strings.last_index_of("hello world hello", "hello")
+    mut lidx i64 = strings.last_index_of("hello world hello", "hello")
     if lidx == 12 {
         println("  [PASS] last_index_of")
         passed += 1
@@ -210,7 +210,7 @@ do main() {
     }
 
     // last_index_of not found
-    mut lidx2 int = strings.last_index_of("hello", "xyz")
+    mut lidx2 i64 = strings.last_index_of("hello", "xyz")
     if lidx2 == -1 {
         println("  [PASS] last_index_of (not found)")
         passed += 1
@@ -293,7 +293,7 @@ do main() {
     // codepoint, not one per byte, and round-trips losslessly.
     mut utf8_chars [char] = strings.to_chars("héllo")
     mut utf8_back string = strings.from_chars(utf8_chars)
-    if len(utf8_chars) == 5 && int(utf8_chars[1]) == 233 && utf8_back == "héllo" {
+    if len(utf8_chars) == 5 && cast(utf8_chars[1], i64) == 233 && utf8_back == "héllo" {
         println("  [PASS] to_chars/from_chars (UTF-8 codepoint)")
         passed += 1
     } otherwise {

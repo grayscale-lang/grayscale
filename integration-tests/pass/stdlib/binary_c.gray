@@ -9,14 +9,14 @@ import @binary
 
 do main() {
     println("=== Binary Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // --- 8-bit ---
 
     // i8 round-trip
-    mut i8_bytes [byte] = binary.encode_i8(-42)
-    mut i8_val int = binary.decode_i8(i8_bytes)
+    mut i8_bytes [u8] = binary.encode_i8(-42)
+    mut i8_val i64 = binary.decode_i8(i8_bytes)
     if i8_val == -42 {
         println("  [PASS] i8 round-trip")
         passed += 1
@@ -26,8 +26,8 @@ do main() {
     }
 
     // u8 round-trip
-    mut u8_bytes [byte] = binary.encode_u8(255)
-    mut u8_val int = binary.decode_u8(u8_bytes)
+    mut u8_bytes [u8] = binary.encode_u8(255)
+    mut u8_val i64 = binary.decode_u8(u8_bytes)
     if u8_val == 255 {
         println("  [PASS] u8 round-trip")
         passed += 1
@@ -48,8 +48,8 @@ do main() {
     // --- 16-bit signed ---
 
     // i16_le round-trip
-    mut i16le_bytes [byte] = binary.encode_i16_le(-500)
-    mut i16le_val int = binary.decode_i16_le(i16le_bytes)
+    mut i16le_bytes [u8] = binary.encode_i16_le(-500)
+    mut i16le_val i64 = binary.decode_i16_le(i16le_bytes)
     if i16le_val == -500 {
         println("  [PASS] i16_le round-trip")
         passed += 1
@@ -59,8 +59,8 @@ do main() {
     }
 
     // i16_be round-trip
-    mut i16be_bytes [byte] = binary.encode_i16_be(-500)
-    mut i16be_val int = binary.decode_i16_be(i16be_bytes)
+    mut i16be_bytes [u8] = binary.encode_i16_be(-500)
+    mut i16be_val i64 = binary.decode_i16_be(i16be_bytes)
     if i16be_val == -500 {
         println("  [PASS] i16_be round-trip")
         passed += 1
@@ -81,8 +81,8 @@ do main() {
     // --- 16-bit unsigned ---
 
     // u16_le round-trip
-    mut u16le_bytes [byte] = binary.encode_u16_le(60000)
-    mut u16le_val int = binary.decode_u16_le(u16le_bytes)
+    mut u16le_bytes [u8] = binary.encode_u16_le(60000)
+    mut u16le_val i64 = binary.decode_u16_le(u16le_bytes)
     if u16le_val == 60000 {
         println("  [PASS] u16_le round-trip")
         passed += 1
@@ -92,8 +92,8 @@ do main() {
     }
 
     // u16_be round-trip
-    mut u16be_bytes [byte] = binary.encode_u16_be(60000)
-    mut u16be_val int = binary.decode_u16_be(u16be_bytes)
+    mut u16be_bytes [u8] = binary.encode_u16_be(60000)
+    mut u16be_val i64 = binary.decode_u16_be(u16be_bytes)
     if u16be_val == 60000 {
         println("  [PASS] u16_be round-trip")
         passed += 1
@@ -105,8 +105,8 @@ do main() {
     // --- 32-bit signed ---
 
     // i32_le round-trip
-    mut i32le_bytes [byte] = binary.encode_i32_le(-100000)
-    mut i32le_val int = binary.decode_i32_le(i32le_bytes)
+    mut i32le_bytes [u8] = binary.encode_i32_le(-100000)
+    mut i32le_val i64 = binary.decode_i32_le(i32le_bytes)
     if i32le_val == -100000 {
         println("  [PASS] i32_le round-trip")
         passed += 1
@@ -116,8 +116,8 @@ do main() {
     }
 
     // i32_be round-trip
-    mut i32be_bytes [byte] = binary.encode_i32_be(-100000)
-    mut i32be_val int = binary.decode_i32_be(i32be_bytes)
+    mut i32be_bytes [u8] = binary.encode_i32_be(-100000)
+    mut i32be_val i64 = binary.decode_i32_be(i32be_bytes)
     if i32be_val == -100000 {
         println("  [PASS] i32_be round-trip")
         passed += 1
@@ -138,8 +138,8 @@ do main() {
     // --- 32-bit unsigned ---
 
     // u32_le round-trip
-    mut u32le_bytes [byte] = binary.encode_u32_le(3000000000)
-    mut u32le_val int = binary.decode_u32_le(u32le_bytes)
+    mut u32le_bytes [u8] = binary.encode_u32_le(3000000000)
+    mut u32le_val i64 = binary.decode_u32_le(u32le_bytes)
     if u32le_val == 3000000000 {
         println("  [PASS] u32_le round-trip")
         passed += 1
@@ -149,8 +149,8 @@ do main() {
     }
 
     // u32_be round-trip
-    mut u32be_bytes [byte] = binary.encode_u32_be(3000000000)
-    mut u32be_val int = binary.decode_u32_be(u32be_bytes)
+    mut u32be_bytes [u8] = binary.encode_u32_be(3000000000)
+    mut u32be_val i64 = binary.decode_u32_be(u32be_bytes)
     if u32be_val == 3000000000 {
         println("  [PASS] u32_be round-trip")
         passed += 1
@@ -162,8 +162,8 @@ do main() {
     // --- 64-bit signed ---
 
     // i64_le round-trip
-    mut i64le_bytes [byte] = binary.encode_i64_le(-9876543210)
-    mut i64le_val int = binary.decode_i64_le(i64le_bytes)
+    mut i64le_bytes [u8] = binary.encode_i64_le(-9876543210)
+    mut i64le_val i64 = binary.decode_i64_le(i64le_bytes)
     if i64le_val == -9876543210 {
         println("  [PASS] i64_le round-trip")
         passed += 1
@@ -173,8 +173,8 @@ do main() {
     }
 
     // i64_be round-trip
-    mut i64be_bytes [byte] = binary.encode_i64_be(-9876543210)
-    mut i64be_val int = binary.decode_i64_be(i64be_bytes)
+    mut i64be_bytes [u8] = binary.encode_i64_be(-9876543210)
+    mut i64be_val i64 = binary.decode_i64_be(i64be_bytes)
     if i64be_val == -9876543210 {
         println("  [PASS] i64_be round-trip")
         passed += 1
@@ -195,8 +195,8 @@ do main() {
     // --- 64-bit unsigned ---
 
     // u64_le round-trip
-    mut u64le_bytes [byte] = binary.encode_u64_le(12345678901234)
-    mut u64le_val int = binary.decode_u64_le(u64le_bytes)
+    mut u64le_bytes [u8] = binary.encode_u64_le(12345678901234)
+    mut u64le_val i64 = binary.decode_u64_le(u64le_bytes)
     if u64le_val == 12345678901234 {
         println("  [PASS] u64_le round-trip")
         passed += 1
@@ -206,8 +206,8 @@ do main() {
     }
 
     // u64_be round-trip
-    mut u64be_bytes [byte] = binary.encode_u64_be(12345678901234)
-    mut u64be_val int = binary.decode_u64_be(u64be_bytes)
+    mut u64be_bytes [u8] = binary.encode_u64_be(12345678901234)
+    mut u64be_val i64 = binary.decode_u64_be(u64be_bytes)
     if u64be_val == 12345678901234 {
         println("  [PASS] u64_be round-trip")
         passed += 1
@@ -219,8 +219,8 @@ do main() {
     // --- Float 32-bit ---
 
     // f32_le round-trip
-    mut f32le_bytes [byte] = binary.encode_f32_le(3.14)
-    mut f32le_val float = binary.decode_f32_le(f32le_bytes)
+    mut f32le_bytes [u8] = binary.encode_f32_le(3.14)
+    mut f32le_val f64 = binary.decode_f32_le(f32le_bytes)
     if f32le_val > 3.13 && f32le_val < 3.15 {
         println("  [PASS] f32_le round-trip")
         passed += 1
@@ -230,8 +230,8 @@ do main() {
     }
 
     // f32_be round-trip
-    mut f32be_bytes [byte] = binary.encode_f32_be(3.14)
-    mut f32be_val float = binary.decode_f32_be(f32be_bytes)
+    mut f32be_bytes [u8] = binary.encode_f32_be(3.14)
+    mut f32be_val f64 = binary.decode_f32_be(f32be_bytes)
     if f32be_val > 3.13 && f32be_val < 3.15 {
         println("  [PASS] f32_be round-trip")
         passed += 1
@@ -252,8 +252,8 @@ do main() {
     // --- Float 64-bit ---
 
     // f64_le round-trip
-    mut f64le_bytes [byte] = binary.encode_f64_le(2.718281828)
-    mut f64le_val float = binary.decode_f64_le(f64le_bytes)
+    mut f64le_bytes [u8] = binary.encode_f64_le(2.718281828)
+    mut f64le_val f64 = binary.decode_f64_le(f64le_bytes)
     if f64le_val > 2.718281 && f64le_val < 2.718282 {
         println("  [PASS] f64_le round-trip")
         passed += 1
@@ -263,8 +263,8 @@ do main() {
     }
 
     // f64_be round-trip
-    mut f64be_bytes [byte] = binary.encode_f64_be(2.718281828)
-    mut f64be_val float = binary.decode_f64_be(f64be_bytes)
+    mut f64be_bytes [u8] = binary.encode_f64_be(2.718281828)
+    mut f64be_val f64 = binary.decode_f64_be(f64be_bytes)
     if f64be_val > 2.718281 && f64be_val < 2.718282 {
         println("  [PASS] f64_be round-trip")
         passed += 1
@@ -284,13 +284,13 @@ do main() {
 
     // --- Endianness verification ---
 
-    // LE and BE produce different byte orderings for the same value
-    mut le_check [byte] = binary.encode_i32_le(1)
-    mut be_check [byte] = binary.encode_i32_be(1)
+    // LE and BE produce different u8 orderings for the same value
+    mut le_check [u8] = binary.encode_i32_le(1)
+    mut be_check [u8] = binary.encode_i32_be(1)
     // For value 1: LE = [01,00,00,00], BE = [00,00,00,01]
-    // First byte should differ
-    mut le_first int = binary.decode_u8(le_check)
-    mut be_first int = binary.decode_u8(be_check)
+    // First u8 should differ
+    mut le_first i64 = binary.decode_u8(le_check)
+    mut be_first i64 = binary.decode_u8(be_check)
     if le_first == 1 && be_first == 0 {
         println("  [PASS] endianness differs")
         passed += 1
@@ -302,8 +302,8 @@ do main() {
     // --- Zero values ---
 
     // i64 zero round-trip
-    mut zero_bytes [byte] = binary.encode_i64_le(0)
-    mut zero_val int = binary.decode_i64_le(zero_bytes)
+    mut zero_bytes [u8] = binary.encode_i64_le(0)
+    mut zero_val i64 = binary.decode_i64_le(zero_bytes)
     if zero_val == 0 {
         println("  [PASS] i64 zero round-trip")
         passed += 1
@@ -312,7 +312,7 @@ do main() {
         failed += 1
     }
 
-    // 128-bit round trips, both byte orders, 16-byte encodings
+    // 128-bit round trips, both u8 orders, 16-u8 encodings
     mut big128 i128 = i128(1234567890123456)
     if binary.decode_i128_be(binary.encode_i128_be(big128)) == big128 &&
        binary.decode_i128_le(binary.encode_i128_le(big128)) == big128 &&
@@ -334,7 +334,7 @@ do main() {
         failed += 1
     }
 
-    // 256-bit round trips, both byte orders, 32-byte encodings
+    // 256-bit round trips, both u8 orders, 32-u8 encodings
     mut big256 i256 = i256(-42)
     if binary.decode_i256_be(binary.encode_i256_be(big256)) == big256 &&
        binary.decode_i256_le(binary.encode_i256_le(big256)) == big256 &&

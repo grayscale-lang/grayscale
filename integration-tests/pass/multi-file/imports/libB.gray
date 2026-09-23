@@ -2,10 +2,10 @@
  * libB.gray - Test module B
  */
 
-do multiply(a int, b int) -> int {
+do multiply(a i64, b i64) -> i64 {
     return a * b
 }
 
-do format_number(n int) -> string {
+do format_number(n i64) -> string {
     return "Number: ${n}"
 }

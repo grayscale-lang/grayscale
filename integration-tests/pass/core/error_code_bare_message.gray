@@ -2,14 +2,14 @@
  * error_code_bare_message.gray - error("msg") with no code defaults to .Unknown.
  */
 
-do boom() -> (int, Error) {
+do boom() -> (i64, Error) {
     return 0, error("something broke")
 }
 
 do main() {
     println("=== bare error() default code test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut _, err = boom()
 

@@ -8,7 +8,7 @@
 extern import "stdlib.h"
 
 do main() {
-    mut p ^byte = extern.malloc(16)
-    mut x int = cast(extern.free(p), int)
+    mut p ^u8 = extern.malloc(16)
+    mut x i64 = cast(extern.free(p), i64)
     println("${x}")
 }

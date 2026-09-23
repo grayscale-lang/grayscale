@@ -34,8 +34,8 @@ do describe(s string) -> string {
 
 do main() {
     println("=== String Enum Support Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: string enum comparison with string literal
     if Status.PENDING == "pending" {

@@ -4,8 +4,8 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // "$" written as a hex escape so the expected strings carry no live ${}.
     mut d string = "\x24"
@@ -18,7 +18,7 @@ do main() {
         failed += 1
     }
 
-    mut y int = 10
+    mut y i64 = 10
     mut b string = "escaped \${x} and ${y}"
     if b == "escaped ${d}{x} and 10" {
         passed += 1

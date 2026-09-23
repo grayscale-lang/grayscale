@@ -1,9 +1,0 @@
-/*
- * Error Test: E7033 - conversion-overflow
- * Expected: "overflow" or "exceeds"
- */
-
-do main() {
-    mut f float = 9999999999999999999.9
-    mut i int = int(f)
-}

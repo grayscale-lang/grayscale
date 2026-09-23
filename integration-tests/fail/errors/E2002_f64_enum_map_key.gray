@@ -1,0 +1,14 @@
+/*
+ * Error Test: E2002 - f64-enum-map-key
+ * Expected: "f64-based enum cannot be used as map key"
+ */
+
+enum Status [f64] {
+    ACTIVE = 1.0,
+    INACTIVE = 2.0
+}
+
+do main() {
+    mut m map[Status: string] = {}  // f64 enum as map key
+}
+

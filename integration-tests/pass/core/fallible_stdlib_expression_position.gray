@@ -5,14 +5,14 @@
  */
 import @strconv
 
-do double(s string) -> (int, Error) {
+do double(s string) -> (i64, Error) {
     mut n = strconv.to_int(s) or_return
     return n * 2, nil
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Form 1: handle the error
     mut a, err = strconv.to_int("42")

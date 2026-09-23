@@ -4,8 +4,8 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do make(T <?>) -> ^? {
@@ -17,8 +17,8 @@ do wrap(T <?>) -> ^? {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut p = wrap(Point)
     p^.x = 42

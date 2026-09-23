@@ -5,7 +5,7 @@
 // expect-error: E3121
 
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     when arr {
         is 1 { println("match") }
         default { println("no match") }

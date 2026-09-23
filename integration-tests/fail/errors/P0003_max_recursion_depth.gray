@@ -1,9 +1,9 @@
 /* Panic Test: P0003 - maximum recursion depth exceeded */
-do recurse(n int) -> int {
+do recurse(n i64) -> i64 {
     return recurse(n + 1)
 }
 
 do main() {
-    mut x int = recurse(0)
+    mut x i64 = recurse(0)
     println(x)
 }

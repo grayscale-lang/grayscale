@@ -5,7 +5,7 @@
  * as many bytes as requested (max_bytes == bytes received, the exact-fit
  * boundary) or fewer than requested (max_bytes > bytes received, the shape
  * of the module's own minimal reproduction). Before the fix neither case
- * reserved a terminator byte, so a C function scanning the returned
+ * reserved a terminator u8, so a C function scanning the returned
  * GrayString's .data for '\0' (extern.strlen here) either read one byte
  * past the arena allocation or scanned into uninitialized arena memory.
  */
@@ -14,7 +14,7 @@ import @net
 import @threads
 extern import "string.h"
 
-const TEST_PORT int = 58734
+const TEST_PORT i64 = 58734
 
 mut g_listener Listener
 
@@ -33,8 +33,8 @@ do accept_and_send_twice() {
 
 do main() {
     println("=== net.recv Buffer Bounds Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut listener, lerr = net.listen("127.0.0.1", TEST_PORT)
     if lerr != nil {

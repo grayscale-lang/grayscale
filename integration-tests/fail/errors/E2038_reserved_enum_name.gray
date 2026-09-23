@@ -3,7 +3,7 @@
  * Expected: "enum name is reserved"
  */
 
-const int enum {
+const i64 enum {
     A
     B
 }

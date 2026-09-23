@@ -3,7 +3,7 @@
  * Expected: type alias is already declared
  */
 
-alias Meters = float
-alias Meters = int
+alias Meters = f64
+alias Meters = i64
 
 do main() {}

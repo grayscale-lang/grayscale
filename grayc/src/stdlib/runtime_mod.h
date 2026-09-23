@@ -20,7 +20,7 @@
 /*@man arena_usage
  *@module runtime
  *@group Memory
- *@sig arena_usage() -> int
+ *@sig arena_usage() -> i64
  *@desc Return the number of bytes currently used in the default (scope) arena.
  *@example
  *   import @runtime
@@ -32,7 +32,7 @@ int64_t gray_runtime_arena_usage(void);
 /*@man heap_usage
  *@module runtime
  *@group Memory
- *@sig heap_usage() -> int
+ *@sig heap_usage() -> i64
  *@desc Return the number of bytes currently used in the heap arena (backs new()).
  *@example
  *   import @runtime
@@ -44,7 +44,7 @@ int64_t gray_runtime_heap_usage(void);
 /*@man total_usage
  *@module runtime
  *@group Memory
- *@sig total_usage() -> int
+ *@sig total_usage() -> i64
  *@desc Return the combined bytes used across the default and heap arenas.
  *@example
  *   import @runtime
@@ -56,7 +56,7 @@ int64_t gray_runtime_total_usage(void);
 /*@man peak_usage
  *@module runtime
  *@group Memory
- *@sig peak_usage() -> int
+ *@sig peak_usage() -> i64
  *@desc Return the high-water mark of combined default and heap arena bytes committed at any point during execution.
  *@example
  *   import @runtime
@@ -68,7 +68,7 @@ int64_t gray_runtime_peak_usage(void);
 /*@man alloc_count
  *@module runtime
  *@group Memory
- *@sig alloc_count() -> int
+ *@sig alloc_count() -> i64
  *@desc Return the total number of arena allocations across the default and heap arenas since program start.
  *@example
  *   import @runtime
@@ -80,7 +80,7 @@ int64_t gray_runtime_alloc_count(void);
 /*@man arena_blocks
  *@module runtime
  *@group Memory
- *@sig arena_blocks() -> int
+ *@sig arena_blocks() -> i64
  *@desc Return the number of blocks chained in the default arena.
  *@example
  *   import @runtime
@@ -92,7 +92,7 @@ int64_t gray_runtime_arena_blocks(void);
 /*@man heap_blocks
  *@module runtime
  *@group Memory
- *@sig heap_blocks() -> int
+ *@sig heap_blocks() -> i64
  *@desc Return the number of blocks chained in the heap arena.
  *@example
  *   import @runtime
@@ -104,7 +104,7 @@ int64_t gray_runtime_heap_blocks(void);
 /*@man arena_limit
  *@module runtime
  *@group Memory
- *@sig arena_limit() -> int
+ *@sig arena_limit() -> i64
  *@desc Return the current arena growth limit in bytes (from --arena-limit, or the 1 GB default).
  *@example
  *   import @runtime
@@ -129,7 +129,7 @@ int64_t gray_runtime_arena_limit(void);
 /*@man call_depth
  *@module runtime
  *@group Execution
- *@sig call_depth() -> int
+ *@sig call_depth() -> i64
  *@desc Return the current call stack depth.
  *@example
  *   import @runtime
@@ -141,7 +141,7 @@ int64_t gray_runtime_call_depth(void);
 /*@man call_limit
  *@module runtime
  *@group Execution
- *@sig call_limit() -> int
+ *@sig call_limit() -> i64
  *@desc Return the maximum allowed call stack depth.
  *@example
  *   import @runtime
@@ -153,7 +153,7 @@ int64_t gray_runtime_call_limit(void);
 /*@man uptime
  *@module runtime
  *@group Execution
- *@sig uptime() -> float
+ *@sig uptime() -> f64
  *@desc Return the number of seconds elapsed since the program started.
  *@example
  *   import @runtime

@@ -2,7 +2,7 @@
  * random_choice.gray - Test random.choice() with concrete types
  *
  * Verifies that random.choice() compiles and runs correctly for
- * int, string, and float arrays now that __auto_type is replaced
+ * i64, string, and f64 arrays now that __auto_type is replaced
  * with the concrete element type.
  */
 
@@ -10,17 +10,17 @@ import @random
 
 do main() {
     println("=== random.choice() Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: random.choice on int array
-    mut nums [int] = {10, 20, 30, 40, 50}
-    mut pick int = random.choice(nums)
+    // Test 1: random.choice on i64 array
+    mut nums [i64] = {10, 20, 30, 40, 50}
+    mut pick i64 = random.choice(nums)
     if pick == 10 || pick == 20 || pick == 30 || pick == 40 || pick == 50 {
-        println("  [PASS] random.choice([int]) returns valid element")
+        println("  [PASS] random.choice([i64]) returns valid element")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.choice([int]) returned ${pick}")
+        println("  [FAIL] random.choice([i64]) returned ${pick}")
         failed += 1
     }
 
@@ -35,20 +35,20 @@ do main() {
         failed += 1
     }
 
-    // Test 3: random.choice on float array
-    mut vals [float] = {1.1, 2.2, 3.3}
-    mut val float = random.choice(vals)
+    // Test 3: random.choice on f64 array
+    mut vals [f64] = {1.1, 2.2, 3.3}
+    mut val f64 = random.choice(vals)
     if val > 1.0 && val < 3.4 {
-        println("  [PASS] random.choice([float]) returns valid element")
+        println("  [PASS] random.choice([f64]) returns valid element")
         passed += 1
     } otherwise {
-        println("  [FAIL] random.choice([float]) returned ${val}")
+        println("  [FAIL] random.choice([f64]) returned ${val}")
         failed += 1
     }
 
     // Test 4: random.choice on single-element array
-    mut solo [int] = {42}
-    mut only int = random.choice(solo)
+    mut solo [i64] = {42}
+    mut only i64 = random.choice(solo)
     if only == 42 {
         println("  [PASS] random.choice single-element array")
         passed += 1
@@ -58,8 +58,8 @@ do main() {
     }
 
     // Test 5: random.choice used in expression
-    mut arr [int] = {1, 2, 3}
-    mut doubled int = random.choice(arr) * 2
+    mut arr [i64] = {1, 2, 3}
+    mut doubled i64 = random.choice(arr) * 2
     if doubled == 2 || doubled == 4 || doubled == 6 {
         println("  [PASS] random.choice in expression")
         passed += 1

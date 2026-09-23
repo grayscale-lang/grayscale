@@ -6,12 +6,12 @@
 import @uuid
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a UUID
 
-    mut zeros [byte] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    mut zeros [u8] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
     mut b UUID = uuid.from_bytes(zeros)
 
     if uuid.to_string(a) == "00000000-0000-0000-0000-000000000000" {

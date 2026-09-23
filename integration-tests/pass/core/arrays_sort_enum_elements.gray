@@ -3,11 +3,11 @@
  * arrays.
  *
  * sort_asc/sort_desc dispatch to precompiled runtime functions keyed by
- * element width (byte/char/float/string/the generic int64 fallback). An
+ * element width (u8/char/f64/string/the generic int64 fallback). An
  * enum element fell to the generic int64-width fallback, which mismatches
  * a C enum's real (int32) storage width for anything past a two-element
  * array, and misorders the result with no diagnostic. Covers both an
- * int-backed and a string-backed enum, which take different codegen paths.
+ * integer-backed and a string-backed enum, which take different codegen paths.
  */
 
 import @arrays
@@ -27,8 +27,8 @@ const Status enum {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut ops [OpCode] = {OpCode.MUL, OpCode.PUSH, OpCode.ADD, OpCode.HALT}
     arrays.sort_asc(ops)
@@ -36,7 +36,7 @@ do main() {
        ops[2] == OpCode.MUL && ops[3] == OpCode.HALT {
         passed++
     } otherwise {
-        println("FAIL: sort_asc misordered an int-backed enum array")
+        println("FAIL: sort_asc misordered an integer-backed enum array")
         failed++
     }
 
@@ -45,7 +45,7 @@ do main() {
        ops[2] == OpCode.ADD && ops[3] == OpCode.PUSH {
         passed++
     } otherwise {
-        println("FAIL: sort_desc misordered an int-backed enum array")
+        println("FAIL: sort_desc misordered an integer-backed enum array")
         failed++
     }
 

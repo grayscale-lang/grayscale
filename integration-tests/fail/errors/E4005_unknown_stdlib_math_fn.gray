@@ -6,6 +6,6 @@
 import @math
 
 do main() {
-    mut x float = math.bogus(5.0)
+    mut x f64 = math.bogus(5.0)
     println(x)
 }

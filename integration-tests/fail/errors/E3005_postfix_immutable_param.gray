@@ -3,11 +3,11 @@
  * Expected: "cannot modify constant; declare with 'mut' to make it mutable"
  */
 
-do test_increment(x int) {
+do test_increment(x i64) {
     x++  // ERROR: cannot modify immutable param with postfix
 }
 
-do test_decrement(y int) {
+do test_decrement(y i64) {
     y--  // ERROR: cannot modify immutable param with postfix
 }
 

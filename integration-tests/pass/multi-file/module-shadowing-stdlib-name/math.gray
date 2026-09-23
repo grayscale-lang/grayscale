@@ -1,3 +1,3 @@
-do abs(n int) -> int {
+do abs(n i64) -> i64 {
     return 999
 }

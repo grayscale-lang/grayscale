@@ -5,7 +5,7 @@
  * chained or_return, successful path (no error).
  */
 
-do might_fail(fail bool) -> (int, Error) {
+do might_fail(fail bool) -> (i64, Error) {
     if fail {
         return 0, error("it failed")
     }
@@ -19,41 +19,41 @@ do double_fail(fail bool) -> (string, Error) {
     return "ok", nil
 }
 
-do wrapper_bare() -> (int, Error) {
-    mut val int = might_fail(true) or_return
+do wrapper_bare() -> (i64, Error) {
+    mut val i64 = might_fail(true) or_return
     return val, nil
 }
 
-do wrapper_success() -> (int, Error) {
-    mut val int = might_fail(false) or_return
+do wrapper_success() -> (i64, Error) {
+    mut val i64 = might_fail(false) or_return
     return val, nil
 }
 
 do chained() -> (string, Error) {
-    mut num int = might_fail(false) or_return
+    mut num i64 = might_fail(false) or_return
     mut msg string = double_fail(false) or_return
     return "${msg}-${num}", nil
 }
 
 do chained_fail_first() -> (string, Error) {
-    mut num int = might_fail(true) or_return
+    mut num i64 = might_fail(true) or_return
     mut msg string = double_fail(false) or_return
     return "${msg}-${num}", nil
 }
 
 do chained_fail_second() -> (string, Error) {
-    mut num int = might_fail(false) or_return
+    mut num i64 = might_fail(false) or_return
     mut msg string = double_fail(true) or_return
     return "${msg}-${num}", nil
 }
 
 do main() {
     println("=== or_return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: bare or_return propagates error
-    mut v1 int, e1 Error = wrapper_bare()
+    mut v1 i64, e1 Error = wrapper_bare()
     if e1 != nil && v1 == 0 {
         println("  [PASS] bare or_return propagates error")
         passed += 1
@@ -63,7 +63,7 @@ do main() {
     }
 
     // Test 2: or_return passes through on success
-    mut v2 int, e2 Error = wrapper_success()
+    mut v2 i64, e2 Error = wrapper_success()
     if e2 == nil && v2 == 42 {
         println("  [PASS] or_return passes through on success")
         passed += 1

@@ -4,7 +4,7 @@
 // expect-error-count: 2
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     mut bytes [u8] = {1}
     bytes = {x}
 

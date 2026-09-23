@@ -6,5 +6,5 @@
 import @strings
 
 do main() {
-    mut idx int = strings.index_char("hello", "ll")  // string instead of char
+    mut idx i64 = strings.index_char("hello", "ll")  // string instead of char
 }

@@ -10,9 +10,9 @@ const Color enum {
 }
 
 const Color struct {
-    r int
-    g int
-    b int
+    r i64
+    g i64
+    b i64
 }
 
 do main() {

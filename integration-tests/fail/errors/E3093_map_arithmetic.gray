@@ -1,7 +1,7 @@
 /* Error Test: E3093 - arithmetic operator on map */
 do main() {
-    mut a map[string:int] = {"x": 1}
-    mut b map[string:int] = {"y": 2}
+    mut a map[string:i64] = {"x": 1}
+    mut b map[string:i64] = {"y": 2}
     mut c = a + b
     println(c)
 }

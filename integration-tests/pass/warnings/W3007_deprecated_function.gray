@@ -11,7 +11,7 @@ do old_format(s string) -> string {
 }
 
 #deprecated("recursion demo")
-do countdown(n int) -> int {
+do countdown(n i64) -> i64 {
     if n <= 0 {
         return 0
     }
@@ -20,6 +20,6 @@ do countdown(n int) -> int {
 
 do main() {
     mut r string = old_format("hi") // warning: old_format is deprecated
-    mut n int = countdown(3)        // warning: countdown is deprecated (this call only)
+    mut n i64 = countdown(3)        // warning: countdown is deprecated (this call only)
     println("${r} ${n}")
 }

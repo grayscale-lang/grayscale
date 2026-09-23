@@ -5,13 +5,13 @@
 
 do main() {
     println("=== Stress: Scope & Shadowing ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Block scoping: inner not visible outside
-    mut outer int = 1
+    mut outer i64 = 1
     if true {
-        mut inner int = 2
+        mut inner i64 = 2
         if inner == 2 {
             println("  [PASS] inner block variable visible inside")
             passed += 1
@@ -30,9 +30,9 @@ do main() {
     }
 
     // Shadowing: inner scope shadows outer
-    mut x int = 10
+    mut x i64 = 10
     if true {
-        mut x int = 20
+        mut x i64 = 20
         if x == 20 {
             println("  [PASS] shadowing: inner x == 20")
             passed += 1
@@ -50,9 +50,9 @@ do main() {
     }
 
     // Shadowing in loops
-    mut val int = 100
+    mut val i64 = 100
     for i in range(0, 3) {
-        mut val int = i
+        mut val i64 = i
         if i == 2 && val == 2 {
             println("  [PASS] loop shadowing")
             passed += 1
@@ -67,17 +67,17 @@ do main() {
     }
 
     // Deep nesting: 5 levels
-    mut depth int = 0
+    mut depth i64 = 0
     if true {
-        mut depth int = 1
+        mut depth i64 = 1
         if true {
-            mut depth int = 2
+            mut depth i64 = 2
             if true {
-                mut depth int = 3
+                mut depth i64 = 3
                 if true {
-                    mut depth int = 4
+                    mut depth i64 = 4
                     if true {
-                        mut depth int = 5
+                        mut depth i64 = 5
                         if depth == 5 {
                             println("  [PASS] 5 levels deep shadowing")
                             passed += 1

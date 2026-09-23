@@ -8,7 +8,7 @@
  */
 
 const Value enum {
-    IntVal(int)
+    IntVal(i64)
     NilVal
 }
 

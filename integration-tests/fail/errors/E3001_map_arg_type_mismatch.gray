@@ -1,6 +1,6 @@
-/* Error Test: E3001 - passing map[string:int] to function expecting map[int:int] */
-do process(m map[int:int]) -> int { return 0 }
+/* Error Test: E3001 - passing map[string:i64] to function expecting map[i64:i64] */
+do process(m map[i64:i64]) -> i64 { return 0 }
 do main() {
-    mut m map[string:int] = {"a": 1}
+    mut m map[string:i64] = {"a": 1}
     println(process(m))
 }

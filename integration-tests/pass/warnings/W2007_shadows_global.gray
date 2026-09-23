@@ -4,9 +4,9 @@
  */
 
 
-const MAX int = 100
+const MAX i64 = 100
 
 do main() {
-    mut MAX int = 50  // Shadows the global constant MAX
+    mut MAX i64 = 50  // Shadows the global constant MAX
     println(MAX)
 }

@@ -7,8 +7,8 @@
 
 do main() {
     println("=== Wide Integer Narrow cast() Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // i128 → i8 (fits)
     mut a i128 = i128(100)
@@ -43,14 +43,14 @@ do main() {
         failed += 1
     }
 
-    // i128 → i64/int (fits)
+    // i128 → i64/i64 (fits)
     mut d i128 = i128(-9000000000)
-    mut di64 int = cast(d, int)
+    mut di64 i64 = cast(d, i64)
     if di64 == -9000000000 {
-        println("  [PASS] cast(i128, int) in range")
+        println("  [PASS] cast(i128, i64) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(i128, int): got ${di64}")
+        println("  [FAIL] cast(i128, i64): got ${di64}")
         failed += 1
     }
 
@@ -87,14 +87,14 @@ do main() {
         failed += 1
     }
 
-    // i128 → uint (fits)
+    // i128 → u64 (fits)
     mut h i128 = i128(9999999999)
-    mut hu64 uint = cast(h, uint)
+    mut hu64 u64 = cast(h, u64)
     if hu64 == 9999999999 {
-        println("  [PASS] cast(i128, uint) in range")
+        println("  [PASS] cast(i128, u64) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(i128, uint): got ${hu64}")
+        println("  [FAIL] cast(i128, u64): got ${hu64}")
         failed += 1
     }
 
@@ -131,25 +131,25 @@ do main() {
         failed += 1
     }
 
-    // Function-style: uint(i128) positive value
+    // Function-style: u64(i128) positive value
     mut l i128 = i128(888)
-    mut lu uint = uint(l)
+    mut lu u64 = cast(l, u64)
     if lu == 888 {
-        println("  [PASS] uint(i128) in range")
+        println("  [PASS] u64(i128) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] uint(i128): got ${lu}")
+        println("  [FAIL] u64(i128): got ${lu}")
         failed += 1
     }
 
-    // Function-style: uint(i256) positive value
+    // Function-style: u64(i256) positive value
     mut m i256 = i256(777)
-    mut mu uint = uint(m)
+    mut mu u64 = cast(m, u64)
     if mu == 777 {
-        println("  [PASS] uint(i256) in range")
+        println("  [PASS] u64(i256) in range")
         passed += 1
     } otherwise {
-        println("  [FAIL] uint(i256): got ${mu}")
+        println("  [FAIL] u64(i256): got ${mu}")
         failed += 1
     }
 

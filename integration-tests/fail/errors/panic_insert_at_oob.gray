@@ -6,6 +6,6 @@
 import @arrays
 
 do main() {
-    mut xs [int] = {1, 2, 3}
+    mut xs [i64] = {1, 2, 3}
     arrays.insert_at(xs, 100, 999)
 }

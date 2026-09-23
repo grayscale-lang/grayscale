@@ -13,14 +13,14 @@
  */
 
 const Pool struct {
-    cache map[string:int]
+    cache map[string:i64]
     names map[string:string]
 }
 
 do main() {
     println("=== Map Assign Through Deref Field Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* new() initialises both map fields with the right element sizes */
     p = new(Pool)
@@ -62,7 +62,7 @@ do main() {
         p^.cache["k${i}"] = i
         p^.names["k${i}"] = "n${i}"
     }
-    mut lost int = 0
+    mut lost i64 = 0
     for i in range(0, 40) {
         if p^.cache["k${i}"] != i { lost = lost + 1 }
         if p^.names["k${i}"] != "n${i}" { lost = lost + 1 }

@@ -1,7 +1,7 @@
 const Foo struct {
-    x int
+    x i64
 
-    do take_foo(other Foo) -> int {
+    do take_foo(other Foo) -> i64 {
         return other.x
     }
 }

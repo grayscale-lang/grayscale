@@ -2,8 +2,8 @@
 // expect-error: E5049
 // expect-error-count: 1
 
-do give() -> int {
-    mut u uint = 18446744073709551615
+do give() -> i64 {
+    mut u u64 = 18446744073709551615
     return u
 }
 

@@ -2,6 +2,6 @@
 import @fmt
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     fmt.printf("%p\n", x)
 }

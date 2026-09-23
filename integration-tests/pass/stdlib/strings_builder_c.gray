@@ -6,7 +6,7 @@
 
 import @strings
 
-do check(label string, got string, want string, &passed int, &failed int) {
+do check(label string, got string, want string, &passed i64, &failed i64) {
     if got == want {
         println("  [PASS] ${label}")
         passed += 1
@@ -16,7 +16,7 @@ do check(label string, got string, want string, &passed int, &failed int) {
     }
 }
 
-do check_int(label string, got int, want int, &passed int, &failed int) {
+do check_int(label string, got i64, want i64, &passed i64, &failed i64) {
     if got == want {
         println("  [PASS] ${label}")
         passed += 1
@@ -35,8 +35,8 @@ do append_kv(&b Builder, key string, value string) {
 
 do main() {
     println("=== Strings Builder Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- empty builder --
     mut e Builder = strings.builder()
@@ -61,7 +61,7 @@ do main() {
     strings.builder_append_char(c, 'é')
     strings.builder_append_char(c, '!')
     check("append_char build", strings.build(c), "Aé!", passed, failed)
-    check_int("append_char byte len", strings.builder_len(c), 4, passed, failed)
+    check_int("append_char u8 len", strings.builder_len(c), 4, passed, failed)
 
     // -- append_int --
     mut n Builder = strings.builder()
@@ -73,7 +73,7 @@ do main() {
 
     // -- append_bytes --
     mut by Builder = strings.builder()
-    mut data [byte] = {104, 105}
+    mut data [u8] = {104, 105}
     strings.builder_append_bytes(by, data)
     check("append_bytes build", strings.build(by), "hi", passed, failed)
 

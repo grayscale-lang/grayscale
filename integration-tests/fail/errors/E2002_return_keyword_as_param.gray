@@ -3,7 +3,7 @@
  * Expected: "'return' is a keyword and cannot be used as a parameter name"
  */
 
-do test(return int) {
+do test(return i64) {
     return
 }
 

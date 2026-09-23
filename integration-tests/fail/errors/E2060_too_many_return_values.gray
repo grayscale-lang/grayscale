@@ -3,7 +3,7 @@
  */
 
 
-do too_many() -> (a int, b int, c int, d int, e int, f int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int, q int) {
+do too_many() -> (a i64, b i64, c i64, d i64, e i64, f i64, g i64, h i64, i i64, j i64, k i64, l i64, m i64, n i64, o i64, p i64, q i64) {
     return a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q
 }
 

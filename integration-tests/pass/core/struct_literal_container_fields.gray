@@ -16,28 +16,28 @@ import @arrays
 
 const Item struct {
     name string
-    val int
+    val i64
 }
 
 const Bag struct {
-    nums   map[string:int]
+    nums   map[string:i64]
     names  map[string:string]
-    keyed  map[int:int]
-    items  [int]
+    keyed  map[i64:i64]
+    items  [i64]
     things [Item]
     tag    string
 }
 
 const Defaulted struct {
-    plain   int
+    plain   i64
     labeled string = "fallback"
-    lookup  map[string:int]
+    lookup  map[string:i64]
 }
 
 do main() {
     println("=== Struct Literal Container Fields Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* Fully empty literal */
     mut a Bag = Bag{}

@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = 1__000  // consecutive underscores
+    mut x i64 = 1__000  // consecutive underscores
 }

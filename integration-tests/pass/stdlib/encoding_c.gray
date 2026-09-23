@@ -8,8 +8,8 @@ import @encoding
 
 do main() {
     println("=== Encoding Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // base64_encode
     mut b64 string = encoding.base64_encode("Hello, World!")

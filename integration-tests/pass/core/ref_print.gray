@@ -1,10 +1,10 @@
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut x int = 42
+    mut x i64 = 42
     mut s string = "hello"
-    mut f float = 3.14
+    mut f f64 = 3.14
     mut b bool = true
 
     mut rx = ref(x)
@@ -13,10 +13,10 @@ do main() {
     mut rb = ref(b)
 
     if rx == 42 {
-        println("  [PASS] println(ref(int)) prints value")
+        println("  [PASS] println(ref(i64)) prints value")
         passed += 1
     } otherwise {
-        println("  [FAIL] println(ref(int)): expected 42")
+        println("  [FAIL] println(ref(i64)): expected 42")
         failed += 1
     }
 
@@ -29,10 +29,10 @@ do main() {
     }
 
     if rf == 3.14 {
-        println("  [PASS] println(ref(float)) prints value")
+        println("  [PASS] println(ref(f64)) prints value")
         passed += 1
     } otherwise {
-        println("  [FAIL] println(ref(float)): expected 3.14")
+        println("  [FAIL] println(ref(f64)): expected 3.14")
         failed += 1
     }
 

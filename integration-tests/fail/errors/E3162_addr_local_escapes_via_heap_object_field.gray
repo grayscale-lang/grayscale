@@ -7,12 +7,12 @@
  */
 
 const Node struct {
-    link ^int
+    link ^i64
 }
 
 do build() -> ^Node {
     mut n ^Node = new(Node)
-    mut local int = 42
+    mut local i64 = 42
     n^.link = addr(local)
     return n
 }

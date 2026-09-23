@@ -4,7 +4,7 @@
 
 #[test,
   discard]
-do something() -> int {
+do something() -> i64 {
     return 1
 }
 

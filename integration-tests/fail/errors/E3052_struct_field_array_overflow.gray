@@ -5,7 +5,7 @@
 // expect-error: E3052
 
 const Buffer struct {
-    data [int, 3]
+    data [i64, 3]
 }
 
 do main() {

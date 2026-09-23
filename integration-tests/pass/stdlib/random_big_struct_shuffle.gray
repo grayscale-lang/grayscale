@@ -1,5 +1,5 @@
 /*
- * random_big_struct_shuffle.gray - shuffle/sample on >64-byte elements.
+ * random_big_struct_shuffle.gray - shuffle/sample on >64-u8 elements.
  *
  * gray_random_shuffle used to use a fixed char tmp[64] as the swap
  * scratch slot. Any element type larger than 64 bytes (12+ ints, big
@@ -7,35 +7,35 @@
  * buffer. The fix sizes scratch by result.elem_size on the arena.
  *
  * Big is intentionally 96 bytes (12 int64 fields) so it exceeds the
- * old 64-byte cap. random.sample also goes through gray_random_shuffle,
+ * old 64-u8 cap. random.sample also goes through gray_random_shuffle,
  * so a sample call exercises the same path.
  */
 
 import @random
 
 const Big struct {
-    a int
-    b int
-    c int
-    d int
-    e int
-    f int
-    g int
-    h int
-    i int
-    j int
-    k int
-    l int
+    a i64
+    b i64
+    c i64
+    d i64
+    e i64
+    f i64
+    g i64
+    h i64
+    i i64
+    j i64
+    k i64
+    l i64
 }
 
-do sum(b Big) -> int {
+do sum(b Big) -> i64 {
     return b.a + b.b + b.c + b.d + b.e + b.f + b.g + b.h + b.i + b.j + b.k + b.l
 }
 
 do main() {
     println("=== Big-Struct Shuffle Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut arr [Big] = {
         Big{a: 1,  b: 2,  c: 3,  d: 4,  e: 5,  f: 6,  g: 7,  h: 8,  i: 9,  j: 10, k: 11, l: 12},
@@ -48,15 +48,15 @@ do main() {
     // shuffle preserves length and the element-set is intact.
     mut shuffled [Big] = random.shuffle(arr)
     if len(shuffled) == 5 {
-        println("  [PASS] random.shuffle preserves length on >64-byte elements")
+        println("  [PASS] random.shuffle preserves length on >64-u8 elements")
         passed += 1
     } otherwise {
         println("  [FAIL] shuffle length: got ${len(shuffled)}, expected 5")
         failed += 1
     }
 
-    mut original_total int = 0
-    mut shuffled_total int = 0
+    mut original_total i64 = 0
+    mut shuffled_total i64 = 0
     for i in range(5) {
         original_total += sum(arr[i])
         shuffled_total += sum(shuffled[i])
@@ -80,9 +80,9 @@ do main() {
     }
 
     // every sampled struct must equal one of the originals.
-    mut intact int = 0
+    mut intact i64 = 0
     for i in range(3) {
-        mut s int = sum(sampled[i])
+        mut s i64 = sum(sampled[i])
         for j in range(5) {
             if s == sum(arr[j]) {
                 intact += 1

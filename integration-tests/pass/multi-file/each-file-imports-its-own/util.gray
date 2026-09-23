@@ -1,8 +1,8 @@
 import @strings
 
-const LIMIT int = 5
+const LIMIT i64 = 5
 
-do twice(n int) -> int {
+do twice(n i64) -> i64 {
     return n * 2
 }
 

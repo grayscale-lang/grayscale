@@ -3,7 +3,7 @@
  * Expected: error rejecting semicolons in struct body
  */
 
-const Point struct { x int; y int }
+const Point struct { x i64; y i64 }
 
 do main() {
     println("should not compile")

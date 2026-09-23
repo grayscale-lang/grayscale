@@ -6,13 +6,13 @@
  */
 
 const Counter struct {
-    n int
+    n i64
 
     do inc(c ^Counter) {
         c^.n += 1
     }
 
-    do add(c ^Counter, amount int) -> int {
+    do add(c ^Counter, amount i64) -> i64 {
         c^.n += amount
         return c^.n
     }
@@ -23,8 +23,8 @@ const Wrap struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // value receiver is addressed and mutated in place
     mut c Counter = Counter{n: 0}

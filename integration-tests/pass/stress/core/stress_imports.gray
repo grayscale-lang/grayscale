@@ -6,11 +6,11 @@ import @arrays, @strings, @math
 
 do main() {
     println("=== Stress: Imports & Using ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Multiple stdlib imports work
-    mut arr [int] = {3, 1, 2}
+    mut arr [i64] = {3, 1, 2}
     arrays.sort_asc(arr)
     if arr[0] == 1 {
         println("  [PASS] @arrays import and use")

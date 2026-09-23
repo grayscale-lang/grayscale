@@ -6,27 +6,27 @@
  * operator, while the real !in operator keeps working.
  */
 
-do in_range(n int) -> bool {
+do in_range(n i64) -> bool {
     return n > 0
 }
 
-do in2(n int) -> bool {
+do in2(n i64) -> bool {
     return n > 0
 }
 
-do inside(n int) -> bool {
+do inside(n i64) -> bool {
     return n > 0
 }
 
 do main() {
     println("=== Bang Before Identifiers Starting With 'in' ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut in_stock bool = true
     mut in3 bool = false
-    mut x int = 5
-    mut xs [int] = {1, 2, 3}
+    mut x i64 = 5
+    mut xs [i64] = {1, 2, 3}
 
     // Test 1: !variable with underscore after "in"
     if !in_stock == false {

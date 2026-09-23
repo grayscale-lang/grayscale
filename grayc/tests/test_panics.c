@@ -330,12 +330,12 @@ static void test_panic_P0116(void) { ASSERT_PANICS("P0116", trigger_P0116); }
  * ===========================================================================*/
 
 static void trigger_P0084(void) {
-    gray_builtin_string_to_int(gray_string_lit("abc"));
+    gray_builtin_string_to_i64(gray_string_lit("abc"));
 }
 static void test_panic_P0084(void) { ASSERT_PANICS("P0084", trigger_P0084); }
 
 static void trigger_P0085(void) {
-    gray_builtin_string_to_float(gray_string_lit("xyz"));
+    gray_builtin_string_to_f64(gray_string_lit("xyz"));
 }
 static void test_panic_P0085(void) { ASSERT_PANICS("P0085", trigger_P0085); }
 

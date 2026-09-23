@@ -1,5 +1,5 @@
 /* Error Test: E3092 - array compared to nil */
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     if arr == nil { println("nil") }
 }

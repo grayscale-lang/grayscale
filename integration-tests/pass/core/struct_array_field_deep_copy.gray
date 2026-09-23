@@ -7,13 +7,13 @@
  */
 
 const Container struct {
-    values [int]
+    values [i64]
     tags [string]
 }
 
 const Enemy struct {
     name string
-    hp int
+    hp i64
 }
 
 const Level struct {
@@ -21,31 +21,31 @@ const Level struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: primitive [int] field — copy must be independent
+    // Test 1: primitive [i64] field — copy must be independent
     mut c Container
     c.values = {10, 20, 30}
 
-    mut copy1 [int] = c.values
+    mut copy1 [i64] = c.values
     copy1[0] = 999
 
-    mut copy2 [int] = c.values
+    mut copy2 [i64] = c.values
     if copy2[0] == 10 {
-        println("  [PASS] [int] field: second copy unaffected by first copy mutation")
+        println("  [PASS] [i64] field: second copy unaffected by first copy mutation")
         passed += 1
     } otherwise {
-        println("  [FAIL] [int] field: copy2[0]=${copy2[0]}, expected 10")
+        println("  [FAIL] [i64] field: copy2[0]=${copy2[0]}, expected 10")
         failed += 1
     }
 
     // Test 2: original struct field unaffected by copy mutations
     if c.values[0] == 10 {
-        println("  [PASS] [int] field: original struct field unaffected")
+        println("  [PASS] [i64] field: original struct field unaffected")
         passed += 1
     } otherwise {
-        println("  [FAIL] [int] field: c.values[0]=${c.values[0]}, expected 10")
+        println("  [FAIL] [i64] field: c.values[0]=${c.values[0]}, expected 10")
         failed += 1
     }
 

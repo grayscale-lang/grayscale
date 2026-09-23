@@ -5,8 +5,8 @@
 import "./helpers"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: function call
     mut msg string = helpers.greet("World")
@@ -28,7 +28,7 @@ do main() {
     }
 
     // Test 3: enum access
-    mut c int = helpers.Color.GREEN
+    mut c i64 = helpers.Color.GREEN
     if c == 1 {
         println("  [PASS] extensionless import enum")
         passed += 1

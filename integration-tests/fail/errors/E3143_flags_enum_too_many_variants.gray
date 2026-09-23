@@ -72,6 +72,6 @@ const F enum {
 }
 
 do main() {
-    mut x int = int(F.M0)
+    mut x i64 = cast(F.M0, i64)
     println("${x}")
 }

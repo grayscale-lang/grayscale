@@ -1,10 +1,10 @@
 /*
  * Error Test: E3009 - not-iterable
- * Expected: "cannot iterate over type 'int'; for_each requires an array, map, or string"
+ * Expected: "cannot iterate over type 'i64'; for_each requires an array, map, or string"
  */
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     for_each item in x {  // Cannot iterate over an integer
         println(item)
     }

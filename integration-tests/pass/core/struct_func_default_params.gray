@@ -3,22 +3,22 @@
  * Covers instance dispatch, static dispatch, and partial defaults
  */
 
-mut passed int = 0
-mut failed int = 0
+mut passed i64 = 0
+mut failed i64 = 0
 
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do scale(self Vec, factor int = 2) -> Vec {
+    do scale(self Vec, factor i64 = 2) -> Vec {
         return Vec{x: self.x * factor, y: self.y * factor}
     }
 }
 
 const Foo struct {
-    val int
+    val i64
 
-    do compute(self Foo, a int, b int = 10) -> int {
+    do compute(self Foo, a i64, b i64 = 10) -> i64 {
         return self.val + a + b
     }
 }

@@ -11,10 +11,10 @@
 
 import @arrays
 
-mut trace [int] = {}
-mut return_counter int = 0
+mut trace [i64] = {}
+mut return_counter i64 = 0
 
-do rec(n int) {
+do rec(n i64) {
     arrays.append(trace, n)
 }
 
@@ -22,12 +22,12 @@ do increment_return_counter() {
     return_counter += 1
 }
 
-do next_value() -> int {
+do next_value() -> i64 {
     defer increment_return_counter()
     return return_counter
 }
 
-do next_pair() -> (int, int) {
+do next_pair() -> (i64, i64) {
     defer increment_return_counter()
     return return_counter, return_counter + 10
 }
@@ -40,7 +40,7 @@ do lifo() {
 }
 
 do late_capture() {
-    mut x int = 1
+    mut x i64 = 1
     defer rec(x)
     x = 99
 }
@@ -65,8 +65,8 @@ do nested_outer() {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     trace = {}
     lifo()
@@ -115,7 +115,7 @@ do main() {
     }
 
     return_counter = 0
-    mut first int = next_value()
+    mut first i64 = next_value()
     mut second, offset = next_pair()
     if first == 0 && second == 1 && offset == 11 && return_counter == 2 {
         passed += 1

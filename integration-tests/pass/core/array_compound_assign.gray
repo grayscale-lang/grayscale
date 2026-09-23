@@ -5,10 +5,10 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut arr [int] = {10, 20, 30}
+    mut arr [i64] = {10, 20, 30}
 
     // Test 1: += on array element
     arr[0] += 5
@@ -52,7 +52,7 @@ do main() {
     }
 
     // Test 5: compound assign with computed index
-    mut idx int = 1
+    mut idx i64 = 1
     arr[idx] += 100
     if arr[1] == 117 {
         println("  [PASS] arr[idx] += 100 produces 117")

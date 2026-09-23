@@ -7,6 +7,6 @@
  */
 
 do main() {
-    mut here int = 99
+    mut here i64 = 99
     println("${here}")
 }

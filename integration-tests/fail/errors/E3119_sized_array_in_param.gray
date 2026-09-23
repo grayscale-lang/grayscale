@@ -1,4 +1,4 @@
-do take_ints(arr [int, 5]) {
+do take_ints(arr [i64, 5]) {
     println("bad")
 }
 

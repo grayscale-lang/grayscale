@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut arr [int] = {}
-    mut x int = arr[0]  // Index into empty array
+    mut arr [i64] = {}
+    mut x i64 = arr[0]  // Index into empty array
 }

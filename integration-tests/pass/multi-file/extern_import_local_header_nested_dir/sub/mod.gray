@@ -1,6 +1,6 @@
 extern import "./util.h"
 
-do call_it() -> int {
-    mut r int = extern.helper(1, 2)
+do call_it() -> i64 {
+    mut r i64 = extern.helper(1, 2)
     return r
 }

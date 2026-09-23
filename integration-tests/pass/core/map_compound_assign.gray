@@ -7,10 +7,10 @@
 
 do main() {
     println("=== Map Compound Assignment Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut m map[string:int] = {"a": 10, "b": 20, "c": 30, "d": 40, "e": 50}
+    mut m map[string:i64] = {"a": 10, "b": 20, "c": 30, "d": 40, "e": 50}
 
     // += reads existing value
     m["a"] += 5
@@ -63,7 +63,7 @@ do main() {
     }
 
     // chained compound assignments accumulate correctly
-    mut c map[string:int] = {"n": 0}
+    mut c map[string:i64] = {"n": 0}
     c["n"] += 3
     c["n"] += 7
     c["n"] *= 2
@@ -75,14 +75,14 @@ do main() {
         failed += 1
     }
 
-    // int key map compound assignment
-    mut idx map[int:int] = {1: 100}
+    // i64 key map compound assignment
+    mut idx map[i64:i64] = {1: 100}
     idx[1] -= 50
     if idx[1] == 50 {
-        println("  [PASS] int key -=")
+        println("  [PASS] i64 key -=")
         passed += 1
     } otherwise {
-        println("  [FAIL] int key -=: got ${idx[1]}, expected 50")
+        println("  [FAIL] i64 key -=: got ${idx[1]}, expected 50")
         failed += 1
     }
 

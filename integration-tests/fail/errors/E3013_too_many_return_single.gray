@@ -3,11 +3,11 @@
  * Expected: E3013 wrong number of return values
  */
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a, b
 }
 
 do main() {
-    mut r int = add(1, 2)
+    mut r i64 = add(1, 2)
     println("${r}")
 }

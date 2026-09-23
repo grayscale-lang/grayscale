@@ -4,12 +4,12 @@
  */
 
 
-do helper() -> int {
+do helper() -> i64 {
     return 42
-    mut x int = 10  // This is unreachable
+    mut x i64 = 10  // This is unreachable
 }
 
 do main() {
-    mut val int = helper()
+    mut val i64 = helper()
     println(val)
 }

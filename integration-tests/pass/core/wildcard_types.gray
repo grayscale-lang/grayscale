@@ -42,14 +42,14 @@ do get_or(m map[string:?], k string, fallback ?) -> ? {
     return fallback
 }
 
-do has_key(m map[?:int], k ?) -> bool {
+do has_key(m map[?:i64], k ?) -> bool {
     return k in m
 }
 
 // map[?:?] — fix accepts this only when the arg's key type equals its value
 // type, since a single '?' binding must satisfy both slots.
-do count_entries(m map[?:?]) -> int {
-    mut n int = 0
+do count_entries(m map[?:?]) -> i64 {
+    mut n i64 = 0
     for_each k, v in m {
         n += 1
     }
@@ -58,23 +58,23 @@ do count_entries(m map[?:?]) -> int {
 
 // Non-string concrete key in map[K:?] — exercises the key-slot match path
 // with a key type other than string.
-do get_or_int_key(m map[int:?], k int, fallback ?) -> ? {
+do get_or_int_key(m map[i64:?], k i64, fallback ?) -> ? {
     if k in m { return m[k] }
     return fallback
 }
 
 do main() {
     println("=== Wildcard Types Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- first/last on [int] --
-    mut nums [int] = {10, 20, 30, 40}
+    // -- first/last on [i64] --
+    mut nums [i64] = {10, 20, 30, 40}
     if first(nums) == 10 && last(nums) == 40 {
-        println("  [PASS] first/last on [int]")
+        println("  [PASS] first/last on [i64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] first/last on [int]")
+        println("  [FAIL] first/last on [i64]")
         failed += 1
     }
 
@@ -88,53 +88,53 @@ do main() {
         failed += 1
     }
 
-    // -- first on [float] --
-    mut floats [float] = {1.5, 2.5, 3.5}
+    // -- first on [f64] --
+    mut floats [f64] = {1.5, 2.5, 3.5}
     if first(floats) == 1.5 {
-        println("  [PASS] first on [float]")
+        println("  [PASS] first on [f64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] first on [float]")
+        println("  [FAIL] first on [f64]")
         failed += 1
     }
 
-    // -- max/min with int --
+    // -- max/min with i64 --
     if max(10, 20) == 20 && min(10, 20) == 10 {
-        println("  [PASS] max/min int")
+        println("  [PASS] max/min i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] max/min int")
+        println("  [FAIL] max/min i64")
         failed += 1
     }
 
-    // -- max/min with float --
+    // -- max/min with f64 --
     if max(1.5, 2.5) == 2.5 && min(1.5, 2.5) == 1.5 {
-        println("  [PASS] max/min float")
+        println("  [PASS] max/min f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] max/min float")
+        println("  [FAIL] max/min f64")
         failed += 1
     }
 
     // -- identity preserves concrete types across distinct instantiations --
-    mut i int = identity(42)
+    mut i i64 = identity(42)
     mut s string = identity("hi")
-    mut f float = identity(3.14)
+    mut f f64 = identity(3.14)
     mut b bool = identity(true)
     if i == 42 && s == "hi" && f == 3.14 && b {
-        println("  [PASS] identity across int/string/float/bool")
+        println("  [PASS] identity across i64/string/f64/bool")
         passed += 1
     } otherwise {
         println("  [FAIL] identity across types")
         failed += 1
     }
 
-    // -- contains over [int]: for_each element type must substitute --
+    // -- contains over [i64]: for_each element type must substitute --
     if contains(nums, 20) && !contains(nums, 99) {
-        println("  [PASS] contains [int]")
+        println("  [PASS] contains [i64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] contains [int]")
+        println("  [FAIL] contains [i64]")
         failed += 1
     }
 
@@ -147,12 +147,12 @@ do main() {
         failed += 1
     }
 
-    // -- contains over [float] --
+    // -- contains over [f64] --
     if contains(floats, 2.5) && !contains(floats, 9.9) {
-        println("  [PASS] contains [float]")
+        println("  [PASS] contains [f64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] contains [float]")
+        println("  [FAIL] contains [f64]")
         failed += 1
     }
 
@@ -166,12 +166,12 @@ do main() {
     }
 
     // -- map[K:?] with concrete key and wildcard value --
-    mut ages map[string:int] = {"alice": 30, "bob": 25}
+    mut ages map[string:i64] = {"alice": 30, "bob": 25}
     if get_or(ages, "alice", 0) == 30 && get_or(ages, "zoe", 99) == 99 {
-        println("  [PASS] get_or on map[string:int]")
+        println("  [PASS] get_or on map[string:i64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] get_or on map[string:int]")
+        println("  [FAIL] get_or on map[string:i64]")
         failed += 1
     }
 
@@ -186,22 +186,22 @@ do main() {
     }
 
     // -- map[?:V] with wildcard key and concrete value --
-    mut prices map[string:int] = {"apple": 5}
-    mut weights map[int:int] = {42: 7}
+    mut prices map[string:i64] = {"apple": 5}
+    mut weights map[i64:i64] = {42: 7}
     if has_key(prices, "apple") && !has_key(prices, "pear") &&
        has_key(weights, 42) && !has_key(weights, 99) {
-        println("  [PASS] has_key across map[string:int] and map[int:int]")
+        println("  [PASS] has_key across map[string:i64] and map[i64:i64]")
         passed += 1
     } otherwise {
-        println("  [FAIL] has_key across map[string:int] and map[int:int]")
+        println("  [FAIL] has_key across map[string:i64] and map[i64:i64]")
         failed += 1
     }
 
     // -- map[?:?] — both slots wildcard (key type == value type) --
-    mut ii map[int:int] = {1: 10, 2: 20, 3: 30}
+    mut ii map[i64:i64] = {1: 10, 2: 20, 3: 30}
     mut ss map[string:string] = {"a": "A", "b": "B"}
     if count_entries(ii) == 3 && count_entries(ss) == 2 {
-        println("  [PASS] count_entries on map[?:?] (int:int and string:string)")
+        println("  [PASS] count_entries on map[?:?] (i64:i64 and string:string)")
         passed += 1
     } otherwise {
         println("  [FAIL] count_entries on map[?:?]")
@@ -209,24 +209,24 @@ do main() {
     }
 
     // -- non-string concrete key in map[K:?] --
-    mut ids map[int:string] = {1: "one", 2: "two"}
+    mut ids map[i64:string] = {1: "one", 2: "two"}
     if get_or_int_key(ids, 1, "none") == "one" && get_or_int_key(ids, 99, "none") == "none" {
-        println("  [PASS] get_or_int_key on map[int:string]")
+        println("  [PASS] get_or_int_key on map[i64:string]")
         passed += 1
     } otherwise {
-        println("  [FAIL] get_or_int_key on map[int:string]")
+        println("  [FAIL] get_or_int_key on map[i64:string]")
         failed += 1
     }
 
     // -- narrow value types through gray_map_elem_c_type routing --
     // The fix routes gray_map_elem_c_type's input through cg_effective_type_str
-    // so that narrow types (float/bool/char/byte) don't fall back to int64_t.
-    mut float_m map[string:float] = {"pi": 3.14}
+    // so that narrow types (f64/bool/char/u8) don't fall back to int64_t.
+    mut float_m map[string:f64] = {"pi": 3.14}
     mut flag_m map[string:bool] = {"on": true, "off": false}
     mut char_m map[string:char] = {"a": 'A', "b": 'B'}
-    mut byte_m map[string:byte] = {"x": 0b1010}
-    mut zb byte = 0b0
-    mut ex byte = 0b1010
+    mut byte_m map[string:u8] = {"x": 0b1010}
+    mut zb u8 = 0b0
+    mut ex u8 = 0b1010
     if get_or(float_m, "pi", 0.0) == 3.14 &&
        get_or(float_m, "e", 2.71) == 2.71 &&
        get_or(flag_m, "on", false) &&
@@ -235,7 +235,7 @@ do main() {
        get_or(char_m, "z", '?') == '?' &&
        get_or(byte_m, "x", zb) == ex &&
        get_or(byte_m, "y", zb) == zb {
-        println("  [PASS] get_or with narrow value types (float/bool/char/byte)")
+        println("  [PASS] get_or with narrow value types (f64/bool/char/u8)")
         passed += 1
     } otherwise {
         println("  [FAIL] get_or with narrow value types")

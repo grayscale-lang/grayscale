@@ -2,7 +2,7 @@
  * state.gray - module-level mutable variables written with plain '='.
  */
 
-mut counter int = 0
+mut counter i64 = 0
 mut name string = "start"
 mut flag bool = false
 
@@ -17,7 +17,7 @@ do set_all() {
     counter += 1
 }
 
-do fresh_local() -> int {
+do fresh_local() -> i64 {
     made_here = 9
     return made_here
 }

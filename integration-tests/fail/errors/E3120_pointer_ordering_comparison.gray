@@ -1,8 +1,8 @@
 /* Error Test: E3120 - ordering comparison on pointer types */
 do main() {
-    mut x int = 10
-    mut y int = 20
-    mut px ^int = addr(x)
-    mut py ^int = addr(y)
+    mut x i64 = 10
+    mut y i64 = 20
+    mut px ^i64 = addr(x)
+    mut py ^i64 = addr(y)
     if px < py { println("less") }
 }

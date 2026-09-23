@@ -5,60 +5,60 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: i32 array +=
     mut a [i32] = {cast(10, i32), cast(20, i32)}
     a[0] += cast(5, i32)
-    if cast(a[0], int) == 15 {
+    if cast(a[0], i64) == 15 {
         println("  [PASS] i32 arr[0] += 5 produces 15")
         passed += 1
     } otherwise {
-        println("  [FAIL] i32 arr[0] += 5: expected 15, got ${cast(a[0], int)}")
+        println("  [FAIL] i32 arr[0] += 5: expected 15, got ${cast(a[0], i64)}")
         failed += 1
     }
 
     // Test 2: i32 array -=
     a[1] -= cast(3, i32)
-    if cast(a[1], int) == 17 {
+    if cast(a[1], i64) == 17 {
         println("  [PASS] i32 arr[1] -= 3 produces 17")
         passed += 1
     } otherwise {
-        println("  [FAIL] i32 arr[1] -= 3: expected 17, got ${cast(a[1], int)}")
+        println("  [FAIL] i32 arr[1] -= 3: expected 17, got ${cast(a[1], i64)}")
         failed += 1
     }
 
     // Test 3: u16 array *=
     mut b [u16] = {cast(7, u16)}
     b[0] *= cast(3, u16)
-    if cast(b[0], int) == 21 {
+    if cast(b[0], i64) == 21 {
         println("  [PASS] u16 arr[0] *= 3 produces 21")
         passed += 1
     } otherwise {
-        println("  [FAIL] u16 arr[0] *= 3: expected 21, got ${cast(b[0], int)}")
+        println("  [FAIL] u16 arr[0] *= 3: expected 21, got ${cast(b[0], i64)}")
         failed += 1
     }
 
     // Test 4: u8 array +=
     mut c [u8] = {cast(200, u8)}
     c[0] += cast(55, u8)
-    if cast(c[0], int) == 255 {
+    if cast(c[0], i64) == 255 {
         println("  [PASS] u8 arr[0] += 55 produces 255")
         passed += 1
     } otherwise {
-        println("  [FAIL] u8 arr[0] += 55: expected 255, got ${cast(c[0], int)}")
+        println("  [FAIL] u8 arr[0] += 55: expected 255, got ${cast(c[0], i64)}")
         failed += 1
     }
 
     // Test 5: repeated compound assign accumulates
     a[0] += cast(10, i32)
     a[0] += cast(10, i32)
-    if cast(a[0], int) == 35 {
+    if cast(a[0], i64) == 35 {
         println("  [PASS] repeated i32 += accumulates to 35")
         passed += 1
     } otherwise {
-        println("  [FAIL] repeated i32 +=: expected 35, got ${cast(a[0], int)}")
+        println("  [FAIL] repeated i32 +=: expected 35, got ${cast(a[0], i64)}")
         failed += 1
     }
 

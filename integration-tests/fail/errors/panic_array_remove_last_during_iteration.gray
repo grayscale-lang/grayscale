@@ -7,10 +7,10 @@
 import and use @arrays
 
 do main() {
-    mut arr [int] = {1, 2, 3, 4, 5}
+    mut arr [i64] = {1, 2, 3, 4, 5}
     for_each item in arr {
         if item == 2 {
-            mut _last int = arrays.remove_last(arr)
+            mut _last i64 = arrays.remove_last(arr)
         }
     }
 }

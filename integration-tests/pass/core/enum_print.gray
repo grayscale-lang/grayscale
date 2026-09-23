@@ -27,8 +27,8 @@ const Priority enum {
 
 do main() {
     println("=== Enum Print Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: println enum variable (the core bug case)
     mut c Color = Color.RED
@@ -79,10 +79,10 @@ do main() {
     println("  [PASS] println enum variable directly")
     passed += 1
 
-    // Test 6: enum member assigned directly to int
-    mut next int = Color.GREEN
+    // Test 6: enum member assigned directly to i64
+    mut next i64 = Color.GREEN
     if next == 1 {
-        println("  [PASS] enum member assigned to int (GREEN=1)")
+        println("  [PASS] enum member assigned to i64 (GREEN=1)")
         passed += 1
     } otherwise {
         println("  [FAIL] enum assign: got ${next}, expected 1")

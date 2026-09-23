@@ -3,13 +3,13 @@
  * parameter values at reduced arity.
  *
  * `f(5)` where
- * `f = ()add` and add has `b int = 10` fired E5008 "expects 2
+ * `f = ()add` and add has `b i64 = 10` fired E5008 "expects 2
  * arguments, got 1". The typechecker now computes min_arity from
  * params without defaults, and codegen builds the function-pointer
  * cast using the full param count.
  */
 
-do add(a int, b int = 10) -> int {
+do add(a i64, b i64 = 10) -> i64 {
     return a + b
 }
 
@@ -19,11 +19,11 @@ do greet(name string, prefix string = "Hello") -> string {
 
 do main() {
     println("=== Func Ref Default Params Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- call with default --
-    const f func(int, int) -> int = ()add
+    const f func(i64, i64) -> i64 = ()add
     if f(5) == 15 {
         println("  [PASS] f(5) with default b=10 → 15")
         passed += 1

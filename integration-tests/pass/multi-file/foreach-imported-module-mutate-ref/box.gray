@@ -1,7 +1,7 @@
 import @arrays
 
 const Box struct {
-    id int
+    id i64
     items [string]
 }
 
@@ -13,9 +13,9 @@ do fill(&b Box) {
     b.items = lines
 }
 
-do vis(b Box, rows int) -> [string] {
+do vis(b Box, rows i64) -> [string] {
     if len(b.items) == 0 { return {} }
-    mut stop int = rows
+    mut stop i64 = rows
     if stop > len(b.items) { stop = len(b.items) }
     return arrays.slice(b.items, 0, stop)
 }

@@ -1,6 +1,6 @@
 /*
  * f32_fixed_array_storage.gray
- * A fixed-size [f32, N] array stores packed 4-byte float from every
+ * A fixed-size [f32, N] array stores packed 4-u8 f64 from every
  * construction path — a const declaration, a struct literal field, and a
  * struct field reassigned from an array literal — so element reads return
  * the values written.
@@ -11,8 +11,8 @@ const Widget struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     const fixed [f32, 2] = {0.5, 1.5}
     if fixed[0] == 0.5 && fixed[1] == 1.5 {
@@ -25,10 +25,10 @@ do main() {
 
     const ints [f32, 2] = {1, 2}
     if ints[0] == 1.0 && ints[1] == 2.0 {
-        println("  [PASS] const [f32, N] from int literals")
+        println("  [PASS] const [f32, N] from i64 literals")
         passed += 1
     } otherwise {
-        println("  [FAIL] const [f32, N] from int literals: ${ints[0]} ${ints[1]}")
+        println("  [FAIL] const [f32, N] from i64 literals: ${ints[0]} ${ints[1]}")
         failed += 1
     }
 

@@ -1,7 +1,7 @@
 do main() {
-    mut x int = 42
-    mut p ^int = addr(x)
-    mut pp ^^int = addr(p)
-    mut q ^int = pp
+    mut x i64 = 42
+    mut p ^i64 = addr(x)
+    mut pp ^^i64 = addr(p)
+    mut q ^i64 = pp
     println(q^)
 }

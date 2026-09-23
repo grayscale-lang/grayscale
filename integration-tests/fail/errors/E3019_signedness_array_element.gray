@@ -3,7 +3,7 @@
 // expect-error-count: 1
 
 do main() {
-    mut neg int = -1
-    mut arr [uint] = {neg}
+    mut neg i64 = -1
+    mut arr [u64] = {neg}
     println("${arr[0]}")
 }

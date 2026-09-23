@@ -4,14 +4,14 @@
  */
 
 const Util struct {
-    _pad int
+    _pad i64
 
-    do double(&x int) {
+    do double(&x i64) {
         x = x * 2
     }
 }
 
 do main() {
-    const val int = 5
+    const val i64 = 5
     Util.double(val)
 }

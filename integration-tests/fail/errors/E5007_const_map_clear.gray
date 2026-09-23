@@ -6,6 +6,6 @@
 import @maps
 
 do main() {
-    const m map[string:int] = {"a": 1}
+    const m map[string:i64] = {"a": 1}
     maps.clear(m)
 }

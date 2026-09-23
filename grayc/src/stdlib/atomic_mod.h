@@ -22,17 +22,17 @@ typedef struct {
 /*@man load
  *@module atomic
  *@group 64-bit Atomics
- *@sig load(ptr ^int) -> int
+ *@sig load(ptr ^i64) -> i64
  *@desc Atomically load a value.
  *@example
  *   import @atomic
- *   mut val int = atomic.load(ptr)
+ *   mut val i64 = atomic.load(ptr)
  *@end
  */
 /*@man store
  *@module atomic
  *@group 64-bit Atomics
- *@sig store(ptr ^int, val int)
+ *@sig store(ptr ^i64, val i64)
  *@desc Atomically store a value.
  *@example
  *   import @atomic
@@ -42,37 +42,37 @@ typedef struct {
 /*@man add
  *@module atomic
  *@group 64-bit Atomics
- *@sig add(ptr ^int, val int) -> int
+ *@sig add(ptr ^i64, val i64) -> i64
  *@desc Atomic add. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.add(ptr, 1)
+ *   mut old i64 = atomic.add(ptr, 1)
  *@end
  */
 /*@man sub
  *@module atomic
  *@group 64-bit Atomics
- *@sig sub(ptr ^int, val int) -> int
+ *@sig sub(ptr ^i64, val i64) -> i64
  *@desc Atomic subtract. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.sub(ptr, 1)
+ *   mut old i64 = atomic.sub(ptr, 1)
  *@end
  */
 /*@man exchange
  *@module atomic
  *@group 64-bit Atomics
- *@sig exchange(ptr ^int, val int) -> int
+ *@sig exchange(ptr ^i64, val i64) -> i64
  *@desc Atomic swap. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.exchange(ptr, 99)
+ *   mut old i64 = atomic.exchange(ptr, 99)
  *@end
  */
 /*@man cas
  *@module atomic
  *@group 64-bit Atomics
- *@sig cas(ptr ^int, expected int, desired int) -> bool
+ *@sig cas(ptr ^i64, expected i64, desired i64) -> bool
  *@desc Compare-and-swap. Returns true if the swap succeeded.
  *@example
  *   import @atomic
@@ -84,31 +84,31 @@ typedef struct {
 /*@man and
  *@module atomic
  *@group 64-bit Atomics
- *@sig and(ptr ^int, val int) -> int
+ *@sig and(ptr ^i64, val i64) -> i64
  *@desc Atomic bitwise AND. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.and(ptr, 0xFF)
+ *   mut old i64 = atomic.and(ptr, 0xFF)
  *@end
  */
 /*@man or
  *@module atomic
  *@group 64-bit Atomics
- *@sig or(ptr ^int, val int) -> int
+ *@sig or(ptr ^i64, val i64) -> i64
  *@desc Atomic bitwise OR. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.or(ptr, 0x01)
+ *   mut old i64 = atomic.or(ptr, 0x01)
  *@end
  */
 /*@man xor
  *@module atomic
  *@group 64-bit Atomics
- *@sig xor(ptr ^int, val int) -> int
+ *@sig xor(ptr ^i64, val i64) -> i64
  *@desc Atomic bitwise XOR. Returns the previous value.
  *@example
  *   import @atomic
- *   mut old int = atomic.xor(ptr, 0xFF)
+ *   mut old i64 = atomic.xor(ptr, 0xFF)
  *@end
  */
 /* 64-bit atomics */

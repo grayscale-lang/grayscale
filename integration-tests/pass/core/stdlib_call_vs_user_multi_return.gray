@@ -8,19 +8,19 @@
 
 import @arrays
 
-do one() -> int { return 1 }
-do two() -> int { return 2 }
-do three() -> int { return 3 }
-do four() -> int { return 4 }
-do five() -> int { return 5 }
-do two_values() -> (int, int) { return 6, 7 }
+do one() -> i64 { return 1 }
+do two() -> i64 { return 2 }
+do three() -> i64 { return 3 }
+do four() -> i64 { return 4 }
+do five() -> i64 { return 5 }
+do two_values() -> (i64, i64) { return 6, 7 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut sum int = one() + two() + three() + four() + five()
-    mut a int, b int = two_values()
+    mut sum i64 = one() + two() + three() + four() + five()
+    mut a i64, b i64 = two_values()
     sum += a + b
 
     if sum == 28 {
@@ -30,7 +30,7 @@ do main() {
         failed += 1
     }
 
-    mut joined [int] = arrays.concat({1, 2}, {3, 4})
+    mut joined [i64] = arrays.concat({1, 2}, {3, 4})
     if len(joined) == 4 && joined[0] == 1 && joined[3] == 4 {
         passed += 1
     } otherwise {

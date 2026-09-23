@@ -5,7 +5,7 @@
  * `when err.code` with a default, and string rendering of a code.
  */
 
-do open_thing(name string) -> (int, Error) {
+do open_thing(name string) -> (i64, Error) {
     if name == "missing" {
         return 0, error(.NotFound, "no such thing")
     }
@@ -17,8 +17,8 @@ do open_thing(name string) -> (int, Error) {
 
 do main() {
     println("=== ErrorCode builtin test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut _, err = open_thing("missing")
     if err.code == .NotFound {

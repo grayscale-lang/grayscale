@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut 123abc int = 5  // Invalid identifier starting with number
+    mut 123abc i64 = 5  // Invalid identifier starting with number
 }

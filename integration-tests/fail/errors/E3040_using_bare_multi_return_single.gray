@@ -7,6 +7,6 @@
 import and use @math
 
 do main() {
-    mut x float = modf(1.5)
+    mut x f64 = modf(1.5)
     println(x)
 }

@@ -1,0 +1,11 @@
+/*
+ * Error Test: E3138 - float literal exceeds the range of f64
+ * Expected: "float literal overflows f64"
+ */
+
+// expect-error: E3138
+
+do main() {
+    mut x f64 = 2.0e308
+    println("${x}")
+}

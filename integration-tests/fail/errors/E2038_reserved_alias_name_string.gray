@@ -7,7 +7,7 @@
 // expect-error: E2038
 // expect-error-count: 1
 
-alias string = int
+alias string = i64
 
 do main() {
     mut s string = "hello"

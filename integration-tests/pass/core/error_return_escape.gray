@@ -1,6 +1,6 @@
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: single-return Error preserved
     mut e1 = validate_age(-5)
@@ -147,32 +147,32 @@ do main() {
 }
 
 do filler_a() {
-    mut x int = 111
+    mut x i64 = 111
     mut s string = "filler to cause arena reuse"
     println("${x} ${s}")
 }
 
 do filler_b() {
-    mut y float = 3.14
+    mut y f64 = 3.14
     mut t string = "more filler for memory pressure"
     println("${y} ${t}")
 }
 
-do validate_age(age int) -> Error {
+do validate_age(age i64) -> Error {
     if age < 0 {
         return error("age cannot be negative")
     }
     return nil
 }
 
-do safe_divide(a int, b int) -> (int, Error) {
+do safe_divide(a i64, b i64) -> (i64, Error) {
     if b == 0 {
         return 0, error("division by zero")
     }
     return a / b, nil
 }
 
-do check_range(val int) -> Error {
+do check_range(val i64) -> Error {
     if val < 0 {
         return error("value too low")
     }
@@ -182,8 +182,8 @@ do check_range(val int) -> Error {
     return nil
 }
 
-do parse_positive(n int) -> (result int, err Error) {
-    mut result int = 0
+do parse_positive(n i64) -> (result i64, err Error) {
+    mut result i64 = 0
     mut err Error = nil
     if n <= 0 {
         err = error("not positive")
@@ -193,7 +193,7 @@ do parse_positive(n int) -> (result int, err Error) {
     return result, err
 }
 
-do outer_validate(v int) -> Error {
+do outer_validate(v i64) -> Error {
     mut e = check_range(v)
     return e
 }

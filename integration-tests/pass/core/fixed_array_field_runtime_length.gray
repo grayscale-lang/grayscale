@@ -8,18 +8,18 @@
 import @arrays
 
 const Widget struct {
-    items [int, 3]
+    items [i64, 3]
 }
 
-do three() -> [int] {
+do three() -> [i64] {
     return {7, 8, 9}
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut base [int] = {1, 2, 3, 4, 5}
+    mut base [i64] = {1, 2, 3, 4, 5}
     mut w Widget = Widget{items: arrays.slice(base, 0, 3)}
     if len(w.items) == 3 && w.items[0] == 1 && w.items[2] == 3 {
         println("  [PASS] struct literal from slice")

@@ -18,12 +18,12 @@
 
 /* Built-in type singletons */
 GrayType TYPE_VOID    = {TK_VOID,   "void",   NULL, NULL, NULL, NULL};
-GrayType TYPE_INT     = {TK_INT,    "int",    NULL, NULL, NULL, NULL};
-GrayType TYPE_UINT    = {TK_UINT,   "uint",   NULL, NULL, NULL, NULL};
-GrayType TYPE_FLOAT   = {TK_FLOAT,  "float",  NULL, NULL, NULL, NULL};
+GrayType TYPE_I64     = {TK_INT,    "i64",    NULL, NULL, NULL, NULL};
+GrayType TYPE_U64     = {TK_UINT,   "u64",    NULL, NULL, NULL, NULL};
+GrayType TYPE_F64     = {TK_FLOAT,  "f64",    NULL, NULL, NULL, NULL};
 GrayType TYPE_BOOL    = {TK_BOOL,   "bool",   NULL, NULL, NULL, NULL};
 GrayType TYPE_CHAR    = {TK_CHAR,   "char",   NULL, NULL, NULL, NULL};
-GrayType TYPE_BYTE    = {TK_BYTE,   "byte",   NULL, NULL, NULL, NULL};
+GrayType TYPE_U8      = {TK_UINT,   "u8",     NULL, NULL, NULL, NULL};
 GrayType TYPE_STRING  = {TK_STRING, "string", NULL, NULL, NULL, NULL};
 GrayType TYPE_NIL     = {TK_NIL,    "nil",    NULL, NULL, NULL, NULL};
 GrayType TYPE_UNKNOWN = {TK_UNKNOWN,"unknown",NULL, NULL, NULL, NULL};
@@ -77,7 +77,7 @@ static uint32_t type_hash(TypeKind kind, const char *name) {
     uint32_t h = 5381u ^ ((uint32_t)kind * 2654435761u);
     for (const unsigned char *p = (const unsigned char *)name; *p; p++)
         h = h * 33u ^ (uint32_t)*p;
-    /* djb2's low bits barely move between similar names ([int], [i8], [i16]..),
+    /* djb2's low bits barely move between similar names ([i64], [i8], [i16]..),
      * and pool_find masks to the low bits then linear-probes. Finalize first so
      * the high bits (which are well mixed) reach the bucket index. */
     h ^= h >> 16;
@@ -190,7 +190,7 @@ GrayType *type_pointer(const char *pointee_type) {
 
 /* Find the index of the ')' that closes the '(' at index 4 — the parameter
  * list of a "func(...)" type string. Tracks nesting so that nested func(...)
- * types (e.g. func(func(int)->int)->bool) balance correctly. Returns -1 if
+ * types (e.g. func(func(i64)->i64)->bool) balance correctly. Returns -1 if
  * not balanced. Precondition: the caller has verified the "func(" prefix. */
 static int find_func_signature_close_paren(const char *s) {
     int depth = 0;
@@ -361,12 +361,12 @@ void type_pool_reset(void) {
 
 bool type_is_numeric(GrayType *type) {
     return type->kind == TK_INT || type->kind == TK_UINT || type->kind == TK_FLOAT ||
-           type->kind == TK_CHAR || type->kind == TK_BYTE;
+           type->kind == TK_CHAR;
 }
 
 bool type_is_integer(GrayType *type) {
     return type->kind == TK_INT || type->kind == TK_UINT ||
-           type->kind == TK_CHAR || type->kind == TK_BYTE;
+           type->kind == TK_CHAR;
 }
 
 /* Render a composite type name into a small ring of static buffers, so callers
@@ -413,28 +413,24 @@ static BuiltinTypeEntry builtin_types[] = {
     { "Error",     NULL,      TK_ERROR,   "Error" },
     { "ErrorCode", NULL,      TK_ENUM,    "ErrorCode" },
     { "bool",   &TYPE_BOOL,   0, NULL },
-    { "byte",   &TYPE_BYTE,   0, NULL },
     { "char",   &TYPE_CHAR,   0, NULL },
     { "f32",    NULL,         TK_FLOAT,   NULL },
-    { "f64",    NULL,         TK_FLOAT,   NULL },
-    { "float",  &TYPE_FLOAT,  0, NULL },
+    { "f64",    &TYPE_F64,    0, NULL },
     { "func",   NULL,         TK_FUNCTION, "func" },
     { "i128",   NULL,         TK_INT,     NULL },
     { "i16",    NULL,         TK_INT,     NULL },
     { "i256",   NULL,         TK_INT,     NULL },
     { "i32",    NULL,         TK_INT,     NULL },
-    { "i64",    NULL,         TK_INT,     NULL },
+    { "i64",    &TYPE_I64,    0, NULL },
     { "i8",     NULL,         TK_INT,     NULL },
-    { "int",    &TYPE_INT,    0, NULL },
     { "nil",    &TYPE_NIL,    0, NULL },
     { "string", &TYPE_STRING, 0, NULL },
     { "u128",   NULL,         TK_UINT,    NULL },
     { "u16",    NULL,         TK_UINT,    NULL },
     { "u256",   NULL,         TK_UINT,    NULL },
     { "u32",    NULL,         TK_UINT,    NULL },
-    { "u64",    NULL,         TK_UINT,    NULL },
-    { "u8",     NULL,         TK_UINT,    NULL },
-    { "uint",   &TYPE_UINT,   0, NULL },
+    { "u64",    &TYPE_U64,    0, NULL },
+    { "u8",     &TYPE_U8,     0, NULL },
     { "void",   &TYPE_VOID,   0, NULL },
 };
 
@@ -486,12 +482,12 @@ GrayType *type_from_name(const char *name) {
         return type;
     }
 
-    /* Pointer type: ^int, ^Person, etc. */
+    /* Pointer type: ^i64, ^Person, etc. */
     if (name[0] == '^') {
         return type_pointer(name + 1);
     }
 
-    /* Array type: [int], [string], [int,3], etc. */
+    /* Array type: [i64], [string], [i64,3], etc. */
     if (name[0] == '[') {
         size_t len = strlen(name);
         if (len > 2 && name[len - 1] == ']') {
@@ -514,7 +510,7 @@ GrayType *type_from_name(const char *name) {
         GrayType *type = type_alloc();
         type->kind = TK_MAP;
         type->name = strdup(name);
-        /* Parse key:value types from "map[string:int]" */
+        /* Parse key:value types from "map[string:i64]" */
         const char *start = name + 4;
         const char *colon = strchr(start, ':');
         if (colon) {

@@ -1,6 +1,6 @@
 const Shape enum {
-    Circle(float)
-    Rect(float, float)
+    Circle(f64)
+    Rect(f64, f64)
     Point
 }
 

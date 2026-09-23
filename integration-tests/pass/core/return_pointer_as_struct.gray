@@ -5,11 +5,11 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do make_point(x int, y int) -> Point {
+do make_point(x i64, y i64) -> Point {
     mut p = new(Point)
     p.x = x
     p.y = y
@@ -21,8 +21,8 @@ do get_origin() -> Point {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: return dereferenced pointer as struct value
     mut p = make_point(10, 20)
@@ -54,7 +54,7 @@ do main() {
     }
 
     // Test 4: use returned struct in expression
-    mut sum int = p.x + p.y
+    mut sum i64 = p.x + p.y
     if sum == 30 {
         println("  [PASS] returned struct fields in expression == 30")
         passed += 1

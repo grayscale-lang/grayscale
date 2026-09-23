@@ -6,15 +6,15 @@
 
 
 // Single named return
-do get_answer() -> (result int) {
-    mut result int = 42
+do get_answer() -> (result i64) {
+    mut result i64 = 42
     return result
 }
 
 // Multiple named returns
-do get_person() -> (name string, age int) {
+do get_person() -> (name string, age i64) {
     mut name string = "Alice"
-    mut age int = 30
+    mut age i64 = 30
     return name, age
 }
 
@@ -25,10 +25,10 @@ do get_greeting() -> (msg string) {
 }
 
 // Multiple named returns
-do get_coords() -> (x int, y int, z int) {
-    mut x int = 10
-    mut y int = 20
-    mut z int = 30
+do get_coords() -> (x i64, y i64, z i64) {
+    mut x i64 = 10
+    mut y i64 = 20
+    mut z i64 = 30
     return x, y, z
 }
 
@@ -40,8 +40,8 @@ do get_names() -> (first, last string) {
 }
 
 // Named returns modified in control flow
-do classify(n int) -> (label string, value int) {
-    mut value int = n
+do classify(n i64) -> (label string, value i64) {
+    mut value i64 = n
     mut label string = ""
     if n > 0 {
         label = "positive"
@@ -54,8 +54,8 @@ do classify(n int) -> (label string, value int) {
 }
 
 // Named return after loop
-do sum_to(n int) -> (total int) {
-    mut total int = 0
+do sum_to(n i64) -> (total i64) {
+    mut total i64 = 0
     for i in range(1, n + 1) {
         total += i
     }
@@ -64,11 +64,11 @@ do sum_to(n int) -> (total int) {
 
 do main() {
     println("=== Named Return: Explicit Declaration Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: single named return
-    mut ans int = get_answer()
+    mut ans i64 = get_answer()
     if ans == 42 {
         println("  [PASS] single named return")
         passed += 1
@@ -78,7 +78,7 @@ do main() {
     }
 
     // Test 2: multiple named returns
-    mut name string, age int = get_person()
+    mut name string, age i64 = get_person()
     if name == "Alice" && age == 30 {
         println("  [PASS] multiple named returns")
         passed += 1
@@ -98,7 +98,7 @@ do main() {
     }
 
     // Test 4: multiple named returns coords
-    mut cx int, cy int, cz int = get_coords()
+    mut cx i64, cy i64, cz i64 = get_coords()
     if cx == 10 && cy == 20 && cz == 30 {
         println("  [PASS] multiple named returns coords")
         passed += 1
@@ -120,7 +120,7 @@ do main() {
     // Test 6: named returns modified in control flow
     mut lab1 string, _ = classify(5)
     mut lab2 string, _ = classify(-3)
-    mut lab3 string, val3 int = classify(0)
+    mut lab3 string, val3 i64 = classify(0)
     if lab1 == "positive" && lab2 == "negative" && lab3 == "zero" && val3 == 0 {
         println("  [PASS] named returns with control flow")
         passed += 1
@@ -130,7 +130,7 @@ do main() {
     }
 
     // Test 7: named return after loop
-    mut total int = sum_to(10)
+    mut total i64 = sum_to(10)
     if total == 55 {
         println("  [PASS] named return after loop")
         passed += 1

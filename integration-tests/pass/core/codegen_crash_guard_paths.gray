@@ -17,11 +17,11 @@ do greet(name string) -> string {
     return "hello ${name}"
 }
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
-do multi_return() -> (int, string) {
+do multi_return() -> (i64, string) {
     return 42, "answer"
 }
 
@@ -30,8 +30,8 @@ do void_return() {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: single return value
     mut r1 string = greet("world")
@@ -80,7 +80,7 @@ do main() {
 
     // Test 6: function reference lookup via member
     const ref_fn = ()add
-    mut r6 int = ref_fn(10, 20)
+    mut r6 i64 = ref_fn(10, 20)
     if r6 == 30 {
         println("  [PASS] func ref call")
         passed += 1

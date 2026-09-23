@@ -9,11 +9,11 @@ import @arrays
 
 do main() {
     println("=== Range Negative Step For Loop Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic countdown with step -1
-    mut result [int] = {}
+    mut result [i64] = {}
     for i in range(5, 0, -1) {
         arrays.append(result, i)
     }
@@ -26,7 +26,7 @@ do main() {
     }
 
     // Test 2: countdown with step -2 (even numbers)
-    mut evens [int] = {}
+    mut evens [i64] = {}
     for i in range(10, 0, -2) {
         arrays.append(evens, i)
     }
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 3: countdown sum
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(10, 0, -1) {
         sum += i
     }
@@ -52,7 +52,7 @@ do main() {
     }
 
     // Test 4: countdown with step -3
-    mut threes [int] = {}
+    mut threes [i64] = {}
     for i in range(9, 0, -3) {
         arrays.append(threes, i)
     }
@@ -65,7 +65,7 @@ do main() {
     }
 
     // Test 5: negative range bounds with negative step
-    mut neg_result [int] = {}
+    mut neg_result [i64] = {}
     for i in range(0, -5, -1) {
         arrays.append(neg_result, i)
     }
@@ -78,7 +78,7 @@ do main() {
     }
 
     // Test 6: single iteration countdown
-    mut single [int] = {}
+    mut single [i64] = {}
     for i in range(1, 0, -1) {
         arrays.append(single, i)
     }

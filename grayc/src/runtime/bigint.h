@@ -96,28 +96,28 @@ static inline gray_u256 gray_u256_from_u64(uint64_t value) {
 
 static inline int64_t gray_i128_to_i64(gray_i128 value, const char *file, int line) {
     if (value.hi != ((int64_t)value.lo >> 63)) {
-        gray_panic_code_at(file, line, "P0093", "cast from i128 failed; value is outside the representable range of int64");
+        gray_panic_code_at(file, line, "P0093", "cast from i128 failed; value is outside the representable range of i64");
     }
     return (int64_t)value.lo;
 }
 
 static inline uint64_t gray_i128_to_u64(gray_i128 value, const char *file, int line) {
     if (value.hi != 0) {
-        gray_panic_code_at(file, line, "P0094", "cast from i128 failed; value is negative or outside the representable range of uint64");
+        gray_panic_code_at(file, line, "P0094", "cast from i128 failed; value is negative or outside the representable range of u64");
     }
     return value.lo;
 }
 
 static inline int64_t gray_u128_to_i64(gray_u128 value, const char *file, int line) {
     if (value.hi != 0 || value.lo > (uint64_t)INT64_MAX) {
-        gray_panic_code_at(file, line, "P0095", "cast from u128 failed; value exceeds the representable range of int64");
+        gray_panic_code_at(file, line, "P0095", "cast from u128 failed; value exceeds the representable range of i64");
     }
     return (int64_t)value.lo;
 }
 
 static inline uint64_t gray_u128_to_u64(gray_u128 value, const char *file, int line) {
     if (value.hi != 0) {
-        gray_panic_code_at(file, line, "P0096", "cast from u128 failed; value exceeds the representable range of uint64");
+        gray_panic_code_at(file, line, "P0096", "cast from u128 failed; value exceeds the representable range of u64");
     }
     return value.lo;
 }
@@ -125,28 +125,28 @@ static inline uint64_t gray_u128_to_u64(gray_u128 value, const char *file, int l
 static inline int64_t gray_i256_to_i64(gray_i256 value, const char *file, int line) {
     uint64_t sign_ext = (uint64_t)((int64_t)value.w[0] >> 63);
     if (value.w[1] != sign_ext || value.w[2] != sign_ext || value.w[3] != sign_ext) {
-        gray_panic_code_at(file, line, "P0097", "cast from i256 failed; value is outside the representable range of int64");
+        gray_panic_code_at(file, line, "P0097", "cast from i256 failed; value is outside the representable range of i64");
     }
     return (int64_t)value.w[0];
 }
 
 static inline uint64_t gray_i256_to_u64(gray_i256 value, const char *file, int line) {
     if (value.w[1] != 0 || value.w[2] != 0 || value.w[3] != 0) {
-        gray_panic_code_at(file, line, "P0098", "cast from i256 failed; value is negative or outside the representable range of uint64");
+        gray_panic_code_at(file, line, "P0098", "cast from i256 failed; value is negative or outside the representable range of u64");
     }
     return value.w[0];
 }
 
 static inline int64_t gray_u256_to_i64(gray_u256 value, const char *file, int line) {
     if (value.w[1] != 0 || value.w[2] != 0 || value.w[3] != 0 || value.w[0] > (uint64_t)INT64_MAX) {
-        gray_panic_code_at(file, line, "P0099", "cast from u256 failed; value exceeds the representable range of int64");
+        gray_panic_code_at(file, line, "P0099", "cast from u256 failed; value exceeds the representable range of i64");
     }
     return (int64_t)value.w[0];
 }
 
 static inline uint64_t gray_u256_to_u64(gray_u256 value, const char *file, int line) {
     if (value.w[1] != 0 || value.w[2] != 0 || value.w[3] != 0) {
-        gray_panic_code_at(file, line, "P0100", "cast from u256 failed; value exceeds the representable range of uint64");
+        gray_panic_code_at(file, line, "P0100", "cast from u256 failed; value exceeds the representable range of u64");
     }
     return value.w[0];
 }

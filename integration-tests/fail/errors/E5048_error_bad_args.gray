@@ -1,7 +1,7 @@
 // expect-error: E5048
 // error() with a message where a code is expected as the first of two args.
 
-do f() -> (int, Error) {
+do f() -> (i64, Error) {
     return 0, error("msg", "second")
 }
 

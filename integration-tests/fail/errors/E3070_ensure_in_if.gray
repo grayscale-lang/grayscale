@@ -7,7 +7,7 @@
 do cleanup() { println("cleanup") }
 
 do main() {
-    mut x int = 1
+    mut x i64 = 1
     if x > 0 {
         ensure cleanup()
     }

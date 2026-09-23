@@ -6,11 +6,11 @@ import @maps
 
 do main() {
     println("=== Stress: @maps ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Empty map
-    mut empty map[string:int] = {"_placeholder_": 0}
+    mut empty map[string:i64] = {"_placeholder_": 0}
     maps.remove_key(empty, "_placeholder_")
     if maps.is_empty(empty) {
         println("  [PASS] is_empty on empty map")
@@ -18,7 +18,7 @@ do main() {
     } otherwise { println("  [FAIL] is_empty") failed += 1 }
 
     // has_key
-    mut m map[string:int] = {"a": 1, "b": 2, "c": 3}
+    mut m map[string:i64] = {"a": 1, "b": 2, "c": 3}
     if maps.has_key(m, "a") {
         println("  [PASS] has_key found")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     } otherwise { println("  [FAIL] keys — got ${len(ks)}") failed += 1 }
 
     // values
-    mut vs [int] = maps.get_values(m)
+    mut vs [i64] = maps.get_values(m)
     if len(vs) == 3 {
         println("  [PASS] values() returns 3 values")
         passed += 1
@@ -60,7 +60,7 @@ do main() {
     } otherwise { println("  [FAIL] clear") failed += 1 }
 
     // Map with many entries
-    mut big map[string:int] = {"seed": 0}
+    mut big map[string:i64] = {"seed": 0}
     for i in range(1, 50) {
         big["key_${i}"] = i
     }

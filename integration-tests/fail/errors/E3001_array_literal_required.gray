@@ -1,8 +1,8 @@
 /*
  * Error Test: E3001 - array-literal-required
- * Expected: type mismatch: cannot assign int to [int]
+ * Expected: type mismatch: cannot assign i64 to [i64]
  */
 
 do main() {
-    mut arr [int] = 5  // array type requires array literal
+    mut arr [i64] = 5  // array type requires array literal
 }

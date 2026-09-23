@@ -1,0 +1,54 @@
+/*
+ * float_print_width.gray
+ * f64, f32, and f64 values print in their shortest round-trip form at
+ * their own width, the same way through interpolation, array and map
+ * formatting: 0.1 is "0.1" and zero is "0.0".
+ */
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut narrow f32 = 0.1
+    mut wide f64 = 0.1
+    mut plain f64 = 0.1
+    mut zero f32 = 0.0
+    mut scalars string = "${narrow} ${wide} ${plain} ${zero}"
+    if scalars == "0.1 0.1 0.1 0.0" {
+        println("  [PASS] scalar interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] scalar interpolation: ${scalars}")
+        failed += 1
+    }
+
+    mut narrow_arr [f32] = {0.1, 0.0, 2.0}
+    mut wide_arr [f64] = {0.1, 0.0, 2.0}
+    mut plain_arr [f64] = {0.1, 0.0, 2.0}
+    const fixed_arr [f32, 2] = {0.1, 0.0}
+    mut arrays_text string = "${narrow_arr} ${wide_arr} ${plain_arr} ${fixed_arr}"
+    if arrays_text == "{0.1, 0.0, 2.0} {0.1, 0.0, 2.0} {0.1, 0.0, 2.0} {0.1, 0.0}" {
+        println("  [PASS] array interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] array interpolation: ${arrays_text}")
+        failed += 1
+    }
+
+    mut weights map[string:f32] = {"k": 0.1}
+    mut map_text string = "${weights}"
+    if map_text == "{\"k\": 0.1}" {
+        println("  [PASS] map interpolation")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] map interpolation: ${map_text}")
+        failed += 1
+    }
+
+    println("Passed: ${passed}, Failed: ${failed}")
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

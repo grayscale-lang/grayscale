@@ -327,7 +327,7 @@ static bool type_string_has_wildcard(const char *type_name) {
     return false;
 }
 
-/* Read a type name: simple (int, Person) or qualified (models.Task).
+/* Read a type name: simple (i64, Person) or qualified (models.Task).
  * Assumes current token is the first identifier. Returns arena-allocated string. */
 static const char *read_type_name(Parser *parser) {
     /* Wildcard type placeholder: `?` in a type position */
@@ -370,7 +370,7 @@ static const char *parse_complex_type(Parser *parser) {
         return "?";
     }
     if (current_token_is(parser, TOK_LBRACKET)) {
-        /* Array type: [int], [int,3], [[int]], [[[int]]], etc. */
+        /* Array type: [i64], [i64,3], [[i64]], [[[i64]]], etc. */
         next_token(parser); /* element type or nested [ */
         if (current_token_is(parser, TOK_LBRACKET)) {
             /* Nested array type: count depth of brackets */
@@ -465,7 +465,7 @@ static const char *parse_complex_type(Parser *parser) {
                 snprintf(type_str, ts_len, "map[%s:%s]", elem, val_type);
                 return type_str;
             } else if (peek_token_is(parser, TOK_COMMA)) {
-                /* Fixed-size array: [int, 3] or [int, SIZE] */
+                /* Fixed-size array: [i64, 3] or [i64, SIZE] */
                 next_token(parser); /* skip , */
                 next_token(parser); /* size */
                 if (!current_token_is(parser, TOK_INT) && !current_token_is(parser, TOK_IDENT)) {
@@ -479,7 +479,7 @@ static const char *parse_complex_type(Parser *parser) {
                 snprintf(type_str, ts_len, "[%s,%s]", elem, sz);
                 return type_str;
             } else {
-                /* Dynamic array: [int] */
+                /* Dynamic array: [i64] */
                 if (!expect_peek_token(parser, TOK_RBRACKET)) return NULL;
                 size_t ts_len = strlen(elem) + 3;
                 char *type_str = arena_alloc(parser->arena, ts_len);
@@ -605,8 +605,8 @@ static const char *parse_complex_type(Parser *parser) {
 }
 
 /* The element type of an array spelling, or NULL when the spelling is not an
- * array.  "[int]" -> "int", "[int,3]" -> "int" (the size is not part of the
- * element type).  Nesting is respected, so "[[int,3]]" -> "[int,3]". */
+ * array.  "[i64]" -> "i64", "[i64,3]" -> "i64" (the size is not part of the
+ * element type).  Nesting is respected, so "[[i64,3]]" -> "[i64,3]". */
 static const char *array_element_type(Parser *parser, const char *type_str) {
     if (!type_str || type_str[0] != '[') return NULL;
     size_t len = strlen(type_str);
@@ -1741,7 +1741,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
     }
 
     /* Blank identifier requires '=' (or ',' for multi-var destructuring).
-     * Checked after the type-annotation block so `mut _ int, ...` is allowed
+     * Checked after the type-annotation block so `mut _ i64, ...` is allowed
      * but `mut _ foo()` is caught before the leftover tokens desync the parser. */
     if (strcmp(node->data.var_decl.name, "_") == 0 &&
         !peek_token_is(parser, TOK_ASSIGN) && !peek_token_is(parser, TOK_COMMA)) {
@@ -1755,7 +1755,7 @@ static AstNode *parse_var_declaration_ex(Parser *parser, bool bare) {
         return NULL;
     }
 
-    /* Check for multi-var declaration: temp x int, y int = expr OR temp _, _ = expr */
+    /* Check for multi-var declaration: temp x i64, y i64 = expr OR temp _, _ = expr */
     if (peek_token_is(parser, TOK_COMMA)) {
             /* Collect all variable names and types */
             const char *names[MAX_MULTI_VARS];
@@ -1883,7 +1883,7 @@ static AstNode *parse_var_declaration(Parser *parser) {
     return parse_var_declaration_ex(parser, false);
 }
 
-/* `x int = 5`, `x, err = f()`: no mut/const keyword; cur_token is the name. */
+/* `x i64 = 5`, `x, err = f()`: no mut/const keyword; cur_token is the name. */
 static AstNode *parse_bare_var_declaration(Parser *parser) {
     return parse_var_declaration_ex(parser, true);
 }
@@ -2052,7 +2052,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
 
     if (!expect_peek_token(parser, TOK_RPAREN)) return NULL;
 
-    /* Backfill grouped param types and defaults (a, b int = 0 → both get int, both default to 0) */
+    /* Backfill grouped param types and defaults (a, b i64 = 0 → both get i64, both default to 0) */
     for (int i = node->data.func_decl.param_count - 1; i >= 0; i--) {
         Param *param = &node->data.func_decl.params[i];
         if (!param->type_name && i + 1 < node->data.func_decl.param_count) {
@@ -2064,7 +2064,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
         if (!param->type_name && !param->default_value) {
             char buf[MSG_BUF_SIZE];
             snprintf(buf, sizeof(buf),
-                "parameter '%s' is missing a type; every parameter must have a type (e.g., %s int)",
+                "parameter '%s' is missing a type; every parameter must have a type (e.g., %s i64)",
                 param->name, param->name);
             diagnostic_error_message(parser->diag, "E2002", arena_copy_string(parser->arena, buf),
                 parser->file, node->token.line, node->token.column, 0);
@@ -2128,9 +2128,9 @@ static AstNode *parse_func_declaration(Parser *parser) {
 
         if (current_token_is(parser, TOK_LPAREN)) {
             /* Multiple/named return types:
-             *   -> (int, string)        plain types
-             *   -> (x int, y int)       named returns
-             *   -> (x, y int)           shared type
+             *   -> (i64, string)        plain types
+             *   -> (x i64, y i64)       named returns
+             *   -> (x, y i64)           shared type
              *
              * Disambiguation: if the identifier is a known type name,
              * it's a plain type list, not names.
@@ -2142,7 +2142,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
                 if (current_token_is(parser, TOK_IDENT)) {
                     const char *lit = parser->cur_token.literal;
                     is_type = (is_any_int_type(lit) ||
-                        strcmp(lit, "float") == 0 || strcmp(lit, "f32") == 0 ||
+                        strcmp(lit, "f32") == 0 ||
                         strcmp(lit, "f64") == 0 || strcmp(lit, "string") == 0 ||
                         strcmp(lit, "bool") == 0 || strcmp(lit, "char") == 0 ||
                         (strcmp(lit, "map") == 0 && peek_token_is(parser, TOK_LBRACKET)) ||
@@ -2163,7 +2163,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
                      peek_token_is(parser, TOK_QUESTION))) {
                     /* Named return: name type; store both (: accept
                      * TOK_QUESTION, TOK_LBRACKET, TOK_CARET as type-start
-                     * tokens so `(first ?, items [int], ptr ^T)` work) */
+                     * tokens so `(first ?, items [i64], ptr ^T)` work) */
                     const char *ret_name = parser->cur_token.literal;
                     next_token(parser);
                     int idx = node->data.func_decl.return_type_count;
@@ -2175,7 +2175,7 @@ static AstNode *parse_func_declaration(Parser *parser) {
                     node->data.func_decl.return_types[idx] = parse_complex_type(parser);
                     node->data.func_decl.return_type_count++;
                 } else if (current_token_is(parser, TOK_IDENT) && peek_token_is(parser, TOK_COMMA) && !is_type) {
-                    /* Shared type: (x, y int); collect names, assign same type */
+                    /* Shared type: (x, y i64); collect names, assign same type */
                     const char *names[MAX_SHARED_RETURNS];
                     int shared = 0;
                     names[shared++] = parser->cur_token.literal;
@@ -2733,7 +2733,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
 
         /* Collect one or more comma-separated field names, then read the
          * shared type and backfill (mirrors the parameter grouping logic).
-         * Example: `x, y, z float` → three fields, all typed float.       */
+         * Example: `x, y, z f64` → three fields, all typed f64.       */
         int group_start = node->data.struct_decl.field_count;
         bool field_name_rejected = false;
         for (;;) {
@@ -2799,7 +2799,7 @@ static AstNode *parse_struct_declaration(Parser *parser) {
          * validates it (for #json structs) and extracts the key. */
         if (current_token_is(parser, TOK_RAW_STRING)) {
             /* E2095: a tag names one JSON key, so it can't be shared by a
-             * comma-grouped field list (`x, y int `json:"..."``) — every
+             * comma-grouped field list (`x, y i64 `json:"..."``) — every
              * field would serialize under the same key. */
             if (node->data.struct_decl.field_count - group_start > 1) {
                 diagnostic_error_message(parser->diag, "E2095",
@@ -3437,7 +3437,7 @@ static AstNode *parse_statement(Parser *parser) {
     }
     case TOK_MUT:
     case TOK_CONST:
-        /* Check for keyword used as name: const for struct / mut for int */
+        /* Check for keyword used as name: const for struct / mut for i64 */
         if (reject_keyword_as_name(parser, &parser->peek_token, "a name")) return NULL;
         /* Check if this is a struct or enum declaration: const Name struct { */
         if (parser->cur_token.type == TOK_CONST && peek_token_is(parser, TOK_IDENT)) {
@@ -3792,8 +3792,8 @@ static AstNode *parse_statement(Parser *parser) {
         /* Not an import; parse as an expression statement (e.g. extern.printf(...)). */
         /* fallthrough */
     default: {
-        /* Bare variable declaration: x int = 5  or  x, err = func()
-         * Also handles array types: x [int] = {1,2,3}
+        /* Bare variable declaration: x i64 = 5  or  x, err = func()
+         * Also handles array types: x [i64] = {1,2,3}
          * Whitespace before '[' disambiguates from index expressions (E2075).
          * The name and what follows it must share a line, so a bare
          * identifier cannot swallow the next statement's first token. */

@@ -2,6 +2,6 @@
  * lib.gray - simple module to import
  */
 
-do helper() -> int {
+do helper() -> i64 {
     return 42
 }

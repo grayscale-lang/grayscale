@@ -1,9 +1,9 @@
 /*
  * Error Test: E3001 - ref() calls validate argument types
- * Expected: "expected int, got string"
+ * Expected: "expected i64, got string"
  */
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 

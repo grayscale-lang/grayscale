@@ -1,7 +1,7 @@
 /* Error Test: E2088 - mixed when/switch aliases in same file */
 // expect-error: E2088
 do main() {
-    mut x int = 1
+    mut x i64 = 1
     when x {
         is 1 { println("one") }
         default { println("other") }

@@ -131,14 +131,14 @@ int64_t gray_time_parse(GrayString text, GrayString layout) {
     return ts;
 }
 
-GrayResult_int gray_time_parse_result(GrayString text, GrayString layout) {
+GrayResult_i64 gray_time_parse_result(GrayString text, GrayString layout) {
     int64_t ts;
     if (!time_parse_to_timestamp(text, layout, &ts)) {
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure, gray_string_format(gray_default_arena,
             "cannot parse '%.*s' with layout '%.*s'", text.len, text.data, layout.len, layout.data));
-        return (GrayResult_int){0, err};
+        return (GrayResult_i64){0, err};
     }
-    return (GrayResult_int){ts, NULL};
+    return (GrayResult_i64){ts, NULL};
 }
 
 int64_t gray_time_diff(int64_t start, int64_t end) { return gray_sub_check(end, start, __FILE__, __LINE__); }
@@ -218,15 +218,15 @@ int64_t gray_time_parse_duration(GrayString text) {
     return seconds;
 }
 
-GrayResult_int gray_time_parse_duration_result(GrayString text) {
+GrayResult_i64 gray_time_parse_duration_result(GrayString text) {
     int64_t seconds;
     if (!time_parse_duration_impl(text, &seconds)) {
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ParseFailure,
             gray_string_format(gray_default_arena,
                 "cannot parse duration '%.*s'", text.len, text.data));
-        return (GrayResult_int){0, err};
+        return (GrayResult_i64){0, err};
     }
-    return (GrayResult_int){seconds, NULL};
+    return (GrayResult_i64){seconds, NULL};
 }
 
 /* Space-separated "1h 30m 15s" with zero components omitted. Capped at hours

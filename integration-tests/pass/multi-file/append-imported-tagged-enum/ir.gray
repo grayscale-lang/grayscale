@@ -6,8 +6,8 @@
 import @arrays
 
 const Operand enum {
-    Reg(int)
-    Imm(int)
+    Reg(i64)
+    Imm(i64)
     Name(string)
 }
 

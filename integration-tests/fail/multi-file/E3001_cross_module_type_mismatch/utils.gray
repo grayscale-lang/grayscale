@@ -1,4 +1,4 @@
 
-do addNumbers(a int, b int) -> int {
+do addNumbers(a i64, b i64) -> i64 {
     return a + b
 }

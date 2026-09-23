@@ -20,7 +20,7 @@ import (
 
 func TestExtractFuncName(t *testing.T) {
 	cases := []struct{ line, want string }{
-		{"do add(a int, b int) -> int {", "add"},
+		{"do add(a i64, b i64) -> i64 {", "add"},
 		{"private do helper() {", "helper"},
 		{"do main() {", "main"},
 	}
@@ -52,13 +52,13 @@ func TestIsVarDecl(t *testing.T) {
 		line string
 		want bool
 	}{
-		{"const PI float = 3.14", true},
-		{"mut counter int = 0", true},
-		{"private const MAX int = 100", true},
+		{"const PI f64 = 3.14", true},
+		{"mut counter i64 = 0", true},
+		{"private const MAX i64 = 100", true},
 		{"const Point struct {", false},
 		{"const Color enum {", false},
 		{"do main() {", false},
-		{"const NoValue int", false},
+		{"const NoValue i64", false},
 	}
 	for _, c := range cases {
 		t.Run(c.line, func(t *testing.T) {
@@ -71,9 +71,9 @@ func TestIsVarDecl(t *testing.T) {
 
 func TestExtractVarName(t *testing.T) {
 	cases := []struct{ line, want string }{
-		{"const PI float = 3.14", "PI"},
-		{"mut counter int = 0", "counter"},
-		{"private const MAX int = 100", "MAX"},
+		{"const PI f64 = 3.14", "PI"},
+		{"mut counter i64 = 0", "counter"},
+		{"private const MAX i64 = 100", "MAX"},
 	}
 	for _, c := range cases {
 		t.Run(c.want, func(t *testing.T) {
@@ -207,12 +207,12 @@ func TestGenerateDocs_GroupedDocAttribute(t *testing.T) {
 	src := `module main
 
 #[discard, doc("handle_me is documented via a grouped attribute.")]
-do handle_me() -> (string, int) {
+do handle_me() -> (string, i64) {
     return "", 1
 }
 
 #[doc("handle_me2 is documented via a grouped attribute, doc first."), discard]
-do handle_me2() -> (string, int) {
+do handle_me2() -> (string, i64) {
     return "", 1
 }
 `

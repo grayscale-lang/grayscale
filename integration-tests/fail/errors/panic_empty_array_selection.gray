@@ -6,6 +6,6 @@
 import @random
 
 do main() {
-    mut arr [int] = {}
-    mut x int = random.choice(arr)  // ERROR: cannot select from empty array
+    mut arr [i64] = {}
+    mut x i64 = random.choice(arr)  // ERROR: cannot select from empty array
 }

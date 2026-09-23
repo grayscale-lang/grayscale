@@ -31,10 +31,10 @@ do main() {
     }
 
     mut store map[string:string] = {:}
-    mut gets int = 0
-    mut hits int = 0
-    mut sets int = 0
-    mut dels int = 0
+    mut gets i64 = 0
+    mut hits i64 = 0
+    mut sets i64 = 0
+    mut dels i64 = 0
 
     for pass in range(0, 20) {
         for_each line in lines {

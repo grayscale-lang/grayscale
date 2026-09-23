@@ -17,7 +17,7 @@
  *@module http
  *@group Types
  *@kind type
- *@field status int
+ *@field status i64
  *@field body string
  *@field headers map[string:string]
  *@desc The response object returned by all http request functions. Also available when the server module is imported.

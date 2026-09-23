@@ -1,25 +1,25 @@
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 mut ORIGIN Point = Point{x: 3, y: 4}
 
 // addr() on a module-level struct's field, resolved inside the declaring
 // module. The bare `ORIGIN` must resolve to its module-mangled symbol so
-// the field type comes out ^int, not ^unknown.
-do field_ptr_annotated() -> int {
-    mut p ^int = addr(ORIGIN.x)
+// the field type comes out ^i64, not ^unknown.
+do field_ptr_annotated() -> i64 {
+    mut p ^i64 = addr(ORIGIN.x)
     return p^
 }
 
-do field_ptr_inferred() -> int {
+do field_ptr_inferred() -> i64 {
     mut p = addr(ORIGIN.y)
     return p^
 }
 
-do field_write() -> int {
-    mut p ^int = addr(ORIGIN.x)
+do field_write() -> i64 {
+    mut p ^i64 = addr(ORIGIN.x)
     p^ = 99
     return ORIGIN.x
 }

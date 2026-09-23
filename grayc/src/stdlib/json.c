@@ -85,7 +85,7 @@ GrayString gray_json_enum_from_str(GrayString raw,
 }
 
 /* Read a packed primitive slot (array element or map value) of the given
- * byte width. Grayscale stores int/uint/byte/char and f32/f64 at their
+ * byte width. Grayscale stores sized integers, char, and f32/f64 at their
  * natural width, so a fixed *(int64_t*) read walked off the slot. */
 static int64_t json_read_i(const void *p, int32_t sz) {
     switch (sz) {

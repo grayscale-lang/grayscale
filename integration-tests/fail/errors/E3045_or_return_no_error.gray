@@ -3,11 +3,11 @@
  * Expected: "or_return requires a function that returns (T, Error)"
  */
 
-do get_value() -> int {
+do get_value() -> i64 {
     return 42
 }
 
-do main() -> (int, Error) {
+do main() -> (i64, Error) {
     mut v = get_value() or_return
     return v, nil
 }

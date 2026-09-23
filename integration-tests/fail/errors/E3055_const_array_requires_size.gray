@@ -3,7 +3,7 @@
  * Expected: "const array" or "fixed size"
  */
 
-const arr [int] = {1, 2, 3}  // const array without size
+const arr [i64] = {1, 2, 3}  // const array without size
 
 do main() {
     println(arr[0])

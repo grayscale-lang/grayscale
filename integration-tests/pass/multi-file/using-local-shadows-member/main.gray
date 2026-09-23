@@ -8,8 +8,8 @@ import "./members.gray"
 using math
 using members
 
-mut passed int = 0
-mut failed int = 0
+mut passed i64 = 0
+mut failed i64 = 0
 
 do check(name string, ok bool) {
     if ok {
@@ -21,26 +21,26 @@ do check(name string, ok bool) {
     }
 }
 
-do param_hides_stdlib_const(PI float) -> float {
+do param_hides_stdlib_const(PI f64) -> f64 {
     return PI
 }
 
-do param_hides_variable(counter int) -> int {
+do param_hides_variable(counter i64) -> i64 {
     return counter
 }
 
-do param_hides_function(who int) -> int {
+do param_hides_function(who i64) -> i64 {
     return who
 }
 
-do bump(&counter int) {
+do bump(&counter i64) {
     counter += 1
 }
 
 const Holder struct {
-    n int
+    n i64
 
-    do pick(self Holder, who int) -> int {
+    do pick(self Holder, who i64) -> i64 {
         return who
     }
 }
@@ -55,7 +55,7 @@ do main() {
     mut h Holder = Holder{n: 1}
     check("struct function param hides module function", h.pick(4) == 4)
 
-    mut counter int = 50
+    mut counter i64 = 50
     counter = counter + 1
     check("local hides module variable", counter == 51)
     check("module variable untouched", members.counter == 0)
@@ -63,7 +63,7 @@ do main() {
     bump(counter)
     check("local passed to mutable parameter", counter == 52 && members.counter == 0)
 
-    mut seen int = 0
+    mut seen i64 = 0
     for counter in range(0, 3) {
         seen += counter
     }
@@ -74,15 +74,15 @@ do main() {
     }
     check("for variable hides module function", seen == 4)
 
-    mut xs [int] = {5, 6}
-    mut total int = 0
+    mut xs [i64] = {5, 6}
+    mut total i64 = 0
     for_each who in xs {
         total += who
     }
     check("for_each variable hides module function", total == 11)
 
     mut shape Shape = Shape.Square(9)
-    mut got int = 0
+    mut got i64 = 0
     when shape {
         is Shape.Square(who) {
             got = who

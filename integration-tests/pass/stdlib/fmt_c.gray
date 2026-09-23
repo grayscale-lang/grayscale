@@ -8,8 +8,8 @@ import @fmt
 
 do main() {
     println("=== Fmt Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // pad_left
     mut zero_ch char = '0'
@@ -44,7 +44,7 @@ do main() {
         failed += 1
     }
 
-    // pad_left/pad_right/center with a non-ASCII (2-byte UTF-8) pad char
+    // pad_left/pad_right/center with a non-ASCII (2-u8 UTF-8) pad char
     mut e_ch char = char(233)
     mut pl_utf8 string = fmt.pad_left("hi", 4, e_ch)
     mut pr_utf8 string = fmt.pad_right("hi", 4, e_ch)

@@ -11,21 +11,21 @@
  */
 
 const Counter struct {
-    val int
+    val i64
 
     do increment(&self Counter) {
         self.val += 1
     }
 
-    do get_val(&self Counter) -> int {
+    do get_val(&self Counter) -> i64 {
         return self.val
     }
 }
 
 do main() {
     println("=== Struct &self Dispatch Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- instance dispatch with variable named "c" (was E4001) --
     mut c Counter = Counter{val: 0}

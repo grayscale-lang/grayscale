@@ -9,7 +9,7 @@
 
 const Bad struct {
     x ?
-    y int
+    y i64
 }
 
 do main() {

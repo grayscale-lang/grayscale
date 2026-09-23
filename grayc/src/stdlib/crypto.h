@@ -47,7 +47,7 @@ GrayString gray_crypto_md5(GrayArena *arena, GrayString data);
 /*@man random_hex
  *@module crypto
  *@group Random
- *@sig random_hex(length int) -> string
+ *@sig random_hex(length i64) -> string
  *@desc Generate a cryptographically random hex string of the given length.
  *@example
  *   import @crypto
@@ -124,8 +124,8 @@ bool gray_crypto_constant_time_equal(GrayString a, GrayString b);
 /*@man crc32
  *@module crypto
  *@group Checksums
- *@sig crc32(data string) -> uint
- *@desc Compute the IEEE CRC-32 checksum of data (reflected, polynomial 0xEDB88320), returned as a uint. This is a checksum, not a cryptographic hash.
+ *@sig crc32(data string) -> u64
+ *@desc Compute the IEEE CRC-32 checksum of data (reflected, polynomial 0xEDB88320), returned as a u64. This is a checksum, not a cryptographic hash.
  *@example
  *   import @crypto
  *   println(crypto.crc32("123456789"))
@@ -136,7 +136,7 @@ uint64_t gray_crypto_crc32(GrayString data);
 /*@man entropy
  *@module crypto
  *@group Analysis
- *@sig entropy(data string) -> float
+ *@sig entropy(data string) -> f64
  *@desc Return the Shannon entropy of data in bits per byte, computed over its byte histogram. An empty string returns 0.0; the result ranges from 0.0 to 8.0.
  *@example
  *   import @crypto
@@ -148,7 +148,7 @@ double gray_crypto_entropy(GrayString data);
 /*@man totp
  *@module crypto
  *@group Authentication
- *@sig totp(secret string, timestamp int, digits int) -> string
+ *@sig totp(secret string, timestamp i64, digits i64) -> string
  *@desc Compute an RFC 6238 time-based one-time password from the raw shared secret bytes, using SHA-1 and a 30-second time step. `digits` is typically 6 or 8; the result is zero-padded to that width. Panics if `digits` is outside 1..9. Base32 decoding of the secret is the caller's responsibility.
  *@example
  *   import @crypto, @time

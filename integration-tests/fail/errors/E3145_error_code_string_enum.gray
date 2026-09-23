@@ -1,5 +1,5 @@
 // expect-error: E3145
-// A #error_code enum must be plain int-backed.
+// A #error_code enum must be plain integer-backed.
 
 #error_code
 const Codes enum {

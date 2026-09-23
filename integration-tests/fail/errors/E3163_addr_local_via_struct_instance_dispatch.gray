@@ -9,19 +9,19 @@
  * rewrite, not only once, early, before it.
  */
 
-mut GLOBAL ^int = nil
+mut GLOBAL ^i64 = nil
 
 const Stasher struct {
-    tag int
+    tag i64
 
-    do stash(self Stasher, x ^int) {
+    do stash(self Stasher, x ^i64) {
         GLOBAL = x
     }
 }
 
 do main() {
     mut s Stasher = Stasher{tag: 1}
-    mut y int = 5
+    mut y i64 = 5
     s.stash(addr(y))
     println(GLOBAL^)
 }

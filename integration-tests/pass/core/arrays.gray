@@ -4,24 +4,24 @@
 
 
 const Box struct {
-    values [int]
+    values [i64]
 }
 
 do main() {
     println("=== Arrays Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // ==================== ARRAY LITERALS ====================
     println("  -- Array Literals --")
 
-    // Test 1: int array
-    mut nums [int] = {1, 2, 3, 4, 5}
+    // Test 1: i64 array
+    mut nums [i64] = {1, 2, 3, 4, 5}
     if len(nums) == 5 {
-        println("  [PASS] int array length = 5")
+        println("  [PASS] i64 array length = 5")
         passed += 1
     } otherwise {
-        println("  [FAIL] int array length: expected 5, got ${len(nums)}")
+        println("  [FAIL] i64 array length: expected 5, got ${len(nums)}")
         failed += 1
     }
 
@@ -44,7 +44,7 @@ do main() {
     }
 
     // Test 4: empty array
-    mut empty [int] = {}
+    mut empty [i64] = {}
     if len(empty) == 0 {
         println("  [PASS] empty array length = 0")
         passed += 1
@@ -67,7 +67,7 @@ do main() {
     println("  -- Array Modification --")
 
     // Test 6: index assignment
-    mut mutable [int] = {10, 20, 30}
+    mut mutable [i64] = {10, 20, 30}
     mutable[1] = 25
     if mutable[1] == 25 {
         println("  [PASS] array index assignment")
@@ -81,7 +81,7 @@ do main() {
     println("  -- Fixed Size Arrays --")
 
     // Test 7: fixed size array
-    const fixed [int, 3] = {100, 200, 300}
+    const fixed [i64, 3] = {100, 200, 300}
     if len(fixed) == 3 {
         println("  [PASS] fixed size array length = 3")
         passed += 1
@@ -91,9 +91,9 @@ do main() {
     }
 
     // Test 8: fixed size array indexing
-    const fixed_mutable [int, 3] = {10, 20, 30}
-    mut elem int = fixed_mutable[0]
-    mut sum int = fixed_mutable[0] + fixed_mutable[1] + fixed_mutable[2]
+    const fixed_mutable [i64, 3] = {10, 20, 30}
+    mut elem i64 = fixed_mutable[0]
+    mut sum i64 = fixed_mutable[0] + fixed_mutable[1] + fixed_mutable[2]
     if elem == 10 && sum == 60 {
         println("  [PASS] fixed size array indexing and sum")
         passed += 1
@@ -106,7 +106,7 @@ do main() {
     println("  -- Matrices (2D Arrays) --")
 
     // Test 9: 2D array declaration
-    mut int_matrix [[int]] = {{1, 2, 3}, {4, 5, 6}}
+    mut int_matrix [[i64]] = {{1, 2, 3}, {4, 5, 6}}
     if len(int_matrix) == 2 {
         println("  [PASS] 2D array has 2 rows")
         passed += 1
@@ -134,7 +134,7 @@ do main() {
     }
 
     // Test 13: 3D array
-    mut cube [[[int]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
+    mut cube [[[i64]]] = {{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}}
     if cube[1][0][1] == 6 {
         println("  [PASS] 3D array access cube[1][0][1] = 6")
         passed += 1
@@ -146,8 +146,8 @@ do main() {
     // ==================== IN OPERATOR ====================
     println("  -- 'in' Operator --")
 
-    // Test 14: int in array
-    mut check_arr [int] = {1, 2, 3, 4, 5}
+    // Test 14: i64 in array
+    mut check_arr [i64] = {1, 2, 3, 4, 5}
     if 3 in check_arr {
         println("  [PASS] 3 in {1,2,3,4,5}")
         passed += 1
@@ -156,7 +156,7 @@ do main() {
         failed += 1
     }
 
-    // Test 15: int not in array
+    // Test 15: i64 not in array
     if !(10 in check_arr) {
         println("  [PASS] 10 not in {1,2,3,4,5}")
         passed += 1
@@ -175,13 +175,13 @@ do main() {
         failed += 1
     }
 
-    // Test 17: float in array
-    mut floats [float] = {1.5, 2.5, 3.5}
+    // Test 17: f64 in array
+    mut floats [f64] = {1.5, 2.5, 3.5}
     if 2.5 in floats {
-        println("  [PASS] 2.5 in float array")
+        println("  [PASS] 2.5 in f64 array")
         passed += 1
     } otherwise {
-        println("  [FAIL] 2.5 should be in float array")
+        println("  [FAIL] 2.5 should be in f64 array")
         failed += 1
     }
 

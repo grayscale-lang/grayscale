@@ -10,7 +10,7 @@
 
 import @strings
 
-do classify(n int) -> string {
+do classify(n i64) -> string {
     for i in range(0, 100) {
         if i == n {
             mut tag string = strings.to_upper("match")
@@ -22,8 +22,8 @@ do classify(n int) -> string {
 
 do main() {
     println("=== If Block Watermark In Loop Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- escapes from an if inside a loop accumulate across iterations --
     mut acc string = ""
@@ -69,7 +69,7 @@ do main() {
     }
 
     // -- break from inside an if branch inside a loop --
-    mut hit int = -1
+    mut hit i64 = -1
     for i in range(0, 100) {
         if i * i > 30 {
             hit = i
@@ -85,7 +85,7 @@ do main() {
     }
 
     // -- continue from inside an if branch, plus a nested if --
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 10) {
         if i % 2 == 0 {
             continue

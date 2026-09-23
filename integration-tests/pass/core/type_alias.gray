@@ -3,20 +3,20 @@
  */
 
 /* Basic primitive alias */
-alias Meters = float
-alias Count = int
+alias Meters = f64
+alias Count = i64
 alias Flag = bool
 alias Name = string
 
 /* Alias of collection types */
-alias Numbers = [int]
+alias Numbers = [i64]
 alias Names = [string]
-alias Lookup = map[string:int]
+alias Lookup = map[string:i64]
 
 /* Struct with alias */
 const Point struct {
-    x int,
-    y int
+    x i64,
+    y i64
 }
 alias Vec2 = Point
 
@@ -33,22 +33,22 @@ alias Distance = Meters
 alias Length = Distance
 
 /* Private alias (accessible within same file) */
-private alias Secret = int
+private alias Secret = i64
 
 /* Chained struct alias */
 alias Spot = Vec2
 
-do sum_point(p Point) -> int {
+do sum_point(p Point) -> i64 {
     return p.x + p.y
 }
 
 do main() {
     /* Primitive aliases */
     mut d Meters = 10.5
-    assert(type_of(d) == "float", "Meters should resolve to float")
+    assert(type_of(d) == "f64", "Meters should resolve to f64")
 
     mut c Count = 42
-    assert(type_of(c) == "int", "Count should resolve to int")
+    assert(type_of(c) == "i64", "Count should resolve to i64")
 
     mut f Flag = true
     assert(type_of(f) == "bool", "Flag should resolve to bool")
@@ -99,18 +99,18 @@ do main() {
 
     /* Chained alias */
     mut dist Distance = 100.0
-    assert(type_of(dist) == "float", "Distance should chain-resolve to float")
+    assert(type_of(dist) == "f64", "Distance should chain-resolve to f64")
 
     mut len_ Length = 200.0
-    assert(type_of(len_) == "float", "Length should chain-resolve to float")
+    assert(type_of(len_) == "f64", "Length should chain-resolve to f64")
 
     /* Private alias (same file access) */
     mut s Secret = 999
-    assert(type_of(s) == "int", "Secret should resolve to int")
+    assert(type_of(s) == "i64", "Secret should resolve to i64")
 
     /* type_of returns underlying type */
     mut m Meters = 42.5
-    assert(type_of(m) == "float", "type_of should return underlying type, not alias")
+    assert(type_of(m) == "f64", "type_of should return underlying type, not alias")
 
     println("ALL TESTS PASSED")
 }

@@ -7,7 +7,7 @@
 do main() {
     // Build max u256 by setting all bits: (2^256 - 1)
     mut max u256 = u256(1)
-    mut i int = 0
+    mut i i64 = 0
     as_long_as i < 256 {
         max = max * u256(2)
         i += 1

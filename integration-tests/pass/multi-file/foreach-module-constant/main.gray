@@ -6,8 +6,8 @@ import "./testmod.gray"
 
 do main() {
     println("=== For_each Module Constant Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: for_each over string array constant
     println("Items:")
@@ -15,13 +15,13 @@ do main() {
     println("  [PASS] for_each over string array")
     passed += 1
 
-    // Test 2: for_each over int array constant with accumulation
+    // Test 2: for_each over i64 array constant with accumulation
     mut sum = testmod.sum_numbers()
     if sum == 100 {
-        println("  [PASS] for_each over int array (sum=${sum})")
+        println("  [PASS] for_each over i64 array (sum=${sum})")
         passed += 1
     } otherwise {
-        println("  [FAIL] for_each over int array: expected 100, got ${sum}")
+        println("  [FAIL] for_each over i64 array: expected 100, got ${sum}")
         failed += 1
     }
 

@@ -5,14 +5,14 @@
  * must still compile and divide/modulo correctly.
  */
 
-const FILE_D int = 5
+const FILE_D i64 = 5
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    const D int = 4
-    const E int = 3 - 1
+    const D i64 = 4
+    const E i64 = 3 - 1
 
     if 20 / D == 5 && 21 % D == 1 && 20 / E == 10 && 20 / FILE_D == 4 {
         println("  [PASS] non-zero const divisors compile and compute")

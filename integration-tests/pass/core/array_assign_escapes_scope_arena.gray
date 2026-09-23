@@ -14,7 +14,7 @@
  */
 
 const Item struct {
-    tag int
+    tag i64
 }
 
 const Inner struct {
@@ -31,8 +31,8 @@ const Outer struct {
 
 do main() {
     println("=== Array Assign Escapes Scope Arena Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     /* Unconditional assignment inside a for_each body. */
     a = new(Item)

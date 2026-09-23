@@ -7,7 +7,7 @@
 import @strings
 import @chars
 
-do check(label string, got string, want string) -> int {
+do check(label string, got string, want string) -> i64 {
     if got == want {
         println("  [PASS] ${label}")
         return 1
@@ -17,7 +17,7 @@ do check(label string, got string, want string) -> int {
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // Issue's worked example
     mut s string = "helo"
@@ -52,7 +52,7 @@ do main() {
     mut up char = chars.to_upper('h')
     passed += check("set_char_at with chars.to_upper", strings.set_char_at("hi", 0, up), "Hi")
 
-    mut total int = 14
+    mut total i64 = 14
     println("")
     println("Results: ${passed}/${total} passed")
     if passed == total {

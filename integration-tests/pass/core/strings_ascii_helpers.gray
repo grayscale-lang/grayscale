@@ -11,8 +11,8 @@ import @strings
 
 do main() {
     println("=== Strings ASCII Helpers Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- ASCII case, letters and non-letters --
     if strings.to_upper("aB3-z!") == "AB3-Z!" && strings.to_lower("aB3-Z!") == "ab3-z!" {

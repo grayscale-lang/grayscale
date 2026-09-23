@@ -4,10 +4,10 @@ const Color enum {
 }
 
 const Point struct {
-    x int
+    x i64
 }
 
-alias Num = int
+alias Num = i64
 
 do mk(T <?>) -> ^? {
     return new(T)
@@ -17,7 +17,7 @@ do mk_val(T <?>) -> ? {
     return new(T)^
 }
 
-do mk_size(T <?>) -> int {
+do mk_size(T <?>) -> i64 {
     return size_of(T)
 }
 
@@ -26,12 +26,12 @@ do wrap(T <?>) -> ^? {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut i ^int = mk(int)
+    mut i ^i64 = mk(i64)
     mut s ^string = mk(string)
-    mut f ^float = mk(float)
+    mut f ^f64 = mk(f64)
     mut b ^bool = mk(bool)
     if i^ == 0 && s^ == "" && f^ == 0.0 && b^ == false {
         println("  [PASS] primitive type arguments")
@@ -59,7 +59,7 @@ do main() {
         failed += 1
     }
 
-    mut n ^int = mk(Num)
+    mut n ^i64 = mk(Num)
     if n^ == 0 {
         println("  [PASS] alias of a primitive as a type argument")
         passed += 1
@@ -68,7 +68,7 @@ do main() {
         failed += 1
     }
 
-    mut sz int = mk_size(int)
+    mut sz i64 = mk_size(i64)
     if sz == 8 {
         println("  [PASS] size_of(T) with a primitive binding")
         passed += 1
@@ -77,7 +77,7 @@ do main() {
         failed += 1
     }
 
-    mut w ^int = wrap(int)
+    mut w ^i64 = wrap(i64)
     if w^ == 0 {
         println("  [PASS] type-parameter forwarding with a primitive binding")
         passed += 1
@@ -86,7 +86,7 @@ do main() {
         failed += 1
     }
 
-    mut v int = mk_val(int)
+    mut v i64 = mk_val(i64)
     if v == 0 {
         println("  [PASS] value-returning type parameter with a primitive")
         passed += 1

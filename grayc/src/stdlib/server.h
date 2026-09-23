@@ -47,7 +47,7 @@ typedef struct {
  *@module server
  *@group Types
  *@kind type
- *@field status int
+ *@field status i64
  *@field body string
  *@field content_type string
  *@desc The response object returned by handler functions. Build using server.text(), server.json(), server.html(), or server.redirect() rather than constructing directly.
@@ -132,7 +132,7 @@ void gray_server_route(GrayRouter *router, GrayString method, GrayString pattern
 /*@man listen
  *@module server
  *@group Routing
- *@sig listen(router Router, port int)
+ *@sig listen(router Router, port i64)
  *@desc Starts the HTTP server on the given port. Blocks until the process is killed.
  *@example
  *   import @server
@@ -176,7 +176,7 @@ void gray_server_use(GrayRouter *router, GrayMiddleware fn);
 /*@man text
  *@module server
  *@group Response Builders
- *@sig text(status int, body string) -> HttpResponse
+ *@sig text(status i64, body string) -> HttpResponse
  *@desc Returns an HttpResponse with Content-Type: text/plain and the given status code and body.
  *@example
  *   import @server
@@ -191,7 +191,7 @@ GrayResponse gray_server_text(int64_t status, GrayString body);
 /*@man json
  *@module server
  *@group Response Builders
- *@sig json(status int, body string) -> HttpResponse
+ *@sig json(status i64, body string) -> HttpResponse
  *@desc Returns an HttpResponse with Content-Type: application/json and the given status code and body.
  *@example
  *   import @server
@@ -205,7 +205,7 @@ GrayResponse gray_server_json(int64_t status, GrayString body);
 /*@man html
  *@module server
  *@group Response Builders
- *@sig html(status int, body string) -> HttpResponse
+ *@sig html(status i64, body string) -> HttpResponse
  *@desc Returns an HttpResponse with Content-Type: text/html and the given status code and body.
  *@example
  *   import @server
@@ -219,7 +219,7 @@ GrayResponse gray_server_html(int64_t status, GrayString body);
 /*@man redirect
  *@module server
  *@group Response Builders
- *@sig redirect(status int, url string) -> HttpResponse
+ *@sig redirect(status i64, url string) -> HttpResponse
  *@desc Returns an HttpResponse that redirects to url. Use 301 for permanent or 302 for temporary redirects.
  *@example
  *   import @server

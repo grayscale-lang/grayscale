@@ -7,8 +7,8 @@
 import @strconv
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
 
     // is_numeric: dot-only strings must return false
     if strconv.is_numeric(".")  == false { pass += 1 } otherwise { fail += 1 }

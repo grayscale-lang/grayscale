@@ -7,8 +7,8 @@ import "./server.gray"
 
 /* Test result tracking */
 const TestResult struct {
-    passed int
-    failed int
+    passed i64
+    failed i64
 }
 
 do main() {
@@ -17,8 +17,8 @@ do main() {
     println("========================================")
     println("")
 
-    mut total_passed int = 0
-    mut total_failed int = 0
+    mut total_passed i64 = 0
+    mut total_failed i64 = 0
     mut result TestResult = TestResult{passed: 0, failed: 0}
 
     result = test_server_start()
@@ -37,7 +37,7 @@ do main() {
     total_passed += result.passed
     total_failed += result.failed
 
-    mut total int = total_passed + total_failed
+    mut total i64 = total_passed + total_failed
 
     println("")
     println("========================================")
@@ -60,8 +60,8 @@ do test_server_start() -> TestResult {
     println("------------------------------------------")
     println("  Test: Starting server")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     server.start_server(8080)
     passed += 1
@@ -74,8 +74,8 @@ do test_server_types() -> TestResult {
     println("------------------------------------------")
     println("  Test: Using types from server module")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut req server.Request = server.Request{method: "GET", path: "/test", body: ""}
     println("  Created request: ${req.method} ${req.path}")
@@ -89,8 +89,8 @@ do test_request_processing() -> TestResult {
     println("------------------------------------------")
     println("  Test: Processing request")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut resp server.Response = server.process_request("GET", "/")
     println("  Response status: ${resp.status} (${server.get_status_text(resp.status)})")
@@ -105,8 +105,8 @@ do test_404_response() -> TestResult {
     println("------------------------------------------")
     println("  Test: Testing 404 response")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut resp404 server.Response = server.process_request("GET", "/unknown")
     println("  Response status: ${resp404.status} (${server.get_status_text(resp404.status)})")

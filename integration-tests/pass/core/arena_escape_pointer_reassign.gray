@@ -1,12 +1,12 @@
 import @arrays
 
 const Node struct {
-    val int
+    val i64
     name string
-    children [int]
+    children [i64]
 }
 
-do make_node(v int) -> ^Node {
+do make_node(v i64) -> ^Node {
     mut n = new(Node)
     n.val = v
     n.name = "node"
@@ -16,7 +16,7 @@ do make_node(v int) -> ^Node {
 
 do test() -> ^Node {
     mut left = make_node(0)
-    mut i int = 0
+    mut i i64 = 0
     as_long_as i < 3 {
         left = make_node(i)
         i = i + 1
@@ -25,8 +25,8 @@ do test() -> ^Node {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut result = test()
     if result.val == 2 {

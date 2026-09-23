@@ -1,0 +1,62 @@
+/*
+ * alias_removed_type_names.gray
+ * int, uint, float, and byte are ordinary names, so a program can declare
+ * them as aliases of the sized types and use them everywhere a type goes.
+ */
+
+import @encoding
+
+alias int = i64
+alias uint = u64
+alias float = f64
+alias byte = u8
+
+do sum(values [int]) -> int {
+    mut total int = 0
+    for_each v in values { total += v }
+    return total
+}
+
+do main() {
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    mut count int = sum({1, 2, 3})
+    if count == 6 && type_of(count) == "i64" {
+        println("  [PASS] alias int")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias int: ${count} ${type_of(count)}")
+        failed += 1
+    }
+
+    mut big uint = 18446744073709551615
+    mut half float = 0.5
+    if big == 18446744073709551615 && half * 4.0 == 2.0 {
+        println("  [PASS] alias uint and float")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias uint and float: ${big} ${half}")
+        failed += 1
+    }
+
+    mut data [byte] = {104, 105}
+    if encoding.to_hex(data) == "6869" {
+        println("  [PASS] alias byte array to encoding")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias byte array to encoding: ${encoding.to_hex(data)}")
+        failed += 1
+    }
+
+    mut ages map[string:int] = {"a": 30}
+    if ages["a"] == 30 {
+        println("  [PASS] alias in map value")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] alias in map value")
+        failed += 1
+    }
+
+    if failed > 0 { println("SOME TESTS FAILED") }
+}

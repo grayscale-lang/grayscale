@@ -319,7 +319,7 @@ static void test_or_return_keyword(void) {
 }
 
 static void test_caret_token(void) {
-    Lexer *lexer = create_test_lexer("^int");
+    Lexer *lexer = create_test_lexer("^i64");
     ASSERT_EQ(next_token(lexer).type, TOK_CARET);
     ASSERT_EQ(next_token(lexer).type, TOK_IDENT);
 }
@@ -649,7 +649,7 @@ static void test_keyword_panic(void) {
 
 static void test_mixed_tokens_line(void) {
     /* Realistic code line */
-    Lexer *lexer = create_test_lexer("mut x int = 42");
+    Lexer *lexer = create_test_lexer("mut x i64 = 42");
     ASSERT_EQ(next_token(lexer).type, TOK_MUT);      /* mut */
     ASSERT_EQ(next_token(lexer).type, TOK_IDENT);     /* x */
     ASSERT_EQ(next_token(lexer).type, TOK_IDENT);     /* int */

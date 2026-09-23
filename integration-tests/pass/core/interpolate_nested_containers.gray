@@ -1,7 +1,7 @@
 // Test: string interpolation of a container whose elements or values are arrays, maps, or structs formats the same text println does
 const P struct {
     name string
-    age int
+    age i64
 }
 
 do check(label string, got string, want string) {
@@ -14,34 +14,34 @@ do check(label string, got string, want string) {
 
 do main() {
     mut a1 [[string]] = {{"a", "b"}, {"c"}}
-    mut a2 [[int]] = {{1, 2}, {3}}
-    mut a3 [[float]] = {{1.5}, {2.5}}
+    mut a2 [[i64]] = {{1, 2}, {3}}
+    mut a3 [[f64]] = {{1.5}, {2.5}}
     mut a4 [[bool]] = {{true}, {false}}
-    mut a5 [[[int]]] = {{{1}}}
-    mut a6 [map[string:int]] = {{"k": 1}}
+    mut a5 [[[i64]]] = {{{1}}}
+    mut a6 [map[string:i64]] = {{"k": 1}}
     mut a7 [P] = {P{name: "bob", age: 3}, P{name: "amy", age: 4}}
     mut a8 [[P]] = {{P{name: "bob", age: 3}}}
     check("[[string]]", "${a1}", "{{\"a\", \"b\"}, {\"c\"}}")
-    check("[[int]]", "${a2}", "{{1, 2}, {3}}")
-    check("[[float]]", "${a3}", "{{1.5}, {2.5}}")
+    check("[[i64]]", "${a2}", "{{1, 2}, {3}}")
+    check("[[f64]]", "${a3}", "{{1.5}, {2.5}}")
     check("[[bool]]", "${a4}", "{{true}, {false}}")
-    check("[[[int]]]", "${a5}", "{{{1}}}")
-    check("[map[string:int]]", "${a6}", "{{\"k\": 1}}")
+    check("[[[i64]]]", "${a5}", "{{{1}}}")
+    check("[map[string:i64]]", "${a6}", "{{\"k\": 1}}")
     check("[P]", "${a7}", "{P{name: \"bob\", age: 3}, P{name: \"amy\", age: 4}}")
     check("[[P]]", "${a8}", "{{P{name: \"bob\", age: 3}}}")
 
-    mut m1 map[string:[int]] = {"k": {1, 2}}
+    mut m1 map[string:[i64]] = {"k": {1, 2}}
     mut m2 map[string:[string]] = {"k": {"a"}}
-    mut m3 map[string:map[string:int]] = {"a": {"b": 1}}
+    mut m3 map[string:map[string:i64]] = {"a": {"b": 1}}
     mut m4 map[string:P] = {"k": P{name: "bob", age: 3}}
-    mut m5 map[int:[int]] = {1: {1, 2}}
-    mut m6 map[int:int] = {1: 2}
-    check("map[string:[int]]", "${m1}", "{\"k\": {1, 2}}")
+    mut m5 map[i64:[i64]] = {1: {1, 2}}
+    mut m6 map[i64:i64] = {1: 2}
+    check("map[string:[i64]]", "${m1}", "{\"k\": {1, 2}}")
     check("map[string:[string]]", "${m2}", "{\"k\": {\"a\"}}")
-    check("map[string:map[string:int]]", "${m3}", "{\"a\": {\"b\": 1}}")
+    check("map[string:map[string:i64]]", "${m3}", "{\"a\": {\"b\": 1}}")
     check("map[string:P]", "${m4}", "{\"k\": P{name: \"bob\", age: 3}}")
-    check("map[int:[int]]", "${m5}", "{1: {1, 2}}")
-    check("map[int:int]", "${m6}", "{1: 2}")
+    check("map[i64:[i64]]", "${m5}", "{1: {1, 2}}")
+    check("map[i64:i64]", "${m6}", "{1: 2}")
 
     mut text string = "v=${a1} and ${m1}"
     check("embedded in a longer string", text, "v={{\"a\", \"b\"}, {\"c\"}} and {\"k\": {1, 2}}")

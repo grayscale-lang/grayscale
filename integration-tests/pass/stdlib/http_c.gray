@@ -6,8 +6,8 @@
 import @http
 
 do main() {
-    mut pass int = 0
-    mut fail int = 0
+    mut pass i64 = 0
+    mut fail i64 = 0
     mut headers map[string:string] = {:}
 
     // GET

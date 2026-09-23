@@ -1,11 +1,11 @@
 const Item struct {
     name string
-    value int
+    value i64
 }
 
-do risky_int(ok bool) -> (int, Error) {
+do risky_int(ok bool) -> (i64, Error) {
     if !ok {
-        return 0, error("int failed")
+        return 0, error("i64 failed")
     }
     return 7, nil
 }
@@ -17,7 +17,7 @@ do risky_item(ok bool) -> (Item, Error) {
     return Item{name: "Gem", value: 99}, nil
 }
 
-do chain_ints() -> (int, Error) {
+do chain_ints() -> (i64, Error) {
     mut a = risky_int(true) or_return
     mut b = risky_int(true) or_return
     return a + b, nil
@@ -28,14 +28,14 @@ do chain_struct() -> (Item, Error) {
     return item, nil
 }
 
-do chain_fail() -> (int, Error) {
+do chain_fail() -> (i64, Error) {
     mut _ = risky_int(false) or_return
     return 0, nil
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut r1, e1 = chain_ints()
     if e1 == nil {

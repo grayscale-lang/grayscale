@@ -5,20 +5,20 @@
 
 
 const Node struct {
-    value int
+    value i64
     next ^Node
 }
 
 const TreeNode struct {
-    value int
+    value i64
     left ^TreeNode
     right ^TreeNode
 }
 
 do main() {
     println("=== Self-Referential Struct Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Create a node via new()
     mut a = new(Node)

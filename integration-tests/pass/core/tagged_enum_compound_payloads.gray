@@ -1,28 +1,28 @@
 const Wrapper enum {
-    Val(int)
-    Ptr(^int)
+    Val(i64)
+    Ptr(^i64)
 }
 
 const Container enum {
     Empty
-    Items([int])
+    Items([i64])
 }
 
 const MapHolder enum {
     None
-    Data(map[string:int])
+    Data(map[string:i64])
 }
 
 const Multi enum {
-    Pair(^int, [int])
+    Pair(^i64, [i64])
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // pointer payload
-    mut x int = 42
+    mut x i64 = 42
     mut w = Wrapper.Ptr(addr(x))
     when w {
         is Ptr(p) {
@@ -53,7 +53,7 @@ do main() {
     }
 
     // map payload
-    mut m map[string:int] = {:}
+    mut m map[string:i64] = {:}
     m["key"] = 99
     mut mh = MapHolder.Data(m)
     when mh {
@@ -70,7 +70,7 @@ do main() {
     }
 
     // multi-payload with compound types
-    mut y int = 7
+    mut y i64 = 7
     mut mp = Multi.Pair(addr(y), {1, 2})
     when mp {
         is Pair(ptr, arr) {

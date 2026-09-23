@@ -3,12 +3,12 @@
 // expect-error-count: 1
 
 const S struct {
-    b byte
+    b u8
 }
 
 do main() {
     mut s S = S{ b: 0 }
-    mut big int = 300
+    mut big i64 = 300
     s.b = big
     println("${s.b}")
 }

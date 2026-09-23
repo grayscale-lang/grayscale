@@ -7,6 +7,6 @@
 // expect-error-count: 1
 
 do main() {
-    mut n int = 1
+    mut n i64 = 1
     println(cast(n, zag))
 }

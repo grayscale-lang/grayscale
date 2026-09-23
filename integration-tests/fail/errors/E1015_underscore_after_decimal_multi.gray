@@ -5,5 +5,5 @@
  */
 
 do main() {
-    mut x float = 123._456  // underscore after decimal
+    mut x f64 = 123._456  // underscore after decimal
 }

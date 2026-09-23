@@ -5,7 +5,7 @@
 
 #flags
 const Perms enum {
-    READ(int)
+    READ(i64)
     WRITE
     EXEC
 }

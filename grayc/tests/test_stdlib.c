@@ -390,7 +390,7 @@ static void test_arrays_remove_at(void) {
 
 static void test_arrays_remove_int(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3, 2);
-    gray_arrays_remove_int(&arr, 2);
+    gray_arrays_remove_i64(&arr, 2);
     ASSERT_EQ(arr.len, 3);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 0), 1);
     ASSERT_EQ(GRAY_ARRAY_GET(arr, int64_t, 1), 3);
@@ -399,7 +399,7 @@ static void test_arrays_remove_int(void) {
 
 static void test_arrays_remove_float(void) {
     GrayArray arr = GRAY_ARRAY_FROM_F64(arena, 1.5, 2.5, 3.5, 2.5);
-    gray_arrays_remove_float(&arr, 2.5);
+    gray_arrays_remove_f64(&arr, 2.5);
     ASSERT_EQ(arr.len, 3);
     ASSERT(GRAY_ARRAY_GET(arr, double, 0) == 1.5);
     ASSERT(GRAY_ARRAY_GET(arr, double, 1) == 3.5);
@@ -463,10 +463,10 @@ static void test_arrays_is_empty(void) {
     ASSERT(!gray_arrays_is_empty(&nonempty));
 }
 
-static void test_arrays_contains_int(void) {
+static void test_arrays_contains_i64(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 1, 2, 3);
-    ASSERT(gray_arrays_contains_int(&arr, 2));
-    ASSERT(!gray_arrays_contains_int(&arr, 99));
+    ASSERT(gray_arrays_contains_i64(&arr, 2));
+    ASSERT(!gray_arrays_contains_i64(&arr, 99));
 }
 
 static void test_arrays_contains_str(void) {
@@ -477,8 +477,8 @@ static void test_arrays_contains_str(void) {
 
 static void test_arrays_index_of_int(void) {
     GrayArray arr = GRAY_ARRAY_FROM_I64(arena, 10, 20, 30);
-    ASSERT_EQ(gray_arrays_index_of_int(&arr, 20), 1);
-    ASSERT_EQ(gray_arrays_index_of_int(&arr, 99), -1);
+    ASSERT_EQ(gray_arrays_index_of_i64(&arr, 20), 1);
+    ASSERT_EQ(gray_arrays_index_of_i64(&arr, 99), -1);
 }
 
 static void test_arrays_count(void) {
@@ -710,10 +710,10 @@ static void test_maps_merge(void) {
 /* ===== math module ===== */
 
 static void test_math_abs(void) {
-    ASSERT_EQ(gray_math_abs_int(-5), 5);
-    ASSERT_EQ(gray_math_abs_int(5), 5);
-    ASSERT_EQ(gray_math_abs_int(0), 0);
-    ASSERT_FLOAT_EQ(gray_math_abs_float(-3.14), 3.14);
+    ASSERT_EQ(gray_math_abs_i64(-5), 5);
+    ASSERT_EQ(gray_math_abs_i64(5), 5);
+    ASSERT_EQ(gray_math_abs_i64(0), 0);
+    ASSERT_FLOAT_EQ(gray_math_abs_f64(-3.14), 3.14);
 }
 
 static void test_math_sign(void) {
@@ -723,17 +723,17 @@ static void test_math_sign(void) {
 }
 
 static void test_math_min_max(void) {
-    ASSERT_EQ(gray_math_min_int(3, 7), 3);
-    ASSERT_EQ(gray_math_max_int(3, 7), 7);
-    ASSERT_FLOAT_EQ(gray_math_min_float(1.5, 2.5), 1.5);
-    ASSERT_FLOAT_EQ(gray_math_max_float(1.5, 2.5), 2.5);
+    ASSERT_EQ(gray_math_min_i64(3, 7), 3);
+    ASSERT_EQ(gray_math_max_i64(3, 7), 7);
+    ASSERT_FLOAT_EQ(gray_math_min_f64(1.5, 2.5), 1.5);
+    ASSERT_FLOAT_EQ(gray_math_max_f64(1.5, 2.5), 2.5);
 }
 
 static void test_math_clamp(void) {
-    ASSERT_EQ(gray_math_clamp_int(15, 1, 10), 10);
-    ASSERT_EQ(gray_math_clamp_int(-5, 1, 10), 1);
-    ASSERT_EQ(gray_math_clamp_int(5, 1, 10), 5);
-    ASSERT_FLOAT_EQ(gray_math_clamp_float(1.5, 0.0, 1.0), 1.0);
+    ASSERT_EQ(gray_math_clamp_i64(15, 1, 10), 10);
+    ASSERT_EQ(gray_math_clamp_i64(-5, 1, 10), 1);
+    ASSERT_EQ(gray_math_clamp_i64(5, 1, 10), 5);
+    ASSERT_FLOAT_EQ(gray_math_clamp_f64(1.5, 0.0, 1.0), 1.0);
 }
 
 static void test_math_rounding(void) {
@@ -990,29 +990,29 @@ static void test_strconv_to_bool(void) {
 }
 
 static void test_strconv_to_int_result_ok(void) {
-    GrayResult_int r = gray_strconv_to_int_result(gray_string_lit("42"), 10);
+    GrayResult_i64 r = gray_strconv_to_int_result(gray_string_lit("42"), 10);
     ASSERT_EQ(r.v0, 42);
     ASSERT(r.v1 == NULL);
 }
 
 static void test_strconv_to_int_result_err(void) {
-    GrayResult_int r = gray_strconv_to_int_result(gray_string_lit("abc"), 10);
+    GrayResult_i64 r = gray_strconv_to_int_result(gray_string_lit("abc"), 10);
     ASSERT_NOT_NULL(r.v1);
 }
 
 static void test_strconv_to_uint_result_negative(void) {
-    GrayResult_uint r = gray_strconv_to_uint_result(gray_string_lit("-5"), 10);
+    GrayResult_u64 r = gray_strconv_to_uint_result(gray_string_lit("-5"), 10);
     ASSERT_NOT_NULL(r.v1);
 }
 
 static void test_strconv_to_float_result_ok(void) {
-    GrayResult_float r = gray_strconv_to_float_result(gray_string_lit("3.14"));
+    GrayResult_f64 r = gray_strconv_to_float_result(gray_string_lit("3.14"));
     ASSERT_FLOAT_EQ(r.v0, 3.14);
     ASSERT(r.v1 == NULL);
 }
 
 static void test_strconv_to_float_result_err(void) {
-    GrayResult_float r = gray_strconv_to_float_result(gray_string_lit("xyz"));
+    GrayResult_f64 r = gray_strconv_to_float_result(gray_string_lit("xyz"));
     ASSERT_NOT_NULL(r.v1);
 }
 
@@ -1543,7 +1543,7 @@ int main(void) {
     RUN_TEST(test_arrays_remove_first);
     RUN_TEST(test_arrays_remove_last);
     RUN_TEST(test_arrays_is_empty);
-    RUN_TEST(test_arrays_contains_int);
+    RUN_TEST(test_arrays_contains_i64);
     RUN_TEST(test_arrays_contains_str);
     RUN_TEST(test_arrays_index_of_int);
     RUN_TEST(test_arrays_count);

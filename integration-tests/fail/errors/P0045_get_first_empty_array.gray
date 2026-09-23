@@ -3,7 +3,7 @@
 import @arrays
 
 do main() {
-    mut arr [int] = {}
-    mut x int = arrays.get_first(arr)
+    mut arr [i64] = {}
+    mut x i64 = arrays.get_first(arr)
     println(x)
 }

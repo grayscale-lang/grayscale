@@ -6,8 +6,8 @@ do print_items() {
     }
 }
 
-do sum_numbers() -> int {
-    mut total int = 0
+do sum_numbers() -> i64 {
+    mut total i64 = 0
     for_each n in NUMBERS {
         total += n
     }

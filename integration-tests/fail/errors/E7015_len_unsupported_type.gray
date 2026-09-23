@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = len(42)  // len not supported for int
+    mut x i64 = len(42)  // len not supported for i64
 }

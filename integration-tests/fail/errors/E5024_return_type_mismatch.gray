@@ -4,12 +4,12 @@
  */
 
 
-do get_value() -> uint {
-    mut x int = -1
-    return x  // Runtime error: int -1 cannot be returned as uint
+do get_value() -> u64 {
+    mut x i64 = -1
+    return x  // Runtime error: i64 -1 cannot be returned as u64
 }
 
 do main() {
-    mut val uint = get_value()
+    mut val u64 = get_value()
     println(val)
 }

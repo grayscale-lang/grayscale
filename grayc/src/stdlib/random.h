@@ -17,24 +17,24 @@
 /*@man rand_float
  *@module random
  *@group Generation
- *@sig rand_float() -> float  |  rand_float(min float, max float) -> float
- *@desc Returns a random float. With no arguments returns a value in [0.0, 1.0). With two arguments returns a value in [min, max).
+ *@sig rand_float() -> f64  |  rand_float(min f64, max f64) -> f64
+ *@desc Returns a random f64. With no arguments returns a value in [0.0, 1.0). With two arguments returns a value in [min, max).
  *@example
  *   import @random
- *   mut f float = random.rand_float()
- *   mut g float = random.rand_float(1.0, 10.0)
+ *   mut f f64 = random.rand_float()
+ *   mut g f64 = random.rand_float(1.0, 10.0)
  *@end
  */
 
 /*@man rand_int
  *@module random
  *@group Generation
- *@sig rand_int(max int) -> int  |  rand_int(min int, max int) -> int
+ *@sig rand_int(max i64) -> i64  |  rand_int(min i64, max i64) -> i64
  *@desc Returns a random integer. With one argument returns a value in [0, max). With two arguments returns a value in [min, max).
  *@example
  *   import @random
- *   mut n int = random.rand_int(100)
- *   mut m int = random.rand_int(10, 50)
+ *   mut n i64 = random.rand_int(100)
+ *   mut m i64 = random.rand_int(10, 50)
  *@end
  */
 
@@ -52,11 +52,11 @@
 /*@man rand_byte
  *@module random
  *@group Generation
- *@sig rand_byte() -> byte
- *@desc Returns a random byte value in [0, 255].
+ *@sig rand_byte() -> u8
+ *@desc Returns a random u8 value in [0, 255].
  *@example
  *   import @random
- *   mut b byte = random.rand_byte()
+ *   mut b u8 = random.rand_byte()
  *@end
  */
 
@@ -75,7 +75,7 @@
 /*@man rand_string
  *@module random
  *@group Generation
- *@sig rand_string(length int, alphabet string) -> string
+ *@sig rand_string(length i64, alphabet string) -> string
  *@desc Returns a string of length characters, each drawn uniformly at random from alphabet using the module's non-cryptographic RNG. A length of 0 returns "". Panics if alphabet is empty and length is greater than 0.
  *@example
  *   import @random
@@ -105,37 +105,37 @@ GrayString gray_random_string(GrayArena *arena, int64_t length, GrayString alpha
  *@desc Returns a shuffled copy of the array. The original is not modified.
  *@example
  *   import @random
- *   mut nums [int] = {1, 2, 3, 4, 5}
- *   mut shuffled [int] = random.shuffle(nums)
+ *   mut nums [i64] = {1, 2, 3, 4, 5}
+ *   mut shuffled [i64] = random.shuffle(nums)
  *@end
  */
 
 /*@man sample
  *@module random
  *@group Arrays
- *@sig sample(arr [T], n int) -> [T]
+ *@sig sample(arr [T], n i64) -> [T]
  *@desc Returns n unique randomly selected elements from the array.
  *@example
  *   import @random
- *   mut pool [int] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
- *   mut picked [int] = random.sample(pool, 3)
+ *   mut pool [i64] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+ *   mut picked [i64] = random.sample(pool, 3)
  *@end
  */
 
 /*@man seed
  *@module random
  *@group Seeding
- *@sig seed(value int)
+ *@sig seed(value i64)
  *@desc Seeds the random number generator with the given value. Useful for reproducible sequences.
  *@example
  *   import @random
  *   random.seed(42)
- *   mut n int = random.rand_int(100)
+ *   mut n i64 = random.rand_int(100)
  *@end
  */
 
 double gray_random_float_range(double min, double max);
-double gray_random_float_unit(void);
+double gray_random_f64_unit(void);
 int64_t gray_random_int_range(int64_t min, int64_t max);
 int64_t gray_random_int_max(int64_t max);
 bool gray_random_bool(void);

@@ -6,6 +6,6 @@
 import @arrays
 
 do main() {
-    const arr [int, 3] = {1, 2, 3}
+    const arr [i64, 3] = {1, 2, 3}
     arrays.append(arr, 4)  // ERROR: cannot modify immutable array
 }

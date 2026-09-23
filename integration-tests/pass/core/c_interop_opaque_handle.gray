@@ -1,7 +1,7 @@
 /*
  * c_interop_opaque_handle.gray - a FILE* round-tripped through extern. calls.
  *
- * An opaque C handle has no Grayscale type to name, so it is held as ^byte and
+ * An opaque C handle has no Grayscale type to name, so it is held as ^u8 and
  * passed back to fputs/fclose. The generated C mismatches uint8_t* against FILE*;
  * interop must still compile clean (no leaked C warnings, and no hard error on
  * GCC >= 14).
@@ -11,24 +11,24 @@ extern import "stdio.h"
 
 do main() {
     println("=== C Interop Opaque Handle Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut path string = "/tmp/gray_c_interop_opaque_handle.txt"
 
-    mut w ^byte = extern.fopen(path, "w")
-    mut wrote int = extern.fputs("payload\n", w)
+    mut w ^u8 = extern.fopen(path, "w")
+    mut wrote i64 = extern.fputs("payload\n", w)
     if wrote >= 0 {
-        println("  [PASS] fputs through ^byte handle")
+        println("  [PASS] fputs through ^u8 handle")
         passed += 1
     } otherwise {
         println("  [FAIL] fputs returned ${wrote}")
         failed += 1
     }
 
-    mut closed int = extern.fclose(w)
+    mut closed i64 = extern.fclose(w)
     if closed == 0 {
-        println("  [PASS] fclose through ^byte handle")
+        println("  [PASS] fclose through ^u8 handle")
         passed += 1
     } otherwise {
         println("  [FAIL] fclose returned ${closed}")

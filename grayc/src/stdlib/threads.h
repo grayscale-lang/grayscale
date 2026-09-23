@@ -35,7 +35,7 @@ typedef struct {
  *@module threads
  *@group Lifecycle
  *@sig spawn(fn func()) -> Thread
- *@desc Spawn a new thread running fn. To pass an int argument to fn, use spawn_arg (or call spawn with a second int argument, which forwards to spawn_arg).
+ *@desc Spawn a new thread running fn. To pass an i64 argument to fn, use spawn_arg (or call spawn with a second i64 argument, which forwards to spawn_arg).
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn(()my_func)
@@ -46,8 +46,8 @@ typedef struct {
 /*@man spawn_arg
  *@module threads
  *@group Lifecycle
- *@sig spawn_arg(fn func(int), arg int) -> Thread
- *@desc Spawn a new thread running fn, passing arg to it as its single int parameter.
+ *@sig spawn_arg(fn func(i64), arg i64) -> Thread
+ *@desc Spawn a new thread running fn, passing arg to it as its single i64 parameter.
  *@example
  *   import @threads
  *   mut t Thread = threads.spawn_arg(()worker, 7)
@@ -108,11 +108,11 @@ bool gray_threads_is_alive(GrayThread thread);
 /*@man get_id
  *@module threads
  *@group Query
- *@sig get_id() -> int
+ *@sig get_id() -> i64
  *@desc Get the current thread's ID.
  *@example
  *   import @threads
- *   mut id int = threads.get_id()
+ *   mut id i64 = threads.get_id()
  *   println("thread ${id}")
  *@end
  */
@@ -135,7 +135,7 @@ void gray_threads_yield(void);
 /*@man sleep
  *@module threads
  *@group Control
- *@sig sleep(ms int)
+ *@sig sleep(ms i64)
  *@desc Sleep the current thread for ms milliseconds.
  *@example
  *   import @threads
@@ -148,11 +148,11 @@ void gray_threads_sleep(int64_t ms);
 /*@man thread_count
  *@module threads
  *@group Query
- *@sig thread_count() -> int
+ *@sig thread_count() -> i64
  *@desc Number of live threads spawned through this module. Excludes the main thread and non-Grayscale threads.
  *@example
  *   import @threads
- *   mut n int = threads.thread_count()
+ *   mut n i64 = threads.thread_count()
  *   println("${n} threads running")
  *@end
  */

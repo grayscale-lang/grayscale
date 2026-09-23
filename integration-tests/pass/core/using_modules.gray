@@ -8,8 +8,8 @@ using math
 
 do main() {
     println("=== Using Modules Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: strings.to_upper via using
     mut upper string = to_upper("hello")
@@ -32,7 +32,7 @@ do main() {
     }
 
     // Test 3: math.abs via using
-    mut a int = abs(-42)
+    mut a i64 = abs(-42)
     if a == 42 {
         println("  [PASS] abs(-42) == 42")
         passed += 1
@@ -42,7 +42,7 @@ do main() {
     }
 
     // Test 4: math.max via using
-    mut m int = max(10, 20)
+    mut m i64 = max(10, 20)
     if m == 20 {
         println("  [PASS] max(10, 20) == 20")
         passed += 1

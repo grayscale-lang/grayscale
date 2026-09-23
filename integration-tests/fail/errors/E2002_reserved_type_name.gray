@@ -3,10 +3,10 @@
  * Expected: "reserved" or "type name"
  */
 
-struct int {  // int is reserved
-    value int
+struct i64 {  // i64 is reserved
+    value i64
 }
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
 }

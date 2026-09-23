@@ -8,7 +8,7 @@
 extern import "stdlib.h"
 
 const Counter struct {
-    n int
+    n i64
 }
 
 do main() {

@@ -5,6 +5,6 @@
 
 do main() {
     struct Inner {
-        x int,
+        x i64,
     }
 }

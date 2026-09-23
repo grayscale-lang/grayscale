@@ -3,10 +3,10 @@
  * Expected: "'get_pair' returns 2 values"
  */
 
-do get_pair() -> (int, int) {
+do get_pair() -> (i64, i64) {
     return 10, 20
 }
 
 do main() {
-    mut arr [int] = {get_pair()}
+    mut arr [i64] = {get_pair()}
 }

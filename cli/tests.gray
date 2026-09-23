@@ -5,7 +5,7 @@
  * structs, enums, arrays, maps, casting, pointers, error handling,
  * or_return, ensure/defer, if/or/otherwise, bitwise operators,
  * compound assignment, membership (not_in/!in), recursion, type
- * aliases, nested composites, char<->int, scoped blocks and
+ * aliases, nested composites, char<->i64, scoped blocks and
  * shadowing, const locals, higher-order functions, math, strings,
  * arrays, maps, json, time, random, encoding, fmt, strconv, crypto,
  * regex, binary, uuid, mem, csv, runtime.
@@ -45,21 +45,21 @@ const Status enum {
 // ─── Structs ─────────────────────────────────────────────────────────────────
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(x int, y int) -> Point {
+    do create(x i64, y i64) -> Point {
         return Point{x: x, y: y}
     }
 
-    do sum(p Point) -> int {
+    do sum(p Point) -> i64 {
         return p.x + p.y
     }
 }
 
 // ─── Top-level helpers ───────────────────────────────────────────────────────
 
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
@@ -67,53 +67,53 @@ do greet(name string, prefix string = "Hello") -> string {
     return "${prefix}, ${name}!"
 }
 
-do coords(x int, y int, z int = 0) -> string {
+do coords(x i64, y i64, z i64 = 0) -> string {
     return "${x},${y},${z}"
 }
 
-do multi() -> (n int, s string) {
-    mut n int = 7
+do multi() -> (n i64, s string) {
+    mut n i64 = 7
     mut s string = "seven"
     return n, s
 }
 
 // ─── Helpers for the extended sections ───────────────────────────────────────
 
-alias UserId = int
+alias UserId = i64
 alias Vec2 = Point
 
 const Bag struct {
-    nums [int]
-    lookup map[string:int]
+    nums [i64]
+    lookup map[string:i64]
 }
 
-do try_div(a int, b int) -> (int, Error) {
+do try_div(a i64, b i64) -> (i64, Error) {
     if b == 0 {
         return 0, error("divide by ${b}")
     }
     return a / b, nil
 }
 
-do or_ret_bare(divisor int) -> (int, Error) {
-    mut v int = try_div(10, divisor) or_return
+do or_ret_bare(divisor i64) -> (i64, Error) {
+    mut v i64 = try_div(10, divisor) or_return
     return v * 2, nil
 }
 
-do or_ret_fallback(divisor int) -> (int, Error) {
-    mut v int = try_div(10, divisor) or_return -1
+do or_ret_fallback(divisor i64) -> (i64, Error) {
+    mut v i64 = try_div(10, divisor) or_return -1
     return v, nil
 }
 
-do fib(n int) -> int {
+do fib(n i64) -> i64 {
     if n < 2 {
         return n
     }
     return fib(n - 1) + fib(n - 2)
 }
 
-mut defer_log [int] = {}
+mut defer_log [i64] = {}
 
-do note(n int) {
+do note(n i64) {
     arrays.append(defer_log, n)
 }
 
@@ -124,7 +124,7 @@ do defer_lifo() {
     note(0)
 }
 
-do ensure_on_return(early bool) -> int {
+do ensure_on_return(early bool) -> i64 {
     defer note(9)
     if early {
         return 1
@@ -132,23 +132,23 @@ do ensure_on_return(early bool) -> int {
     return 2
 }
 
-do triple(x int) -> int {
+do triple(x i64) -> i64 {
     return x * 3
 }
 
-do gt_two(x int) -> bool {
+do gt_two(x i64) -> bool {
     return x > 2
 }
 
-do sum2(a int, b int) -> int {
+do sum2(a i64, b i64) -> i64 {
     return a + b
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // =========================================================================
     println("=== 1. Primitive Arithmetic ===")
@@ -202,7 +202,7 @@ do main() {
         failed++
     }
 
-    mut flt float = 1.5 + 2.5
+    mut flt f64 = 1.5 + 2.5
     if flt == 4.0 {
         println("  [PASS] 1.5 + 2.5 = 4.0")
         passed++
@@ -234,13 +234,13 @@ do main() {
     println("=== 2. String Interpolation ===")
     // =========================================================================
 
-    mut num int = 42
+    mut num i64 = 42
     mut interp string = "answer=${num}"
     if interp == "answer=42" {
         println("  [PASS] \"answer=${num}\" = \"answer=42\"")
         passed++
     } otherwise {
-        println("  [FAIL] int interpolation: got \"${interp}\"")
+        println("  [FAIL] i64 interpolation: got \"${interp}\"")
         failed++
     }
 
@@ -261,7 +261,7 @@ do main() {
 
     println("  -- if / otherwise --")
 
-    mut x int = 10
+    mut x i64 = 10
     mut lbl string = ""
     if x > 5 {
         lbl = "big"
@@ -276,7 +276,7 @@ do main() {
         failed++
     }
 
-    mut y int = 2
+    mut y i64 = 2
     mut lbl2 string = ""
     if y > 5 {
         lbl2 = "big"
@@ -293,7 +293,7 @@ do main() {
 
     println("  -- when / is (range) --")
 
-    mut score int = 85
+    mut score i64 = 85
     mut grade string = ""
     when score {
         is range(90, 101) { grade = "A" }
@@ -371,7 +371,7 @@ do main() {
 
     println("  -- for / range --")
 
-    mut rsum int = 0
+    mut rsum i64 = 0
     for ri in range(1, 6) {
         rsum += ri
     }
@@ -385,8 +385,8 @@ do main() {
 
     println("  -- for_each (values) --")
 
-    mut fe_total int = 0
-    mut fe_arr [int] = {10, 20, 30, 40}
+    mut fe_total i64 = 0
+    mut fe_arr [i64] = {10, 20, 30, 40}
     for_each fe_v in fe_arr {
         fe_total += fe_v
     }
@@ -400,7 +400,7 @@ do main() {
 
     println("  -- for_each (index + value) --")
 
-    mut idx_sum int = 0
+    mut idx_sum i64 = 0
     for_each fe_i, fe_v in fe_arr {
         idx_sum += fe_i
     }
@@ -414,7 +414,7 @@ do main() {
 
     println("  -- as_long_as --")
 
-    mut alas int = 0
+    mut alas i64 = 0
     as_long_as alas < 5 {
         alas++
     }
@@ -428,7 +428,7 @@ do main() {
 
     println("  -- loop + break --")
 
-    mut lcount int = 0
+    mut lcount i64 = 0
     loop {
         if lcount == 3 {
             break
@@ -445,7 +445,7 @@ do main() {
 
     println("  -- continue (skip odd numbers) --")
 
-    mut even_sum int = 0
+    mut even_sum i64 = 0
     for ci in range(1, 11) {
         if ci % 2 != 0 {
             continue
@@ -467,7 +467,7 @@ do main() {
 
     println("  -- positional args --")
 
-    mut pos_result int = add(3, 4)
+    mut pos_result i64 = add(3, 4)
     if pos_result == 7 {
         println("  [PASS] add(3, 4) = 7")
         passed++
@@ -478,7 +478,7 @@ do main() {
 
     println("  -- named args --")
 
-    mut named_result int = add(a: 10, b: 5)
+    mut named_result i64 = add(a: 10, b: 5)
     if named_result == 15 {
         println("  [PASS] add(a: 10, b: 5) = 15")
         passed++
@@ -527,7 +527,7 @@ do main() {
 
     println("  -- multi-return --")
 
-    mut mret_n int, mret_s string = multi()
+    mut mret_n i64, mret_s string = multi()
     if mret_n == 7 {
         println("  [PASS] multi() → n = 7")
         passed++
@@ -564,7 +564,7 @@ do main() {
         failed++
     }
 
-    mut pt_sum int = Point.sum(pt)
+    mut pt_sum i64 = Point.sum(pt)
     if pt_sum == 7 {
         println("  [PASS] Point.sum({x:3, y:4}) = 3 + 4 = 7")
         passed++
@@ -578,12 +578,12 @@ do main() {
     println("=== 7. Enums ===")
     // =========================================================================
 
-    println("  -- int enum (auto-increment from 0) --")
+    println("  -- i64 enum (auto-increment from 0) --")
 
-    mut north int = Direction.NORTH
-    mut east_v int = Direction.EAST
-    mut south_v int = Direction.SOUTH
-    mut west_v int = Direction.WEST
+    mut north i64 = Direction.NORTH
+    mut east_v i64 = Direction.EAST
+    mut south_v i64 = Direction.SOUTH
+    mut west_v i64 = Direction.WEST
 
     if north == 0 {
         println("  [PASS] Direction.NORTH = 0")
@@ -616,9 +616,9 @@ do main() {
 
     println("  -- flags enum (power-of-2) --")
 
-    mut r_perm int = Permission.READ
-    mut w_perm int = Permission.WRITE
-    mut e_perm int = Permission.EXECUTE
+    mut r_perm i64 = Permission.READ
+    mut w_perm i64 = Permission.WRITE
+    mut e_perm i64 = Permission.EXECUTE
 
     if r_perm == 1 {
         println("  [PASS] Permission.READ = 1")
@@ -673,7 +673,7 @@ do main() {
 
     println("  -- literals + indexing --")
 
-    mut arr [int] = {1, 2, 3, 4, 5}
+    mut arr [i64] = {1, 2, 3, 4, 5}
     if len(arr) == 5 {
         println("  [PASS] {1,2,3,4,5} → len = 5")
         passed++
@@ -709,7 +709,7 @@ do main() {
 
     println("  -- in operator --")
 
-    mut in_arr [int] = {1, 2, 3, 4, 5}
+    mut in_arr [i64] = {1, 2, 3, 4, 5}
     if 3 in in_arr {
         println("  [PASS] 3 in {1,2,3,4,5} = true")
         passed++
@@ -727,7 +727,7 @@ do main() {
 
     println("  -- arrays.append --")
 
-    mut grow [int] = {10, 20}
+    mut grow [i64] = {10, 20}
     arrays.append(grow, 30)
     if len(grow) == 3 {
         println("  [PASS] append(30) → len = 3")
@@ -751,7 +751,7 @@ do main() {
 
     println("  -- literal + access --")
 
-    mut ages map[string:int] = {
+    mut ages map[string:i64] = {
         "alice": 30,
         "bob":   25
     }
@@ -838,21 +838,21 @@ do main() {
     println("=== 10. Casting ===")
     // =========================================================================
 
-    mut cf float = cast(42, float)
+    mut cf f64 = cast(42, f64)
     if cf == 42.0 {
-        println("  [PASS] cast(42, float) = 42.0")
+        println("  [PASS] cast(42, f64) = 42.0")
         passed++
     } otherwise {
-        println("  [FAIL] cast int->float: expected 42.0, got ${cf}")
+        println("  [FAIL] cast i64->f64: expected 42.0, got ${cf}")
         failed++
     }
 
-    mut ci int = cast(3.9, int)
+    mut ci i64 = cast(3.9, i64)
     if ci == 3 {
-        println("  [PASS] cast(3.9, int) = 3  (truncated toward zero)")
+        println("  [PASS] cast(3.9, i64) = 3  (truncated toward zero)")
         passed++
     } otherwise {
-        println("  [FAIL] cast float->int: expected 3, got ${ci}")
+        println("  [FAIL] cast f64->i64: expected 3, got ${ci}")
         failed++
     }
 
@@ -861,7 +861,7 @@ do main() {
         println("  [PASS] cast(123, string) = \"123\"")
         passed++
     } otherwise {
-        println("  [FAIL] cast int->string: expected \"123\", got \"${cs2}\"")
+        println("  [FAIL] cast i64->string: expected \"123\", got \"${cs2}\"")
         failed++
     }
 
@@ -879,8 +879,8 @@ do main() {
     println("=== 11. Pointers ===")
     // =========================================================================
 
-    mut pval int = 42
-    mut ptr ^int = addr(pval)
+    mut pval i64 = 42
+    mut ptr ^i64 = addr(pval)
     if ptr^ == 42 {
         println("  [PASS] addr(pval)^ = 42  (read through pointer)")
         passed++
@@ -922,7 +922,7 @@ do main() {
     println("=== 12. @math ===")
     // =========================================================================
 
-    mut abs_r int = math.abs(-7)
+    mut abs_r i64 = math.abs(-7)
     if abs_r == 7 {
         println("  [PASS] math.abs(-7) = 7")
         passed++
@@ -931,7 +931,7 @@ do main() {
         failed++
     }
 
-    mut min_r int = math.min(3, 8)
+    mut min_r i64 = math.min(3, 8)
     if min_r == 3 {
         println("  [PASS] math.min(3, 8) = 3")
         passed++
@@ -940,7 +940,7 @@ do main() {
         failed++
     }
 
-    mut max_r int = math.max(3, 8)
+    mut max_r i64 = math.max(3, 8)
     if max_r == 8 {
         println("  [PASS] math.max(3, 8) = 8")
         passed++
@@ -949,7 +949,7 @@ do main() {
         failed++
     }
 
-    mut sqrt_r float = math.sqrt(9.0)
+    mut sqrt_r f64 = math.sqrt(9.0)
     if sqrt_r == 3.0 {
         println("  [PASS] math.sqrt(9.0) = 3.0")
         passed++
@@ -958,7 +958,7 @@ do main() {
         failed++
     }
 
-    mut pow_r float = math.pow(2.0, 10.0)
+    mut pow_r f64 = math.pow(2.0, 10.0)
     if pow_r == 1024.0 {
         println("  [PASS] math.pow(2.0, 10.0) = 1024.0")
         passed++
@@ -967,7 +967,7 @@ do main() {
         failed++
     }
 
-    mut floor_r float = math.floor(3.9)
+    mut floor_r f64 = math.floor(3.9)
     if floor_r == 3.0 {
         println("  [PASS] math.floor(3.9) = 3.0")
         passed++
@@ -976,7 +976,7 @@ do main() {
         failed++
     }
 
-    mut ceil_r float = math.ceil(3.1)
+    mut ceil_r f64 = math.ceil(3.1)
     if ceil_r == 4.0 {
         println("  [PASS] math.ceil(3.1) = 4.0")
         passed++
@@ -1116,7 +1116,7 @@ do main() {
     println("=== 14. @arrays ===")
     // =========================================================================
 
-    mut sort_arr [int] = {3, 1, 4, 1, 5, 9, 2}
+    mut sort_arr [i64] = {3, 1, 4, 1, 5, 9, 2}
     arrays.sort_asc(sort_arr)
     if sort_arr[0] == 1 && sort_arr[6] == 9 {
         println("  [PASS] arrays.sort_asc({3,1,4,1,5,9,2}) → {1,1,2,3,4,5,9}")
@@ -1126,8 +1126,8 @@ do main() {
         failed++
     }
 
-    mut rev_src [int] = {1, 2, 3}
-    mut rev_arr [int] = arrays.reverse(rev_src)
+    mut rev_src [i64] = {1, 2, 3}
+    mut rev_arr [i64] = arrays.reverse(rev_src)
     if rev_arr[0] == 3 && rev_arr[2] == 1 {
         println("  [PASS] arrays.reverse({1,2,3}) → {3,2,1}")
         passed++
@@ -1136,7 +1136,7 @@ do main() {
         failed++
     }
 
-    mut con_arr [int] = {10, 20, 30}
+    mut con_arr [i64] = {10, 20, 30}
     if arrays.contains(con_arr, 20) {
         println("  [PASS] arrays.contains({10,20,30}, 20) = true")
         passed++
@@ -1152,8 +1152,8 @@ do main() {
         failed++
     }
 
-    mut num_arr [int] = {5, 2, 8, 1, 4}
-    mut arr_sum int = arrays.get_sum(num_arr)
+    mut num_arr [i64] = {5, 2, 8, 1, 4}
+    mut arr_sum i64 = arrays.get_sum(num_arr)
     if arr_sum == 20 {
         println("  [PASS] arrays.get_sum({5,2,8,1,4}) = 20")
         passed++
@@ -1162,7 +1162,7 @@ do main() {
         failed++
     }
 
-    mut arr_min int = arrays.get_min(num_arr)
+    mut arr_min i64 = arrays.get_min(num_arr)
     if arr_min == 1 {
         println("  [PASS] arrays.get_min({5,2,8,1,4}) = 1")
         passed++
@@ -1171,7 +1171,7 @@ do main() {
         failed++
     }
 
-    mut arr_max int = arrays.get_max(num_arr)
+    mut arr_max i64 = arrays.get_max(num_arr)
     if arr_max == 8 {
         println("  [PASS] arrays.get_max({5,2,8,1,4}) = 8")
         passed++
@@ -1185,8 +1185,8 @@ do main() {
     println("=== 15. @maps ===")
     // =========================================================================
 
-    mut m2 map[string:int] = {"a": 1, "b": 2, "c": 3}
-    mut mvals [int] = maps.get_values(m2)
+    mut m2 map[string:i64] = {"a": 1, "b": 2, "c": 3}
+    mut mvals [i64] = maps.get_values(m2)
     if len(mvals) == 3 {
         println("  [PASS] maps.get_values({a:1,b:2,c:3}) → 3 values")
         passed++
@@ -1223,7 +1223,7 @@ do main() {
     println("=== 17. @time ===")
     // =========================================================================
 
-    mut ts int = time.now()
+    mut ts i64 = time.now()
     if ts > 0 {
         println("  [PASS] time.now() = ${ts}  (Unix seconds)")
         passed++
@@ -1232,7 +1232,7 @@ do main() {
         failed++
     }
 
-    mut ts_ms int = time.now_ms()
+    mut ts_ms i64 = time.now_ms()
     if ts_ms > 0 {
         println("  [PASS] time.now_ms() = ${ts_ms}  (Unix milliseconds)")
         passed++
@@ -1246,7 +1246,7 @@ do main() {
     println("=== 18. @random ===")
     // =========================================================================
 
-    mut ri int = random.rand_int(100)
+    mut ri i64 = random.rand_int(100)
     if ri >= 0 {
         println("  [PASS] random.rand_int(100) = ${ri}")
         passed++
@@ -1255,7 +1255,7 @@ do main() {
         failed++
     }
 
-    mut rf float = random.rand_float()
+    mut rf f64 = random.rand_float()
     if rf >= 0.0 {
         println("  [PASS] random.rand_float() = ${rf}")
         passed++
@@ -1264,8 +1264,8 @@ do main() {
         failed++
     }
 
-    mut r_arr [int] = {10, 20, 30, 40}
-    mut pick int = random.choice(r_arr)
+    mut r_arr [i64] = {10, 20, 30, 40}
+    mut pick i64 = random.choice(r_arr)
     if pick == 10 || pick == 20 || pick == 30 || pick == 40 {
         println("  [PASS] random.choice({10,20,30,40}) = ${pick}")
         passed++
@@ -1397,7 +1397,7 @@ do main() {
         failed++
     }
 
-    mut sc4 int, _ = strconv.to_int("123")
+    mut sc4 i64, _ = strconv.to_int("123")
     if sc4 == 123 {
         println("  [PASS] strconv.to_int(\"123\") = 123")
         passed++
@@ -1406,7 +1406,7 @@ do main() {
         failed++
     }
 
-    mut sc5 float, _ = strconv.to_float("2.5")
+    mut sc5 f64, _ = strconv.to_float("2.5")
     if sc5 == 2.5 {
         println("  [PASS] strconv.to_float(\"2.5\") = 2.5")
         passed++
@@ -1542,8 +1542,8 @@ do main() {
     println("=== 24. @binary ===")
     // =========================================================================
 
-    mut bin1_enc [byte] = binary.encode_i64_le(42)
-    mut bin1 int = binary.decode_i64_le(bin1_enc)
+    mut bin1_enc [u8] = binary.encode_i64_le(42)
+    mut bin1 i64 = binary.decode_i64_le(bin1_enc)
     if bin1 == 42 {
         println("  [PASS] binary roundtrip i64_le(42) = 42")
         passed++
@@ -1552,8 +1552,8 @@ do main() {
         failed++
     }
 
-    mut bin2_enc [byte] = binary.encode_i64_be(-999)
-    mut bin2 int = binary.decode_i64_be(bin2_enc)
+    mut bin2_enc [u8] = binary.encode_i64_be(-999)
+    mut bin2 i64 = binary.decode_i64_be(bin2_enc)
     if bin2 == -999 {
         println("  [PASS] binary roundtrip i64_be(-999) = -999")
         passed++
@@ -1562,8 +1562,8 @@ do main() {
         failed++
     }
 
-    mut bin3_enc [byte] = binary.encode_f64_le(3.14)
-    mut bin3 float = binary.decode_f64_le(bin3_enc)
+    mut bin3_enc [u8] = binary.encode_f64_le(3.14)
+    mut bin3 f64 = binary.decode_f64_le(bin3_enc)
     if bin3 == 3.14 {
         println("  [PASS] binary roundtrip f64_le(3.14) = 3.14")
         passed++
@@ -1598,20 +1598,20 @@ do main() {
 
     // =========================================================================
     println("")
-    println("=== 25. encoding byte conversions ===")
+    println("=== 25. encoding u8 conversions ===")
     // =========================================================================
 
-    mut by1_bytes [byte] = encoding.from_string("hello")
+    mut by1_bytes [u8] = encoding.from_string("hello")
     mut by1 string = encoding.to_string(by1_bytes)
     if by1 == "hello" {
         println("  [PASS] encoding.to_string(encoding.from_string(\"hello\")) = \"hello\"")
         passed++
     } otherwise {
-        println("  [FAIL] encoding byte roundtrip string: expected \"hello\", got \"${by1}\"")
+        println("  [FAIL] encoding u8 roundtrip string: expected \"hello\", got \"${by1}\"")
         failed++
     }
 
-    mut by2_bytes [byte] = encoding.from_string("AB")
+    mut by2_bytes [u8] = encoding.from_string("AB")
     mut by2 string = encoding.to_hex(by2_bytes)
     if by2 == "4142" {
         println("  [PASS] encoding.to_hex(encoding.from_string(\"AB\")) = \"4142\"")
@@ -1621,9 +1621,9 @@ do main() {
         failed++
     }
 
-    mut by3_a [byte] = encoding.from_string("test")
+    mut by3_a [u8] = encoding.from_string("test")
     mut by3_hex string = encoding.to_hex(by3_a)
-    mut by3_b [byte] = encoding.from_hex(by3_hex)
+    mut by3_b [u8] = encoding.from_hex(by3_hex)
     mut by3 string = encoding.to_string(by3_b)
     if by3 == "test" {
         println("  [PASS] encoding hex roundtrip \"test\" = \"test\"")
@@ -1633,7 +1633,7 @@ do main() {
         failed++
     }
 
-    mut by4_bytes [byte] = encoding.from_string("hello")
+    mut by4_bytes [u8] = encoding.from_string("hello")
     mut by4 string = encoding.to_base64(by4_bytes)
     if by4 == "aGVsbG8=" {
         println("  [PASS] encoding.to_base64(encoding.from_string(\"hello\")) = \"aGVsbG8=\"")
@@ -1643,7 +1643,7 @@ do main() {
         failed++
     }
 
-    mut by5_bytes [byte] = encoding.from_base64("aGVsbG8=")
+    mut by5_bytes [u8] = encoding.from_base64("aGVsbG8=")
     mut by5 string = encoding.to_string(by5_bytes)
     if by5 == "hello" {
         println("  [PASS] encoding.to_string(encoding.from_base64(\"aGVsbG8=\")) = \"hello\"")
@@ -1708,7 +1708,7 @@ do main() {
     // =========================================================================
 
     mut arena1 = mem.arena(4096)
-    mut usage1 int = mem.usage(arena1)
+    mut usage1 i64 = mem.usage(arena1)
     if usage1 >= 0 {
         println("  [PASS] mem.usage(arena) >= 0 after creation")
         passed++
@@ -1718,7 +1718,7 @@ do main() {
     }
 
     mem.reset(arena1)
-    mut usage2 int = mem.usage(arena1)
+    mut usage2 i64 = mem.usage(arena1)
     if usage2 == 0 {
         println("  [PASS] mem.usage(arena) == 0 after reset")
         passed++
@@ -1828,7 +1828,7 @@ do main() {
     }
 
     defer_log = {}
-    mut ens_r int = ensure_on_return(true)
+    mut ens_r i64 = ensure_on_return(true)
     if ens_r == 1 && len(defer_log) == 1 && defer_log[0] == 9 {
         println("  [PASS] ensure runs on early return")
         passed++
@@ -1838,7 +1838,7 @@ do main() {
     }
 
     defer_log = {}
-    mut ens_r2 int = ensure_on_return(false)
+    mut ens_r2 i64 = ensure_on_return(false)
     if ens_r2 == 2 && len(defer_log) == 1 {
         println("  [PASS] ensure runs on normal exit")
         passed++
@@ -1853,7 +1853,7 @@ do main() {
     // =========================================================================
 
     mut grade31 string = ""
-    mut score31 int = 82
+    mut score31 i64 = 82
     if score31 >= 90 {
         grade31 = "A"
     } or score31 >= 80 {
@@ -1945,7 +1945,7 @@ do main() {
     println("=== 33. Compound assignment ===")
     // =========================================================================
 
-    mut ca int = 20
+    mut ca i64 = 20
     ca -= 5
     ca *= 2
     ca /= 3
@@ -1965,7 +1965,7 @@ do main() {
 
     // not_in and !in are aliases; a file may use only one, so this section
     // exercises not_in.
-    mut member_arr [int] = {2, 4, 6, 8}
+    mut member_arr [i64] = {2, 4, 6, 8}
     if 5 not_in member_arr {
         println("  [PASS] 5 not_in {2,4,6,8}")
         passed++
@@ -1980,7 +1980,7 @@ do main() {
         println("  [FAIL] not_in negation for a present value")
         failed++
     }
-    mut member_map map[string:int] = {"a": 1, "b": 2}
+    mut member_map map[string:i64] = {"a": 1, "b": 2}
     if "z" not_in member_map {
         println("  [PASS] \"z\" not_in a map")
         passed++
@@ -2008,8 +2008,8 @@ do main() {
     // =========================================================================
 
     mut uid UserId = 4096
-    if type_of(uid) == "int" {
-        println("  [PASS] type_of(UserId) resolves to \"int\"")
+    if type_of(uid) == "i64" {
+        println("  [PASS] type_of(UserId) resolves to \"i64\"")
         passed++
     } otherwise {
         println("  [FAIL] alias type_of: got \"${type_of(uid)}\"")
@@ -2031,7 +2031,7 @@ do main() {
     // =========================================================================
 
     mut people [Point] = {Point{x: 1, y: 2}, Point{x: 3, y: 4}, Point{x: 5, y: 6}}
-    mut coord_total int = 0
+    mut coord_total i64 = 0
     for_each p in people {
         coord_total += p.x + p.y
     }
@@ -2054,7 +2054,7 @@ do main() {
         failed++
     }
 
-    mut groups map[string:[int]] = {"evens": {2, 4}, "odds": {1, 3, 5}}
+    mut groups map[string:[i64]] = {"evens": {2, 4}, "odds": {1, 3, 5}}
     if len(groups["odds"]) == 3 && groups["evens"][1] == 4 {
         println("  [PASS] map of arrays: index into a value array")
         passed++
@@ -2065,14 +2065,14 @@ do main() {
 
     // =========================================================================
     println("")
-    println("=== 38. char ↔ int ===")
+    println("=== 38. char ↔ i64 ===")
     // =========================================================================
 
-    if int('A') == 65 {
-        println("  [PASS] int('A') = 65")
+    if cast('A', i64) == 65 {
+        println("  [PASS] i64('A') = 65")
         passed++
     } otherwise {
-        println("  [FAIL] int('A'): got ${int('A')}")
+        println("  [FAIL] i64('A'): got ${cast('A', i64)}")
         failed++
     }
     if char(97) == 'a' {
@@ -2082,12 +2082,12 @@ do main() {
         println("  [FAIL] char(97)")
         failed++
     }
-    mut ch_round char = char(int('Z') + 1)
+    mut ch_round char = char(cast('Z', i64) + 1)
     if ch_round == '[' {
-        println("  [PASS] char(int('Z') + 1) = '['")
+        println("  [PASS] char(i64('Z') + 1) = '['")
         passed++
     } otherwise {
-        println("  [FAIL] char/int round trip: got ${ch_round}")
+        println("  [FAIL] char/i64 round trip: got ${ch_round}")
         failed++
     }
 
@@ -2096,9 +2096,9 @@ do main() {
     println("=== 39. Scoped blocks ===")
     // =========================================================================
 
-    mut scope_out int = 0
+    mut scope_out i64 = 0
     if true {
-        mut block_local int = 41
+        mut block_local i64 = 41
         scope_out = block_local + 1
     }
     if scope_out == 42 {
@@ -2109,13 +2109,13 @@ do main() {
         failed++
     }
 
-    mut sibling_sum int = 0
+    mut sibling_sum i64 = 0
     if true {
-        mut tmp int = 10
+        mut tmp i64 = 10
         sibling_sum += tmp
     }
     if true {
-        mut tmp int = 5
+        mut tmp i64 = 5
         sibling_sum += tmp
     }
     if sibling_sum == 15 {
@@ -2126,9 +2126,9 @@ do main() {
         failed++
     }
 
-    mut last_square int = -1
+    mut last_square i64 = -1
     for i in range(0, 4) {
-        mut square int = i * i
+        mut square i64 = i * i
         last_square = square
     }
     if last_square == 9 {
@@ -2144,9 +2144,9 @@ do main() {
     println("=== 40. const local declarations ===")
     // =========================================================================
 
-    const LOCAL_LIMIT int = 10
+    const LOCAL_LIMIT i64 = 10
     const LOCAL_LABEL string = "limit"
-    mut const_acc int = 0
+    mut const_acc i64 = 0
     for i in range(0, LOCAL_LIMIT) {
         const_acc += 1
     }
@@ -2158,8 +2158,8 @@ do main() {
         failed++
     }
 
-    const LOCAL_SIZE int = 3
-    const fixed [int, LOCAL_SIZE] = {7, 8, 9}
+    const LOCAL_SIZE i64 = 3
+    const fixed [i64, LOCAL_SIZE] = {7, 8, 9}
     if len(fixed) == LOCAL_SIZE && fixed[2] == 9 {
         println("  [PASS] const local sizes a fixed-length array")
         passed++
@@ -2173,8 +2173,8 @@ do main() {
     println("=== 41. Higher-order functions ===")
     // =========================================================================
 
-    mut hof_src [int] = {1, 2, 3, 4}
-    mut hof_mapped [int] = arrays.map(hof_src, ()triple)
+    mut hof_src [i64] = {1, 2, 3, 4}
+    mut hof_mapped [i64] = arrays.map(hof_src, ()triple)
     if len(hof_mapped) == 4 && hof_mapped[0] == 3 && hof_mapped[3] == 12 {
         println("  [PASS] arrays.map with a function reference")
         passed++
@@ -2183,7 +2183,7 @@ do main() {
         failed++
     }
 
-    mut hof_kept [int] = arrays.filter(hof_src, ()gt_two)
+    mut hof_kept [i64] = arrays.filter(hof_src, ()gt_two)
     if len(hof_kept) == 2 && hof_kept[0] == 3 && hof_kept[1] == 4 {
         println("  [PASS] arrays.filter with a predicate reference")
         passed++
@@ -2192,7 +2192,7 @@ do main() {
         failed++
     }
 
-    mut hof_total int = arrays.reduce(hof_src, 0, ()sum2)
+    mut hof_total i64 = arrays.reduce(hof_src, 0, ()sum2)
     if hof_total == 10 {
         println("  [PASS] arrays.reduce sums to 10")
         passed++
@@ -2201,7 +2201,7 @@ do main() {
         failed++
     }
 
-    mut hof_all [int] = {3, 4, 5}
+    mut hof_all [i64] = {3, 4, 5}
     if arrays.any(hof_src, ()gt_two) && arrays.all(hof_all, ()gt_two) {
         println("  [PASS] arrays.any / arrays.all with predicate references")
         passed++
@@ -2302,7 +2302,7 @@ do main() {
     println("=== 43. @arrays (extended) ===")
     // =========================================================================
 
-    mut ax [int] = {10, 20, 30, 20}
+    mut ax [i64] = {10, 20, 30, 20}
     if arrays.index_of(ax, 20) == 1 && arrays.count(ax, 20) == 2 {
         println("  [PASS] arrays.index_of / count")
         passed++
@@ -2311,9 +2311,9 @@ do main() {
         failed++
     }
 
-    mut eq_a [int] = {1, 2, 3}
-    mut eq_b [int] = {1, 2, 3}
-    mut eq_c [int] = {1, 2, 4}
+    mut eq_a [i64] = {1, 2, 3}
+    mut eq_b [i64] = {1, 2, 3}
+    mut eq_c [i64] = {1, 2, 4}
     if arrays.is_equal(eq_a, eq_b) && !arrays.is_equal(eq_a, eq_c) {
         println("  [PASS] arrays.is_equal")
         passed++
@@ -2322,11 +2322,11 @@ do main() {
         failed++
     }
 
-    mut slice_src [int] = {0, 1, 2, 3, 4}
-    mut cat_a [int] = {1, 2}
-    mut cat_b [int] = {3, 4}
-    mut a_slice [int] = arrays.slice(slice_src, 1, 4)
-    mut a_cat [int] = arrays.concat(cat_a, cat_b)
+    mut slice_src [i64] = {0, 1, 2, 3, 4}
+    mut cat_a [i64] = {1, 2}
+    mut cat_b [i64] = {3, 4}
+    mut a_slice [i64] = arrays.slice(slice_src, 1, 4)
+    mut a_cat [i64] = arrays.concat(cat_a, cat_b)
     if len(a_slice) == 3 && a_slice[0] == 1 && len(a_cat) == 4 && a_cat[3] == 4 {
         println("  [PASS] arrays.slice / concat")
         passed++
@@ -2335,8 +2335,8 @@ do main() {
         failed++
     }
 
-    mut flat_src [[int]] = {{1, 2}, {3, 4}}
-    mut a_flat [int] = arrays.flatten(flat_src)
+    mut flat_src [[i64]] = {{1, 2}, {3, 4}}
+    mut a_flat [i64] = arrays.flatten(flat_src)
     if len(a_flat) == 4 && a_flat[0] == 1 && a_flat[3] == 4 {
         println("  [PASS] arrays.flatten({{1,2},{3,4}}) = {1,2,3,4}")
         passed++
@@ -2345,7 +2345,7 @@ do main() {
         failed++
     }
 
-    mut a_mut [int] = {2, 3}
+    mut a_mut [i64] = {2, 3}
     arrays.prepend(a_mut, 1)
     arrays.insert_at(a_mut, 3, 9)
     arrays.remove(a_mut, 9)
@@ -2371,8 +2371,8 @@ do main() {
     println("=== 44. @maps (extended) ===")
     // =========================================================================
 
-    mut mx map[string:int] = {"a": 1, "b": 2}
-    mut my map[string:int] = {"b": 2, "a": 1}
+    mut mx map[string:i64] = {"a": 1, "b": 2}
+    mut my map[string:i64] = {"b": 2, "a": 1}
     if maps.is_equal(mx, my) && maps.contains_value(mx, 2) {
         println("  [PASS] maps.is_equal / contains_value")
         passed++
@@ -2389,9 +2389,9 @@ do main() {
         failed++
     }
 
-    mut merge_a map[string:int] = {"a": 1}
-    mut merge_b map[string:int] = {"b": 2}
-    mut mmerge map[string:int] = maps.merge(merge_a, merge_b)
+    mut merge_a map[string:i64] = {"a": 1}
+    mut merge_b map[string:i64] = {"b": 2}
+    mut mmerge map[string:i64] = maps.merge(merge_a, merge_b)
     maps.remove_key(mmerge, "a")
     if len(mmerge) == 1 && maps.has_key(mmerge, "b") {
         println("  [PASS] maps.merge / remove_key")
@@ -2401,7 +2401,7 @@ do main() {
         failed++
     }
 
-    mut mclear map[string:int] = {"x": 1, "y": 2}
+    mut mclear map[string:i64] = {"x": 1, "y": 2}
     maps.clear(mclear)
     if len(mclear) == 0 {
         println("  [PASS] maps.clear empties the map")

@@ -11,7 +11,7 @@ do join(parts [string]) -> string {
     return s
 }
 
-do check(label string, got string, want string) -> int {
+do check(label string, got string, want string) -> i64 {
     if got == want {
         println("  [PASS] ${label}")
         return 1
@@ -21,7 +21,7 @@ do check(label string, got string, want string) -> int {
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // pattern that only ever matches empty -> whole string, one piece
     mut a, _ = regex.split("x*", "abc")

@@ -3,11 +3,11 @@
 // expect-error-count: 1
 
 const Box struct {
-    v uint
+    v u64
 }
 
 do main() {
-    mut neg int = -1
+    mut neg i64 = -1
     mut b Box = Box{ v: neg }
     println("${b.v}")
 }

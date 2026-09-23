@@ -1,11 +1,11 @@
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Size struct {
-    w int
-    h int
+    w i64
+    h i64
 }
 
 do main() {

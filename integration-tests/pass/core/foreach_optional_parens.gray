@@ -8,13 +8,13 @@
 
 do main() {
     println("=== for_each Optional Parentheses Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut nums [int] = {10, 20, 30}
+    mut nums [i64] = {10, 20, 30}
 
     // Test 1: for_each without parens (baseline)
-    mut sum1 int = 0
+    mut sum1 i64 = 0
     for_each val in nums {
         sum1 += val
     }
@@ -27,7 +27,7 @@ do main() {
     }
 
     // Test 2: for_each with parens
-    mut sum2 int = 0
+    mut sum2 i64 = 0
     for_each (val in nums) {
         sum2 += val
     }
@@ -40,7 +40,7 @@ do main() {
     }
 
     // Test 3: for_each with index, no parens (syntax: index, value)
-    mut idx_sum int = 0
+    mut idx_sum i64 = 0
     for_each i, val in nums {
         idx_sum += i
     }
@@ -53,7 +53,7 @@ do main() {
     }
 
     // Test 4: for_each with index, with parens
-    mut idx_sum2 int = 0
+    mut idx_sum2 i64 = 0
     for_each (i, val in nums) {
         idx_sum2 += i
     }
@@ -80,8 +80,8 @@ do main() {
     }
 
     // Test 6: nested for_each with parens
-    mut matrix [[int]] = {{1, 2}, {3, 4}}
-    mut total int = 0
+    mut matrix [[i64]] = {{1, 2}, {3, 4}}
+    mut total i64 = 0
     for_each (row in matrix) {
         for_each (val in row) {
             total += val
@@ -96,7 +96,7 @@ do main() {
     }
 
     // Test 7: mixed — outer no parens, inner with parens
-    mut total2 int = 0
+    mut total2 i64 = 0
     for_each row in matrix {
         for_each (val in row) {
             total2 += val

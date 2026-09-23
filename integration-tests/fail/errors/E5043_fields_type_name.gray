@@ -1,5 +1,5 @@
 const Foo struct {
-    a int
+    a i64
     b string
     c bool
 }

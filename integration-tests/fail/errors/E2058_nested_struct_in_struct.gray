@@ -2,9 +2,9 @@
 // Expected: "cannot declare a struct or enum inside struct"
 
 const Outer struct {
-    x int
+    x i64
     const Inner struct {
-        y int
+        y i64
     }
 }
 

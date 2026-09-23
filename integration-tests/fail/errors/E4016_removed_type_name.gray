@@ -1,0 +1,12 @@
+// Error Test: E4016 - int, uint, float, and byte are not built-in types; the
+// diagnostic points to the sized type that replaces each one.
+// expect-error: E4016
+// expect-error-count: 4
+// expect-contains: use 'i64', or declare 'alias int = i64'
+
+do main() {
+    mut count int = 1
+    mut total uint = 2
+    mut ratio float = 1.5
+    mut data [byte] = {1, 2}
+}

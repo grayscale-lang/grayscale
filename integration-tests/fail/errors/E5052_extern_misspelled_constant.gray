@@ -9,6 +9,6 @@
 extern import "stdlib.h"
 
 do main() {
-    mut e int = extern.EXIT_SUCESS
+    mut e i64 = extern.EXIT_SUCESS
     println(e)
 }

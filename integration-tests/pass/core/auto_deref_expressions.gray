@@ -1,8 +1,8 @@
 const Node struct {
-    val int
+    val i64
 }
 
-do make_node(v int) -> ^Node {
+do make_node(v i64) -> ^Node {
     mut n = new(Node)
     n.val = v
     return n

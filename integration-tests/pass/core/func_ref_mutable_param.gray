@@ -3,21 +3,21 @@
  * Verifies that [func] vars correctly pass-through & param mutations
  */
 
-do modify(&x int) {
+do modify(&x i64) {
     x = 99
 }
 
-do triple(&x int) {
+do triple(&x i64) {
     x = x * 3
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic func ref mutation
-    const fn_ref func(&int) = ()modify
-    mut a int = 10
+    const fn_ref func(&i64) = ()modify
+    mut a i64 = 10
     fn_ref(a)
     if a == 99 {
         println("  [PASS] fn_ref(modify) mutated a to 99")
@@ -28,8 +28,8 @@ do main() {
     }
 
     // Test 2: different func ref mutation
-    const fn_ref2 func(&int) = ()triple
-    mut b int = 7
+    const fn_ref2 func(&i64) = ()triple
+    mut b i64 = 7
     fn_ref2(b)
     if b == 21 {
         println("  [PASS] fn_ref(triple) mutated b to 21")

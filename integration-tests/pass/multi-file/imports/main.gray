@@ -15,8 +15,8 @@ import and use "./libA.gray"
 
 // Test result tracking
 const TestResult struct {
-    passed int
-    failed int
+    passed i64
+    failed i64
 }
 
 do main() {
@@ -25,8 +25,8 @@ do main() {
     println("========================================")
     println("")
 
-    mut total_passed int = 0
-    mut total_failed int = 0
+    mut total_passed i64 = 0
+    mut total_failed i64 = 0
     mut result TestResult = TestResult{passed: 0, failed: 0}
 
     result = test_auto_use_no_alias()
@@ -49,7 +49,7 @@ do main() {
     total_passed += result.passed
     total_failed += result.failed
 
-    mut total int = total_passed + total_failed
+    mut total i64 = total_passed + total_failed
 
     println("")
     println("========================================")
@@ -73,8 +73,8 @@ do test_auto_use_no_alias() -> TestResult {
     println("------------------------------------------")
     println("  Test: import and use (no alias)")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // libA was imported with 'import and use "./libA.gray"'
     // Should be able to call greet() directly without prefix
@@ -90,7 +90,7 @@ do test_auto_use_no_alias() -> TestResult {
 
     // Also test qualified access still works
     println("  Testing qualified access libA.add()...")
-    mut sum int = libA.add(10, 20)
+    mut sum i64 = libA.add(10, 20)
     println("    libA.add(10, 20) = ${sum}")
     if sum == 30 {
         passed += 1
@@ -109,8 +109,8 @@ do test_auto_use_with_alias() -> TestResult {
     println("------------------------------------------")
     println("  Test: import and use alias\"path\"")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // We'll test this by using the already imported libA
     // and checking that both alias and original name work
@@ -139,8 +139,8 @@ do test_chained_import_use() -> TestResult {
     println("------------------------------------------")
     println("  Test: Chained import and use")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // The top of file has: import and use @std, "./libA.gray"
     // Both std functions and libA functions should be available
@@ -150,7 +150,7 @@ do test_chained_import_use() -> TestResult {
     passed += 1
 
     println("  Testing add from libA via chain...")
-    mut result int = add(5, 7)
+    mut result i64 = add(5, 7)
     println("    add(5, 7) = ${result}")
     if result == 12 {
         passed += 1
@@ -169,8 +169,8 @@ do test_regular_import_alias() -> TestResult {
     println("------------------------------------------")
     println("  Test: Regular import with alias")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test that qualified access works with libA
     println("  Testing qualified access libA.greet()...")
@@ -193,24 +193,24 @@ do test_stdlib_alias() -> TestResult {
     println("------------------------------------------")
     println("  Test: Stdlib with import and use")
     println("------------------------------------------")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // @std was imported with import and use
     // Test that stdlib functions work unqualified
     println("  Testing type_of() builtin...")
     mut t string = type_of(42)
     println("    type_of(42) = '${t}'")
-    if t == "int" {
+    if t == "i64" {
         passed += 1
     } otherwise {
         failed += 1
-        println("    FAIL: expected 'int'")
+        println("    FAIL: expected 'i64'")
     }
 
     println("  Testing len() builtin...")
-    mut arr [int] = {1, 2, 3, 4, 5}
-    mut length int = len(arr)
+    mut arr [i64] = {1, 2, 3, 4, 5}
+    mut length i64 = len(arr)
     println("    len({1,2,3,4,5}) = ${length}")
     if length == 5 {
         passed += 1

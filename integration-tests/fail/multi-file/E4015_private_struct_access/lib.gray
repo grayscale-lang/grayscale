@@ -3,10 +3,10 @@
  */
 
 private const Secret struct {
-    v int
+    v i64
 }
 
-do public_fn() -> int {
+do public_fn() -> i64 {
     mut s Secret = Secret{v: 1}
     return s.v
 }

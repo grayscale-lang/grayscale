@@ -1,12 +1,12 @@
 const Config struct {
-    port int
+    port i64
 }
 
 const FROZEN Config = Config{port: 1}
-const NUMS [int, 3] = {1, 2, 3}
+const NUMS [i64, 3] = {1, 2, 3}
 
 mut live Config = Config{port: 1}
-mut live_nums [int] = {1, 2, 3}
+mut live_nums [i64] = {1, 2, 3}
 
 do show() {
     println(FROZEN.port)

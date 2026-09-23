@@ -4,10 +4,10 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut count int = 0
+    mut count i64 = 0
     for _ in range(0, 5) {
         count++
     }
@@ -18,7 +18,7 @@ do main() {
         failed += 1
     }
 
-    mut total int = 0
+    mut total i64 = 0
     for _ in range(0, 3) {
         for _ in range(0, 4) {
             total++

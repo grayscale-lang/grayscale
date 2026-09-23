@@ -2,38 +2,38 @@
  * var_type_inference.gray - Test variable-to-variable type inference
  *
  * Verifies that declaring a variable via another variable (e.g. mut p2 = p)
- * correctly propagates the source type instead of defaulting to int.
+ * correctly propagates the source type instead of defaulting to i64.
  */
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Color struct {
-    r int
-    g int
-    b int
+    r i64
+    g i64
+    b i64
 }
 
-do make_point(x int, y int) -> Point {
+do make_point(x i64, y i64) -> Point {
     return Point{x: x, y: y}
 }
 
 do main() {
     println("=== Variable-to-Variable Type Inference ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: infer int from variable
-    mut a int = 42
+    // Test 1: infer i64 from variable
+    mut a i64 = 42
     mut b = a
     if b == 42 {
-        println("  [PASS] infer int from variable")
+        println("  [PASS] infer i64 from variable")
         passed += 1
     } otherwise {
-        println("  [FAIL] infer int from variable")
+        println("  [FAIL] infer i64 from variable")
         failed += 1
     }
 
@@ -59,14 +59,14 @@ do main() {
         failed += 1
     }
 
-    // Test 4: infer float from variable
-    mut f1 float = 3.14
+    // Test 4: infer f64 from variable
+    mut f1 f64 = 3.14
     mut f2 = f1
     if f2 > 3.13 && f2 < 3.15 {
-        println("  [PASS] infer float from variable")
+        println("  [PASS] infer f64 from variable")
         passed += 1
     } otherwise {
-        println("  [FAIL] infer float from variable")
+        println("  [FAIL] infer f64 from variable")
         failed += 1
     }
 
@@ -93,7 +93,7 @@ do main() {
     }
 
     // Test 7: mutate inferred variable independently
-    mut c int = 100
+    mut c i64 = 100
     mut d = c
     d = 200
     if c == 100 && d == 200 {
@@ -105,7 +105,7 @@ do main() {
     }
 
     // Test 8: infer from const variable
-    const MAX int = 255
+    const MAX i64 = 255
     mut limit = MAX
     if limit == 255 {
         println("  [PASS] infer from const variable")
@@ -116,7 +116,7 @@ do main() {
     }
 
     // Test 9: chain of inferences
-    mut x int = 7
+    mut x i64 = 7
     mut y = x
     mut z = y
     if z == 7 {

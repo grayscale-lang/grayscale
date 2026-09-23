@@ -1,0 +1,14 @@
+/*
+ * Error Test: E3043 - cannot cast pointer to i64
+ * Expected: E3043 "cannot cast" error
+ */
+
+const Point struct {
+    x i64
+    y i64
+}
+
+do main() {
+    mut p = new(Point)
+    mut n i64 = cast(p, i64)
+}

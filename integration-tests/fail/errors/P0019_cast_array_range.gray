@@ -6,7 +6,7 @@
  */
 
 do main() {
-    mut ints [int] = {1, 2, 300}
+    mut ints [i64] = {1, 2, 300}
     mut bytes [u8] = cast(ints, [u8])
     println(bytes)
 }

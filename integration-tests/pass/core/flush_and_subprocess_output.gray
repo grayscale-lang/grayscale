@@ -6,8 +6,8 @@
 
 do main() {
     println("=== flush() and subprocess output ordering ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: flush() is callable with no arguments and returns nothing.
     print("partial line, no newline")
@@ -20,7 +20,7 @@ do main() {
     // buffered "before" text is flushed ahead of the child (visible when stdout
     // is a pipe or file).
     print("[parent before] ")
-    mut code int = system("echo '[child]'")
+    mut code i64 = system("echo '[child]'")
     print("[parent after]\n")
     if code == 0 {
         println("  [PASS] system() after buffered print returns child exit code")

@@ -2,8 +2,8 @@
 // expect-error: E2094
 const Point struct {
     #deprecated
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {

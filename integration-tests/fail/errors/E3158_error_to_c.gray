@@ -7,7 +7,7 @@
 
 extern import "stdio.h"
 
-do maybe_fail() -> (int, Error) {
+do maybe_fail() -> (i64, Error) {
     return 5, error("bad")
 }
 

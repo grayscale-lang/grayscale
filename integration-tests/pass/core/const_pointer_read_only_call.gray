@@ -5,10 +5,10 @@
  */
 
 const Counter struct {
-    n int
+    n i64
 }
 
-do read(c ^Counter) -> int {
+do read(c ^Counter) -> i64 {
     return c^.n
 }
 
@@ -17,8 +17,8 @@ do bump(c ^Counter) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     const k Counter = Counter{n: 5}
     mut p ^Counter = addr(k)

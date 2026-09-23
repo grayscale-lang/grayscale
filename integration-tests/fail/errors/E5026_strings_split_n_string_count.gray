@@ -1,5 +1,5 @@
 /*
- * Error Test: E5026 - strings.split_n third argument must be an int count
+ * Error Test: E5026 - strings.split_n third argument must be an i64 count
  */
 // expect-error: E5026
 

@@ -4,7 +4,7 @@
  * `err->msg` with no guard, so this segfaulted with no diagnostic and
  * the earlier println never flushed. Now it panics cleanly. */
 
-do lookup(key string) -> (int, Error) {
+do lookup(key string) -> (i64, Error) {
     if key == "missing" {
         return 0, error(.NotFound, "no such key")
     }

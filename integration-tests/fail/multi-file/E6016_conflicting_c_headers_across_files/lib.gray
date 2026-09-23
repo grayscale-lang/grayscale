@@ -1,6 +1,6 @@
 extern import "./header1.h"
 
-do lib_call(x int) -> int {
-    mut r int = extern.myfunc(x)
+do lib_call(x i64) -> i64 {
+    mut r i64 = extern.myfunc(x)
     return r
 }

@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3001 - mixed-type-array-i64-string
+ * Expected: "array elements must all be the same type"
+ */
+
+do main() {
+    mut arr [i64] = {1, 2, "three"}
+}

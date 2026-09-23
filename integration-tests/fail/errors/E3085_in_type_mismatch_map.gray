@@ -1,10 +1,10 @@
 /*
- * Error Test: E3085 - 'in' operator type mismatch (string in map[int:string])
+ * Error Test: E3085 - 'in' operator type mismatch (string in map[i64:string])
  * Expected: E3085 "'in' operator type mismatch"
  */
 
 do main() {
-    mut m map[int:string] = {1: "one", 2: "two"}
+    mut m map[i64:string] = {1: "one", 2: "two"}
     if "hello" in m {
         println("found")
     }

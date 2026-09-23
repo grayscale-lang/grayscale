@@ -1,0 +1,6 @@
+/* Panic Test: P0009 - u64 subtraction goes negative */
+do main() {
+    mut x u64 = 0
+    mut y u64 = x - 1
+    println(y)
+}

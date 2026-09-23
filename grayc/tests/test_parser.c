@@ -31,19 +31,19 @@ static AstNode *first_statement(AstNode *program) {
 }
 
 static void test_parse_variable_declaration(void) {
-    AstNode *program = parse_test_input("mut x int = 42");
+    AstNode *program = parse_test_input("mut x i64 = 42");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
     ASSERT_STR_EQ(statement->data.var_decl.name, "x");
-    ASSERT_STR_EQ(statement->data.var_decl.type_name, "int");
+    ASSERT_STR_EQ(statement->data.var_decl.type_name, "i64");
     ASSERT(statement->data.var_decl.mutable);
     ASSERT_NOT_NULL(statement->data.var_decl.value);
     ASSERT_EQ(statement->data.var_decl.value->kind, NODE_INT_VALUE);
 }
 
 static void test_parse_constant_declaration(void) {
-    AstNode *program = parse_test_input("const PI float = 3.14");
+    AstNode *program = parse_test_input("const PI f64 = 3.14");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
@@ -52,14 +52,14 @@ static void test_parse_constant_declaration(void) {
 }
 
 static void test_parse_function_declaration(void) {
-    AstNode *program = parse_test_input("do add(a int, b int) -> int { return a + b }");
+    AstNode *program = parse_test_input("do add(a i64, b i64) -> i64 { return a + b }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
     ASSERT_STR_EQ(statement->data.func_decl.name, "add");
     ASSERT_EQ(statement->data.func_decl.param_count, 2);
     ASSERT_EQ(statement->data.func_decl.return_type_count, 1);
-    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "int");
+    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "i64");
 }
 
 static void test_parse_function_no_return(void) {
@@ -127,7 +127,7 @@ static void test_parse_loop(void) {
 }
 
 static void test_parse_struct_declaration(void) {
-    AstNode *program = parse_test_input("const Person struct { name string\n age int }");
+    AstNode *program = parse_test_input("const Person struct { name string\n age i64 }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_STRUCT_DECL);
@@ -155,11 +155,11 @@ static void test_parse_struct_literal(void) {
 }
 
 static void test_parse_array_literal(void) {
-    AstNode *program = parse_test_input("mut nums [int] = {1, 2, 3}");
+    AstNode *program = parse_test_input("mut nums [i64] = {1, 2, 3}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT_STR_EQ(statement->data.var_decl.type_name, "[int]");
+    ASSERT_STR_EQ(statement->data.var_decl.type_name, "[i64]");
     ASSERT_NOT_NULL(statement->data.var_decl.value);
     ASSERT_EQ(statement->data.var_decl.value->kind, NODE_ARRAY_VALUE);
     ASSERT_EQ(statement->data.var_decl.value->data.array_value.count, 3);
@@ -191,7 +191,7 @@ static void test_parse_default_params(void) {
 }
 
 static void test_parse_hex_int(void) {
-    AstNode *program = parse_test_input("mut x int = 0xFF");
+    AstNode *program = parse_test_input("mut x i64 = 0xFF");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->data.var_decl.value->kind, NODE_INT_VALUE);
@@ -199,21 +199,21 @@ static void test_parse_hex_int(void) {
 }
 
 static void test_parse_octal_int(void) {
-    AstNode *program = parse_test_input("mut x int = 0o10");
+    AstNode *program = parse_test_input("mut x i64 = 0o10");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->data.var_decl.value->data.int_value.value, 8);
 }
 
 static void test_parse_binary_int(void) {
-    AstNode *program = parse_test_input("mut x int = 0b1010");
+    AstNode *program = parse_test_input("mut x i64 = 0b1010");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->data.var_decl.value->data.int_value.value, 10);
 }
 
 static void test_parse_mut_keyword(void) {
-    AstNode *program = parse_test_input("mut x int = 42");
+    AstNode *program = parse_test_input("mut x i64 = 42");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
@@ -221,16 +221,16 @@ static void test_parse_mut_keyword(void) {
 }
 
 static void test_parse_array_return_type(void) {
-    AstNode *program = parse_test_input("do get() -> [int] { }");
+    AstNode *program = parse_test_input("do get() -> [i64] { }");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_FUNC_DECL);
     ASSERT_EQ(statement->data.func_decl.return_type_count, 1);
-    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "[int]");
+    ASSERT_STR_EQ(statement->data.func_decl.return_types[0], "[i64]");
 }
 
 static void test_parse_error_reports(void) {
-    AstNode *program = parse_test_input("mut x int =");
+    AstNode *program = parse_test_input("mut x i64 =");
     (void)program;
     ASSERT(diagnostic_has_errors(diagnostics));
 }
@@ -245,8 +245,8 @@ static void test_parse_function_reference(void) {
 static void test_parse_struct_function(void) {
     AstNode *program = parse_test_input(
         "const Point struct {\n"
-        "  x int\n"
-        "  do create(x int) -> Point { return Point{x: x} }\n"
+        "  x i64\n"
+        "  do create(x i64) -> Point { return Point{x: x} }\n"
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
@@ -289,7 +289,7 @@ static void test_parse_string_enum(void) {
 }
 
 static void test_parse_map_type(void) {
-    AstNode *program = parse_test_input("mut m map[string:int] = {:}");
+    AstNode *program = parse_test_input("mut m map[string:i64] = {:}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
@@ -297,26 +297,26 @@ static void test_parse_map_type(void) {
 }
 
 static void test_parse_fixed_array(void) {
-    AstNode *program = parse_test_input("const arr [int, 3] = {1, 2, 3}");
+    AstNode *program = parse_test_input("const arr [i64, 3] = {1, 2, 3}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(strstr(statement->data.var_decl.type_name, "int,3") != NULL);
+    ASSERT(strstr(statement->data.var_decl.type_name, "i64,3") != NULL);
 }
 
 static void test_parse_nested_array(void) {
-    AstNode *program = parse_test_input("mut m [[int]] = {{1}, {2}}");
+    AstNode *program = parse_test_input("mut m [[i64]] = {{1}, {2}}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_VAR_DECL);
-    ASSERT(strstr(statement->data.var_decl.type_name, "[[int]]") != NULL);
+    ASSERT(strstr(statement->data.var_decl.type_name, "[[i64]]") != NULL);
 }
 
 static void test_parse_private_struct_function(void) {
     /* Private functions inside structs */
     AstNode *program = parse_test_input(
         "const Foo struct {\n"
-        "  private do secret() -> int { return 42 }\n"
+        "  private do secret() -> i64 { return 42 }\n"
         "}");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
@@ -384,7 +384,7 @@ static void test_parse_not_expression(void) {
 }
 
 static void test_parse_postfix_expression(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 0\n x++ }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 0\n x++ }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_EXPR_STMT);
@@ -393,7 +393,7 @@ static void test_parse_postfix_expression(void) {
 }
 
 static void test_parse_index_expression(void) {
-    AstNode *program = parse_test_input("do main() { mut a [int] = {1,2,3}\n mut x = a[1] }");
+    AstNode *program = parse_test_input("do main() { mut a [i64] = {1,2,3}\n mut x = a[1] }");
     AstNode *value = body_statement(program, 1);
     ASSERT_NOT_NULL(value);
     ASSERT_EQ(value->kind, NODE_VAR_DECL);
@@ -402,7 +402,7 @@ static void test_parse_index_expression(void) {
 
 static void test_parse_member_expression(void) {
     AstNode *program = parse_test_input(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() { mut p P = P{x: 1}\n mut v = p.x }");
     /* main is stmt[1] (after struct) */
     AstNode *function = program->data.program.stmts[1];
@@ -413,7 +413,7 @@ static void test_parse_member_expression(void) {
 }
 
 static void test_parse_call_expression(void) {
-    AstNode *program = parse_test_input("do foo() -> int { return 1 }\n do main() { mut x = foo() }");
+    AstNode *program = parse_test_input("do foo() -> i64 { return 1 }\n do main() { mut x = foo() }");
     AstNode *function = program->data.program.stmts[1];
     AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[0];
     ASSERT_NOT_NULL(var_declaration);
@@ -430,7 +430,7 @@ static void test_parse_cast_expression(void) {
 
 static void test_parse_new_expression(void) {
     AstNode *program = parse_test_input(
-        "const Foo struct { x int }\n"
+        "const Foo struct { x i64 }\n"
         "do main() { mut p = new(Foo) }");
     AstNode *function = program->data.program.stmts[1];
     AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[0];
@@ -496,14 +496,14 @@ static void test_parse_nil_literal(void) {
 /* --- Statement AST Tests --- */
 
 static void test_parse_assign_statement(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 1\n x = 2 }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 1\n x = 2 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
 }
 
 static void test_parse_compound_assign(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 1\n x += 5 }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 1\n x += 5 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
@@ -533,7 +533,7 @@ static void test_parse_map_literal(void) {
 }
 
 static void test_parse_multi_return(void) {
-    AstNode *program = parse_test_input("do pair() -> (int, int) { return 1, 2 }");
+    AstNode *program = parse_test_input("do pair() -> (i64, i64) { return 1, 2 }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
     ASSERT_EQ(function->kind, NODE_FUNC_DECL);
@@ -548,7 +548,7 @@ static void test_parse_using_statement(void) {
 }
 
 static void test_parse_blank_identifier(void) {
-    AstNode *program = parse_test_input("do pair() -> (int, int) { return 1, 2 }\n do main() { mut _, b = pair() }");
+    AstNode *program = parse_test_input("do pair() -> (i64, i64) { return 1, 2 }\n do main() { mut _, b = pair() }");
     AstNode *function = program->data.program.stmts[1];
     /* Just check it parses without crashing */
     ASSERT_NOT_NULL(function);
@@ -573,7 +573,7 @@ static void test_parse_range_with_step(void) {
 
 static void test_parse_pointer_deref(void) {
     AstNode *program = parse_test_input(
-        "const Node struct { val int }\n"
+        "const Node struct { val i64 }\n"
         "do main() { mut p = new(Node)\n mut v = p^.val }");
     AstNode *function = program->data.program.stmts[1];
     AstNode *var_declaration = function->data.func_decl.body->data.block.stmts[1];
@@ -621,7 +621,7 @@ static void test_parse_precedence_comparison_logical(void) {
 }
 
 static void test_parse_named_return(void) {
-    AstNode *program = parse_test_input("do foo() -> (name string, age int) { }");
+    AstNode *program = parse_test_input("do foo() -> (name string, age i64) { }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
     ASSERT_EQ(function->kind, NODE_FUNC_DECL);
@@ -645,7 +645,7 @@ static void test_parse_error_unexpected_token(void) {
 /* --- Additional parser coverage --- */
 
 static void test_parse_for_each_statement(void) {
-    AstNode *program = parse_test_input("do main() { mut arr [int] = {1,2,3}\n for_each x in arr { } }");
+    AstNode *program = parse_test_input("do main() { mut arr [i64] = {1,2,3}\n for_each x in arr { } }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_FOR_EACH_STMT);
@@ -670,31 +670,31 @@ static void test_parse_empty_block(void) {
 }
 
 static void test_parse_grouped_params(void) {
-    AstNode *program = parse_test_input("do add(a, b int) -> int { return a + b }");
+    AstNode *program = parse_test_input("do add(a, b i64) -> i64 { return a + b }");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
     ASSERT_EQ(function->kind, NODE_FUNC_DECL);
     ASSERT_EQ(function->data.func_decl.param_count, 2);
-    ASSERT_STR_EQ(function->data.func_decl.params[0].type_name, "int");
-    ASSERT_STR_EQ(function->data.func_decl.params[1].type_name, "int");
+    ASSERT_STR_EQ(function->data.func_decl.params[0].type_name, "i64");
+    ASSERT_STR_EQ(function->data.func_decl.params[1].type_name, "i64");
 }
 
 static void test_parse_compound_assign_mul(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 2\n x *= 5 }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 2\n x *= 5 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
 }
 
 static void test_parse_compound_assign_div(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 10\n x /= 2 }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 10\n x /= 2 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
 }
 
 static void test_parse_compound_assign_mod(void) {
-    AstNode *program = parse_test_input("do main() { mut x int = 10\n x %= 3 }");
+    AstNode *program = parse_test_input("do main() { mut x i64 = 10\n x %= 3 }");
     AstNode *statement = body_statement(program, 1);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ASSIGN_STMT);
@@ -721,22 +721,22 @@ static void test_parse_switch_case(void) {
 }
 
 static void test_parse_alias_primitive(void) {
-    AstNode *program = parse_test_input("alias Meters = float");
+    AstNode *program = parse_test_input("alias Meters = f64");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
     ASSERT_STR_EQ(statement->data.alias_decl.name, "Meters");
-    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "float");
+    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "f64");
     ASSERT(!statement->data.alias_decl.is_private);
 }
 
 static void test_parse_alias_private(void) {
-    AstNode *program = parse_test_input("private alias InternalID = int");
+    AstNode *program = parse_test_input("private alias InternalID = i64");
     AstNode *statement = first_statement(program);
     ASSERT_NOT_NULL(statement);
     ASSERT_EQ(statement->kind, NODE_ALIAS_DECL);
     ASSERT_STR_EQ(statement->data.alias_decl.name, "InternalID");
-    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "int");
+    ASSERT_STR_EQ(statement->data.alias_decl.target_type, "i64");
     ASSERT(statement->data.alias_decl.is_private);
 }
 
@@ -766,7 +766,7 @@ static void test_parse_nested_if(void) {
 
 static void test_parse_struct_nested_field(void) {
     AstNode *program = parse_test_input(
-        "const Inner struct { val int }\n"
+        "const Inner struct { val i64 }\n"
         "const Outer struct { inner Inner }");
     ASSERT_EQ(program->data.program.stmt_count, 2);
     AstNode *outer = program->data.program.stmts[1];
@@ -775,7 +775,7 @@ static void test_parse_struct_nested_field(void) {
 }
 
 static void test_parse_in_operator(void) {
-    AstNode *program = parse_test_input("do main() { mut arr [int] = {1,2,3}\n mut x = 1 in arr }");
+    AstNode *program = parse_test_input("do main() { mut arr [i64] = {1,2,3}\n mut x = 1 in arr }");
     AstNode *value = body_statement(program, 1);
     ASSERT_NOT_NULL(value);
     ASSERT_EQ(value->kind, NODE_VAR_DECL);
@@ -786,14 +786,14 @@ static void test_parse_in_operator(void) {
 
 static void test_parse_return_multiple_values(void) {
     AstNode *program = parse_test_input(
-        "do pair() -> (int, string) {\n"
+        "do pair() -> (i64, string) {\n"
         "  return 42, \"hello\"\n"
         "}");
     AstNode *function = first_statement(program);
     ASSERT_NOT_NULL(function);
     ASSERT_EQ(function->kind, NODE_FUNC_DECL);
     ASSERT_EQ(function->data.func_decl.return_type_count, 2);
-    ASSERT_STR_EQ(function->data.func_decl.return_types[0], "int");
+    ASSERT_STR_EQ(function->data.func_decl.return_types[0], "i64");
     ASSERT_STR_EQ(function->data.func_decl.return_types[1], "string");
 }
 
@@ -840,7 +840,7 @@ static const char *parser_message_for(DiagnosticList *diagnostics, const char *c
 /* ===== Parser error code tests ===== */
 
 static void test_parse_error_E2025_non_int_array_size(void) {
-    AstNode *program = parse_test_input("do main() { mut a [int, \"five\"] = {} }");
+    AstNode *program = parse_test_input("do main() { mut a [i64, \"five\"] = {} }");
     (void)program;
     ASSERT(diagnostic_has_errors(diagnostics));
 }
@@ -853,7 +853,7 @@ static void test_parse_error_E2059_empty_when(void) {
 
 static void test_parse_error_E2060_too_many_returns(void) {
     AstNode *program = parse_test_input(
-        "do bad() -> (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) { }");
+        "do bad() -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) { }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2060"));
 }
@@ -870,13 +870,13 @@ static void test_parse_error_E2062_too_many_multi_vars(void) {
 }
 
 static void test_parse_error_E2068_mut_struct(void) {
-    AstNode *program = parse_test_input("mut S struct { x int }");
+    AstNode *program = parse_test_input("mut S struct { x i64 }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2068"));
 }
 
 static void test_parse_error_E2069_semicolon_in_struct(void) {
-    AstNode *program = parse_test_input("const S struct { x int; y int }");
+    AstNode *program = parse_test_input("const S struct { x i64; y i64 }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2069"));
 }
@@ -894,7 +894,7 @@ static void test_parse_error_E2071_empty_interpolation(void) {
 }
 
 static void test_parse_error_E2077_empty_index(void) {
-    AstNode *program = parse_test_input("do main() { mut a [int] = {1} mut x int = a[] }");
+    AstNode *program = parse_test_input("do main() { mut a [i64] = {1} mut x i64 = a[] }");
     (void)program;
     ASSERT(parser_has_code(diagnostics, "E2077"));
     /* One diagnostic, not the old E2002 + E2001 cascade. */
@@ -906,7 +906,7 @@ static void test_parse_error_E2077_empty_index(void) {
  * ${...} sub-expression, so it must report the plain unexpected-token wording
  * rather than the interpolation one. */
 static void test_parse_error_truncated_at_eof(void) {
-    AstNode *program = parse_test_input("do main() {\n    mut x int = ");
+    AstNode *program = parse_test_input("do main() {\n    mut x i64 = ");
     (void)program;
     const char *message = parser_message_for(diagnostics, "E2002");
     ASSERT_NOT_NULL(message);
@@ -925,7 +925,7 @@ static void test_parse_error_E2002_reports_typed_keyword(void) {
     for (size_t i = 0; i < sizeof(spellings) / sizeof(spellings[0]); i++) {
         char input[64];
         char expected[64];
-        snprintf(input, sizeof(input), "do main() {\n    mut x int = %s\n}", spellings[i]);
+        snprintf(input, sizeof(input), "do main() {\n    mut x i64 = %s\n}", spellings[i]);
         snprintf(expected, sizeof(expected), "unexpected token '%s'", spellings[i]);
         AstNode *program = parse_test_input(input);
         (void)program;
@@ -938,7 +938,7 @@ static void test_parse_error_E2002_reports_typed_keyword(void) {
 /* Non-keyword tokens carry a literal that is not a keyword spelling (or none
  * at all), so they must keep falling back to the token type's name. */
 static void test_parse_error_E2002_non_keyword_fallback(void) {
-    AstNode *program = parse_test_input("do main() {\n    mut x int = = 5\n}");
+    AstNode *program = parse_test_input("do main() {\n    mut x i64 = = 5\n}");
     (void)program;
     const char *message = parser_message_for(diagnostics, "E2002");
     ASSERT_NOT_NULL(message);
@@ -966,7 +966,7 @@ static void test_parse_error_E3138_float_literal_overflow(void) {
     };
     for (size_t i = 0; i < sizeof(overflowing) / sizeof(overflowing[0]); i++) {
         char input[64];
-        snprintf(input, sizeof(input), "do main() { mut x float = %s }", overflowing[i]);
+        snprintf(input, sizeof(input), "do main() { mut x f64 = %s }", overflowing[i]);
         AstNode *program = parse_test_input(input);
         (void)program;
         ASSERT(parser_has_code(diagnostics, "E3138"));
@@ -981,7 +981,7 @@ static void test_parse_float_literal_in_range(void) {
     };
     for (size_t i = 0; i < sizeof(in_range) / sizeof(in_range[0]); i++) {
         char input[64];
-        snprintf(input, sizeof(input), "do main() { mut x float = %s }", in_range[i]);
+        snprintf(input, sizeof(input), "do main() { mut x f64 = %s }", in_range[i]);
         AstNode *program = parse_test_input(input);
         (void)program;
         ASSERT(!parser_has_code(diagnostics, "E3138"));
@@ -994,7 +994,7 @@ static void test_parse_float_literal_in_range(void) {
  * deprecated. Clearing the pending state is what closes the leak. */
 static void test_parse_error_deprecated_on_struct_field(void) {
     AstNode *program = parse_test_input(
-        "const Point struct {\n #deprecated\n x int\n\n do sum() -> int { return 3 }\n}");
+        "const Point struct {\n #deprecated\n x i64\n\n do sum() -> i64 { return 3 }\n}");
     AstNode *statement = first_statement(program);
     ASSERT(parser_has_code(diagnostics, "E2094"));
     ASSERT_NOT_NULL(statement);
@@ -1031,7 +1031,7 @@ static void test_parse_error_attributes_on_enum_variant(void) {
  * function itself, message and all. */
 static void test_parse_deprecated_on_struct_func(void) {
     AstNode *program = parse_test_input(
-        "const Point struct {\n x int\n\n #deprecated(\"use add\")\n do sum() -> int { return 3 }\n}");
+        "const Point struct {\n x i64\n\n #deprecated(\"use add\")\n do sum() -> i64 { return 3 }\n}");
     AstNode *statement = first_statement(program);
     ASSERT(!parser_has_code(diagnostics, "E2002"));
     ASSERT_NOT_NULL(statement);
@@ -1053,12 +1053,12 @@ static void test_parse_test_attribute(void) {
 }
 
 static void test_parse_test_attribute_on_struct_is_error(void) {
-    parse_test_input("const S struct {\n x int\n #test\n do check() {}\n}");
+    parse_test_input("const S struct {\n x i64\n #test\n do check() {}\n}");
     ASSERT(parser_has_code(diagnostics, "E2094"));
 }
 
 static void test_parse_test_attribute_on_var_is_error(void) {
-    parse_test_input("#test\nmut x int = 1");
+    parse_test_input("#test\nmut x i64 = 1");
     ASSERT(parser_has_code(diagnostics, "E2094"));
 }
 

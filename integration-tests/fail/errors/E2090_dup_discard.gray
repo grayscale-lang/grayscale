@@ -4,7 +4,7 @@
 
 #discard
 #discard
-do produce() -> int {
+do produce() -> i64 {
     return 1
 }
 

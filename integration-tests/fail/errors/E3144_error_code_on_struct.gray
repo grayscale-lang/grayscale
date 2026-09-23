@@ -3,7 +3,7 @@
 
 #error_code
 const Config struct {
-    x int
+    x i64
 }
 
 do main() {}

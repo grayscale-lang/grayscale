@@ -4,10 +4,10 @@
  */
 
 const Math struct {
-    x int
+    x i64
 }
 
-do Math.add(a int, b int) -> int {
+do Math.add(a i64, b i64) -> i64 {
     return a + b
 }
 

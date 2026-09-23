@@ -2,13 +2,13 @@
  * type_of_bigint_inferred.gray - Test type_of on inferred wide integer variables
  *
  * Covers: type_of on variables declared with inferred types (mut a = i128(42))
- * should return the specific wide integer type name, not "int".
+ * should return the specific wide integer type name, not "i64".
  */
 
 do main() {
     println("=== type_of Inferred Wide Integer Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: inferred i128 type_of
     mut a = i128(42)
@@ -72,11 +72,11 @@ do main() {
 
     // Test 7: type_of non-bigint inferred variable still works
     mut g = 42
-    if type_of(g) == "int" {
-        println("  [PASS] type_of inferred int still \"int\"")
+    if type_of(g) == "i64" {
+        println("  [PASS] type_of inferred i64 still \"i64\"")
         passed += 1
     } otherwise {
-        println("  [FAIL] type_of inferred int: got \"${type_of(g)}\"")
+        println("  [FAIL] type_of inferred i64: got \"${type_of(g)}\"")
         failed += 1
     }
 

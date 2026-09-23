@@ -2,7 +2,7 @@
 import @strconv
 
 do main() {
-    mut base int = 4294967298
+    mut base i64 = 4294967298
 
     mut v, err = strconv.to_int("11", base)
     if err != nil && v == 0 {

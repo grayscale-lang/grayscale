@@ -4,11 +4,11 @@
  * Expected: "or_return requires a function that returns (T, Error)"
  */
 
-do two() -> (int, int) {
+do two() -> (i64, i64) {
     return 3, 4
 }
 
-do consume() -> (int, Error) {
+do consume() -> (i64, Error) {
     mut a, b = two() or_return
     return a + b, nil
 }

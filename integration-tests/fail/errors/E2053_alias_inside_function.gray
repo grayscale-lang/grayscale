@@ -4,5 +4,5 @@
  */
 
 do main() {
-    alias Meters = float
+    alias Meters = f64
 }

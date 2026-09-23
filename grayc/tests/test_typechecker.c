@@ -54,7 +54,7 @@ static GrayType *expression_type(const char *expr_code) {
 
 static void test_scope_define_lookup(void) {
     Scope *scope = scope_create(NULL);
-    scope_define(scope, "x", &TYPE_INT, true);
+    scope_define(scope, "x", &TYPE_I64, true);
     Symbol *symbol =scope_lookup(scope, "x");
     ASSERT_NOT_NULL(symbol);
     ASSERT_EQ(symbol->type->kind, TK_INT);
@@ -63,7 +63,7 @@ static void test_scope_define_lookup(void) {
 
 static void test_scope_nested(void) {
     Scope *outer = scope_create(NULL);
-    scope_define(outer, "x", &TYPE_INT, true);
+    scope_define(outer, "x", &TYPE_I64, true);
     Scope *inner = scope_create(outer);
     scope_define(inner, "y", &TYPE_STRING, false);
 
@@ -78,7 +78,7 @@ static void test_scope_nested(void) {
 
 static void test_scope_shadow(void) {
     Scope *outer = scope_create(NULL);
-    scope_define(outer, "x", &TYPE_INT, true);
+    scope_define(outer, "x", &TYPE_I64, true);
     Scope *inner = scope_create(outer);
     scope_define(inner, "x", &TYPE_STRING, false);
 
@@ -96,7 +96,6 @@ static void test_scope_undefined(void) {
 /* --- Type Constructors --- */
 
 static void test_type_from_name_primitives(void) {
-    ASSERT_EQ(type_from_name("int")->kind, TK_INT);
     ASSERT_EQ(type_from_name("i8")->kind, TK_INT);
     ASSERT_EQ(type_from_name("i16")->kind, TK_INT);
     ASSERT_EQ(type_from_name("i32")->kind, TK_INT);
@@ -105,22 +104,23 @@ static void test_type_from_name_primitives(void) {
     ASSERT_EQ(type_from_name("u16")->kind, TK_UINT);
     ASSERT_EQ(type_from_name("u32")->kind, TK_UINT);
     ASSERT_EQ(type_from_name("u64")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("uint")->kind, TK_UINT);
-    ASSERT_EQ(type_from_name("float")->kind, TK_FLOAT);
     ASSERT_EQ(type_from_name("f32")->kind, TK_FLOAT);
     ASSERT_EQ(type_from_name("f64")->kind, TK_FLOAT);
     ASSERT_EQ(type_from_name("bool")->kind, TK_BOOL);
     ASSERT_EQ(type_from_name("char")->kind, TK_CHAR);
-    ASSERT_EQ(type_from_name("byte")->kind, TK_BYTE);
+    ASSERT_EQ(type_from_name("int")->kind, TK_UNKNOWN);
+    ASSERT_EQ(type_from_name("uint")->kind, TK_UNKNOWN);
+    ASSERT_EQ(type_from_name("float")->kind, TK_UNKNOWN);
+    ASSERT_EQ(type_from_name("byte")->kind, TK_UNKNOWN);
     ASSERT_EQ(type_from_name("string")->kind, TK_STRING);
     ASSERT_EQ(type_from_name("void")->kind, TK_VOID);
     ASSERT_EQ(type_from_name("nil")->kind, TK_NIL);
 }
 
 static void test_type_from_name_array(void) {
-    GrayType *type =type_from_name("[int]");
+    GrayType *type =type_from_name("[i64]");
     ASSERT_EQ(type->kind, TK_ARRAY);
-    ASSERT_STR_EQ(type->element_type, "int");
+    ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_type_from_name_struct(void) {
@@ -130,10 +130,10 @@ static void test_type_from_name_struct(void) {
 }
 
 static void test_type_is_numeric(void) {
-    ASSERT(type_is_numeric(&TYPE_INT));
-    ASSERT(type_is_numeric(&TYPE_FLOAT));
+    ASSERT(type_is_numeric(&TYPE_I64));
+    ASSERT(type_is_numeric(&TYPE_F64));
     ASSERT(type_is_numeric(&TYPE_CHAR));
-    ASSERT(type_is_numeric(&TYPE_BYTE));
+    ASSERT(type_is_numeric(&TYPE_U8));
     ASSERT(!type_is_numeric(&TYPE_STRING));
     ASSERT(!type_is_numeric(&TYPE_BOOL));
 }
@@ -217,7 +217,7 @@ static void test_resolve_array_literal(void) {
 static void test_resolve_typed_variable(void) {
     TypeTable *table =typecheck_test_input(
         "do main() {\n"
-        "    mut x int = 42\n"
+        "    mut x i64 = 42\n"
         "    mut y string = \"hello\"\n"
         "}");
     (void)table;
@@ -240,7 +240,7 @@ static void test_resolve_type_of(void) {
 }
 
 static void test_resolve_to_float(void) {
-    GrayType *type =expression_type("float(42)");
+    GrayType *type =expression_type("cast(42, f64)");
     ASSERT_NOT_NULL(type);
     ASSERT_EQ(type->kind, TK_FLOAT);
 }
@@ -251,7 +251,7 @@ static void test_resolve_struct_field(void) {
     TypeTable *table =typecheck_test_input(
         "const Person struct {\n"
         "    name string\n"
-        "    age int\n"
+        "    age i64\n"
         "}\n"
         "do main() {\n"
         "    mut p Person = Person{name: \"Alice\", age: 30}\n"
@@ -265,7 +265,7 @@ static void test_resolve_struct_field(void) {
 
 static void test_resolve_function_return(void) {
     TypeTable *table =typecheck_test_input(
-        "do add(a int, b int) -> int { return a + b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
         "do main() {\n"
         "    mut result = add(1, 2)\n"
         "}");
@@ -276,9 +276,9 @@ static void test_resolve_function_return(void) {
 /* --- Pointer Type Tests --- */
 
 static void test_type_from_name_pointer(void) {
-    GrayType *type =type_from_name("^int");
+    GrayType *type =type_from_name("^i64");
     ASSERT_EQ(type->kind, TK_POINTER);
-    ASSERT_STR_EQ(type->element_type, "int");
+    ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_type_pointer_constructor(void) {
@@ -297,14 +297,14 @@ static void test_resolve_addr(void) {
  * results must stay valid at once so callers can chain them in one snprintf. */
 static void test_type_name_composite_rendering(void) {
     ASSERT_STR_EQ(type_name(type_from_name("^Point")), "^Point");
-    ASSERT_STR_EQ(type_name(type_from_name("[int]")), "[int]");
+    ASSERT_STR_EQ(type_name(type_from_name("[i64]")), "[i64]");
     ASSERT_STR_EQ(type_name(type_from_name("map[string:^Point]")), "map[string:^Point]");
 
     char buf[128];
     snprintf(buf, sizeof(buf), "%s vs %s",
-             type_name(type_from_name("[int]")),
-             type_name(type_from_name("map[string:int]")));
-    ASSERT_STR_EQ(buf, "[int] vs map[string:int]");
+             type_name(type_from_name("[i64]")),
+             type_name(type_from_name("map[string:i64]")));
+    ASSERT_STR_EQ(buf, "[i64] vs map[string:i64]");
 }
 
 /* Helper: parse and typecheck, return diagnostics */
@@ -349,7 +349,7 @@ static void test_error_type_mismatch(void) {
 
 static void test_error_wrong_arg_count(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do add(a int, b int) -> int { return a + b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
         "do main() { add(1, 2, 3) }");
     ASSERT(diagnostic_has_errors(diagnostics));
     diagnostic_destroy(diagnostics);
@@ -357,7 +357,7 @@ static void test_error_wrong_arg_count(void) {
 
 static void test_error_deref_non_pointer(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 42\n mut y = x^ }");
+        "do main() { mut x i64 = 42\n mut y = x^ }");
     ASSERT(diagnostic_has_errors(diagnostics));
     diagnostic_destroy(diagnostics);
 }
@@ -377,7 +377,7 @@ static void test_resolve_string_enum(void) {
 }
 
 static void test_type_from_name_map(void) {
-    GrayType *type =type_from_name("map[string:int]");
+    GrayType *type =type_from_name("map[string:i64]");
     ASSERT_NOT_NULL(type);
     ASSERT_EQ(type->kind, TK_MAP);
 }
@@ -386,7 +386,7 @@ static void test_type_from_name_map(void) {
 
 static void test_error_E3001_type_mismatch_assign(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = \"hello\" }");
+        "do main() { mut x i64 = \"hello\" }");
     ASSERT(has_error_code(diagnostics, "E3001"));
     diagnostic_destroy(diagnostics);
 }
@@ -400,14 +400,14 @@ static void test_error_E3002_invalid_operator(void) {
 
 static void test_error_E3003_non_int_index(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a [int] = {1,2,3}\n mut x = a[\"bad\"] }");
+        "do main() { mut a [i64] = {1,2,3}\n mut x = a[\"bad\"] }");
     ASSERT(has_error_code(diagnostics, "E3003"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3005_const_reassign(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const x int = 5\n x = 10 }");
+        "do main() { const x i64 = 5\n x = 10 }");
     ASSERT(has_error_code(diagnostics, "E3005"));
     diagnostic_destroy(diagnostics);
 }
@@ -422,28 +422,28 @@ static void test_error_E3006_return_from_void(void) {
 
 static void test_error_E5023_increment_float(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x float = 1.0\n x++ }");
+        "do main() { mut x f64 = 1.0\n x++ }");
     ASSERT(has_error_code(diagnostics, "E5023"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3008_index_non_array(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 5\n mut y = x[0] }");
+        "do main() { mut x i64 = 5\n mut y = x[0] }");
     ASSERT(has_error_code(diagnostics, "E3008"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3009_foreach_non_iterable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 5\n for_each item in x { } }");
+        "do main() { mut x i64 = 5\n for_each item in x { } }");
     ASSERT(has_error_code(diagnostics, "E3009"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3010_struct_no_field(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Point struct { x int\n y int }\n"
+        "const Point struct { x i64\n y i64 }\n"
         "do main() { mut p Point = Point{x: 1, y: 2}\n mut z = p.z }");
     ASSERT(has_error_code(diagnostics, "E3010"));
     diagnostic_destroy(diagnostics);
@@ -451,28 +451,28 @@ static void test_error_E3010_struct_no_field(void) {
 
 static void test_error_E3013_field_on_primitive(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 42\n mut y = x.foo }");
+        "do main() { mut x i64 = 42\n mut y = x.foo }");
     ASSERT(has_error_code(diagnostics, "E3013"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3015_call_non_function(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 42\n x() }");
+        "do main() { mut x i64 = 42\n x() }");
     ASSERT(has_error_code(diagnostics, "E3015"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3016_deref_non_pointer(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 42\n mut y = x^ }");
+        "do main() { mut x i64 = 42\n mut y = x^ }");
     ASSERT(has_error_code(diagnostics, "E3016"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3036_out_of_range(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x uint = -5 }");
+        "do main() { mut x u64 = -5 }");
     ASSERT(has_error_code(diagnostics, "E3036"));
     diagnostic_destroy(diagnostics);
 }
@@ -491,7 +491,7 @@ static void test_valid_int64_min_literal(void) {
 
 static void test_error_E3024_missing_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo() -> int { }\n"
+        "do foo() -> i64 { }\n"
         "do main() { foo() }");
     ASSERT(has_error_code(diagnostics, "E3024"));
     diagnostic_destroy(diagnostics);
@@ -499,8 +499,8 @@ static void test_error_E3024_missing_return(void) {
 
 static void test_error_E3027_const_to_mut_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do modify(&arr [int]) { arr[0] = 999 }\n"
-        "do main() { const nums [int] = {1, 2, 3}\n modify(nums) }");
+        "do modify(&arr [i64]) { arr[0] = 999 }\n"
+        "do main() { const nums [i64] = {1, 2, 3}\n modify(nums) }");
     ASSERT(has_error_code(diagnostics, "E3027"));
     diagnostic_destroy(diagnostics);
 }
@@ -521,7 +521,7 @@ static void test_error_E3038_void_variable(void) {
 
 static void test_error_E3018_when_type_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 5\n when x { is \"bad\" { } default { } } }");
+        "do main() { mut x i64 = 5\n when x { is \"bad\" { } default { } } }");
     ASSERT(has_error_code(diagnostics, "E3018"));
     diagnostic_destroy(diagnostics);
 }
@@ -544,7 +544,7 @@ static void test_error_E4002_undefined_function(void) {
 
 static void test_error_E4003_duplicate_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 1\n mut x int = 2 }");
+        "do main() { mut x i64 = 1\n mut x i64 = 2 }");
     ASSERT(has_error_code(diagnostics, "E4003"));
     diagnostic_destroy(diagnostics);
 }
@@ -569,7 +569,7 @@ static void test_error_E4005_no_main(void) {
 
 static void test_error_E5008_wrong_arg_count_specific(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do add(a int, b int) -> int { return a + b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
         "do main() { add(1) }");
     ASSERT(has_error_code(diagnostics, "E5008"));
     diagnostic_destroy(diagnostics);
@@ -586,7 +586,7 @@ static void test_error_E5015_increment_literal(void) {
 
 static void test_warning_W1001_unused_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 42 }");
+        "do main() { mut x i64 = 42 }");
     ASSERT(diagnostic_warning_count(diagnostics) > 0);
     ASSERT(has_error_code(diagnostics, "W1001"));
     diagnostic_destroy(diagnostics);
@@ -603,7 +603,7 @@ static void test_warning_W1003_unused_function(void) {
 
 static void test_warning_W2002_shadow_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 1\n if true { mut x int = 2 } }");
+        "do main() { mut x i64 = 1\n if true { mut x i64 = 2 } }");
     ASSERT(has_error_code(diagnostics, "W2002"));
     diagnostic_destroy(diagnostics);
 }
@@ -612,7 +612,7 @@ static void test_warning_W2002_shadow_variable(void) {
 
 static void test_error_E3011_type_as_value(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x = int }");
+        "do main() { mut x = i64 }");
     ASSERT(has_error_code(diagnostics, "E3011"));
     diagnostic_destroy(diagnostics);
 }
@@ -642,7 +642,7 @@ static void test_error_E3007_negate_non_numeric(void) {
 
 static void test_error_E3035_not_all_paths_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo(x int) -> int {\n"
+        "do foo(x i64) -> i64 {\n"
         "    if x > 0 { return 1 }\n"
         "}\n"
         "do main() { foo(1) }");
@@ -659,7 +659,7 @@ static void test_error_E3039_ensure_non_call(void) {
 
 static void test_error_E3040_multi_return_single_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do pair() -> (int, int) { return 1, 2 }\n"
+        "do pair() -> (i64, i64) { return 1, 2 }\n"
         "do main() { mut x = pair() }");
     ASSERT(has_error_code(diagnostics, "E3040"));
     diagnostic_destroy(diagnostics);
@@ -667,7 +667,7 @@ static void test_error_E3040_multi_return_single_variable(void) {
 
 static void test_error_E3044_field_on_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Point struct { x int\n y int }\n"
+        "const Point struct { x i64\n y i64 }\n"
         "do main() { mut v = Point.x }");
     ASSERT(has_error_code(diagnostics, "E3044"));
     diagnostic_destroy(diagnostics);
@@ -677,15 +677,15 @@ static void test_error_E3044_field_on_type(void) {
 
 static void test_error_E4006_reserved_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut gray_internal int = 5 }");
+        "do main() { mut gray_internal i64 = 5 }");
     ASSERT(has_error_code(diagnostics, "E4006"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E4012_shadow_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Point struct { x int }\n"
-        "do main() { mut Point int = 5 }");
+        "const Point struct { x i64 }\n"
+        "do main() { mut Point i64 = 5 }");
     ASSERT(has_error_code(diagnostics, "E4012"));
     diagnostic_destroy(diagnostics);
 }
@@ -693,7 +693,7 @@ static void test_error_E4012_shadow_type(void) {
 static void test_error_E4013_shadow_function(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do helper() { }\n"
-        "do main() { mut helper int = 5 }");
+        "do main() { mut helper i64 = 5 }");
     ASSERT(has_error_code(diagnostics, "E4013"));
     diagnostic_destroy(diagnostics);
 }
@@ -703,14 +703,14 @@ static void test_error_E4013_shadow_function(void) {
 static void test_error_E5007_append_const_array(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @arrays\n"
-        "do main() { const arr [int] = {1, 2}\n arrays.append(arr, 3) }");
+        "do main() { const arr [i64] = {1, 2}\n arrays.append(arr, 3) }");
     ASSERT(has_error_code(diagnostics, "E5007"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E5011_unused_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do get() -> int { return 42 }\n"
+        "do get() -> i64 { return 42 }\n"
         "do main() { get() }");
     ASSERT(has_error_code(diagnostics, "E5011"));
     diagnostic_destroy(diagnostics);
@@ -718,7 +718,7 @@ static void test_error_E5011_unused_return(void) {
 
 static void test_error_E3019_signed_to_unsigned(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = -5\n mut y uint = x }");
+        "do main() { mut x i64 = -5\n mut y u64 = x }");
     ASSERT(has_error_code(diagnostics, "E3019"));
     diagnostic_destroy(diagnostics);
 }
@@ -741,14 +741,14 @@ static void test_error_E2051_nested_function(void) {
 
 static void test_error_E2053_struct_in_function(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const Foo struct { x int } }");
+        "do main() { const Foo struct { x i64 } }");
     ASSERT(has_error_code(diagnostics, "E2053"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E2043_duplicate_case(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 1\n when x { is 1 { } is 1 { } default { } } }");
+        "do main() { mut x i64 = 1\n when x { is 1 { } is 1 { } default { } } }");
     ASSERT(has_error_code(diagnostics, "E2043"));
     diagnostic_destroy(diagnostics);
 }
@@ -756,7 +756,7 @@ static void test_error_E2043_duplicate_case(void) {
 /* Note: compiler emits E2037 for reserved struct names (should be E2038) */
 static void test_error_E2037_reserved_struct_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const string struct { x int }\n"
+        "const string struct { x i64 }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E2037"));
     diagnostic_destroy(diagnostics);
@@ -772,7 +772,7 @@ static void test_error_E2016_empty_enum(void) {
 
 static void test_error_E2012_duplicate_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo(a int, a int) -> int { return a }\n"
+        "do foo(a i64, a i64) -> i64 { return a }\n"
         "do main() { foo(1, 2) }");
     ASSERT(has_error_code(diagnostics, "E2012"));
     diagnostic_destroy(diagnostics);
@@ -780,7 +780,7 @@ static void test_error_E2012_duplicate_param(void) {
 
 static void test_error_E2013_duplicate_struct_field(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Bad struct { x int\n x int }\n"
+        "const Bad struct { x i64\n x i64 }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E2013"));
     diagnostic_destroy(diagnostics);
@@ -799,7 +799,7 @@ static void test_error_E12006_duplicate_map_key(void) {
 
 static void test_error_E2011_const_no_value(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const x int }");
+        "do main() { const x i64 }");
     ASSERT(has_error_code(diagnostics, "E2011"));
     diagnostic_destroy(diagnostics);
 }
@@ -813,7 +813,7 @@ static void test_error_E2036_import_in_function(void) {
 
 static void test_error_E2038_reserved_enum_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const int enum { A\n B }\n"
+        "const i64 enum { A\n B }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E2038"));
     diagnostic_destroy(diagnostics);
@@ -821,7 +821,7 @@ static void test_error_E2038_reserved_enum_name(void) {
 
 static void test_error_E2039_required_after_default_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo(a int = 1, b int) { }\n"
+        "do foo(a i64 = 1, b i64) { }\n"
         "do main() { foo(1, 2) }");
     ASSERT(has_error_code(diagnostics, "E2039"));
     diagnostic_destroy(diagnostics);
@@ -840,7 +840,7 @@ static void test_error_E2056_statement_at_file_scope(void) {
 static void test_error_E3017_fmt_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "const Point struct { x int\n y int }\n"
+        "const Point struct { x i64\n y i64 }\n"
         "do main() {\n"
         "    mut p Point = Point{x: 1, y: 2}\n"
         "    fmt.printf(\"%s\", p)\n"
@@ -874,10 +874,10 @@ static void test_error_E3041_interpolate_void(void) {
 
 static void test_error_E3043_invalid_cast(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Point struct { x int\n y int }\n"
+        "const Point struct { x i64\n y i64 }\n"
         "do main() {\n"
         "    mut p Point = Point{x: 1, y: 2}\n"
-        "    mut x = cast(p, int)\n"
+        "    mut x = cast(p, i64)\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3043"));
     diagnostic_destroy(diagnostics);
@@ -885,8 +885,8 @@ static void test_error_E3043_invalid_cast(void) {
 
 static void test_error_E3167_cast_pointer_reinterpret(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Point struct { x int\n y int }\n"
-        "const Vec struct { a int\n b int }\n"
+        "const Point struct { x i64\n y i64 }\n"
+        "const Vec struct { a i64\n b i64 }\n"
         "do main() {\n"
         "    mut p = new(Point)\n"
         "    mut q ^Vec = cast(p, ^Vec)\n"
@@ -897,7 +897,7 @@ static void test_error_E3167_cast_pointer_reinterpret(void) {
 
 static void test_error_E3045_or_return_no_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do get() -> int { return 42 }\n"
+        "do get() -> i64 { return 42 }\n"
         "do main() { mut x = get() or_return }");
     ASSERT(has_error_code(diagnostics, "E3045"));
     diagnostic_destroy(diagnostics);
@@ -908,7 +908,7 @@ static void test_error_E3045_or_return_no_error(void) {
 static void test_error_E4014_shadow_module(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @math\n"
-        "do main() { mut math int = 5 }");
+        "do main() { mut math i64 = 5 }");
     ASSERT(has_error_code(diagnostics, "E4014"));
     diagnostic_destroy(diagnostics);
 }
@@ -917,8 +917,8 @@ static void test_error_E4014_shadow_module(void) {
 
 static void test_error_E5024_signed_return_as_unsigned(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo() -> uint {\n"
-        "    mut x int = -5\n"
+        "do foo() -> u64 {\n"
+        "    mut x i64 = -5\n"
         "    return x\n"
         "}\n"
         "do main() { foo() }");
@@ -964,7 +964,7 @@ static void test_error_E9005_invalid_range(void) {
 static void test_error_E12001_map_func_on_array(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @maps\n"
-        "do main() { mut a [int] = {1, 2}\n maps.keys(a) }");
+        "do main() { mut a [i64] = {1, 2}\n maps.keys(a) }");
     ASSERT(has_error_code(diagnostics, "E12001"));
     diagnostic_destroy(diagnostics);
 }
@@ -973,21 +973,21 @@ static void test_error_E12001_map_func_on_array(void) {
 
 static void test_warning_W1005_typed_blank(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do pair() -> (int, int) { return 1, 2 }\n"
-        "do main() { mut x int, _ int = pair() }");
+        "do pair() -> (i64, i64) { return 1, 2 }\n"
+        "do main() { mut x i64, _ i64 = pair() }");
     ASSERT(has_error_code(diagnostics, "W1005"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_warning_W1004_no_value_declaration(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { foobar int\n println(foobar) }");
+        "do main() { foobar i64\n println(foobar) }");
     ASSERT(has_error_code(diagnostics, "W1004"));
     diagnostic_destroy(diagnostics);
 
     /* A value, explicit or the zero value, silences it. */
     DiagnosticList *ok = typecheck_diagnostics(
-        "do main() { mut foobar int = 0\n println(foobar) }");
+        "do main() { mut foobar i64 = 0\n println(foobar) }");
     ASSERT(!has_error_code(ok, "W1004"));
     diagnostic_destroy(ok);
 }
@@ -1002,7 +1002,7 @@ static void test_warning_W2001_unused_import(void) {
 
 static void test_warning_W3003_partial_array_init(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a [int, 5] = {1, 2} }");
+        "do main() { mut a [i64, 5] = {1, 2} }");
     ASSERT(has_error_code(diagnostics, "W3003"));
     diagnostic_destroy(diagnostics);
 }
@@ -1054,7 +1054,7 @@ static void test_resolve_float_negation(void) {
 
 static void test_scope_deeply_nested(void) {
     Scope *scope1 = scope_create(NULL);
-    scope_define(scope1, "a", &TYPE_INT, true);
+    scope_define(scope1, "a", &TYPE_I64, true);
     Scope *scope2 = scope_create(scope1);
     scope_define(scope2, "b", &TYPE_STRING, true);
     Scope *scope3 = scope_create(scope2);
@@ -1073,7 +1073,7 @@ static void test_scope_deeply_nested(void) {
 
 static void test_scope_local_only(void) {
     Scope *outer = scope_create(NULL);
-    scope_define(outer, "x", &TYPE_INT, true);
+    scope_define(outer, "x", &TYPE_I64, true);
     Scope *inner = scope_create(outer);
 
     /* lookup_local should NOT find outer's x */
@@ -1094,7 +1094,7 @@ static void test_type_from_name_bigint(void) {
 }
 
 static void test_type_is_numeric_uint(void) {
-    ASSERT(type_is_numeric(&TYPE_UINT));
+    ASSERT(type_is_numeric(&TYPE_U64));
 }
 
 static void test_error_E3002_bool_arithmetic(void) {
@@ -1106,7 +1106,7 @@ static void test_error_E3002_bool_arithmetic(void) {
 
 static void test_error_E3001_bool_to_int(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = true }");
+        "do main() { mut x i64 = true }");
     ASSERT(has_error_code(diagnostics, "E3001"));
     diagnostic_destroy(diagnostics);
 }
@@ -1120,7 +1120,7 @@ static void test_error_E3001_int_to_string(void) {
 
 static void test_error_E3005_const_array_reassign(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const arr [int] = {1,2,3}\n arr = {4,5,6} }");
+        "do main() { const arr [i64] = {1,2,3}\n arr = {4,5,6} }");
     ASSERT(has_error_code(diagnostics, "E3005"));
     diagnostic_destroy(diagnostics);
 }
@@ -1134,14 +1134,14 @@ static void test_error_E3009_foreach_int(void) {
 
 static void test_error_E4003_duplicate_variable_same_scope(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 1\n mut x string = \"hi\" }");
+        "do main() { mut x i64 = 1\n mut x string = \"hi\" }");
     ASSERT(has_error_code(diagnostics, "E4003"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E5008_too_many_args(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do add(a int, b int) -> int { return a + b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
         "do main() { add(1, 2, 3) }");
     ASSERT(has_error_code(diagnostics, "E5008"));
     diagnostic_destroy(diagnostics);
@@ -1159,14 +1159,14 @@ static void test_valid_nested_struct(void) {
     /* Nested struct access should typecheck without errors */
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Inner struct {\n"
-        "    val int\n"
+        "    val i64\n"
         "}\n"
         "const Outer struct {\n"
         "    inner Inner\n"
         "}\n"
         "do main() {\n"
         "    mut o Outer = Outer{inner: Inner{val: 42}}\n"
-        "    mut v int = o.inner.val\n"
+        "    mut v i64 = o.inner.val\n"
         "    println(\"${v}\")\n"
         "}");
     ASSERT(!diagnostic_has_errors(diagnostics));
@@ -1187,8 +1187,8 @@ static void test_valid_enum_member_access(void) {
 
 static void test_valid_multi_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do swap(a int, b int) -> (int, int) { return b, a }\n"
-        "do main() { mut x int, y int = swap(1, 2)\n println(\"${x} ${y}\") }");
+        "do swap(a i64, b i64) -> (i64, i64) { return b, a }\n"
+        "do main() { mut x i64, y i64 = swap(1, 2)\n println(\"${x} ${y}\") }");
     ASSERT(!diagnostic_has_errors(diagnostics));
     diagnostic_destroy(diagnostics);
 }
@@ -1196,7 +1196,7 @@ static void test_valid_multi_return(void) {
 static void test_valid_when_statement(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "    mut x int = 2\n"
+        "    mut x i64 = 2\n"
         "    when x {\n"
         "        is 1 { println(\"one\") }\n"
         "        is 2 { println(\"two\") }\n"
@@ -1210,8 +1210,8 @@ static void test_valid_when_statement(void) {
 static void test_valid_struct_function_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Point struct {\n"
-        "    x int\n"
-        "    y int\n"
+        "    x i64\n"
+        "    y i64\n"
         "    do origin() -> Point {\n"
         "        return Point{x: 0, y: 0}\n"
         "    }\n"
@@ -1230,7 +1230,7 @@ static void test_error_E2050_continue_outside_loop(void) {
 
 static void test_error_E3024_some_paths_missing_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo(x int) -> int {\n"
+        "do foo(x i64) -> i64 {\n"
         "    if x > 0 { return 1 }\n"
         "    if x < 0 { return -1 }\n"
         "}\n"
@@ -1241,8 +1241,8 @@ static void test_error_E3024_some_paths_missing_return(void) {
 
 static void test_error_E4007_duplicate_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Foo struct { x int }\n"
-        "const Foo struct { y int }\n"
+        "const Foo struct { x i64 }\n"
+        "const Foo struct { y i64 }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E4007"));
     diagnostic_destroy(diagnostics);
@@ -1274,12 +1274,12 @@ static void test_error_E3048_string_plus(void) {
 static void test_error_E5046_test_fn_signature(void) {
     /* #test function must take no params and no return type */
     DiagnosticList *with_param = typecheck_diagnostics_test_mode(
-        "#test\ndo test_x(a int) { assert(a == 1) }");
+        "#test\ndo test_x(a i64) { assert(a == 1) }");
     ASSERT(has_error_code(with_param, "E5046"));
     diagnostic_destroy(with_param);
 
     DiagnosticList *with_ret = typecheck_diagnostics_test_mode(
-        "#test\ndo test_y() -> int { return 1 }");
+        "#test\ndo test_y() -> i64 { return 1 }");
     ASSERT(has_error_code(with_ret, "E5046"));
     diagnostic_destroy(with_ret);
 
@@ -1321,15 +1321,15 @@ static void test_test_mode_skips_no_main_error(void) {
 
 static void test_error_E3057_invalid_map_key(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
-        "do main() { mut m map[P:int] = {} }");
+        "const P struct { x i64 }\n"
+        "do main() { mut m map[P:i64] = {} }");
     ASSERT(has_error_code(diagnostics, "E3057"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3059_const_map(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const m map[string:int] = {\"a\": 1} }");
+        "do main() { const m map[string:i64] = {\"a\": 1} }");
     ASSERT(has_error_code(diagnostics, "E3059"));
     diagnostic_destroy(diagnostics);
 }
@@ -1344,7 +1344,7 @@ static void test_error_E3061_recursive_struct(void) {
 
 static void test_valid_recursive_pointer_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Node struct {\n value int\n next ^Node\n}\n"
+        "const Node struct {\n value i64\n next ^Node\n}\n"
         "do main() { }");
     ASSERT(diagnostics->count == 0);
     diagnostic_destroy(diagnostics);
@@ -1352,8 +1352,8 @@ static void test_valid_recursive_pointer_struct(void) {
 
 static void test_error_E3162_return_addr_local(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad() -> ptr<int> {\n"
-        "  mut x int = 42\n"
+        "do bad() -> ptr<i64> {\n"
+        "  mut x i64 = 42\n"
         "  return addr(x)\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3162"));
@@ -1365,7 +1365,7 @@ static void test_error_E3162_return_addr_local(void) {
 
 static void test_error_E3072_return_nil_non_pointer(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad() -> int { return nil }");
+        "do bad() -> i64 { return nil }");
     ASSERT(has_error_code(diagnostics, "E3072"));
     diagnostic_destroy(diagnostics);
 }
@@ -1380,8 +1380,8 @@ static void test_error_E3073_return_in_main(void) {
 static void test_error_E3074_array_compare(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut a [int] = {1, 2}\n"
-        "  mut b [int] = {1, 2}\n"
+        "  mut a [i64] = {1, 2}\n"
+        "  mut b [i64] = {1, 2}\n"
         "  if a == b { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3074"));
@@ -1391,8 +1391,8 @@ static void test_error_E3074_array_compare(void) {
 static void test_error_E3076_map_compare(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut a map[string:int] = {\"x\": 1}\n"
-        "  mut b map[string:int] = {\"x\": 1}\n"
+        "  mut a map[string:i64] = {\"x\": 1}\n"
+        "  mut b map[string:i64] = {\"x\": 1}\n"
         "  if a == b { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3076"));
@@ -1402,7 +1402,7 @@ static void test_error_E3076_map_compare(void) {
 static void test_error_E3078_pointer_arithmetic(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut x int = 10\n"
+        "  mut x i64 = 10\n"
         "  mut p = addr(x)\n"
         "  mut q = p + 1\n"
         "}");
@@ -1412,8 +1412,8 @@ static void test_error_E3078_pointer_arithmetic(void) {
 
 static void test_error_E3080_named_return_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do get() -> (result int) {\n"
-        "  mut other int = 42\n"
+        "do get() -> (result i64) {\n"
+        "  mut other i64 = 42\n"
         "  return other\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3080"));
@@ -1438,7 +1438,7 @@ static void test_error_E2014_duplicate_enum_variant(void) {
 
 static void test_error_E2015_duplicate_struct_field_init(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() { mut p = P{x: 1, x: 2} }");
     ASSERT(has_error_code(diagnostics, "E2015"));
     diagnostic_destroy(diagnostics);
@@ -1446,8 +1446,8 @@ static void test_error_E2015_duplicate_struct_field_init(void) {
 
 static void test_error_E2063_duplicate_named_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad() -> (x int, x int) {\n"
-        "  mut x int = 1\n"
+        "do bad() -> (x i64, x i64) {\n"
+        "  mut x i64 = 1\n"
         "  return x, x\n"
         "}\n"
         "do main() { }");
@@ -1458,8 +1458,8 @@ static void test_error_E2063_duplicate_named_return(void) {
 static void test_error_E2064_field_func_conflict(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const S struct {\n"
-        "  name int\n"
-        "  do name() -> int { return 0 }\n"
+        "  name i64\n"
+        "  do name() -> i64 { return 0 }\n"
         "}\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E2064"));
@@ -1476,7 +1476,7 @@ static void test_error_E2065_enum_variant_same_as_type(void) {
 
 static void test_error_E2066_struct_field_same_as_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Foo struct { Foo int }\n"
+        "const Foo struct { Foo i64 }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E2066"));
     diagnostic_destroy(diagnostics);
@@ -1499,7 +1499,7 @@ static void test_error_E3083_c_string_non_pointer(void) {
 
 static void test_error_E4008_main_with_params(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main(x int) { }");
+        "do main(x i64) { }");
     ASSERT(has_error_code(diagnostics, "E4008"));
     diagnostic_destroy(diagnostics);
 }
@@ -1542,7 +1542,7 @@ static void test_infer_mut_array_literal_element_type(void) {
     GrayType *type = expression_type("{1, 2, 3}");
     ASSERT_NOT_NULL(type);
     ASSERT_EQ(type->kind, TK_ARRAY);
-    ASSERT_STR_EQ(type->element_type, "int");
+    ASSERT_STR_EQ(type->element_type, "i64");
 }
 
 static void test_infer_mut_map_literal_kv_types(void) {
@@ -1550,7 +1550,7 @@ static void test_infer_mut_map_literal_kv_types(void) {
     ASSERT_NOT_NULL(type);
     ASSERT_EQ(type->kind, TK_MAP);
     ASSERT_STR_EQ(type->key_type, "string");
-    ASSERT_STR_EQ(type->value_type, "int");
+    ASSERT_STR_EQ(type->value_type, "i64");
 }
 
 static void test_infer_mut_array_literal_no_error(void) {
@@ -1578,7 +1578,7 @@ static void test_infer_const_array_literal_still_E3050(void) {
 /* A non-primitive element is not inferable and still errors. */
 static void test_infer_mut_array_non_primitive_still_E3050(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() { mut a = {P{x: 1}, P{x: 2}} }");
     ASSERT(has_error_code(diagnostics, "E3050"));
     diagnostic_destroy(diagnostics);
@@ -1586,28 +1586,28 @@ static void test_infer_mut_array_non_primitive_still_E3050(void) {
 
 static void test_error_E3052_fixed_array_too_many(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a [int, 2] = {1, 2, 3} }");
+        "do main() { mut a [i64, 2] = {1, 2, 3} }");
     ASSERT(has_error_code(diagnostics, "E3052"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3053_array_element_type_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a [int] = {1, \"two\", 3} }");
+        "do main() { mut a [i64] = {1, \"two\", 3} }");
     ASSERT(has_error_code(diagnostics, "E3053"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3054_mut_array_fixed_size(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut a [int, 3] = {1, 2, 3} }");
+        "do main() { mut a [i64, 3] = {1, 2, 3} }");
     ASSERT(has_error_code(diagnostics, "E3054"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3055_const_array_no_size(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { const a [int] = {1, 2, 3} }");
+        "do main() { const a [i64] = {1, 2, 3} }");
     ASSERT(has_error_code(diagnostics, "E3055"));
     diagnostic_destroy(diagnostics);
 }
@@ -1616,7 +1616,7 @@ static void test_error_E3055_const_array_no_size(void) {
 
 static void test_error_E3077_struct_compare(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() {\n"
         "  mut a P = P{x: 1}\n"
         "  mut b P = P{x: 2}\n"
@@ -1629,7 +1629,7 @@ static void test_error_E3077_struct_compare(void) {
 static void test_error_E3079_mut_ref_to_const(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  const x int = 42\n"
+        "  const x i64 = 42\n"
         "  mut p = ref(x)\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3079"));
@@ -1639,7 +1639,7 @@ static void test_error_E3079_mut_ref_to_const(void) {
 static void test_error_E3092_nil_compare_non_nullable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut x int = 5\n"
+        "  mut x i64 = 5\n"
         "  if x == nil { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3092"));
@@ -1648,15 +1648,15 @@ static void test_error_E3092_nil_compare_non_nullable(void) {
 
 static void test_error_E3096_negate_unsigned(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x uint = 5\n mut y = -x }");
+        "do main() { mut x u64 = 5\n mut y = -x }");
     ASSERT(has_error_code(diagnostics, "E3096"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3098_struct_assign_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const A struct { x int }\n"
-        "const B struct { x int }\n"
+        "const A struct { x i64 }\n"
+        "const B struct { x i64 }\n"
         "do main() {\n"
         "  mut a A = A{x: 1}\n"
         "  mut p = addr(a)\n"
@@ -1669,7 +1669,7 @@ static void test_error_E3098_struct_assign_mismatch(void) {
 static void test_error_E3120_pointer_ordering(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut x int = 10\n"
+        "  mut x i64 = 10\n"
         "  mut p = addr(x)\n"
         "  mut q = addr(x)\n"
         "  if p < q { }\n"
@@ -1689,7 +1689,7 @@ static void test_error_E3004_string_index_assign(void) {
 
 static void test_error_E3031_bare_function_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo() -> int { return 42 }\n"
+        "do foo() -> i64 { return 42 }\n"
         "do main() { mut x = foo }");
     ASSERT(has_error_code(diagnostics, "E3031"));
     diagnostic_destroy(diagnostics);
@@ -1697,7 +1697,7 @@ static void test_error_E3031_bare_function_name(void) {
 
 static void test_error_E3046_int_literal_overflow(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut x int = 99999999999999999999 }");
+        "do main() { mut x i64 = 99999999999999999999 }");
     ASSERT(has_error_code(diagnostics, "E3046"));
     diagnostic_destroy(diagnostics);
 }
@@ -1712,7 +1712,7 @@ static void test_error_E3049_enum_arithmetic(void) {
 
 static void test_error_E3081_bare_function_stmt(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo() -> int { return 42 }\n"
+        "do foo() -> i64 { return 42 }\n"
         "do main() { foo }");
     ASSERT(has_error_code(diagnostics, "E3081"));
     diagnostic_destroy(diagnostics);
@@ -1720,7 +1720,7 @@ static void test_error_E3081_bare_function_stmt(void) {
 
 static void test_error_E3084_type_of_type_name(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() { mut t = type_of(P) }");
     ASSERT(has_error_code(diagnostics, "E3084"));
     diagnostic_destroy(diagnostics);
@@ -1729,7 +1729,7 @@ static void test_error_E3084_type_of_type_name(void) {
 static void test_error_E3085_in_type_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut a [int] = {1, 2, 3}\n"
+        "  mut a [i64] = {1, 2, 3}\n"
         "  if \"hello\" in a { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3085"));
@@ -1745,7 +1745,7 @@ static void test_error_E3090_not_non_bool(void) {
 
 static void test_error_E3093_arithmetic_on_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() {\n"
         "  mut a P = P{x: 1}\n"
         "  mut b = a + 1\n"
@@ -1757,7 +1757,7 @@ static void test_error_E3093_arithmetic_on_struct(void) {
 static void test_error_E3095_in_invalid_rhs(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut x int = 5\n"
+        "  mut x i64 = 5\n"
         "  if 1 in x { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3095"));
@@ -1769,7 +1769,7 @@ static void test_error_E3095_in_invalid_rhs(void) {
 static void test_error_E3086_fmt_non_string_format(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @fmt\n"
-        "do main() { mut x int = 42\n fmt.printf(x) }");
+        "do main() { mut x i64 = 42\n fmt.printf(x) }");
     ASSERT(has_error_code(diagnostics, "E3086"));
     diagnostic_destroy(diagnostics);
 }
@@ -1827,7 +1827,7 @@ static void test_error_E3108_fmt_too_many_args(void) {
 static void test_error_E3111_string_enum_tagged(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Mode enum {\n"
-        "  Fast(int) = \"fast\"\n"
+        "  Fast(i64) = \"fast\"\n"
         "  Slow = \"slow\"\n"
         "}\n"
         "do main() { }");
@@ -1839,7 +1839,7 @@ static void test_error_E3112_flags_enum_tagged(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "#flags\n"
         "const Perms enum {\n"
-        "  Read(int)\n"
+        "  Read(i64)\n"
         "  Write\n"
         "}\n"
         "do main() { }");
@@ -1850,7 +1850,7 @@ static void test_error_E3112_flags_enum_tagged(void) {
 static void test_error_E3113_tagged_payload_count(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Shape enum {\n"
-        "  Circle(float)\n"
+        "  Circle(f64)\n"
         "  Point\n"
         "}\n"
         "do main() { mut s Shape = Shape.Circle(1.0, 2.0) }");
@@ -1861,7 +1861,7 @@ static void test_error_E3113_tagged_payload_count(void) {
 static void test_error_E3114_plain_variant_called(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Shape enum {\n"
-        "  Circle(float)\n"
+        "  Circle(f64)\n"
         "  Point\n"
         "}\n"
         "do main() { mut s Shape = Shape.Point(1.0) }");
@@ -1880,7 +1880,7 @@ static void test_error_E3115_plain_enum_called(void) {
 static void test_error_E3116_tagged_when_binding_count(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Shape enum {\n"
-        "  Circle(float)\n"
+        "  Circle(f64)\n"
         "  Point\n"
         "}\n"
         "do main() {\n"
@@ -1920,7 +1920,7 @@ static void test_error_E3118_int_to_enum_assign(void) {
 
 static void test_error_E3062_const_handle(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Channel struct { id int }\n"
+        "const Channel struct { id i64 }\n"
         "do main() {\n"
         "  const ch Channel = Channel{id: 1}\n"
         "}");
@@ -1945,7 +1945,7 @@ static void test_error_E3164_mem_use_after_destroy(void) {
         "import @mem\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mut p ^i64 = mem.alloc(a, 42)\n"
         "  mem.destroy(a)\n"
         "  println(p^)\n"
         "}");
@@ -1961,7 +1961,7 @@ static void test_error_E3164_mem_use_after_cross_function_destroy(void) {
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mut p ^i64 = mem.alloc(a, 42)\n"
         "  cleanup(a)\n"
         "  println(p^)\n"
         "}");
@@ -1999,7 +1999,7 @@ static void test_no_false_positive_mem_destroy_break_self_collision(void) {
         "import @mem\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mut p ^i64 = mem.alloc(a, 42)\n"
         "  for i in range(0, 5) {\n"
         "    if i == 2 {\n"
         "      mem.destroy(a)\n"
@@ -2027,7 +2027,7 @@ static void test_error_E3164_mem_use_after_helper_destroy_in_loop(void) {
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mut p ^i64 = mem.alloc(a, 42)\n"
         "  for i in range(0, 3) {\n"
         "    println(p^)\n"
         "    if i == 1 {\n"
@@ -2070,7 +2070,7 @@ static void test_no_false_positive_mem_helper_destroy_break_self_collision(void)
 static void test_error_E3164_mem_use_after_destroy_struct_field_literal(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box struct {\n p ^int\n}\n"
+        "const Box struct {\n p ^i64\n}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
         "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
@@ -2084,7 +2084,7 @@ static void test_error_E3164_mem_use_after_destroy_struct_field_literal(void) {
 static void test_error_E3164_mem_use_after_destroy_struct_field_assign(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box struct {\n p ^int\n}\n"
+        "const Box struct {\n p ^i64\n}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
         "  mut b Box = Box{p: nil}\n"
@@ -2099,7 +2099,7 @@ static void test_error_E3164_mem_use_after_destroy_struct_field_assign(void) {
 static void test_no_false_positive_mem_struct_field_read_before_destroy(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box struct {\n p ^int\n}\n"
+        "const Box struct {\n p ^i64\n}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
         "  mut b Box = Box{p: mem.alloc(a, 42)}\n"
@@ -2118,12 +2118,12 @@ static void test_no_false_positive_mem_struct_field_read_before_destroy(void) {
 static void test_error_E3164_mem_use_after_destroy_return_forwarded(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "do make(a Arena) -> ^int {\n"
+        "do make(a Arena) -> ^i64 {\n"
         "  return mem.alloc(a, 42)\n"
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = make(a)\n"
+        "  mut p ^i64 = make(a)\n"
         "  mem.destroy(a)\n"
         "  println(p^)\n"
         "}");
@@ -2134,12 +2134,12 @@ static void test_error_E3164_mem_use_after_destroy_return_forwarded(void) {
 static void test_no_false_positive_mem_return_forwarded_read_before_destroy(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "do make(a Arena) -> ^int {\n"
+        "do make(a Arena) -> ^i64 {\n"
         "  return mem.alloc(a, 42)\n"
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = make(a)\n"
+        "  mut p ^i64 = make(a)\n"
         "  println(p^)\n"
         "  mem.destroy(a)\n"
         "}");
@@ -2159,7 +2159,7 @@ static void test_error_E3164_mem_use_after_destroy_arena_in_struct_field(void) {
         "const Holder struct {\n a Arena\n}\n"
         "do main() {\n"
         "  mut h Holder = Holder{a: mem.arena(1024)}\n"
-        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mut p ^i64 = mem.alloc(h.a, 42)\n"
         "  mem.destroy(h.a)\n"
         "  println(p^)\n"
         "}");
@@ -2186,7 +2186,7 @@ static void test_no_false_positive_mem_arena_in_struct_field_read_before_destroy
         "const Holder struct {\n a Arena\n}\n"
         "do main() {\n"
         "  mut h Holder = Holder{a: mem.arena(1024)}\n"
-        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mut p ^i64 = mem.alloc(h.a, 42)\n"
         "  println(p^)\n"
         "  mem.destroy(h.a)\n"
         "}");
@@ -2209,7 +2209,7 @@ static void test_error_E3164_mem_use_after_cross_function_field_destroy(void) {
         "}\n"
         "do main() {\n"
         "  mut h Holder = Holder{a: mem.arena(1024)}\n"
-        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mut p ^i64 = mem.alloc(h.a, 42)\n"
         "  cleanup(h)\n"
         "  println(p^)\n"
         "}");
@@ -2226,7 +2226,7 @@ static void test_no_false_positive_mem_cross_function_field_destroy_read_before(
         "}\n"
         "do main() {\n"
         "  mut h Holder = Holder{a: mem.arena(1024)}\n"
-        "  mut p ^int = mem.alloc(h.a, 42)\n"
+        "  mut p ^i64 = mem.alloc(h.a, 42)\n"
         "  println(p^)\n"
         "  cleanup(h)\n"
         "}");
@@ -2241,7 +2241,7 @@ static void test_no_false_positive_mem_cross_function_field_destroy_read_before(
 static void test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box struct {\n p ^int\n}\n"
+        "const Box struct {\n p ^i64\n}\n"
         "do make(a Arena) -> Box {\n"
         "  return Box{p: mem.alloc(a, 42)}\n"
         "}\n"
@@ -2258,7 +2258,7 @@ static void test_error_E3164_mem_use_after_destroy_return_forwarded_in_literal(v
 static void test_no_false_positive_mem_return_forwarded_in_literal_read_before(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box struct {\n p ^int\n}\n"
+        "const Box struct {\n p ^i64\n}\n"
         "do make(a Arena) -> Box {\n"
         "  return Box{p: mem.alloc(a, 42)}\n"
         "}\n"
@@ -2281,7 +2281,7 @@ static void test_no_false_positive_mem_return_forwarded_in_literal_read_before(v
 static void test_error_E3164_mem_use_after_destroy_tagged_enum_payload(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "const Box enum {\n Full(^i64)\n Empty\n}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
         "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
@@ -2298,7 +2298,7 @@ static void test_error_E3164_mem_use_after_destroy_tagged_enum_payload(void) {
 static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "const Box enum {\n Full(^int)\n Empty\n}\n"
+        "const Box enum {\n Full(^i64)\n Empty\n}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
         "  mut b Box = Box.Full(mem.alloc(a, 42))\n"
@@ -2322,12 +2322,12 @@ static void test_no_false_positive_mem_tagged_enum_payload_read_before_destroy(v
 static void test_error_E3164_mem_use_after_destroy_multi_return(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "do make(a Arena) -> (^int, int) {\n"
+        "do make(a Arena) -> (^i64, i64) {\n"
         "  return mem.alloc(a, 42), 1\n"
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int, n = make(a)\n"
+        "  mut p ^i64, n = make(a)\n"
         "  mem.destroy(a)\n"
         "  println(n)\n"
         "  println(p^)\n"
@@ -2339,12 +2339,12 @@ static void test_error_E3164_mem_use_after_destroy_multi_return(void) {
 static void test_no_false_positive_mem_multi_return_read_before_destroy(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "import @mem\n"
-        "do make(a Arena) -> (^int, int) {\n"
+        "do make(a Arena) -> (^i64, i64) {\n"
         "  return mem.alloc(a, 42), 1\n"
         "}\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int, n = make(a)\n"
+        "  mut p ^i64, n = make(a)\n"
         "  println(n)\n"
         "  println(p^)\n"
         "  mem.destroy(a)\n"
@@ -2358,7 +2358,7 @@ static void test_error_E3165_mem_use_after_reset(void) {
         "import @mem\n"
         "do main() {\n"
         "  mut a = mem.arena(1024)\n"
-        "  mut p ^int = mem.alloc(a, 42)\n"
+        "  mut p ^i64 = mem.alloc(a, 42)\n"
         "  mem.reset(a)\n"
         "  println(p^)\n"
         "}");
@@ -2369,7 +2369,7 @@ static void test_error_E3165_mem_use_after_reset(void) {
 static void test_error_E3066_func_ref_sig_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do foo(a string) { }\n"
-        "do apply(f func(int)) { }\n"
+        "do apply(f func(i64)) { }\n"
         "do main() { apply(()foo) }");
     ASSERT(has_error_code(diagnostics, "E3066"));
     diagnostic_destroy(diagnostics);
@@ -2377,7 +2377,7 @@ static void test_error_E3066_func_ref_sig_mismatch(void) {
 
 static void test_error_E3027_non_assignable_ref_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do modify(&x int) { x = 10 }\n"
+        "do modify(&x i64) { x = 10 }\n"
         "do main() { modify(42) }");
     ASSERT(has_error_code(diagnostics, "E3027"));
     diagnostic_destroy(diagnostics);
@@ -2402,7 +2402,7 @@ static void test_error_E3103_json_struct_func_field(void) {
         "import @json\n"
         "#json\n"
         "const Config struct {\n"
-        "  callback func(int) -> int\n"
+        "  callback func(i64) -> i64\n"
         "}\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E3103"));
@@ -2463,7 +2463,7 @@ static void test_error_E3091_non_bool_condition(void) {
 
 static void test_error_E3121_struct_when_subject(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
+        "const P struct { x i64 }\n"
         "do main() {\n"
         "  mut p P = P{x: 1}\n"
         "  when p { default { } }\n"
@@ -2475,7 +2475,7 @@ static void test_error_E3121_struct_when_subject(void) {
 static void test_error_E3123_foreach_both_discarded(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut a [int] = {1, 2, 3}\n"
+        "  mut a [i64] = {1, 2, 3}\n"
         "  for_each _, _ in a { }\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3123"));
@@ -2493,7 +2493,7 @@ static void test_error_E3129_empty_while_body(void) {
 
 static void test_error_E3119_fixed_array_in_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do foo(arr [int, 3]) { }\n"
+        "do foo(arr [i64, 3]) { }\n"
         "do main() { }");
     ASSERT(has_error_code(diagnostics, "E3119"));
     diagnostic_destroy(diagnostics);
@@ -2501,15 +2501,15 @@ static void test_error_E3119_fixed_array_in_param(void) {
 
 static void test_error_E3125_array_size_not_const(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do main() { mut n int = 5\n const a [int, n] = {1, 2, 3} }");
+        "do main() { mut n i64 = 5\n const a [i64, n] = {1, 2, 3} }");
     ASSERT(has_error_code(diagnostics, "E3125"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E3126_array_size_zero(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const SIZE int = 0\n"
-        "do main() { const a [int, SIZE] = {} }");
+        "const SIZE i64 = 0\n"
+        "do main() { const a [i64, SIZE] = {} }");
     ASSERT(has_error_code(diagnostics, "E3126"));
     diagnostic_destroy(diagnostics);
 }
@@ -2518,7 +2518,7 @@ static void test_error_E3126_array_size_zero(void) {
 
 static void test_error_E3058_generic_type_error(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do to_int(x ?) -> int { return x }\n"
+        "do to_int(x ?) -> i64 { return x }\n"
         "do main() { to_int(\"hello\") }");
     ASSERT(has_error_code(diagnostics, "E3058"));
     diagnostic_destroy(diagnostics);
@@ -2526,7 +2526,7 @@ static void test_error_E3058_generic_type_error(void) {
 
 static void test_error_E3060_wildcard_return_no_param(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do bad(x int) -> ? { return x }\n"
+        "do bad(x i64) -> ? { return x }\n"
         "do main() { bad(1) }");
     ASSERT(has_error_code(diagnostics, "E3060"));
     diagnostic_destroy(diagnostics);
@@ -2537,22 +2537,22 @@ static void test_error_E3060_wildcard_return_no_param(void) {
 static void test_error_E3127_struct_literal_non_struct(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do mk_stack(T <?>) -> ? { return T{} }\n"
-        "do main() { mk_stack(int) }");
+        "do main() { mk_stack(i64) }");
     ASSERT(has_error_code(diagnostics, "E3127"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_E3127_not_reported_for_primitive_type_arg(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> int { return size_of(t) }\n"
-        "do main() { identity(int) }");
+        "do identity(t <?>) -> i64 { return size_of(t) }\n"
+        "do main() { identity(i64) }");
     ASSERT(!has_error_code(diagnostics, "E3127"));
     diagnostic_destroy(diagnostics);
 }
 
 static void test_error_E4016_type_arg_names_no_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> int { return size_of(t) }\n"
+        "do identity(t <?>) -> i64 { return size_of(t) }\n"
         "do main() { identity(Nonexistent) }");
     ASSERT(has_error_code(diagnostics, "E4016"));
     diagnostic_destroy(diagnostics);
@@ -2560,9 +2560,9 @@ static void test_error_E4016_type_arg_names_no_type(void) {
 
 static void test_error_E3128_sizeof_variable(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do identity(t <?>) -> int { return size_of(t) }\n"
+        "do identity(t <?>) -> i64 { return size_of(t) }\n"
         "do main() {\n"
-        "  mut x int = 5\n"
+        "  mut x i64 = 5\n"
         "  identity(x)\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3128"));
@@ -2581,7 +2581,7 @@ static void test_error_E3110_implicit_enum_no_context(void) {
 static void test_error_E3124_tagged_enum_equality(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Shape enum {\n"
-        "  Circle(float)\n"
+        "  Circle(f64)\n"
         "  Point\n"
         "}\n"
         "do main() {\n"
@@ -2606,9 +2606,9 @@ static void test_error_E3071_return_nil_wildcard_ptr(void) {
 static void test_error_E3075_chain_struct_calls(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "const Builder struct {\n"
-        "  val int\n"
+        "  val i64\n"
         "  do create() -> Builder { return Builder{val: 0} }\n"
-        "  do set(self Builder, v int) -> Builder { return Builder{val: v} }\n"
+        "  do set(self Builder, v i64) -> Builder { return Builder{val: v} }\n"
         "}\n"
         "do main() { mut b = Builder.create().set(1) }");
     ASSERT(has_error_code(diagnostics, "E3075"));
@@ -2626,7 +2626,7 @@ static void test_error_E3089_fallible_no_error_handling(void) {
 static void test_error_E3094_array_index_assign_type(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
         "do main() {\n"
-        "  mut a [int] = {1, 2, 3}\n"
+        "  mut a [i64] = {1, 2, 3}\n"
         "  a[0] = \"bad\"\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3094"));
@@ -2652,8 +2652,8 @@ static void test_error_E3099_reserved_struct_name(void) {
 
 static void test_error_E3100_type_as_func_arg(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const P struct { x int }\n"
-        "do foo(x int) { }\n"
+        "const P struct { x i64 }\n"
+        "do foo(x i64) { }\n"
         "do main() { foo(P) }");
     ASSERT(has_error_code(diagnostics, "E3100"));
     diagnostic_destroy(diagnostics);
@@ -2678,9 +2678,9 @@ static void test_error_E3102_func_return_to_var(void) {
 
 static void test_error_E3122_addr_const_var(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do take(&x int) { x = 10 }\n"
+        "do take(&x i64) { x = 10 }\n"
         "do main() {\n"
-        "  const v int = 5\n"
+        "  const v i64 = 5\n"
         "  take(v)\n"
         "}");
     ASSERT(has_error_code(diagnostics, "E3122") || has_error_code(diagnostics, "E3027"));
@@ -2691,11 +2691,11 @@ static void test_error_E3122_addr_const_var(void) {
 
 static void test_error_E3163_addr_scope_mismatch(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "do setup() -> ^int {\n"
-        "  mut outer int = 10\n"
+        "do setup() -> ^i64 {\n"
+        "  mut outer i64 = 10\n"
         "  mut p = addr(outer)\n"
         "  if true {\n"
-        "    mut inner int = 20\n"
+        "    mut inner i64 = 20\n"
         "    p = addr(inner)\n"
         "  }\n"
         "  return p\n"
@@ -2706,13 +2706,13 @@ static void test_error_E3163_addr_scope_mismatch(void) {
 
 static void test_error_E3163_addr_escapes_through_func_ref_call(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "mut GLOBAL ^int = nil\n"
-        "do stash(x ^int) {\n"
+        "mut GLOBAL ^i64 = nil\n"
+        "do stash(x ^i64) {\n"
         "  GLOBAL = x\n"
         "}\n"
         "do capture() {\n"
         "  const f = ()stash\n"
-        "  mut y int = 12\n"
+        "  mut y i64 = 12\n"
         "  f(addr(y))\n"
         "}\n"
         "do main() { capture() }");
@@ -2730,16 +2730,16 @@ static void test_error_E3163_addr_escapes_through_func_ref_call(void) {
  * than a scope lookup for this to be seen at all. */
 static void test_error_E3163_addr_escapes_through_func_ref_in_helper(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "mut GLOBAL ^int = nil\n"
-        "do stash(x ^int) {\n"
+        "mut GLOBAL ^i64 = nil\n"
+        "do stash(x ^i64) {\n"
         "  GLOBAL = x\n"
         "}\n"
-        "do helper(x ^int) {\n"
+        "do helper(x ^i64) {\n"
         "  const f = ()stash\n"
         "  f(x)\n"
         "}\n"
         "do capture() {\n"
-        "  mut y int = 33\n"
+        "  mut y i64 = 33\n"
         "  helper(addr(y))\n"
         "}\n"
         "do main() { capture() }");
@@ -2755,7 +2755,7 @@ static void test_error_E3163_addr_escapes_through_func_ref_in_helper(void) {
  * function's), misreporting the parameter and its argument as undefined. */
 static void test_no_false_positive_func_param_call_forward_reference(void) {
     DiagnosticList *diagnostics = typecheck_diagnostics(
-        "const Pair struct {\n a int\n b int\n}\n"
+        "const Pair struct {\n a i64\n b i64\n}\n"
         "do double_pair(p Pair) -> Pair {\n"
         "  return Pair{a: p.a * 2, b: p.b * 2}\n"
         "}\n"

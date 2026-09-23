@@ -1,0 +1,11 @@
+/*
+ * Error Test: E5039 - constant expression overflows type 'i64'
+ * Expected: overflow in const arithmetic expression is a compile-time error
+ */
+
+const MAX i64 = 9223372036854775807
+const OVER i64 = MAX + 1
+
+do main() {
+    println(OVER)
+}

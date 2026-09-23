@@ -7,8 +7,8 @@ import @fmt
 
 do main() {
     println("=== Fmt Printf Variants Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: sprintfln returns string with trailing newline
     mut s1 string = fmt.sprintfln("hello %s", "world")
@@ -20,13 +20,13 @@ do main() {
         failed += 1
     }
 
-    // Test 2: sprintfln with int arg
+    // Test 2: sprintfln with i64 arg
     mut s2 string = fmt.sprintfln("x = %d", 42)
     if s2 == "x = 42\n" {
-        println("  [PASS] sprintfln with int")
+        println("  [PASS] sprintfln with i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] sprintfln with int: expected 'x = 42\\n'")
+        println("  [FAIL] sprintfln with i64: expected 'x = 42\\n'")
         failed += 1
     }
 
@@ -55,13 +55,13 @@ do main() {
     println("  [PASS] eprintfln runs without crash")
     passed += 1
 
-    // Test 7: sprintfln with float
+    // Test 7: sprintfln with f64
     mut s4 string = fmt.sprintfln("pi = %.2f", 3.14)
     if s4 == "pi = 3.14\n" {
-        println("  [PASS] sprintfln with float")
+        println("  [PASS] sprintfln with f64")
         passed += 1
     } otherwise {
-        println("  [FAIL] sprintfln with float")
+        println("  [FAIL] sprintfln with f64")
         failed += 1
     }
 

@@ -10,6 +10,6 @@ do get_string() -> string {
     return "hello"
 }
 
-do get_float() -> float {
+do get_float() -> f64 {
     return 3.14
 }

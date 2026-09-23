@@ -201,8 +201,8 @@ static void test_e2e_variables(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut x int = 10\n"
-        "    mut y int = 20\n"
+        "    mut x i64 = 10\n"
+        "    mut y i64 = 20\n"
         "    println(x + y)\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -216,7 +216,7 @@ static void test_e2e_interpolation(void) {
         ""
         "do main() {\n"
         "    mut name string = \"Alice\"\n"
-        "    mut age int = 30\n"
+        "    mut age i64 = 30\n"
         "    println(\"${name} is ${age}\")\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -229,7 +229,7 @@ static void test_e2e_if_else(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut x int = 5\n"
+        "    mut x i64 = 5\n"
         "    if x > 10 {\n"
         "        println(\"big\")\n"
         "    } or x > 3 {\n"
@@ -262,7 +262,7 @@ static void test_e2e_while(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut i int = 0\n"
+        "    mut i i64 = 0\n"
         "    as_long_as i < 3 {\n"
         "        println(i)\n"
         "        i++\n"
@@ -278,7 +278,7 @@ static void test_e2e_loop_break(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut i int = 0\n"
+        "    mut i i64 = 0\n"
         "    loop {\n"
         "        if i >= 3 { break }\n"
         "        println(i)\n"
@@ -294,7 +294,7 @@ static void test_e2e_loop_break(void) {
 static void test_e2e_function_call(void) {
     char *output = compile_and_run(
         ""
-        "do add(a int, b int) -> int { return a + b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
         "do main() { println(add(3, 4)) }");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "7");
@@ -305,7 +305,7 @@ static void test_e2e_function_call(void) {
 static void test_e2e_recursion(void) {
     char *output = compile_and_run(
         ""
-        "do fib(n int) -> int {\n"
+        "do fib(n i64) -> i64 {\n"
         "    if n <= 1 { return n }\n"
         "    return fib(n - 1) + fib(n - 2)\n"
         "}\n"
@@ -319,9 +319,9 @@ static void test_e2e_recursion(void) {
 static void test_e2e_multi_return(void) {
     char *output = compile_and_run(
         ""
-        "do swap(a int, b int) -> (int, int) { return b, a }\n"
+        "do swap(a i64, b i64) -> (i64, i64) { return b, a }\n"
         "do main() {\n"
-        "    mut x int, y int = swap(10, 20)\n"
+        "    mut x i64, y i64 = swap(10, 20)\n"
         "    println(x)\n"
         "    println(y)\n"
         "}");
@@ -334,9 +334,9 @@ static void test_e2e_multi_return(void) {
 static void test_e2e_mutable_parameter(void) {
     char *output = compile_and_run(
         ""
-        "do inc(&n int) { n = n + 1 }\n"
+        "do inc(&n i64) { n = n + 1 }\n"
         "do main() {\n"
-        "    mut x int = 5\n"
+        "    mut x i64 = 5\n"
         "    inc(x)\n"
         "    println(x)\n"
         "}");
@@ -365,8 +365,8 @@ static void test_e2e_struct(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "    x int\n"
-        "    y int\n"
+        "    x i64\n"
+        "    y i64\n"
         "}\n"
         "do main() {\n"
         "    mut p Point = Point{x: 3, y: 4}\n"
@@ -401,7 +401,7 @@ static void test_e2e_array(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut nums [int] = {10, 20, 30}\n"
+        "    mut nums [i64] = {10, 20, 30}\n"
         "    println(nums[0])\n"
         "    println(nums[2])\n"
         "    println(len(nums))\n"
@@ -416,7 +416,7 @@ static void test_e2e_array_set(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut nums [int] = {1, 2, 3}\n"
+        "    mut nums [i64] = {1, 2, 3}\n"
         "    nums[1] = 99\n"
         "    println(nums[1])\n"
         "}");
@@ -445,7 +445,7 @@ static void test_e2e_when(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut x int = 2\n"
+        "    mut x i64 = 2\n"
         "    when x {\n"
         "        is 1 { println(\"one\") }\n"
         "        is 2 { println(\"two\") }\n"
@@ -477,7 +477,7 @@ static void test_e2e_type_of(void) {
         "    println(type_of(true))\n"
         "}");
     ASSERT_NOT_NULL(output);
-    ASSERT_STR_EQ(output, "int\nstring\nbool");
+    ASSERT_STR_EQ(output, "i64\nstring\nbool");
 }
 
 /* --- Compound assignment --- */
@@ -486,7 +486,7 @@ static void test_e2e_compound_assign(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut x int = 10\n"
+        "    mut x i64 = 10\n"
         "    x += 5\n"
         "    x -= 3\n"
         "    x *= 2\n"
@@ -514,9 +514,9 @@ static void test_e2e_char(void) {
 static void test_e2e_blank_identifier(void) {
     char *output = compile_and_run(
         ""
-        "do pair() -> (int, int) { return 42, 99 }\n"
+        "do pair() -> (i64, i64) { return 42, 99 }\n"
         "do main() {\n"
-        "    mut _, b int = pair()\n"
+        "    mut _, b i64 = pair()\n"
         "    println(b)\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -545,7 +545,7 @@ static void test_e2e_mem_usage(void) {
         "    mut a = mem.arena(1024)\n"
         "    println(mem.usage(a))\n"
         "    mut s ^string = mem.alloc(a, \"hello\")\n"
-        "    mut used int = mem.usage(a)\n"
+        "    mut used i64 = mem.usage(a)\n"
         "    if used > 0 { println(\"allocated\") }\n"
         "    mem.destroy(a)\n"
         "}");
@@ -587,7 +587,7 @@ static void test_e2e_mem_alloc_array(void) {
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut nums ^[int] = mem.alloc(a, {10, 20, 30})\n"
+        "    mut nums ^[i64] = mem.alloc(a, {10, 20, 30})\n"
         "    println(nums^[0])\n"
         "    println(nums^[1])\n"
         "    println(nums^[2])\n"
@@ -622,7 +622,7 @@ static void test_e2e_ptr_new_deref(void) {
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut p ^int = mem.init(a, int)\n"
+        "    mut p ^i64 = mem.init(a, i64)\n"
         "    p^ = 42\n"
         "    println(p^)\n"
         "}");
@@ -634,8 +634,8 @@ static void test_e2e_ptr_struct(void) {
     char *output = compile_and_run(
         "import @mem\n"
         "const Point struct {\n"
-        "    x int\n"
-        "    y int\n"
+        "    x i64\n"
+        "    y i64\n"
         "}\n"
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
@@ -653,11 +653,11 @@ static void test_e2e_ptr_struct(void) {
 static void test_e2e_ptr_addr(void) {
     char *output = compile_and_run(
         ""
-        "do set(p ^int, v int) {\n"
+        "do set(p ^i64, v i64) {\n"
         "    p^ = v\n"
         "}\n"
         "do main() {\n"
-        "    mut x int = 0\n"
+        "    mut x i64 = 0\n"
         "    set(addr(x), 99)\n"
         "    println(x)\n"
         "}");
@@ -669,7 +669,7 @@ static void test_e2e_ptr_nil(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut p ^int = nil\n"
+        "    mut p ^i64 = nil\n"
         "    if p == nil {\n"
         "        println(\"null\")\n"
         "    }\n"
@@ -681,13 +681,13 @@ static void test_e2e_ptr_nil(void) {
 static void test_e2e_ptr_write_through(void) {
     char *output = compile_and_run(
         "import @mem\n"
-        "do set_value(p ^int, val int) {\n"
+        "do set_value(p ^i64, val i64) {\n"
         "    p^ = val\n"
         "}\n"
         "do main() {\n"
         "    mut a = mem.arena(4096)\n"
         "    ensure mem.destroy(a)\n"
-        "    mut p ^int = mem.init(a, int)\n"
+        "    mut p ^i64 = mem.init(a, i64)\n"
         "    set_value(p, 777)\n"
         "    println(p^)\n"
         "}");
@@ -701,7 +701,7 @@ static void test_e2e_mut_keyword(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut x int = 10\n"
+        "    mut x i64 = 10\n"
         "    mut y = 20\n"
         "    println(x + y)\n"
         "}");
@@ -713,7 +713,7 @@ static void test_e2e_while_keyword(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut i int = 0\n"
+        "    mut i i64 = 0\n"
         "    while i < 3 {\n"
         "        println(i)\n"
         "        i++\n"
@@ -726,12 +726,12 @@ static void test_e2e_while_keyword(void) {
 static void test_e2e_mut_while_combined(void) {
     char *output = compile_and_run(
         ""
-        "do fib(n int) -> int {\n"
-        "    mut a int = 0\n"
-        "    mut b int = 1\n"
-        "    mut i int = 0\n"
+        "do fib(n i64) -> i64 {\n"
+        "    mut a i64 = 0\n"
+        "    mut b i64 = 1\n"
+        "    mut i i64 = 0\n"
         "    while i < n {\n"
-        "        mut next int = a + b\n"
+        "        mut next i64 = a + b\n"
         "        a = b\n"
         "        b = next\n"
         "        i++\n"
@@ -763,7 +763,7 @@ static void test_e2e_in_operator(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "    mut nums [int] = {1, 2, 3}\n"
+        "    mut nums [i64] = {1, 2, 3}\n"
         "    if 2 in nums { println(\"found\") }\n"
         "    if 9 !in nums { println(\"not found\") }\n"
         "}");
@@ -786,7 +786,7 @@ static void test_e2e_arrays_append(void) {
     char *output = compile_and_run(
         "import @arrays\n"
         "do main() {\n"
-        "    mut nums [int] = {1, 2}\n"
+        "    mut nums [i64] = {1, 2}\n"
         "    arrays.append(nums, 3)\n"
         "    println(len(nums))\n"
         "    println(nums[2])\n"
@@ -799,7 +799,7 @@ static void test_e2e_arrays_sort(void) {
     char *output = compile_and_run(
         "import @arrays\n"
         "do main() {\n"
-        "    mut nums [int] = {3, 1, 2}\n"
+        "    mut nums [i64] = {3, 1, 2}\n"
         "    arrays.sort_asc(nums)\n"
         "    println(nums[0])\n"
         "    println(nums[1])\n"
@@ -839,7 +839,7 @@ static void test_e2e_fixed_array(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  const arr [int, 3] = {10, 20, 30}\n"
+        "  const arr [i64, 3] = {10, 20, 30}\n"
         "  println(\"${arr[0]},${arr[1]},${arr[2]}\")\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -850,7 +850,7 @@ static void test_e2e_nested_array(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m [[int]] = {{1, 2}, {3, 4}}\n"
+        "  mut m [[i64]] = {{1, 2}, {3, 4}}\n"
         "  mut r0 = m[0]\n"
         "  mut r1 = m[1]\n"
         "  println(\"${r0[0]},${r0[1]},${r1[0]},${r1[1]}\")\n"
@@ -864,7 +864,7 @@ static void test_e2e_nested_array(void) {
 static void test_e2e_threads_spawn_join(void) {
     char *output = compile_and_run(
         "import @threads\n"
-        "do worker(id int) { println(\"w${id}\") }\n"
+        "do worker(id i64) { println(\"w${id}\") }\n"
         "do main() {\n"
         "  mut t1 = threads.spawn(()worker, 1)\n"
         "  mut t2 = threads.spawn(()worker, 2)\n"
@@ -911,7 +911,7 @@ static void test_e2e_threads_sleep(void) {
 static void test_e2e_function_reference_basic(void) {
     char *output = compile_and_run(
         ""
-        "do double(n int) -> int { return n * 2 }\n"
+        "do double(n i64) -> i64 { return n * 2 }\n"
         "do main() {\n"
         "  const f = ()double\n"
         "  println(f(21))\n"
@@ -923,7 +923,7 @@ static void test_e2e_function_reference_basic(void) {
 static void test_e2e_function_reference_via_ref(void) {
     char *output = compile_and_run(
         ""
-        "do negate(n int) -> int { return n * -1 }\n"
+        "do negate(n i64) -> i64 { return n * -1 }\n"
         "do main() {\n"
         "  mut f = ref(negate)\n"
         "  println(f(5))\n"
@@ -939,8 +939,8 @@ static void test_e2e_struct_function(void) {
     char *output = compile_and_run(
         ""
         "const Counter struct {\n"
-        "  value int\n"
-        "  do make(v int) -> Counter { return Counter{value: v} }\n"
+        "  value i64\n"
+        "  do make(v i64) -> Counter { return Counter{value: v} }\n"
         "  do inc(c Counter) -> Counter { return Counter{value: c.value + 1} }\n"
         "}\n"
         "do main() {\n"
@@ -1014,9 +1014,9 @@ static void test_e2e_string_enum(void) {
 static void test_e2e_named_return(void) {
     char *output = compile_and_run(
         ""
-        "do divide(a int, b int) -> (q int, r int) {\n"
-        "  mut q int = a / b\n"
-        "  mut r int = a % b\n"
+        "do divide(a i64, b i64) -> (q i64, r i64) {\n"
+        "  mut q i64 = a / b\n"
+        "  mut r i64 = a % b\n"
         "  return q, r\n"
         "}\n"
         "do main() {\n"
@@ -1032,9 +1032,9 @@ static void test_e2e_named_return(void) {
 static void test_e2e_mutable_indexed_parameter(void) {
     char *output = compile_and_run(
         ""
-        "do inc(&n int) { n = n + 1 }\n"
+        "do inc(&n i64) { n = n + 1 }\n"
         "do main() {\n"
-        "  mut arr [int] = {10, 20, 30}\n"
+        "  mut arr [i64] = {10, 20, 30}\n"
         "  inc(arr[1])\n"
         "  println(arr[1])\n"
         "}");
@@ -1046,9 +1046,9 @@ static void test_e2e_mutable_member_parameter(void) {
     char *output = compile_and_run(
         ""
         "const P struct {\n"
-        "    x int\n"
+        "    x i64\n"
         "}\n"
-        "do inc(&n int) { n = n + 1 }\n"
+        "do inc(&n i64) { n = n + 1 }\n"
         "do main() {\n"
         "  mut p = P{x: 5}\n"
         "  inc(p.x)\n"
@@ -1064,7 +1064,7 @@ static void test_e2e_map_basic(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:int] = {\"a\": 1, \"b\": 2}\n"
+        "  mut m map[string:i64] = {\"a\": 1, \"b\": 2}\n"
         "  println(m[\"a\"])\n"
         "  println(m[\"b\"])\n"
         "}");
@@ -1076,8 +1076,8 @@ static void test_e2e_map_foreach(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:int] = {\"x\": 10}\n"
-        "  mut total int = 0\n"
+        "  mut m map[string:i64] = {\"x\": 10}\n"
+        "  mut total i64 = 0\n"
         "  for_each _, v in m {\n"
         "    total = total + v\n"
         "  }\n"
@@ -1099,8 +1099,8 @@ static void test_e2e_divide_by_zero(void) {
     const char *src =
         ""
         "do main() {\n"
-        "  mut x int = 10\n"
-        "  mut y int = 0\n"
+        "  mut x i64 = 10\n"
+        "  mut y i64 = 0\n"
         "  println(x / y)\n"
         "}";
 
@@ -1194,7 +1194,7 @@ static void test_e2e_byte_type(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut b byte = cast(255, byte)\n"
+        "  mut b u8 = cast(255, u8)\n"
         "  println(b)\n"
         "  println(type_of(b))\n"
         "}");
@@ -1208,11 +1208,11 @@ static void test_e2e_cast(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 42\n"
+        "  mut x i64 = 42\n"
         "  mut y u8 = cast(x, u8)\n"
         "  println(y)\n"
-        "  mut f float = 3.7\n"
-        "  mut i int = cast(f, int)\n"
+        "  mut f f64 = 3.7\n"
+        "  mut i i64 = cast(f, i64)\n"
         "  println(i)\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -1225,7 +1225,7 @@ static void test_e2e_continue(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut result int = 0\n"
+        "  mut result i64 = 0\n"
         "  for i in range(0, 10) {\n"
         "    if i % 2 == 0 { continue }\n"
         "    result += i\n"
@@ -1243,7 +1243,7 @@ static void test_e2e_modulo_division_assign(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 20\n"
+        "  mut x i64 = 20\n"
         "  x /= 4\n"
         "  println(x)\n"
         "}");
@@ -1257,8 +1257,8 @@ static void test_e2e_nested_struct(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "    x int\n"
-        "    y int\n"
+        "    x i64\n"
+        "    y i64\n"
         "}\n"
         "const Rect struct {\n"
         "    origin Point\n"
@@ -1343,7 +1343,7 @@ static void test_e2e_range_with_step(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut result int = 0\n"
+        "  mut result i64 = 0\n"
         "  for i in range(0, 10, 3) {\n"
         "    result += i\n"
         "  }\n"
@@ -1360,7 +1360,7 @@ static void test_e2e_percent_assign(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 17\n"
+        "  mut x i64 = 17\n"
         "  x %= 5\n"
         "  println(x)\n"
         "}");
@@ -1387,7 +1387,7 @@ static void test_e2e_bool_and_or(void) {
 static void test_e2e_short_circuit(void) {
     char *output = compile_and_run(
         ""
-        "mut called int = 0\n"
+        "mut called i64 = 0\n"
         "do side() -> bool { called++\n return true }\n"
         "do main() {\n"
         "  if false && side() { println(\"bad\") }\n"
@@ -1421,8 +1421,8 @@ static void test_e2e_negative_arithmetic(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = -10\n"
-        "  mut y int = 3\n"
+        "  mut x i64 = -10\n"
+        "  mut y i64 = 3\n"
         "  println(x + y)\n"
         "  println(x * y)\n"
         "  println(x / y)\n"
@@ -1438,10 +1438,10 @@ static void test_e2e_variable_shadowing(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 1\n"
+        "  mut x i64 = 1\n"
         "  println(x)\n"
         "  if true {\n"
-        "    mut x int = 2\n"
+        "    mut x i64 = 2\n"
         "    println(x)\n"
         "  }\n"
         "  println(x)\n"
@@ -1456,7 +1456,7 @@ static void test_e2e_nested_control_flow(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut total int = 0\n"
+        "  mut total i64 = 0\n"
         "  for i in range(0, 3) {\n"
         "    when i {\n"
         "      is 0 { total += 10 }\n"
@@ -1476,7 +1476,7 @@ static void test_e2e_map_set(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:int] = {\"a\": 1}\n"
+        "  mut m map[string:i64] = {\"a\": 1}\n"
         "  m[\"a\"] = 99\n"
         "  m[\"b\"] = 42\n"
         "  println(m[\"a\"])\n"
@@ -1507,7 +1507,7 @@ static void test_e2e_const_values(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  const PI float = 3.14\n"
+        "  const PI f64 = 3.14\n"
         "  const NAME string = \"Grayscale\"\n"
         "  const FLAG bool = true\n"
         "  println(PI)\n"
@@ -1524,7 +1524,7 @@ static void test_e2e_empty_array(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut arr [int] = {}\n"
+        "  mut arr [i64] = {}\n"
         "  println(len(arr))\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -1535,7 +1535,7 @@ static void test_e2e_empty_map(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:int] = {:}\n"
+        "  mut m map[string:i64] = {:}\n"
         "  println(len(m))\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -1547,8 +1547,8 @@ static void test_e2e_empty_map(void) {
 static void test_e2e_nested_calls(void) {
     char *output = compile_and_run(
         ""
-        "do add(a int, b int) -> int { return a + b }\n"
-        "do mul(a int, b int) -> int { return a * b }\n"
+        "do add(a i64, b i64) -> i64 { return a + b }\n"
+        "do mul(a i64, b i64) -> i64 { return a * b }\n"
         "do main() {\n"
         "  println(add(1, mul(2, 3)))\n"
         "}");
@@ -1595,7 +1595,7 @@ static void test_e2e_enum_compare(void) {
 static void test_e2e_grouped_parameters(void) {
     char *output = compile_and_run(
         ""
-        "do add3(a, b, c int) -> int { return a + b + c }\n"
+        "do add3(a, b, c i64) -> i64 { return a + b + c }\n"
         "do main() {\n"
         "  println(add3(10, 20, 30))\n"
         "}");
@@ -1609,9 +1609,9 @@ static void test_e2e_loop_scope(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut total int = 0\n"
+        "  mut total i64 = 0\n"
         "  for i in range(0, 3) {\n"
-        "    mut local int = i * 10\n"
+        "    mut local i64 = i * 10\n"
         "    total += local\n"
         "  }\n"
         "  println(total)\n"
@@ -1655,8 +1655,8 @@ static void test_e2e_c_interop(void) {
         ""
         "extern import \"stdlib.h\"\n"
         "do main() {\n"
-        "  mut ok int = extern.EXIT_SUCCESS\n"
-        "  mut fail int = extern.EXIT_FAILURE\n"
+        "  mut ok i64 = extern.EXIT_SUCCESS\n"
+        "  mut fail i64 = extern.EXIT_FAILURE\n"
         "  println(ok)\n"
         "  println(fail)\n"
         "}");
@@ -1671,11 +1671,11 @@ static void test_e2e_atomic(void) {
         ""
         "import @atomic\n"
         "do main() {\n"
-        "  mut val int = 0\n"
-        "  mut ptr ^int = addr(val)\n"
+        "  mut val i64 = 0\n"
+        "  mut ptr ^i64 = addr(val)\n"
         "  atomic.store(ptr, 42)\n"
         "  println(atomic.load(ptr))\n"
-        "  mut old int = atomic.add(ptr, 8)\n"
+        "  mut old i64 = atomic.add(ptr, 8)\n"
         "  println(old)\n"
         "  println(atomic.load(ptr))\n"
         "}");
@@ -1762,9 +1762,9 @@ static void test_e2e_bigint_cast(void) {
         ""
         "do main() {\n"
         "  mut a i128 = i128(42)\n"
-        "  mut b int = int(a)\n"
+        "  mut b i64 = cast(a, i64)\n"
         "  println(b)\n"
-        "  mut c uint = 100\n"
+        "  mut c u64 = 100\n"
         "  mut d u128 = u128(c)\n"
         "  println(d)\n"
         "}");
@@ -1807,11 +1807,11 @@ static void test_e2e_struct_multiple_functions(void) {
     char *output = compile_and_run(
         ""
         "const Vec struct {\n"
-        "  x int\n"
-        "  y int\n"
-        "  do make(x int, y int) -> Vec { return Vec{x: x, y: y} }\n"
-        "  do sum(v Vec) -> int { return v.x + v.y }\n"
-        "  do scale(v Vec, factor int) -> Vec {\n"
+        "  x i64\n"
+        "  y i64\n"
+        "  do make(x i64, y i64) -> Vec { return Vec{x: x, y: y} }\n"
+        "  do sum(v Vec) -> i64 { return v.x + v.y }\n"
+        "  do scale(v Vec, factor i64) -> Vec {\n"
         "    return Vec{x: v.x * factor, y: v.y * factor}\n"
         "  }\n"
         "}\n"
@@ -1830,9 +1830,9 @@ static void test_e2e_struct_self_dispatch(void) {
     char *output = compile_and_run(
         ""
         "const Counter struct {\n"
-        "  value int\n"
-        "  do make(v int) -> Counter { return Counter{value: v} }\n"
-        "  do get(c Counter) -> int { return c.value }\n"
+        "  value i64\n"
+        "  do make(v i64) -> Counter { return Counter{value: v} }\n"
+        "  do get(c Counter) -> i64 { return c.value }\n"
         "  do inc(c Counter) -> Counter {\n"
         "    return Counter{value: c.value + 1}\n"
         "  }\n"
@@ -1852,9 +1852,9 @@ static void test_e2e_struct_static_dispatch(void) {
     char *output = compile_and_run(
         ""
         "const Adder struct {\n"
-        "  val int\n"
-        "  do make(v int) -> Adder { return Adder{val: v} }\n"
-        "  do add(a Adder, n int) -> Adder {\n"
+        "  val i64\n"
+        "  do make(v i64) -> Adder { return Adder{val: v} }\n"
+        "  do add(a Adder, n i64) -> Adder {\n"
         "    return Adder{val: a.val + n}\n"
         "  }\n"
         "}\n"
@@ -1872,7 +1872,7 @@ static void test_e2e_struct_static_dispatch(void) {
 static void test_e2e_multi_return_three(void) {
     char *output = compile_and_run(
         ""
-        "do triple(a int) -> (int, int, int) { return a, a * 2, a * 3 }\n"
+        "do triple(a i64) -> (i64, i64, i64) { return a, a * 2, a * 3 }\n"
         "do main() {\n"
         "  mut x, y, z = triple(5)\n"
         "  println(x)\n"
@@ -1886,7 +1886,7 @@ static void test_e2e_multi_return_three(void) {
 static void test_e2e_multi_return_mixed(void) {
     char *output = compile_and_run(
         ""
-        "do info() -> (string, int) { return \"hello\", 42 }\n"
+        "do info() -> (string, i64) { return \"hello\", 42 }\n"
         "do main() {\n"
         "  mut s, n = info()\n"
         "  println(s)\n"
@@ -1899,9 +1899,9 @@ static void test_e2e_multi_return_mixed(void) {
 static void test_e2e_multi_return_wildcard(void) {
     char *output = compile_and_run(
         ""
-        "do divide(a int, b int) -> (int, int) { return a / b, a % b }\n"
+        "do divide(a i64, b i64) -> (i64, i64) { return a / b, a % b }\n"
         "do main() {\n"
-        "  mut _, r int = divide(17, 5)\n"
+        "  mut _, r i64 = divide(17, 5)\n"
         "  println(r)\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -1992,7 +1992,7 @@ static void test_e2e_ptr_to_ptr(void) {
         "do main() {\n"
         "  mut a = mem.arena(4096)\n"
         "  ensure mem.destroy(a)\n"
-        "  mut p ^int = mem.init(a, int)\n"
+        "  mut p ^i64 = mem.init(a, i64)\n"
         "  p^ = 42\n"
         "  mut pp = addr(p)\n"
         "  println(pp^^)\n"
@@ -2005,11 +2005,11 @@ static void test_e2e_ptr_compare(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 10\n"
-        "  mut y int = 20\n"
-        "  mut p1 ^int = addr(x)\n"
-        "  mut p2 ^int = addr(x)\n"
-        "  mut p3 ^int = addr(y)\n"
+        "  mut x i64 = 10\n"
+        "  mut y i64 = 20\n"
+        "  mut p1 ^i64 = addr(x)\n"
+        "  mut p2 ^i64 = addr(x)\n"
+        "  mut p3 ^i64 = addr(y)\n"
         "  println(p1 == p2)\n"
         "  println(p1 == p3)\n"
         "}");
@@ -2023,7 +2023,7 @@ static void test_e2e_map_int_keys(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[int:string] = {1: \"one\", 2: \"two\", 3: \"three\"}\n"
+        "  mut m map[i64:string] = {1: \"one\", 2: \"two\", 3: \"three\"}\n"
         "  println(m[2])\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -2034,8 +2034,8 @@ static void test_e2e_array_of_structs(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "  x int\n"
-        "  y int\n"
+        "  x i64\n"
+        "  y i64\n"
         "}\n"
         "do main() {\n"
         "  mut points [Point] = {Point{x: 1, y: 2}, Point{x: 3, y: 4}}\n"
@@ -2057,7 +2057,7 @@ static void test_e2e_bitwise_ops(void) {
         "  println(0b1100 bit_xor 0b1010)\n"
         "  println(1 bit_shift_left 4)\n"
         "  println(64 bit_shift_right 2)\n"
-        "  mut n int = bit_not 0\n"
+        "  mut n i64 = bit_not 0\n"
         "  println(n)\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -2177,7 +2177,7 @@ static void test_e2e_fmt_bigint_directives(void) {
 static void test_e2e_when_multi_value(void) {
     char *output = compile_and_run(
         ""
-        "do classify(n int) -> string {\n"
+        "do classify(n i64) -> string {\n"
         "  when n {\n"
         "    is 0 { return \"zero\" }\n"
         "    is 1, 2, 3 { return \"small\" }\n"
@@ -2199,7 +2199,7 @@ static void test_e2e_map_remove(void) {
         ""
         "import @maps\n"
         "do main() {\n"
-        "  mut m map[string:int] = {\"a\": 1, \"b\": 2, \"c\": 3}\n"
+        "  mut m map[string:i64] = {\"a\": 1, \"b\": 2, \"c\": 3}\n"
         "  maps.remove_key(m, \"b\")\n"
         "  println(len(m))\n"
         "  println(\"b\" in m)\n"
@@ -2213,15 +2213,15 @@ static void test_e2e_tagged_enum(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "  x int\n"
-        "  y int\n"
+        "  x i64\n"
+        "  y i64\n"
         "}\n"
         "const Shape enum {\n"
-        "  Circle(int)\n"
+        "  Circle(i64)\n"
         "  Rect(Point)\n"
         "  Empty\n"
         "}\n"
-        "do area(s Shape) -> int {\n"
+        "do area(s Shape) -> i64 {\n"
         "  when s {\n"
         "    is Shape.Circle(r) { return r * r }\n"
         "    is Shape.Rect(p) { return p.x * p.y }\n"
@@ -2243,7 +2243,7 @@ static void test_e2e_struct_field_defaults(void) {
         ""
         "const Config struct {\n"
         "  host string = \"localhost\"\n"
-        "  port int = 8080\n"
+        "  port i64 = 8080\n"
         "}\n"
         "do main() {\n"
         "  mut c = new(Config)\n"
@@ -2261,7 +2261,7 @@ static void test_e2e_generic_type_param(void) {
     char *output = compile_and_run(
         ""
         "const Box struct {\n"
-        "  value int\n"
+        "  value i64\n"
         "}\n"
         "do make_it(T <?>) -> ^? {\n"
         "  return new(T)\n"
@@ -2280,22 +2280,22 @@ static void test_e2e_generic_type_param(void) {
 static void test_e2e_type_alias(void) {
     char *output = compile_and_run(
         ""
-        "alias Meters = float\n"
+        "alias Meters = f64\n"
         "do main() {\n"
         "  mut d Meters = 10.5\n"
         "  println(type_of(d))\n"
         "  println(d + 1.0)\n"
         "}");
     ASSERT_NOT_NULL(output);
-    ASSERT_STR_EQ(output, "float\n11.5");
+    ASSERT_STR_EQ(output, "f64\n11.5");
 }
 
 static void test_e2e_type_alias_struct_enum(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "  x int\n"
-        "  y int\n"
+        "  x i64\n"
+        "  y i64\n"
         "}\n"
         "alias Vec2 = Point\n"
         "const Color enum {\n"
@@ -2350,10 +2350,10 @@ static void test_e2e_numeric_underscores(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut a int = 1_000_000\n"
-        "  mut b int = 0xDEAD_BEEF\n"
-        "  mut c int = 0b1111_0000\n"
-        "  mut d int = 0o1_2_3\n"
+        "  mut a i64 = 1_000_000\n"
+        "  mut b i64 = 0xDEAD_BEEF\n"
+        "  mut c i64 = 0b1111_0000\n"
+        "  mut d i64 = 0o1_2_3\n"
         "  println(a)\n"
         "  println(b)\n"
         "  println(c)\n"
@@ -2370,7 +2370,7 @@ static void test_e2e_copy_deep(void) {
         ""
         "const Person struct {\n"
         "  name string\n"
-        "  age int\n"
+        "  age i64\n"
         "}\n"
         "do main() {\n"
         "  mut original Person = Person{name: \"Alice\", age: 30}\n"
@@ -2389,10 +2389,10 @@ static void test_e2e_literal_embed_alias(void) {
     char *output = compile_and_run(
         ""
         "const Box struct {\n"
-        "  items [int]\n"
+        "  items [i64]\n"
         "}\n"
         "do main() {\n"
-        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut arr [i64] = {1, 2, 3}\n"
         "  mut box Box = Box{items: arr}\n"
         "  box.items[0] = 99\n"
         "  println(arr[0])\n"
@@ -2408,11 +2408,11 @@ static void test_e2e_new_zero_values(void) {
         ""
         "const Config struct {\n"
         "  host string\n"
-        "  port int\n"
+        "  port i64\n"
         "  on bool\n"
         "}\n"
         "do main() {\n"
-        "  mut i = new(int)\n"
+        "  mut i = new(i64)\n"
         "  mut s = new(string)\n"
         "  mut c = new(Config)\n"
         "  println(i^)\n"
@@ -2429,7 +2429,7 @@ static void test_e2e_new_zero_values(void) {
 static void test_e2e_when_range(void) {
     char *output = compile_and_run(
         ""
-        "do classify(n int) -> string {\n"
+        "do classify(n i64) -> string {\n"
         "  when n {\n"
         "    is range(0, 3) { return \"low\" }\n"
         "    is range(3, 10) { return \"mid\" }\n"
@@ -2452,7 +2452,7 @@ static void test_e2e_when_range(void) {
 static void test_e2e_switch_case(void) {
     char *output = compile_and_run(
         ""
-        "do sw(n int) -> string {\n"
+        "do sw(n i64) -> string {\n"
         "  switch n {\n"
         "    case 1 { return \"one\" }\n"
         "    case 2, 3 { return \"few\" }\n"
@@ -2475,10 +2475,10 @@ static void test_e2e_size_of(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  println(size_of(int))\n"
-        "  println(size_of(byte))\n"
+        "  println(size_of(i64))\n"
+        "  println(size_of(u8))\n"
         "  println(size_of(bool))\n"
-        "  println(size_of(float))\n"
+        "  println(size_of(f64))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "8\n1\n1\n8");
@@ -2490,8 +2490,8 @@ static void test_e2e_fields(void) {
     char *output = compile_and_run(
         ""
         "const Point struct {\n"
-        "  x int\n"
-        "  y int\n"
+        "  x i64\n"
+        "  y i64\n"
         "  label string\n"
         "}\n"
         "do main() {\n"
@@ -2510,11 +2510,11 @@ static void test_e2e_ref_builtin(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = 10\n"
+        "  mut x i64 = 10\n"
         "  mut r = ref(x)\n"
         "  r = 42\n"
         "  println(x)\n"
-        "  mut arr [int] = {1, 2, 3}\n"
+        "  mut arr [i64] = {1, 2, 3}\n"
         "  mut ra = ref(arr)\n"
         "  ra[0] = 99\n"
         "  println(arr[0])\n"
@@ -2533,7 +2533,7 @@ static void test_e2e_char_count(void) {
         "  println(len(s))\n"
         "  println(char_count(s))\n"
         "  mut c char = to_char(s, 1)\n"
-        "  println(int(c))\n"
+        "  println(cast(c, i64))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "6\n5\n233");
@@ -2589,7 +2589,7 @@ static void test_e2e_assert_failure(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut x int = -1\n"
+        "  mut x i64 = -1\n"
         "  assert(x > 0, \"x must be positive\")\n"
         "  println(\"unreached\")\n"
         "}");
@@ -2710,13 +2710,13 @@ static void test_e2e_interp_expression(void) {
     char *output = compile_and_run(
         ""
         "const P struct {\n"
-        "  x int\n"
-        "  y int\n"
+        "  x i64\n"
+        "  y i64\n"
         "}\n"
-        "do dbl(n int) -> int { return n * 2 }\n"
+        "do dbl(n i64) -> i64 { return n * 2 }\n"
         "do main() {\n"
-        "  mut a int = 3\n"
-        "  mut b int = 4\n"
+        "  mut a i64 = 3\n"
+        "  mut b i64 = 4\n"
         "  println(\"sum=${a + b}\")\n"
         "  mut p P = P{x: 1, y: 2}\n"
         "  println(\"pt ${p.x},${p.y}\")\n"
@@ -2732,7 +2732,7 @@ static void test_e2e_map_compound_assign(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:int] = {\"a\": 10}\n"
+        "  mut m map[string:i64] = {\"a\": 10}\n"
         "  m[\"a\"] += 5\n"
         "  m[\"a\"] *= 2\n"
         "  println(m[\"a\"])\n"
@@ -2748,7 +2748,7 @@ static void test_e2e_struct_array_field(void) {
         ""
         "import @arrays\n"
         "const Bag struct {\n"
-        "  items [int]\n"
+        "  items [i64]\n"
         "}\n"
         "do main() {\n"
         "  mut b Bag = Bag{items: {1, 2}}\n"
@@ -2768,7 +2768,7 @@ static void test_e2e_nested_map(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut m map[string:map[string:int]] = {\"outer\": {\"inner\": 7}}\n"
+        "  mut m map[string:map[string:i64]] = {\"outer\": {\"inner\": 7}}\n"
         "  println(m[\"outer\"][\"inner\"])\n"
         "}");
     ASSERT_NOT_NULL(output);
@@ -2781,8 +2781,8 @@ static void test_e2e_for_each_break_continue(void) {
     char *output = compile_and_run(
         ""
         "do main() {\n"
-        "  mut xs [int] = {1, 2, 3, 4, 5}\n"
-        "  mut sum int = 0\n"
+        "  mut xs [i64] = {1, 2, 3, 4, 5}\n"
+        "  mut sum i64 = 0\n"
         "  for_each x in xs {\n"
         "    if x == 4 { break }\n"
         "    if x == 2 { continue }\n"
@@ -2821,7 +2821,7 @@ static void test_e2e_enum_array(void) {
         "do main() {\n"
         "  mut cs [Color] = {Color.RED, Color.BLUE, Color.GREEN}\n"
         "  println(len(cs))\n"
-        "  mut count int = 0\n"
+        "  mut count i64 = 0\n"
         "  for_each c in cs {\n"
         "    if c == Color.BLUE { count += 1 }\n"
         "  }\n"
@@ -2838,14 +2838,14 @@ static void test_e2e_recursive_struct_list(void) {
     char *output = compile_and_run(
         ""
         "const Node struct {\n"
-        "  val int\n"
+        "  val i64\n"
         "  next ^Node\n"
         "}\n"
         "do main() {\n"
         "  mut c Node = Node{val: 3}\n"
         "  mut b Node = Node{val: 2, next: addr(c)}\n"
         "  mut a Node = Node{val: 1, next: addr(b)}\n"
-        "  mut sum int = 0\n"
+        "  mut sum i64 = 0\n"
         "  mut cur ^Node = addr(a)\n"
         "  as_long_as cur != nil {\n"
         "    sum += cur^.val\n"
@@ -2890,11 +2890,11 @@ static void test_e2e_enum_explicit_values(void) {
         "  NOT_FOUND = 404\n"
         "}\n"
         "do main() {\n"
-        "  mut a int = Status.OK\n"
-        "  mut b int = Status.CREATED\n"
+        "  mut a i64 = Status.OK\n"
+        "  mut b i64 = Status.CREATED\n"
         "  println(a)\n"
         "  println(b)\n"
-        "  println(cast(Status.NOT_FOUND, int))\n"
+        "  println(cast(Status.NOT_FOUND, i64))\n"
         "}");
     ASSERT_NOT_NULL(output);
     ASSERT_STR_EQ(output, "200\n201\n404");
@@ -2944,12 +2944,12 @@ static void test_e2e_line_directives(void) {
     char gray_file[128];
     char *c = compile_to_c(
         ""
-        "do add(a int, b int) -> int {\n"  /* line 1 */
+        "do add(a i64, b i64) -> i64 {\n"  /* line 1 */
         "    return a + b\n"                /* line 2 */
         "}\n"                                /* line 3 */
         "\n"                                 /* line 4 */
         "do main() {\n"                      /* line 5 */
-        "    mut x int = 1\n"                /* line 6 */
+        "    mut x i64 = 1\n"                /* line 6 */
         "    println(add(x, x))\n"           /* line 7 */
         "}",
         gray_file, sizeof(gray_file));

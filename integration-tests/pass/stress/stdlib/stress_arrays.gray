@@ -6,11 +6,11 @@ import @arrays
 
 do main() {
     println("=== Stress: @arrays Edge Cases ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // sort already sorted
-    mut sorted [int] = {1, 2, 3, 4, 5}
+    mut sorted [i64] = {1, 2, 3, 4, 5}
     arrays.sort_asc(sorted)
     if sorted[0] == 1 && sorted[4] == 5 {
         println("  [PASS] sort already sorted")
@@ -18,7 +18,7 @@ do main() {
     } otherwise { println("  [FAIL] sort sorted") failed += 1 }
 
     // sort reverse sorted
-    mut rev [int] = {5, 4, 3, 2, 1}
+    mut rev [i64] = {5, 4, 3, 2, 1}
     arrays.sort_asc(rev)
     if rev[0] == 1 && rev[4] == 5 {
         println("  [PASS] sort reverse sorted")
@@ -26,7 +26,7 @@ do main() {
     } otherwise { println("  [FAIL] sort reverse") failed += 1 }
 
     // sort_desc
-    mut desc [int] = {1, 3, 2, 5, 4}
+    mut desc [i64] = {1, 3, 2, 5, 4}
     arrays.sort_desc(desc)
     if desc[0] == 5 && desc[4] == 1 {
         println("  [PASS] sort_desc")
@@ -34,47 +34,47 @@ do main() {
     } otherwise { println("  [FAIL] sort_desc") failed += 1 }
 
     // single element operations
-    mut single [int] = {42}
+    mut single [i64] = {42}
     if arrays.get_sum(single) == 42 && arrays.get_min(single) == 42 && arrays.get_max(single) == 42 {
         println("  [PASS] sum/min/max on single element")
         passed += 1
     } otherwise { println("  [FAIL] single element ops") failed += 1 }
 
     // negative values
-    mut negs [int] = {-5, -1, -10, -3}
+    mut negs [i64] = {-5, -1, -10, -3}
     if arrays.get_min(negs) == -10 && arrays.get_max(negs) == -1 && arrays.get_sum(negs) == -19 {
         println("  [PASS] sum/min/max with negatives")
         passed += 1
     } otherwise { println("  [FAIL] negatives") failed += 1 }
 
     // index_of not found
-    mut haystack [int] = {1, 2, 3}
-    mut idx int = arrays.index_of(haystack, 99)
+    mut haystack [i64] = {1, 2, 3}
+    mut idx i64 = arrays.index_of(haystack, 99)
     if idx == -1 {
         println("  [PASS] index_of returns -1 when not found")
         passed += 1
     } otherwise { println("  [FAIL] index_of not found — got ${idx}") failed += 1 }
 
     // slice boundary
-    mut full [int] = {0, 1, 2, 3, 4}
-    mut s1 [int] = arrays.slice(full, 0, 5)
-    mut s2 [int] = arrays.slice(full, 0, 1)
+    mut full [i64] = {0, 1, 2, 3, 4}
+    mut s1 [i64] = arrays.slice(full, 0, 5)
+    mut s2 [i64] = arrays.slice(full, 0, 1)
     if len(s1) == 5 && len(s2) == 1 && s2[0] == 0 {
         println("  [PASS] slice boundaries (full and single)")
         passed += 1
     } otherwise { println("  [FAIL] slice boundaries") failed += 1 }
 
     // concat multiple arrays
-    mut a [int] = {1, 2}
-    mut b [int] = {3, 4}
-    mut c [int] = arrays.concat(a, b)
+    mut a [i64] = {1, 2}
+    mut b [i64] = {3, 4}
+    mut c [i64] = arrays.concat(a, b)
     if len(c) == 4 && c[0] == 1 && c[3] == 4 {
         println("  [PASS] concat two arrays")
         passed += 1
     } otherwise { println("  [FAIL] concat") failed += 1 }
 
     // remove_at
-    mut rem [int] = {10, 20, 30}
+    mut rem [i64] = {10, 20, 30}
     arrays.remove_at(rem, 1)
     if len(rem) == 2 && rem[0] == 10 && rem[1] == 30 {
         println("  [PASS] remove_at middle element")
@@ -82,7 +82,7 @@ do main() {
     } otherwise { println("  [FAIL] remove_at") failed += 1 }
 
     // clear
-    mut clr [int] = {1, 2, 3}
+    mut clr [i64] = {1, 2, 3}
     arrays.clear(clr)
     if len(clr) == 0 {
         println("  [PASS] clear empties array")
@@ -90,7 +90,7 @@ do main() {
     } otherwise { println("  [FAIL] clear") failed += 1 }
 
     // Stress: append 500, sort
-    mut stress [int] = {}
+    mut stress [i64] = {}
     for i in range(0, 500) {
         arrays.append(stress, 500 - i)
     }

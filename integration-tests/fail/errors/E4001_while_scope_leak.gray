@@ -4,9 +4,9 @@
  */
 
 do main() {
-    mut x int = 0
+    mut x i64 = 0
     while x < 1 {
-        mut inner int = 42
+        mut inner i64 = 42
         x++
     }
     println("${inner}")

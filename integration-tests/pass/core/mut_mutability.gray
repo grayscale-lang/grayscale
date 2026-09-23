@@ -5,18 +5,18 @@
 import @arrays
 using arrays
 
-do get_numbers() -> [int] {
+do get_numbers() -> [i64] {
     return {1, 2, 3}
 }
 
-do get_point() -> (int, int) {
+do get_point() -> (i64, i64) {
     return 10, 20
 }
 
 do main() {
     println("=== Temp Mutability Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: mut from function return is mutable (can modify elements)
     mut arr = get_numbers()
@@ -62,7 +62,7 @@ do main() {
     }
 
     // Test 5: mut from array literal is mutable
-    mut lit [int] = {1, 2, 3}
+    mut lit [i64] = {1, 2, 3}
     lit[0] = 100
     if lit[0] == 100 {
         println("  [PASS] mut array literal: lit[0] = 100 (mutable)")

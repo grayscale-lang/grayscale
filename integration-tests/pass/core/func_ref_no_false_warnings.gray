@@ -7,29 +7,29 @@
 
 
 // This function is ONLY used via ()ref — should not trigger W1003
-do square(n int) -> int {
+do square(n i64) -> i64 {
     return n * n
 }
 
 // This function is ONLY used via ()Helpers.triple — should not trigger W1003
 const Helpers struct {
-    _pad int
-    do triple(n int) -> int {
+    _pad i64
+    do triple(n i64) -> i64 {
         return n * 3
     }
 }
 
-do apply(n int, f func(int) -> int) -> int {
+do apply(n i64, f func(i64) -> i64) -> i64 {
     return f(n)
 }
 
 do main() {
     println("=== Func Ref No False Warnings Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: function only used via ()ref — no W1003
-    mut result1 int = apply(4, ()square)
+    mut result1 i64 = apply(4, ()square)
     if result1 == 16 {
         println("  [PASS] ()square ref — no false unused warning")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 2: namespaced function only used via ()ref — no W1003
-    mut result2 int = apply(4, ()Helpers.triple)
+    mut result2 i64 = apply(4, ()Helpers.triple)
     if result2 == 12 {
         println("  [PASS] ()Helpers.triple ref — no false unused warning")
         passed += 1
@@ -50,7 +50,7 @@ do main() {
 
     // Test 3: variable holding func ref that is only called — no W1001
     const f = ()square
-    mut result3 int = f(7)
+    mut result3 i64 = f(7)
     if result3 == 49 {
         println("  [PASS] func ref variable called — no false unused warning")
         passed += 1

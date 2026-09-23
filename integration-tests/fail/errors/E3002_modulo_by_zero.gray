@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = 10 % 0  // modulo by zero
+    mut x i64 = 10 % 0  // modulo by zero
 }

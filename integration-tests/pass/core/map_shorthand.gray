@@ -4,22 +4,22 @@
 
 import @maps
 
-do get_map() -> [string:int] {
-    mut result [string:int] = {"a": 1, "b": 2}
+do get_map() -> [string:i64] {
+    mut result [string:i64] = {"a": 1, "b": 2}
     return result
 }
 
-do take_map(m [string:int]) -> int {
+do take_map(m [string:i64]) -> i64 {
     return m["a"]
 }
 
 do main() {
     println("=== Map Shorthand [K:V] Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Variable declaration with [K:V]
-    mut m1 [string:int] = {"x": 10, "y": 20}
+    mut m1 [string:i64] = {"x": 10, "y": 20}
     if len(m1) == 2 {
         println("  [PASS] [K:V] variable declaration")
         passed += 1
@@ -29,7 +29,7 @@ do main() {
     }
 
     // Test 2: Function return type with [K:V]
-    mut m2 [string:int] = get_map()
+    mut m2 [string:i64] = get_map()
     if m2["a"] == 1 {
         println("  [PASS] [K:V] function return type")
         passed += 1
@@ -39,7 +39,7 @@ do main() {
     }
 
     // Test 3: Function parameter with [K:V]
-    mut m3 [string:int] = {"a": 42}
+    mut m3 [string:i64] = {"a": 42}
     if take_map(m3) == 42 {
         println("  [PASS] [K:V] function parameter")
         passed += 1
@@ -48,29 +48,29 @@ do main() {
         failed += 1
     }
 
-    // Test 4: Nested map — array of maps [[string:int]]
-    mut m4 [[string:int]] = {{"a": 1}, {"b": 2}}
+    // Test 4: Nested map — array of maps [[string:i64]]
+    mut m4 [[string:i64]] = {{"a": 1}, {"b": 2}}
     if len(m4) == 2 {
-        println("  [PASS] nested [[string:int]]")
+        println("  [PASS] nested [[string:i64]]")
         passed += 1
     } otherwise {
-        println("  [FAIL] nested [[string:int]]")
+        println("  [FAIL] nested [[string:i64]]")
         failed += 1
     }
 
-    // Test 5: Nested map — map of maps [string:[string:int]]
-    mut m5 [string:[string:int]] = {"outer": {"inner": 99}}
+    // Test 5: Nested map — map of maps [string:[string:i64]]
+    mut m5 [string:[string:i64]] = {"outer": {"inner": 99}}
     if m5["outer"]["inner"] == 99 {
-        println("  [PASS] nested [string:[string:int]]")
+        println("  [PASS] nested [string:[string:i64]]")
         passed += 1
     } otherwise {
-        println("  [FAIL] nested [string:[string:int]]")
+        println("  [FAIL] nested [string:[string:i64]]")
         failed += 1
     }
 
     // Test 6: Mixed — map[K:V] and [K:V] in same program
-    mut m6 map[string:int] = {"old": 1}
-    mut m7 [string:int] = {"new": 2}
+    mut m6 map[string:i64] = {"old": 1}
+    mut m7 [string:i64] = {"new": 2}
     if m6["old"] == 1 && m7["new"] == 2 {
         println("  [PASS] mixed map[K:V] and [K:V]")
         passed += 1
@@ -80,7 +80,7 @@ do main() {
     }
 
     // Test 7: Empty map with [K:V]
-    mut m8 [string:int] = {:}
+    mut m8 [string:i64] = {:}
     if len(m8) == 0 {
         println("  [PASS] empty [K:V] map")
         passed += 1

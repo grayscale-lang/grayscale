@@ -1,9 +1,9 @@
 const A struct {
-    val int
+    val i64
 }
 
 const B struct {
-    val int
+    val i64
 }
 
 do main() {

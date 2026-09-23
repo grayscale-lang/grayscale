@@ -9,7 +9,7 @@
 extern import "stdlib.h"
 
 do main() {
-    mut x int = 5
-    mut p ^int = addr(x)
+    mut x i64 = 5
+    mut p ^i64 = addr(x)
     extern.free(p)
 }

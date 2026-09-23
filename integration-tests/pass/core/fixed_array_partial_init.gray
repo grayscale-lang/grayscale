@@ -6,42 +6,42 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Partial init: 3 of 5 elements; slots 3 and 4 must be 0
-    const a [int, 5] = {10, 20, 30}
+    const a [i64, 5] = {10, 20, 30}
     if a[0] == 10 && a[1] == 20 && a[2] == 30 && a[3] == 0 && a[4] == 0 {
         passed++
     } otherwise {
-        println("FAIL: partial int init values wrong")
+        println("FAIL: partial i64 init values wrong")
         failed++
     }
 
     // Empty init: all N slots must be zero
-    const b [int, 4] = {}
+    const b [i64, 4] = {}
     if b[0] == 0 && b[3] == 0 {
         passed++
     } otherwise {
-        println("FAIL: empty int init not zero")
+        println("FAIL: empty i64 init not zero")
         failed++
     }
 
     // Full init: N of N elements; still works correctly
-    const c [int, 3] = {7, 8, 9}
+    const c [i64, 3] = {7, 8, 9}
     if c[0] == 7 && c[1] == 8 && c[2] == 9 {
         passed++
     } otherwise {
-        println("FAIL: full int init wrong")
+        println("FAIL: full i64 init wrong")
         failed++
     }
 
     // Float partial init
-    const d [float, 3] = {1.5}
+    const d [f64, 3] = {1.5}
     if d[0] == 1.5 && d[1] == 0.0 && d[2] == 0.0 {
         passed++
     } otherwise {
-        println("FAIL: partial float init wrong")
+        println("FAIL: partial f64 init wrong")
         failed++
     }
 

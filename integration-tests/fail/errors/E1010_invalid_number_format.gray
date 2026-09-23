@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = 0x  // hex without digits
+    mut x i64 = 0x  // hex without digits
 }

@@ -22,7 +22,7 @@ typedef struct {
 /*@man open
  *@module channels
  *@group Lifecycle
- *@sig open(capacity int) -> Channel
+ *@sig open(capacity i64) -> Channel
  *@desc Create a buffered channel with the given capacity.
  *@example
  *   import @channels
@@ -35,7 +35,7 @@ GrayChannel gray_channels_open(int64_t capacity);
 /*@man send
  *@module channels
  *@group Send/Receive
- *@sig send(ch Channel, value int)
+ *@sig send(ch Channel, value i64)
  *@desc Send a value into a channel. Blocks if the channel is full.
  *@example
  *   import @channels
@@ -48,11 +48,11 @@ void gray_channels_send(GrayChannel ch, int64_t value);
 /*@man receive
  *@module channels
  *@group Send/Receive
- *@sig receive(ch Channel) -> int
+ *@sig receive(ch Channel) -> i64
  *@desc Receive a value from a channel. Blocks if the channel is empty.
  *@example
  *   import @channels
- *   mut val int = channels.receive(ch)
+ *   mut val i64 = channels.receive(ch)
  *@end
  */
 /* Receive a value from the channel. Blocks if empty. */
@@ -74,7 +74,7 @@ void gray_channels_close(GrayChannel ch);
 /*@man try_send
  *@module channels
  *@group Send/Receive
- *@sig try_send(ch Channel, value int) -> bool
+ *@sig try_send(ch Channel, value i64) -> bool
  *@desc Non-blocking send. Returns true if the value was sent, false if the channel is full.
  *@example
  *   import @channels
@@ -88,11 +88,11 @@ bool gray_channels_try_send(GrayChannel ch, int64_t value);
 /*@man try_receive
  *@module channels
  *@group Send/Receive
- *@sig try_receive(ch Channel) -> (int, bool)
+ *@sig try_receive(ch Channel) -> (i64, bool)
  *@desc Non-blocking receive. Returns the value and true if available, or (0, false) if empty. Always use destructuring.
  *@example
  *   import @channels
- *   mut val int, mut ok bool = channels.try_receive(ch)
+ *   mut val i64, mut ok bool = channels.try_receive(ch)
  *   if ok { println("got ${val}") }
  *@end
  */

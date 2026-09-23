@@ -1,0 +1,9 @@
+/*
+ * Error Test: E3002 - modulo by literal integer zero
+ *
+ * the fix covers both '/' and '%' operators.
+ */
+
+do main() {
+    mut x i64 = 10 % 0
+}

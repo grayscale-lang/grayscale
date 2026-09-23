@@ -4,7 +4,7 @@
  * but no matching variable exists in the function body.
  */
 
-do getValue() -> (result int) {
+do getValue() -> (result i64) {
     return 42
 }
 

@@ -8,6 +8,6 @@ import @arrays
 do string_cb(s string) -> bool { return s == "hello" }
 
 do main() {
-    mut nums [int] = {1, 2, 3}
-    mut result [int] = arrays.filter(nums, ()string_cb)
+    mut nums [i64] = {1, 2, 3}
+    mut result [i64] = arrays.filter(nums, ()string_cb)
 }

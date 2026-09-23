@@ -1,0 +1,8 @@
+/*
+ * Error Test: E3036 - u8-value-out-of-range
+ * Expected: "u8" or "0 and 255"
+ */
+
+do main() {
+    mut b u8 = 256  // u8 must be 0-255
+}

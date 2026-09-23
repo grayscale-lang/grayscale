@@ -1,14 +1,14 @@
 import @arrays
 
 const Inner struct {
-    items [int]
+    items [i64]
 }
 
 const Outer struct {
     inner Inner
 }
 
-do first_even(&o Outer) -> int {
+do first_even(&o Outer) -> i64 {
     for_each x in o.inner.items {
         if x % 2 == 0 {
             return x
@@ -18,14 +18,14 @@ do first_even(&o Outer) -> int {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut o Outer = Outer{inner: Inner{items: {1, 2, 3, 4}}}
 
     // Appending to a field array during iteration stays legal, and the loop
     // only visits the elements present when it started.
-    mut seen int = 0
+    mut seen i64 = 0
     for_each x in o.inner.items {
         seen = seen + 1
         arrays.append(o.inner.items, x * 10)
@@ -71,7 +71,7 @@ do main() {
     }
 
     // Nested loops over the same field array
-    mut pairs int = 0
+    mut pairs i64 = 0
     for_each a in o.inner.items {
         for_each b in o.inner.items {
             pairs = pairs + 1

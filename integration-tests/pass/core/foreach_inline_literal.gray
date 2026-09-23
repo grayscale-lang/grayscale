@@ -1,13 +1,13 @@
 /*
  * foreach_inline_literal.gray - Test for_each over inline array literals
  *
- * Covers: string literal, int literal, index form with literal
+ * Covers: string literal, i64 literal, index form with literal
  */
 
 do main() {
     println("=== for_each Inline Literal Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: for_each over inline string literal
     mut result string = ""
@@ -22,22 +22,22 @@ do main() {
         failed += 1
     }
 
-    // Test 2: for_each over inline int literal
-    mut total int = 0
+    // Test 2: for_each over inline i64 literal
+    mut total i64 = 0
     for_each n in {10, 20, 30} {
         total += n
     }
     if total == 60 {
-        println("  [PASS] for_each over inline int literal")
+        println("  [PASS] for_each over inline i64 literal")
         passed += 1
     } otherwise {
-        println("  [FAIL] int literal: total=${total}")
+        println("  [FAIL] i64 literal: total=${total}")
         failed += 1
     }
 
     // Test 3: index form with inline literal
-    mut idx_sum int = 0
-    mut val_sum int = 0
+    mut idx_sum i64 = 0
+    mut val_sum i64 = 0
     for_each i, v in {5, 10, 15} {
         idx_sum += i
         val_sum += v

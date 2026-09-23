@@ -2,7 +2,7 @@
  * map_foreach_key_binding.gray - for_each over a map must bind the key
  * variable with the key type's real C type, not GrayString.
  *
- * The key binding only special-cased int/uint; enum, float, char, and byte
+ * The key binding only special-cased i64/u64; enum, f64, char, and u8
  * keys fell through to GrayString, so any loop body that read the key
  * produced type-mismatched C.
  */
@@ -15,14 +15,14 @@ const Color enum {
 
 do main() {
     println("=== for_each map key binding ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- enum key read in the loop body --
-    mut em map[Color:int] = {:}
+    mut em map[Color:i64] = {:}
     em[Color.RED] = 1
     em[Color.GREEN] = 2
-    mut enum_hits int = 0
+    mut enum_hits i64 = 0
     for_each k, v in em {
         if k == Color.RED || k == Color.GREEN {
             enum_hits += v
@@ -36,23 +36,23 @@ do main() {
         failed += 1
     }
 
-    // -- float key --
-    mut fm map[float:int] = {:}
+    // -- f64 key --
+    mut fm map[f64:i64] = {:}
     fm[1.5] = 10
-    mut float_sum float = 0.0
+    mut float_sum f64 = 0.0
     for_each k, v in fm {
         float_sum += k
     }
     if float_sum == 1.5 {
-        println("  [PASS] float key")
+        println("  [PASS] f64 key")
         passed += 1
     } otherwise {
-        println("  [FAIL] float key: ${float_sum}")
+        println("  [FAIL] f64 key: ${float_sum}")
         failed += 1
     }
 
     // -- char key --
-    mut cm map[char:int] = {:}
+    mut cm map[char:i64] = {:}
     cm['a'] = 1
     mut got_char char = ' '
     for_each k, v in cm {
@@ -66,39 +66,39 @@ do main() {
         failed += 1
     }
 
-    // -- byte key --
-    mut bm map[byte:int] = {:}
+    // -- u8 key --
+    mut bm map[u8:i64] = {:}
     bm[255] = 1
-    mut byte_sum int = 0
+    mut byte_sum i64 = 0
     for_each k, v in bm {
-        byte_sum += int(k)
+        byte_sum += cast(k, i64)
     }
     if byte_sum == 255 {
-        println("  [PASS] byte key")
+        println("  [PASS] u8 key")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte key: ${byte_sum}")
+        println("  [FAIL] u8 key: ${byte_sum}")
         failed += 1
     }
 
-    // -- string and int keys still work --
-    mut sm map[string:int] = {:}
+    // -- string and i64 keys still work --
+    mut sm map[string:i64] = {:}
     sm["x"] = 7
     mut str_ok bool = false
     for_each k, v in sm {
         if k == "x" { str_ok = true }
     }
-    mut im map[int:int] = {:}
+    mut im map[i64:i64] = {:}
     im[42] = 1
-    mut int_key int = 0
+    mut int_key i64 = 0
     for_each k, v in im {
         int_key = k
     }
     if str_ok && int_key == 42 {
-        println("  [PASS] string and int keys")
+        println("  [PASS] string and i64 keys")
         passed += 1
     } otherwise {
-        println("  [FAIL] string and int keys")
+        println("  [FAIL] string and i64 keys")
         failed += 1
     }
 

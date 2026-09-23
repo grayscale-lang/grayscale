@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut gray_value int = 42
+    mut gray_value i64 = 42
     println("${gray_value}")
 }

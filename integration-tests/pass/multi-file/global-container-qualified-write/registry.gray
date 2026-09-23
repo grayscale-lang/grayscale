@@ -1,4 +1,4 @@
 import @arrays
 
-mut keys map[string:int] = {:}
+mut keys map[string:i64] = {:}
 mut names [string] = {}

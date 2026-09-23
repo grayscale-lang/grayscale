@@ -2,8 +2,8 @@ import and use "./types.gray"
 import "./store.gray"
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: enum array initializer with import and use (bare name)
     mut statuses [Status] = {Status.ACTIVE, Status.INACTIVE}

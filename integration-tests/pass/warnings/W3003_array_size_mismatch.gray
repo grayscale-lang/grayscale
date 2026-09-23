@@ -6,6 +6,6 @@
 
 do main() {
     // Declare array with size 5 but only provide 3 elements
-    const arr [int, 5] = {1, 2, 3}
+    const arr [i64, 5] = {1, 2, 3}
     println(arr)
 }

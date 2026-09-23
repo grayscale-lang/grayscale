@@ -6,6 +6,6 @@
 import @math
 
 do main() {
-    mut x float = math.modf(1.5)
+    mut x f64 = math.modf(1.5)
     println(x)
 }

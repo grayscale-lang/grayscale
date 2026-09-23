@@ -101,19 +101,19 @@
 /*@man to_bytes
  *@module uuid
  *@group Conversion
- *@sig to_bytes(id UUID) -> [byte]
+ *@sig to_bytes(id UUID) -> [u8]
  *@desc Returns the UUID's 16 raw bytes in big-endian (network) order.
  *@example
  *   import @uuid
  *   mut id UUID = uuid.generate()
- *   mut raw [byte] = uuid.to_bytes(id)
+ *   mut raw [u8] = uuid.to_bytes(id)
  *@end
  */
 
 /*@man from_bytes
  *@module uuid
  *@group Conversion
- *@sig from_bytes(bytes [byte]) -> UUID
+ *@sig from_bytes(bytes [u8]) -> UUID
  *@desc Builds a UUID from 16 raw bytes in big-endian order. The bytes are used verbatim — no version or variant bits are forced. Panics if fewer than 16 bytes are given.
  *@example
  *   import @uuid
@@ -135,7 +135,7 @@
 /*@man version
  *@module uuid
  *@group Inspection
- *@sig version(id UUID) -> int
+ *@sig version(id UUID) -> i64
  *@desc Returns the UUID's version number from its version nibble (1 through 8 for the RFC-defined versions). The nil UUID reports 0.
  *@example
  *   import @uuid
@@ -147,7 +147,7 @@
 /*@man timestamp
  *@module uuid
  *@group Inspection
- *@sig timestamp(id UUID) -> (int, bool)
+ *@sig timestamp(id UUID) -> (i64, bool)
  *@desc Extracts the embedded creation time as Unix milliseconds. The second value is true for a version 1 or version 7 UUID and false for any other version, where the first value is 0. Always destructure the result.
  *@example
  *   import @uuid

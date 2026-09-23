@@ -22,15 +22,15 @@ do new_foo(t <?>) -> Foo {
     return new(Foo)^
 }
 
-// Promises int, returns an actual int.
-do size_T(t <?>) -> int {
+// Promises i64, returns an actual i64.
+do size_T(t <?>) -> i64 {
     return size_of(t)
 }
 
 do main() {
     println("=== Type Parameter Concrete Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a Foo = new_T(Foo)
     if a.name == "" {
@@ -59,12 +59,12 @@ do main() {
         failed += 1
     }
 
-    mut s int = size_T(Foo)
+    mut s i64 = size_T(Foo)
     if s > 0 {
-        println("  [PASS] size_T(Foo) returned a positive int")
+        println("  [PASS] size_T(Foo) returned a positive i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] size_T(Foo): expected a positive int, got ${s}")
+        println("  [FAIL] size_T(Foo): expected a positive i64, got ${s}")
         failed += 1
     }
 

@@ -7,11 +7,11 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do inc(&n int) {
+do inc(&n i64) {
     n = n + 1
 }
 
@@ -20,13 +20,13 @@ do inc_x(p ^Point) {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut p Point = Point{ x: 1, y: 2 }
     inc(p.x)
 
-    mut xs [int] = {10, 20, 30}
+    mut xs [i64] = {10, 20, 30}
     inc(xs[1])
 
     mut q Point = Point{ x: 5, y: 6 }

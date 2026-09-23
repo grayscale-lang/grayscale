@@ -1,1 +1,1 @@
-mut public_var int = 100
+mut public_var i64 = 100

@@ -4,31 +4,31 @@
 
 import @arrays
 
-do is_positive(n int) -> bool {
+do is_positive(n i64) -> bool {
     return n > 0
 }
 
-do is_even(n int) -> bool {
+do is_even(n i64) -> bool {
     return n % 2 == 0
 }
 
-do double(n int) -> int {
+do double(n i64) -> i64 {
     return n * 2
 }
 
-do add_one(n int) -> int {
+do add_one(n i64) -> i64 {
     return n + 1
 }
 
 const NumUtils struct {
-    _pad int
-    do negate(n int) -> int {
+    _pad i64
+    do negate(n i64) -> i64 {
         return n * -1
     }
 }
 
-do filter(arr [int], test func(int) -> bool) -> [int] {
-    mut result [int] = {}
+do filter(arr [i64], test func(i64) -> bool) -> [i64] {
+    mut result [i64] = {}
     for_each item in arr {
         if test(item) {
             arrays.append(result, item)
@@ -37,8 +37,8 @@ do filter(arr [int], test func(int) -> bool) -> [int] {
     return result
 }
 
-do apply(arr [int], f func(int) -> int) -> [int] {
-    mut result [int] = {}
+do apply(arr [i64], f func(i64) -> i64) -> [i64] {
+    mut result [i64] = {}
     for_each item in arr {
         arrays.append(result, f(item))
     }
@@ -47,8 +47,8 @@ do apply(arr [int], f func(int) -> int) -> [int] {
 
 do main() {
     println("=== Function References Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: Store and call
     const check = ()is_positive
@@ -61,7 +61,7 @@ do main() {
     }
 
     // Test 2: Pass as argument (filter)
-    mut nums [int] = {-3, -1, 0, 1, 2, 5}
+    mut nums [i64] = {-3, -1, 0, 1, 2, 5}
     mut positives = filter(nums, ()is_positive)
     if len(positives) == 3 {
         println("  [PASS] filter with ()is_positive")

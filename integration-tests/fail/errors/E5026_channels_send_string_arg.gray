@@ -1,5 +1,5 @@
 /*
- * Error Test: E5026 - channels.send passed string instead of int
+ * Error Test: E5026 - channels.send passed string instead of i64
  * Expected: E5026 type mismatch error
  */
 

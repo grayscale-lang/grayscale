@@ -3,11 +3,11 @@
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // range(0, 0) — zero iterations
-    mut count int = 0
+    mut count i64 = 0
     for i in range(0, 0) {
         count += i + 1
     }
@@ -20,7 +20,7 @@ do main() {
     }
 
     // range(5, 5) — zero iterations
-    mut count2 int = 0
+    mut count2 i64 = 0
     for i in range(5, 5) {
         count2 += i + 1
     }
@@ -33,7 +33,7 @@ do main() {
     }
 
     // range(0, 1) — still one iteration as before
-    mut count3 int = 0
+    mut count3 i64 = 0
     for i in range(0, 1) {
         count3 += i + 1
     }

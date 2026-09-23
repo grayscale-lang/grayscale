@@ -3,10 +3,10 @@
  * Expected: "return type mismatch"
  */
 
-do get_number() -> int {
-    return "hello"  // Returning string, declared int
+do get_number() -> i64 {
+    return "hello"  // Returning string, declared i64
 }
 
 do main() {
-    mut x int = get_number()
+    mut x i64 = get_number()
 }

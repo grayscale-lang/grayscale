@@ -29,7 +29,7 @@ do main() {
         exit(1)
     }
 
-    mut checksum int = 0
+    mut checksum i64 = 0
     for i in range(0, 200) {
         mut decoded map[string:string] = json.parse(content)
         mut encoded string = json.encode(decoded)

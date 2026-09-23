@@ -4,7 +4,7 @@
 
 
 // Function that can fail - uses Error type
-do parse_int(s string) -> (int, Error) {
+do parse_int(s string) -> (i64, Error) {
     if s == "" {
         return 0, error("empty string")
     }
@@ -15,7 +15,7 @@ do parse_int(s string) -> (int, Error) {
 }
 
 // Function using Error type (capitalized) - should also work
-do parse_float(s string) -> (float, Error) {
+do parse_float(s string) -> (f64, Error) {
     if s == "" {
         return 0.0, error("empty string")
     }
@@ -24,8 +24,8 @@ do parse_float(s string) -> (float, Error) {
 
 do main() {
     println("=== Error Handling Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: successful parse with error type
     mut val1, err1 = parse_int("42")

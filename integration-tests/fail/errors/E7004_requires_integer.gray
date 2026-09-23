@@ -6,5 +6,5 @@
 import @strings
 
 do main() {
-    mut s string = strings.repeat("x", 3.5)  // float instead of int
+    mut s string = strings.repeat("x", 3.5)  // f64 instead of i64
 }

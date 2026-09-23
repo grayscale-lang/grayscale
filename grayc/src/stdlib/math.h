@@ -37,22 +37,22 @@
  *@module math
  *@group Arithmetic
  *@sig abs(n T) -> T
- *@desc Returns the absolute value of n. Works on int and float. Returns the same type as the input.
+ *@desc Returns the absolute value of n. Works on i64 and f64. Returns the same type as the input.
  *@example
  *   import @math
  *   println(math.abs(-5))
  *   println(math.abs(-3.14))
  *@end
  */
-static inline int64_t  gray_math_abs_int(int64_t n) { return n < 0 ? -n : n; }
-static inline uint64_t gray_math_abs_uint(uint64_t n) { return n; }
-static inline double   gray_math_abs_float(double n) { return fabs(n); }
+static inline int64_t  gray_math_abs_i64(int64_t n) { return n < 0 ? -n : n; }
+static inline uint64_t gray_math_abs_u64(uint64_t n) { return n; }
+static inline double   gray_math_abs_f64(double n) { return fabs(n); }
 
 /*@man neg
  *@module math
  *@group Arithmetic
  *@sig neg(n T) -> T
- *@desc Returns the negation of n. Works on int and float. Returns the same type as the input.
+ *@desc Returns the negation of n. Works on i64 and f64. Returns the same type as the input.
  *@example
  *   import @math
  *   println(math.neg(5))
@@ -64,7 +64,7 @@ static inline double   gray_math_abs_float(double n) { return fabs(n); }
 /*@man sign
  *@module math
  *@group Arithmetic
- *@sig sign(n int) -> int
+ *@sig sign(n i64) -> i64
  *@desc Returns -1 if n is negative, 0 if zero, or 1 if positive.
  *@example
  *   import @math
@@ -79,58 +79,58 @@ static inline int64_t gray_math_sign(int64_t n) { return n > 0 ? 1 : (n < 0 ? -1
  *@module math
  *@group Min/Max/Clamp
  *@sig min(a T, b T) -> T
- *@desc Returns the smaller of two values. Works on int and float.
+ *@desc Returns the smaller of two values. Works on i64 and f64.
  *@example
  *   import @math
  *   println(math.min(3, 7))
  *   println(math.min(1.5, 2.5))
  *@end
  */
-static inline int64_t  gray_math_min_int(int64_t a, int64_t b) { return a < b ? a : b; }
-static inline uint64_t gray_math_min_uint(uint64_t a, uint64_t b) { return a < b ? a : b; }
-static inline double   gray_math_min_float(double a, double b) { return a < b ? a : b; }
+static inline int64_t  gray_math_min_i64(int64_t a, int64_t b) { return a < b ? a : b; }
+static inline uint64_t gray_math_min_u64(uint64_t a, uint64_t b) { return a < b ? a : b; }
+static inline double   gray_math_min_f64(double a, double b) { return a < b ? a : b; }
 
 /*@man max
  *@module math
  *@group Min/Max/Clamp
  *@sig max(a T, b T) -> T
- *@desc Returns the larger of two values. Works on int and float.
+ *@desc Returns the larger of two values. Works on i64 and f64.
  *@example
  *   import @math
  *   println(math.max(3, 7))
  *   println(math.max(1.5, 2.5))
  *@end
  */
-static inline int64_t  gray_math_max_int(int64_t a, int64_t b) { return a > b ? a : b; }
-static inline uint64_t gray_math_max_uint(uint64_t a, uint64_t b) { return a > b ? a : b; }
-static inline double   gray_math_max_float(double a, double b) { return a > b ? a : b; }
+static inline int64_t  gray_math_max_i64(int64_t a, int64_t b) { return a > b ? a : b; }
+static inline uint64_t gray_math_max_u64(uint64_t a, uint64_t b) { return a > b ? a : b; }
+static inline double   gray_math_max_f64(double a, double b) { return a > b ? a : b; }
 
 /*@man clamp
  *@module math
  *@group Min/Max/Clamp
  *@sig clamp(value T, min T, max T) -> T
- *@desc Clamps value to the range [min, max]. Works on int and float.
+ *@desc Clamps value to the range [min, max]. Works on i64 and f64.
  *@example
  *   import @math
  *   println(math.clamp(15, 1, 10))
  *   println(math.clamp(1.5, 0.0, 1.0))
  *@end
  */
-static inline int64_t gray_math_clamp_int(int64_t v, int64_t lo, int64_t hi) {
+static inline int64_t gray_math_clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
-static inline uint64_t gray_math_clamp_uint(uint64_t v, uint64_t lo, uint64_t hi) {
+static inline uint64_t gray_math_clamp_u64(uint64_t v, uint64_t lo, uint64_t hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
-static inline double  gray_math_clamp_float(double v, double lo, double hi) {
+static inline double  gray_math_clamp_f64(double v, double lo, double hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
 /*@man floor
  *@module math
  *@group Rounding
- *@sig floor(n float) -> float
- *@desc Rounds n down to the nearest integer value, returned as float.
+ *@sig floor(n f64) -> f64
+ *@desc Rounds n down to the nearest integer value, returned as f64.
  *@example
  *   import @math
  *   println(math.floor(3.7))
@@ -142,8 +142,8 @@ static inline double gray_math_floor(double n) { return floor(n); }
 /*@man ceil
  *@module math
  *@group Rounding
- *@sig ceil(n float) -> float
- *@desc Rounds n up to the nearest integer value, returned as float.
+ *@sig ceil(n f64) -> f64
+ *@desc Rounds n up to the nearest integer value, returned as f64.
  *@example
  *   import @math
  *   println(math.ceil(3.2))
@@ -155,8 +155,8 @@ static inline double gray_math_ceil(double n) { return ceil(n); }
 /*@man round
  *@module math
  *@group Rounding
- *@sig round(n float) -> float
- *@desc Rounds n to the nearest integer (half rounds away from zero), returned as float.
+ *@sig round(n f64) -> f64
+ *@desc Rounds n to the nearest integer (half rounds away from zero), returned as f64.
  *@example
  *   import @math
  *   println(math.round(3.5))
@@ -168,8 +168,8 @@ static inline double gray_math_round(double n) { return round(n); }
 /*@man trunc
  *@module math
  *@group Rounding
- *@sig trunc(n float) -> float
- *@desc Truncates n toward zero, returned as float.
+ *@sig trunc(n f64) -> f64
+ *@desc Truncates n toward zero, returned as f64.
  *@example
  *   import @math
  *   println(math.trunc(3.9))
@@ -181,7 +181,7 @@ static inline double gray_math_trunc(double n) { return trunc(n); }
 /*@man pow
  *@module math
  *@group Powers/Roots
- *@sig pow(base float, exp float) -> float
+ *@sig pow(base f64, exp f64) -> f64
  *@desc Returns base raised to the power exp.
  *@example
  *   import @math
@@ -193,7 +193,7 @@ static inline double gray_math_pow(double b, double e) { return pow(b, e); }
 /*@man sqrt
  *@module math
  *@group Powers/Roots
- *@sig sqrt(n float) -> float
+ *@sig sqrt(n f64) -> f64
  *@desc Returns the square root of n. Panics at runtime if n is negative.
  *@example
  *   import @math
@@ -209,7 +209,7 @@ static inline double gray_math_sqrt(double n) {
 /*@man cbrt
  *@module math
  *@group Powers/Roots
- *@sig cbrt(n float) -> float
+ *@sig cbrt(n f64) -> f64
  *@desc Returns the cube root of n.
  *@example
  *   import @math
@@ -221,7 +221,7 @@ static inline double gray_math_cbrt(double n) { return cbrt(n); }
 /*@man hypot
  *@module math
  *@group Powers/Roots
- *@sig hypot(x float, y float) -> float
+ *@sig hypot(x f64, y f64) -> f64
  *@desc Returns the hypotenuse of a right triangle with legs x and y (sqrt(x^2 + y^2)).
  *@example
  *   import @math
@@ -233,7 +233,7 @@ static inline double gray_math_hypot(double x, double y) { return hypot(x, y); }
 /*@man exp
  *@module math
  *@group Powers/Roots
- *@sig exp(n float) -> float
+ *@sig exp(n f64) -> f64
  *@desc Returns e raised to the power n.
  *@example
  *   import @math
@@ -245,7 +245,7 @@ static inline double gray_math_exp(double n) { return exp(n); }
 /*@man exp2
  *@module math
  *@group Powers/Roots
- *@sig exp2(n float) -> float
+ *@sig exp2(n f64) -> f64
  *@desc Returns 2 raised to the power n.
  *@example
  *   import @math
@@ -257,7 +257,7 @@ static inline double gray_math_exp2(double n) { return exp2(n); }
 /*@man log
  *@module math
  *@group Logarithms
- *@sig log(n float) -> float
+ *@sig log(n f64) -> f64
  *@desc Returns the natural (base-e) logarithm of n. Panics if n <= 0.
  *@example
  *   import @math
@@ -272,7 +272,7 @@ static inline double gray_math_log(double n) {
 /*@man log2
  *@module math
  *@group Logarithms
- *@sig log2(n float) -> float
+ *@sig log2(n f64) -> f64
  *@desc Returns the base-2 logarithm of n. Panics if n <= 0.
  *@example
  *   import @math
@@ -287,7 +287,7 @@ static inline double gray_math_log2(double n) {
 /*@man log10
  *@module math
  *@group Logarithms
- *@sig log10(n float) -> float
+ *@sig log10(n f64) -> f64
  *@desc Returns the base-10 logarithm of n. Panics if n <= 0.
  *@example
  *   import @math
@@ -302,7 +302,7 @@ static inline double gray_math_log10(double n) {
 /*@man log_base
  *@module math
  *@group Logarithms
- *@sig log_base(value float, base float) -> float
+ *@sig log_base(value f64, base f64) -> f64
  *@desc Returns the logarithm of value in the given base.
  *@example
  *   import @math
@@ -314,7 +314,7 @@ static inline double gray_math_log_base(double v, double b) { return log(v) / lo
 /*@man sin
  *@module math
  *@group Trigonometry
- *@sig sin(rad float) -> float
+ *@sig sin(rad f64) -> f64
  *@desc Returns the sine of an angle in radians.
  *@example
  *   import @math
@@ -326,7 +326,7 @@ static inline double gray_math_sin(double r) { return sin(r); }
 /*@man cos
  *@module math
  *@group Trigonometry
- *@sig cos(rad float) -> float
+ *@sig cos(rad f64) -> f64
  *@desc Returns the cosine of an angle in radians.
  *@example
  *   import @math
@@ -338,7 +338,7 @@ static inline double gray_math_cos(double r) { return cos(r); }
 /*@man tan
  *@module math
  *@group Trigonometry
- *@sig tan(rad float) -> float
+ *@sig tan(rad f64) -> f64
  *@desc Returns the tangent of an angle in radians.
  *@example
  *   import @math
@@ -350,7 +350,7 @@ static inline double gray_math_tan(double r) { return tan(r); }
 /*@man asin
  *@module math
  *@group Trigonometry
- *@sig asin(n float) -> float
+ *@sig asin(n f64) -> f64
  *@desc Returns the arc sine in radians. Panics if n is outside [-1, 1].
  *@example
  *   import @math
@@ -365,7 +365,7 @@ static inline double gray_math_asin(double n) {
 /*@man acos
  *@module math
  *@group Trigonometry
- *@sig acos(n float) -> float
+ *@sig acos(n f64) -> f64
  *@desc Returns the arc cosine in radians. Panics if n is outside [-1, 1].
  *@example
  *   import @math
@@ -380,7 +380,7 @@ static inline double gray_math_acos(double n) {
 /*@man atan
  *@module math
  *@group Trigonometry
- *@sig atan(n float) -> float
+ *@sig atan(n f64) -> f64
  *@desc Returns the arc tangent in radians.
  *@example
  *   import @math
@@ -392,7 +392,7 @@ static inline double gray_math_atan(double n) { return atan(n); }
 /*@man atan2
  *@module math
  *@group Trigonometry
- *@sig atan2(y float, x float) -> float
+ *@sig atan2(y f64, x f64) -> f64
  *@desc Returns the arc tangent of y/x in radians, using the signs of both to determine quadrant.
  *@example
  *   import @math
@@ -404,7 +404,7 @@ static inline double gray_math_atan2(double y, double x) { return atan2(y, x); }
 /*@man sinh
  *@module math
  *@group Trigonometry
- *@sig sinh(n float) -> float
+ *@sig sinh(n f64) -> f64
  *@desc Returns the hyperbolic sine of n.
  *@example
  *   import @math
@@ -416,7 +416,7 @@ static inline double gray_math_sinh(double n) { return sinh(n); }
 /*@man cosh
  *@module math
  *@group Trigonometry
- *@sig cosh(n float) -> float
+ *@sig cosh(n f64) -> f64
  *@desc Returns the hyperbolic cosine of n.
  *@example
  *   import @math
@@ -428,7 +428,7 @@ static inline double gray_math_cosh(double n) { return cosh(n); }
 /*@man tanh
  *@module math
  *@group Trigonometry
- *@sig tanh(n float) -> float
+ *@sig tanh(n f64) -> f64
  *@desc Returns the hyperbolic tangent of n.
  *@example
  *   import @math
@@ -440,7 +440,7 @@ static inline double gray_math_tanh(double n) { return tanh(n); }
 /*@man deg_to_rad
  *@module math
  *@group Trigonometry
- *@sig deg_to_rad(deg float) -> float
+ *@sig deg_to_rad(deg f64) -> f64
  *@desc Converts degrees to radians.
  *@example
  *   import @math
@@ -452,7 +452,7 @@ static inline double gray_math_deg_to_rad(double d) { return d * 3.1415926535897
 /*@man rad_to_deg
  *@module math
  *@group Trigonometry
- *@sig rad_to_deg(rad float) -> float
+ *@sig rad_to_deg(rad f64) -> f64
  *@desc Converts radians to degrees.
  *@example
  *   import @math
@@ -464,7 +464,7 @@ static inline double gray_math_rad_to_deg(double r) { return r * 180.0 / 3.14159
 /*@man is_even
  *@module math
  *@group Properties
- *@sig is_even(n int) -> bool
+ *@sig is_even(n i64) -> bool
  *@desc Returns true if n is even.
  *@example
  *   import @math
@@ -476,7 +476,7 @@ static inline bool gray_math_is_even(int64_t n) { return n % 2 == 0; }
 /*@man is_odd
  *@module math
  *@group Properties
- *@sig is_odd(n int) -> bool
+ *@sig is_odd(n i64) -> bool
  *@desc Returns true if n is odd.
  *@example
  *   import @math
@@ -488,7 +488,7 @@ static inline bool gray_math_is_odd(int64_t n) { return n % 2 != 0; }
 /*@man is_infinite
  *@module math
  *@group Properties
- *@sig is_infinite(n float) -> bool
+ *@sig is_infinite(n f64) -> bool
  *@desc Returns true if n is positive or negative infinity.
  *@example
  *   import @math
@@ -500,11 +500,11 @@ static inline bool gray_math_is_infinite(double n) { return isinf(n); }
 /*@man is_nan
  *@module math
  *@group Properties
- *@sig is_nan(n float) -> bool
+ *@sig is_nan(n f64) -> bool
  *@desc Returns true if n is NaN (Not a Number).
  *@example
  *   import @math
- *   mut nan_val float = math.INF - math.INF
+ *   mut nan_val f64 = math.INF - math.INF
  *   println(math.is_nan(nan_val))
  *@end
  */
@@ -513,7 +513,7 @@ static inline bool gray_math_is_nan(double n) { return isnan(n); }
 /*@man is_finite
  *@module math
  *@group Properties
- *@sig is_finite(n float) -> bool
+ *@sig is_finite(n f64) -> bool
  *@desc Returns true if n is a finite number (not infinite or NaN).
  *@example
  *   import @math
@@ -525,7 +525,7 @@ static inline bool gray_math_is_finite(double n) { return !isinf(n) && !isnan(n)
 /*@man factorial
  *@module math
  *@group Statistical
- *@sig factorial(n int) -> int
+ *@sig factorial(n i64) -> i64
  *@desc Returns n! (n factorial). n must be non-negative. Panics on negative input.
  *@example
  *   import @math
@@ -537,7 +537,7 @@ int64_t gray_math_factorial(int64_t n);
 /*@man gcd
  *@module math
  *@group Statistical
- *@sig gcd(a int, b int) -> int
+ *@sig gcd(an i64, b i64) -> i64
  *@desc Returns the greatest common divisor of a and b.
  *@example
  *   import @math
@@ -556,7 +556,7 @@ double gray_math_random_float(double min, double max);
 /*@man lcm
  *@module math
  *@group Statistical
- *@sig lcm(a int, b int) -> int
+ *@sig lcm(an i64, b i64) -> i64
  *@desc Returns the least common multiple of a and b.
  *@example
  *   import @math
@@ -568,7 +568,7 @@ int64_t gray_math_lcm(int64_t left, int64_t right);
 /*@man is_prime
  *@module math
  *@group Statistical
- *@sig is_prime(n int) -> bool
+ *@sig is_prime(n i64) -> bool
  *@desc Returns true if n is a prime number.
  *@example
  *   import @math
@@ -581,7 +581,7 @@ bool gray_math_is_prime(int64_t n);
 /*@man lerp
  *@module math
  *@group Utility
- *@sig lerp(a float, b float, t float) -> float
+ *@sig lerp(an f64, b f64, t f64) -> f64
  *@desc Linearly interpolates between a and b by factor t. t=0 returns a, t=1 returns b.
  *@example
  *   import @math
@@ -593,7 +593,7 @@ static inline double gray_math_lerp(double a, double b, double t) { return a + (
 /*@man remap
  *@module math
  *@group Utility
- *@sig remap(v float, in_lo float, in_hi float, out_lo float, out_hi float) -> float
+ *@sig remap(v f64, in_lo f64, in_hi f64, out_lo f64, out_hi f64) -> f64
  *@desc Linearly maps v from the range [in_lo, in_hi] onto [out_lo, out_hi] without clamping. Pairs with lerp. Panics if in_lo equals in_hi.
  *@example
  *   import @math
@@ -611,7 +611,7 @@ static inline double gray_math_remap(double v, double in_lo, double in_hi,
 /*@man approx_equal
  *@module math
  *@group Comparison
- *@sig approx_equal(a float, b float, epsilon float) -> bool
+ *@sig approx_equal(an f64, b f64, epsilon f64) -> bool
  *@desc Returns true if the absolute difference between a and b is at most epsilon.
  *@example
  *   import @math
@@ -625,7 +625,7 @@ static inline bool gray_math_approx_equal(double a, double b, double epsilon) {
 /*@man distance
  *@module math
  *@group Utility
- *@sig distance(x1 float, y1 float, x2 float, y2 float) -> float
+ *@sig distance(x1 f64, y1 f64, x2 f64, y2 f64) -> f64
  *@desc Returns the Euclidean distance between two 2D points (x1, y1) and (x2, y2).
  *@example
  *   import @math
@@ -639,7 +639,7 @@ static inline double gray_math_distance(double x1, double y1, double x2, double 
 /*@man mod
  *@module math
  *@group Arithmetic
- *@sig mod(x float, y float) -> float
+ *@sig mod(x f64, y f64) -> f64
  *@desc Returns the floating-point remainder of x divided by y, carrying the sign of x.
  *@example
  *   import @math
@@ -653,7 +653,7 @@ static inline double gray_math_mod(double x, double y) {
 /*@man copysign
  *@module math
  *@group Arithmetic
- *@sig copysign(x float, y float) -> float
+ *@sig copysign(x f64, y f64) -> f64
  *@desc Returns the magnitude of x with the sign of y.
  *@example
  *   import @math
@@ -667,7 +667,7 @@ static inline double gray_math_copysign(double x, double y) {
 /*@man fma
  *@module math
  *@group Arithmetic
- *@sig fma(x float, y float, z float) -> float
+ *@sig fma(x f64, y f64, z f64) -> f64
  *@desc Fused multiply-add: computes x * y + z with a single rounding step, which is more accurate than writing the two operations separately.
  *@example
  *   import @math
@@ -684,7 +684,7 @@ typedef struct { double v0; double v1; } GrayMathModf;
 /*@man modf
  *@module math
  *@group Arithmetic
- *@sig modf(x float) -> (float, float)
+ *@sig modf(x f64) -> (f64, f64)
  *@desc Splits x into its integer and fractional parts, both carrying the sign of x.
  *@example
  *   import @math
@@ -698,7 +698,7 @@ GrayMathModf gray_math_modf(double value);
 /*@man is_power_of_two
  *@module math
  *@group Integer
- *@sig is_power_of_two(n int) -> bool
+ *@sig is_power_of_two(n i64) -> bool
  *@desc Returns true if n is a positive power of two. Zero and negative values are not.
  *@example
  *   import @math
@@ -710,7 +710,7 @@ bool gray_math_is_power_of_two(int64_t n);
 /*@man next_power_of_two
  *@module math
  *@group Integer
- *@sig next_power_of_two(n int) -> int
+ *@sig next_power_of_two(n i64) -> i64
  *@desc Returns the smallest power of two greater than or equal to n, or 1 when n is zero or negative. Panics if the result would exceed MAX_INT.
  *@example
  *   import @math
@@ -805,7 +805,7 @@ int64_t gray_math_next_power_of_two(int64_t n);
  *@group Constants
  *@kind const
  *@sig 9223372036854775807
- *@desc The largest value an int can hold.
+ *@desc The largest value an i64 can hold.
  *@end
  */
 
@@ -814,7 +814,7 @@ int64_t gray_math_next_power_of_two(int64_t n);
  *@group Constants
  *@kind const
  *@sig -9223372036854775808
- *@desc The smallest value an int can hold.
+ *@desc The smallest value an i64 can hold.
  *@end
  */
 
@@ -823,7 +823,7 @@ int64_t gray_math_next_power_of_two(int64_t n);
  *@group Constants
  *@kind const
  *@sig 1.7976931348623157e308
- *@desc The largest finite value a float can hold.
+ *@desc The largest finite value an f64 can hold.
  *@end
  */
 
@@ -832,7 +832,7 @@ int64_t gray_math_next_power_of_two(int64_t n);
  *@group Constants
  *@kind const
  *@sig -1.7976931348623157e308
- *@desc The smallest (most negative) finite value a float can hold. For the smallest positive magnitude a float can represent, see EPSILON.
+ *@desc The smallest (most negative) finite value an f64 can hold. For the smallest positive magnitude an f64 can represent, see EPSILON.
  *@end
  */
 

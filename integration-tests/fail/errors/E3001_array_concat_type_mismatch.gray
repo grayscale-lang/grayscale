@@ -6,7 +6,7 @@
 import @arrays
 
 do main() {
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut strs [string] = {"a", "b"}
     mut result = arrays.concat(nums, strs)  // Should fail: incompatible element types
 }

@@ -4,11 +4,11 @@
  */
 // expect-contains: mutable parameter 'arr' of 'modify'
 
-do modify(&arr [int]) {
+do modify(&arr [i64]) {
     arr[0] = 999
 }
 
 do main() {
-    const nums [int, 3] = {1, 2, 3}
+    const nums [i64, 3] = {1, 2, 3}
     modify(nums)  // ERROR: cannot pass immutable to mutable parameter
 }

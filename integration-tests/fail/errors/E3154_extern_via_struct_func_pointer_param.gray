@@ -10,15 +10,15 @@
 extern import "stdlib.h"
 
 const Wrapper struct {
-    tag int
+    tag i64
 
-    do do_free(self Wrapper, p ^int) {
+    do do_free(self Wrapper, p ^i64) {
         extern.free(p)
     }
 }
 
 do main() {
-    mut local int = 5
+    mut local i64 = 5
     mut w Wrapper = Wrapper{tag: 1}
     w.do_free(addr(local))
 }

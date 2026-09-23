@@ -6,7 +6,7 @@
 // expect-error-count: 1
 
 const S struct {
-    x int = "not an int"
+    x i64 = "not an i64"
 }
 
 do main() {

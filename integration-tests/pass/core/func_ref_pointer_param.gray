@@ -3,24 +3,24 @@
  *
  * The func-ref signature encoder read a parameter's GrayType.name directly
  * instead of through type_name(), which for a pointer type holds only the
- * bare pointee ("int" for ^int) — flattening func(^int) to func(int). That
+ * bare pointee ("i64" for ^i64) — flattening func(^i64) to func(i64). That
  * broke both the implicit-typed ref (wrong C cast emitted, a raw compiler
- * error) and the explicit-typed ref (a bogus func(int) vs func(^int)
+ * error) and the explicit-typed ref (a bogus func(i64) vs func(^i64)
  * mismatch at typecheck).
  */
 
-do stash(x ^int) -> ^int {
+do stash(x ^i64) -> ^i64 {
     return x
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: implicit-typed ref, pointer param
     const f1 = ()stash
-    mut y1 int = 5
-    mut r1 ^int = f1(addr(y1))
+    mut y1 i64 = 5
+    mut r1 ^i64 = f1(addr(y1))
     if r1^ == 5 {
         println("  [PASS] implicit-typed func-ref with pointer param")
         passed += 1
@@ -30,9 +30,9 @@ do main() {
     }
 
     // Test 2: explicit-typed ref, pointer param and pointer return
-    const f2 func(^int) -> ^int = ()stash
-    mut y2 int = 9
-    mut r2 ^int = f2(addr(y2))
+    const f2 func(^i64) -> ^i64 = ()stash
+    mut y2 i64 = 9
+    mut r2 ^i64 = f2(addr(y2))
     if r2^ == 9 {
         println("  [PASS] explicit-typed func-ref with pointer param")
         passed += 1

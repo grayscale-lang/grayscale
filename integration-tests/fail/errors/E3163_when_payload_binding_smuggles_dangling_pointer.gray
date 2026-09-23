@@ -7,20 +7,20 @@
  */
 
 const Result enum {
-    Found(^int),
+    Found(^i64),
     Missing
 }
 
-mut leaked ^int = nil
+mut leaked ^i64 = nil
 
-do lookup(cond bool, p ^int) -> Result {
+do lookup(cond bool, p ^i64) -> Result {
     if cond { return Result.Found(p) }
     return Result.Missing
 }
 
 do main() {
     if true {
-        mut x int = 99
+        mut x i64 = 99
         mut r Result = Result.Found(addr(x))
         when r {
             is Found(ptr) { leaked = ptr }
@@ -29,7 +29,7 @@ do main() {
     }
 
     if true {
-        mut y int = 42
+        mut y i64 = 42
         mut r2 Result = lookup(true, addr(y))
         when r2 {
             is Found(ptr) { leaked = ptr }

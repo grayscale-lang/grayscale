@@ -7,24 +7,24 @@
 import @arrays
 
 #doc("Adds two integers and returns the sum")
-do add(a int, b int) -> int {
+do add(a i64, b i64) -> i64 {
     return a + b
 }
 
 #doc("Multiplies a number by two")
-do double(n int) -> int {
+do double(n i64) -> i64 {
     return n * 2
 }
 
 #doc
-do helper() -> int {
+do helper() -> i64 {
     return 7
 }
 
 #doc("Represents a person with name and age")
 const Person struct {
     name string
-    age int
+    age i64
 }
 
 #doc("Task status values")

@@ -25,8 +25,8 @@ do classify_u128(n u128) -> string {
 
 do main() {
     println("=== Wide Integer when/is Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: i128 when/is matches first arm
     if classify_i128(i128(0)) == "zero" {

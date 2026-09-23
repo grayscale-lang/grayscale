@@ -2,7 +2,7 @@
 import @arrays
 
 const P struct {
-    n int
+    n i64
 }
 
 do main() {
@@ -29,12 +29,12 @@ do main() {
         println("  [FAIL] an unannotated split_every result keeps its element type")
     }
 
-    mut f [float] = {1.5, 2.5, 3.5}
-    mut fchunks [[float]] = arrays.split_every(f, 2)
+    mut f [f64] = {1.5, 2.5, 3.5}
+    mut fchunks [[f64]] = arrays.split_every(f, 2)
     if fchunks[0][1] == 2.5 && fchunks[1][0] == 3.5 {
-        println("  [PASS] split_every on [float] gives [[float]]")
+        println("  [PASS] split_every on [f64] gives [[f64]]")
     } else {
-        println("  [FAIL] split_every on [float] gives [[float]]")
+        println("  [FAIL] split_every on [f64] gives [[f64]]")
     }
 
     mut ps [P] = {P{n: 1}, P{n: 2}, P{n: 3}}

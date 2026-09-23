@@ -4,14 +4,14 @@
  */
 
 const Foo struct {
-    value int
+    value i64
 }
 
-do Foo.bar() -> int {
+do Foo.bar() -> i64 {
     return 42
 }
 
 do main() {
     mut f Foo = Foo{value: 1}
-    mut result int = f.bar()
+    mut result i64 = f.bar()
 }

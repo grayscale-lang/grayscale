@@ -1,6 +1,6 @@
 extern import "./bindings.h"
 
-do a_which() -> int {
-    mut r int = extern.a_helper()
+do a_which() -> i64 {
+    mut r i64 = extern.a_helper()
     return r
 }

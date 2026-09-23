@@ -1,8 +1,8 @@
 /* Pass Test: valid same-type array assignments, args, and returns work correctly */
 import @arrays
 
-do double_all(nums [int]) -> [int] {
-    mut result [int] = {}
+do double_all(nums [i64]) -> [i64] {
+    mut result [i64] = {}
     for_each n in nums {
         arrays.append(result, n * 2)
     }
@@ -14,11 +14,11 @@ do join_strings(strs [string]) -> [string] {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut ints [int] = {1, 2, 3}
-    mut more_ints [int] = ints
+    mut ints [i64] = {1, 2, 3}
+    mut more_ints [i64] = ints
     if more_ints[0] == 1 && more_ints[2] == 3 {
         println("  [PASS] same-type array assignment")
         passed += 1
@@ -27,9 +27,9 @@ do main() {
         failed += 1
     }
 
-    mut doubled [int] = double_all(ints)
+    mut doubled [i64] = double_all(ints)
     if doubled[0] == 2 && doubled[1] == 4 && doubled[2] == 6 {
-        println("  [PASS] [int] passed to [int] parameter")
+        println("  [PASS] [i64] passed to [i64] parameter")
         passed += 1
     } otherwise {
         println("  [FAIL] array arg pass failed")

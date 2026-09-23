@@ -1,12 +1,12 @@
 /*
- * Test: bit_not on unsigned types narrower than C's int (u8, u16) masks the
+ * Test: bit_not on unsigned types narrower than C's i64 (u8, u16) masks the
  * complement back to the type's width instead of yielding a negative value
- * that fails the narrowing range check. byte and u32 already worked.
+ * that fails the narrowing range check. u8 and u32 already worked.
  */
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a u8 = 0b0000_1111
     mut b u8 = bit_not a
@@ -26,12 +26,12 @@ do main() {
         failed += 1
     }
 
-    mut e byte = 0b0000_1111
-    mut f byte = bit_not e
+    mut e u8 = 0b0000_1111
+    mut f u8 = bit_not e
     if f == 240 {
         passed += 1
     } otherwise {
-        println("[FAIL] byte bit_not: ${f}")
+        println("[FAIL] u8 bit_not: ${f}")
         failed += 1
     }
 

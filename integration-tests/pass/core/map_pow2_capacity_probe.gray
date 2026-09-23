@@ -13,11 +13,11 @@ import @maps
 
 do main() {
     println("=== Map Pow2 Capacity Probe Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- literal with 5 entries (old capacity 10, not a power of two) --
-    mut five map[string:int] = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
+    mut five map[string:i64] = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
     mut ok bool = len(five) == 5
     ok = ok && five["a"] == 1 && five["b"] == 2 && five["c"] == 3
     ok = ok && five["d"] == 4 && five["e"] == 5
@@ -30,8 +30,8 @@ do main() {
     }
 
     // -- literal with 7 entries (old capacity 14) --
-    mut seven map[int:int] = {10: 100, 20: 200, 30: 300, 40: 400, 50: 500, 60: 600, 70: 700}
-    mut sum int = 0
+    mut seven map[i64:i64] = {10: 100, 20: 200, 30: 300, 40: 400, 50: 500, 60: 600, 70: 700}
+    mut sum i64 = 0
     for_each k in seven {
         sum = sum + seven[k]
     }
@@ -44,7 +44,7 @@ do main() {
     }
 
     // -- grow across several rebuilds, then verify all keys survive --
-    mut big map[int:int] = {0: 0}
+    mut big map[i64:i64] = {0: 0}
     for i in range(1, 500) {
         big[i] = i * 3
     }
@@ -63,7 +63,7 @@ do main() {
     }
 
     // -- churn: insert/remove to build tombstones and force a same-cap rebuild --
-    mut churn map[int:int] = {1: 1}
+    mut churn map[i64:i64] = {1: 1}
     for i in range(0, 2000) {
         churn[i] = i
         if i >= 8 {

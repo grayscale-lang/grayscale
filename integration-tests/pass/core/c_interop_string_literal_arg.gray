@@ -12,11 +12,11 @@ extern import "stdio.h"
 
 do main() {
     println("=== C interop: string literal argument ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // strcmp on two literals
-    mut cmp int = extern.strcmp("abc", "abc")
+    mut cmp i64 = extern.strcmp("abc", "abc")
     if cmp == 0 {
         passed += 1
     } otherwise {
@@ -34,7 +34,7 @@ do main() {
     }
 
     // atoi on a literal
-    mut n int = extern.atoi("123")
+    mut n i64 = extern.atoi("123")
     if n == 123 {
         passed += 1
     } otherwise {

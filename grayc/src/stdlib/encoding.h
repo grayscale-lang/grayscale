@@ -137,44 +137,44 @@
 /*@man from_string
  *@module encoding
  *@group Byte Conversion
- *@sig from_string(s string) -> [byte]
- *@desc Converts a UTF-8 string into a byte array.
+ *@sig from_string(s string) -> [u8]
+ *@desc Converts a UTF-8 string into a u8 array.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_string("hello")
+ *   mut b [u8] = encoding.from_string("hello")
  *@end
  */
 
 /*@man from_hex
  *@module encoding
  *@group Byte Conversion
- *@sig from_hex(hex string) -> [byte]
- *@desc Decodes a hex-encoded string into a byte array.
+ *@sig from_hex(hex string) -> [u8]
+ *@desc Decodes a hex-encoded string into a u8 array.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_hex("48656c6c6f")
+ *   mut b [u8] = encoding.from_hex("48656c6c6f")
  *@end
  */
 
 /*@man from_base64
  *@module encoding
  *@group Byte Conversion
- *@sig from_base64(b64 string) -> [byte]
- *@desc Decodes a base64-encoded string into a byte array.
+ *@sig from_base64(b64 string) -> [u8]
+ *@desc Decodes a base64-encoded string into a u8 array.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_base64("SGVsbG8=")
+ *   mut b [u8] = encoding.from_base64("SGVsbG8=")
  *@end
  */
 
 /*@man to_string
  *@module encoding
  *@group Byte Conversion
- *@sig to_string(bytes [byte]) -> string
- *@desc Converts a byte array to a UTF-8 string.
+ *@sig to_string(bytes [u8]) -> string
+ *@desc Converts a u8 array to a UTF-8 string.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_string("hello")
+ *   mut b [u8] = encoding.from_string("hello")
  *   println(encoding.to_string(b))
  *@end
  */
@@ -182,11 +182,11 @@
 /*@man to_hex
  *@module encoding
  *@group Byte Conversion
- *@sig to_hex(bytes [byte]) -> string
- *@desc Encodes a byte array as a lowercase hex string.
+ *@sig to_hex(bytes [u8]) -> string
+ *@desc Encodes a u8 array as a lowercase hex string.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_string("hi")
+ *   mut b [u8] = encoding.from_string("hi")
  *   println(encoding.to_hex(b))
  *@end
  */
@@ -194,11 +194,11 @@
 /*@man to_base64
  *@module encoding
  *@group Byte Conversion
- *@sig to_base64(bytes [byte]) -> string
- *@desc Encodes a byte array as a base64 string.
+ *@sig to_base64(bytes [u8]) -> string
+ *@desc Encodes a u8 array as a base64 string.
  *@example
  *   import @encoding
- *   mut b [byte] = encoding.from_string("hello")
+ *   mut b [u8] = encoding.from_string("hello")
  *   println(encoding.to_base64(b))
  *@end
  */

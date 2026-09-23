@@ -1,8 +1,8 @@
 import @json
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: inline map literal with string values
     mut s1 string = json.encode({"status": "ok"})
@@ -14,13 +14,13 @@ do main() {
         failed += 1
     }
 
-    // Test 2: inline map literal with int values
+    // Test 2: inline map literal with i64 values
     mut s2 string = json.encode({"a": 1, "b": 2})
     if s2 == "{\"a\":1,\"b\":2}" {
-        println("  [PASS] inline map int values")
+        println("  [PASS] inline map i64 values")
         passed += 1
     } otherwise {
-        println("  [FAIL] inline map int: got '${s2}'")
+        println("  [FAIL] inline map i64: got '${s2}'")
         failed += 1
     }
 
@@ -46,7 +46,7 @@ do main() {
     }
 
     // Test 5: lvalue array still works
-    mut arr [int] = {5, 6}
+    mut arr [i64] = {5, 6}
     mut s5 string = json.encode(arr)
     if s5 == "[5,6]" {
         println("  [PASS] lvalue array")

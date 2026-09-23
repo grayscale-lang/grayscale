@@ -1,4 +1,4 @@
-mut counter int = 0
+mut counter i64 = 0
 
-do get_count() -> int { return counter }
+do get_count() -> i64 { return counter }
 do increment() { counter += 1 }

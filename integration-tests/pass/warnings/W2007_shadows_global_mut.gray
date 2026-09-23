@@ -3,9 +3,9 @@
  * Expected: warning about variable shadowing a global
  */
 
-mut counter int = 0
+mut counter i64 = 0
 
 do main() {
-    mut counter int = 10  // shadows the global mut
+    mut counter i64 = 10  // shadows the global mut
     println(counter)
 }

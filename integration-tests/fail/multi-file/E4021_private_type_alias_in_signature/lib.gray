@@ -2,8 +2,8 @@
  * lib.gray - declares a private type alias
  */
 
-private alias ID = int
+private alias ID = i64
 
-do get_id() -> int {
+do get_id() -> i64 {
     return 42
 }

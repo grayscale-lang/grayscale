@@ -1,0 +1,11 @@
+/*
+ * Error Test: integer-overflow (i64 /= overflow)
+ * Expected: "division result is too large"
+ * INT64_MIN /= -1 has no positive representation.
+ */
+
+do main() {
+    mut x i64 = -9223372036854775808
+    mut y i64 = -1
+    x /= y
+}

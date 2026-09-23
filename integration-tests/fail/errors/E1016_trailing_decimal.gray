@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x float = 1.  // trailing decimal
+    mut x f64 = 1.  // trailing decimal
 }

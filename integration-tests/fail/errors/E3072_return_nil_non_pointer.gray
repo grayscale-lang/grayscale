@@ -1,9 +1,9 @@
 /*
  * Error Test: E3072 - return nil from non-pointer function
- * Expected: "cannot return 'nil' from a function that returns 'int'"
+ * Expected: "cannot return 'nil' from a function that returns 'i64'"
  */
 
-do foo() -> int {
+do foo() -> i64 {
     return nil
 }
 

@@ -5,7 +5,7 @@
 
 enum Status [string] {
     ACTIVE = "active",
-    PENDING = 1  // mixing string and int
+    PENDING = 1  // mixing string and i64
 }
 
 do main() {

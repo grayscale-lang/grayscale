@@ -18,8 +18,8 @@ const Color enum {
     BLUE  = "blue"
 }
 
-do count_north(dirs [Direction], n int) -> int {
-    mut count int = 0
+do count_north(dirs [Direction], n i64) -> i64 {
+    mut count i64 = 0
     for i in range(0, n) {
         if dirs[i] == Direction.NORTH {
             count += 1
@@ -30,8 +30,8 @@ do count_north(dirs [Direction], n int) -> int {
 
 do main() {
     println("=== Enum Arrays Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: integer enum array declaration and access
     mut dirs [Direction] = {Direction.NORTH, Direction.EAST, Direction.SOUTH}
@@ -55,7 +55,7 @@ do main() {
 
     // Test 3: pass integer enum array to function
     mut dirs2 [Direction] = {Direction.NORTH, Direction.SOUTH, Direction.NORTH, Direction.EAST}
-    mut cnt int = count_north(dirs2, 4)
+    mut cnt i64 = count_north(dirs2, 4)
     if cnt == 2 {
         println("  [PASS] pass integer enum array to function")
         passed += 1
@@ -86,7 +86,7 @@ do main() {
 
     // Test 6: integer enum array iteration with for loop
     mut dirs3 [Direction] = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST}
-    mut sum int = 0
+    mut sum i64 = 0
     for i in range(0, 4) {
         sum += dirs3[i]
     }

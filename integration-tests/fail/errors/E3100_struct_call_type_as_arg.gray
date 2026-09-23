@@ -1,5 +1,5 @@
 const Node struct {
-    id uint,
+    id u64,
     do make(&self Node) -> Node {
         return self
     }

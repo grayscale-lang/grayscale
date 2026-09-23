@@ -7,32 +7,32 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     println("=== ref() Type Preservation Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: ref() on int array — indexing works
-    mut arr [int] = {10, 20, 30}
+    // Test 1: ref() on i64 array — indexing works
+    mut arr [i64] = {10, 20, 30}
     mut r = ref(arr)
     if r[0] == 10 && r[1] == 20 && r[2] == 30 {
-        println("  [PASS] ref([int]) indexing works")
+        println("  [PASS] ref([i64]) indexing works")
         passed += 1
     } otherwise {
-        println("  [FAIL] ref([int]) indexing broken")
+        println("  [FAIL] ref([i64]) indexing broken")
         failed += 1
     }
 
-    // Test 2: ref() on int array — len() works
+    // Test 2: ref() on i64 array — len() works
     if len(r) == 3 {
-        println("  [PASS] len(ref([int])) == 3")
+        println("  [PASS] len(ref([i64])) == 3")
         passed += 1
     } otherwise {
-        println("  [FAIL] len(ref([int])) broken")
+        println("  [FAIL] len(ref([i64])) broken")
         failed += 1
     }
 
@@ -48,7 +48,7 @@ do main() {
     }
 
     // Test 4: mutation through ref is visible in original
-    mut nums [int] = {1, 2, 3}
+    mut nums [i64] = {1, 2, 3}
     mut rr = ref(nums)
     rr[0] = 99
     if nums[0] == 99 {
@@ -60,7 +60,7 @@ do main() {
     }
 
     // Test 5: original mutation visible through ref
-    mut data [int] = {5, 10, 15}
+    mut data [i64] = {5, 10, 15}
     mut rd = ref(data)
     data[2] = 100
     if rd[2] == 100 {
@@ -82,14 +82,14 @@ do main() {
         failed += 1
     }
 
-    // Test 7: ref() on int — basic usage
-    mut val int = 42
+    // Test 7: ref() on i64 — basic usage
+    mut val i64 = 42
     mut rv = ref(val)
     if rv == 42 {
-        println("  [PASS] ref(int) comparison works")
+        println("  [PASS] ref(i64) comparison works")
         passed += 1
     } otherwise {
-        println("  [FAIL] ref(int) comparison broken")
+        println("  [FAIL] ref(i64) comparison broken")
         failed += 1
     }
 

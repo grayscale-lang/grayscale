@@ -26,8 +26,8 @@
  *@end
  */
 void gray_builtin_println_str(GrayString str);
-void gray_builtin_println_int(int64_t value);
-void gray_builtin_println_uint(uint64_t value);
+void gray_builtin_println_i64(int64_t value);
+void gray_builtin_println_u64(uint64_t value);
 void gray_builtin_println_float(double value, int bit_size);
 void gray_builtin_println_bool(bool value);
 void gray_builtin_println_char(int32_t codepoint);
@@ -42,8 +42,8 @@ void gray_builtin_println_addr(uintptr_t value);
  *@end
  */
 void gray_builtin_print_str(GrayString str);
-void gray_builtin_print_int(int64_t value);
-void gray_builtin_print_uint(uint64_t value);
+void gray_builtin_print_i64(int64_t value);
+void gray_builtin_print_u64(uint64_t value);
 void gray_builtin_print_float(double value, int bit_size);
 void gray_builtin_print_bool(bool value);
 void gray_builtin_print_char(int32_t codepoint);
@@ -61,7 +61,7 @@ void gray_builtin_flush(void);
 
 /*@man eprintln
  *@sig eprintln(value T)
- *@desc Prints any value to stderr followed by a newline. Supports all types: string, int, uint, float, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
+ *@desc Prints any value to stderr followed by a newline. Supports all types: string, i64, u64, f64, bool, char, and pointers. The argument is optional; called with no argument it prints a blank line.
  *@example
  *   eprintln("error: something went wrong")
  *   eprintln(404)
@@ -71,8 +71,8 @@ void gray_builtin_flush(void);
  *@end
  */
 void gray_builtin_eprintln_str(GrayString str);
-void gray_builtin_eprintln_int(int64_t value);
-void gray_builtin_eprintln_uint(uint64_t value);
+void gray_builtin_eprintln_i64(int64_t value);
+void gray_builtin_eprintln_u64(uint64_t value);
 void gray_builtin_eprintln_float(double value, int bit_size);
 void gray_builtin_eprintln_bool(bool value);
 void gray_builtin_eprintln_char(int32_t codepoint);
@@ -80,7 +80,7 @@ void gray_builtin_eprintln_addr(uintptr_t value);
 
 /*@man eprint
  *@sig eprint(value T)
- *@desc Prints any value to stderr without a trailing newline. Supports all types: string, int, uint, float, bool, char, and pointers.
+ *@desc Prints any value to stderr without a trailing newline. Supports all types: string, i64, u64, f64, bool, char, and pointers.
  *@example
  *   eprint("warning: ")
  *   eprint(404)
@@ -89,8 +89,8 @@ void gray_builtin_eprintln_addr(uintptr_t value);
  *@end
  */
 void gray_builtin_eprint_str(GrayString str);
-void gray_builtin_eprint_int(int64_t value);
-void gray_builtin_eprint_uint(uint64_t value);
+void gray_builtin_eprint_i64(int64_t value);
+void gray_builtin_eprint_u64(uint64_t value);
 void gray_builtin_eprint_float(double value, int bit_size);
 void gray_builtin_eprint_bool(bool value);
 void gray_builtin_eprint_char(int32_t codepoint);
@@ -127,7 +127,7 @@ void gray_builtin_assert(bool condition, GrayString message, const char *file, i
 void gray_builtin_panic_msg(GrayString message);
 
 /*@man exit
- *@sig exit(code int)
+ *@sig exit(code i64)
  *@desc Exits the program immediately with the given exit code.
  *@example
  *   exit(0)
@@ -137,7 +137,7 @@ void gray_builtin_panic_msg(GrayString message);
 void gray_builtin_exit(int64_t code);
 
 /*@man sleep_s
- *@sig sleep_s(seconds int)
+ *@sig sleep_s(seconds i64)
  *@desc Pauses execution for the given number of seconds.
  *@example
  *   sleep_s(1)
@@ -146,7 +146,7 @@ void gray_builtin_exit(int64_t code);
 void gray_builtin_sleep_s(int64_t seconds);
 
 /*@man sleep_ms
- *@sig sleep_ms(milliseconds int)
+ *@sig sleep_ms(milliseconds i64)
  *@desc Pauses execution for the given number of milliseconds.
  *@example
  *   sleep_ms(500)
@@ -155,38 +155,13 @@ void gray_builtin_sleep_s(int64_t seconds);
 void gray_builtin_sleep_ms(int64_t ms);
 
 /*@man sleep_ns
- *@sig sleep_ns(nanoseconds int)
+ *@sig sleep_ns(nanoseconds i64)
  *@desc Pauses execution for the given number of nanoseconds.
  *@example
  *   sleep_ns(1000000)
  *@end
  */
 void gray_builtin_sleep_ns(int64_t ns);
-
-/*@man int
- *@sig int(value T) -> int
- *@desc Converts a value to int (64-bit signed). Truncates floats toward zero. char converts to codepoint.
- *@example
- *   mut x int = int(3.9)
- *   mut y int = int('A')
- *@end
- */
-
-/*@man uint
- *@sig uint(value T) -> uint
- *@desc Converts a value to uint (64-bit unsigned integer).
- *@example
- *   mut x uint = uint(42)
- *@end
- */
-
-/*@man float
- *@sig float(value T) -> float
- *@desc Converts a value to float (64-bit double). Integer promotion is lossless within range.
- *@example
- *   mut x float = float(42)
- *@end
- */
 
 /*@man string
  *@sig string(value T) -> string
@@ -198,19 +173,11 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man char
- *@sig char(codepoint int) -> char
+ *@sig char(codepoint i64) -> char
  *@desc Converts an integer Unicode codepoint to a char value.
  *@example
  *   mut c char = char(65)
  *   println(c)
- *@end
- */
-
-/*@man byte
- *@sig byte(value T) -> byte
- *@desc Converts a value to byte (uint8, 0-255).
- *@example
- *   mut b byte = byte(255)
  *@end
  */
 
@@ -227,20 +194,21 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig func_name(param T) -> T {}
  *@desc The function reference type. Written with a full typed signature: parameter list and return type. Holds a reference to a named function created with ()name or ref(name). Used as parameter types, struct fields, and in arrays/maps. References are const-only and not printable.
  *@example
- *   do double(n int) -> int { return n * 2 }
- *   do apply(f func(int) -> int, x int) -> int { return f(x) }
- *   const g func(int) -> int = ()double
+ *   do double(n i64) -> i64 { return n * 2 }
+ *   do apply(f func(i64) -> i64, x i64) -> i64 { return f(x) }
+ *   const g func(i64) -> i64 = ()double
  *   println(apply(g, 5))   // 10
  *@end
  */
 
 /*@man cast
  *@sig cast(value T, TargetType) -> TargetType
- *@desc Explicit type conversion. Required for sized integer types (i8, u32, etc). Truncates floats. Enforces range at runtime.
+ *@desc Explicit type conversion between primitive types. Truncates floats toward zero; a string target type parses the string and panics if it is not a number. Enforces range at runtime.
  *@example
- *   mut x int = cast(3.7, int)
+ *   mut x i64 = cast(3.7, i64)
  *   mut b u8 = cast(200, u8)
- *   mut f float = cast(my_int, float)
+ *   mut f f64 = cast(count, f64)
+ *   mut n i64 = cast("42", i64)
  *@end
  */
 
@@ -250,7 +218,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig i128(value T) -> i128
  *@desc 128-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
- *   mut a i128 = i128(99999999999999999999)
+ *   mut an i128 = i128(99999999999999999999)
  *   mut b i128 = a * i128(2)
  *   println(b)
  *@end
@@ -268,7 +236,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig i256(value T) -> i256
  *@desc 256-bit signed integer. Supports all arithmetic and comparisons. Overflow panics at runtime.
  *@example
- *   mut a i256 = i256(0)
+ *   mut an i256 = i256(0)
  *@end
  */
 
@@ -281,7 +249,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man len
- *@sig len(collection T) -> int
+ *@sig len(collection T) -> i64
  *@desc Returns the length of an array, map, or string. For strings returns byte length, not character count (use char_count for that).
  *@example
  *   println(len("hello"))
@@ -305,8 +273,8 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@desc Returns the field names of a struct as an array of strings in declaration order. Accepts struct instances and pointers to structs.
  *@example
  *   const Point struct {
- *       x int
- *       y int
+ *       x i64
+ *       y i64
  *   }
  *   mut p = Point{x: 1, y: 2}
  *   println(fields(p))
@@ -314,10 +282,10 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man size_of
- *@sig size_of(Type) -> int
- *@desc Returns the size in bytes of a type. int=8, float=8, bool=1, string=16.
+ *@sig size_of(Type) -> i64
+ *@desc Returns the size in bytes of a type. i64=8, f64=8, bool=1, string=16.
  *@example
- *   println(size_of(int))
+ *   println(size_of(i64))
  *   println(size_of(MyStruct))
  *@end
  */
@@ -336,7 +304,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig ref(variable T) -> T
  *@desc Creates a transparent alias to a variable; the alias has the same type as the variable and cannot be explicitly annotated. Reads and writes through the alias affect the original. Also used to take a function reference.
  *@example
- *   mut x int = 10
+ *   mut x i64 = 10
  *   mut r = ref(x)
  *   r = 99
  *   println(x)
@@ -347,8 +315,8 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig addr(variable T) -> ^T
  *@desc Returns a pointer to the memory address of a variable.
  *@example
- *   mut x int = 10
- *   mut p ^int = addr(x)
+ *   mut x i64 = 10
+ *   mut p ^i64 = addr(x)
  *   println(p^)
  *@end
  */
@@ -357,7 +325,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  *@sig raw(variable T) -> ^T
  *@desc Returns a raw pointer to a variable. Unlike addr(), raw pointers are unsafe: dereferences skip nil-check panics and the compiler does not enforce const-source write protection. Use only in performance-critical code where pointer validity is guaranteed.
  *@example
- *   mut x int = 10
+ *   mut x i64 = 10
  *   mut p = raw(x)
  *   println(p^)
  *@end
@@ -385,7 +353,7 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man range
- *@sig range(start int, end int, step int = 1) -> Range
+ *@sig range(start i64, end i64, step i64 = 1) -> Range
  *@desc Returns a Range from start (inclusive) to end (exclusive). The step defaults to 1 and controls the increment. Step of 0 panics at runtime.
  *@example
  *   for i in range(0, 5) { println(i) }
@@ -403,17 +371,17 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man to_char
- *@sig to_char(s string, index int) -> char
- *@desc Returns the char at character position index (not byte position) in a UTF-8 string. The char is a 32-bit Unicode codepoint; apply int() to the result for its numeric value. Panics if out of bounds.
+ *@sig to_char(s string, index i64) -> char
+ *@desc Returns the char at character position index (not byte position) in a UTF-8 string. The char is a 32-bit Unicode codepoint; apply i64() to the result for its numeric value. Panics if out of bounds.
  *@example
  *   mut c char = to_char("hello", 0)
  *   println(c)
- *   println(int(c))
+ *   println(cast(c, i64))
  *@end
  */
 
 /*@man char_count
- *@sig char_count(s string) -> int
+ *@sig char_count(s string) -> i64
  *@desc Returns the number of Unicode codepoints in a UTF-8 string. Unlike len() which counts bytes.
  *@example
  *   println(char_count("hello"))
@@ -434,8 +402,8 @@ void gray_builtin_sleep_ns(int64_t ns);
 /*@man SourceLocation
  *@kind type
  *@field file string
- *@field line int
- *@field column int
+ *@field line i64
+ *@field column i64
  *@desc Returned by here(). Contains the source file path, line number, and column at the call site, filled in at compile time.
  *@example
  *   mut loc = here()
@@ -467,10 +435,10 @@ void gray_builtin_sleep_ns(int64_t ns);
  */
 
 /*@man system
- *@sig system(command string) -> int
+ *@sig system(command string) -> i64
  *@desc Runs a shell command and returns its exit code. Mirrors C's system(). Returns -1 if the process was killed by a signal.
  *@example
- *   mut code int = system("ls -la")
+ *   mut code i64 = system("ls -la")
  *   println(code)
  *   system("echo hello")
  *@end
@@ -478,14 +446,14 @@ void gray_builtin_sleep_ns(int64_t ns);
 int64_t gray_builtin_system(GrayString cmd);
 
 /* to_string — internal runtime overloads, not user-callable by name */
-GrayString gray_builtin_to_string_int(GrayArena *arena, int64_t value);
-GrayString gray_builtin_to_string_uint(GrayArena *arena, uint64_t value);
+GrayString gray_builtin_to_string_i64(GrayArena *arena, int64_t value);
+GrayString gray_builtin_to_string_u64(GrayArena *arena, uint64_t value);
 GrayString gray_builtin_to_string_float(GrayArena *arena, double value, int bit_size);
 GrayString gray_builtin_to_string_bool(GrayArena *arena, bool value);
 
 /* from_string — internal runtime overloads */
-int64_t gray_builtin_string_to_int(GrayString str);
-double gray_builtin_string_to_float(GrayString str);
+int64_t gray_builtin_string_to_i64(GrayString str);
+double gray_builtin_string_to_f64(GrayString str);
 
 /* format float for interpolation */
 GrayString gray_builtin_format_float(GrayArena *arena, double value, int bit_size);

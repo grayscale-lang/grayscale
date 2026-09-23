@@ -5,7 +5,7 @@
  */
 
 const Shape enum {
-    Circle(float)
+    Circle(f64)
     Point
 }
 
@@ -14,8 +14,8 @@ const Obj struct {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut o Obj = Obj{shape: Shape.Circle(3.0)}
     mut kind string = ""

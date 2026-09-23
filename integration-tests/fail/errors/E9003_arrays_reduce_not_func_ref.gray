@@ -6,6 +6,6 @@
 import @arrays
 
 do main() {
-    mut nums [int] = {1, 2, 3}
-    mut result int = arrays.reduce(nums, 0, 42)
+    mut nums [i64] = {1, 2, 3}
+    mut result i64 = arrays.reduce(nums, 0, 42)
 }

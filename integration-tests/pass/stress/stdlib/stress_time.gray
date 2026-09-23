@@ -6,46 +6,46 @@ import @time
 
 do main() {
     println("=== Stress: @time ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // now() returns positive value
-    mut t1 int = time.now()
+    mut t1 i64 = time.now()
     if t1 > 0 {
         println("  [PASS] now() returns positive timestamp")
         passed += 1
     } otherwise { println("  [FAIL] now() — got ${t1}") failed += 1 }
 
     // now_ms() returns positive
-    mut ms int = time.now_ms()
+    mut ms i64 = time.now_ms()
     if ms > 0 {
         println("  [PASS] now_ms() returns positive")
         passed += 1
     } otherwise { println("  [FAIL] now_ms()") failed += 1 }
 
     // Two calls — second >= first (monotonic)
-    mut t2 int = time.now()
+    mut t2 i64 = time.now()
     if t2 >= t1 {
         println("  [PASS] now() monotonic (t2 >= t1)")
         passed += 1
     } otherwise { println("  [FAIL] monotonic — t1=${t1} t2=${t2}") failed += 1 }
 
     // year() returns reasonable value
-    mut yr int = time.year(t1)
+    mut yr i64 = time.year(t1)
     if yr >= 2026 && yr <= 2100 {
         println("  [PASS] year() in reasonable range")
         passed += 1
     } otherwise { println("  [FAIL] year — got ${yr}") failed += 1 }
 
     // month() in 1..12
-    mut mo int = time.month(t1)
+    mut mo i64 = time.month(t1)
     if mo >= 1 && mo <= 12 {
         println("  [PASS] month() in 1..12")
         passed += 1
     } otherwise { println("  [FAIL] month — got ${mo}") failed += 1 }
 
     // day() in 1..31
-    mut dy int = time.day(t1)
+    mut dy i64 = time.day(t1)
     if dy >= 1 && dy <= 31 {
         println("  [PASS] day() in 1..31")
         passed += 1

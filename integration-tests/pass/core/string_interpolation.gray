@@ -9,8 +9,8 @@ do get_name() -> string {
 
 do main() {
     println("=== String Interpolation Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic variable interpolation
     mut name string = "Grayscale"
@@ -24,7 +24,7 @@ do main() {
     }
 
     // Test 2: integer interpolation
-    mut x int = 42
+    mut x i64 = 42
     mut msg string = "value is ${x}"
     if msg == "value is 42" {
         println("  [PASS] integer interpolation")
@@ -35,8 +35,8 @@ do main() {
     }
 
     // Test 3: expression in interpolation
-    mut a int = 10
-    mut b int = 20
+    mut a i64 = 10
+    mut b i64 = 20
     mut result string = "sum is ${a + b}"
     if result == "sum is 30" {
         println("  [PASS] expression interpolation")

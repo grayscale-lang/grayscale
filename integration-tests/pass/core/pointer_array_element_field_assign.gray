@@ -2,7 +2,7 @@
 import @arrays
 
 const Item struct {
-    n int
+    n i64
 }
 
 const Box struct {

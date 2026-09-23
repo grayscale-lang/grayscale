@@ -4,7 +4,7 @@
  */
 
 const Color enum {
-    RED(int) = 5
+    RED(i64) = 5
     GREEN
 }
 

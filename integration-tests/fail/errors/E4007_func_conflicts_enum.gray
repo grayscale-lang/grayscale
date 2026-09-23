@@ -9,7 +9,7 @@ const Color enum {
     BLUE
 }
 
-do Color() -> int {
+do Color() -> i64 {
     return 0
 }
 

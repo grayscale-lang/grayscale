@@ -10,14 +10,14 @@ import @maps
 
 do main() {
     println("=== type_of() Stdlib Return Types ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: random.choice([int]) returns int
-    mut nums [int] = {10, 20, 30}
+    // Test 1: random.choice([i64]) returns i64
+    mut nums [i64] = {10, 20, 30}
     mut pick = random.choice(nums)
-    if type_of(pick) == "int" {
-        println("  [PASS] type_of(random.choice([int])) == 'int'")
+    if type_of(pick) == "i64" {
+        println("  [PASS] type_of(random.choice([i64])) == 'i64'")
         passed += 1
     } otherwise {
         println("  [FAIL] got '${type_of(pick)}'")
@@ -36,10 +36,10 @@ do main() {
     }
 
     // Test 3: random.shuffle preserves array type
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     mut shuffled = random.shuffle(arr)
-    if type_of(shuffled) == "[int]" {
-        println("  [PASS] type_of(random.shuffle([int])) == '[int]'")
+    if type_of(shuffled) == "[i64]" {
+        println("  [PASS] type_of(random.shuffle([i64])) == '[i64]'")
         passed += 1
     } otherwise {
         println("  [FAIL] got '${type_of(shuffled)}'")
@@ -47,10 +47,10 @@ do main() {
     }
 
     // Test 4: maps.get_keys returns array typed to key type
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     mut k = maps.get_keys(m)
     if type_of(k) == "[string]" {
-        println("  [PASS] type_of(maps.get_keys(map[string:int])) == '[string]'")
+        println("  [PASS] type_of(maps.get_keys(map[string:i64])) == '[string]'")
         passed += 1
     } otherwise {
         println("  [FAIL] got '${type_of(k)}'")
@@ -59,17 +59,17 @@ do main() {
 
     // Test 5: maps.get_values returns array typed to value type
     mut v = maps.get_values(m)
-    if type_of(v) == "[int]" {
-        println("  [PASS] type_of(maps.get_values(map[string:int])) == '[int]'")
+    if type_of(v) == "[i64]" {
+        println("  [PASS] type_of(maps.get_values(map[string:i64])) == '[i64]'")
         passed += 1
     } otherwise {
         println("  [FAIL] got '${type_of(v)}'")
         failed += 1
     }
 
-    // Test 6: range() returns Range<int>
-    if type_of(range(0, 5)) == "Range<int>" {
-        println("  [PASS] type_of(range(0, 5)) == 'Range<int>'")
+    // Test 6: range() returns Range<i64>
+    if type_of(range(0, 5)) == "Range<i64>" {
+        println("  [PASS] type_of(range(0, 5)) == 'Range<i64>'")
         passed += 1
     } otherwise {
         println("  [FAIL] got '${type_of(range(0, 5))}'")

@@ -6,18 +6,18 @@
 
 const Config struct {
     host string = "localhost"
-    port int = 8080
+    port i64 = 8080
     verbose bool = false
 }
 
 const Point struct {
-    x, y int = 0
-    z int = 1
+    x, y i64 = 0
+    z i64 = 1
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: new() uses default values
     mut c = new(Config)

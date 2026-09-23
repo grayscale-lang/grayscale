@@ -1,0 +1,9 @@
+/*
+ * Error Test: E7033 - conversion-overflow
+ * Expected: "overflow" or "exceeds"
+ */
+
+do main() {
+    mut f f64 = 9999999999999999999.9
+    mut i i64 = cast(f, i64)
+}

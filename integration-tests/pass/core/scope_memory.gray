@@ -19,13 +19,13 @@ do get_upper(name string) -> string {
 }
 
 const Node struct {
-    val int
+    val i64
 }
 
 do main() {
     println("=== Scope Memory Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- void function temporaries freed, program still works --
     process("hello")
@@ -64,7 +64,7 @@ do main() {
     }
 
     // -- multiple void function calls don't leak --
-    mut i int = 0
+    mut i i64 = 0
     as_long_as i < 100 {
         process("iteration")
         i += 1

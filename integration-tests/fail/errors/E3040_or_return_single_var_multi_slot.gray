@@ -3,9 +3,9 @@
  * one non-error return slot. The second value was silently dropped.
  */
 
-do two() -> (int, string, Error) { return 10, "hi", nil }
+do two() -> (i64, string, Error) { return 10, "hi", nil }
 
-do consume() -> (int, Error) {
+do consume() -> (i64, Error) {
     mut a = two() or_return
     return a, nil
 }

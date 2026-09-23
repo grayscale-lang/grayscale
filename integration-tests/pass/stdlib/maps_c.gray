@@ -6,10 +6,10 @@ import @maps
 
 do main() {
     println("=== Maps Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut m map[string:int] = {"a": 1, "b": 2, "c": 3}
+    mut m map[string:i64] = {"a": 1, "b": 2, "c": 3}
 
     // keys
     mut k [string] = maps.get_keys(m)
@@ -22,7 +22,7 @@ do main() {
     }
 
     // values
-    mut v [int] = maps.get_values(m)
+    mut v [i64] = maps.get_values(m)
     if len(v) == 3 {
         println("  [PASS] values")
         passed += 1
@@ -50,7 +50,7 @@ do main() {
     }
 
     // remove (void) — verify side effect
-    mut rm_map map[string:int] = {"x": 10, "y": 20, "z": 30}
+    mut rm_map map[string:i64] = {"x": 10, "y": 20, "z": 30}
     maps.remove_key(rm_map, "y")
     if len(rm_map) == 2 {
         println("  [PASS] remove")
@@ -61,7 +61,7 @@ do main() {
     }
 
     // clear (void)
-    mut cl_map map[string:int] = {"a": 1, "b": 2}
+    mut cl_map map[string:i64] = {"a": 1, "b": 2}
     maps.clear(cl_map)
     if len(cl_map) == 0 {
         println("  [PASS] clear")
@@ -81,7 +81,7 @@ do main() {
     }
 
     // is_empty (true)
-    mut empty_map map[string:int] = {:}
+    mut empty_map map[string:i64] = {:}
     if maps.is_empty(empty_map) == true {
         println("  [PASS] is_empty (empty)")
         passed += 1
@@ -91,7 +91,7 @@ do main() {
     }
 
     // keys returns array
-    mut iter_map map[string:int] = {"a": 1, "b": 2, "c": 3}
+    mut iter_map map[string:i64] = {"a": 1, "b": 2, "c": 3}
     mut ks [string] = maps.get_keys(iter_map)
     if len(ks) == 3 {
         println("  [PASS] keys length")
@@ -102,9 +102,9 @@ do main() {
     }
 
     // merge
-    mut m1 map[string:int] = {"a": 1, "b": 2}
-    mut m2 map[string:int] = {"c": 3, "d": 4}
-    mut merged map[string:int] = maps.merge(m1, m2)
+    mut m1 map[string:i64] = {"a": 1, "b": 2}
+    mut m2 map[string:i64] = {"c": 3, "d": 4}
+    mut merged map[string:i64] = maps.merge(m1, m2)
     if len(merged) == 4 && merged["a"] == 1 && merged["d"] == 4 {
         println("  [PASS] merge")
         passed += 1
@@ -114,8 +114,8 @@ do main() {
     }
 
     // merge with overlap (second overwrites)
-    mut m3 map[string:int] = {"a": 99}
-    mut merged2 map[string:int] = maps.merge(m1, m3)
+    mut m3 map[string:i64] = {"a": 99}
+    mut merged2 map[string:i64] = maps.merge(m1, m3)
     if merged2["a"] == 99 {
         println("  [PASS] merge overwrites")
         passed += 1
@@ -125,7 +125,7 @@ do main() {
     }
 
     // contains_value
-    mut cv_map map[string:int] = {"x": 10, "y": 20}
+    mut cv_map map[string:i64] = {"x": 10, "y": 20}
     if maps.contains_value(cv_map, 10) == true {
         println("  [PASS] contains_value (found)")
         passed += 1
@@ -143,8 +143,8 @@ do main() {
     }
 
     // get_or_default
-    mut gd_map map[string:int] = {"a": 42}
-    mut val1 int = maps.get_or_default(gd_map, "a", 0)
+    mut gd_map map[string:i64] = {"a": 42}
+    mut val1 i64 = maps.get_or_default(gd_map, "a", 0)
     if val1 == 42 {
         println("  [PASS] get_or_default (key exists)")
         passed += 1
@@ -153,7 +153,7 @@ do main() {
         failed += 1
     }
 
-    mut val2 int = maps.get_or_default(gd_map, "z", -1)
+    mut val2 i64 = maps.get_or_default(gd_map, "z", -1)
     if val2 == -1 {
         println("  [PASS] get_or_default (key missing)")
         passed += 1
@@ -163,9 +163,9 @@ do main() {
     }
 
     // is_equal — order-independent, value-sensitive
-    mut eq_a map[string:int] = {"x": 1, "y": 2}
-    mut eq_b map[string:int] = {"y": 2, "x": 1}
-    mut eq_c map[string:int] = {"x": 1, "y": 3}
+    mut eq_a map[string:i64] = {"x": 1, "y": 2}
+    mut eq_b map[string:i64] = {"y": 2, "x": 1}
+    mut eq_c map[string:i64] = {"x": 1, "y": 3}
     if maps.is_equal(eq_a, eq_b) && !maps.is_equal(eq_a, eq_c) {
         println("  [PASS] is_equal")
         passed += 1

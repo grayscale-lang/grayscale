@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     if not_in arr {
         println("test")
     }

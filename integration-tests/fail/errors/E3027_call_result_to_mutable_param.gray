@@ -3,11 +3,11 @@
  * Expected: "cannot pass a literal or expression to mutable parameter" error
  */
 
-do get_val() -> int {
+do get_val() -> i64 {
     return 5
 }
 
-do modify(&x int) {
+do modify(&x i64) {
     x = 99
 }
 

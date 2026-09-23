@@ -4,6 +4,6 @@
  */
 
 do main() {
-    const x int = 5
+    const x i64 = 5
     x = 10  // Cannot reassign const
 }

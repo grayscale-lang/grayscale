@@ -3,11 +3,11 @@
  * Expected: "function calls are not allowed in file-scope initializers"
  */
 
-do compute() -> int {
+do compute() -> i64 {
     return 42
 }
 
-mut result int = compute()
+mut result i64 = compute()
 
 do main() {
     println("${result}")

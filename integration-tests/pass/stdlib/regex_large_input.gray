@@ -7,7 +7,7 @@
 import @regex
 import @strings
 
-do check_int(label string, got int, want int) -> int {
+do check_int(label string, got i64, want i64) -> i64 {
     if got == want {
         return 1
     }
@@ -16,7 +16,7 @@ do check_int(label string, got int, want int) -> int {
 }
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // 5000 six-byte tokens = 30000 bytes, well past the old 8191 cap
     mut big string = strings.repeat("ab-12 ", 5000)

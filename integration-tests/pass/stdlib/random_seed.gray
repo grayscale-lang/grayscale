@@ -1,20 +1,20 @@
 /*
  * random_seed.gray - Test random.seed() explicit seeding
- * Covers: random.seed(int) wired
+ * Covers: random.seed(i64) wired
  */
 
 import @random
 
 do main() {
     println("=== random.seed Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: seed produces deterministic output
     random.seed(42)
-    mut a int = random.rand_int(1000)
+    mut a i64 = random.rand_int(1000)
     random.seed(42)
-    mut b int = random.rand_int(1000)
+    mut b i64 = random.rand_int(1000)
     if a == b {
         println("  [PASS] same seed produces same value")
         passed += 1
@@ -25,9 +25,9 @@ do main() {
 
     // Test 2: different seeds produce different output (statistical)
     random.seed(1)
-    mut c int = random.rand_int(1000000)
+    mut c i64 = random.rand_int(1000000)
     random.seed(999)
-    mut d int = random.rand_int(1000000)
+    mut d i64 = random.rand_int(1000000)
     if c != d {
         println("  [PASS] different seeds produce different values")
         passed += 1
@@ -38,7 +38,7 @@ do main() {
 
     // Test 3: seed with zero
     random.seed(0)
-    mut e int = random.rand_int(100)
+    mut e i64 = random.rand_int(100)
     if e >= 0 && e < 100 {
         println("  [PASS] seed(0) still produces valid rand_int")
         passed += 1
@@ -49,7 +49,7 @@ do main() {
 
     // Test 4: seed then rand_float still works
     random.seed(42)
-    mut f float = random.rand_float()
+    mut f f64 = random.rand_float()
     if f >= 0.0 && f < 1.0 {
         println("  [PASS] seed then rand_float in range")
         passed += 1

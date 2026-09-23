@@ -3,7 +3,7 @@
  * Expected: E3013 wrong number of return values
  */
 
-do pair() -> (int, int) {
+do pair() -> (i64, i64) {
     return 1, 2, 3
 }
 

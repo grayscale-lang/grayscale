@@ -4,6 +4,6 @@
  */
 
 do main() {
-    const m map[string:int] = {"a": 1}
+    const m map[string:i64] = {"a": 1}
     m["b"] = 2  // ERROR: cannot modify immutable map
 }

@@ -460,7 +460,7 @@ func printBuiltinsIndex() {
 		{"I/O        ", []string{"println", "print", "eprintln", "eprint", "input", "flush"}},
 		{"Control    ", []string{"exit", "panic", "assert"}},
 		{"Sleep      ", []string{"sleep_s", "sleep_ms", "sleep_ns"}},
-		{"Type casts ", []string{"int", "uint", "float", "string", "char", "byte", "bool", "cast"}},
+		{"Type casts ", []string{"string", "char", "bool", "cast"}},
 		{"Width casts", []string{"i128", "u128", "i256", "u256"}},
 		{"Memory     ", []string{"new", "ref", "addr", "copy"}},
 		{"Introspect ", []string{"len", "type_of", "size_of"}},

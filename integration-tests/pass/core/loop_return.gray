@@ -5,16 +5,16 @@
  * while with return, for with return.
  */
 
-do find_value() -> int {
-    mut i int = 0
+do find_value() -> i64 {
+    mut i i64 = 0
     loop {
         i += 1
         if i == 42 { return i }
     }
 }
 
-do search(target int) -> string {
-    mut i int = 0
+do search(target i64) -> string {
+    mut i i64 = 0
     loop {
         if i == target { return "found at ${i}" }
         i += 1
@@ -24,11 +24,11 @@ do search(target int) -> string {
 
 do main() {
     println("=== Loop Return Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: loop with return
-    mut val int = find_value()
+    mut val i64 = find_value()
     if val == 42 {
         println("  [PASS] loop with return")
         passed += 1

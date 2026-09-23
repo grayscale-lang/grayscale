@@ -6,15 +6,15 @@
  */
 
 const Widget struct {
-    items [int, 3]
+    items [i64, 3]
     names [string, 2]
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    const small [int, 2] = {1, 2}
+    const small [i64, 2] = {1, 2}
     mut w Widget = Widget{items: small, names: {"a"}}
     if len(w.items) == 3 && w.items[0] == 1 && w.items[1] == 2 && w.items[2] == 0 {
         println("  [PASS] struct literal from shorter fixed array")

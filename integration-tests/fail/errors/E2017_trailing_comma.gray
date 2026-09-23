@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut arr [int] = {1, 2, 3,}  // Trailing comma
+    mut arr [i64] = {1, 2, 3,}  // Trailing comma
 }

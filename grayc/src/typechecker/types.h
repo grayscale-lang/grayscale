@@ -17,11 +17,10 @@
 typedef enum {
     TK_VOID,
     TK_INT,
-    TK_UINT,    /* unsigned integer types: uint, u8, u16, u32, u64, u128 */
+    TK_UINT,    /* unsigned integer types: u8, u16, u32, u64, u128, u256 */
     TK_FLOAT,
     TK_BOOL,
     TK_CHAR,
-    TK_BYTE,
     TK_STRING,
     TK_ARRAY,
     TK_MAP,
@@ -55,7 +54,7 @@ typedef struct {
 
 typedef struct GrayType {
     TypeKind kind;
-    const char *name;           /* "int", "string", "Person", "[int]", etc. */
+    const char *name;           /* "i64", "string", "Person", "[i64]", etc. */
     const char *element_type;   /* For arrays: element type name */
     const char *key_type;       /* For maps: key type name */
     const char *value_type;     /* For maps: value type name */
@@ -64,12 +63,12 @@ typedef struct GrayType {
 
 /* Built-in type singletons */
 extern GrayType TYPE_VOID;
-extern GrayType TYPE_INT;
-extern GrayType TYPE_UINT;
-extern GrayType TYPE_FLOAT;
+extern GrayType TYPE_I64;
+extern GrayType TYPE_U64;
+extern GrayType TYPE_F64;
 extern GrayType TYPE_BOOL;
 extern GrayType TYPE_CHAR;
-extern GrayType TYPE_BYTE;
+extern GrayType TYPE_U8;
 extern GrayType TYPE_STRING;
 extern GrayType TYPE_NIL;
 extern GrayType TYPE_UNKNOWN;
@@ -92,7 +91,7 @@ const char *type_name(GrayType *type);
 /* Resolve a type name string to an GrayType */
 GrayType *type_from_name(const char *name);
 
-/* Return true if name matches a builtin type keyword (int, string, etc.) */
+/* Return true if name matches a builtin type keyword (i64, string, etc.) */
 bool is_builtin_type_name(const char *name);
 
 /* Free all heap strings owned by pool entries and reset the pool */
@@ -100,15 +99,13 @@ void type_pool_reset(void);
 
 /* --- Type-name string predicates --- */
 
-/* Every named integer type is "byte", or an i/u followed by "nt" or a width.
- * Gate on the first character so a name that is none of them (a struct name,
- * "string", "float") costs one comparison instead of the whole ladder. */
+/* Every named integer type is an i/u followed by a width. Gate on the first
+ * character so a name that is none of them (a struct name, "string", "f64")
+ * costs one comparison instead of the whole ladder. */
 
 static inline bool is_unsigned_type(const char *tn) {
-    if (!tn) return false;
-    if (tn[0] == 'b') return strcmp(tn, "byte") == 0;
-    if (tn[0] != 'u') return false;
-    return strcmp(tn, "uint") == 0 || strcmp(tn, "u8") == 0 ||
+    if (!tn || tn[0] != 'u') return false;
+    return strcmp(tn, "u8") == 0 ||
            strcmp(tn, "u16") == 0 || strcmp(tn, "u32") == 0 ||
            strcmp(tn, "u64") == 0 || strcmp(tn, "u128") == 0 ||
            strcmp(tn, "u256") == 0;
@@ -116,7 +113,7 @@ static inline bool is_unsigned_type(const char *tn) {
 
 static inline bool is_signed_int_type(const char *tn) {
     if (!tn || tn[0] != 'i') return false;
-    return strcmp(tn, "int") == 0 || strcmp(tn, "i8") == 0 ||
+    return strcmp(tn, "i8") == 0 ||
            strcmp(tn, "i16") == 0 || strcmp(tn, "i32") == 0 ||
            strcmp(tn, "i64") == 0 || strcmp(tn, "i128") == 0 ||
            strcmp(tn, "i256") == 0;

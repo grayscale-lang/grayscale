@@ -18,7 +18,7 @@ struct AstNode;
 typedef struct {
     const char *name;
     GrayType *type;
-    const char *declared_type; /* original declared type name (e.g., "uint", "i8") */
+    const char *declared_type; /* original declared type name (e.g., "u64", "i8") */
     bool mutable;
     bool is_ref;         /* true if created via ref() — transparent reference */
     bool const_source;   /* true if pointer was taken from a const variable via addr() */

@@ -1,10 +1,10 @@
 import @math
 
 const Vec2 struct {
-    x float
-    y float
+    x f64
+    y f64
 
-    do create(x float, y float) -> Vec2 {
+    do create(x f64, y f64) -> Vec2 {
         return Vec2{x: x, y: y}
     }
 
@@ -12,11 +12,11 @@ const Vec2 struct {
         return Vec2{x: a.x + b.x, y: a.y + b.y}
     }
 
-    do magnitude(v Vec2) -> float {
+    do magnitude(v Vec2) -> f64 {
         return math.sqrt(v.x * v.x + v.y * v.y)
     }
 
-    private do normalize_internal(v Vec2, mag float) -> Vec2 {
+    private do normalize_internal(v Vec2, mag f64) -> Vec2 {
         return Vec2{x: v.x / mag, y: v.y / mag}
     }
 

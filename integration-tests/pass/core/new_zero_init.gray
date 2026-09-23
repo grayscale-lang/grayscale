@@ -5,36 +5,36 @@
  */
 
 const Data struct {
-    count int
+    count i64
     name string
     flag bool
-    score float
+    score f64
     tag char
     small u8
 }
 
 const Nested struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 const Outer struct {
     n Nested
-    value int
+    value i64
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut d = new(Data)
 
-    // Test 1: int field is 0
+    // Test 1: i64 field is 0
     if d.count == 0 {
-        println("  [PASS] new() int field is 0")
+        println("  [PASS] new() i64 field is 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new() int field: expected 0, got ${d.count}")
+        println("  [FAIL] new() i64 field: expected 0, got ${d.count}")
         failed += 1
     }
 
@@ -56,17 +56,17 @@ do main() {
         failed += 1
     }
 
-    // Test 4: float field is 0.0
+    // Test 4: f64 field is 0.0
     if d.score == 0.0 {
-        println("  [PASS] new() float field is 0.0")
+        println("  [PASS] new() f64 field is 0.0")
         passed += 1
     } otherwise {
-        println("  [FAIL] new() float field: expected 0.0")
+        println("  [FAIL] new() f64 field: expected 0.0")
         failed += 1
     }
 
     // Test 5: u8 field is 0
-    if cast(d.small, int) == 0 {
+    if cast(d.small, i64) == 0 {
         println("  [PASS] new() u8 field is 0")
         passed += 1
     } otherwise {
@@ -78,10 +78,10 @@ do main() {
     // (tests that recycled arena memory is zeroed)
     mut d2 = new(Data)
     if d2.count == 0 {
-        println("  [PASS] second new() int field is 0")
+        println("  [PASS] second new() i64 field is 0")
         passed += 1
     } otherwise {
-        println("  [FAIL] second new() int field: expected 0, got ${d2.count}")
+        println("  [FAIL] second new() i64 field: expected 0, got ${d2.count}")
         failed += 1
     }
 

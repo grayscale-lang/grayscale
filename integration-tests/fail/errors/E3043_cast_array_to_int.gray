@@ -1,9 +1,0 @@
-/*
- * Error Test: E3043 - cannot cast array to int
- * Expected: "cannot cast"
- */
-
-do main() {
-    mut arr [int] = {1, 2, 3}
-    mut n int = cast(arr, int)
-}

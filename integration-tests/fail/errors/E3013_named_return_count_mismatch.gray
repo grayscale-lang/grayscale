@@ -3,11 +3,11 @@
  */
 
 
-do getValues() -> (age int, name string) {
+do getValues() -> (age i64, name string) {
     return 42
 }
 
 do main() {
-    mut a int, n string = getValues()
+    mut a i64, n string = getValues()
     println(a)
 }

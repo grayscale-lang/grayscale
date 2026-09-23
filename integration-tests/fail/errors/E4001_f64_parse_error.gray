@@ -1,0 +1,8 @@
+/*
+ * Error Test: E4001 - f64-parse-error
+ * Expected: "cannot parse f64" or "parse"
+ */
+
+do main() {
+    mut x f64 = 1e99999999  // too large exponent
+}

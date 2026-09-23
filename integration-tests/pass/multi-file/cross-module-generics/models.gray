@@ -1,7 +1,7 @@
 const Thing struct {
-    id int
+    id i64
 
-    do bump(t Thing) -> int {
+    do bump(t Thing) -> i64 {
         return t.id + 1
     }
 }

@@ -140,14 +140,14 @@
     GRAY_ERROR("E3047", "types", "enum '%s' has no member '%s'") \
     GRAY_ERROR("E3048", "types", "operator '+' on strings requires both operands to be strings; got '%s' and '%s'") \
     GRAY_ERROR("E3049", "types", "cannot use '%s' on enum values; enums only support == and != comparisons") \
-    GRAY_ERROR("E3050", "types", "array needs a type annotation; declare as [T] (e.g., mut x [int] = {1, 2, 3})") \
-    GRAY_ERROR("E3051", "types", "map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:int] = {\"a\": 1})") \
+    GRAY_ERROR("E3050", "types", "array needs a type annotation; declare as [T] (e.g., mut x [i64] = {1, 2, 3})") \
+    GRAY_ERROR("E3051", "types", "map needs a type annotation; declare as [K:V] or map[K:V] (e.g., mut x [string:i64] = {\"a\": 1})") \
     GRAY_ERROR("E3052", "types", "too many elements in array initializer; declared size is %d, got %d") \
     GRAY_ERROR("E3053", "types", "type mismatch in a collection or struct literal; expected '%s', got '%s'") \
     GRAY_ERROR("E3054", "types", "mutable arrays cannot have a fixed size; remove the size or use 'const' (e.g., mut %s %.*s] = ...)") \
     GRAY_ERROR("E3055", "types", "const arrays must have a fixed size; declare as [T, N] (e.g., const %s [%.*s, %d] = ...)") \
     GRAY_ERROR("E3056", "types", "#strict when is not exhaustive; missing variant '%s.%s'") \
-    GRAY_ERROR("E3057", "types", "type '%s' cannot be used as a map key; only primitive types (int, string, bool, char, byte, float) and enums are hashable") \
+    GRAY_ERROR("E3057", "types", "type '%s' cannot be used as a map key; only primitive types (integers, floats, string, bool, char) and enums are hashable") \
     GRAY_ERROR("E3058", "types", "in instantiation of generic function '%s' with '?' = %s") \
     GRAY_ERROR("E3059", "types", "maps cannot be declared const; use 'mut' for maps or a struct for fixed data") \
     GRAY_ERROR("E3060", "types", "wildcard '?' in return type cannot be resolved; at least one parameter must also use '?' to bind the concrete type") \
@@ -157,7 +157,7 @@
     GRAY_ERROR("E3068", "types", "'void' is not a user-facing type; omit the '-> R' clause to declare a function with no return value") \
     GRAY_ERROR("E3069", "types", "'&' on a parameter must come before the name, not the type; write '&%s %s' to mark this parameter mutable") \
     GRAY_ERROR("E3070", "types", "'ensure' may only appear at the top level of a function body; lift it out of the enclosing block") \
-    GRAY_ERROR("E3071", "types", "cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. int, string)") \
+    GRAY_ERROR("E3071", "types", "cannot 'return nil' from a function whose return type contains '?'; 'nil' is not a valid value for every binding (e.g. i64, string)") \
     GRAY_ERROR("E3072", "types", "cannot return 'nil' from a function that returns '%s'; nil is only valid for pointer and error types") \
     GRAY_ERROR("E3073", "types", "'return' is not allowed in 'main()'; 'main()' exits when control reaches the closing brace") \
     GRAY_ERROR("E3074", "types", "arrays cannot be compared with comparison operators; use 'arrays.is_equal(a, b)' for equality, or compare elements individually for ordering") \
@@ -202,18 +202,18 @@
     GRAY_ERROR("E3114", "types", "variant '%s' of enum '%s' has no payload; remove the arguments") \
     GRAY_ERROR("E3115", "types", "enum '%s' is not a tagged enum; variant '%s' cannot be called") \
     GRAY_ERROR("E3116", "types", "wrong number of bindings for variant '%s'; expected %d, got %d") \
-    GRAY_ERROR("E3117", "types", "cannot compare enum '%s' with '%s'; use an enum variant like '%s.VARIANT', or cast to int with 'cast(value, int)'") \
+    GRAY_ERROR("E3117", "types", "cannot compare enum '%s' with '%s'; use an enum variant like '%s.VARIANT', or cast to an integer with 'cast(value, i64)'") \
     GRAY_ERROR("E3118", "types", "cannot assign '%s' to enum '%s'; use an enum variant like '%s.VARIANT'") \
     GRAY_ERROR("E3119", "types", "fixed-size arrays are not allowed in function parameters; use '[%s]' instead of '%s' for parameter '%s'") \
     GRAY_ERROR("E3120", "types", "pointer ordering comparisons are not supported; only == and != are allowed on pointers") \
-    GRAY_ERROR("E3121", "types", "cannot use '%s' as a condition in a when statement; allowed types are int, uint, string, char, byte, bool, float, and enum") \
+    GRAY_ERROR("E3121", "types", "cannot use '%s' as a condition in a when statement; allowed types are integers, floats, string, char, bool, and enum") \
     GRAY_ERROR("E3122", "safety", "cannot modify value through pointer '%s'; the pointee is a const-declared variable") \
     GRAY_ERROR("E3123", "iteration", "'for_each' with both positions discarded accesses nothing; use 'for _ in range(0, len(collection))' to iterate by count") \
     GRAY_ERROR("E3124", "types", "operator '%s' is not defined for tagged enum '%s'; tagged enums carry payloads and cannot be compared with == or !=") \
-    GRAY_ERROR("E3125", "types", "'%s' is not a compile-time integer constant; array size must be a const int/uint value") \
+    GRAY_ERROR("E3125", "types", "'%s' is not a compile-time integer constant; array size must be a const integer value") \
     GRAY_ERROR("E3126", "types", "array size must be greater than zero; '%s' resolves to %d") \
     GRAY_ERROR("E3127", "types", "type parameter '%s' is used as a struct literal, so it accepts only struct types, but '%s' is not a struct") \
-    GRAY_ERROR("E3128", "types", "type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'int'") \
+    GRAY_ERROR("E3128", "types", "type parameter expects a type name, but got a non-type expression; pass a type name like 'MyStruct' or 'i64'") \
     GRAY_ERROR("E3129", "safety", "empty loop body; this will loop forever at runtime") \
     GRAY_ERROR("E3130", "types", "bare 'func' is not allowed as a struct field type") \
     GRAY_ERROR("E3131", "types", "file-scope 'const' requires an explicit type annotation; write 'const %s %s = ...' instead") \
@@ -223,14 +223,14 @@
     GRAY_ERROR("E3135", "types", "alias '%s' cannot target the wildcard type '?'") \
     GRAY_ERROR("E3136", "types", "empty array literal has no elements to infer a type from; add at least one element or use a typed declaration") \
     GRAY_ERROR("E3137", "types", "constant division overflows; %lld / %lld cannot be represented in type '%s'") \
-    GRAY_ERROR("E3138", "types", "float literal overflows 64-bit float; max magnitude is 1.7976931348623157e308") \
+    GRAY_ERROR("E3138", "types", "float literal overflows f64; max magnitude is 1.7976931348623157e308") \
     GRAY_ERROR("E3139", "types", "returns %s '%s', but declares the concrete return type '%s'; the value's type is whatever the caller passes, so it is not always '%s'") \
-    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be int, uint, float, string, or bool") \
+    GRAY_ERROR("E3140", "types", "#json struct '%s' field '%s' has type '%s', which has no JSON representation; #json fields must be i64, u64, f64, string, or bool") \
     GRAY_ERROR("E3141", "types", "'%s' is a struct, not an enum; it has no variant or member '%s'") \
     GRAY_ERROR("E3142", "types", "function '%s' cannot have a func return type; a returned func value cannot be called, assigned, or stored") \
     GRAY_ERROR("E3143", "types", "#flags enum '%s' has %d variants; a #flags enum may have at most 63, one per usable bit of int64") \
     GRAY_ERROR("E3144", "types", "#error_code attribute can only be applied to enum declarations") \
-    GRAY_ERROR("E3145", "types", "#error_code enum '%s' must be plain int-backed; string-backed enums cannot contribute to the ErrorCode set") \
+    GRAY_ERROR("E3145", "types", "#error_code enum '%s' must be plain integer-backed; string-backed enums cannot contribute to the ErrorCode set") \
     GRAY_ERROR("E3146", "types", "#error_code enum '%s' variant '%s' has an explicit value; the compiler owns ErrorCode numbering") \
     GRAY_ERROR("E3147", "types", "#error_code enum '%s' cannot have payload variants") \
     GRAY_ERROR("E3148", "types", "ErrorCode variant '%s' is already defined; every variant name in the ErrorCode set must be unique") \
@@ -384,13 +384,13 @@
     GRAY_PANIC("P0001", "memory",     "cannot allocate from a destroyed arena; mem.destroy() was already called on this arena") \
     GRAY_PANIC("P0002", "memory",     "mem.destroy() called on an arena that was already destroyed; each arena can only be destroyed once") \
     GRAY_PANIC("P0003", "runtime",    "maximum recursion depth exceeded (%d calls deep); your function is calling itself too many times") \
-    GRAY_PANIC("P0004", "arithmetic", "addition result is too large; value exceeds the range of int") \
-    GRAY_PANIC("P0005", "arithmetic", "subtraction result is too large; value exceeds the range of int") \
-    GRAY_PANIC("P0006", "arithmetic", "multiplication result is too large; value exceeds the range of int") \
-    GRAY_PANIC("P0007", "arithmetic", "negation result is too large; value exceeds the range of int") \
-    GRAY_PANIC("P0008", "arithmetic", "addition result is too large; value exceeds the range of uint") \
-    GRAY_PANIC("P0009", "arithmetic", "subtraction result is negative, but uint cannot hold negative values") \
-    GRAY_PANIC("P0010", "arithmetic", "multiplication result is too large; value exceeds the range of uint") \
+    GRAY_PANIC("P0004", "arithmetic", "addition result is too large; value exceeds the range of i64") \
+    GRAY_PANIC("P0005", "arithmetic", "subtraction result is too large; value exceeds the range of i64") \
+    GRAY_PANIC("P0006", "arithmetic", "multiplication result is too large; value exceeds the range of i64") \
+    GRAY_PANIC("P0007", "arithmetic", "negation result is too large; value exceeds the range of i64") \
+    GRAY_PANIC("P0008", "arithmetic", "addition result is too large; value exceeds the range of u64") \
+    GRAY_PANIC("P0009", "arithmetic", "subtraction result is negative, but u64 cannot hold negative values") \
+    GRAY_PANIC("P0010", "arithmetic", "multiplication result is too large; value exceeds the range of u64") \
     GRAY_PANIC("P0011", "arithmetic", "%s addition result is too large; value exceeds the range of this type") \
     GRAY_PANIC("P0012", "arithmetic", "%s subtraction result is too large; value exceeds the range of this type") \
     GRAY_PANIC("P0013", "arithmetic", "%s multiplication result is too large; value exceeds the range of this type") \
@@ -400,7 +400,7 @@
     GRAY_PANIC("P0017", "arithmetic", "%s multiplication result is too large; value exceeds the range of this unsigned type") \
     GRAY_PANIC("P0018", "arithmetic", "cast to %s failed; value %lld is outside the valid range (%lld to %lld)") \
     GRAY_PANIC("P0019", "arithmetic", "cast to %s failed; value %lld is outside the valid range (0 to %llu)") \
-    GRAY_PANIC("P0020", "arithmetic", "cannot convert float to int; the value is too large, too small, or NaN") \
+    GRAY_PANIC("P0020", "arithmetic", "cannot convert f64 to i64; the value is too large, too small, or NaN") \
     GRAY_PANIC("P0021", "arithmetic", "i128 addition result is too large; value exceeds the range of i128") \
     GRAY_PANIC("P0022", "arithmetic", "i128 subtraction result is too large; value exceeds the range of i128") \
     GRAY_PANIC("P0023", "arithmetic", "i128 multiplication result is too large; value exceeds the range of i128") \
@@ -435,11 +435,11 @@
     GRAY_PANIC("P0052", "crypto",     "crypto.random_hex: failed to read from /dev/urandom") \
     GRAY_PANIC("P0053", "io",         "io.read_file: input exceeds maximum string length") \
     GRAY_PANIC("P0054", "strconv",    "strconv.to_int: invalid base %lld; must be between 2 and 36") \
-    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to int (base %lld)") \
+    GRAY_PANIC("P0055", "strconv",    "strconv.to_int: cannot convert '%s' to i64 (base %lld)") \
     GRAY_PANIC("P0056", "strconv",    "strconv.to_uint: invalid base %lld; must be between 2 and 36") \
-    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to uint (base %lld)") \
-    GRAY_PANIC("P0058", "strconv",    "strconv.to_uint: cannot convert '%s' to uint; value is negative") \
-    GRAY_PANIC("P0059", "strconv",    "strconv.to_float: cannot convert '%s' to float") \
+    GRAY_PANIC("P0057", "strconv",    "strconv.to_uint: cannot convert '%s' to u64 (base %lld)") \
+    GRAY_PANIC("P0058", "strconv",    "strconv.to_uint: cannot convert '%s' to u64; value is negative") \
+    GRAY_PANIC("P0059", "strconv",    "strconv.to_float: cannot convert '%s' to f64") \
     GRAY_PANIC("P0060", "strconv",    "strconv.to_bool: cannot convert '%s' to bool") \
     GRAY_PANIC("P0061", "memory",     "mem.arena() size %lld bytes exceeds the maximum allowed size of 1 GB") \
     GRAY_PANIC("P0062", "random",     "random.sample() count %lld exceeds array length %d") \
@@ -464,29 +464,29 @@
     GRAY_PANIC("P0081", "runtime",    "key not found in map") \
     GRAY_PANIC("P0082", "bounds",     "string index %lld out of bounds (length %d)") \
     GRAY_PANIC("P0083", "runtime",    "sleep duration cannot be negative (%lld)") \
-    GRAY_PANIC("P0084", "runtime",    "cannot convert '%s' to int") \
-    GRAY_PANIC("P0085", "runtime",    "cannot convert '%s' to float") \
+    GRAY_PANIC("P0084", "runtime",    "cannot convert '%s' to i64") \
+    GRAY_PANIC("P0085", "runtime",    "cannot convert '%s' to f64") \
     GRAY_PANIC("P0086", "io",         "io.read_file() cannot read a directory; use io.list_dir() or io.walk() to list directory contents") \
     GRAY_PANIC("P0087", "io",         "io.write_file() cannot write to a directory") \
     GRAY_PANIC("P0088", "io",         "io.append_file() cannot append to a directory") \
     GRAY_PANIC("P0089", "io",         "io.copy_file() cannot copy a directory; use io.walk() to enumerate files and copy them individually") \
     GRAY_PANIC("P0090", "runtime",    "range step cannot be zero") \
-    GRAY_PANIC("P0091", "arithmetic", "cannot convert float to uint; the value is negative, too large, or NaN") \
+    GRAY_PANIC("P0091", "arithmetic", "cannot convert f64 to u64; the value is negative, too large, or NaN") \
     GRAY_PANIC("P0092", "arithmetic", "shift amount %lld is out of range; must be in [0, 63]") \
-    GRAY_PANIC("P0093", "arithmetic", "cast from i128 failed; value is outside the representable range of int64") \
-    GRAY_PANIC("P0094", "arithmetic", "cast from i128 failed; value is negative or outside the representable range of uint64") \
-    GRAY_PANIC("P0095", "arithmetic", "cast from u128 failed; value exceeds the representable range of int64") \
-    GRAY_PANIC("P0096", "arithmetic", "cast from u128 failed; value exceeds the representable range of uint64") \
-    GRAY_PANIC("P0097", "arithmetic", "cast from i256 failed; value is outside the representable range of int64") \
-    GRAY_PANIC("P0098", "arithmetic", "cast from i256 failed; value is negative or outside the representable range of uint64") \
-    GRAY_PANIC("P0099", "arithmetic", "cast from u256 failed; value exceeds the representable range of int64") \
-    GRAY_PANIC("P0100", "arithmetic", "cast from u256 failed; value exceeds the representable range of uint64") \
+    GRAY_PANIC("P0093", "arithmetic", "cast from i128 failed; value is outside the representable range of i64") \
+    GRAY_PANIC("P0094", "arithmetic", "cast from i128 failed; value is negative or outside the representable range of u64") \
+    GRAY_PANIC("P0095", "arithmetic", "cast from u128 failed; value exceeds the representable range of i64") \
+    GRAY_PANIC("P0096", "arithmetic", "cast from u128 failed; value exceeds the representable range of u64") \
+    GRAY_PANIC("P0097", "arithmetic", "cast from i256 failed; value is outside the representable range of i64") \
+    GRAY_PANIC("P0098", "arithmetic", "cast from i256 failed; value is negative or outside the representable range of u64") \
+    GRAY_PANIC("P0099", "arithmetic", "cast from u256 failed; value exceeds the representable range of i64") \
+    GRAY_PANIC("P0100", "arithmetic", "cast from u256 failed; value exceeds the representable range of u64") \
     GRAY_PANIC("P0101", "server",     "server.cors: origin contains CR or LF — HTTP header injection is not allowed") \
     GRAY_PANIC("P0102", "arithmetic", "invalid digit in integer literal") \
     GRAY_PANIC("P0103", "io",         "file path contains an embedded null byte") \
     GRAY_PANIC("P0104", "memory",     "arena memory limit exceeded: attempted to grow beyond the maximum of %zu bytes") \
     GRAY_PANIC("P0105", "time",       "time.parse: cannot parse '%s' with layout '%s'") \
-    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for int, got %lld") \
+    GRAY_PANIC("P0106", "math",       "math.next_power_of_two() result is too large for i64, got %lld") \
     GRAY_PANIC("P0107", "arithmetic", "cast to %s failed; value %lld does not match any variant of %s") \
     GRAY_PANIC("P0108", "threads",    "threads.spawn: failed to create OS thread (%s); the process thread limit was likely reached") \
     GRAY_PANIC("P0109", "threads",    "threads.spawn: out of memory allocating thread state") \

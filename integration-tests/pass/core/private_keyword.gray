@@ -7,7 +7,7 @@
 
 
 // Private top-level function
-private do secret_value() -> int {
+private do secret_value() -> i64 {
     return 42
 }
 
@@ -15,41 +15,41 @@ private do secret_value() -> int {
 private const INTERNAL_KEY string = "abc123"
 
 // Public function calls private function
-do get_secret() -> int {
+do get_secret() -> i64 {
     return secret_value()
 }
 
 // Struct with private and public functions
 const Calculator struct {
-    base int
+    base i64
 
-    private do internal_add(a int, b int) -> int {
+    private do internal_add(a i64, b i64) -> i64 {
         return a + b
     }
 
-    private do internal_mul(a int, b int) -> int {
+    private do internal_mul(a i64, b i64) -> i64 {
         return a * b
     }
 
-    do add(a int, b int) -> int {
+    do add(a i64, b i64) -> i64 {
         return Calculator.internal_add(a, b)
     }
 
-    do mul(a int, b int) -> int {
+    do mul(a i64, b i64) -> i64 {
         return Calculator.internal_mul(a, b)
     }
 
     // Public calls chained private functions
-    do compute(a int, b int, c int) -> int {
-        mut sum int = Calculator.internal_add(a, b)
+    do compute(a i64, b i64, c i64) -> i64 {
+        mut sum i64 = Calculator.internal_add(a, b)
         return Calculator.internal_mul(sum, c)
     }
 }
 
 do main() {
     println("=== Private Keyword Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: private function callable from same file
     if secret_value() == 42 {
@@ -106,7 +106,7 @@ do main() {
     }
 
     // Test 7: private function used in expression
-    mut doubled int = secret_value() * 2
+    mut doubled i64 = secret_value() * 2
     if doubled == 84 {
         println("  [PASS] private function in expression")
         passed += 1
@@ -116,7 +116,7 @@ do main() {
     }
 
     // Test 8: private constant used in expression
-    mut key_len int = len(INTERNAL_KEY)
+    mut key_len i64 = len(INTERNAL_KEY)
     if key_len == 6 {
         println("  [PASS] private constant in expression")
         passed += 1

@@ -3,16 +3,16 @@
  */
 
 const Inner struct {
-    n int
+    n i64
 }
 
 const Box struct {
-    v int
+    v i64
     inner Inner
 }
 
 /* A local named after this file's own module. */
-do peek() -> int {
+do peek() -> i64 {
     mut b Box = Box{v: 5, inner: Inner{n: 2}}
     b.v = 9
     b.inner.n = 4
@@ -21,6 +21,6 @@ do peek() -> int {
 }
 
 /* A parameter named after this file's own module. */
-do via_param(b Box) -> int {
+do via_param(b Box) -> i64 {
     return b.v + b.inner.n
 }

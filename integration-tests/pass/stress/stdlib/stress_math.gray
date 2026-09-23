@@ -6,21 +6,21 @@ import @math
 
 do main() {
     println("=== Stress: @math Edge Cases ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // abs int
+    // abs i64
     if math.abs(-5) == 5 && math.abs(0) == 0 && math.abs(3) == 3 {
-        println("  [PASS] abs on int")
+        println("  [PASS] abs on i64")
         passed += 1
-    } otherwise { println("  [FAIL] abs int") failed += 1 }
+    } otherwise { println("  [FAIL] abs i64") failed += 1 }
 
-    // abs float
+    // abs f64
     mut af = math.abs(-3.14)
     if af > 3.13 && af < 3.15 {
-        println("  [PASS] abs on float")
+        println("  [PASS] abs on f64")
         passed += 1
-    } otherwise { println("  [FAIL] abs float") failed += 1 }
+    } otherwise { println("  [FAIL] abs f64") failed += 1 }
 
     // sqrt
     mut s4 = math.sqrt(4.0)
@@ -60,7 +60,7 @@ do main() {
         passed += 1
     } otherwise { println("  [FAIL] floor/ceil") failed += 1 }
 
-    // min/max (use int to avoid int/float comparison issues)
+    // min/max (use i64 to avoid i64/f64 comparison issues)
     mut mn = math.min(3, 5)
     mut mx = math.max(3, 5)
     if mn == 3 && mx == 5 {
@@ -68,7 +68,7 @@ do main() {
         passed += 1
     } otherwise { println("  [FAIL] min/max") failed += 1 }
 
-    // factorial (returns float, compare with float)
+    // factorial (returns f64, compare with f64)
     mut f0 = math.factorial(0)
     mut f5 = math.factorial(5)
     if f0 > 0.9 && f0 < 1.1 && f5 > 119.9 && f5 < 120.1 {

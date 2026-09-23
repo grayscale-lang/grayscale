@@ -5,24 +5,24 @@
 
 do main() {
     println("=== Stress: Arithmetic ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Basic operators with int
+    // Basic operators with i64
     if 2 + 3 == 5 && 10 - 4 == 6 && 3 * 7 == 21 && 20 / 4 == 5 && 17 % 5 == 2 {
-        println("  [PASS] int arithmetic basics")
+        println("  [PASS] i64 arithmetic basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] int arithmetic basics")
+        println("  [FAIL] i64 arithmetic basics")
         failed += 1
     }
 
     // Float arithmetic
     if 1.5 + 2.5 == 4.0 && 10.0 - 3.5 == 6.5 && 2.0 * 3.0 == 6.0 {
-        println("  [PASS] float arithmetic basics")
+        println("  [PASS] f64 arithmetic basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] float arithmetic basics")
+        println("  [FAIL] f64 arithmetic basics")
         failed += 1
     }
 
@@ -55,7 +55,7 @@ do main() {
     }
 
     // Compound assignment
-    mut x int = 10
+    mut x i64 = 10
     x += 5
     x -= 3
     x *= 2
@@ -69,7 +69,7 @@ do main() {
     }
 
     // Percent assign
-    mut m int = 17
+    mut m i64 = 17
     m %= 5
     if m == 2 {
         println("  [PASS] %= compound assignment")
@@ -80,7 +80,7 @@ do main() {
     }
 
     // Increment/decrement
-    mut c int = 0
+    mut c i64 = 0
     c++
     c++
     c++
@@ -94,7 +94,7 @@ do main() {
     }
 
     // Chain of operations
-    mut result int = 2 + 3 * 4 - 8 / 2 % 3
+    mut result i64 = 2 + 3 * 4 - 8 / 2 % 3
     // 2 + 12 - (4 % 3) = 2 + 12 - 1 = 13
     if result == 13 {
         println("  [PASS] chained operations with precedence")

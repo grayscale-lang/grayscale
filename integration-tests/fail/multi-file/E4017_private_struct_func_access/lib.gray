@@ -3,13 +3,13 @@
  */
 
 const Box struct {
-    v int
+    v i64
 
-    private do secret(self Box) -> int {
+    private do secret(self Box) -> i64 {
         return self.v * 2
     }
 
-    do open(self Box) -> int {
+    do open(self Box) -> i64 {
         return Box.secret(self)
     }
 }

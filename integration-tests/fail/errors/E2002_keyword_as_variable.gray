@@ -4,6 +4,6 @@
  */
 
 do main() {
-    mut for int = 10
+    mut for i64 = 10
     println(for)
 }

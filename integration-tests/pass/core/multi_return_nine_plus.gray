@@ -5,47 +5,47 @@
  */
 
 
-do nine_values() -> (a int, b int, c int, d int, e int, f int, g int, h int, i int) {
-    mut a int = 1
-    mut b int = 2
-    mut c int = 3
-    mut d int = 4
-    mut e int = 5
-    mut f int = 6
-    mut g int = 7
-    mut h int = 8
-    mut i int = 9
+do nine_values() -> (a i64, b i64, c i64, d i64, e i64, f i64, g i64, h i64, i i64) {
+    mut a i64 = 1
+    mut b i64 = 2
+    mut c i64 = 3
+    mut d i64 = 4
+    mut e i64 = 5
+    mut f i64 = 6
+    mut g i64 = 7
+    mut h i64 = 8
+    mut i i64 = 9
     return a, b, c, d, e, f, g, h, i
 }
 
-do twelve_values() -> (int, int, int, int, int, int, int, int, int, int, int, int) {
+do twelve_values() -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) {
     return 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120
 }
 
-do sixteen_values() -> (a int, b int, c int, d int, e int, f int, g int, h int, i int, j int, k int, l int, m int, n int, o int, p int) {
-    mut a int = 1
-    mut b int = 2
-    mut c int = 3
-    mut d int = 4
-    mut e int = 5
-    mut f int = 6
-    mut g int = 7
-    mut h int = 8
-    mut i int = 9
-    mut j int = 10
-    mut k int = 11
-    mut l int = 12
-    mut m int = 13
-    mut n int = 14
-    mut o int = 15
-    mut p int = 16
+do sixteen_values() -> (a i64, b i64, c i64, d i64, e i64, f i64, g i64, h i64, i i64, j i64, k i64, l i64, m i64, n i64, o i64, p i64) {
+    mut a i64 = 1
+    mut b i64 = 2
+    mut c i64 = 3
+    mut d i64 = 4
+    mut e i64 = 5
+    mut f i64 = 6
+    mut g i64 = 7
+    mut h i64 = 8
+    mut i i64 = 9
+    mut j i64 = 10
+    mut k i64 = 11
+    mut l i64 = 12
+    mut m i64 = 13
+    mut n i64 = 14
+    mut o i64 = 15
+    mut p i64 = 16
     return a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p
 }
 
 do main() {
     println("=== Multi-Return 9+ Values Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: 9 named return values
     mut a1, a2, a3, a4, a5, a6, a7, a8, a9 = nine_values()

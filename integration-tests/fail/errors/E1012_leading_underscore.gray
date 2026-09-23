@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int = _1000  // leading underscore
+    mut x i64 = _1000  // leading underscore
 }

@@ -1,11 +1,11 @@
 // Test: inline raw() dereference skips nil check
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    mut x int = 42
+    mut x i64 = 42
     // raw(x)^ should produce a bare dereference with no nil check
-    mut val int = raw(x)^
+    mut val i64 = raw(x)^
     if val == 42 {
         passed = passed + 1
     } otherwise {

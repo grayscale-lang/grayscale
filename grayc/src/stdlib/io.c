@@ -505,13 +505,13 @@ int64_t gray_io_file_size(GrayString path) {
     return (int64_t)file_info.st_size;
 }
 
-GrayResult_int gray_io_file_size_result(GrayArena *arena, GrayString path) {
+GrayResult_i64 gray_io_file_size_result(GrayArena *arena, GrayString path) {
     validate_path(path);
     struct stat file_info;
     if (stat(path.data, &file_info) != 0)
-        return (GrayResult_int){-1, gray_error_new(arena, gray_errno_code(errno),
+        return (GrayResult_i64){-1, gray_error_new(arena, gray_errno_code(errno),
             gray_string_format(arena, "cannot stat '%s'", path.data))};
-    return (GrayResult_int){(int64_t)file_info.st_size, NULL};
+    return (GrayResult_i64){(int64_t)file_info.st_size, NULL};
 }
 
 bool gray_io_write_file(GrayString path, GrayString content) {

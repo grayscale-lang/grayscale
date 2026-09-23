@@ -1,5 +1,5 @@
 const Item struct {
-    id int
+    id i64
 }
 
 const Tag enum {

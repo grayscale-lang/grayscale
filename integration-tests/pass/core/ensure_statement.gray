@@ -16,7 +16,7 @@ do process_with_ensure() {
     // ensure runs when function exits
 }
 
-do process_with_early_return() -> int {
+do process_with_early_return() -> i64 {
     ensure set_cleanup_flag()
     if true {
         return 42  // ensure still runs on early return
@@ -26,8 +26,8 @@ do process_with_early_return() -> int {
 
 do main() {
     println("=== Ensure Statement Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: ensure runs on normal function exit
     cleanup_ran = false
@@ -42,7 +42,7 @@ do main() {
 
     // Test 2: ensure runs on early return
     cleanup_ran = false
-    mut val int = process_with_early_return()
+    mut val i64 = process_with_early_return()
     if cleanup_ran && val == 42 {
         println("  [PASS] ensure runs on early return")
         passed += 1

@@ -3,7 +3,7 @@
  * Expected: "'println' is a built-in name and cannot be used as a parameter name"
  */
 
-do test(println int) {
+do test(println i64) {
     return
 }
 

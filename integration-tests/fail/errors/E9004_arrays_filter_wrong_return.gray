@@ -5,9 +5,9 @@
 
 import @arrays
 
-do not_bool(x int) -> int { return x * 2 }
+do not_bool(x i64) -> i64 { return x * 2 }
 
 do main() {
-    mut nums [int] = {1, 2, 3}
-    mut result [int] = arrays.filter(nums, ()not_bool)
+    mut nums [i64] = {1, 2, 3}
+    mut result [i64] = arrays.filter(nums, ()not_bool)
 }

@@ -5,11 +5,11 @@
 // expect-error: E3163
 // expect-error-count: 1
 
-mut G ^int = nil
+mut G ^i64 = nil
 
 do stash() {
-    mut x int = 424242
-    mut a [^int] = {addr(x)}
+    mut x i64 = 424242
+    mut a [^i64] = {addr(x)}
     G = a[0]
 }
 

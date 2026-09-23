@@ -8,18 +8,18 @@
  */
 
 
-do get_pair() -> (int, string) {
+do get_pair() -> (i64, string) {
     return 42, "hello"
 }
 
-do get_triple() -> (int, string, bool) {
+do get_triple() -> (i64, string, bool) {
     return 1, "two", true
 }
 
 do main() {
     println("=== Const Multi-Return Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: const with 2-value return
     const a, b = get_pair()

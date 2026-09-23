@@ -6,11 +6,11 @@ import @uuid
 import @encoding
 
 do main() {
-    mut passed int = 0
+    mut passed i64 = 0
 
     // to_bytes yields 16 bytes
     mut id UUID = uuid.parse("550e8400-e29b-41d4-a716-446655440000")
-    mut b16 [byte] = uuid.to_bytes(id)
+    mut b16 [u8] = uuid.to_bytes(id)
     if len(b16) == 16 {
         println("  [PASS] to_bytes length 16")
         passed += 1
@@ -46,7 +46,7 @@ do main() {
     }
 
     // from_bytes accepts bytes decoded from hex
-    mut hexbytes [byte] = encoding.from_hex("00000000000000000000000000000000")
+    mut hexbytes [u8] = encoding.from_hex("00000000000000000000000000000000")
     mut nil_like UUID = uuid.from_bytes(hexbytes)
     if uuid.to_string(nil_like) == "00000000-0000-0000-0000-000000000000" {
         println("  [PASS] from_bytes from hex")

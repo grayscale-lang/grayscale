@@ -3,11 +3,11 @@
 import @arrays
 
 const Widget struct {
-    items [int, 3]
+    items [i64, 3]
 }
 
 do main() {
-    mut base [int] = {1, 2, 3, 4, 5}
+    mut base [i64] = {1, 2, 3, 4, 5}
     mut w Widget = Widget{items: arrays.slice(base, 0, 5)}
     println(len(w.items))
 }

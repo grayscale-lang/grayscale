@@ -24,10 +24,10 @@ do triple(x ?) -> ? {
 
 do main() {
     println("=== Wildcard Nested Call Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // -- int binding --
+    // -- i64 binding --
     if double(5) == 10 {
         println("  [PASS] double(5) = 10")
         passed += 1
@@ -36,7 +36,7 @@ do main() {
         failed += 1
     }
 
-    // -- float binding --
+    // -- f64 binding --
     if double(1.5) == 3.0 {
         println("  [PASS] double(1.5) = 3.0")
         passed += 1

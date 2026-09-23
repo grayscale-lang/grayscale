@@ -1,0 +1,104 @@
+/*
+ * sized-integer-overflow-checks.gray - Test that sized integer arithmetic
+ * within bounds works correctly.
+ */
+
+
+do main() {
+    println("=== Sized Integer Overflow Checks ===")
+    mut passed i64 = 0
+    mut failed i64 = 0
+
+    // Test 1: u8 addition within bounds
+    mut a u8 = 100
+    mut b u8 = 55
+    mut c u8 = a + b
+    if c == 155 {
+        println("  [PASS] u8 addition within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u8 addition within bounds")
+        failed += 1
+    }
+
+    // Test 2: i8 addition within bounds (negative)
+    mut d i8 = -50
+    mut e i8 = 50
+    mut f i8 = d + e
+    if f == 0 {
+        println("  [PASS] i8 addition within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i8 addition within bounds")
+        failed += 1
+    }
+
+    // Test 3: u16 multiplication within bounds
+    mut g u16 = 200
+    mut h u16 = 100
+    mut i u16 = g * h
+    if i == 20000 {
+        println("  [PASS] u16 multiplication within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u16 multiplication within bounds")
+        failed += 1
+    }
+
+    // Test 4: u8 subtraction within bounds
+    mut j u8 = 200
+    mut k u8 = 100
+    mut l u8 = j - k
+    if l == 100 {
+        println("  [PASS] u8 subtraction within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u8 subtraction within bounds")
+        failed += 1
+    }
+
+    // Test 5: i16 compound assignment within bounds
+    mut m i16 = 30000
+    mut m_add i16 = 2000
+    m += m_add
+    if m == 32000 {
+        println("  [PASS] i16 compound += within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i16 compound += within bounds")
+        failed += 1
+    }
+
+    // Test 6: u8 increment within bounds
+    mut n u8 = 254
+    n++
+    if n == 255 {
+        println("  [PASS] u8 increment to max")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] u8 increment to max")
+        failed += 1
+    }
+
+    // Test 7: i32 subtraction within bounds
+    mut o i32 = -2000000000
+    mut p i32 = 100000000
+    mut q i32 = o + p
+    if q == -1900000000 {
+        println("  [PASS] i32 arithmetic within bounds")
+        passed += 1
+    } otherwise {
+        println("  [FAIL] i32 arithmetic within bounds")
+        failed += 1
+    }
+
+    // Summary
+    println("")
+    println("Results: ${passed} passed, ${failed} failed")
+
+    if failed > 0 {
+        println("SOME TESTS FAILED")
+    } otherwise {
+        println("ALL TESTS PASSED")
+    }
+}

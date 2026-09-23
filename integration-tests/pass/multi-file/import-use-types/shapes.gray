@@ -1,8 +1,8 @@
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do make_point(x int, y int) -> Point {
+do make_point(x i64, y i64) -> Point {
     return Point{x: x, y: y}
 }

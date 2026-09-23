@@ -4,13 +4,13 @@
 
 
 const Inner struct {
-    value int
+    value i64
     name string
 }
 
 const Outer struct {
     inner Inner
-    count int
+    count i64
 }
 
 const Deep struct {

@@ -133,7 +133,7 @@ GrayString gray_chars_escape(GrayArena *arena, int32_t codepoint);
 /*@man width
  *@module chars
  *@group Width
- *@sig width(c char) -> int
+ *@sig width(c char) -> i64
  *@desc Returns the terminal display width of c, wcwidth semantics: -1 for a C0/C1 control character, 0 for a zero-width codepoint (combining marks, joiners, variation selectors), 2 for a wide codepoint (CJK ideographs, Hangul syllables, fullwidth forms, default-presentation emoji), 1 for everything else. East Asian "ambiguous width" codepoints are treated as 1. Never fails.
  *@example
  *   import @chars
@@ -146,7 +146,7 @@ int32_t gray_chars_width(int32_t codepoint);
 /*@man string_width
  *@module chars
  *@group Width
- *@sig string_width(s string) -> int
+ *@sig string_width(s string) -> i64
  *@desc Returns the total terminal display width of s: the sum of chars.width over its codepoints, treating a -1 (control character) result as 0. Does not expand tabs. A ZWJ emoji sequence is summed from its parts rather than treated as one grapheme cluster, so it over-counts those. Never fails.
  *@example
  *   import @chars

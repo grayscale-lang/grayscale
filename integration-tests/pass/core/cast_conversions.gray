@@ -2,11 +2,11 @@
  * cast_conversions.gray - Test cast() conversion functions
  *
  * Verifies that cast() dispatches to proper conversion functions
- * for string/bool/float/int conversions instead of raw C casts.
+ * for string/bool/f64/i64 conversions instead of raw C casts.
  */
 
 
-alias I = int
+alias I = i64
 alias S = string
 alias Chain = I
 
@@ -18,10 +18,10 @@ alias Shade = Hue
 
 do main() {
     println("=== Cast Conversion Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: int → string
+    // Test 1: i64 → string
     mut s1 string = cast(42, string)
     if s1 == "42" {
         println("  [PASS] cast(42, string) == '42'")
@@ -31,7 +31,7 @@ do main() {
         failed += 1
     }
 
-    // Test 2: negative int → string
+    // Test 2: negative i64 → string
     mut s2 string = cast(-99, string)
     if s2 == "-99" {
         println("  [PASS] cast(-99, string) == '-99'")
@@ -41,7 +41,7 @@ do main() {
         failed += 1
     }
 
-    // Test 3: float → string
+    // Test 3: f64 → string
     mut s3 string = cast(3.14, string)
     if s3 == "3.14" {
         println("  [PASS] cast(3.14, string) == '3.14'")
@@ -71,23 +71,23 @@ do main() {
         failed += 1
     }
 
-    // Test 6: float → int (truncation)
-    mut i3 int = cast(9.99, int)
+    // Test 6: f64 → i64 (truncation)
+    mut i3 i64 = cast(9.99, i64)
     if i3 == 9 {
-        println("  [PASS] cast(9.99, int) == 9 (truncated)")
+        println("  [PASS] cast(9.99, i64) == 9 (truncated)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(9.99, int) got ${i3}")
+        println("  [FAIL] cast(9.99, i64) got ${i3}")
         failed += 1
     }
 
-    // Test 10: int → float
-    mut f2 float = cast(42, float)
+    // Test 10: i64 → f64
+    mut f2 f64 = cast(42, f64)
     if f2 > 41.99 && f2 < 42.01 {
-        println("  [PASS] cast(42, float) == 42.0")
+        println("  [PASS] cast(42, f64) == 42.0")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(42, float) got ${f2}")
+        println("  [FAIL] cast(42, f64) got ${f2}")
         failed += 1
     }
 
@@ -101,8 +101,8 @@ do main() {
         failed += 1
     }
 
-    // Test 10: int variable → string
-    mut num int = 777
+    // Test 10: i64 variable → string
+    mut num i64 = 777
     mut s7 string = cast(num, string)
     if s7 == "777" {
         println("  [PASS] cast(variable, string) == '777'")
@@ -114,22 +114,22 @@ do main() {
 
     // An alias is fully interchangeable with its underlying type, so it
     // names the same cast target the underlying type does.
-    mut d float = 3.9
+    mut d f64 = 3.9
     mut ai I = cast(d, I)
-    if ai == 3 && type_of(ai) == "int" {
-        println("  [PASS] cast(float, I) where alias I = int")
+    if ai == 3 && type_of(ai) == "i64" {
+        println("  [PASS] cast(f64, I) where alias I = i64")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(float, I) got '${ai}' of type '${type_of(ai)}'")
+        println("  [FAIL] cast(f64, I) got '${ai}' of type '${type_of(ai)}'")
         failed += 1
     }
 
     mut as_ S = cast(42, S)
     if as_ == "42" {
-        println("  [PASS] cast(int, S) where alias S = string")
+        println("  [PASS] cast(i64, S) where alias S = string")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(int, S) got '${as_}'")
+        println("  [FAIL] cast(i64, S) got '${as_}'")
         failed += 1
     }
 
@@ -144,15 +144,15 @@ do main() {
 
     mut sh Shade = cast(1, Shade)
     if sh == Hue.GREEN {
-        println("  [PASS] cast(int, Shade) where alias Shade = Hue")
+        println("  [PASS] cast(i64, Shade) where alias Shade = Hue")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(int, Shade) did not produce Hue.GREEN")
+        println("  [FAIL] cast(i64, Shade) did not produce Hue.GREEN")
         failed += 1
     }
 
     if cast(sh, I) == 1 {
-        println("  [PASS] cast(enum, I) where alias I = int")
+        println("  [PASS] cast(enum, I) where alias I = i64")
         passed += 1
     } otherwise {
         println("  [FAIL] cast(enum, I) got '${cast(sh, I)}'")

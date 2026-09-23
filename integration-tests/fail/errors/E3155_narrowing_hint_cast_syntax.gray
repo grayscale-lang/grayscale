@@ -6,6 +6,6 @@
 
 do main() {
     mut c u8 = cast(10, u8)
-    mut n int = 2
+    mut n i64 = 2
     c += n
 }

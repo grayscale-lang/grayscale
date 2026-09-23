@@ -6,5 +6,5 @@
 import "./lib.gray"
 
 do main() {
-    mut lib int = 5
+    mut lib i64 = 5
 }

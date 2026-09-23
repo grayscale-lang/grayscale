@@ -1,9 +1,9 @@
 /*
  * Error Test: E3046 - integer-overflow (literal exceeds UINT64_MAX)
  * Expected: "overflows 64-bit integer"
- * Even u64/uint cannot hold values above UINT64_MAX.
+ * Even u64/u64 cannot hold values above UINT64_MAX.
  */
 
 do main() {
-    mut x uint = 18446744073709551616  // UINT64_MAX + 1
+    mut x u64 = 18446744073709551616  // UINT64_MAX + 1
 }

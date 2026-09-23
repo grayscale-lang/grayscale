@@ -8,7 +8,7 @@
 import @arrays
 
 const Inner struct {
-    items [int, 3]
+    items [i64, 3]
 }
 
 const Outer struct {

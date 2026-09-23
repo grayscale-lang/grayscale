@@ -1,7 +1,7 @@
 import "./util"
 import @strings
 
-do go(n int) -> int {
+do go(n i64) -> i64 {
     return util.twice(n) + util.LIMIT
 }
 

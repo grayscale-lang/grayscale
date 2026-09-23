@@ -8,25 +8,25 @@
  * pointers whose tracked origin is overwritten before they escape.
  */
 
-do passthru(p ^int) -> ^int {
+do passthru(p ^i64) -> ^i64 {
     return p
 }
 
-do reassigned() -> ^int {
-    mut local int = 1
-    mut p ^int = addr(local)
+do reassigned() -> ^i64 {
+    mut local i64 = 1
+    mut p ^i64 = addr(local)
     p = nil
     return p
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Copying an address between pointers in the same scope is fine.
-    mut x int = 5
-    mut p ^int = addr(x)
-    mut q ^int = p
+    mut x i64 = 5
+    mut p ^i64 = addr(x)
+    mut q ^i64 = p
     q^ = 9
     if x == 9 {
         passed = passed + 1
@@ -37,8 +37,8 @@ do main() {
 
     // An inner-scope pointer to an outer variable outlives nothing.
     if true {
-        mut inner ^int = addr(x)
-        mut inner2 ^int = inner
+        mut inner ^i64 = addr(x)
+        mut inner2 ^i64 = inner
         if inner2^ == 9 {
             passed = passed + 1
         } otherwise {
@@ -48,7 +48,7 @@ do main() {
     }
 
     // A parameter carries no local origin, so returning it is legal.
-    mut r ^int = passthru(p)
+    mut r ^i64 = passthru(p)
     if r^ == 9 {
         passed = passed + 1
     } otherwise {
@@ -57,7 +57,7 @@ do main() {
     }
 
     // Overwriting a pointer clears the origin it used to carry.
-    mut n ^int = reassigned()
+    mut n ^i64 = reassigned()
     if n == nil {
         passed = passed + 1
     } otherwise {

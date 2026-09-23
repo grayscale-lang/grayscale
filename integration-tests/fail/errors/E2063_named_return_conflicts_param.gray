@@ -3,7 +3,7 @@
  * Expected: "named return value 'x' conflicts with parameter 'x'" error
  */
 
-do double(x int) -> (x int) {
+do double(x i64) -> (x i64) {
     return x * 2
 }
 

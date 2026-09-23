@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut p = raw(int)
+    mut p = raw(i64)
 }

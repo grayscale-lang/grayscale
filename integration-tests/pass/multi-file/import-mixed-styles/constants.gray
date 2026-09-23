@@ -1,1 +1,1 @@
-const MAX int = 999
+const MAX i64 = 999

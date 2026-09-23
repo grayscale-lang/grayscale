@@ -4,5 +4,5 @@
  */
 
 do main() {
-    mut x int =   // missing expression after =
+    mut x i64 =   // missing expression after =
 }

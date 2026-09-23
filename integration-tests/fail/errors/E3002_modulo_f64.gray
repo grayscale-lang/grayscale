@@ -1,0 +1,10 @@
+/*
+ * Error Test: E3002 - modulo-f64
+ * Expected: "%" and "integer"
+ */
+
+
+do main() {
+    mut f f64 = 3.14
+    mut x = f % 2  // Should fail: modulo on f64
+}

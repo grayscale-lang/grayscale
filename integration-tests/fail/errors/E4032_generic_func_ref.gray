@@ -15,7 +15,7 @@ do cmp(a ?, b ?) -> i32 {
 }
 
 do main() {
-    mut buf ^int = extern.malloc(16)
+    mut buf ^i64 = extern.malloc(16)
     extern.qsort(buf, 2, 8, ()cmp)
     extern.free(buf)
 }

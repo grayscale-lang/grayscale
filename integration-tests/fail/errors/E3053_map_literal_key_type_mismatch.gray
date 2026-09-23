@@ -2,10 +2,10 @@
  * Error Test: E3053 - map literal key type mismatch at var_decl
  *
  * the fix walks each key/value pair, not
- * just values — an int key in a string-keyed map is also caught
+ * just values — an i64 key in a string-keyed map is also caught
  * with E3053 anchored at the key expression.
  */
 
 do main() {
-    mut m map[string:int] = {42: 1}
+    mut m map[string:i64] = {42: 1}
 }

@@ -3,7 +3,7 @@
  * Expected: "'string' is a reserved type name" error
  */
 
-do string() -> int {
+do string() -> i64 {
     return 0
 }
 

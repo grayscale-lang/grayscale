@@ -1,0 +1,7 @@
+/* Panic Test: P0008 - u64 addition overflow */
+do main() {
+    mut x u64 = 9223372036854775807
+    mut y u64 = x + x
+    mut z u64 = y + y
+    println(z)
+}

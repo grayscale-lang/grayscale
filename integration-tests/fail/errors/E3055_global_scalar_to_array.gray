@@ -6,7 +6,7 @@
 
 
 // Global const array without size annotation - should trigger E3055
-const badArray [int] = 42
+const badArray [i64] = 42
 
 do main() {
 }

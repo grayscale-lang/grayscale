@@ -3,10 +3,10 @@
  * Expected: "wrong number of return" or "count mismatch"
  */
 
-do getValue() -> (int, int) {
+do getValue() -> (i64, i64) {
     return 1  // expected 2 values
 }
 
 do main() {
-    mut a int, b int = getValue()
+    mut a i64, b i64 = getValue()
 }

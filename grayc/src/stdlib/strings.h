@@ -210,7 +210,7 @@ bool gray_strings_ends_with(GrayString str, GrayString suffix);
 /*@man index_of
  *@module strings
  *@group Query
- *@sig index_of(s string, sub string) -> int
+ *@sig index_of(s string, sub string) -> i64
  *@desc Returns the byte index of the first occurrence of sub in s, or -1 if not found.
  *@example
  *   import @strings
@@ -223,7 +223,7 @@ int64_t gray_strings_index_of(GrayString str, GrayString sub);
 /*@man last_index_of
  *@module strings
  *@group Query
- *@sig last_index_of(s string, sub string) -> int
+ *@sig last_index_of(s string, sub string) -> i64
  *@desc Returns the byte index of the last occurrence of sub in s, or -1 if not found.
  *@example
  *   import @strings
@@ -236,7 +236,7 @@ int64_t gray_strings_last_index_of(GrayString str, GrayString sub);
 /*@man count
  *@module strings
  *@group Query
- *@sig count(s string, sub string) -> int
+ *@sig count(s string, sub string) -> i64
  *@desc Returns the number of non-overlapping occurrences of sub in s.
  *@example
  *   import @strings
@@ -285,7 +285,7 @@ bool gray_strings_equal_fold(GrayString left, GrayString right);
 /*@man compare
  *@module strings
  *@group Query
- *@sig compare(a string, b string) -> int
+ *@sig compare(a string, b string) -> i64
  *@desc Compares a and b bytewise and returns -1 if a sorts before b, 1 if it sorts after, and 0 if they are equal.
  *@example
  *   import @strings
@@ -335,7 +335,7 @@ GrayString gray_strings_replace(GrayArena *arena, GrayString str, GrayString old
 /*@man repeat
  *@module strings
  *@group Transformation
- *@sig repeat(s string, count int) -> string
+ *@sig repeat(s string, count i64) -> string
  *@desc Returns a string consisting of count copies of s concatenated together.
  *@example
  *   import @strings
@@ -359,7 +359,7 @@ GrayString gray_strings_reverse(GrayArena *arena, GrayString str);
 /*@man truncate
  *@module strings
  *@group Transformation
- *@sig truncate(s string, max int, ellipsis string) -> string
+ *@sig truncate(s string, max i64, ellipsis string) -> string
  *@desc Returns s unchanged when its byte length is at most max. Otherwise returns the first (max - len(ellipsis)) bytes of s followed by ellipsis, for a total byte length of exactly max. Panics if max is smaller than the byte length of ellipsis.
  *@example
  *   import @strings
@@ -371,7 +371,7 @@ GrayString gray_strings_truncate(GrayArena *arena, GrayString str, int64_t max, 
 /*@man slice
  *@module strings
  *@group Transformation
- *@sig slice(s string, start int, end int) -> string
+ *@sig slice(s string, start i64, end i64) -> string
  *@desc Returns the substring of s from byte index start (inclusive) to end (exclusive).
  *@example
  *   import @strings
@@ -408,7 +408,7 @@ GrayArray gray_strings_split_whitespace(GrayArena *arena, GrayString str);
 /*@man split_n
  *@module strings
  *@group Split/Join
- *@sig split_n(s string, sep string, n int) -> [string]
+ *@sig split_n(s string, sep string, n i64) -> [string]
  *@desc Splits s on sep into at most n pieces; the final piece holds the unsplit remainder. Returns an empty array when n is zero or negative.
  *@example
  *   import @strings
@@ -433,7 +433,7 @@ GrayString gray_strings_join(GrayArena *arena, GrayArray arr, GrayString sep);
 /*@man char_at
  *@module strings
  *@group Access
- *@sig char_at(s string, index int) -> char
+ *@sig char_at(s string, index i64) -> char
  *@desc Returns the character at the given byte index. Panics if the index is out of bounds.
  *@example
  *   import @strings
@@ -470,7 +470,7 @@ GrayString gray_strings_prepend_char(GrayArena *arena, GrayString str, int32_t c
 /*@man insert_char_at
  *@module strings
  *@group Editing
- *@sig insert_char_at(s string, index int, c char) -> string
+ *@sig insert_char_at(s string, index i64, c char) -> string
  *@desc Returns a new string with c (UTF-8 encoded) inserted at byte index. An index equal to the length appends; panics if the index is negative or greater than the length. s is unchanged.
  *@example
  *   import @strings
@@ -482,7 +482,7 @@ GrayString gray_strings_insert_char_at(GrayArena *arena, GrayString str, int64_t
 /*@man remove_at
  *@module strings
  *@group Editing
- *@sig remove_at(s string, index int) -> string
+ *@sig remove_at(s string, index i64) -> string
  *@desc Returns a new string with the byte at byte index removed. Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
@@ -494,7 +494,7 @@ GrayString gray_strings_remove_at(GrayArena *arena, GrayString str, int64_t inde
 /*@man set_char_at
  *@module strings
  *@group Editing
- *@sig set_char_at(s string, index int, c char) -> string
+ *@sig set_char_at(s string, index i64, c char) -> string
  *@desc Returns a new string with the byte at byte index replaced by c (UTF-8 encoded). Panics if the index is out of bounds. s is unchanged.
  *@example
  *   import @strings
@@ -647,7 +647,7 @@ GrayStringsBuilder *gray_strings_builder(GrayArena *arena);
 /*@man builder_reserve
  *@module strings
  *@group Builder
- *@sig builder_reserve(b Builder, n int) -> void
+ *@sig builder_reserve(b Builder, n i64) -> void
  *@desc Grows the builder's buffer so it can hold at least n bytes without reallocating. Optional; use it when the final size is known ahead of time. A negative n is ignored.
  *@example
  *   import @strings
@@ -686,12 +686,12 @@ void gray_strings_builder_append_char(GrayStringsBuilder *builder, int32_t codep
 /*@man builder_append_bytes
  *@module strings
  *@group Builder
- *@sig builder_append_bytes(b Builder, data [byte]) -> void
+ *@sig builder_append_bytes(b Builder, data [u8]) -> void
  *@desc Appends every byte of data to the builder.
  *@example
  *   import @strings
  *   mut b Builder = strings.builder()
- *   mut data [byte] = {104, 105}
+ *   mut data [u8] = {104, 105}
  *   strings.builder_append_bytes(b, data)
  *@end
  */
@@ -700,7 +700,7 @@ void gray_strings_builder_append_bytes(GrayStringsBuilder *builder, GrayArray da
 /*@man builder_append_int
  *@module strings
  *@group Builder
- *@sig builder_append_int(b Builder, n int) -> void
+ *@sig builder_append_int(b Builder, n i64) -> void
  *@desc Appends the decimal text of n to the builder (e.g. -42 appends "-42").
  *@example
  *   import @strings
@@ -727,7 +727,7 @@ void gray_strings_builder_append_line(GrayStringsBuilder *builder, GrayString st
 /*@man builder_len
  *@module strings
  *@group Builder
- *@sig builder_len(b Builder) -> int
+ *@sig builder_len(b Builder) -> i64
  *@desc Returns the number of bytes accumulated in the builder so far.
  *@example
  *   import @strings

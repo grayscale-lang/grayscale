@@ -3,6 +3,6 @@
 import @arrays
 
 do main() {
-    mut a [int] = {}
+    mut a [i64] = {}
     arrays.fill(a, 1, 3000000000)
 }

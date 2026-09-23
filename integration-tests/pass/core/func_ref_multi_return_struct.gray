@@ -9,10 +9,10 @@
  */
 
 const Rec struct {
-    n int
+    n i64
 }
 
-do split(r Rec) -> (Rec, int) {
+do split(r Rec) -> (Rec, i64) {
     return r, r.n
 }
 
@@ -20,7 +20,7 @@ do combine(a Rec, b Rec) -> bool {
     return a.n == b.n
 }
 
-do call_split(r Rec, f func(Rec) -> (Rec, int)) -> int {
+do call_split(r Rec, f func(Rec) -> (Rec, i64)) -> i64 {
     mut r2, n = f(r)
     return n + r2.n
 }
@@ -30,8 +30,8 @@ do call_pred(a Rec, b Rec, pred func(Rec, Rec) -> bool) -> bool {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut r Rec = Rec{n: 5}
     if call_split(r, ()split) == 10 {

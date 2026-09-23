@@ -20,8 +20,8 @@ do echo_wide() -> i256 {
 
 do main() {
     println("=== BigInt Literal Position Tests ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Reference value from the position that already worked: an initializer.
     mut want i128 = 123456789012345678901234567890

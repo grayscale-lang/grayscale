@@ -1,5 +1,5 @@
 const Baz struct {
-    y int
+    y i64
 }
 
 const Color enum {
@@ -7,13 +7,13 @@ const Color enum {
     GREEN
 }
 
-alias Count = int
+alias Count = i64
 
-do make_baz(y int) -> Baz {
+do make_baz(y i64) -> Baz {
     return Baz{y: y}
 }
 
-do baz_y(b Baz) -> int {
+do baz_y(b Baz) -> i64 {
     return b.y
 }
 

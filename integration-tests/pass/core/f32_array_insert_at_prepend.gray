@@ -1,14 +1,14 @@
 /*
  * f32_array_insert_at_prepend.gray
  * arrays.insert_at and arrays.prepend on an [f32] array must stage the value
- * as a packed 4-byte float, the same as arrays.append.
+ * as a packed 4-u8 f64, the same as arrays.append.
  */
 
 import @arrays
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     mut a [f32] = {cast(1.5, f32), cast(2.5, f32)}
     arrays.insert_at(a, 1, cast(9.5, f32))

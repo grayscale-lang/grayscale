@@ -1,4 +1,4 @@
 
 import "../module_b"
 
-const VALUE int = 1
+const VALUE i64 = 1

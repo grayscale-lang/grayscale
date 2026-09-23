@@ -1,0 +1,13 @@
+// expect-contains: .gray:
+/* Panic Test: P0110 - strconv.format_int with invalid base at runtime */
+import @strconv
+
+do get_base() -> i64 {
+    return 99
+}
+
+do main() {
+    mut base i64 = get_base()
+    mut s string = strconv.format_int(255, base)
+    println(s)
+}

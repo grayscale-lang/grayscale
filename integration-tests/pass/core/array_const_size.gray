@@ -1,41 +1,41 @@
 // Test: compile-time integer constants as fixed-size array size specifiers
 
-const N int = 5
-const arr [int, N] = {1, 2, 3, 4, 5}
+const N i64 = 5
+const arr [i64, N] = {1, 2, 3, 4, 5}
 
-const W uint = 4
+const W u64 = 4
 const arr2 [string, W] = {"a", "b", "c", "d"}
 
-const M int = 2
+const M i64 = 2
 const arr3 [bool, M] = {true, false}
 
 // Partial init (triggers W3003 with resolved size)
-const P int = 4
-const partial [int, P] = {10, 20}
+const P i64 = 4
+const partial [i64, P] = {10, 20}
 
 // Mixed: literal and const sizes in same program
-const literal [int, 3] = {100, 200, 300}
+const literal [i64, 3] = {100, 200, 300}
 
 do main() {
-    // Basic const int size
+    // Basic const i64 size
     if arr[0] == 1 && arr[4] == 5 {
-        println("  [PASS] const int size")
+        println("  [PASS] const i64 size")
     } else {
-        println("  [FAIL] const int size")
+        println("  [FAIL] const i64 size")
     }
 
-    // const uint size
+    // const u64 size
     if arr2[0] == "a" && arr2[3] == "d" {
-        println("  [PASS] const uint size")
+        println("  [PASS] const u64 size")
     } else {
-        println("  [FAIL] const uint size")
+        println("  [FAIL] const u64 size")
     }
 
-    // Another const int size
+    // Another const i64 size
     if arr3[0] == true && arr3[1] == false {
-        println("  [PASS] const int size (bool array)")
+        println("  [PASS] const i64 size (bool array)")
     } else {
-        println("  [FAIL] const int size (bool array)")
+        println("  [FAIL] const i64 size (bool array)")
     }
 
     // Partial init with const size

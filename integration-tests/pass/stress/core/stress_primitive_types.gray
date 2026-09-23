@@ -1,63 +1,63 @@
 /* Stress test: Primitive types exhaustive (Section 2.1)
- * Tests int, uint, float, string, bool, char, byte
+ * Tests i64, u64, f64, string, bool, char, u8
  * Expected: all tests pass
  */
 
 
-do return_int() -> int { return 42 }
-do return_uint() -> uint { return 100 }
-do return_float() -> float { return 3.14 }
+do return_int() -> i64 { return 42 }
+do return_uint() -> u64 { return 100 }
+do return_float() -> f64 { return 3.14 }
 do return_string() -> string { return "hello" }
 do return_bool() -> bool { return true }
 do return_char() -> char { return 'A' }
-do return_byte() -> byte { return cast(255, byte) }
+do return_byte() -> u8 { return cast(255, u8) }
 
 do main() {
     println("=== Stress: Primitive Types ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // int: declare, assign, reassign, print, interpolate
-    mut i int = 0
+    // i64: declare, assign, reassign, print, interpolate
+    mut i i64 = 0
     i = 42
-    if i == 42 && type_of(i) == "int" && return_int() == 42 {
-        println("  [PASS] int basics")
+    if i == 42 && type_of(i) == "i64" && return_int() == 42 {
+        println("  [PASS] i64 basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] int basics")
+        println("  [FAIL] i64 basics")
         failed += 1
     }
 
-    // int edge values
-    mut neg_i int = -9223372036854775807
-    mut big_i int = 9223372036854775807
+    // i64 edge values
+    mut neg_i i64 = -9223372036854775807
+    mut big_i i64 = 9223372036854775807
     if neg_i < 0 && big_i > 0 {
-        println("  [PASS] int edge values")
+        println("  [PASS] i64 edge values")
         passed += 1
     } otherwise {
-        println("  [FAIL] int edge values")
+        println("  [FAIL] i64 edge values")
         failed += 1
     }
 
-    // uint
-    mut u uint = cast(0, uint)
-    u = cast(100, uint)
-    if type_of(u) == "uint" {
-        println("  [PASS] uint basics")
+    // u64
+    mut u u64 = cast(0, u64)
+    u = cast(100, u64)
+    if type_of(u) == "u64" {
+        println("  [PASS] u64 basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] uint basics")
+        println("  [FAIL] u64 basics")
         failed += 1
     }
 
-    // float
-    mut f float = 0.0
+    // f64
+    mut f f64 = 0.0
     f = 3.14
-    if f == 3.14 && type_of(f) == "float" && return_float() == 3.14 {
-        println("  [PASS] float basics")
+    if f == 3.14 && type_of(f) == "f64" && return_float() == 3.14 {
+        println("  [PASS] f64 basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] float basics")
+        println("  [FAIL] f64 basics")
         failed += 1
     }
 
@@ -95,14 +95,14 @@ do main() {
         failed += 1
     }
 
-    // byte
-    mut by byte = cast(0, byte)
-    by = cast(255, byte)
-    if by == cast(255, byte) && type_of(by) == "byte" {
-        println("  [PASS] byte basics")
+    // u8
+    mut by u8 = cast(0, u8)
+    by = cast(255, u8)
+    if by == cast(255, u8) && type_of(by) == "u8" {
+        println("  [PASS] u8 basics")
         passed += 1
     } otherwise {
-        println("  [FAIL] byte basics")
+        println("  [FAIL] u8 basics")
         failed += 1
     }
 

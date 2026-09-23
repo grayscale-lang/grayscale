@@ -1,9 +1,9 @@
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: cast int to string
-    mut x int = 42
+    // Test 1: cast i64 to string
+    mut x i64 = 42
     mut s = cast(x, string)
     if s == "42" {
         println("  [PASS] cast(42, string) == \"42\"")
@@ -13,8 +13,8 @@ do main() {
         failed += 1
     }
 
-    // Test 2: cast float to string
-    mut f float = 3.14
+    // Test 2: cast f64 to string
+    mut f f64 = 3.14
     mut sf = cast(f, string)
     if sf == "3.14" {
         println("  [PASS] cast(3.14, string) produces string")

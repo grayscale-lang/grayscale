@@ -8,11 +8,11 @@
 
 do main() {
     println("=== Container + Compound Assignment Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: mut array with += in same function
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     if arr[0] == 1 {
         println("  [PASS] mut array + compound assign coexist")
         passed += 1
@@ -32,7 +32,7 @@ do main() {
     }
 
     // Test 3: mut map with += in same function
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     if m["a"] == 1 {
         println("  [PASS] mut map + compound assign coexist")
         passed += 1
@@ -62,8 +62,8 @@ do main() {
     }
 
     // Test 6: -= compound assign with array
-    mut counter int = 10
-    mut nums [int] = {5, 10, 15}
+    mut counter i64 = 10
+    mut nums [i64] = {5, 10, 15}
     counter -= nums[0]
     if counter == 5 {
         println("  [PASS] -= compound assign with array access")

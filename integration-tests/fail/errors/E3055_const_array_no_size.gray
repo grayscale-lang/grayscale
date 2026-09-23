@@ -4,5 +4,5 @@
  */
 
 do main() {
-    const a [int] = {1, 2, 3}
+    const a [i64] = {1, 2, 3}
 }

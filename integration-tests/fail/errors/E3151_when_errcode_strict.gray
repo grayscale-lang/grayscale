@@ -3,7 +3,7 @@
 // ErrorCode is an open enum: `when err.code` can never be #strict, even
 // with a default branch present.
 
-do f() -> (int, Error) {
+do f() -> (i64, Error) {
     return 0, error(.NotFound, "x")
 }
 

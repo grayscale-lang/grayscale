@@ -1,6 +1,6 @@
 /* Pass Test: 'otherwise' keyword alias used consistently for the else arm. */
 
-do classify(x int) -> string {
+do classify(x i64) -> string {
     if x > 5 {
         return "big"
     } otherwise {
@@ -9,8 +9,8 @@ do classify(x int) -> string {
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     if classify(10) == "big" {
         passed += 1

@@ -8,8 +8,8 @@ import @channels
 
 do main() {
     println("=== Channels Module Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: open channel
     mut ch = channels.open(1)
@@ -18,7 +18,7 @@ do main() {
 
     // Test 2: send and receive single value
     channels.send(ch, 42)
-    mut val int = channels.receive(ch)
+    mut val i64 = channels.receive(ch)
     if val == 42 {
         println("  [PASS] send/receive 42")
         passed += 1
@@ -29,7 +29,7 @@ do main() {
 
     // Test 3: send and receive zero
     channels.send(ch, 0)
-    mut zero int = channels.receive(ch)
+    mut zero i64 = channels.receive(ch)
     if zero == 0 {
         println("  [PASS] send/receive 0")
         passed += 1
@@ -40,7 +40,7 @@ do main() {
 
     // Test 4: send and receive negative
     channels.send(ch, -100)
-    mut neg int = channels.receive(ch)
+    mut neg i64 = channels.receive(ch)
     if neg == -100 {
         println("  [PASS] send/receive -100")
         passed += 1
@@ -54,9 +54,9 @@ do main() {
     channels.send(buf, 10)
     channels.send(buf, 20)
     channels.send(buf, 30)
-    mut v1 int = channels.receive(buf)
-    mut v2 int = channels.receive(buf)
-    mut v3 int = channels.receive(buf)
+    mut v1 i64 = channels.receive(buf)
+    mut v2 i64 = channels.receive(buf)
+    mut v3 i64 = channels.receive(buf)
     if v1 == 10 && v2 == 20 && v3 == 30 {
         println("  [PASS] buffered channel (capacity 3)")
         passed += 1
@@ -87,7 +87,7 @@ do main() {
     }
 
     // Test 8: try_receive success
-    mut val2 int, got bool = channels.try_receive(ch2)
+    mut val2 i64, got bool = channels.try_receive(ch2)
     if got && val2 == 42 {
         println("  [PASS] try_receive success")
         passed += 1
@@ -97,7 +97,7 @@ do main() {
     }
 
     // Test 9: try_receive empty
-    mut val3 int, got2 bool = channels.try_receive(ch2)
+    mut val3 i64, got2 bool = channels.try_receive(ch2)
     if !got2 && val3 == 0 {
         println("  [PASS] try_receive empty")
         passed += 1

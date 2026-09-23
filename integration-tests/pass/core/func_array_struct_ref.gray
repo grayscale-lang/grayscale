@@ -10,32 +10,32 @@
  */
 
 const Vec struct {
-    x int
-    y int
+    x i64
+    y i64
 
-    do create(val int) -> Vec {
+    do create(val i64) -> Vec {
         return Vec{x: val, y: val * 2}
     }
 
-    do origin(_unused int) -> Vec {
+    do origin(_unused i64) -> Vec {
         return Vec{x: 0, y: 0}
     }
 }
 
 const Color struct {
-    r int
-    g int
-    b int
+    r i64
+    g i64
+    b i64
 
-    do rgb(r int, g int, b int) -> Color {
+    do rgb(r i64, g i64, b i64) -> Color {
         return Color{r: r, g: g, b: b}
     }
 }
 
 do main() {
     println("=== [func] Array Struct Ref Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // -- single-element [func] array of struct-namespaced ref --
     mut ctors [func] = {()Vec.create}
@@ -72,7 +72,7 @@ do main() {
     }
 
     // -- field access chained through the call result --
-    mut x_val int = vec_ops[0](100).x
+    mut x_val i64 = vec_ops[0](100).x
     if x_val == 100 {
         println("  [PASS] field access chained on indexed call result")
         passed += 1

@@ -6,8 +6,8 @@
 
 do main() {
     println("=== Large Integers Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: i128 literal larger than int64 max
     mut big i128 = 10000000000000000000

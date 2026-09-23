@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut x int = 5
+    mut x i64 = 5
     when x {
         is 1 { println("one") }
         is 2 { println("two") }

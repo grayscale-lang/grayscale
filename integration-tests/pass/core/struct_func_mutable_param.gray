@@ -4,29 +4,29 @@
  */
 
 const Util struct {
-    _pad int
+    _pad i64
 
-    do double(&x int) {
+    do double(&x i64) {
         x = x * 2
     }
 
-    do add_ten(&val int) {
+    do add_ten(&val i64) {
         val = val + 10
     }
 
-    do swap(&a int, &b int) {
-        mut t int = a
+    do swap(&a i64, &b i64) {
+        mut t i64 = a
         a = b
         b = t
     }
 }
 
 do main() {
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
     // Test 1: basic struct function mutation
-    mut val int = 5
+    mut val i64 = 5
     Util.double(val)
     if val == 10 {
         println("  [PASS] Util.double(5) mutated val to 10")
@@ -37,7 +37,7 @@ do main() {
     }
 
     // Test 2: different struct function mutation
-    mut num int = 7
+    mut num i64 = 7
     Util.add_ten(num)
     if num == 17 {
         println("  [PASS] Util.add_ten(7) mutated num to 17")
@@ -48,8 +48,8 @@ do main() {
     }
 
     // Test 3: multiple mutable params in struct function
-    mut a int = 1
-    mut b int = 2
+    mut a i64 = 1
+    mut b i64 = 2
     Util.swap(a, b)
     if a == 2 {
         println("  [PASS] Util.swap: a is now 2")
@@ -68,7 +68,7 @@ do main() {
     }
 
     // Test 4: chained mutations
-    mut x int = 3
+    mut x i64 = 3
     Util.double(x)
     Util.add_ten(x)
     if x == 16 {

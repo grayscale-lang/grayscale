@@ -4,23 +4,23 @@
  */
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
 do main() {
     println("=== addr(const) read-only ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: addr() of const int, read through pointer
-    const val int = 42
-    mut p ^int = addr(val)
+    // Test 1: addr() of const i64, read through pointer
+    const val i64 = 42
+    mut p ^i64 = addr(val)
     if p^ == 42 {
-        println("  [PASS] read const int through pointer")
+        println("  [PASS] read const i64 through pointer")
         passed += 1
     } otherwise {
-        println("  [FAIL] read const int through pointer")
+        println("  [FAIL] read const i64 through pointer")
         failed += 1
     }
 

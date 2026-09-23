@@ -1,6 +1,6 @@
 /*
  * strconv.c — Implementation of the strconv stdlib module.
- * Converts between strings and numeric types (int, uint, float)
+ * Converts between strings and numeric types (i64, u64, f64)
  * with support for custom bases, validation, and both panicking
  * and result-returning variants.
  *
@@ -63,12 +63,12 @@ int64_t gray_strconv_to_int(GrayString str, int64_t base) {
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
-        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to int (base %lld)", buf, (long long)base);
+        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to i64 (base %lld)", buf, (long long)base);
     char *end = NULL;
     errno = 0;
     int64_t result = strtoll(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE)
-        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to int (base %lld)", buf, (long long)base);
+        gray_panic_code("P0055", "strconv.to_int: cannot convert '%s' to i64 (base %lld)", buf, (long long)base);
     return result;
 }
 
@@ -78,18 +78,18 @@ uint64_t gray_strconv_to_uint(GrayString str, int64_t base) {
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
-        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to uint (base %lld)", buf, (long long)base);
+        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to u64 (base %lld)", buf, (long long)base);
     /* Reject negative numbers */
     for (int i = 0; i < len; i++) {
         if (buf[i] == '-')
-            gray_panic_code("P0058", "strconv.to_uint: cannot convert '%s' to uint; value is negative", buf);
+            gray_panic_code("P0058", "strconv.to_uint: cannot convert '%s' to u64; value is negative", buf);
         if (!isspace((unsigned char)buf[i])) break;
     }
     char *end = NULL;
     errno = 0;
     uint64_t result = strtoull(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE)
-        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to uint (base %lld)", buf, (long long)base);
+        gray_panic_code("P0057", "strconv.to_uint: cannot convert '%s' to u64 (base %lld)", buf, (long long)base);
     return result;
 }
 
@@ -97,12 +97,12 @@ double gray_strconv_to_float(GrayString str) {
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0]))
-        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to float", buf);
+        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to f64", buf);
     char *end = NULL;
     errno = 0;
     double result = strtod(buf, &end);
     if (end == buf || *end != '\0' || errno == ERANGE)
-        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to float", buf);
+        gray_panic_code("P0059", "strconv.to_float: cannot convert '%s' to f64", buf);
     return result;
 }
 
@@ -116,49 +116,49 @@ bool gray_strconv_to_bool(GrayString str) {
 
 /* --- Fallible conversions (result versions) --- */
 
-GrayResult_int gray_strconv_to_int_result(GrayString str, int64_t base) {
+GrayResult_i64 gray_strconv_to_int_result(GrayString str, int64_t base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
-        return (GrayResult_int){0, err};
+        return (GrayResult_i64){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
-        GrayString msg = gray_string_lit("cannot convert string to int");
+        GrayString msg = gray_string_lit("cannot convert string to i64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_int){0, err};
+        return (GrayResult_i64){0, err};
     }
     char *end = NULL;
     errno = 0;
     int64_t result = strtoll(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE) {
-        GrayString msg = gray_string_lit("cannot convert string to int");
+        GrayString msg = gray_string_lit("cannot convert string to i64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_int){0, err};
+        return (GrayResult_i64){0, err};
     }
-    return (GrayResult_int){result, NULL};
+    return (GrayResult_i64){result, NULL};
 }
 
-GrayResult_uint gray_strconv_to_uint_result(GrayString str, int64_t base) {
+GrayResult_u64 gray_strconv_to_uint_result(GrayString str, int64_t base) {
     if (base < 2 || base > 36) {
         GrayString msg = gray_string_lit("invalid base for integer conversion (must be 2-36)");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
-        return (GrayResult_uint){0, err};
+        return (GrayResult_u64){0, err};
     }
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
-        GrayString msg = gray_string_lit("cannot convert string to uint");
+        GrayString msg = gray_string_lit("cannot convert string to u64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_uint){0, err};
+        return (GrayResult_u64){0, err};
     }
     /* Reject negative numbers */
     for (int i = 0; i < len; i++) {
         if (buf[i] == '-') {
-            GrayString msg = gray_string_lit("cannot convert negative string to uint");
+            GrayString msg = gray_string_lit("cannot convert negative string to u64");
             GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_InvalidInput, msg);
-            return (GrayResult_uint){0, err};
+            return (GrayResult_u64){0, err};
         }
         if (!isspace((unsigned char)buf[i])) break;
     }
@@ -166,30 +166,30 @@ GrayResult_uint gray_strconv_to_uint_result(GrayString str, int64_t base) {
     errno = 0;
     uint64_t result = strtoull(buf, &end, base);
     if (end == buf || *end != '\0' || errno == ERANGE) {
-        GrayString msg = gray_string_lit("cannot convert string to uint");
+        GrayString msg = gray_string_lit("cannot convert string to u64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_uint){0, err};
+        return (GrayResult_u64){0, err};
     }
-    return (GrayResult_uint){result, NULL};
+    return (GrayResult_u64){result, NULL};
 }
 
-GrayResult_float gray_strconv_to_float_result(GrayString str) {
+GrayResult_f64 gray_strconv_to_float_result(GrayString str) {
     char buf[STRCONV_BUF_SIZE];
     int len = strconv_prepare(str, buf, sizeof(buf));
     if (len > 0 && isspace((unsigned char)buf[0])) {
-        GrayString msg = gray_string_lit("cannot convert string to float");
+        GrayString msg = gray_string_lit("cannot convert string to f64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_float){0.0, err};
+        return (GrayResult_f64){0.0, err};
     }
     char *end = NULL;
     errno = 0;
     double result = strtod(buf, &end);
     if (end == buf || *end != '\0' || errno == ERANGE) {
-        GrayString msg = gray_string_lit("cannot convert string to float");
+        GrayString msg = gray_string_lit("cannot convert string to f64");
         GrayError *err = gray_error_new(gray_default_arena, GRAY_ERR_ConversionFailure, msg);
-        return (GrayResult_float){0.0, err};
+        return (GrayResult_f64){0.0, err};
     }
-    return (GrayResult_float){result, NULL};
+    return (GrayResult_f64){result, NULL};
 }
 
 GrayResult_bool gray_strconv_to_bool_result(GrayString str) {

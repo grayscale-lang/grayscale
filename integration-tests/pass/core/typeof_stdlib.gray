@@ -10,31 +10,31 @@ import @maps
 
 do main() {
     // Test random module types
-    mut rf float = random.rand_float()
-    assert(type_of(rf) == "float", "random.rand_float() should return 'float'")
+    mut rf f64 = random.rand_float()
+    assert(type_of(rf) == "f64", "random.rand_float() should return 'f64'")
 
-    mut ri int = random.rand_int(100)
-    assert(type_of(ri) == "int", "random.rand_int() should return 'int'")
+    mut ri i64 = random.rand_int(100)
+    assert(type_of(ri) == "i64", "random.rand_int() should return 'i64'")
 
     mut rb bool = random.rand_bool()
     assert(type_of(rb) == "bool", "random.rand_bool() should return 'bool'")
 
-    mut rc byte = random.rand_byte()
-    assert(type_of(rc) == "byte", "random.rand_byte() should return 'byte'")
+    mut rc u8 = random.rand_byte()
+    assert(type_of(rc) == "u8", "random.rand_byte() should return 'u8'")
 
     mut rchar char = random.rand_char()
     assert(type_of(rchar) == "char", "random.rand_char() should return 'char'")
 
     // Test random array functions preserve element types
-    mut arr [int] = {1, 2, 3, 4, 5}
+    mut arr [i64] = {1, 2, 3, 4, 5}
     mut shuffled = random.shuffle(arr)
-    assert(type_of(shuffled) == "[int]", "random.shuffle() should preserve '[int]' type")
+    assert(type_of(shuffled) == "[i64]", "random.shuffle() should preserve '[i64]' type")
 
     mut sampled = random.sample(arr, 2)
-    assert(type_of(sampled) == "[int]", "random.sample() should preserve '[int]' type")
+    assert(type_of(sampled) == "[i64]", "random.sample() should preserve '[i64]' type")
 
     mut choice = random.choice(arr)
-    assert(type_of(choice) == "int", "random.choice() should return element type 'int'")
+    assert(type_of(choice) == "i64", "random.choice() should return element type 'i64'")
 
     // Test with string array
     mut strArr [string] = {"a", "b", "c"}
@@ -43,24 +43,24 @@ do main() {
 
     // Test Range type
     mut r = range(0, 10)
-    assert(type_of(r) == "Range<int>", "range() should return 'Range<int>'")
+    assert(type_of(r) == "Range<i64>", "range() should return 'Range<i64>'")
 
     // Test string array from split
     mut parts = strings.split("a,b,c", ",")
     assert(type_of(parts) == "[string]", "strings.split() should return '[string]'")
 
     // Test map types
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     mut keys = maps.get_keys(m)
     assert(type_of(keys) == "[string]", "maps.get_keys() should return '[string]'")
 
     mut values = maps.get_values(m)
-    assert(type_of(values) == "[int]", "maps.get_values() should return '[int]'")
+    assert(type_of(values) == "[i64]", "maps.get_values() should return '[i64]'")
 
     // Test with different map types
-    mut m2 map[int:string] = {1: "one", 2: "two"}
+    mut m2 map[i64:string] = {1: "one", 2: "two"}
     mut keys2 = maps.get_keys(m2)
-    assert(type_of(keys2) == "[int]", "maps.get_keys() should return '[int]' for int keys")
+    assert(type_of(keys2) == "[i64]", "maps.get_keys() should return '[i64]' for i64 keys")
 
     mut values2 = maps.get_values(m2)
     assert(type_of(values2) == "[string]", "maps.get_values() should return '[string]' for string values")

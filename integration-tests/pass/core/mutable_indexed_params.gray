@@ -4,15 +4,15 @@
 
 
 const Point struct {
-    x int
-    y int
+    x i64
+    y i64
 }
 
-do modify_int(&x int) {
+do modify_int(&x i64) {
     x = 999
 }
 
-do increment(&x int) {
+do increment(&x i64) {
     x += 1
 }
 
@@ -20,7 +20,7 @@ do main() {
     println("=== Mutable Indexed/Member Expression Tests ===")
 
     // Test 1: Array element
-    mut arr [int] = {1, 2, 3}
+    mut arr [i64] = {1, 2, 3}
     modify_int(arr[0])
     if arr[0] != 999 {
         panic("FAIL: arr[0] should be 999")
@@ -28,7 +28,7 @@ do main() {
     println("Test 1 PASS: Array element mutation works")
 
     // Test 2: Array element with compound assignment
-    mut arr2 [int] = {10, 20, 30}
+    mut arr2 [i64] = {10, 20, 30}
     increment(arr2[1])
     if arr2[1] != 21 {
         panic("FAIL: arr2[1] should be 21")
@@ -52,7 +52,7 @@ do main() {
     println("Test 4 PASS: Struct field compound assignment works")
 
     // Test 5: Map value
-    mut m map[string:int] = {"a": 1, "b": 2}
+    mut m map[string:i64] = {"a": 1, "b": 2}
     modify_int(m["a"])
     if m["a"] != 999 {
         panic("FAIL: m[\"a\"] should be 999")
@@ -60,7 +60,7 @@ do main() {
     println("Test 5 PASS: Map value mutation works")
 
     // Test 6: Map value with compound assignment
-    mut m2 map[string:int] = {"x": 100}
+    mut m2 map[string:i64] = {"x": 100}
     increment(m2["x"])
     if m2["x"] != 101 {
         panic("FAIL: m2[\"x\"] should be 101")

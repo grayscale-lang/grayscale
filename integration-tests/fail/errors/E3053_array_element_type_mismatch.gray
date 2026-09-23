@@ -1,8 +1,8 @@
 /*
  * Error Test: E3053 - wrong element type in array initializer
- * Expected: "type mismatch in array initializer — expected 'int', got 'string'" error
+ * Expected: "type mismatch in array initializer — expected 'i64', got 'string'" error
  */
 
 do main() {
-    mut a [int] = {"hello", "world"}
+    mut a [i64] = {"hello", "world"}
 }

@@ -4,7 +4,7 @@
  */
 
 do main() {
-    mut x float = 3.14
+    mut x f64 = 3.14
     x++  // postfix operator needs integer operand
 }
 

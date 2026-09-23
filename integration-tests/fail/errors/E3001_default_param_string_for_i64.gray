@@ -1,0 +1,12 @@
+/*
+ * Error Test: E3001 - default param type mismatch (string for i64)
+ * Expected: type mismatch error
+ */
+
+do foo(x i64 = "hello") {
+    println(x)
+}
+
+do main() {
+    foo()
+}

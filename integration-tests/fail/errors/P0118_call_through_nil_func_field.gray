@@ -1,7 +1,7 @@
 /* Panic Test: P0118 - call through a nil function value */
 const Ops struct {
     name string
-    run  func() -> int
+    run  func() -> i64
 }
 
 do main() {

@@ -3,7 +3,7 @@
  * Expected: "'if' is a keyword and cannot be used as a parameter name"
  */
 
-do test(if int) {
+do test(if i64) {
     return
 }
 

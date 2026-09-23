@@ -1,29 +1,29 @@
 /*
  * bigint_cast.gray - Test cast() to and from wide integer types
  *
- * Covers: cast(bigint, int), cast(bigint, uint), cast(bigint, float),
- * cast(int, i128), cast(int, u256), cast(float, i128), cross-width
+ * Covers: cast(bigint, i64), cast(bigint, u64), cast(bigint, f64),
+ * cast(i64, i128), cast(i64, u256), cast(f64, i128), cross-width
  * bigint casts, and assigning cast(expr, bigint) to a declared bigint var.
  */
 
 do main() {
     println("=== Wide Integer cast() Test ===")
-    mut passed int = 0
-    mut failed int = 0
+    mut passed i64 = 0
+    mut failed i64 = 0
 
-    // Test 1: cast i128 → int
+    // Test 1: cast i128 → i64
     mut a i128 = i128(42)
-    mut b int = cast(a, int)
+    mut b i64 = cast(a, i64)
     if b == 42 {
-        println("  [PASS] cast(i128, int)")
+        println("  [PASS] cast(i128, i64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(i128, int): got ${b}")
+        println("  [FAIL] cast(i128, i64): got ${b}")
         failed += 1
     }
 
-    // Test 2: cast int → i128 (variable)
-    mut c int = 99
+    // Test 2: cast i64 → i128 (variable)
+    mut c i64 = 99
     mut d i128 = cast(c, i128)
     if d == i128(99) {
         println("  [PASS] cast(int_var, i128)")
@@ -33,19 +33,19 @@ do main() {
         failed += 1
     }
 
-    // Test 3: cast u128 → uint
+    // Test 3: cast u128 → u64
     mut e u128 = u128(200)
-    mut f uint = cast(e, uint)
+    mut f u64 = cast(e, u64)
     if f == 200 {
-        println("  [PASS] cast(u128, uint)")
+        println("  [PASS] cast(u128, u64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(u128, uint): got ${f}")
+        println("  [FAIL] cast(u128, u64): got ${f}")
         failed += 1
     }
 
-    // Test 4: cast uint → u128 (variable)
-    mut g uint = 500
+    // Test 4: cast u64 → u128 (variable)
+    mut g u64 = 500
     mut h u128 = cast(g, u128)
     if h == u128(500) {
         println("  [PASS] cast(uint_var, u128)")
@@ -55,19 +55,19 @@ do main() {
         failed += 1
     }
 
-    // Test 5: cast i256 → int
+    // Test 5: cast i256 → i64
     mut x i256 = i256(1000)
-    mut y int = cast(x, int)
+    mut y i64 = cast(x, i64)
     if y == 1000 {
-        println("  [PASS] cast(i256, int)")
+        println("  [PASS] cast(i256, i64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(i256, int): got ${y}")
+        println("  [FAIL] cast(i256, i64): got ${y}")
         failed += 1
     }
 
-    // Test 6: cast int → i256
-    mut iv int = 777
+    // Test 6: cast i64 → i256
+    mut iv i64 = 777
     mut iw i256 = cast(iv, i256)
     if iw == i256(777) {
         println("  [PASS] cast(int_var, i256)")
@@ -77,25 +77,25 @@ do main() {
         failed += 1
     }
 
-    // Test 7: cast u256 → uint
+    // Test 7: cast u256 → u64
     mut p u256 = u256(333)
-    mut q uint = cast(p, uint)
+    mut q u64 = cast(p, u64)
     if q == 333 {
-        println("  [PASS] cast(u256, uint)")
+        println("  [PASS] cast(u256, u64)")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(u256, uint): got ${q}")
+        println("  [FAIL] cast(u256, u64): got ${q}")
         failed += 1
     }
 
-    // Test 8: cast float → i128 (truncates)
-    mut fl float = 3.9
+    // Test 8: cast f64 → i128 (truncates)
+    mut fl f64 = 3.9
     mut bi i128 = cast(fl, i128)
     if bi == i128(3) {
-        println("  [PASS] cast(float, i128) truncates to 3")
+        println("  [PASS] cast(f64, i128) truncates to 3")
         passed += 1
     } otherwise {
-        println("  [FAIL] cast(float, i128): got ${bi}")
+        println("  [FAIL] cast(f64, i128): got ${bi}")
         failed += 1
     }
 

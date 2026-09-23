@@ -1,6 +1,6 @@
-/* Error Test: E3001 - assigning map[string:int] to map[string:float] */
+/* Error Test: E3001 - assigning map[string:i64] to map[string:f64] */
 do main() {
-    mut a map[string:int] = {"x": 1}
-    mut b map[string:float] = a
+    mut a map[string:i64] = {"x": 1}
+    mut b map[string:f64] = a
     println(b)
 }

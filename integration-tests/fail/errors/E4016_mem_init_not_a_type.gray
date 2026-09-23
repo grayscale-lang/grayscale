@@ -10,6 +10,6 @@ import @mem
 do main() {
     mut a = mem.arena(4096)
     ensure mem.destroy(a)
-    mut p ^int = mem.init(a, NotAType)
+    mut p ^i64 = mem.init(a, NotAType)
     println(p^)
 }

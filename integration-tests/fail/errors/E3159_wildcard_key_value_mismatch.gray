@@ -9,8 +9,8 @@
 // expect-error: E3159
 // expect-error-count: 1
 
-do count(m map[?:?]) -> int {
-    mut n int = 0
+do count(m map[?:?]) -> i64 {
+    mut n i64 = 0
     for_each k, v in m {
         n += 1
     }
@@ -18,6 +18,6 @@ do count(m map[?:?]) -> int {
 }
 
 do main() {
-    mut mixed map[string:int] = {"a": 1, "b": 2}
-    mut n int = count(mixed)  // key type != value type → reject
+    mut mixed map[string:i64] = {"a": 1, "b": 2}
+    mut n i64 = count(mixed)  // key type != value type → reject
 }

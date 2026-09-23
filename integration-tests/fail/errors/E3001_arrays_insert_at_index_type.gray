@@ -1,5 +1,5 @@
 /*
- * Error Test: E3001 - arrays.insert_at() index must be int
+ * Error Test: E3001 - arrays.insert_at() index must be i64
  * Expected: E3001 error
  */
 
