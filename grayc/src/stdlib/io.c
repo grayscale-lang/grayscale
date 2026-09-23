@@ -838,14 +838,8 @@ GrayResult_bool gray_io_delete_file_result(GrayArena *arena, GrayString path) {
             "cannot delete '%s': is a directory; use io.remove_dir() for directories", path.data));
         return result;
     }
-    if (unlink(path.data) == 0) {
-        result.v0 = true;
-        result.v1 = NULL;
-    } else {
-        result.v0 = false;
-        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot delete '%s'", path.data));
-    }
-    return result;
+    GRAY_RESULT_WRAP_BOOL(arena, unlink(path.data) == 0, gray_errno_code(errno),
+        gray_string_format(arena, "cannot delete '%s'", path.data));
 }
 
 GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, GrayString content) {
@@ -857,14 +851,8 @@ GrayResult_bool gray_io_append_file_result(GrayArena *arena, GrayString path, Gr
             "cannot append to '%s': is a directory", path.data));
         return result;
     }
-    if (gray_io_append_file(path, content)) {
-        result.v0 = true;
-        result.v1 = NULL;
-    } else {
-        result.v0 = false;
-        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
-    }
-    return result;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_append_file(path, content), gray_errno_code(errno),
+        gray_string_format(arena, "cannot append to '%s'", path.data));
 }
 
 GrayResult_bool gray_io_rename_file_result(GrayArena *arena, GrayString old_path, GrayString new_path) {
@@ -881,14 +869,8 @@ GrayResult_bool gray_io_copy_file_result(GrayArena *arena, GrayString src, GrayS
             "cannot copy '%s': is a directory", src.data));
         return result;
     }
-    if (gray_io_copy_file(src, dst)) {
-        result.v0 = true;
-        result.v1 = NULL;
-    } else {
-        result.v0 = false;
-        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot copy '%s' to '%s'", src.data, dst.data));
-    }
-    return result;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_copy_file(src, dst), gray_errno_code(errno),
+        gray_string_format(arena, "cannot copy '%s' to '%s'", src.data, dst.data));
 }
 
 GrayResult_bool gray_io_move_file_result(GrayArena *arena, GrayString src, GrayString dst) {
@@ -1049,14 +1031,8 @@ GrayResult_bool gray_io_append_bytes_result(GrayArena *arena, GrayString path, G
             "cannot append to '%s': is a directory", path.data));
         return result;
     }
-    if (gray_io_append_bytes(path, data)) {
-        result.v0 = true;
-        result.v1 = NULL;
-    } else {
-        result.v0 = false;
-        result.v1 = gray_error_new(arena, gray_errno_code(errno), gray_string_format(arena, "cannot append to '%s'", path.data));
-    }
-    return result;
+    GRAY_RESULT_WRAP_BOOL(arena, gray_io_append_bytes(path, data), gray_errno_code(errno),
+        gray_string_format(arena, "cannot append to '%s'", path.data));
 }
 
 GrayResult_string gray_io_temp_file_result(GrayArena *arena) {
