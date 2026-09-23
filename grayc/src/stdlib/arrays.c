@@ -64,32 +64,43 @@ void gray_arrays_remove_at(GrayArray *arr, int64_t index) {
     arr->len--;
 }
 
-void gray_arrays_remove_int(GrayArray *arr, int64_t value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(int64_t *)((char *)arr->data + i * arr->elem_size) == value) {
-            gray_arrays_remove_at(arr, i);
-            return;
-        }
+/* First index of `value` in an array whose elements are T, or -1. The
+ * contains_* and remove_* functions below are built on these. */
+#define GRAY_DEFINE_INDEX_OF(NAME, T)                                        \
+    int64_t NAME(GrayArray *arr, T value) {                                  \
+        for (int32_t i = 0; i < arr->len; i++) {                             \
+            if (*(T *)((char *)arr->data + i * arr->elem_size) == value)     \
+                return i;                                                    \
+        }                                                                    \
+        return -1;                                                           \
     }
+
+GRAY_DEFINE_INDEX_OF(gray_arrays_index_of_int, int64_t)
+static GRAY_DEFINE_INDEX_OF(arrays_index_of_char, int32_t)
+static GRAY_DEFINE_INDEX_OF(arrays_index_of_byte, uint8_t)
+static GRAY_DEFINE_INDEX_OF(arrays_index_of_float, double)
+
+int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value) {
+    for (int32_t i = 0; i < arr->len; i++) {
+        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
+        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) return i;
+    }
+    return -1;
+}
+
+void gray_arrays_remove_int(GrayArray *arr, int64_t value) {
+    int64_t index = gray_arrays_index_of_int(arr, value);
+    if (index >= 0) gray_arrays_remove_at(arr, index);
 }
 
 void gray_arrays_remove_float(GrayArray *arr, double value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(double *)((char *)arr->data + i * arr->elem_size) == value) {
-            gray_arrays_remove_at(arr, i);
-            return;
-        }
-    }
+    int64_t index = arrays_index_of_float(arr, value);
+    if (index >= 0) gray_arrays_remove_at(arr, index);
 }
 
 void gray_arrays_remove_str(GrayArray *arr, GrayString value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) {
-            gray_arrays_remove_at(arr, i);
-            return;
-        }
-    }
+    int64_t index = gray_arrays_index_of_str(arr, value);
+    if (index >= 0) gray_arrays_remove_at(arr, index);
 }
 
 void gray_arrays_clear(GrayArray *arr) {
@@ -168,54 +179,23 @@ bool gray_arrays_is_empty(GrayArray *arr) {
 }
 
 bool gray_arrays_contains_int(GrayArray *arr, int64_t value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(int64_t *)((char *)arr->data + i * arr->elem_size) == value) return true;
-    }
-    return false;
+    return gray_arrays_index_of_int(arr, value) >= 0;
 }
 
 bool gray_arrays_contains_char(GrayArray *arr, int32_t value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(int32_t *)((char *)arr->data + i * arr->elem_size) == value) return true;
-    }
-    return false;
+    return arrays_index_of_char(arr, value) >= 0;
 }
 
 bool gray_arrays_contains_byte(GrayArray *arr, uint8_t value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(uint8_t *)((char *)arr->data + i * arr->elem_size) == value) return true;
-    }
-    return false;
+    return arrays_index_of_byte(arr, value) >= 0;
 }
 
 bool gray_arrays_contains_float(GrayArray *arr, double value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(double *)((char *)arr->data + i * arr->elem_size) == value) return true;
-    }
-    return false;
+    return arrays_index_of_float(arr, value) >= 0;
 }
 
 bool gray_arrays_contains_str(GrayArray *arr, GrayString value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) return true;
-    }
-    return false;
-}
-
-int64_t gray_arrays_index_of_int(GrayArray *arr, int64_t value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        if (*(int64_t *)((char *)arr->data + i * arr->elem_size) == value) return i;
-    }
-    return -1;
-}
-
-int64_t gray_arrays_index_of_str(GrayArray *arr, GrayString value) {
-    for (int32_t i = 0; i < arr->len; i++) {
-        GrayString *element = (GrayString *)((char *)arr->data + i * arr->elem_size);
-        if (element->len == value.len && memcmp(element->data, value.data, element->len) == 0) return i;
-    }
-    return -1;
+    return gray_arrays_index_of_str(arr, value) >= 0;
 }
 
 int64_t gray_arrays_count(GrayArray *arr, int64_t value) {
